@@ -43,7 +43,6 @@ use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, OffsetBuffer
 use arrow_ord::cmp;
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Fields, SchemaRef};
 
-use super::attribute::Attributes;
 use super::bind::{Bound, Kind, Node, StepKind};
 use super::eval::{Row, keep_elements};
 use super::path::{FieldSegment, resolve_index, resolve_range};
@@ -114,15 +113,10 @@ struct Context<'batch> {
     batch: &'batch RecordBatch,
     /// Bound-schema index to batch column index, resolved once per call.
     columns: Vec<Option<usize>>,
-    holder: Option<&'batch dyn Attributes>,
 }
 
 impl<'batch> Context<'batch> {
-    fn new(
-        schema: &'batch Field,
-        batch: &'batch RecordBatch,
-        holder: Option<&'batch dyn Attributes>,
-    ) -> Self {
+    fn new(schema: &'batch Field, batch: &'batch RecordBatch) -> Self {
         // Matching by name rather than by position is what lets a bound
         // term survive a reader that projected its columns away or reordered
         // them, which every columnar reader is entitled to do.
@@ -141,7 +135,6 @@ impl<'batch> Context<'batch> {
             schema,
             batch,
             columns,
-            holder,
         }
     }
 
@@ -164,26 +157,7 @@ impl Bound {
     /// Returns an error when the batch does not carry a column the term
     /// reads, or when a strict cast refuses a value.
     pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef> {
-        let context = Context::new(self.schema(), batch, None);
-        evaluate(self.node(), &context)?.into_column(batch.num_rows())
-    }
-
-    /// Evaluate this term over one batch alongside its holder.
-    ///
-    /// The holder answers every `&holder.*` attribute, which is what lets a
-    /// predicate mix a question about the file with a question about the rows
-    /// and still run as one pass.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the batch is missing a column, or the holder
-    /// cannot answer an attribute.
-    pub fn evaluate_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<ArrayRef> {
-        let context = Context::new(self.schema(), batch, holder);
+        let context = Context::new(self.schema(), batch);
         evaluate(self.node(), &context)?.into_column(batch.num_rows())
     }
 
@@ -197,27 +171,13 @@ impl Bound {
     /// Returns an error when the term is not a predicate, or the batch is
     /// missing a column it reads.
     pub fn filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray> {
-        self.filter_mask_with(batch, None)
-    }
-
-    /// The selection this predicate makes over one batch alongside its holder.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the term is not a predicate, the batch is
-    /// missing a column, or the holder fails.
-    pub fn filter_mask_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<BooleanArray> {
         if !self.is_predicate() {
             return Err(Error::IncompatibleSchema(format!(
                 "expected a boolean term to filter with, got {}",
                 self.field().dtype()
             )));
         }
-        let answered = boolean_column(self.evaluate_with(batch, holder)?)?;
+        let answered = boolean_column(self.evaluate(batch)?)?;
         Ok(certain(&answered))
     }
 
@@ -232,24 +192,10 @@ impl Bound {
     /// Returns an error when the term is not a predicate, or the batch is
     /// missing a column it reads.
     pub fn filter(&self, batch: &RecordBatch) -> Result<RecordBatch> {
-        self.filter_with(batch, None)
-    }
-
-    /// Keep the rows one batch's holder and rows both answer true for.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the term is not a predicate, the batch is
-    /// missing a column, or the holder fails.
-    pub fn filter_with(
-        &self,
-        batch: &RecordBatch,
-        holder: Option<&dyn Attributes>,
-    ) -> Result<RecordBatch> {
         if self.keeps_everything() {
             return Ok(batch.clone());
         }
-        let mask = self.filter_mask_with(batch, holder)?;
+        let mask = self.filter_mask(batch)?;
         if mask.true_count() == mask.len() {
             return Ok(batch.clone());
         }
@@ -541,11 +487,10 @@ pub(crate) fn struct_batch<'array>(
 
 /// Evaluate one resolved node over one batch.
 fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
-    // A subtree that reads no column is the same value for every row, holder
-    // attributes included. Answering it once and pinning it is both the
-    // constant path and the attribute path.
+    // A subtree that reads no column is the same value for every row, so it
+    // is answered once and pinned.
     if !node.reads_rows() {
-        let value = node.eval(&Row::new(None, context.holder))?;
+        let value = node.eval(&Row::new(None))?;
         return Ok(Vector::Constant(array_from_values(&node.field, &[&value])?));
     }
     match &node.kind {
@@ -560,7 +505,7 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
                         segment_array(field, &step.field, &array, segment)?
                     }
                     StepKind::Where(predicate) => {
-                        kept_elements(field, &step.field, &array, predicate, context.holder)?
+                        kept_elements(field, &step.field, &array, predicate)?
                     }
                 };
                 field = &step.field;
@@ -739,7 +684,6 @@ fn kept_elements(
     reached: &Field,
     array: &ArrayRef,
     predicate: &Node,
-    holder: Option<&dyn Attributes>,
 ) -> Result<ArrayRef> {
     let element = super::path::list_item(reached.dtype()).ok_or_else(|| {
         Error::IncompatibleSchema(format!(
@@ -752,7 +696,7 @@ fn kept_elements(
         let mut values = Vec::with_capacity(rows);
         for row in 0..rows {
             let value = value_from_array(field.dtype(), array.as_ref(), row)?;
-            values.push(keep_elements(element, predicate, &value, holder)?);
+            values.push(keep_elements(element, predicate, &value)?);
         }
         let borrowed: Vec<&Scalar> = values.iter().collect();
         return array_from_values(reached, &borrowed);
@@ -777,7 +721,7 @@ fn kept_elements(
         &RecordBatchOptions::new().with_row_count(Some(structs.len())),
     )
     .map_err(Error::Arrow)?;
-    let context = Context::new(element, &elements, holder);
+    let context = Context::new(element, &elements);
     let answered = evaluate(predicate, &context)?.into_boolean(structs.len())?;
     let mut mask = certain(&answered);
     if let Some(nulls) = structs.nulls() {
@@ -1057,7 +1001,7 @@ fn fallback(node: &Node, context: &Context<'_>) -> Result<Vector> {
         for (index, dtype, array) in &columns {
             row[*index] = value_from_array(dtype, array.as_ref(), position)?;
         }
-        answers.push(node.eval(&Row::new(Some(&row), context.holder))?);
+        answers.push(node.eval(&Row::new(Some(&row)))?);
     }
     let borrowed: Vec<&Scalar> = answers.iter().collect();
     Ok(Vector::Column(array_from_values(&node.field, &borrowed)?))

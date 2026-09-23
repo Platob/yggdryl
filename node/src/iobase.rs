@@ -927,35 +927,6 @@ impl JsIOBase {
         partition_entries(self.inner.partitions())
     }
 
-    /// Iterate the entries beneath this one a predicate does not rule out.
-    ///
-    /// The predicate is asked of the holder, not of the rows: `&holder.name`,
-    /// `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
-    /// row column cannot be answered by a listing, so it is dropped rather
-    /// than guessed at - this may keep a file the rows later discard and can
-    /// never discard one they would have kept.
-    ///
-    /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
-    /// parses.
-    #[napi]
-    pub fn children_matching(
-        &self,
-        filter: napi::bindgen_prelude::Either3<
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsFilter>,
-            napi::bindgen_prelude::ClassInstance<'_, crate::expression::JsTerm>,
-            String,
-        >,
-        include_private: Option<bool>,
-    ) -> Result<JsListing> {
-        let filter = crate::expression::filter_from_input(filter)?;
-        Ok(JsListing {
-            inner: self
-                .inner
-                .children_matching(&filter, include_private.unwrap_or(false))
-                .map_err(napi_error)?,
-        })
-    }
-
     /// Iterate the leaves beneath this one carrying every given partition.
     ///
     /// `filters` is a mapping or a sequence of pairs, so a partitioned write
@@ -1827,12 +1798,11 @@ impl JsIOBase {
 
 /// The entries of one listing, one at a time.
 ///
-/// Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
-/// `childrenWhere`. It wraps the core listing directly, so nothing is
-/// collected on the way across the boundary; `next()` is the native half of
-/// the iteration protocol and the loader wraps it so `for...of` yields
-/// handles. A failure throws at the entry it happened on, after which the
-/// listing is exhausted.
+/// Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
+/// the core listing directly, so nothing is collected on the way across the
+/// boundary; `next()` is the native half of the iteration protocol and the
+/// loader wraps it so `for...of` yields handles. A failure throws at the entry
+/// it happened on, after which the listing is exhausted.
 #[napi(js_name = "Listing")]
 pub struct JsListing {
     inner: yggdryl::Listing,

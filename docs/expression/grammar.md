@@ -8,7 +8,7 @@ The language the [expression layer](index.md) parses: one plan grammar over one 
 | --- | --- |
 | Owns | the plan, clause and term grammars, the function set, the parse limits |
 | Types | `Term`, `Filter`, `Selector`, `Plan` and `Expression` are name-based and serializable; `Bound` and `BoundSelector` are schema-resolved and are not; partially bound is unrepresentable |
-| Bindings | one term binds against a data schema, a partition schema, and a listing |
+| Bindings | one term binds against a data schema and a partition schema |
 | Logic | Kleene three-valued, and a filter keeps a row only when the answer is exactly true |
 | Functions | 19, closed; a registered user function is spelled `namespace.name(...)` and is not in the grammar ([Functions](functions.md)) |
 | Nesting | the schema grammar's hard limit, for terms and for plans in `from (...)` |
@@ -16,7 +16,6 @@ The language the [expression layer](index.md) parses: one plan grammar over one 
 | Comment | `--` to end of line |
 | Reference | the DuckDB SQL and Python expression API for spellings and aliases; where DuckDB and the best-effort rule disagree, this grammar follows the [rule](index.md#best-effort-then-a-named-refusal) |
 | Evaluation | [Evaluate](evaluate.md) |
-| `&holder.*` | [Holder attributes](holder.md) |
 
 ## Use
 
@@ -49,7 +48,7 @@ additive    := product (("+" | "-") product)*
 product     := unary (("*" | "/" | "%") unary)*
 unary       := "-" unary | accessor
 accessor    := atom ("." identifier | "[" key "]" | "[" [n] ":" [n] "]" | "[" expr "]")*
-atom        := literal | "(" expr ")" | column | "&holder." attribute | ":" parameter
+atom        := literal | "(" expr ")" | column | ":" parameter
              | "cast" "(" expr "as" datatype ")" | "try_cast" "(" .. ")"
              | "case" ("when" expr "then" expr)+ ["else" expr] "end"
              | function "(" expr,* ")" | identifier "." identifier "(" expr,* ")"
@@ -77,7 +76,6 @@ Inside `[...]` a whole number is a position, a text constant a key, a `:` form a
 | constructor | `[1, 2]` a list, `{'k': 1}` a map, `struct(1 as a)` a struct |
 | conditional | `case when c then v else w end` |
 | conversion | `cast(x as int32)`, `try_cast(x as int32)` |
-| attribute | `&holder.size`, `&holder.partition['year']` |
 | parameter | `:since` |
 | projection | `price`, `price as amount`, `price as amount decimal(9,2) not null`, `id int64 with (comment = 'key')` |
 | exclusion | `* exclude (secret)`, `* except (secret)` |
@@ -140,7 +138,6 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 - the JSON operators `->` and `->>`
 - hexadecimal and digit-separator literals, grapheme-aware length
 - `group by`, `having`, `join`, `union`
-- Parquet row-group pruning through the same `Bounds` the other three containers use
 
 ## Edges
 

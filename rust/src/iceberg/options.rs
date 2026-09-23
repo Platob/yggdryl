@@ -219,10 +219,14 @@ impl IcebergOptions {
     /// The file size nothing configures: Iceberg's own 512 MiB.
     pub const DEFAULT_TARGET_FILE_SIZE_BYTES: u64 =
         OfficialTableProperties::PROPERTY_WRITE_TARGET_FILE_SIZE_BYTES_DEFAULT as u64;
-    /// The file count nothing configures: 16 large-enough files.
-    pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 16;
-    /// The size floor nothing configures: 4 MiB recorded bytes.
-    pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 4 * 1024 * 1024;
+    /// The file count nothing configures: two large-enough files, the
+    /// fewest that can be decoded side by side.
+    pub const DEFAULT_READ_PARALLEL_MIN_FILES: usize = 2;
+    /// The size floor nothing configures: 64 KiB recorded bytes. A file
+    /// takes longer to open and decode than a thread takes to start well
+    /// below a megabyte, so only a file too small to amortize even that
+    /// stays out of the count.
+    pub const DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES: u64 = 64 * 1024;
     /// The data file format nothing configures: Parquet, the spec's default.
     pub const DEFAULT_DATA_MIME_TYPE: MimeType = MimeType::PARQUET;
 
@@ -330,7 +334,7 @@ impl IcebergOptions {
         self.read_parallelism
     }
 
-    /// Return how many large-enough files justify a parallel scan. Default: 16.
+    /// Return how many large-enough files justify a parallel scan. Default: 2.
     pub fn read_parallel_min_files(&self) -> usize {
         self.read_parallel_min_files
             .unwrap_or(Self::DEFAULT_READ_PARALLEL_MIN_FILES)
@@ -342,7 +346,7 @@ impl IcebergOptions {
     }
 
     /// Return the recorded size below which a file does not count toward
-    /// justifying parallelism, in bytes. Default: 4 MiB.
+    /// justifying parallelism, in bytes. Default: 64 KiB.
     pub fn read_parallel_min_file_size_bytes(&self) -> u64 {
         self.read_parallel_min_file_size_bytes
             .unwrap_or(Self::DEFAULT_READ_PARALLEL_MIN_FILE_SIZE_BYTES)

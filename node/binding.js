@@ -4118,6 +4118,11 @@ function asLine(value) {
   binding.FixCodec.prototype.arrowReader = function arrowReader(schema, messages) {
     return nativeArrowReader.call(this, intoField(schema), pullOf(messages, asMessage, 'messages'))
   }
+  const nativeBookArrowReader = binding.FixCodec.prototype._bookArrowReaderNative
+  delete binding.FixCodec.prototype._bookArrowReaderNative
+  binding.FixCodec.prototype.bookArrowReader = function bookArrowReader(messages, snapshotMillis = 0, global = false) {
+    return nativeBookArrowReader.call(this, pullOf(messages, asMessage, 'messages'), snapshotMillis, global)
+  }
   // A format answers rows rather than a stream, so the pull is drained here
   // and the failure a bad item raises is that call's own.
   const nativeFormat = binding.FixCodec.prototype._formatMessagesNative

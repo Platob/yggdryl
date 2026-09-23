@@ -183,13 +183,13 @@ if (parsed.identifiers.clordid !== 'ORDER-000000') {
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
 }
-if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 'ORDR' || snapshotCodec.snapshotNs !== 1_000_000_000n) {
+if (orderType.msgcat !== 'ORDR' || parsed.msgcat !== 10 || parsed.marketoperationid !== 10 || snapshotCodec.snapshotNs !== 1_000_000_000n) {
   throw new Error('FIX category and exact snapshot boundary mismatch')
 }
 const parsedRow = parsed.intoRow(fixedSchema)
 const parsedIpc = seedCodec.parseTextArrowReader(capture).intoIpc()
 // The line door, each line as a text reader answers it.
-const TEXT_LINES = LINES.map((body, index) => new TextLine(index, Buffer.from(body)))
+const TEXT_LINES = LINES.map((body, index) => new TextLine(BigInt(index), Buffer.from(body)))
 // The same door with a `msgpluginid` capture on every line: the capture fills
 // the crate's own column and selects nothing, so this is what a line costs
 // with one more capture to place beside a venue field the one namespace
@@ -204,7 +204,7 @@ const msgpluginidRegistry = (() => {
 })()
 const msgpluginidCodec = new fix.FixCodec(msgpluginidRegistry, { captureNames: ['msgpluginid'] })
 const MSGPLUGINID_LINES = LINES.map((body, index) =>
-  new TextLine(index, Buffer.from(body), [index % 2 === 0 ? VENDOR_DIALECT : 'OMS_X1_TradeCapture']),
+  new TextLine(BigInt(index), Buffer.from(body), [index % 2 === 0 ? VENDOR_DIALECT : 'OMS_X1_TradeCapture']),
 )
 if (drain(msgpluginidCodec.parseTextLines(MSGPLUGINID_LINES)) !== LINES.length) {
   throw new Error('msgpluginid line cardinality mismatch')

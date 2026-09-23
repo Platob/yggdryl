@@ -703,7 +703,7 @@ fn a_predicate_segment_reads_the_elements_a_row_holds() {
 
 mod grammar {
 
-    use yggdryl::expression::{Attribute, Term};
+    use yggdryl::expression::Term;
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
     // ---------------------------------------------------------------------------
@@ -1051,13 +1051,11 @@ mod grammar {
 
     #[test]
     fn a_predicate_segment_is_walked_like_any_other_node() {
-        let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][&holder.size > :floor]"
+        let term: Term = "legs[ccy = 'EUR' or ccy = 'USD'][qty > :floor]"
             .parse()
             .unwrap();
         assert_eq!(term.columns(), vec!["legs".to_owned()]);
         assert_eq!(term.parameters(), vec!["floor".to_owned()]);
-        assert_eq!(term.attributes(), vec![Attribute::Size]);
-        assert!(term.has_attributes());
         // A path, two predicates, and what they hold: the budget counts inside.
         assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().node_count(), 4);
         assert_eq!("legs[ccy = 'EUR']".parse::<Term>().unwrap().depth(), 3);
@@ -1070,7 +1068,7 @@ mod grammar {
         );
         assert_eq!(
             term.simplify().to_string(),
-            "legs[ccy in ('EUR', 'USD')][&holder.size > :floor]",
+            "legs[ccy in ('EUR', 'USD')][qty > :floor]",
             "simplification reaches into a predicate"
         );
         // Nesting predicates past the limit is refused, never a crash.

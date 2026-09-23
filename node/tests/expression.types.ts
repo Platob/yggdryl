@@ -5,7 +5,6 @@ import {
   Expression,
   Field,
   Filter,
-  IOBase,
   Plan,
   Records,
   Selector,
@@ -27,8 +26,6 @@ const restored: Term = Term.fromJson(term.intoJson())
 const named: Term = Term.column('ccy')
 const constant: Term = Term.literal(Scalar.from('EUR'))
 const typed: Term = Term.typedLiteral('int32', Scalar.from(5))
-const held: Term = Term.attribute('partition', 'year')
-const stat: Term = Term.attribute('size')
 const late: Term = Term.parameter('floor')
 const always: Term = Term.alwaysTrue()
 const never: Term = Term.alwaysFalse()
@@ -37,14 +34,12 @@ const disjoined: Term = Term.any([named, "price > 1"])
 const called: Term = Term.call('year', ['event'])
 
 const columns: Array<string> = term.columns
-const attributes: Array<string> = term.attributes
 const parameters: Array<string> = term.parameters
 const conjuncts: Array<Term> = term.conjuncts()
 const depth: number = term.depth
 const nodeCount: number = term.nodeCount
 const isLiteral: boolean = constant.isLiteral
 const asColumn: string | null = named.asColumn
-const hasAttributes: boolean = held.hasAttributes
 const document: string = term.intoJson()
 const text: string = term.toString()
 const same: boolean = term.equals("ccy = 'EUR' and price > 100")
@@ -228,11 +223,6 @@ const expressionJson: unknown = expression.toJSON()
 const expressionOrder: number = expression.compare(expression.clone())
 const expressionHash: bigint = expression.stableHash()
 
-const handle = new IOBase('file:///lake')
-const matching: Array<IOBase> = [...handle.childrenMatching(filter)]
-const matchingTerm: Array<IOBase> = [...handle.childrenMatching(term)]
-const matchingText: Array<IOBase> = [...handle.childrenMatching("&holder.size > 0", true)]
-
 const table: Table = iceberg.Table.create('file:///lake/trades', schema, ['ccy'])
 const rows: BatchReader = table.scanMatching(filter)
 const projectedRows: BatchReader = table.scanMatching("ccy = 'EUR'", schema)
@@ -253,7 +243,6 @@ export {
   at,
   atLeast,
   atMost,
-  attributes,
   above,
   below,
   between,
@@ -334,8 +323,6 @@ export {
   filterTrue,
   filteredBatch,
   glob,
-  hasAttributes,
-  held,
   ilike,
   inferredSumTerm,
   isLiteral,
@@ -347,9 +334,6 @@ export {
   late,
   like,
   manifestsSkipped,
-  matching,
-  matchingTerm,
-  matchingText,
   named,
   nativeSumTerm,
   negated,
@@ -425,7 +409,6 @@ export {
   simplified,
   sliced,
   split,
-  stat,
   sumTerm,
   table,
   tasks,

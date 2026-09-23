@@ -29,8 +29,8 @@ use std::sync::Arc;
 
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    Book, Element, Event, EventColumn, MarketElement, MarketEventData, MarketOperation, Order,
-    Quote,
+    Book, BookIterator, Element, Event, EventColumn, Execution, MarketElement, MarketEventData,
+    MarketOperation, Order, Quote, Trade,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -371,6 +371,27 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
             },
         );
     }
+}
+
+#[test]
+fn market_following_clones_only_an_inherited_symbolticker() {
+    let mut previous = MarketEventData::at(1);
+    previous.finalize();
+    let next = MarketEventData::at(2);
+    let (baseline, _) = counted(|| next.with_previous(&previous).unwrap());
+
+    previous.set_symbolticker(Some("AAPL".to_owned()));
+    previous.finalize();
+    let next = MarketEventData::at(2);
+    let (inherited, next) = counted(|| next.with_previous(&previous).unwrap());
+    assert_eq!(next.get_symbolticker(), Some("AAPL"));
+    assert_eq!(inherited, baseline + 1, "one owned inherited ticker");
+
+    let mut next = MarketEventData::at(2);
+    next.set_symbolticker(Some("MSFT".to_owned()));
+    let (stated, next) = counted(|| next.with_previous(&previous).unwrap());
+    assert_eq!(next.get_symbolticker(), Some("MSFT"));
+    assert_eq!(stated, baseline, "a stated ticker needs no clone");
 }
 
 #[test]
@@ -777,6 +798,20 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
 }
 
 #[test]
+fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
+    let codec = FixCodec::new(Arc::new(fix_registry(0)));
+    for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
+        let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
+        let (allocations, operation) = counted(|| MarketOperation::try_from(message).unwrap());
+        assert_eq!(operation.get_symbolticker(), Some("AAPL"));
+        assert_eq!(
+            allocations, 0,
+            "a direct operation moves its existing holder"
+        );
+    }
+}
+
+#[test]
 fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     let mut event = MarketEventData::at(1);
     event.set_crosscode("ORDER-1".to_owned());
@@ -797,6 +832,45 @@ fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     black_box(operation);
 }
 
+fn allocation_trade_parts(executions: usize) -> (MarketEventData, Vec<Execution>) {
+    let mut root = MarketEventData::at(1);
+    root.set_crosscode("ALLOC-TRADE".to_owned());
+    root.set_symbolticker(Some("ALLOC".to_owned()));
+    root.set_state(State::read("Filled").expect("the shipped filled state"));
+    root.finalize();
+    let executions = (0..executions)
+        .rev()
+        .map(|index| {
+            let mut event = MarketEventData::at(1);
+            event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
+            event.set_symbolticker(Some("ALLOC".to_owned()));
+            event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
+            event.set_state(State::read("Filled").expect("the shipped filled state"));
+            event.finalize();
+            Execution::from(event)
+        })
+        .collect();
+    (root, executions)
+}
+
+#[test]
+fn trade_construction_does_not_allocate_per_execution() {
+    let (root, executions) = allocation_trade_parts(1);
+    let (shallow_allocations, shallow) = counted(|| Trade::from_parts(root, executions));
+    let shallow = shallow.expect("the shallow trade");
+
+    let (root, executions) = allocation_trade_parts(128);
+    let (deep_allocations, deep) = counted(|| Trade::from_parts(root, executions));
+    let deep = deep.expect("the deep trade");
+    assert_eq!(shallow.executions().len(), 1);
+    assert_eq!(deep.executions().len(), 128);
+    assert!(
+        deep_allocations <= shallow_allocations + 4,
+        "constructing 128 executions allocated {deep_allocations} times but one execution allocated {shallow_allocations} times"
+    );
+    black_box((shallow, deep));
+}
+
 fn allocation_book_operation(
     code: impl Into<String>,
     unix: i64,
@@ -807,8 +881,8 @@ fn allocation_book_operation(
     event.set_crosscode(code.into());
     event.set_symbolticker(Some("ALLOC".to_owned()));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_px(Decimal18::from_int(100));
-    event.set_qty(Decimal18::from_int(quantity));
+    event.set_price(Decimal18::from_int(100));
+    event.set_quantity(Decimal18::from_int(quantity));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
     Quote::from(event).into()
@@ -821,6 +895,32 @@ fn allocation_book(entries: usize) -> Book {
     )
     .expect("the initial depth");
     book
+}
+
+#[test]
+fn one_book_iterator_update_clones_depth_only_for_its_output() {
+    let overhead = |entries| {
+        let initial = (0..entries)
+            .map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New"))
+            .collect::<Vec<_>>();
+        let update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
+        let mut books = BookIterator::new(initial.into_iter().chain([update]), 0, false).unwrap();
+        assert_eq!(books.next().unwrap().unwrap().bid().len(), entries);
+        let (allocations, book) = counted(|| books.next().unwrap().unwrap());
+        assert_eq!(book.bid().len(), entries);
+        let (output, _) = counted(|| book.clone());
+        allocations
+            .checked_sub(output)
+            .expect("one owned output book")
+    };
+    let shallow = overhead(1);
+    let deep = overhead(128);
+    // Output owns its depth. Transactional work has the same small fixed
+    // allowance as direct Book::add_operations, regardless of resting entries.
+    assert!(
+        deep <= shallow + 4,
+        "iterator overhead allocated {deep} times at depth 128 but {shallow} times at depth 1"
+    );
 }
 
 #[test]
@@ -2276,7 +2376,14 @@ fn fix_pairs_line(pairs: usize) -> Vec<u8> {
 /// Per-slot `Vec` buffers are gone: every unique ordinary field has one
 /// inline scalar, and the fallback `BeginString` contributes once, saving
 /// `pairs + 1` allocations from this path.
-const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 35), (64, 38)];
+///
+/// The arrival record the parse settles is held behind one shared
+/// allocation, so a clone of the message - every walk keeps one - shares the
+/// record rather than deriving it again: one more per message, whatever its
+/// width. The table of names a lookup past the tag index falls back to is
+/// sized once for every child rather than grown a doubling at a time, which
+/// is nothing at four pairs, three fewer at sixteen and five at sixty-four.
+const FIX_LINE_COSTS: [(usize, usize); 3] = [(4, 32), (16, 33), (64, 34)];
 
 /// A dictionary of `count` `Utf8` fields, tagged from 2000.
 ///
@@ -2326,7 +2433,7 @@ fn fix_text_line(pairs: usize, width: usize) -> Vec<u8> {
 /// from one that does not. The narrow column of this table is
 /// [`FIX_LINE_COSTS`] at the same widths, and moves with it.
 const WIDE_VALUE_COSTS: [(usize, (usize, usize)); 3] =
-    [(4, (31, 37)), (16, (35, 65)), (64, (38, 164))];
+    [(4, (32, 38)), (16, (33, 63)), (64, (34, 160))];
 
 #[test]
 fn a_wide_value_costs_the_entries_nothing_and_the_row_one_column() {
@@ -2421,7 +2528,9 @@ fn fix_packed_line(members: usize) -> Vec<u8> {
 /// Two member counts, because the number that matters is the slope and not
 /// the constant a message pays whatever it carries.
 ///
-const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 77), (16, 137)];
+/// The arrival record's one shared allocation is in both, as it is in
+/// [`FIX_LINE_COSTS`].
+const PACKED_MEMBER_COSTS: [(usize, usize); 2] = [(4, 78), (16, 138)];
 
 #[test]
 fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
@@ -2461,7 +2570,9 @@ fn a_packed_occurrence_costs_one_allocation_for_each_key_it_renders() {
 /// widths again, so that the claim is the constant and not a number that
 /// happens to be equal.
 ///
-const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 30), (16, 34), (64, 37)];
+/// The arrival record's one shared allocation and the name table sized once
+/// are in all three, as they are in [`FIX_LINE_COSTS`].
+const FIX_TEXT_LINE_COSTS: [(usize, usize); 3] = [(4, 31), (16, 32), (64, 33)];
 
 #[test]
 fn a_message_read_from_a_decoded_line_does_not_pay_for_its_page_again() {
@@ -2765,19 +2876,19 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// is the page, and a line is the range of it the splitter cut, so the
 /// header off its front, the strips off its edges and the byte limit off
 /// its tail move two offsets and copy nothing. With the copy, the assertion
-/// below counts 37 for 16 rows and the same 14 over the copy for 1 024 -
+/// below counts 36 for 16 rows and the same 13 over the copy for 1 024 -
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// Five of the fourteen are the nineteen event columns the plan compiles once
-/// per read: the two identity lists, the names' map and the state's own type
+/// Four of the thirteen are the eighteen event columns the plan compiles once
+/// per read: the identity list, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
 ///
 /// A read now shares what it was addressed by rather than where that
 /// resolves to, and the count did not move: the location is a narrowing of
 /// the identifier rather than a second value beside it, so the read still
 /// holds one reference-counted source and a row still clones one handle.
-const TEXT_LINES_ONCE: usize = 14;
+const TEXT_LINES_ONCE: usize = 13;
 
 /// What a reader that keeps its lines pays on top: two per window it had to
 /// leave behind.

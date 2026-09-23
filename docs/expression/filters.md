@@ -9,7 +9,7 @@
 | Owns | `Filter`, `IntoFilter`, `Residual` |
 | Build | from a predicate's text (`where` optional), a `Term`, `always_true`, `always_false`, `all`, `any`, `and`, `or`, `not` |
 | Normalize | `simplify` turns `a = 1 or a = 2` into `a in (1, 2)`, drops `true` from `and` and `false` from `or`, folds double negation, and keeps every answer under three-valued logic |
-| Pushdown | conjuncts are the unit: a holder answers what it can, statistics answer what they can, the rows answer the rest; `partition_pairs` reads the equalities a media prunes by |
+| Pushdown | conjuncts are the unit: statistics answer what they can, the rows answer the rest; `partition_pairs` reads the equalities a media prunes by; `partition_split` separates what a partition layout answers |
 | Apply | `apply_field(root)` (the schema itself), `apply_scalar`, `apply_arrow_reader` (primary), `apply_arrow_batch` (the batch itself when everything is kept), `apply_arrow_array`, `apply_records` |
 | Bindings | Python and JavaScript `Filter`, with `&`, `\|`, `~` in Python and `and`, `or`, `not` in JavaScript |
 
@@ -115,12 +115,33 @@ A conjunct is the unit of pushdown, and each level answers only what it can prov
 
 | Level | Answers | Leaves to the next |
 | --- | --- | --- |
-| a listing | `&holder.*` attributes, free ones first, one stat at most | every row conjunct |
 | a container's statistics | comparisons and null tests the minimum, maximum and null count settle | a straddling range, a function of a column |
 | a media's partition columns | `partition_pairs`: the equalities `column = 'value'` and `column is null` pin, spelled as paths spell them | ranges and `in` lists, answered row by row |
 | the rows | everything | nothing |
 
-`Bound::partition_split` separates the conjuncts a partition layout answers from the residual; dropping a conjunct only widens what is kept, so a file is never wrongly discarded. [Holder attributes](holder.md) shows the listing and statistics levels; the [record options](../media/index.md#options) show the media level.
+[Evaluate](evaluate.md#statistics-pruning) shows the statistics level; the [record options](../media/index.md#options) show the media level.
+
+### Partition split
+
+`Bound::partition_split` separates the conjuncts that read only partition columns from the residual over rows, each half a `Filter`; dropping a conjunct only widens what is kept, so a file is never wrongly discarded.
+
+Shown in Rust; Python's `Bound.partition_split()` answers the same two filters as a tuple, and JavaScript's `partitionSplit()` as `{ answerable, remaining }`.
+
+```rust
+use yggdryl::expression::Term;
+use yggdryl::Field;
+
+let mut schema: Field = "trades:struct<year:int32,price:decimal(9,2)>".parse()?;
+let mut children = schema.fields().to_vec();
+children[0].set_partition(true);
+schema.set_dtype(yggdryl::DataType::from(yggdryl::StructType::from_fields(children)?))?;
+
+let bound = "year = 2024 and price > 100".parse::<Term>()?.bind(&schema)?;
+let residual = bound.partition_split();
+assert_eq!(residual.answerable().to_string(), "year = int32 '2024'");
+assert_eq!(residual.remaining().to_string(), "price > decimal32(9,2) '100.00'");
+assert!(!residual.is_complete());
+```
 
 ## Edges
 
@@ -129,6 +150,7 @@ A conjunct is the unit of pushdown, and each level answers only what it can prov
 - `apply_arrow_batch` keeping every row -> the input batch, columns pointer-identical; keeping some -> a copy, because a batch is dense.
 - `apply_records` -> a kept row comes back canonical under the schema, in field order.
 - `partition_pairs` -> `column = 'value'` in a conjunct at the top level only; `a = 1 or b = 2` pins nothing.
+- Incomplete split -> `is_complete()` is `false`; `remaining()` runs over rows.
 
 ## Commands
 
@@ -149,5 +171,5 @@ A conjunct is the unit of pushdown, and each level answers only what it can prov
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="filter|holder attribute" node/tests/expression.test.js
+    node --test --test-name-pattern="filter" node/tests/expression.test.js
     ```

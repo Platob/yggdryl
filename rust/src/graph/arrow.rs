@@ -1,9 +1,10 @@
 //! Streaming Arrow interchange for graph market operations and books.
 //!
-//! The schema is the canonical graph event columns followed by the canonical
-//! market columns, with one leading operation-kind discriminant. Encoding
-//! holds only the current bounded Arrow batch. Decoding resolves and validates
-//! the reader schema once, then holds only one batch and row cursor.
+//! The operation schema is one leading kind discriminant, the canonical graph
+//! event and market columns, then the nullable execution list carried only by
+//! a composite trade. Encoding holds only the current bounded Arrow batch.
+//! Decoding resolves and validates the reader schema once, then holds only one
+//! batch and row cursor.
 
 use std::iter::FusedIterator;
 
@@ -13,7 +14,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{
     Book, BookSide, Element, EventColumn, Execution, MarketColumn, MarketElementData,
-    MarketEventData, MarketOperation, Order, Quote,
+    MarketEventData, MarketOperation, Order, Quote, Trade,
 };
 use crate::arrow::BatchReader;
 use crate::{DataType, Error, Field, Result, Scalar, StructType, Uuid};
@@ -22,13 +23,12 @@ const KIND: &str = "operationkind";
 const OPERATION_ROOT: &str = "marketoperation";
 const BOOK_ROOT: &str = "book";
 const KIND_COLUMNS: usize = 1;
-const SIDE_ELEMENT_COLUMNS: [EventColumn; 8] = [
+const SIDE_ELEMENT_COLUMNS: [EventColumn; 7] = [
     EventColumn::CurrUuid,
     EventColumn::CrossUuid,
     EventColumn::CrossCode,
     EventColumn::CurrHashCode,
     EventColumn::CrossHashCode,
-    EventColumn::ParentUuids,
     EventColumn::SrcUuids,
     EventColumn::Identifiers,
 ];
@@ -42,8 +42,9 @@ impl From<MarketOperation> for Result<MarketOperation> {
 impl MarketOperation {
     /// The canonical Arrow row field for heterogeneous market operations.
     ///
-    /// Its first child is `operationkind`; the remaining children are
-    /// [`EventColumn::ALL`] followed by [`MarketColumn::ALL`].
+    /// Its first child is `operationkind`, followed by [`EventColumn::ALL`],
+    /// [`MarketColumn::ALL`], and nullable `executions`. The execution list is
+    /// non-null only when `operationkind` is `trade`.
     pub fn field() -> Result<Field> {
         operation_field()
     }
@@ -236,13 +237,21 @@ impl Book {
 /// The canonical row field shared by the encoder and decoder.
 fn operation_field() -> Result<Field> {
     let mut fields =
-        Vec::with_capacity(KIND_COLUMNS + EventColumn::ALL.len() + MarketColumn::ALL.len());
+        Vec::with_capacity(KIND_COLUMNS + EventColumn::ALL.len() + MarketColumn::ALL.len() + 1);
     let mut kind = DataType::utf8().required_field(KIND);
     kind.set_display("Operation Kind")?;
     fields.push(kind);
     fields.extend(EventColumn::fields()?);
     fields.extend(MarketColumn::fields()?);
+    fields.push(DataType::list(execution_field()?).nullable_field("executions"));
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(OPERATION_ROOT))
+}
+
+fn execution_field() -> Result<Field> {
+    let mut fields = Vec::with_capacity(EventColumn::ALL.len() + MarketColumn::ALL.len());
+    fields.extend(EventColumn::fields()?);
+    fields.extend(MarketColumn::fields()?);
+    Ok(DataType::from(StructType::from_fields(fields)?).required_field("execution"))
 }
 
 /// The nested book row field shared by both directions.
@@ -252,7 +261,7 @@ fn book_field() -> Result<Field> {
     fields.extend(MarketColumn::fields()?);
     fields.push(side_field("bid")?);
     fields.push(side_field("ask")?);
-    fields.push(DataType::list(operation_field()?).required_field("executions"));
+    fields.push(DataType::list(execution_field()?).required_field("executions"));
     Ok(DataType::from(StructType::from_fields(fields)?).required_field(BOOK_ROOT))
 }
 
@@ -284,12 +293,21 @@ fn row_of(operation: &MarketOperation) -> Scalar {
                 MarketColumn::ALL
                     .into_iter()
                     .map(|column| column.fact(operation).unwrap_or(Scalar::Null)),
-            ),
+            )
+            .chain([match operation {
+                MarketOperation::Trade(trade) => {
+                    Scalar::from_sequence(trade.executions().iter().map(execution_row))
+                }
+                _ => Scalar::Null,
+            }]),
     )
 }
 
 fn checked_operation_row(operation: &MarketOperation, ordinal: u64) -> Result<Scalar> {
-    validate_event_for_write(operation, |name| format_smolstr!("$[{ordinal}].{name}"))?;
+    match operation {
+        MarketOperation::Trade(trade) => validate_trade_for_write(trade, ordinal)?,
+        _ => validate_event_for_write(operation, |name| format_smolstr!("$[{ordinal}].{name}"))?,
+    }
     Ok(row_of(operation))
 }
 
@@ -340,6 +358,23 @@ where
     validate_market_event(&stated, &canonical, path)
 }
 
+fn validate_trade_for_write(trade: &Trade, ordinal: u64) -> Result<()> {
+    for (index, execution) in trade.executions().iter().enumerate() {
+        validate_event_for_write(execution, |name| {
+            format_smolstr!("$[{ordinal}].executions[{index}].{name}")
+        })?;
+    }
+    let canonical = Trade::from_parts(trade.as_ref().clone(), trade.executions().to_vec())
+        .map_err(|error| prefix_invalid(error, || format_smolstr!("$[{ordinal}]")))?;
+    IdentityClaims::from_element(trade)
+        .validate(&canonical, |name| format_smolstr!("$[{ordinal}].{name}"))?;
+    let mut stated = trade.as_ref().clone();
+    normalize_identity(&mut stated, &canonical);
+    validate_market_event(&stated, canonical.as_ref(), |name| {
+        format_smolstr!("$[{ordinal}].{name}")
+    })
+}
+
 fn validate_side_for_write(
     stated_side: &BookSide,
     ordinal: u64,
@@ -387,11 +422,7 @@ fn book_row(book: &Book) -> Scalar {
             .chain([
                 side_row(book.bid()),
                 side_row(book.ask()),
-                Scalar::from_sequence(
-                    book.executions()
-                        .iter()
-                        .map(|execution| operation_event_row("execution", execution)),
-                ),
+                Scalar::from_sequence(book.executions().iter().map(execution_row)),
             ]),
     )
 }
@@ -413,14 +444,11 @@ fn side_row(side: &BookSide) -> Scalar {
     )
 }
 
-fn operation_event_row(kind: &'static str, event: &(impl super::MarketEvent + ?Sized)) -> Scalar {
+fn execution_row(event: &(impl super::MarketEvent + ?Sized)) -> Scalar {
     Scalar::from_sequence(
-        std::iter::once(Scalar::from(kind))
-            .chain(
-                EventColumn::ALL
-                    .into_iter()
-                    .map(|column| column.fact(event).unwrap_or(Scalar::Null)),
-            )
+        EventColumn::ALL
+            .into_iter()
+            .map(|column| column.fact(event).unwrap_or(Scalar::Null))
             .chain(
                 MarketColumn::ALL
                     .into_iter()
@@ -439,9 +467,6 @@ fn element_fact(column: EventColumn, element: &(impl Element + ?Sized)) -> Optio
         }
         EventColumn::CurrHashCode => Some(Scalar::from(element.get_currhashcode())),
         EventColumn::CrossHashCode => Some(Scalar::from(element.get_crosshashcode())),
-        EventColumn::ParentUuids => (!element.get_parentuuids().is_empty()).then(|| {
-            Scalar::from_sequence(element.get_parentuuids().iter().copied().map(Scalar::Uuid))
-        }),
         EventColumn::SrcUuids => (!element.get_srcuuids().is_empty()).then(|| {
             Scalar::from_sequence(element.get_srcuuids().iter().copied().map(Scalar::Uuid))
         }),
@@ -619,7 +644,7 @@ impl Intake {
         let Some(kind) = kind.as_str() else {
             return Err(invalid(
                 format_smolstr!("$[{ordinal}].{KIND}"),
-                "expected order, quote, execution, or snapshot, got null",
+                "expected order, quote, execution, trade, or snapshot, got null",
             ));
         };
 
@@ -637,25 +662,16 @@ impl Intake {
             column.record(&mut event, &value);
             at += 1;
         }
-
-        let mut stated = event.clone();
-        event.finalize();
-        claims.validate(&event, |name| format_smolstr!("$[{ordinal}].{name}"))?;
-        normalize_identity(&mut stated, &event);
-        validate_market_event(&stated, &event, |name| {
+        let payload = self.cell(batch, row, ordinal, at)?;
+        let executions = optional_executions_from_value(
+            &payload,
+            || format_smolstr!("$[{ordinal}].executions"),
+            |index| format_smolstr!("$[{ordinal}].executions[{index}]"),
+            |index, name| format_smolstr!("$[{ordinal}].executions[{index}].{name}"),
+        )?;
+        finish_operation(kind, event, claims, executions, |name| {
             format_smolstr!("$[{ordinal}].{name}")
-        })?;
-
-        match kind {
-            "order" => Ok(Order::from(event).into()),
-            "quote" => Ok(Quote::from(event).into()),
-            "execution" => Ok(Execution::from(event).into()),
-            "snapshot" => Ok(MarketOperation::Snapshot(event)),
-            other => Err(invalid(
-                format_smolstr!("$[{ordinal}].{KIND}"),
-                format_smolstr!("expected order, quote, execution, or snapshot, got {other:?}"),
-            )),
-        }
+        })
     }
 
     fn cell(&self, batch: &RecordBatch, row: usize, ordinal: u64, column: usize) -> Result<Scalar> {
@@ -717,21 +733,12 @@ impl BookIntake {
         at += 1;
         let ask = side_from_value(&self.cell(batch, row, ordinal, at)?, ordinal, "ask")?;
         at += 1;
-        let executions = operations_from_value(
+        let executions = executions_from_value(
             &self.cell(batch, row, ordinal, at)?,
-            ordinal,
-            NestedList::Executions,
-        )?
-        .into_iter()
-        .enumerate()
-        .map(|(index, operation)| match operation {
-            MarketOperation::Execution(execution) => Ok(execution),
-            other => Err(invalid(
-                NestedList::Executions.field_path(ordinal, index, KIND),
-                format_smolstr!("expected execution, got {:?}", other.kind().as_str()),
-            )),
-        })
-        .collect::<Result<Vec<_>>>()?;
+            || NestedList::Executions.path(ordinal),
+            |index| NestedList::Executions.item_path(ordinal, index),
+            |index, name| NestedList::Executions.field_path(ordinal, index, name),
+        )?;
         let book = Book::from_parts(event, bid, ask, executions)
             .map_err(|error| prefix_invalid(error, || format_smolstr!("$[{ordinal}]")))?;
         claims.validate(&book, |name| format_smolstr!("$[{ordinal}].{name}"))?;
@@ -851,6 +858,144 @@ fn operations_from_value(
         .collect()
 }
 
+fn optional_executions_from_value<P, I, F>(
+    value: &Scalar,
+    list_path: P,
+    item_path: I,
+    field_path: F,
+) -> Result<Option<Vec<Execution>>>
+where
+    P: FnOnce() -> SmolStr,
+    I: Fn(usize) -> SmolStr + Copy,
+    F: Fn(usize, &str) -> SmolStr + Copy,
+{
+    if value.is_null() {
+        Ok(None)
+    } else {
+        executions_from_value(value, list_path, item_path, field_path).map(Some)
+    }
+}
+
+fn executions_from_value<P, I, F>(
+    value: &Scalar,
+    list_path: P,
+    item_path: I,
+    field_path: F,
+) -> Result<Vec<Execution>>
+where
+    P: FnOnce() -> SmolStr,
+    I: Fn(usize) -> SmolStr + Copy,
+    F: Fn(usize, &str) -> SmolStr + Copy,
+{
+    sequence(value, list_path, "an execution list")?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| execution_from_value(value, index, item_path, field_path))
+        .collect()
+}
+
+fn execution_from_value<I, F>(
+    value: &Scalar,
+    index: usize,
+    item_path: I,
+    field_path: F,
+) -> Result<Execution>
+where
+    I: Fn(usize) -> SmolStr + Copy,
+    F: Fn(usize, &str) -> SmolStr + Copy,
+{
+    let values = sequence(value, || item_path(index), "an execution struct")?;
+    let expected = EventColumn::ALL.len() + MarketColumn::ALL.len();
+    if values.len() != expected {
+        return Err(invalid(
+            item_path(index),
+            format_smolstr!("expected {expected} execution fields, got {}", values.len()),
+        ));
+    }
+    let mut event = MarketEventData::default();
+    let mut claims = IdentityClaims::default();
+    let mut at = 0;
+    for column in EventColumn::ALL {
+        require_nested(&values[at], column.nullable(), || {
+            field_path(index, column.name())
+        })?;
+        claims.record(column, &values[at]);
+        column.record(&mut event, &values[at]);
+        at += 1;
+    }
+    for column in MarketColumn::ALL {
+        require_nested(&values[at], column.nullable(), || {
+            field_path(index, column.name())
+        })?;
+        column.record(&mut event, &values[at]);
+        at += 1;
+    }
+    let mut stated = event.clone();
+    event.finalize();
+    claims.validate(&event, |name| field_path(index, name))?;
+    normalize_identity(&mut stated, &event);
+    validate_market_event(&stated, &event, |name| field_path(index, name))?;
+    Ok(Execution::from(event))
+}
+
+fn finish_operation<P>(
+    kind: &str,
+    mut event: MarketEventData,
+    claims: IdentityClaims,
+    executions: Option<Vec<Execution>>,
+    path: P,
+) -> Result<MarketOperation>
+where
+    P: Fn(&str) -> SmolStr + Copy,
+{
+    let mut stated = event.clone();
+    let operation = match kind {
+        "trade" => {
+            let executions = executions.ok_or_else(|| {
+                invalid(
+                    path("executions"),
+                    "expected a non-null execution list for trade",
+                )
+            })?;
+            let base = path("executions");
+            let prefix = base
+                .strip_suffix(".executions")
+                .map_or_else(|| base.clone(), SmolStr::new);
+            Trade::from_parts(event, executions)
+                .map(MarketOperation::Trade)
+                .map_err(|error| prefix_invalid(error, || prefix))?
+        }
+        "order" | "quote" | "execution" | "snapshot" => {
+            if executions.is_some() {
+                return Err(invalid(
+                    path("executions"),
+                    format_smolstr!("expected null for {kind}, got an execution list"),
+                ));
+            }
+            event.finalize();
+            match kind {
+                "order" => Order::from(event).into(),
+                "quote" => Quote::from(event).into(),
+                "execution" => Execution::from(event).into(),
+                "snapshot" => MarketOperation::Snapshot(event),
+                _ => unreachable!("the operation kind was matched"),
+            }
+        }
+        other => {
+            return Err(invalid(
+                path(KIND),
+                format_smolstr!(
+                    "expected order, quote, execution, trade, or snapshot, got {other:?}"
+                ),
+            ));
+        }
+    };
+    claims.validate(&operation, path)?;
+    normalize_identity(&mut stated, &operation);
+    validate_market_event(&stated, operation.as_ref(), path)?;
+    Ok(operation)
+}
+
 fn operation_from_value(
     value: &Scalar,
     ordinal: u64,
@@ -862,7 +1007,7 @@ fn operation_from_value(
         || path.item_path(ordinal, index),
         "a market-operation struct",
     )?;
-    let expected = KIND_COLUMNS + EventColumn::ALL.len() + MarketColumn::ALL.len();
+    let expected = KIND_COLUMNS + EventColumn::ALL.len() + MarketColumn::ALL.len() + 1;
     if values.len() != expected {
         return Err(invalid(
             path.item_path(ordinal, index),
@@ -875,7 +1020,7 @@ fn operation_from_value(
     let Some(kind) = values[0].as_str() else {
         return Err(invalid(
             path.field_path(ordinal, index, KIND),
-            "expected order, quote, execution, or snapshot, got null",
+            "expected order, quote, execution, trade, or snapshot, got null",
         ));
     };
     let mut event = MarketEventData::default();
@@ -896,23 +1041,20 @@ fn operation_from_value(
         column.record(&mut event, &values[at]);
         at += 1;
     }
-    let mut stated = event.clone();
-    event.finalize();
-    claims.validate(&event, |name| path.field_path(ordinal, index, name))?;
-    normalize_identity(&mut stated, &event);
-    validate_market_event(&stated, &event, |name| {
+    let executions = optional_executions_from_value(
+        &values[at],
+        || path.field_path(ordinal, index, "executions"),
+        |child| format_smolstr!("{}[{child}]", path.field_path(ordinal, index, "executions")),
+        |child, name| {
+            format_smolstr!(
+                "{}[{child}].{name}",
+                path.field_path(ordinal, index, "executions")
+            )
+        },
+    )?;
+    finish_operation(kind, event, claims, executions, |name| {
         path.field_path(ordinal, index, name)
-    })?;
-    match kind {
-        "order" => Ok(Order::from(event).into()),
-        "quote" => Ok(Quote::from(event).into()),
-        "execution" => Ok(Execution::from(event).into()),
-        "snapshot" => Ok(MarketOperation::Snapshot(event)),
-        other => Err(invalid(
-            path.field_path(ordinal, index, KIND),
-            format_smolstr!("expected order, quote, execution, or snapshot, got {other:?}"),
-        )),
-    }
+    })
 }
 
 fn value_from_array_at(

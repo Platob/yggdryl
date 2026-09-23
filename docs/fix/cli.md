@@ -123,7 +123,7 @@ ygg fix --root scratch/catalog codesets write sidecodeset --merge --codes '[{"va
 ygg fix --root scratch/catalog codesets delete sidecodeset
 ```
 
-`write` replaces the set; `--merge` folds by wire value instead, keeping what the set already held and adding every name, alias and wording the incoming statement brings, so a counterparty's own listing widens the vocabulary rather than replacing it. `read --json` prints the `{"name": ..., "codes": [...]}` document `codesets/<name>.json` holds, which `write --codes` takes back.
+`write` replaces the set; `--merge` folds by wire value instead, keeping what the set already held and adding every name, alias and wording the incoming statement brings, so a counterparty's own listing widens the vocabulary rather than replacing it. The crate-owned `msgcatcodeset` is immutable: only a canonical-preserving no-op succeeds, while replacement, widening, remapping or deletion is refused. `read --json` prints the `{"name": ..., "codes": [...]}` document `codesets/<name>.json` holds, which `write --codes` takes back.
 
 Order matters in one direction only. A set is stated before a field names it, because `fields create Side utf8 --tag 54 --codes sidecodeset` is refused while the dictionary holds no `sidecodeset`; and a set is released after the last field lets go, because `codesets delete` refuses a set a field still reads by and names that field. Nothing else about a field changes with its vocabulary: `fields read Side` prints `codes sidecodeset`, one word, and restating the field never restates the members.
 

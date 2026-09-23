@@ -14,7 +14,6 @@ const {
   Expression,
   Field,
   Filter,
-  IOBase,
   Plan,
   Records,
   Selector,
@@ -159,15 +158,11 @@ test('a row answers, and unknown is not true', () => {
   assert.equal(bound.matches(Scalar.from(['EUR', null, null])), false)
 })
 
-test('a holder attribute is its own question', () => {
-  const term = new Term("&holder.partition['year'] = '2024' and &holder.size > 0")
-  assert.deepEqual(term.attributes, ["partition['year']", 'size'])
-  assert.deepEqual(term.columns, [])
-  assert.ok(term.hasAttributes)
-  const mixed = new Term("&holder.partition['year'] = '2024' and size > 0").bind(TRADES)
+test('a partition column is the half a path answers', () => {
+  const mixed = new Term("ccy = 'EUR' and size > 0").bind(TRADES.withPartitionFields(['ccy']))
   const split = mixed.partitionSplit()
   assert.ok(split.answerable instanceof Filter)
-  assert.equal(split.answerable.toString(), "&holder.partition['year'] = '2024'")
+  assert.equal(split.answerable.toString(), "ccy = 'EUR'")
   assert.equal(split.remaining.toString(), 'size > 0')
 })
 
@@ -531,34 +526,6 @@ test('an expression is whichever clause its text is', () => {
   assert.throws(() => new Expression('a > 1'), /select/)
 })
 
-test('a lake is filtered by the same predicate the rows are', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-expression-'))
-  for (const year of ['2024', '2025']) {
-    const leaf = path.join(root, `year=${year}`)
-    fs.mkdirSync(leaf, { recursive: true })
-    fs.writeFileSync(path.join(leaf, 'part-0.parquet'), 'parquet')
-  }
-  try {
-    const handle = new IOBase(root)
-    const matched = [...handle.childrenMatching("&holder.partition['year'] = '2024'")]
-    assert.ok(matched.length > 0)
-    for (const entry of matched) {
-      assert.match(String(entry.url), /year=2024/)
-    }
-    assert.equal(
-      [...handle.childrenMatching(new Filter("&holder.partition['year'] = '2024'"))].length,
-      matched.length,
-    )
-
-    // The pair spelling selects the leaves, and it selects the same ones.
-    const pairs = [...handle.childrenWhere({ year: '2024' })]
-    assert.equal(pairs.length, 1)
-    assert.match(String(pairs[0].url), /year=2024\/part-0\.parquet$/)
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true })
-  }
-})
-
 test('an expression prunes manifests before a byte is read', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-expression-'))
   try {
@@ -572,24 +539,24 @@ test('an expression prunes manifests before a byte is read', () => {
     assert.equal(whole.tasks, 4)
 
     // A manifest-list summary bounds each manifest's partition values, so a
-    // question about the file is settled without opening the Avro.
-    const held = table.planMatching("&holder.partition['venue'] = 'XNYS'")
-    assert.equal(held.manifestsSkipped, 3)
-    assert.equal(held.manifestsRead, 1)
-    assert.equal(held.tasks, 1)
-    assert.equal(held.recordCount, 1)
+    // question about the partition is settled without opening the Avro.
+    const nyse = table.planMatching("venue = 'XNYS'")
+    assert.equal(nyse.manifestsSkipped, 3)
+    assert.equal(nyse.manifestsRead, 1)
+    assert.equal(nyse.tasks, 1)
+    assert.equal(nyse.recordCount, 1)
 
     // The shape the filter exists for, with both halves load-bearing: the
-    // holder conjunct leaves the two XLON rows and the row conjuncts keep one
-    // of them, so neither can be dropped without changing the answer.
+    // partition conjunct leaves the two XLON rows and the row conjuncts keep
+    // one of them, so neither can be dropped without changing the answer.
     const mixed = table
-      .scanMatching("id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'")
+      .scanMatching("id >= 4 and symbol is not null and venue = 'XLON'")
       .intoTable()
     assert.deepEqual([...mixed.getChild('id')], [4n])
     assert.deepEqual([...mixed.getChild('symbol')], ['BP'])
     assert.deepEqual([...mixed.getChild('venue')], ['XLON'])
     assert.deepEqual(
-      [...table.scanMatching(new Filter("&holder.partition['venue'] = 'XLON'")).intoTable().getChild('id')],
+      [...table.scanMatching(new Filter("venue = 'XLON'")).intoTable().getChild('id')],
       [3n, 4n],
     )
     assert.deepEqual([...table.scanMatching('id >= 4').intoTable().getChild('id')], [4n])

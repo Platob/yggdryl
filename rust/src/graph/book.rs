@@ -3,13 +3,14 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hasher;
-use std::iter::{FusedIterator, Peekable};
+use std::iter::FusedIterator;
+use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{
     Element, Event, Execution, ExecutionEntry, MarketElement, MarketElementData, MarketEvent,
-    MarketEventData, Order, OrderEntry, Quote, QuoteEntry,
+    MarketEventData, Order, OrderEntry, Quote, QuoteEntry, Trade,
 };
 use crate::{Currency, Decimal18, Error, Result, Side, State, Uuid};
 
@@ -32,6 +33,7 @@ pub enum MarketOperationKind {
     Order,
     Quote,
     Execution,
+    Trade,
     Snapshot,
 }
 
@@ -42,18 +44,20 @@ impl MarketOperationKind {
             Self::Order => "order",
             Self::Quote => "quote",
             Self::Execution => "execution",
+            Self::Trade => "trade",
             Self::Snapshot => "snapshot",
         }
     }
 }
 
-/// One heterogeneous market event or scoped snapshot control without
-/// allocation or dynamic dispatch.
+/// One heterogeneous market event or scoped snapshot control without dynamic
+/// dispatch. A composite trade owns its canonical execution list.
 #[derive(Clone, Debug, PartialEq)]
 pub enum MarketOperation {
     Order(Order),
     Quote(Quote),
     Execution(Execution),
+    Trade(Trade),
     Snapshot(MarketEventData),
 }
 
@@ -64,6 +68,7 @@ impl MarketOperation {
             Self::Order(_) => MarketOperationKind::Order,
             Self::Quote(_) => MarketOperationKind::Quote,
             Self::Execution(_) => MarketOperationKind::Execution,
+            Self::Trade(_) => MarketOperationKind::Trade,
             Self::Snapshot(_) => MarketOperationKind::Snapshot,
         }
     }
@@ -72,16 +77,16 @@ impl MarketOperation {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::InvalidRecord`] for a snapshot control, which has no
-    /// undated market entry.
+    /// Returns [`Error::InvalidRecord`] for a composite trade or snapshot
+    /// control, neither of which has one undated market entry.
     pub fn into_entry(self) -> Result<MarketEntry> {
         match self {
             Self::Order(value) => Ok(MarketEntry::Order(value.into())),
             Self::Quote(value) => Ok(MarketEntry::Quote(value.into())),
             Self::Execution(value) => Ok(MarketEntry::Execution(value.into())),
-            Self::Snapshot(_) => Err(invalid(
+            Self::Trade(_) | Self::Snapshot(_) => Err(invalid(
                 "$.operation",
-                "a book snapshot control has no undated market entry",
+                "a composite trade or book snapshot control has no undated market entry",
             )),
         }
     }
@@ -109,6 +114,7 @@ impl AsRef<MarketEventData> for MarketOperation {
             Self::Order(value) => value.as_ref(),
             Self::Quote(value) => value.as_ref(),
             Self::Execution(value) => value.as_ref(),
+            Self::Trade(value) => value.as_ref(),
             Self::Snapshot(value) => value,
         }
     }
@@ -120,15 +126,136 @@ impl AsMut<MarketEventData> for MarketOperation {
             Self::Order(value) => value.as_mut(),
             Self::Quote(value) => value.as_mut(),
             Self::Execution(value) => value.as_mut(),
+            Self::Trade(value) => value.as_mut(),
             Self::Snapshot(value) => value,
         }
     }
 }
 
-delegate_market_event!(
+impl Element for MarketOperation {
+    fn get_curruuid(&self) -> Uuid {
+        self.as_ref().get_curruuid()
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.as_mut().set_curruuid(curruuid);
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.as_ref().get_crossuuid()
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.as_mut().set_crossuuid(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        self.as_ref().get_crosscode()
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.as_mut().set_crosscode(crosscode);
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        self.as_ref().get_currhashcode()
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.as_mut().set_currhashcode(hashcode);
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.as_ref().get_crosshashcode()
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.as_mut().set_crosshashcode(crosshashcode);
+    }
+
+    fn get_identifiers(&self) -> &BTreeMap<String, String> {
+        self.as_ref().get_identifiers()
+    }
+
+    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
+        self.as_mut().set_identifiers(identifiers);
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.as_ref().get_srcuuids()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.as_mut().set_srcuuids(sources);
+    }
+
+    fn is_after(&self, other: &Self) -> bool {
+        self.as_ref().is_after(other.as_ref())
+    }
+
+    fn finalize(&mut self) {
+        match self {
+            Self::Order(value) => value.finalize(),
+            Self::Quote(value) => value.finalize(),
+            Self::Execution(value) => value.finalize(),
+            Self::Trade(value) => value.finalize(),
+            Self::Snapshot(value) => value.finalize(),
+        }
+    }
+
+    fn with_previous(self, previous: &Self) -> Option<Self> {
+        match (self, previous) {
+            (Self::Order(value), Self::Order(previous)) => {
+                value.with_previous(previous).map(Self::Order)
+            }
+            (Self::Quote(value), Self::Quote(previous)) => {
+                value.with_previous(previous).map(Self::Quote)
+            }
+            (Self::Execution(value), Self::Execution(previous)) => {
+                value.with_previous(previous).map(Self::Execution)
+            }
+            (Self::Trade(value), Self::Trade(previous)) => {
+                value.with_previous(previous).map(Self::Trade)
+            }
+            (Self::Snapshot(value), Self::Snapshot(previous)) => {
+                value.with_previous(previous).map(Self::Snapshot)
+            }
+            _ => None,
+        }
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Self::Order(value), Self::Order(other)) => value.merge_with(other).map(Self::Order),
+            (Self::Quote(value), Self::Quote(other)) => value.merge_with(other).map(Self::Quote),
+            (Self::Execution(value), Self::Execution(other)) => {
+                value.merge_with(other).map(Self::Execution)
+            }
+            (Self::Trade(value), Self::Trade(other)) => value.merge_with(other).map(Self::Trade),
+            (Self::Snapshot(value), Self::Snapshot(other)) => {
+                value.merge_with(other).map(Self::Snapshot)
+            }
+            _ => None,
+        }
+    }
+}
+
+delegate_market_value!(MarketOperation, MarketEventData, market_only);
+delegate_market_value!(
     MarketOperation,
-    existing,
-    |this: &MarketOperation| matches!(this, MarketOperation::Execution(_))
+    MarketEventData,
+    event_only,
+    |this: &MarketOperation| matches!(
+        this,
+        MarketOperation::Execution(_) | MarketOperation::Trade(_)
+    ),
+    |this: &mut MarketOperation, unix: i64| match this {
+        MarketOperation::Trade(trade) => trade.rebase_currunix(unix),
+        _ => Event::set_currunix(
+            <MarketOperation as AsMut<MarketEventData>>::as_mut(this),
+            unix,
+        ),
+    }
 );
 
 impl From<Order> for MarketOperation {
@@ -149,14 +276,9 @@ impl From<Execution> for MarketOperation {
     }
 }
 
-impl From<MarketOperation> for MarketEventData {
-    fn from(value: MarketOperation) -> Self {
-        match value {
-            MarketOperation::Order(value) => value.into(),
-            MarketOperation::Quote(value) => value.into(),
-            MarketOperation::Execution(value) => value.into(),
-            MarketOperation::Snapshot(value) => value,
-        }
+impl From<Trade> for MarketOperation {
+    fn from(value: Trade) -> Self {
+        Self::Trade(value)
     }
 }
 
@@ -185,6 +307,7 @@ macro_rules! operation_try_from {
 operation_try_from!(Order, Order);
 operation_try_from!(Quote, Quote);
 operation_try_from!(Execution, Execution);
+operation_try_from!(Trade, Trade);
 
 /// One heterogeneous market element without allocation or dynamic dispatch.
 #[derive(Clone, Debug, PartialEq)]
@@ -353,19 +476,101 @@ impl BookPrice {
 
 /// One side of a book: persistent live orders and quotes, price ordered,
 /// beside the deltas applied since the last emitted book.
-#[derive(Clone, Debug, PartialEq)]
+///
+/// A live entry is shared: a book emitted per instant is a clone of the one
+/// the walk keeps, and the entries an update did not touch are the same
+/// entries in both, so emitting a deep book costs a reference count per
+/// entry rather than a copy of each.
+#[derive(Clone, Debug)]
 pub struct BookSide {
     element: MarketElementData,
-    levels: BTreeMap<BookPrice, Vec<MarketOperation>>,
-    positions: HashMap<LiveKey, BookPrice>,
+    levels: BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
+    /// Derived from `levels` and kept in step by every change, shared with
+    /// clones until one changes: a book emitted per instant copies no index,
+    /// and the side the walk keeps changes its own in place once the
+    /// emitted book is gone.
+    index: Arc<SideIndex>,
     deltas: Vec<MarketOperation>,
+}
+
+/// Two sides are equal by what they hold; the index is derived from it.
+impl PartialEq for BookSide {
+    fn eq(&self, other: &Self) -> bool {
+        self.element == other.element && self.levels == other.levels && self.deltas == other.deltas
+    }
+}
+
+/// Where each live identity of one side stands, and the live entry each
+/// stated `MDEntryID` names within its partition: an update addressing an
+/// entry is answered without walking a side thousands deep.
+#[derive(Clone, Debug, Default)]
+struct SideIndex {
+    positions: HashMap<LiveKey, BookPrice>,
+    entry_ids: HashMap<EntryKey, EntrySlot>,
+}
+
+impl SideIndex {
+    /// Records a live entry under the id it states.
+    fn record(&mut self, operation: &MarketOperation, identity: &LiveKey) {
+        let Some(key) = EntryKey::of(operation) else {
+            return;
+        };
+        let slot = self.entry_ids.entry(key).or_insert(EntrySlot::Many(0));
+        *slot = match slot {
+            EntrySlot::Many(0) => EntrySlot::One(identity.clone()),
+            EntrySlot::One(_) => EntrySlot::Many(2),
+            EntrySlot::Many(count) => EntrySlot::Many(*count + 1),
+        };
+    }
+
+    /// Forgets a live entry leaving the side under the id it states.
+    fn forget(&mut self, operation: &MarketOperation) {
+        let Some(key) = EntryKey::of(operation) else {
+            return;
+        };
+        let std::collections::hash_map::Entry::Occupied(mut slot) = self.entry_ids.entry(key)
+        else {
+            return;
+        };
+        match slot.get_mut() {
+            EntrySlot::Many(count) if *count > 1 => *count -= 1,
+            _ => {
+                slot.remove();
+            }
+        }
+    }
+}
+
+/// One `MDEntryID` within one book partition.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct EntryKey {
+    partition: SnapshotPartition,
+    entry: SmolStr,
+}
+
+impl EntryKey {
+    fn of(operation: &MarketOperation) -> Option<Self> {
+        let entry = operation.get_identifiers().get(ENTRY_ID)?;
+        Some(Self {
+            partition: SnapshotPartition::of(operation),
+            entry: SmolStr::new(entry),
+        })
+    }
+}
+
+/// The live entries one [`EntryKey`] names: the one, or how many where
+/// several do - which the walk over the side answers in its own order.
+#[derive(Clone, Debug)]
+enum EntrySlot {
+    One(LiveKey),
+    Many(usize),
 }
 
 struct RemovedLive {
     identity: LiveKey,
     price: BookPrice,
     index: usize,
-    operation: MarketOperation,
+    operation: Arc<MarketOperation>,
 }
 
 struct SideJournal {
@@ -396,8 +601,7 @@ impl SideJournal {
         for removed in self.removed.into_iter().rev() {
             let level = side.levels.entry(removed.price).or_default();
             let index = removed.index.min(level.len());
-            level.insert(index, removed.operation);
-            side.positions.insert(removed.identity, removed.price);
+            side.insert_live(removed.price, index, removed.operation, removed.identity);
         }
         if let Some(deltas) = self.cleared_deltas {
             side.deltas = deltas;
@@ -422,7 +626,7 @@ impl BookSide {
         let mut side = Self {
             element,
             levels: BTreeMap::new(),
-            positions: HashMap::new(),
+            index: Arc::default(),
             deltas: Vec::new(),
         };
         side.finalize();
@@ -434,6 +638,16 @@ impl BookSide {
     pub(crate) fn from_parts(
         element: MarketElementData,
         live: Vec<MarketOperation>,
+        deltas: Vec<MarketOperation>,
+    ) -> Result<Self> {
+        Self::from_shared_parts(element, live.into_iter().map(Arc::new).collect(), deltas)
+    }
+
+    /// [`Self::from_parts`] over live entries already shared, which a side
+    /// rebuilt around its own entries keeps rather than copies.
+    fn from_shared_parts(
+        element: MarketElementData,
+        live: Vec<Arc<MarketOperation>>,
         deltas: Vec<MarketOperation>,
     ) -> Result<Self> {
         if !element.get_side().is_bid() && !element.get_side().is_ask() {
@@ -448,16 +662,20 @@ impl BookSide {
         let mut side = Self {
             element,
             levels: BTreeMap::new(),
-            positions: HashMap::with_capacity(live.len()),
+            index: Arc::default(),
             deltas: Vec::new(),
+        };
+        let mut built = SideIndex {
+            positions: HashMap::with_capacity(live.len()),
+            entry_ids: HashMap::new(),
         };
         for (index, operation) in live.into_iter().enumerate() {
             let path = format_smolstr!("$.live[{index}]");
             side.validate_component(&operation, &path, true)?;
-            let price = BookPrice::of(operation.get_side(), operation.get_px())
+            let price = BookPrice::of(operation.get_side(), operation.get_price())
                 .expect("a validated side has a book price");
             let identity = LiveKey::of(&operation);
-            if side.positions.insert(identity.clone(), price).is_some() {
+            if built.positions.insert(identity.clone(), price).is_some() {
                 return Err(invalid(
                     path,
                     format_smolstr!(
@@ -467,8 +685,10 @@ impl BookSide {
                     ),
                 ));
             }
+            built.record(&operation, &identity);
             side.levels.entry(price).or_default().push(operation);
         }
+        side.index = Arc::new(built);
         for level in side.levels.values_mut() {
             if level.iter().any(|held| position_of(held).is_some()) {
                 level.sort_by_key(|held| position_of(held).unwrap_or(u64::MAX));
@@ -484,7 +704,9 @@ impl BookSide {
 
     /// The live orders and quotes, best price first.
     pub fn live(&self) -> impl Iterator<Item = &MarketOperation> {
-        self.levels.values().flat_map(|level| level.iter())
+        self.levels
+            .values()
+            .flat_map(|level| level.iter().map(Arc::as_ref))
     }
 
     /// Deltas applied since this side was last cleared.
@@ -495,12 +717,12 @@ impl BookSide {
 
     #[must_use]
     pub fn len(&self) -> usize {
-        self.positions.len()
+        self.index.positions.len()
     }
 
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.positions.is_empty()
+        self.index.positions.is_empty()
     }
 
     /// The best live price on this side.
@@ -520,7 +742,7 @@ impl BookSide {
                 .1
                 .iter()
                 .fold(Decimal18::ZERO, |quantity, operation| {
-                    quantity + operation.get_qty()
+                    quantity + operation.get_quantity()
                 }),
         )
     }
@@ -529,7 +751,7 @@ impl BookSide {
     pub fn add_operation(&mut self, operation: MarketOperation) -> Result<()> {
         let mut journal = SideJournal::new(self, false);
         let result = self
-            .apply_journaled(operation, &mut journal)
+            .apply_inner(operation, None, Some(&mut journal))
             .and_then(|()| self.refresh());
         if let Err(error) = result {
             journal.rollback(self);
@@ -572,20 +794,13 @@ impl BookSide {
     }
 
     fn apply(&mut self, operation: MarketOperation) -> Result<()> {
-        self.apply_inner(operation, None)
-    }
-
-    fn apply_journaled(
-        &mut self,
-        operation: MarketOperation,
-        journal: &mut SideJournal,
-    ) -> Result<()> {
-        self.apply_inner(operation, Some(journal))
+        self.apply_inner(operation, None, None)
     }
 
     fn apply_inner(
         &mut self,
         mut operation: MarketOperation,
+        other_side: Option<&MarketOperation>,
         mut journal: Option<&mut SideJournal>,
     ) -> Result<()> {
         if !matches!(
@@ -627,36 +842,52 @@ impl BookSide {
         let action = operation.get_identifiers().get(ACTION).map(String::as_str);
         let partial = matches!(action, Some("1" | "5"));
         let destination = LiveKey::of(&operation);
-        let occupied_position = position_of(&operation).is_some_and(|position| {
-            self.live()
-                .any(|held| same_partition(held, &operation) && position_of(held) == Some(position))
-        });
+        // Walked only for the one statement it can refuse.
+        let occupied_position = || {
+            position_of(&operation).is_some_and(|position| {
+                self.live().any(|held| {
+                    same_partition(held, &operation) && position_of(held) == Some(position)
+                })
+            })
+        };
         if action == Some("0")
             && operation.get_identifiers().contains_key(ENTRY_POSITION)
             && !operation.get_identifiers().contains_key(ENTRY_ID)
             && !operation.get_identifiers().contains_key(ENTRY_REF_ID)
-            && occupied_position
+            && occupied_position()
         {
             return Err(invalid(
                 "$.operation.identifiers.MDEntryPositionNo",
                 "a new anonymous entry cannot occupy an existing position; state MDEntryID or send a snapshot",
             ));
         }
-        let referenced = self.referenced_identity_of(&operation);
+        let referenced = self.referenced_identity_of(&operation).or_else(|| {
+            let wanted = operation.get_identifiers().get(ENTRY_REF_ID)?;
+            other_side
+                .filter(|previous| {
+                    same_partition(previous, &operation)
+                        && previous.get_identifiers().get(ENTRY_ID) == Some(wanted)
+                })
+                .map(LiveKey::of)
+        });
         if operation.get_identifiers().contains_key(ENTRY_REF_ID) && referenced.is_none() {
             return Err(invalid(
                 "$.operation.identifiers.MDEntryRefID",
                 "the referenced live entry does not exist in this symbol and scope",
             ));
         }
-        let identity = referenced.unwrap_or_else(|| self.identity_of(&operation));
-        if identity != destination && self.positions.contains_key(&destination) {
+        let identity = referenced.unwrap_or_else(|| {
+            other_side.map_or_else(|| self.identity_of(&operation), LiveKey::of)
+        });
+        if (identity != destination && self.index.positions.contains_key(&destination))
+            || other_side.is_some_and(|previous| LiveKey::of(previous) != identity)
+        {
             return Err(invalid(
                 "$.operation.identifiers.MDEntryID",
                 "the referenced entry and destination entry are both live",
             ));
         }
-        let previous = self.take_removed(&identity);
+        let previous = self.get(&identity).or(other_side);
         if partial && previous.is_none() {
             if !operation.get_identifiers().contains_key(ENTRY_PRICE) {
                 return Err(invalid(
@@ -671,30 +902,75 @@ impl BookSide {
                 ));
             }
         }
-        if let Some(previous) = previous.as_ref() {
+        if let Some(previous) = previous {
+            if let (Some(stated), Some(known)) = (
+                operation.get_identifiers().get("OrderID"),
+                previous.get_identifiers().get("OrderID"),
+            ) {
+                if stated != known {
+                    return Err(invalid(
+                        "$.operation.identifiers.OrderID",
+                        format_smolstr!("expected the live order {known:?}, got {stated:?}"),
+                    ));
+                }
+            }
+            let kind = match (operation.kind(), previous.kind()) {
+                (current, previous) if current == previous => current,
+                (MarketOperationKind::Quote, MarketOperationKind::Order)
+                    if matches!(action, Some("1" | "2" | "5"))
+                        && !operation.get_identifiers().contains_key("OrderID") =>
+                {
+                    MarketOperationKind::Order
+                }
+                (MarketOperationKind::Order, MarketOperationKind::Quote)
+                    if partial
+                        && operation.get_identifiers().contains_key("OrderID")
+                        && !previous.get_identifiers().contains_key("OrderID") =>
+                {
+                    MarketOperationKind::Order
+                }
+                (current, previous) => {
+                    return Err(invalid(
+                        "$.operation.kind",
+                        format_smolstr!(
+                            "expected a continuation of {}, got {}",
+                            previous.as_str(),
+                            current.as_str()
+                        ),
+                    ));
+                }
+            };
             if partial {
                 if !operation.get_identifiers().contains_key(ENTRY_PRICE) {
-                    operation.set_px(previous.operation.get_px());
+                    operation.set_price(previous.get_price());
                 }
                 if !operation.get_identifiers().contains_key(ENTRY_SIZE) {
-                    operation.set_qty(previous.operation.get_qty());
+                    operation.set_quantity(previous.get_quantity());
                 }
             }
-            operation = if operation.get_curruuid() == previous.operation.get_curruuid() {
-                operation.restating(&previous.operation)
+            let mut event = match operation {
+                MarketOperation::Order(order) => MarketEventData::from(order),
+                MarketOperation::Quote(quote) => MarketEventData::from(quote),
+                _ => unreachable!("a book side accepts only orders and quotes"),
+            };
+            let event = if event.get_curruuid() == previous.get_curruuid() {
+                event.restating(previous.as_ref())
             } else {
-                operation
+                event
                     .clone()
-                    .with_previous(&previous.operation)
-                    .unwrap_or(operation)
+                    .following_market(previous.as_ref())
+                    .unwrap_or_else(|| {
+                        event.finalize();
+                        event
+                    })
+            };
+            operation = match kind {
+                MarketOperationKind::Order => Order::from(event).into(),
+                MarketOperationKind::Quote => Quote::from(event).into(),
+                _ => unreachable!("a live predecessor is an order or quote"),
             };
         }
-        if let Some(previous) = previous {
-            if let Some(journal) = journal.as_deref_mut() {
-                journal.removed.push(previous);
-            }
-        }
-        let Some(price) = BookPrice::of(operation.get_side(), operation.get_px()) else {
+        let Some(price) = BookPrice::of(operation.get_side(), operation.get_price()) else {
             return Err(invalid(
                 "$.operation.side",
                 format_smolstr!(
@@ -704,23 +980,27 @@ impl BookSide {
                 ),
             ));
         };
+        if let Some(previous) = self.take_removed(&identity) {
+            if let Some(journal) = journal.as_deref_mut() {
+                journal.removed.push(previous);
+            }
+        }
         if operation.get_state().is_live()
             && operation
                 .get_exprtime()
                 .is_none_or(|expiration| expiration > operation.get_currunix())
         {
             let identity = LiveKey::of(&operation);
+            // A level is kept ordered by stated position, unpositioned
+            // entries last, each in arrival order: an entry lands behind
+            // every one its position does not precede.
             let level = self.levels.entry(price).or_default();
-            level.push(operation.clone());
-            if level.iter().any(|held| position_of(held).is_some()) {
-                level.sort_by_key(|held| position_of(held).unwrap_or(u64::MAX));
-            }
+            let key = position_of(&operation).unwrap_or(u64::MAX);
+            let at = level.partition_point(|held| position_of(held).unwrap_or(u64::MAX) <= key);
             if let Some(journal) = journal {
-                self.positions.insert(identity.clone(), price);
-                journal.inserted.push(identity);
-            } else {
-                self.positions.insert(identity, price);
+                journal.inserted.push(identity.clone());
             }
+            self.insert_live(price, at, Arc::new(operation.clone()), identity);
         }
         self.deltas.push(operation);
         Ok(())
@@ -731,7 +1011,7 @@ impl BookSide {
         if let Some(identity) = self.referenced_identity_of(operation) {
             return identity;
         }
-        if self.positions.contains_key(&own) {
+        if self.index.positions.contains_key(&own) {
             return own;
         }
         operation
@@ -749,32 +1029,57 @@ impl BookSide {
     }
 
     fn find_entry_identity(&self, operation: &MarketOperation, wanted: &String) -> Option<LiveKey> {
-        self.live().find_map(|held| {
-            (same_partition(held, operation)
-                && held.get_identifiers().get(ENTRY_ID) == Some(wanted))
-            .then(|| LiveKey::of(held))
-        })
+        let key = EntryKey {
+            partition: SnapshotPartition::of(operation),
+            entry: SmolStr::new(wanted),
+        };
+        match self.index.entry_ids.get(&key)? {
+            EntrySlot::One(identity) => Some(identity.clone()),
+            EntrySlot::Many(_) => self.live().find_map(|held| {
+                (same_partition(held, operation)
+                    && held.get_identifiers().get(ENTRY_ID) == Some(wanted))
+                .then(|| LiveKey::of(held))
+            }),
+        }
+    }
+
+    /// Stands `operation` live at `at` in the level of `price`, the index
+    /// kept in step.
+    fn insert_live(
+        &mut self,
+        price: BookPrice,
+        at: usize,
+        operation: Arc<MarketOperation>,
+        identity: LiveKey,
+    ) {
+        let index = Arc::make_mut(&mut self.index);
+        index.record(&operation, &identity);
+        index.positions.insert(identity, price);
+        self.levels.entry(price).or_default().insert(at, operation);
     }
 
     fn get(&self, identity: &LiveKey) -> Option<&MarketOperation> {
-        let price = self.positions.get(identity)?;
+        let price = self.index.positions.get(identity)?;
         self.levels
             .get(price)?
             .iter()
             .find(|operation| LiveKey::of(operation) == *identity)
+            .map(Arc::as_ref)
     }
 
     fn take_removed(&mut self, identity: &LiveKey) -> Option<RemovedLive> {
-        let price = *self.positions.get(identity)?;
+        let price = *self.index.positions.get(identity)?;
         let level = self.levels.get_mut(&price)?;
         let index = level
             .iter()
             .position(|operation| LiveKey::of(operation) == *identity)?;
         let operation = level.remove(index);
-        self.positions.remove(identity);
         if level.is_empty() {
             self.levels.remove(&price);
         }
+        let held = Arc::make_mut(&mut self.index);
+        held.positions.remove(identity);
+        held.forget(&operation);
         Some(RemovedLive {
             identity: identity.clone(),
             price,
@@ -783,13 +1088,16 @@ impl BookSide {
         })
     }
 
-    fn remove(&mut self, identity: &LiveKey) -> Option<MarketOperation> {
+    fn remove(&mut self, identity: &LiveKey) -> Option<Arc<MarketOperation>> {
         self.take_removed(identity).map(|removed| removed.operation)
     }
 
-    fn remove_journaled(&mut self, identity: &LiveKey, journal: &mut SideJournal) {
+    fn remove_journaled(&mut self, identity: &LiveKey, journal: &mut SideJournal) -> bool {
         if let Some(removed) = self.take_removed(identity) {
             journal.removed.push(removed);
+            true
+        } else {
+            false
         }
     }
 
@@ -818,7 +1126,7 @@ impl BookSide {
         for (index, identity) in identities.into_iter().enumerate() {
             if (through && index <= at) || (!through && index >= at) {
                 if let Some(journal) = journal.as_deref_mut() {
-                    self.remove_journaled(&identity, journal);
+                    let _ = self.remove_journaled(&identity, journal);
                 } else {
                     self.remove(&identity);
                 }
@@ -827,15 +1135,17 @@ impl BookSide {
         Ok(())
     }
 
-    fn clear_partition(&mut self, partition: &SnapshotPartition) {
+    fn clear_partition(&mut self, partition: &SnapshotPartition) -> bool {
         let identities: Vec<LiveKey> = self
             .live()
             .filter(|operation| SnapshotPartition::of(operation) == *partition)
             .map(LiveKey::of)
             .collect();
+        let changed = !identities.is_empty();
         for identity in identities {
             self.remove(&identity);
         }
+        changed
     }
 
     fn replace_membership(
@@ -844,19 +1154,21 @@ impl BookSide {
         partitions: &BTreeSet<SnapshotPartition>,
     ) -> Result<()> {
         let mut live = self
-            .live()
+            .levels
+            .values()
+            .flatten()
             .filter(|operation| !partitions.contains(&SnapshotPartition::of(operation)))
             .cloned()
             .collect::<Vec<_>>();
-        live.extend(snapshot);
-        *self = Self::from_parts(self.element.clone(), live, self.deltas.clone())?;
+        live.extend(snapshot.into_iter().map(Arc::new));
+        *self = Self::from_shared_parts(self.element.clone(), live, self.deltas.clone())?;
         Ok(())
     }
 
     pub(super) fn canonical_element(&self) -> Result<MarketElementData> {
         let mut element = self.element.clone();
-        element.set_px(Decimal18::ZERO);
-        element.set_qty(Decimal18::ZERO);
+        element.set_price(Decimal18::ZERO);
+        element.set_quantity(Decimal18::ZERO);
         element.set_currency(Currency::none());
         element.set_unit(String::new());
         element.set_bidpx(None);
@@ -869,13 +1181,16 @@ impl BookSide {
         element.set_askunit(None);
         if let Some((price, level)) = self.levels.first_key_value() {
             let quantity = level.iter().try_fold(Decimal18::ZERO, |sum, operation| {
-                sum.checked_add(operation.get_qty()).ok_or_else(|| {
-                    invalid("$.qty", "aggregate best-level quantity exceeds decimal18")
+                sum.checked_add(operation.get_quantity()).ok_or_else(|| {
+                    invalid(
+                        "$.quantity",
+                        "aggregate best-level quantity exceeds decimal18",
+                    )
                 })
             })?;
             let first = &level[0];
-            element.set_px(price.price());
-            element.set_qty(quantity);
+            element.set_price(price.price());
+            element.set_quantity(quantity);
             element.set_currency(first.get_currency().clone());
             element.set_unit(first.get_unit().to_owned());
             if element.get_side().is_bid() {
@@ -890,12 +1205,7 @@ impl BookSide {
                 element.set_askunit(Some(first.get_unit().to_owned()));
             }
         }
-        finalize_side_element(
-            &mut element,
-            &self.levels,
-            self.positions.len(),
-            &self.deltas,
-        );
+        finalize_side_element(&mut element, &self.levels, self.len(), &self.deltas);
         Ok(element)
     }
 
@@ -915,24 +1225,27 @@ impl BookSide {
 
 fn finalize_side_element(
     element: &mut MarketElementData,
-    levels: &BTreeMap<BookPrice, Vec<MarketOperation>>,
+    levels: &BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
     live_len: usize,
     deltas: &[MarketOperation],
 ) {
     element.fill_market();
     element.sync_cross();
     let mut digest = element.digest_market();
-    digest.write(&(live_len as u64).to_be_bytes());
-    for operation in levels.values().flatten() {
-        digest.write(operation.kind().as_str().as_bytes());
-        digest.write(&operation.get_curruuid().get().to_be_bytes());
-        digest.write(&operation.get_currhashcode().to_be_bytes());
-    }
-    digest.write(&(deltas.len() as u64).to_be_bytes());
-    for operation in deltas {
-        digest.write(operation.kind().as_str().as_bytes());
-        digest.write(&operation.get_curruuid().get().to_be_bytes());
-        digest.write(&operation.get_currhashcode().to_be_bytes());
+    // Two facts per entry of a side that may be thousands deep, staged so
+    // the state reads them a chunk at a time.
+    {
+        let mut staged = super::element::Staged::new(&mut digest);
+        staged.write(&(live_len as u64).to_be_bytes());
+        for operation in levels.values().flatten() {
+            staged.write(operation.kind().as_str().as_bytes());
+            staged.write(&operation.get_curruuid().get().to_be_bytes());
+        }
+        staged.write(&(deltas.len() as u64).to_be_bytes());
+        for operation in deltas {
+            staged.write(operation.kind().as_str().as_bytes());
+            staged.write(&operation.get_curruuid().get().to_be_bytes());
+        }
     }
     let hashcode = digest.finish();
     element.set_currhashcode(hashcode);
@@ -1007,14 +1320,6 @@ impl Element for BookSide {
         self.element.set_identifiers(identifiers);
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.element.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.element.set_parentuuids(parents);
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.element.get_srcuuids()
     }
@@ -1031,7 +1336,7 @@ impl Element for BookSide {
         finalize_side_element(
             &mut self.element,
             &self.levels,
-            self.positions.len(),
+            self.index.positions.len(),
             &self.deltas,
         );
     }
@@ -1098,6 +1403,19 @@ struct BookJournal {
     cleared_executions: Option<Vec<Execution>>,
 }
 
+#[derive(Clone, Copy, Default)]
+struct ChangedSides {
+    bid: bool,
+    ask: bool,
+}
+
+impl ChangedSides {
+    fn include(&mut self, other: Self) {
+        self.bid |= other.bid;
+        self.ask |= other.ask;
+    }
+}
+
 #[derive(Clone, Copy)]
 struct EventBounds {
     seqnum: u64,
@@ -1130,6 +1448,21 @@ impl BookJournal {
             ask,
             executions_len,
             cleared_executions,
+        }
+    }
+
+    fn cleared_sides(&self) -> ChangedSides {
+        ChangedSides {
+            bid: self
+                .bid
+                .cleared_deltas
+                .as_ref()
+                .is_some_and(|deltas| !deltas.is_empty()),
+            ask: self
+                .ask
+                .cleared_deltas
+                .as_ref()
+                .is_some_and(|deltas| !deltas.is_empty()),
         }
     }
 
@@ -1274,11 +1607,18 @@ impl Book {
     /// The two-value median of the best bid and ask aggregate quantities.
     #[must_use]
     pub fn median_quantity(&self) -> Option<Decimal18> {
-        match (self.bid.best_quantity(), self.ask.best_quantity()) {
-            (Some(bid), Some(ask)) => decimal_mean(bid, ask),
-            (Some(quantity), None) | (None, Some(quantity)) => Some(quantity),
-            (None, None) => None,
-        }
+        median_quantity(self.bid.best_quantity(), self.ask.best_quantity())
+    }
+
+    fn cached_median_quantity(
+        &self,
+        bid: &MarketElementData,
+        ask: &MarketElementData,
+    ) -> Option<Decimal18> {
+        median_quantity(
+            (!self.bid.is_empty()).then(|| bid.get_quantity()),
+            (!self.ask.is_empty()).then(|| ask.get_quantity()),
+        )
     }
 
     /// Atomically applies all operations of one timestamp. Full-snapshot depth
@@ -1324,19 +1664,23 @@ impl Book {
             .iter()
             .filter(|operation| {
                 operation.is_full_snapshot()
-                    && !matches!(operation.kind(), MarketOperationKind::Execution)
+                    && !matches!(
+                        operation.kind(),
+                        MarketOperationKind::Execution | MarketOperationKind::Trade
+                    )
             })
             .map(SnapshotPartition::of)
             .collect();
+        let mut changed = ChangedSides::default();
         for partition in &partitions {
-            next.bid.clear_partition(partition);
-            next.ask.clear_partition(partition);
+            changed.bid |= next.bid.clear_partition(partition);
+            changed.ask |= next.ask.clear_partition(partition);
         }
         for operation in operations {
-            next.apply(operation)?;
+            changed.include(next.apply(operation)?);
         }
         next.record_snapshot_partitions(&partitions);
-        next.refresh()?;
+        next.refresh_changed(changed)?;
         *self = next;
         Ok(())
     }
@@ -1344,14 +1688,15 @@ impl Book {
     fn add_one_journaled(&mut self, operation: MarketOperation, unix: i64) -> Result<()> {
         let advancing = self.event.get_currunix() != unix;
         let mut journal = BookJournal::new(self, advancing);
+        let mut changed = journal.cleared_sides();
         let result = (|| {
             if advancing {
                 self.clear_changes();
             }
             self.event.set_currunix(unix);
             self.event.set_snapunix(None);
-            self.apply_journaled(operation, &mut journal)?;
-            self.refresh()
+            changed.include(self.apply_journaled(operation, &mut journal)?);
+            self.refresh_changed(changed)
         })();
         if let Err(error) = result {
             journal.rollback(self);
@@ -1392,12 +1737,12 @@ impl Book {
         next.bid.replace_membership(bid, partitions)?;
         next.ask.replace_membership(ask, partitions)?;
         next.record_snapshot_partitions(partitions);
-        next.refresh()?;
+        next.refresh_changed(ChangedSides::default())?;
         *self = next;
         Ok(())
     }
 
-    fn apply(&mut self, operation: MarketOperation) -> Result<()> {
+    fn apply(&mut self, operation: MarketOperation) -> Result<ChangedSides> {
         self.apply_inner(operation, None)
     }
 
@@ -1405,15 +1750,15 @@ impl Book {
         &mut self,
         operation: MarketOperation,
         journal: &mut BookJournal,
-    ) -> Result<()> {
+    ) -> Result<ChangedSides> {
         self.apply_inner(operation, Some(journal))
     }
 
     fn apply_inner(
         &mut self,
         operation: MarketOperation,
-        mut journal: Option<&mut BookJournal>,
-    ) -> Result<()> {
+        journal: Option<&mut BookJournal>,
+    ) -> Result<ChangedSides> {
         let symbol = operation.get_symbolticker();
         if self.get_symbolticker() != Some(GLOBAL_SYMBOL)
             && symbol.is_some()
@@ -1431,40 +1776,53 @@ impl Book {
             false,
         )?;
         let mut bounds = EventBounds::of(&operation);
-        match operation {
-            MarketOperation::Execution(execution) => self.executions.push(execution),
-            MarketOperation::Snapshot(_) => {}
+        let changed = match operation {
+            MarketOperation::Execution(execution) => {
+                self.executions.push(execution);
+                ChangedSides::default()
+            }
+            MarketOperation::Trade(trade) => {
+                self.executions.extend(trade.into_executions());
+                ChangedSides::default()
+            }
+            MarketOperation::Snapshot(_) => ChangedSides::default(),
             operation if operation.get_side().is_bid() => {
                 let opposite = self.ask.identity_of(&operation);
-                if let Some(journal) = journal.as_deref_mut() {
-                    self.ask.remove_journaled(&opposite, &mut journal.ask);
-                    self.bid.apply_journaled(operation, &mut journal.bid)?;
+                let previous = self.ask.get(&opposite);
+                let ask = if let Some(journal) = journal {
+                    self.bid
+                        .apply_inner(operation, previous, Some(&mut journal.bid))?;
+                    self.ask.remove_journaled(&opposite, &mut journal.ask)
                 } else {
-                    self.ask.remove(&opposite);
-                    self.bid.apply(operation)?;
-                }
+                    self.bid.apply_inner(operation, previous, None)?;
+                    self.ask.remove(&opposite).is_some()
+                };
                 bounds = EventBounds::of(
                     self.bid
                         .deltas()
                         .last()
                         .expect("an applied bid operation is recorded as a delta"),
                 );
+                ChangedSides { bid: true, ask }
             }
             operation if operation.get_side().is_ask() => {
                 let opposite = self.bid.identity_of(&operation);
-                if let Some(journal) = journal {
-                    self.bid.remove_journaled(&opposite, &mut journal.bid);
-                    self.ask.apply_journaled(operation, &mut journal.ask)?;
+                let previous = self.bid.get(&opposite);
+                let bid = if let Some(journal) = journal {
+                    self.ask
+                        .apply_inner(operation, previous, Some(&mut journal.ask))?;
+                    self.bid.remove_journaled(&opposite, &mut journal.bid)
                 } else {
-                    self.bid.remove(&opposite);
-                    self.ask.apply(operation)?;
-                }
+                    self.ask.apply_inner(operation, previous, None)?;
+                    self.bid.remove(&opposite).is_some()
+                };
                 bounds = EventBounds::of(
                     self.ask
                         .deltas()
                         .last()
                         .expect("an applied ask operation is recorded as a delta"),
                 );
+                ChangedSides { bid, ask: true }
             }
             operation => {
                 return Err(invalid(
@@ -1475,9 +1833,9 @@ impl Book {
                     ),
                 ));
             }
-        }
+        };
         self.fold_bounds(bounds);
-        Ok(())
+        Ok(changed)
     }
 
     fn fold_bounds(&mut self, bounds: EventBounds) {
@@ -1497,12 +1855,12 @@ impl Book {
         ask: &MarketElementData,
     ) -> MarketEventData {
         let mut event = self.event.clone();
-        event.set_bidpx((!self.bid.is_empty()).then(|| bid.get_px()));
-        event.set_bidqty((!self.bid.is_empty()).then(|| bid.get_qty()));
+        event.set_bidpx((!self.bid.is_empty()).then(|| bid.get_price()));
+        event.set_bidqty((!self.bid.is_empty()).then(|| bid.get_quantity()));
         event.set_bidcurrency((!self.bid.is_empty()).then(|| bid.get_currency().clone()));
         event.set_bidunit((!self.bid.is_empty()).then(|| bid.get_unit().to_owned()));
-        event.set_askpx((!self.ask.is_empty()).then(|| ask.get_px()));
-        event.set_askqty((!self.ask.is_empty()).then(|| ask.get_qty()));
+        event.set_askpx((!self.ask.is_empty()).then(|| ask.get_price()));
+        event.set_askqty((!self.ask.is_empty()).then(|| ask.get_quantity()));
         event.set_askcurrency((!self.ask.is_empty()).then(|| ask.get_currency().clone()));
         event.set_askunit((!self.ask.is_empty()).then(|| ask.get_unit().to_owned()));
         let midpoint = if self.is_crossed() {
@@ -1511,8 +1869,11 @@ impl Book {
             self.bbo_midpoint()
                 .or_else(|| self.bid.best_price().or_else(|| self.ask.best_price()))
         };
-        event.set_px(midpoint.unwrap_or(Decimal18::ZERO));
-        event.set_qty(self.median_quantity().unwrap_or(Decimal18::ZERO));
+        event.set_price(midpoint.unwrap_or(Decimal18::ZERO));
+        event.set_quantity(
+            self.cached_median_quantity(bid, ask)
+                .unwrap_or(Decimal18::ZERO),
+        );
         let currency = match (
             (!self.bid.is_empty()).then(|| bid.get_currency()),
             (!self.ask.is_empty()).then(|| ask.get_currency()),
@@ -1535,11 +1896,23 @@ impl Book {
         event
     }
 
-    fn refresh(&mut self) -> Result<()> {
-        self.bid.refresh()?;
-        self.ask.refresh()?;
+    fn refresh_changed(&mut self, changed: ChangedSides) -> Result<()> {
+        if changed.bid {
+            self.bid.refresh()?;
+        }
+        if changed.ask {
+            self.ask.refresh()?;
+        }
+        canonicalize_executions(&mut self.executions);
         self.event = self.canonical_event(self.bid.as_ref(), self.ask.as_ref());
         Ok(())
+    }
+
+    fn refresh(&mut self) -> Result<()> {
+        self.refresh_changed(ChangedSides {
+            bid: true,
+            ask: true,
+        })
     }
 
     fn clear_changes(&mut self) {
@@ -1601,6 +1974,14 @@ impl Book {
     }
 }
 
+fn median_quantity(bid: Option<Decimal18>, ask: Option<Decimal18>) -> Option<Decimal18> {
+    match (bid, ask) {
+        (Some(bid), Some(ask)) => decimal_mean(bid, ask),
+        (Some(quantity), None) | (None, Some(quantity)) => Some(quantity),
+        (None, None) => None,
+    }
+}
+
 fn finalize_book_event(
     event: &mut MarketEventData,
     bid: &MarketElementData,
@@ -1612,13 +1993,16 @@ fn finalize_book_event(
     digest.write(&event.get_currunix().to_be_bytes());
     for side in [bid, ask] {
         digest.write(&side.get_curruuid().get().to_be_bytes());
-        digest.write(&side.get_currhashcode().to_be_bytes());
     }
     for execution in executions {
         digest.write(&execution.get_curruuid().get().to_be_bytes());
-        digest.write(&execution.get_currhashcode().to_be_bytes());
     }
     event.finalized(digest.finish());
+}
+
+fn canonicalize_executions(executions: &mut Vec<Execution>) {
+    executions.sort_by_key(Element::get_curruuid);
+    executions.dedup_by_key(|execution| execution.get_curruuid());
 }
 
 impl Default for Book {
@@ -1688,14 +2072,6 @@ impl Element for Book {
         self.event.set_identifiers(identifiers);
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.event.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.event.set_parentuuids(parents);
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.event.get_srcuuids()
     }
@@ -1736,8 +2112,8 @@ impl Element for Book {
             self.bid.clear_deltas();
             self.ask.clear_deltas();
             for partition in &replaced {
-                self.bid.clear_partition(partition);
-                self.ask.clear_partition(partition);
+                let _ = self.bid.clear_partition(partition);
+                let _ = self.ask.clear_partition(partition);
             }
             for operation in bid {
                 self.bid.apply(operation).ok()?;
@@ -1801,9 +2177,12 @@ delegate_market_event!(Book, event, event_only, false);
 /// snapshot membership.
 pub struct BookIterator<I>
 where
-    I: Iterator<Item = MarketOperation>,
+    I: Iterator,
+    I::Item: Into<Result<MarketOperation>>,
 {
-    source: Peekable<I>,
+    source: I,
+    source_head: Option<Result<MarketOperation>>,
+    source_exhausted: bool,
     books: BTreeMap<String, Book>,
     pending: VecDeque<Result<Book>>,
     global: bool,
@@ -1816,9 +2195,11 @@ where
 
 impl<I> BookIterator<I>
 where
-    I: Iterator<Item = MarketOperation>,
+    I: Iterator,
+    I::Item: Into<Result<MarketOperation>>,
 {
     /// Opens a book walk over operations already sorted by their event order.
+    /// Owned operations and their fallible counterparts are accepted directly;
     /// `snapshot_millis == 0` disables grid snapshots.
     pub fn new(operations: I, snapshot_millis: u64, global: bool) -> Result<Self> {
         let snapshot_ns = snapshot_millis
@@ -1833,7 +2214,9 @@ where
                 )
             })?;
         Ok(Self {
-            source: operations.peekable(),
+            source: operations,
+            source_head: None,
+            source_exhausted: false,
             books: BTreeMap::new(),
             pending: VecDeque::new(),
             global,
@@ -1848,6 +2231,31 @@ where
     #[must_use]
     pub const fn global(&self) -> bool {
         self.global
+    }
+
+    fn fill_source_head(&mut self) {
+        if self.source_head.is_some() || self.source_exhausted {
+            return;
+        }
+        match self.source.next() {
+            Some(operation) => self.source_head = Some(operation.into()),
+            None => self.source_exhausted = true,
+        }
+    }
+
+    fn peek_source(&mut self) -> Option<&MarketOperation> {
+        self.fill_source_head();
+        self.source_head
+            .as_ref()
+            .and_then(|operation| operation.as_ref().ok())
+    }
+
+    fn take_source(&mut self) -> MarketOperation {
+        match self.source_head.take() {
+            Some(Ok(operation)) => operation,
+            Some(Err(_)) => unreachable!("a source error is never taken as an operation"),
+            None => unreachable!("a source operation is taken only after it is peeked"),
+        }
     }
 
     fn ensure_snapshot(&mut self, unix: i64) {
@@ -1932,6 +2340,9 @@ where
             operation.set_state(State::read("expired").expect("the shipped expired state"));
             let mut identifiers = operation.get_identifiers().clone();
             identifiers.insert(ACTION.to_owned(), "2".to_owned());
+            // The synthetic delete addresses the current generation, not
+            // the reference a prior rename used to reach its predecessor.
+            identifiers.remove(ENTRY_REF_ID);
             operation.set_identifiers(identifiers);
             operation.set_execunix(None);
             operation.set_recdunix(None);
@@ -1948,7 +2359,21 @@ where
             if self.done {
                 return false;
             }
-            let source_unix = self.source.peek().map(effective_unix);
+            self.fill_source_head();
+            if self
+                .source_head
+                .as_ref()
+                .is_some_and(|operation| operation.is_err())
+            {
+                let error = match self.source_head.take() {
+                    Some(Err(error)) => error,
+                    _ => unreachable!("the source head was checked as an error"),
+                };
+                self.done = true;
+                self.pending.push_back(Err(error));
+                return true;
+            }
+            let source_unix = self.peek_source().map(effective_unix);
             let expiration_unix = self.expirations.first().map(|expiration| expiration.unix);
             let unix = match (source_unix, expiration_unix) {
                 (Some(source), Some(expiration)) => source.min(expiration),
@@ -1961,11 +2386,10 @@ where
 
             if source_unix == Some(unix) && self.last_unix.is_some_and(|previous| unix < previous) {
                 while self
-                    .source
-                    .peek()
+                    .peek_source()
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
-                    self.source.next();
+                    self.take_source();
                 }
                 self.pending.push_back(Err(invalid(
                     "$.operations",
@@ -2000,11 +2424,10 @@ where
             if source_unix == Some(unix) {
                 self.last_unix = Some(unix);
                 while self
-                    .source
-                    .peek()
+                    .peek_source()
                     .is_some_and(|operation| effective_unix(operation) == unix)
                 {
-                    let mut operation = self.source.next().expect("peeked operation");
+                    let mut operation = self.take_source();
                     let symbol = if self.global {
                         GLOBAL_SYMBOL.to_owned()
                     } else if let Some(symbol) = operation.get_symbolticker() {
@@ -2039,7 +2462,7 @@ where
                                     .insert(SnapshotPartition::of(&operation));
                                 snapshot_controls.entry(symbol).or_default().push(operation);
                             }
-                            MarketOperationKind::Execution => {
+                            MarketOperationKind::Execution | MarketOperationKind::Trade => {
                                 if let Err(error) = validate_component_times(
                                     unix,
                                     "snapshot.executions",
@@ -2049,8 +2472,15 @@ where
                                     source_errors.entry(symbol).or_insert(error);
                                     continue;
                                 }
-                                operation.set_currunix(unix);
-                                operation.finalize();
+                                match &mut operation {
+                                    MarketOperation::Trade(trade) => {
+                                        trade.rebase_currunix(unix);
+                                    }
+                                    _ => {
+                                        operation.set_currunix(unix);
+                                        operation.finalize();
+                                    }
+                                }
                                 raw.entry(symbol).or_default().push(operation);
                             }
                         }
@@ -2062,6 +2492,21 @@ where
 
             let mut failed = HashSet::new();
             for symbol in &touched {
+                // add_operations is already atomic. Only a group that also
+                // replaces supplied membership needs an outer transaction.
+                if !snapshot_partitions.contains_key(symbol) && !source_errors.contains_key(symbol)
+                {
+                    if let Some(book) = self.books.get_mut(symbol) {
+                        if let Err(error) = raw
+                            .remove(symbol)
+                            .map_or(Ok(()), |operations| book.add_operations(operations))
+                        {
+                            self.pending.push_back(Err(error));
+                            failed.insert(symbol.clone());
+                        }
+                        continue;
+                    }
+                }
                 let mut next = self
                     .books
                     .get(symbol)
@@ -2120,7 +2565,8 @@ where
 
 impl<I> Iterator for BookIterator<I>
 where
-    I: Iterator<Item = MarketOperation>,
+    I: Iterator,
+    I::Item: Into<Result<MarketOperation>>,
 {
     type Item = Result<Book>;
 
@@ -2136,7 +2582,12 @@ where
     }
 }
 
-impl<I> FusedIterator for BookIterator<I> where I: FusedIterator<Item = MarketOperation> {}
+impl<I> FusedIterator for BookIterator<I>
+where
+    I: FusedIterator,
+    I::Item: Into<Result<MarketOperation>>,
+{
+}
 
 fn effective_unix(operation: &MarketOperation) -> i64 {
     operation

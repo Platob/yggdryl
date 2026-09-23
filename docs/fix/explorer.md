@@ -18,13 +18,13 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,271 |
+| Scalar fields | 6,241 | 6,270 |
 | Groups | 580 | 582 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 736 |
 
-The live additions are the crate's 30 scalar fields - `parentuuids`, `srcuuids`, `figicode`, `execunix`, `recdunix` and the persisted merge-reference clock `refrecdunix` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 128 columns over 123 tags.
+The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `execunix`, `recdunix` and the persisted merge-reference clock `refrecdunix` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 127 columns over 122 tags.
 
 === "Rust"
 
@@ -36,9 +36,9 @@ The live additions are the crate's 30 scalar fields - `parentuuids`, `srcuuids`,
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_781);
+    assert_eq!(registry.len(), 7_780);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_781);
+    assert_eq!(registry.iter().count(), 7_780);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
@@ -67,8 +67,8 @@ The live additions are the crate's 30 scalar fields - `parentuuids`, `srcuuids`,
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_781
-    assert sum(1 for _ in registry) == 6_271
+    assert len(registry) == 7_780
+    assert sum(1 for _ in registry) == 6_270
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
@@ -96,7 +96,7 @@ The live additions are the crate's 30 scalar fields - `parentuuids`, `srcuuids`,
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7781)
+    assert.equal(registry.size, 7780)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')
@@ -134,7 +134,7 @@ A field's detail panel names the code set it reads by and opens that one set's m
 
 ## The capture row
 
-The [Capture](capture.md#find-a-column) page searches the 128 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
+The [Capture](capture.md#find-a-column) page searches the 127 fixed columns projected by the native schema, in the [nine bands](capture.md#the-columns-are-the-folded-names) they are ordered in. The [decoded samples](decode.md) also expose each message's native `Field`, `Scalar` and entries.
 
 ## Where it came from
 

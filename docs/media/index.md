@@ -460,6 +460,8 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_st
 
 Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused.
 
+A read's `filter` skips every row group whose footer statistics rule it out before a page is decoded, and the rows of the groups that remain are filtered as always. A column's statistics count only when it is stored as the type the filter reads and the read restores no default into its nulls; a floating-point column's minimum and maximum never count, because writers leave NaN out of them, though its null count does. A file of up to a megabyte is read in one request, unless a `max_row_size` without a filter lets its footer be read first; a larger one always has its footer read first. After a footer-first read only the column chunks of the row groups and columns the read keeps are fetched, and chunks less than a megabyte apart come in one request, so a small pruned group or unprojected column between kept ones is read with them. Either way the bytes are copied into memory the reader owns, so rewriting the file while a reader or its batches live is safe. A read yields 65,536-row batches unless `batch_row_size` bounds them; without a filter, never more than `max_row_size` asks for, and under any `max_row_size` - of one file, a folder of them, or an Iceberg table - it decodes lazily, one file at a time on one thread. From a megabyte of column chunks up, it decodes row groups side by side - and, with fewer row groups than threads, each row group's columns - handing batches back in file order, each thread at most sixteen batches ahead of the consumer; split across threads, no batch spans two row groups. A write feeds each row group's column writers as its input arrives - at once on one thread, in feeds of 32 MiB of Arrow input on several, their columns side by side - and the file is byte for byte the one a single thread writes.
+
 === "Rust"
 
     ```rust
@@ -660,19 +662,54 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- 'io_dimensi
 
 #### Against PyArrow
 
-One containerized x86_64 Linux run of `python/benchmarks/media.py` with `--min-time 0.1 --repeat 3`: 65,536 rows, 4 columns, 8 batches.
+One containerized x86_64 Linux run of `python/benchmarks/media.py` with `--min-time 0.1 --repeat 3`: 65,536 rows, 4 columns, 8 batches; Intel Xeon @ 2.10 GHz, 4 cores, rustc 1.94.1, CPython 3.11.15, PyArrow 25.0.1, release wheel.
 
 ```text
-parquet write reader             6.932 ms    9.5M rows/s
-PyArrow parquet write baseline   6.495 ms   10.1M rows/s
-parquet read whole               2.620 ms   25.0M rows/s
-PyArrow parquet read baseline    2.195 ms   29.9M rows/s
+parquet write reader             6.662 ms    9.8M rows/s
+PyArrow parquet write baseline   8.768 ms    7.5M rows/s
+parquet read whole               2.361 ms   27.8M rows/s
+PyArrow parquet read baseline    2.500 ms   26.2M rows/s
 ```
 
-Both directions sit within ~15% of PyArrow because both sides drive the same `parquet` machinery; [Arrow IPC](#arrow-ipc) carries that encoding's rows from the same run.
+On a file this small the read and the write are both ahead of PyArrow; [Streaming against PyArrow](#streaming-against-pyarrow) measures the sizes where the threads pay. [Arrow IPC](#arrow-ipc) carries that encoding's rows from the same run.
 
 ```bash
 python/.venv/bin/python python/benchmarks/media.py --filter "parquet write" --filter "parquet read whole" --filter "parquet read subset" --filter "parquet read records" --filter "parquet row size" --filter "parquet column size" --filter "PyArrow parquet"
+```
+
+#### Streaming against PyArrow
+
+One run of `python/benchmarks/media/parquet.py --repeat 7` on the same host, release wheel. Every read case is one file PyArrow wrote, read both ways: `pyarrow.parquet.read_table` and `ParquetFile.iter_batches(batch_size=65536)` against `read_arrow_reader` drained whole and streamed batch by batch. The filtered cases read one 4M-row Zstandard file of 32 row groups through a filter, `read_table(filters=...)` against a `filter` string: on the sorted key both skip the row groups the footer rules out, on the other columns every row group is read and its rows tested. Every write case is one table written by `pyarrow.parquet.write_table` and by `overwrite_arrow_table`, Zstandard level 1 on both sides. The ratios are PyArrow's best time over this crate's, so above one is in this crate's favor.
+
+| read | `read_table` | `iter_batches` | whole | streamed | x whole | x streamed |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1M trade rows, 1 row group, Zstandard | 44.59 ms | 56.58 ms | 26.58 ms | 22.67 ms | 1.68 | 2.50 |
+| 1M trade rows, 8 row groups, Zstandard | 35.40 ms | 54.93 ms | 26.95 ms | 27.07 ms | 1.31 | 2.03 |
+| 1M trade rows, 1 row group, Snappy | 37.86 ms | 53.53 ms | 22.61 ms | 22.89 ms | 1.67 | 2.34 |
+| 1M trade rows, uncompressed | 32.76 ms | 42.13 ms | 25.12 ms | 24.54 ms | 1.30 | 1.72 |
+| 1M trade rows, 2 of 6 columns | 19.15 ms | 21.98 ms | 17.88 ms | 17.29 ms | 1.07 | 1.27 |
+| 4M trade rows, 4 row groups, Zstandard | 118.93 ms | 214.65 ms | 91.84 ms | 80.78 ms | 1.29 | 2.66 |
+| 1M string-heavy rows, Zstandard | 81.54 ms | 81.51 ms | 65.76 ms | 66.29 ms | 1.24 | 1.23 |
+| 64K trade rows, Zstandard | 4.10 ms | 4.18 ms | 2.42 ms | 3.28 ms | 1.69 | 1.28 |
+
+| filtered read, 4M rows in 32 row groups | `read_table(filters=...)` | `read_arrow_reader(filter=...)` | x |
+| --- | ---: | ---: | ---: |
+| `id < 100000`, 1 row group of 32 | 10.12 ms | 5.37 ms | 1.89 |
+| `id between 2000000 and 2100000`, 2 row groups of 32 | 14.08 ms | 8.23 ms | 1.71 |
+| `price > 990.0`, 1% of rows | 134.85 ms | 116.82 ms | 1.15 |
+| `symbol = 'AAPL'`, 12.5% of rows | 136.02 ms | 119.14 ms | 1.14 |
+
+| write | `write_table` | `overwrite_arrow_table` | x |
+| --- | ---: | ---: | ---: |
+| 1M trade rows | 189.81 ms | 100.73 ms | 1.88 |
+| 4M trade rows | 800.21 ms | 333.11 ms | 2.40 |
+| 1M string-heavy rows | 226.40 ms | 177.79 ms | 1.27 |
+| 64K trade rows | 20.83 ms | 15.57 ms | 1.34 |
+
+What the reader does with the time: batches of 65,536 rows rather than the Parquet crate's 1,024, so per-batch work - allocation, the Python crossing - is paid sixty-four times less; row groups, then columns, decoded on every thread; only the column chunks a read keeps fetched, and copied once. The writer encodes each row group's columns on every thread. The Python extension allocates through mimalloc, the allocator PyArrow ships, because the system allocator maps fresh pages for every decoded buffer: a 4M-row read took some 62,000 page faults before, and 800 after. The one close case is a two-column projection, where two columns are all the threads there are.
+
+```bash
+python/.venv/bin/python python/benchmarks/media/parquet.py --repeat 7
 ```
 
 #### Footer statistics
@@ -792,6 +829,32 @@ A container carries its writer schema; a reader schema resolves renames, promoti
 
 ### Avro performance
 
+#### Against polars and fastavro
+
+One run of `python/benchmarks/media/avro.py --repeat 5` on a containerized four-core x86_64 Linux host, release wheel: CPython 3.11.15, PyArrow 25.0.1, polars 1.44.2, fastavro 1.12.2. Every read case is one container fastavro wrote in blocks of about 64,000 bytes, the Java writer's default, read three ways: `polars.read_avro`, `fastavro.reader` drained row by row, and `read_arrow_reader(...).read_all()`. The key and price columns polars reads are checked against this crate's, value for value, before anything is timed. Every write case is one table written by `DataFrame.write_avro`, `fastavro.writer` and `overwrite_arrow_table` with the same block codec. The ratios are the other library's best time over this crate's, so above one is in this crate's favor. polars cannot read Zstandard blocks - it refuses them or misreads them - so that row has no polars column.
+
+| read | polars | fastavro | yggdryl | x polars | x fastavro |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1M trade rows, null | 177.31 ms | 2,706.5 ms | 40.14 ms | 4.42 | 67.42 |
+| 1M trade rows, deflate | 386.79 ms | 2,674.2 ms | 63.51 ms | 6.09 | 42.11 |
+| 1M trade rows, snappy | 295.19 ms | 2,751.4 ms | 55.66 ms | 5.30 | 49.43 |
+| 1M trade rows, zstandard | - | 3,276.3 ms | 51.84 ms | - | 63.20 |
+| 1M trade rows, 2 of 6 columns, snappy | 218.95 ms | 2,833.3 ms | 40.41 ms | 5.42 | 70.12 |
+| 64K trade rows, deflate | 24.45 ms | 204.8 ms | 5.73 ms | 4.26 | 35.72 |
+
+| write | polars | fastavro | yggdryl | x polars | x fastavro |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1M trade rows, null | 123.48 ms | 2,571.3 ms | 85.28 ms | 1.45 | 30.15 |
+| 1M trade rows, deflate | 3,812.26 ms | 4,007.9 ms | 346.61 ms | 11.00 | 11.56 |
+| 1M trade rows, snappy | 320.55 ms | 2,597.8 ms | 97.61 ms | 3.28 | 26.61 |
+| 64K trade rows, deflate | 115.58 ms | 225.3 ms | 28.54 ms | 4.05 | 7.89 |
+
+What the reader does with the time: a container's blocks are independent once their headers are walked - a length read and jumped per block - so runs of whole blocks decompress and decode on every thread, batches returned in file order; an uncompressed block is decoded where the read's own copy holds it; a varint whose ten bytes are in the buffer is read without a bounds check per byte; and a string column validates its UTF-8 once per batch rather than once per value. A read under a row limit stays on one thread, and a table hands each file its share of `read.parallelism` and `write.parallelism`. The writer cuts rows into blocks of about a megabyte - never more rows than a reader with default limits accepts - resolves each column's Arrow values once per block rather than per cell, and encodes and compresses the blocks on every thread.
+
+```bash
+python/.venv/bin/python python/benchmarks/media/avro.py --repeat 5
+```
+
 #### Record surface
 
 Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, its append and merge base prepared outside the timer.
@@ -879,6 +942,8 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
 
+`TextLine` exposes the [event identity](../graph.md#contract) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+
 === "Rust"
 
     ```rust
@@ -905,8 +970,8 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    // The nineteen event columns, then the body, then the header's captures.
-    assert_eq!(text_batch.schema().fields().len(), 22);
+    // The eighteen event columns, then the body, then the header's captures.
+    assert_eq!(text_batch.schema().fields().len(), 21);
     // The record's place in its chain is its row number, under `seqnum`.
     assert_eq!(
         text_batch
@@ -920,7 +985,7 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
     // The body is the record past the header the reader took off it.
     assert_eq!(
         text_batch
-            .column(19)
+            .column(18)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()
@@ -1252,6 +1317,8 @@ npm run --prefix node bench:text
 
 A table lives in one folder: `metadata/` and `data/`, no catalog required.
 
+A scan decodes its files side by side once two of at least 64 KiB qualify (`read.parallel.min-files`, `read.parallel.min-file-size-bytes`), and the files in flight share `read.parallelism` with the columns inside them; a commit shares `write.parallelism` the same way between its partitions and their columns. A partitioned write groups each batch by vectorized keys and computes a partition tuple once per distinct key, not once per row.
+
 === "Rust"
 
     ```rust
@@ -1407,6 +1474,25 @@ The manifest rows share that host and toolchain.
 
 ```bash
 cargo bench --features "parquet iceberg" -p yggdryl --bench media -- '^manifest/'
+```
+
+#### Against PyIceberg
+
+One run of `python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5` beside PyIceberg 0.11.1 with its SQLite catalog, on one local warehouse: Intel Xeon @ 2.10 GHz, 4 cores, rustc 1.94.1, CPython 3.11.15, PyArrow 25.0.1, release wheel. Each append writes 1,048,576 six-column rows into a fresh table; both readers then read the table PyIceberg wrote, so they decode the same files, and what both read is compared before anything is timed. The ratio is PyIceberg's median over this crate's, so above one is in this crate's favor.
+
+| operation | unpartitioned | PyIceberg | ratio | 8 partitions | PyIceberg | ratio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| append | 126.44 ms | 228.71 ms | 1.81 | 249.98 ms | 275.58 ms | 1.10 |
+| open | 0.96 ms | 0.72 ms | 0.75 | 1.07 ms | 0.68 ms | 0.64 |
+| scan everything | 27.37 ms | 51.83 ms | 1.89 | 31.55 ms | 45.08 ms | 1.43 |
+| scan `symbol = 'AAPL'` | 37.08 ms | 63.14 ms | 1.70 | 8.38 ms | 21.25 ms | 2.54 |
+| scan `price > 900` | 34.30 ms | 61.63 ms | 1.80 | 41.58 ms | 47.66 ms | 1.15 |
+| scan `id, price` | 22.71 ms | 25.58 ms | 1.13 | 19.37 ms | 25.32 ms | 1.31 |
+
+The appends pay one thing PyIceberg's do not: every file published on local storage is flushed to the device before the metadata that names it, so a crash cannot leave the table pointing at a file the disk never received. Opening is the one row behind. PyIceberg is handed the metadata location, while this crate finds it - a table PyIceberg's catalog wrote has no version hint, so the metadata folder is listed - and parses the document twice, once as a value and once through the official crate's validating reader.
+
+```bash
+python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
 ```
 
 #### Iceberg over S3

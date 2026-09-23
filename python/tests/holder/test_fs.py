@@ -35,7 +35,6 @@ EVENT_COLUMNS = [
     "crosshashcode",
     "prevuuid",
     "seqnum",
-    "parentuuids",
     "srcuuids",
     "identifiers",
     "state",

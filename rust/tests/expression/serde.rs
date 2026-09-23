@@ -1,11 +1,11 @@
 //! `rust/src/expression/serde.rs`: the edge cases this module is built to
 //! get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
@@ -16,7 +16,7 @@ mod grammar {
     // ---------------------------------------------------------------------------
 
     /// Every spelling the grammar accepts, one of each shape.
-    const CORPUS: [&str; 36] = [
+    const CORPUS: [&str; 33] = [
         "ccy = 'EUR' and price > 100",
         "a or b and c",
         "(a or b) and c",
@@ -33,9 +33,6 @@ mod grammar {
         "name ilike 'A%'",
         "name not like 'a%'",
         "path glob '**/*.parquet'",
-        "&holder.size > 0",
-        "&holder.partition['year'] = '2024'",
-        "&holder.name like 'part-%'",
         "lower(name) = 'x'",
         "coalesce(a, b, 0) > 1",
         "cast(x as int32) = 1",

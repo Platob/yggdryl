@@ -17,9 +17,9 @@
 use napi::bindgen_prelude::{ClassInstance, Either, Either3, Either4, Either5, Error, Result};
 use napi_derive::napi;
 use yggdryl::expression::{
-    Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector,
-    Comparison as CoreComparison, FieldSegment as CoreSegment, Function as CoreFunction, IntoPlan,
-    Operator, Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
+    Bound as CoreBound, BoundSelector as CoreBoundSelector, Comparison as CoreComparison,
+    FieldSegment as CoreSegment, Function as CoreFunction, IntoPlan, Operator,
+    Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
     Records as CoreRecords, Source as CoreSource, Target as CoreTarget, Term as CoreTerm,
     Verb as CoreVerb, Write as CoreWrite,
 };
@@ -187,22 +187,6 @@ fn comparison_from_text(value: &str) -> Result<CoreComparison> {
         })
 }
 
-/// Read one holder attribute, `partition` taking the column it reads.
-fn attribute_from_name(name: &str, key: Option<&str>) -> Result<Attribute> {
-    match key {
-        Some(key) if name.eq_ignore_ascii_case("partition") => Ok(Attribute::Partition(key.into())),
-        Some(_) => Err(Error::from_reason(
-            "expected a key only for the partition attribute",
-        )),
-        None => Attribute::from_name(name).ok_or_else(|| {
-            Error::from_reason(format!(
-                "expected one of the holder attributes {}, got {name:?}",
-                Attribute::vocabulary()
-            ))
-        }),
-    }
-}
-
 /// Read a native Record of late-bound values once before binding.
 fn supplied_parameters(parameters: Option<&JsScalar>) -> Result<Vec<(String, Scalar)>> {
     let Some(parameters) = parameters else {
@@ -342,15 +326,6 @@ impl JsTerm {
             .map_err(napi_error)
     }
 
-    /// Name one holder attribute, such as `size`, or `partition` with a column.
-    #[napi(factory)]
-    pub fn attribute(name: String, key: Option<String>) -> Result<Self> {
-        Ok(Self::from_core(CoreTerm::attribute(attribute_from_name(
-            &name,
-            key.as_deref(),
-        )?)))
-    }
-
     /// Name one late-bound value.
     #[napi(factory)]
     pub fn parameter(name: String) -> Self {
@@ -409,16 +384,6 @@ impl JsTerm {
         self.inner.columns()
     }
 
-    /// Every holder attribute this term reads, in first-seen order.
-    #[napi(getter)]
-    pub fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Every parameter this term names, in first-seen order.
     #[napi(getter)]
     pub fn parameters(&self) -> Vec<String> {
@@ -469,12 +434,6 @@ impl JsTerm {
     #[napi(getter)]
     pub fn is_always_false(&self) -> bool {
         self.inner.is_always_false()
-    }
-
-    /// Whether this term reads any holder attribute.
-    #[napi(getter)]
-    pub fn has_attributes(&self) -> bool {
-        self.inner.has_attributes()
     }
 
     /// Refuse a term past the depth or node limit, before a walk.
@@ -1036,26 +995,10 @@ impl JsFilter {
         self.inner.is_always_false()
     }
 
-    /// Whether this filter reads any holder attribute.
-    #[napi(getter)]
-    pub fn has_attributes(&self) -> bool {
-        self.inner.has_attributes()
-    }
-
     /// Every top-level column this filter reads, in first-seen order.
     #[napi(getter)]
     pub fn columns(&self) -> Vec<String> {
         self.inner.columns()
-    }
-
-    /// Every holder attribute this filter reads, in first-seen order.
-    #[napi(getter)]
-    pub fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
     }
 
     /// Every parameter this filter names, in first-seen order.
@@ -1358,16 +1301,6 @@ impl JsSelector {
     #[napi(getter)]
     pub fn columns(&self) -> Vec<String> {
         self.inner.columns()
-    }
-
-    /// Every holder attribute this selector reads, in first-seen order.
-    #[napi(getter)]
-    pub fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
     }
 
     /// Every parameter this selector names, in first-seen order.
@@ -2002,16 +1935,6 @@ impl JsPlan {
         self.inner.read_columns()
     }
 
-    /// Every holder attribute this plan reads, in first-seen order.
-    #[napi(getter)]
-    pub fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Every parameter this plan names, in first-seen order.
     #[napi(getter)]
     pub fn parameters(&self) -> Vec<String> {
@@ -2351,16 +2274,6 @@ impl JsExpression {
         self.inner.columns()
     }
 
-    /// Every holder attribute this expression reads, in first-seen order.
-    #[napi(getter)]
-    pub fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Every parameter this expression names, in first-seen order.
     #[napi(getter)]
     pub fn parameters(&self) -> Vec<String> {
@@ -2560,8 +2473,6 @@ pub struct ExpressionVocabularies {
     pub comparisons: Vec<String>,
     /// Every function the closed scalar set knows, e.g. `year`, `truncate`.
     pub functions: Vec<String>,
-    /// Every holder attribute `&holder.<name>` can name, e.g. `size`.
-    pub holder_attributes: Vec<String>,
     /// Every write verb a plan spells canonically, e.g. `upsert into`.
     pub verbs: Vec<String>,
 }
@@ -2577,10 +2488,6 @@ pub fn expression_vocabularies() -> ExpressionVocabularies {
         functions: CoreFunction::ALL
             .iter()
             .map(|function| function.as_str().to_owned())
-            .collect(),
-        holder_attributes: Attribute::ALL
-            .iter()
-            .map(|attribute| attribute.as_str().to_owned())
             .collect(),
         verbs: [
             CoreVerb::Insert,

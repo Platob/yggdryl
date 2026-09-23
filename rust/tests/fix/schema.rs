@@ -48,7 +48,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     let tags = yggdryl::fix_schema_tags();
     // MsgCat, three optional event clocks and six normalized identifiers join
     // the existing standard CFI column.
-    assert_eq!(tags.len(), 123);
+    assert_eq!(tags.len(), 122);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -76,7 +76,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[16..26],
+        &tags[16..25],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -85,14 +85,13 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::CROSSHASHCODE_TAG_NAME.0,
             yggdryl::PREVUUID_TAG_NAME.0,
             yggdryl::SEQNUM_TAG_NAME.0,
-            yggdryl::PARENTUUIDS_TAG_NAME.0,
             yggdryl::SRCUUIDS_TAG_NAME.0,
             yggdryl::IDENTIFIERS_TAG_NAME.0,
         ],
         "which event"
     );
     assert_eq!(
-        &tags[26..34],
+        &tags[25..33],
         [
             8,
             35,
@@ -139,7 +138,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 128);
+    assert_eq!(schema.fields().len(), 127);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     // The frame closes the row: the trailer, then the bridge's own keys, then
     // the arrival record and the counter that counts it.
@@ -479,7 +478,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
     let order = reader
         .sole_line(b"8=FIX.4.4|35=D|11=ORDER-1|55=AAPL|54=1|44=12.5|38=100|15=USD|60=20240102-10:15:30.000|10=0|")
         .unwrap();
-    let order_px = order.get_px();
+    let order_px = order.get_price();
     let row = order.into_row(&schema).unwrap();
     assert_eq!(at(&row, &schema, 35).as_str(), Some("D"));
     assert_eq!(at(&row, &schema, 11).as_str(), Some("ORDER-1"));

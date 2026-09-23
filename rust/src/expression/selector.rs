@@ -33,7 +33,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::Safety;
 use super::arrow::ColumnCast;
-use super::attribute::Attribute;
 use super::bind::Bound;
 use super::eval::convert;
 use super::path::FieldPath;
@@ -499,20 +498,6 @@ impl Selector {
             }
         }
         names
-    }
-
-    /// Every handle attribute this selector reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        let mut found: Vec<Attribute> = Vec::new();
-        for projection in self.projections.iter() {
-            for attribute in projection.term.attributes() {
-                if !found.contains(&attribute) {
-                    found.push(attribute);
-                }
-            }
-        }
-        found
     }
 
     /// Every parameter this selector names, in first-seen order.

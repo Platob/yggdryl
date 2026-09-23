@@ -623,8 +623,8 @@ declare module './index' {
     /**
      * The one walk over a whole stream of messages, lazily: sorted by
      * instant, each stated as the one after the live message it follows -
-     * its `prevuuid`, `prevunix`, `seqnum`, the predecessor among its
-     * `parentuuids` and the chain's `creaunix` - and settled again.
+     * its `prevuuid`, `prevunix`, `seqnum` and the chain's `creaunix` - and
+     * settled again.
      */
     lifecycle(messages: Iterable<FixMsg>): FixMessages
     /**
@@ -632,6 +632,12 @@ declare module './index' {
      * the raw bytes of each message's arrival record.
      */
     arrowReader(schema: Field, messages: Iterable<FixMsg>): BatchReader
+    /**
+     * Stream sorted messages through native market operations and books into
+     * nested Arrow batches. A positive snapshot width is epoch aligned;
+     * `global` consolidates symbols into one `GLOBAL` book.
+     */
+    bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number, global?: boolean): BatchReader
     /**
      * A stream of messages as the rows one message field holds them.
      *

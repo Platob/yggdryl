@@ -264,11 +264,22 @@ mod internal {
             upper: Vec<u8>,
             value: Scalar,
         ) -> Option<Vec<usize>> {
+            residual_with_nans(dtype, lower, upper, value, Some(0))
+        }
+
+        fn residual_with_nans(
+            dtype: DataType,
+            lower: Vec<u8>,
+            upper: Vec<u8>,
+            value: Scalar,
+            nans: Option<i64>,
+        ) -> Option<Vec<usize>> {
             let schema = schema(dtype);
             let file = DataFile {
                 record_count: 1,
                 lower_bounds: vec![(1, lower)],
                 upper_bounds: vec![(1, upper)],
+                nan_value_counts: nans.map(|count| vec![(1, count)]).unwrap_or_default(),
                 ..DataFile::default()
             };
             let filter = Filter::new(Term::column("value").eq(Term::literal(value)));
@@ -293,12 +304,38 @@ mod internal {
                 residual(
                     DataType::Float64,
                     float.clone(),
-                    float,
+                    float.clone(),
                     Scalar::from(1.5_f64)
                 ),
                 Some(Vec::new()),
                 "a Float bound evolved to Double proves the matching value"
             );
+            // Iceberg leaves NaN out of float bounds, so without a NaN count
+            // of zero they neither prove nor rule out a row.
+            for nans in [None, Some(1)] {
+                assert_eq!(
+                    residual_with_nans(
+                        DataType::Float64,
+                        float.clone(),
+                        float.clone(),
+                        Scalar::from(1.5_f64),
+                        nans,
+                    ),
+                    Some(vec![0]),
+                    "NaN count {nans:?}"
+                );
+                assert_eq!(
+                    residual_with_nans(
+                        DataType::Float64,
+                        float.clone(),
+                        float.clone(),
+                        Scalar::from(9.5_f64),
+                        nans,
+                    ),
+                    Some(vec![0]),
+                    "NaN count {nans:?}"
+                );
+            }
         }
 
         #[test]

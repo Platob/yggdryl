@@ -39,14 +39,12 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     registry.insert(group.clone()).unwrap();
     assert_eq!(registry.get_field_by_counter(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
-    // Every wire field is a leaf but the two lists of scalars the crate owns:
-    // `parentuuids` and `srcuuids` are one column each under one name,
-    // because a group's occurrence is a Struct of members a wire states one
-    // tag at a time and those are not.
+    // Every wire field is a leaf but the list of scalars the crate owns:
+    // `srcuuids` is one column under one name, because a group's occurrence
+    // is a Struct of members a wire states one tag at a time and it is not.
     assert!(
-        super::definitions(&registry, FixCategory::Fields).all(|field| {
-            !field.dtype().is_nested() || matches!(field.name(), "parentuuids" | "srcuuids")
-        })
+        super::definitions(&registry, FixCategory::Fields)
+            .all(|field| !field.dtype().is_nested() || field.name() == "srcuuids")
     );
 
     let before = registry.clone();

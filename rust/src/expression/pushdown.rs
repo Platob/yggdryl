@@ -12,7 +12,7 @@
 //!
 //! *Which part of this predicate can a directory layout answer?*
 //! [`Bound::partition_split`] answers it by splitting the conjunction into the
-//! part that reads only partition columns and holder attributes, and the
+//! part that reads only partition columns, and the
 //! [`Residual`] that does not. The first part prunes the listing; the second
 //! runs over the rows that survive. Splitting a conjunction is sound because
 //! dropping conjuncts only ever widens what is kept.
@@ -26,7 +26,6 @@
 
 use smol_str::SmolStr;
 
-use super::attribute::Attribute;
 use super::bind::{Bound, Kind, Node};
 use super::eval::{compare as compare_values, order};
 use super::{Comparison, Filter, Function};
@@ -56,11 +55,16 @@ impl Certainty {
         }
     }
 
+    /// The certainty of `not` over a node this certain.
+    ///
+    /// Every row true makes every row false. No row true is not the mirror:
+    /// the rows it leaves are false *or unknown*, and `not unknown` is still
+    /// unknown - not true - so the negation holds for every row only where
+    /// no row was unknown, which a node's certainty does not say.
     const fn negated(self) -> Self {
         match self {
             Self::Always => Self::Never,
-            Self::Never => Self::Always,
-            Self::Unknown => Self::Unknown,
+            Self::Never | Self::Unknown => Self::Unknown,
         }
     }
 }
@@ -101,7 +105,6 @@ impl ColumnBounds {
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Bounds {
     columns: Vec<(SmolStr, ColumnBounds)>,
-    attributes: Vec<(Attribute, ColumnBounds)>,
     rows: Option<u64>,
 }
 
@@ -111,7 +114,6 @@ impl Bounds {
     pub const fn new(rows: Option<u64>) -> Self {
         Self {
             columns: Vec::new(),
-            attributes: Vec::new(),
             rows,
         }
     }
@@ -171,55 +173,6 @@ impl Bounds {
         bounds
     }
 
-    /// Record what a holder attribute is known to hold.
-    ///
-    /// A container's *identity* is a statistic too: a file at
-    /// `year=2024/part-0.parquet` says its `year` partition is `2024` for every
-    /// row it holds, and it says so without being opened. Recording it here is
-    /// what lets `&holder.partition['year'] = '2024'` prune through the same
-    /// rule a column minimum and maximum prune through.
-    #[must_use]
-    pub fn with_attribute(
-        mut self,
-        attribute: Attribute,
-        minimum: Option<Scalar>,
-        maximum: Option<Scalar>,
-        nulls: Option<u64>,
-    ) -> Self {
-        self.attributes.push((
-            attribute,
-            ColumnBounds {
-                minimum,
-                maximum,
-                nulls,
-            },
-        ));
-        self
-    }
-
-    /// The statistics an identifier states about itself.
-    ///
-    /// Every free attribute answers exactly, so each one is a minimum equal to
-    /// its maximum: a path does not bound its own name, it *is* its name.
-    #[must_use]
-    pub fn from_url(url: &crate::Url) -> Self {
-        let mut bounds = Self::new(None);
-        for attribute in Attribute::ALL {
-            if !matches!(attribute.cost(), super::attribute::Cost::Free) {
-                continue;
-            }
-            let value = attribute.read_url(url);
-            let nulls = Some(u64::from(value.is_null()));
-            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), nulls);
-        }
-        for (column, _) in url.hive_partitions() {
-            let attribute = Attribute::Partition(SmolStr::new(&column));
-            let value = attribute.read_url(url);
-            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), Some(0));
-        }
-        bounds
-    }
-
     /// Merge another set of statistics into this one, keeping both.
     ///
     /// A later entry never replaces an earlier one: the lookup takes the first
@@ -227,7 +180,6 @@ impl Bounds {
     #[must_use]
     pub fn with(mut self, other: Self) -> Self {
         self.columns.extend(other.columns);
-        self.attributes.extend(other.attributes);
         if self.rows.is_none() {
             self.rows = other.rows;
         }
@@ -238,15 +190,6 @@ impl Bounds {
     #[must_use]
     pub const fn row_count(&self) -> Option<u64> {
         self.rows
-    }
-
-    /// One attribute's statistics.
-    #[must_use]
-    pub fn attribute(&self, attribute: &Attribute) -> Option<&ColumnBounds> {
-        self.attributes
-            .iter()
-            .find(|(held, _)| held == attribute)
-            .map(|(_, bounds)| bounds)
     }
 
     /// One column's statistics, ASCII case-insensitively.
@@ -325,8 +268,7 @@ impl Bound {
     /// rest.
     ///
     /// A conjunct is answerable when every column it reads is declared a
-    /// partition field and it reads nothing else that needs a row. Holder
-    /// attributes are answerable too, because a listing knows them.
+    /// partition field and it reads nothing else that needs a row.
     #[must_use]
     pub fn partition_split(&self) -> Residual {
         let fields = self.schema().fields();
@@ -395,8 +337,6 @@ fn prune(node: &Node, schema: &Field, bounds: &Bounds) -> Certainty {
             }
             certain
         }
-        // `not unknown` is unknown, so the negation of an unproven answer stays
-        // unproven and nothing is skipped on the strength of it.
         Kind::Not(inner) => prune(inner, schema, bounds).negated(),
         Kind::Compare(left, comparison, right) => match (oriented(left, right), comparison) {
             (Some((column, literal, flipped)), _) => {
@@ -499,9 +439,6 @@ fn column_bounds<'bounds>(
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<&'bounds ColumnBounds> {
-    if let Kind::Attribute(attribute) = &node.kind {
-        return bounds.attribute(attribute);
-    }
     let index = node.as_column()?;
     let field = schema.get_field(index)?;
     bounds.column(field.name())
@@ -535,7 +472,26 @@ fn settle(
             return Certainty::Never;
         }
     }
-    compare_range(node, column, comparison, literal)
+    let answer = compare_range(node, column, comparison, literal);
+    // The extremes describe the non-null rows only. A null row is distinct
+    // from every value, so it satisfies `is distinct from` whatever they say,
+    // and it satisfies no other comparison, so "every row" also needs a count
+    // proving there are no nulls - or a column that cannot hold one.
+    let no_nulls = column.nulls == Some(0) || !node.field.is_nullable();
+    match (comparison, answer) {
+        (Comparison::IsDistinctFrom, Certainty::Never)
+        | (
+            Comparison::Eq
+            | Comparison::NotEq
+            | Comparison::IsNotDistinctFrom
+            | Comparison::Lt
+            | Comparison::LtEq
+            | Comparison::Gt
+            | Comparison::GtEq,
+            Certainty::Always,
+        ) if !no_nulls => Certainty::Unknown,
+        (_, answer) => answer,
+    }
 }
 
 /// Settle one comparison against a `[minimum, maximum]` range.

@@ -328,7 +328,7 @@ impl FieldSegment {
                 let element = element_field(field)?;
                 let bound = predicate.bind(&element)?;
                 require_predicate(bound.field(), predicate)?;
-                super::eval::keep_elements(&element, bound.node(), value, None)?
+                super::eval::keep_elements(&element, bound.node(), value)?
             }
         })
     }

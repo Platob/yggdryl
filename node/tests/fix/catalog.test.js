@@ -333,7 +333,7 @@ test('a JSON document is one unknown message through every door', () => {
   // alike, and the cursor fuses behind it.
   const body = Buffer.from('{"a":1}')
   const schema = fix.schema(registry)
-  for (const cursor of [codec.parseLine(body), codec.parseTextLine(new TextLine(17, body))]) {
+  for (const cursor of [codec.parseLine(body), codec.parseTextLine(new TextLine(17n, body))]) {
     assert.ok(cursor instanceof fix.FixMessages)
     assert.equal(cursor[Symbol.iterator](), cursor)
     const held = cursor.next().value

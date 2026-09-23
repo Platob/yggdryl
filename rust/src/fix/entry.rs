@@ -168,11 +168,11 @@ pub(super) fn wire_text_under(
             crate::DataType::Side | crate::DataType::State
         );
     if coded {
-        if let Some(code) = value
-            .as_str()
-            .and_then(|name| registry.codeset_of(field)?.code_by_name(name))
-        {
-            return Some(SmolStr::new(code.value()));
+        if let Some(code) = value.as_str().and_then(|name| {
+            let document = registry.codeset_of(field)?.document();
+            registry.memo().wire_value(document, name)
+        }) {
+            return Some(code);
         }
     }
     wire_text(value)

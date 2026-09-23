@@ -19,7 +19,7 @@ use yggdryl::{Scalar, TimeUnit};
 
 use super::xxhash::{
     JsDigest, JsXxh3, JsXxh32, JsXxh64, JsXxh128, algorithm_from_str, apply_arrow_batch_ipc,
-    content_bytes, seed_from_bigint,
+    content_bytes, seed_from_bigint, u64_from_bigint,
 };
 use crate::datatype::JsDataType;
 use crate::field::JsField;
@@ -247,6 +247,25 @@ impl JsTxHash {
     pub fn into_uuid(&self) -> Result<JsScalar> {
         self.inner
             .into_uuid()
+            .map(|uuid| JsScalar::from_core(Scalar::Uuid(uuid)))
+            .map_err(napi_error)
+    }
+
+    /// Project this value to a sequence-ordered RFC 9562 `UUIDv7` scalar.
+    ///
+    /// The instant is floored to Unix milliseconds, `sequence` occupies the
+    /// twelve-bit ordering lane (saturating at `4095`), and the UUID payload
+    /// is XXH3 over the digest and the full unsigned 64-bit sequence, seeded
+    /// by the unsigned 64-bit `seed`. Throws where either `bigint` is negative
+    /// or wider than `u64`, or where the digest or instant cannot be projected.
+    #[napi]
+    #[allow(clippy::wrong_self_convention)] // Binding `into_*` methods do not consume wrappers.
+    pub fn into_sequenced_uuid(&self, sequence: BigInt, seed: BigInt) -> Result<JsScalar> {
+        self.inner
+            .into_sequenced_uuid(
+                u64_from_bigint(&sequence, "sequence")?,
+                u64_from_bigint(&seed, "seed")?,
+            )
             .map(|uuid| JsScalar::from_core(Scalar::Uuid(uuid)))
             .map_err(napi_error)
     }

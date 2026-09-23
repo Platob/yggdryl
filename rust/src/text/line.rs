@@ -40,16 +40,17 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
 /// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
 /// | `get_crosshashcode` | the cross code's XXH3-64, zero where none |
-/// | `get_curruuid` | [`Event::time_uuid`] over the instant and that code |
+/// | `get_curruuid` | [`Event::time_uuid`] over the millisecond, sequence, code and cross-hash seed |
 /// | `get_crossuuid` | [`Element::cross_uuid`] |
-/// | `get_parentuuids`, `get_srcuuids` | none: a line is read from a handle, and follows nothing until a walk states it |
+/// | `get_srcuuids` | none: a line is read from a handle |
 ///
-/// The identity is the instant beside that code, and the code is what tells
-/// two identical bodies apart: the source they were read under and the row
-/// they sat on are digested with the body, so two byte-identical lines of one
-/// handle that dates no row still answer two identities, and one line read
-/// from two objects answers two. A derived value is never digested, so a
-/// stated `crosshashcode`, cross element or source moves neither.
+/// The identity orders by millisecond and row sequence, then fingerprints the
+/// code under the cross-hash seed. The code also tells two identical bodies
+/// apart: the source they were read under and the row they sat on are digested
+/// with the body, so two byte-identical lines of one handle that dates no row
+/// still answer two identities, and one line read from two objects answers
+/// two. A stated `crosshashcode` moves the UUID seed; a stated cross element
+/// or source identity moves neither the content code nor current identity.
 ///
 /// A capture named for an [`Event`] fact that the line does not derive feeds
 /// that reading by its exact name, parsed at the fact's own datatype - an
@@ -228,7 +229,6 @@ struct Stated {
     currhashcode: Option<u64>,
     crosshashcode: Option<u64>,
     identifiers: Option<BTreeMap<String, String>>,
-    parentuuids: Option<Vec<Uuid>>,
     srcuuids: Option<Vec<Uuid>>,
     currunix: Option<i64>,
     state: Option<State>,
@@ -463,7 +463,8 @@ impl TextLine {
     pub fn set_index(&mut self, index: u64) {
         self.index = index;
         self.resolved.seqnum = OnceLock::new();
-        self.derive_content();
+        self.resolved.currhashcode = OnceLock::new();
+        self.derive_uuids();
     }
 
     /// The options this line is read under: the row header, the strips, the
@@ -539,6 +540,7 @@ impl TextLine {
     pub(crate) fn state_source(&mut self, source: Option<LineSource>) {
         self.source = source;
         self.resolved.crosshashcode = OnceLock::new();
+        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 
@@ -562,7 +564,7 @@ impl TextLine {
     pub fn set_handle_mtime(&mut self, mtime: Option<i64>) {
         self.handle_mtime = mtime;
         self.resolved.mtime = OnceLock::new();
-        self.resolved.reset_identity();
+        self.derive_uuids();
     }
 
     /// Return this line dated by its handle.
@@ -1155,14 +1157,10 @@ impl TextLine {
         self.resolved.reset_identity();
     }
 
-    /// Drops the generic identities, stated or resolved, so a changed input
-    /// projects both of them again on their next ask.
+    /// Drops generic identities so their next read derives from current inputs.
     fn derive_uuids(&mut self) {
         self.stated.curruuid = None;
         self.stated.crossuuid = None;
-        // The code digests what the line states, so a stated fact drops it
-        // too; a code the caller stated outright is its word and survives.
-        self.resolved.currhashcode = OnceLock::new();
         self.resolved.curruuid = OnceLock::new();
         self.resolved.crossuuid = OnceLock::new();
     }
@@ -1334,10 +1332,9 @@ impl Element for TextLine {
         if let Some(stated) = self.stated.curruuid {
             return stated;
         }
-        // The UUIDv7 the instant and the line's code derive; an instant a
-        // UUIDv7 cannot hold - before the epoch, past the microsecond count
-        // its 48-bit millisecond timestamp reaches - is the nil identity,
-        // never a truncated one.
+        // The UUIDv7 the millisecond, sequence, line code and cross hash
+        // derive; an instant its 48-bit timestamp cannot hold is the nil
+        // identity, never a truncated one.
         *self
             .resolved
             .curruuid
@@ -1371,6 +1368,7 @@ impl Element for TextLine {
         // only their resolved slots would leave the restored values stale.
         self.stated.crosshashcode = None;
         self.resolved.crosshashcode = OnceLock::new();
+        self.resolved.currhashcode = OnceLock::new();
         self.derive_uuids();
     }
 
@@ -1392,11 +1390,9 @@ impl Element for TextLine {
         *self.resolved.currhashcode.get_or_init(|| {
             let mut state = crate::xxhash::Xxh3::new();
             // The cross code is fed here, ahead of the facts that leave it
-            // out, in the order `digest_event` feeds it. A `TxHash` stores
-            // the whole digest and carries no seed any more, so the chain
-            // has nowhere else to reach the identity from: without this, two
-            // byte-identical lines read from two objects at one instant
-            // would be one event.
+            // out, in the order `digest_event` feeds it. The UUID also seeds
+            // its payload with the cross hash, but the content code remains a
+            // complete statement of the line on its own.
             let crosscode = self.get_crosscode();
             if !crosscode.is_empty() {
                 crate::graph::element::feed(&mut state, "crosscode", crosscode.as_bytes());
@@ -1449,20 +1445,12 @@ impl Element for TextLine {
         self.derive_content();
     }
 
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.stated.parentuuids.as_deref().unwrap_or_default()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.stated.parentuuids = Some(parents);
-        self.derive_content();
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.stated.srcuuids.as_deref().unwrap_or_default()
     }
 
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+    fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
+        crate::graph::element::canonicalize_uuids(&mut sources);
         self.stated.srcuuids = Some(sources);
     }
 
@@ -1538,8 +1526,8 @@ impl Event for TextLine {
 
     fn set_seqnum(&mut self, seqnum: u64) {
         self.stated.seqnum = Some(seqnum);
-        self.derive_uuids();
         self.resolved.currhashcode = OnceLock::new();
+        self.derive_uuids();
     }
 
     /// [`TextLine::creaunix`]; none over a refused capture.

@@ -167,27 +167,42 @@ const currunix: bigint = message.currunix
 const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
-const parentuuids: string[] = message.parentuuids
 const srcuuids: string[] = message.srcuuids
 const messageIdentifiers: Record<string, string> = message.identifiers
-const px: string = message.px
-const qty: string = message.qty
+const price: string = message.price
+const quantity: string = message.quantity
 const side: string = message.side
 const currency: string = message.currency
 const figicode: string | null = message.figicode
-const messageCategory: string | null = message.msgcat
+const messageCategory: number | null = message.msgcat
+const marketOperationId: number | null = message.marketoperationid
 // And the same facts on the event, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creaunix
+const eventExecuted: bigint | null = event.execunix
+const eventRecorded: bigint | null = event.recdunix
+const eventReferenceRecorded: bigint | null = event.refrecdunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprtime
+const eventMarketOperationId: number | null = event.marketoperationid
+const eventPrice: string = event.price
+const eventQuantity: string = event.quantity
+const eventLastPx: string | null = event.lastpx
+const eventLastQty: string | null = event.lastqty
+const eventAvgPx: string | null = event.avgpx
+const eventCumQty: string | null = event.cumqty
+const eventLeavesQty: string | null = event.leavesqty
+const eventPrevPx: string | null = event.prevpx
+const eventPrevQty: string | null = event.prevqty
+const eventTif: string | null = event.tif
+const eventTradable: boolean | null = event.tradable
+const eventSymbolTicker: string | null = event.symbolticker
 const eventIsin: string | null = event.isincode
 const eventFigi: string | null = event.figicode
 const eventBidPx: string | null = event.bidpx
 const eventAskCurrency: string | null = event.askcurrency
 const eventIdentifiers: Record<string, string> = event.identifiers
-const eventParents: string[] = event.parentuuids
 const eventSources: string[] = event.srcuuids
 const beginstring: string = header.beginstring
 const msgtype: string = header.msgtype
@@ -217,26 +232,42 @@ void currunix
 void state
 void seqnum
 void prevuuid
-void parentuuids
 void srcuuids
 void eventSources
 void messageIdentifiers
-void px
-void qty
+void price
+void quantity
 void side
 void currency
 void figicode
+void messageCategory
+void marketOperationId
 void eventCurrunix
 void eventCreated
+void eventExecuted
+void eventRecorded
+void eventReferenceRecorded
 void eventPrevUnix
 void eventSnap
 void eventExpiry
+void eventMarketOperationId
+void eventPrice
+void eventQuantity
+void eventLastPx
+void eventLastQty
+void eventAvgPx
+void eventCumQty
+void eventLeavesQty
+void eventPrevPx
+void eventPrevQty
+void eventTif
+void eventTradable
+void eventSymbolTicker
 void eventIsin
 void eventFigi
 void eventBidPx
 void eventAskCurrency
 void eventIdentifiers
-void eventParents
 void beginstring
 void msgtype
 void sendercompid
@@ -430,6 +461,7 @@ const parsedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromI
 const walkedBatches: BatchReader = reader.lifecycleArrowReader(parsedBatches)
 const readBackStream: FixMessages = reader.messages(walkedBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
+const books: BatchReader = reader.bookArrowReader([fromText], 1000, false)
 const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
 
 void pinnedSeparator
@@ -440,6 +472,7 @@ void pinnedBatchByteSize
 void fromLines
 void fromFixml
 void written
+void books
 
 // @ts-expect-error a stage is a call, never a flag
 reader.parseLine(Buffer.from('35=D|'), true)

@@ -346,8 +346,8 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
 | `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop: stream combinators, schema projections, `rows.rs`, the value functions and `ArrowScalar`; casting belongs to `cast.rs` and is reached through `Serie`, `SerieReader` and `ArrowCastPlan` |
-| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Attribute`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
-| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names, its parents' UUIDs (the whole lineage, oldest first) and its sources' UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants plus the persisted recording clock of its merge reference, a state and a place in its chain, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the nineteen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
+| `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
+| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names and its canonically sorted source UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants plus the persisted recording clock of its merge reference, a state and a place in its chain, the predecessor named by `prevuuid` alone, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the eighteen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
 | `variant.rs` | the Apache Parquet Variant binary encoding, version 1: `Variant` - one metadata dictionary and one value payload - `Scalar::Variant`, the encode and decode doors, the canonical `arrow.parquet.variant` projection, and what every medium writes for a `variant` column |
@@ -552,7 +552,8 @@ Equivalences a change keeps lossless, in both directions:
 | bytes | `IOBase`: `pread`/`pwrite`, `read_all_bytes`, `read_range_bytes`, `append_bytes`, `pstream_bytes`, `read_digest` | positional bytes, digests, bounded streams |
 | position | `IOCursor`, `Cursor<H>` | the only place a cursor is retained |
 | records | `IOMedia`: `read_arrow_field`, `read_arrow_reader`, `read_arrow`, `write_arrow_*`, `*_records`, `row_size`, `column_size`, `record_options` | schema, rows, batches, statistics |
-| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowScalar`, `cast_reader`, `combined` | the `Scalar`/Arrow boundary |
+| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowScalar`, `combined` | the `Scalar`/Arrow boundary |
+| columns | `Serie`: `from_arrow_array`/`from_arrow_batch`/`from_arrow_reader`, `cast`, `into_arrow_*`; `SerieReader` for a stream | every Arrow cast and every collection read or written in place |
 
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
@@ -1015,7 +1016,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 - Encoding comes from `MediaType` through `RecordOptions`, with no format
   argument; generic `write_*` takes an `IOMode` and redirects to specialized core
   paths.
-- Plain-text rows are the nineteen event columns `EventColumn::ALL` names -
+- Plain-text rows are the eighteen event columns `EventColumn::ALL` names -
   the line as the event it is, `currunix` first and `state` last - then
   required `body: utf8`, then one column per row-header capture. The event
   states every fact a column used to repeat and no column repeats one: the
@@ -1033,8 +1034,8 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
   other than UTF-8 or US-ASCII, and otherwise once where the line is made,
   each byte that is not UTF-8 read as the Windows-1252 character it is,
   `TextLine::decoded_byte_size` counting them. `currhashcode` is the shared
-  event digest - the captures a header lifted, the parents, the state, the
-  place and the predecessor - and then the body, with the capture that dates
+  event digest - the captures a header lifted, the state, the place and the
+  predecessor - and then the body, with the capture that dates
   the line left out, because `currunix` is coupled with the code rather than
   fed into it. The row header is the only thing that lifts a column out of a
   line. Flat `TextOptions` owns named `rowheader`
@@ -1489,7 +1490,7 @@ and not a silent update.
 | ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
 | PyIceberg exchange | v1, v2, and v3 tables against PyIceberg | `python scripts/check_iceberg_interop.py` |
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
-| Python binding wheel | `stage_cli.py`, the maturin wheel, and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3 |
+| Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
 | Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
 | Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |

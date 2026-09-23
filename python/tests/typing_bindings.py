@@ -297,6 +297,7 @@ coupled_digest_half: xxhash.Digest = coupled_value.digest
 coupled_bytes: bytes = bytes(coupled_value)
 coupled_instant: Scalar = coupled_value.into_datetime()
 coupled_uuid: Scalar = coupled_value.into_uuid()
+coupled_sequenced_uuid: Scalar = coupled_value.into_sequenced_uuid(7, 11)
 coupled_restated: txhash.TxHash = coupled_value.with_unit("s")
 coupled_parts: txhash.TxHash = txhash.TxHash.from_parts(datetime.datetime.now(datetime.timezone.utc), coupled_digest_half)
 coupled_hasher: txhash.TxHasher = txhash.TxHasher("xxh64", unit="s", seed=7)
@@ -1171,13 +1172,10 @@ term_parsed: Term = Term.parse("ccy = 'EUR'")
 term_restored: Term = Term.from_json(term.into_json())
 term_named: Term = Term.column("ccy")
 term_constant: Term = Term.literal("EUR")
-term_held: Term = Term.attribute("partition", "year")
-term_stat: Term = Term.attribute("size")
 term_late: Term = Term.parameter("floor")
 term_true: Term = Term.always_true()
 term_false: Term = Term.always_false()
 term_columns: list[str] = term.columns()
-term_attributes: list[str] = term_held.attributes()
 term_parameters: list[str] = term_late.parameters()
 term_conjuncts: list[Term] = term.conjuncts()
 term_depth: int = term.depth()
@@ -1294,16 +1292,12 @@ expression_records: Records = expression.apply_records([{"ccy": "EUR", "price": 
 expression_records_reader: pa.RecordBatchReader = expression_records.into_arrow_reader()
 expression_explained: str = expression.explain()
 
-expression_matched: list[IOBase] = list(
-    IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
-)
-
 assert str(term)
 assert term_parsed and term_restored
-assert term_named and term_constant and term_held
-assert term_stat and term_late and term_true and term_false
+assert term_named and term_constant
+assert term_late and term_true and term_false
 assert term_columns == ["ccy", "price"]
-assert term_attributes and not term_parameters or term_parameters
+assert term_parameters == ["floor"]
 assert term_conjuncts and term_depth >= 1
 assert term_document and term_simplified and term_explained and term_sliced
 assert term_both and term_either and term_negated and term_field
@@ -1350,7 +1344,6 @@ assert expression_columns and expression_field
 assert expression_batch is not None and expression_reader is not None
 assert expression_records is not None and expression_records_reader is not None
 assert expression_explained
-assert expression_matched == [] or expression_matched
 
 fix_field: Field = Field("OrderQty", "decimal128(20, 8)")
 fix_field.fix.tag = 38
@@ -1469,7 +1462,7 @@ fix_message_event: fix.MarketEventData = fix_message.event()
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
-fix_message_msgcat: str | None = fix_message.msgcat
+fix_message_msgcat: int | None = fix_message.msgcat
 fix_message_metadata: dict[str, str] = fix_message.metadata
 fix_message_curruuid: Scalar = fix_message.curruuid
 fix_message_crossuuid: Scalar = fix_message.crossuuid
@@ -1480,11 +1473,11 @@ fix_message_currunix: int = fix_message.currunix
 fix_message_state: Scalar = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
-fix_message_parentuuids: list[Scalar] = fix_message.parentuuids
 fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
 fix_message_identifiers: dict[str, str] = fix_message.identifiers
-fix_message_px: Scalar = fix_message.px
-fix_message_qty: Scalar = fix_message.qty
+fix_message_marketoperationid: int | None = fix_message.marketoperationid
+fix_message_price: Scalar = fix_message.price
+fix_message_quantity: Scalar = fix_message.quantity
 fix_message_side: Scalar = fix_message.side
 fix_message_currency: Scalar = fix_message.currency
 fix_message_entries: list[FixEntryTuple] = fix_message.entries()
@@ -1518,18 +1511,31 @@ fix_event_crosscode: str = fix_message_event.crosscode
 fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
 fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
-fix_event_parentuuids: list[Scalar] = fix_message_event.parentuuids
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
 fix_event_seqnum: int = fix_message_event.seqnum
 fix_event_creaunix: int | None = fix_message_event.creaunix
+fix_event_execunix: int | None = fix_message_event.execunix
+fix_event_recdunix: int | None = fix_message_event.recdunix
+fix_event_refrecdunix: int | None = fix_message_event.refrecdunix
 fix_event_exprtime: int | None = fix_message_event.exprtime
 fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
 fix_event_snapunix: int | None = fix_message_event.snapunix
-fix_event_px: Scalar = fix_message_event.px
-fix_event_qty: Scalar = fix_message_event.qty
+fix_event_marketoperationid: int | None = fix_message_event.marketoperationid
+fix_event_price: Scalar = fix_message_event.price
+fix_event_quantity: Scalar = fix_message_event.quantity
+fix_event_lastpx: Scalar | None = fix_message_event.lastpx
+fix_event_lastqty: Scalar | None = fix_message_event.lastqty
+fix_event_avgpx: Scalar | None = fix_message_event.avgpx
+fix_event_cumqty: Scalar | None = fix_message_event.cumqty
+fix_event_leavesqty: Scalar | None = fix_message_event.leavesqty
+fix_event_prevpx: Scalar | None = fix_message_event.prevpx
+fix_event_prevqty: Scalar | None = fix_message_event.prevqty
+fix_event_tif: str | None = fix_message_event.tif
+fix_event_tradable: bool | None = fix_message_event.tradable
+fix_event_symbolticker: str | None = fix_message_event.symbolticker
 fix_event_currency: Scalar = fix_message_event.currency
 fix_event_unit: str = fix_message_event.unit
 fix_event_side: Scalar = fix_message_event.side
@@ -1590,10 +1596,14 @@ text_line_crosscode: str = text_line_text.crosscode
 text_line_hashcode: int = text_line_text.currhashcode
 text_line_crosshash: int = text_line_text.crosshashcode
 text_line_unix: int = text_line_text.currunix
+text_line_seqnum: int = text_line_text.seqnum
+text_line_mutable_index: TextLine = TextLine(0, "body")
+text_line_mutable_index.index = 1
 assert text_line_mtime is None and isinstance(text_line_bodytype, MimeType)
 assert isinstance(text_line_identity, Scalar) and isinstance(text_line_cross, Scalar)
 assert isinstance(text_line_crosscode, str) and text_line_hashcode >= 0
 assert text_line_crosshash >= 0 and text_line_unix == 0
+assert text_line_seqnum >= 0 and text_line_mutable_index.seqnum == 1
 text_line_body: str = text_line_text.body
 text_line_decoded: int = text_line_text.decoded_byte_size
 text_line_captures: tuple[str | None, ...] = text_line_text.captures
@@ -1621,6 +1631,9 @@ fix_parsed: pa.RecordBatchReader = fix_reader.parse_text_arrow_reader(fix_captur
 fix_walked_rows: pa.RecordBatchReader = fix_reader.lifecycle_arrow_reader(fix_parsed)
 fix_read_back: fix.FixMessages = fix_reader.messages(fix_walked_rows)
 fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back)
+fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
+    [fix_read_text], snapshot_millis=0, global_=False
+)
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 
 fix_counter: Field = Field("nopartyids", "int32")
@@ -1770,15 +1783,17 @@ assert isinstance(fix_message_event, fix.MarketEventData)
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
+assert fix_message_msgcat is None or isinstance(fix_message_msgcat, int)
+assert fix_message_marketoperationid is None or isinstance(fix_message_marketoperationid, int)
 assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, dict)
 assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
 assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
 assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
 assert isinstance(fix_message_state, Scalar) and isinstance(fix_message_side, Scalar)
-assert isinstance(fix_message_px, Scalar) and isinstance(fix_message_qty, Scalar)
+assert isinstance(fix_message_price, Scalar) and isinstance(fix_message_quantity, Scalar)
 assert isinstance(fix_message_currency, Scalar)
 assert fix_message_prevuuid is None or fix_message_prevuuid
-assert isinstance(fix_message_parentuuids, list) and isinstance(fix_message_crosscode, str)
+assert isinstance(fix_message_crosscode, str)
 assert isinstance(fix_message_srcuuids, list) and isinstance(fix_event_srcuuids, list)
 assert isinstance(fix_message_entries, list)
 assert isinstance(fix_header_beginstring, str) and isinstance(fix_header_msgtype, str)
@@ -1794,11 +1809,25 @@ assert fix_capture_msgsessionid is None or fix_capture_msgsessionid
 assert isinstance(fix_event_currunix, int) and isinstance(fix_event_crosscode, str)
 assert isinstance(fix_event_currhashcode, int) and isinstance(fix_event_crosshashcode, int)
 assert isinstance(fix_event_seqnum, int) and isinstance(fix_event_unit, str)
-assert fix_event_creaunix is None or fix_event_creaunix
-assert fix_event_exprtime is None or fix_event_exprtime
-assert fix_event_prevunix is None or fix_event_prevunix
-assert fix_event_snapunix is None or fix_event_snapunix
+assert fix_event_creaunix is None or isinstance(fix_event_creaunix, int)
+assert fix_event_execunix is None or isinstance(fix_event_execunix, int)
+assert fix_event_recdunix is None or isinstance(fix_event_recdunix, int)
+assert fix_event_refrecdunix is None or isinstance(fix_event_refrecdunix, int)
+assert fix_event_exprtime is None or isinstance(fix_event_exprtime, int)
+assert fix_event_prevunix is None or isinstance(fix_event_prevunix, int)
+assert fix_event_snapunix is None or isinstance(fix_event_snapunix, int)
+assert fix_event_marketoperationid is None or isinstance(fix_event_marketoperationid, int)
 assert fix_event_prevuuid is None or fix_event_prevuuid
+assert fix_event_lastpx is None or isinstance(fix_event_lastpx, Scalar)
+assert fix_event_lastqty is None or isinstance(fix_event_lastqty, Scalar)
+assert fix_event_avgpx is None or isinstance(fix_event_avgpx, Scalar)
+assert fix_event_cumqty is None or isinstance(fix_event_cumqty, Scalar)
+assert fix_event_leavesqty is None or isinstance(fix_event_leavesqty, Scalar)
+assert fix_event_prevpx is None or isinstance(fix_event_prevpx, Scalar)
+assert fix_event_prevqty is None or isinstance(fix_event_prevqty, Scalar)
+assert fix_event_tif is None or isinstance(fix_event_tif, str)
+assert fix_event_tradable is None or isinstance(fix_event_tradable, bool)
+assert fix_event_symbolticker is None or isinstance(fix_event_symbolticker, str)
 assert fix_event_isincode is None or fix_event_isincode
 assert fix_event_cusipcode is None or fix_event_cusipcode
 assert fix_event_sedolcode is None or fix_event_sedolcode
@@ -1813,12 +1842,13 @@ assert fix_event_askpx is None or fix_event_askpx
 assert fix_event_askqty is None or fix_event_askqty
 assert fix_event_askcurrency is None or fix_event_askcurrency
 assert fix_event_askunit is None or fix_event_askunit
-assert isinstance(fix_event_identifiers, dict) and isinstance(fix_event_parentuuids, list)
+assert isinstance(fix_event_identifiers, dict)
 assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, Scalar) and isinstance(fix_event_side, Scalar)
-assert isinstance(fix_event_px, Scalar) and isinstance(fix_event_qty, Scalar)
+assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)
 assert isinstance(fix_event_currency, Scalar)
-assert fix_walked is not None and fix_walked_rows is not None and fix_written >= 0
+assert fix_walked is not None and fix_walked_rows is not None and fix_book_rows is not None
+assert fix_written >= 0
 assert fix_reader_registry is not None and fix_reader_pinned is not None
 assert fix_read_text and fix_read_bytes and fix_read_frame
 assert fix_read_bridge is not None and fix_read_pairs is not None

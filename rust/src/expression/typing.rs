@@ -97,7 +97,6 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
                 field.with_name(SmolStr::new(expression.to_string()))
             })
         }
-        Term::Attribute(attribute) => Ok(attribute.field()),
         // A parameter has no type until it is supplied. `bind` substitutes
         // every one before typing, so a parameter reaching here means the
         // caller asked for a type an unbound expression does not have.

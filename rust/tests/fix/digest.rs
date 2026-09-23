@@ -273,7 +273,7 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Thirty-two definitions: the event and capture facts, the execution,
+    // Thirty-one definitions: the event and capture facts, the execution,
     // recording and merge-reference clocks, MsgCat, and six normalized identifiers whose standard
     // FIX representation is contextual. CFI already has its own standard tag,
     // so it adds no crate definition.
@@ -295,7 +295,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "msgsessionid",
             "curruuid",
             "crossuuid",
-            "parentuuids",
             "seqnum",
             "crosscode",
             "metadata",
@@ -333,7 +332,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("MsgSessionId"),
             Some("CurrUuid"),
             Some("CrossUuid"),
-            Some("ParentUuids"),
             Some("SeqNum"),
             Some("CrossCode"),
             Some("Metadata"),
@@ -376,16 +374,13 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
-    // The two lists of identities - what a message descends from, and what
-    // it was read from - are lists of the same UUID, each item stated.
-    for (name, item) in [("parentuuids", "parentuuid"), ("srcuuids", "srcuuid")] {
-        assert_eq!(
-            typed(name),
-            &DataType::list(DataType::uuid().required_field(item)),
-            "{name}"
-        );
-        assert!(field(name).is_nullable(), "{name}");
-    }
+    // The identities a message was read from are a list of UUIDs, each item
+    // stated.
+    assert_eq!(
+        typed("srcuuids"),
+        &DataType::list(DataType::uuid().required_field("srcuuid"))
+    );
+    assert!(field("srcuuids").is_nullable());
     for name in ["currunix", "creaunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(!field(name).is_nullable(), "{name}");

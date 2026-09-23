@@ -115,7 +115,7 @@ impl<'field> FixField<'field> {
         self.get(MSGTYPE)
     }
 
-    /// The four-byte business category declared by a message definition.
+    /// The symbolic business-category name declared by a message definition.
     pub fn msgcat(&self) -> Option<&'field str> {
         self.get(MSGCAT)
     }

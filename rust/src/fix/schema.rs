@@ -82,8 +82,8 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 ///
 /// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
 /// like the rest, each exact and stated once. What a message is *about* is
-/// what [`get_px`](crate::graph::MarketElement::get_px) and
-/// [`get_qty`](crate::graph::MarketElement::get_qty) read off them, and no
+/// what [`get_price`](crate::graph::MarketElement::get_price) and
+/// [`get_quantity`](crate::graph::MarketElement::get_quantity) read off them, and no
 /// column of this crate's restates either, because a row carrying both
 /// would carry one fact twice.
 pub const BODY_TAGS: [i32; 50] = [
@@ -166,11 +166,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
         EXPRTIME_TAG_NAME as EXPRTIME, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
         METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
         MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
-        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PARENTUUIDS_TAG_NAME as PARENTUUIDS,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
-        RECDUNIX_TAG_NAME as RECDUNIX, REFRECDUNIX_TAG_NAME as REFRECDUNIX,
-        SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX, SRCUUIDS_TAG_NAME as SRCUUIDS,
-        STATE_TAG_NAME as STATE,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PREVUNIX_TAG_NAME as PREVUNIX,
+        PREVUUID_TAG_NAME as PREVUUID, RECDUNIX_TAG_NAME as RECDUNIX,
+        REFRECDUNIX_TAG_NAME as REFRECDUNIX, SEQNUM_TAG_NAME as SEQNUM,
+        SNAPUNIX_TAG_NAME as SNAPUNIX, SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -210,7 +209,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         ],
     );
     // Which event: its own identity, the chain it stands in, what it
-    // descends from and what it was read from. A join reads these and
+    // follows and what it was read from. A join reads these and
     // nothing else.
     band(
         &mut tags,
@@ -222,7 +221,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             CROSSHASHCODE.0,
             PREVUUID.0,
             SEQNUM.0,
-            PARENTUUIDS.0,
             SRCUUIDS.0,
             IDENTIFIERS.0,
         ],
@@ -290,7 +288,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     //
     // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
     // and `Quantity(53)` are columns like the rest of the ladder, and what a
-    // message is *about* is what [`MarketElement::get_px`] reads off them
+    // message is *about* is what [`MarketElement::get_price`] reads off them
     // rather than a column restating one of them.
     band(
         &mut tags,
@@ -864,12 +862,13 @@ fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::M
 /// same children by name, datatype and nullability, in the same order.
 pub(super) fn same_shape(left: &Field, right: &Field) -> bool {
     let (left, right) = (left.fields(), right.fields());
-    left.len() == right.len()
-        && left.iter().zip(right).all(|(left, right)| {
-            left.name() == right.name()
-                && left.dtype() == right.dtype()
-                && left.is_nullable() == right.is_nullable()
-        })
+    std::ptr::eq(left, right)
+        || left.len() == right.len()
+            && left.iter().zip(right).all(|(left, right)| {
+                left.name() == right.name()
+                    && left.dtype() == right.dtype()
+                    && left.is_nullable() == right.is_nullable()
+            })
 }
 
 /// How many `fixentry` structs any root-to-leaf path materializes.
@@ -1195,25 +1194,40 @@ fn covers_identity(registry: &FixRegistry, field: &Field, entry: &super::FixEntr
     tag == Some(entry.tag()) || counter == Some(entry.tag())
 }
 
+/// [`tag_and_counter`] of each of `fields`, in their order.
+fn member_facts(registry: &FixRegistry, fields: &[Field]) -> Vec<(Option<i32>, Option<i32>)> {
+    fields
+        .iter()
+        .map(|field| tag_and_counter(registry, field))
+        .collect()
+}
+
 /// The one declared member an entry owns. A group column owns its counter's
 /// entry before the scalar counter beside it; that scalar is the same fact,
 /// checked separately against the occurrence count.
+///
+/// `facts` is [`tag_and_counter`] of each of `fields`, resolved once by the
+/// caller for every entry it asks about.
 fn covered_member_index(
-    registry: &FixRegistry,
     fields: &[Field],
+    facts: &[(Option<i32>, Option<i32>)],
     entry: &super::FixEntry,
 ) -> Option<usize> {
     let unique = |counter: bool| {
-        let mut found = fields.iter().enumerate().filter(|(_, field)| {
-            let (tag, held_counter) = tag_and_counter(registry, field);
-            if entry.tag() == 0 {
-                !counter && crate::folds_equal(field.name(), entry.name())
-            } else if counter {
-                held_counter == Some(entry.tag())
-            } else {
-                held_counter.is_none() && tag == Some(entry.tag())
-            }
-        });
+        let mut found =
+            fields
+                .iter()
+                .zip(facts)
+                .enumerate()
+                .filter(|(_, (field, (tag, held_counter)))| {
+                    if entry.tag() == 0 {
+                        !counter && crate::folds_equal(field.name(), entry.name())
+                    } else if counter {
+                        *held_counter == Some(entry.tag())
+                    } else {
+                        held_counter.is_none() && *tag == Some(entry.tag())
+                    }
+                });
         let (index, _) = found.next()?;
         found.next().is_none().then_some(index)
     };
@@ -1237,7 +1251,13 @@ fn covers_entry(
     match field.dtype() {
         DataType::Struct(_) => {
             entry.value().is_none()
-                && covers_members(registry, field.fields(), value, entry.entries())
+                && covers_members(
+                    registry,
+                    field.fields(),
+                    &member_facts(registry, field.fields()),
+                    value,
+                    entry.entries(),
+                )
         }
         DataType::List(item) | DataType::LargeList(item) => {
             let Some(occurrences) = value.as_serie() else {
@@ -1249,6 +1269,12 @@ fn covers_entry(
             {
                 return false;
             }
+            // Every occurrence is laid out on the one item, so its members
+            // are resolved once for the whole group.
+            let facts = match item.dtype() {
+                DataType::Struct(_) => member_facts(registry, item.fields()),
+                _ => Vec::new(),
+            };
             entry
                 .entries()
                 .iter()
@@ -1257,7 +1283,13 @@ fn covers_entry(
                     DataType::Struct(_) => {
                         occurrence.value().is_none()
                             && covers_identity(registry, item, occurrence)
-                            && covers_members(registry, item.fields(), &value, occurrence.entries())
+                            && covers_members(
+                                registry,
+                                item.fields(),
+                                &facts,
+                                &value,
+                                occurrence.entries(),
+                            )
                     }
                     _ => covers_entry(registry, item, &value, occurrence),
                 })
@@ -1275,9 +1307,14 @@ fn covers_entry(
 }
 
 /// Whether every stated member is represented once in a fitted Struct value.
+///
+/// `facts` is [`member_facts`] of `fields`, and each entry's owner is
+/// resolved once: every check below reads them by position rather than
+/// scanning the members again per entry.
 fn covers_members(
     registry: &FixRegistry,
     fields: &[Field],
+    facts: &[(Option<i32>, Option<i32>)],
     value: &crate::Scalar,
     entries: &[super::FixEntry],
 ) -> bool {
@@ -1287,60 +1324,53 @@ fn covers_members(
     if fields.len() != values.len() {
         return false;
     }
-    let stated = entries.iter().enumerate().all(|(at, entry)| {
-        let Some(index) = covered_member_index(registry, fields, entry) else {
+    let mut owned = vec![false; fields.len()];
+    for entry in entries {
+        let Some(index) = covered_member_index(fields, facts, entry) else {
             return false;
         };
-        if entries[..at]
-            .iter()
-            .any(|held| covered_member_index(registry, fields, held) == Some(index))
-        {
+        if std::mem::replace(&mut owned[index], true) {
             return false;
         }
-        values
-            .get(index)
-            .is_some_and(|value| covers_entry(registry, &fields[index], value, entry))
-    });
-    stated
-        && fields
-            .iter()
-            .zip(values)
-            .enumerate()
-            .filter(|(_, (_, value))| !value.is_null())
-            .all(|(index, (field, value))| {
-                if entries
-                    .iter()
-                    .any(|entry| covered_member_index(registry, fields, entry) == Some(index))
-                {
-                    return true;
-                }
-                // A group's scalar counter is represented by the same entry
-                // as its List. It is covered only when both fitted values say
-                // the same occurrence count.
-                let (tag, counter) = tag_and_counter(registry, field);
-                let Some(tag) = tag.filter(|_| counter.is_none()) else {
-                    return false;
-                };
-                let mut groups = fields
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, held)| tag_and_counter(registry, held).1 == Some(tag));
-                let Some((group_index, _)) = groups.next() else {
-                    return false;
-                };
-                if groups.next().is_some() {
-                    return false;
-                }
-                let mut owners = entries.iter().filter(|entry| entry.tag() == tag);
-                let Some(owner) = owners.next() else {
-                    return false;
-                };
-                owners.next().is_none()
-                    && covered_member_index(registry, fields, owner) == Some(group_index)
-                    && values[group_index].as_serie().is_some_and(|occurrences| {
-                        value.as_i128() == i128::try_from(occurrences.len()).ok()
-                    })
-            })
+        if !covers_entry(registry, &fields[index], &values[index], entry) {
+            return false;
+        }
+    }
+    values
+        .iter()
+        .zip(facts)
+        .enumerate()
+        .filter(|(_, (value, _))| !value.is_null())
+        .all(|(index, (value, (tag, counter)))| {
+            if owned[index] {
+                return true;
+            }
+            // A group's scalar counter is represented by the same entry
+            // as its List. It is covered only when both fitted values say
+            // the same occurrence count.
+            let Some(tag) = tag.filter(|_| counter.is_none()) else {
+                return false;
+            };
+            let mut groups = facts
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, held))| *held == Some(tag));
+            let Some((group_index, _)) = groups.next() else {
+                return false;
+            };
+            if groups.next().is_some() {
+                return false;
+            }
+            let mut owners = entries.iter().filter(|entry| entry.tag() == tag);
+            let Some(owner) = owners.next() else {
+                return false;
+            };
+            owners.next().is_none()
+                && covered_member_index(fields, facts, owner) == Some(group_index)
+                && values[group_index].as_serie().is_some_and(|occurrences| {
+                    value.as_i128() == i128::try_from(occurrences.len()).ok()
+                })
+        })
 }
 
 /// Settle the one member order every occurrence agrees with. Encounter order
@@ -1439,13 +1469,14 @@ fn group_from_entry(
     let declared = item
         .and_then(|item| item.dtype().as_fields())
         .unwrap_or_default();
+    let facts = member_facts(registry, declared);
     let mut union: Vec<Field> = Vec::new();
     let mut stated: Vec<Vec<(SmolStr, crate::Scalar)>> = Vec::with_capacity(entry.entries().len());
     for occurrence in entry.entries() {
         let mut fields = Vec::with_capacity(occurrence.entries().len());
         let mut values = Vec::with_capacity(occurrence.entries().len());
         for member in occurrence.entries() {
-            let slot = covered_member_index(registry, declared, member)
+            let slot = covered_member_index(declared, &facts, member)
                 .and_then(|index| declared.get(index));
             let (mut field, value) = child_from_entry(registry, member, slot)?;
             preserve_contended_name(occurrence.entries(), member, &mut field);
@@ -1698,8 +1729,9 @@ fn child_from_entry(
         DataType::Struct(_) => {
             let mut fields: Vec<Field> = Vec::with_capacity(entry.entries().len());
             let mut values: Vec<crate::Scalar> = Vec::with_capacity(entry.entries().len());
+            let facts = member_facts(registry, known.fields());
             for member in entry.entries() {
-                let slot = covered_member_index(registry, known.fields(), member)
+                let slot = covered_member_index(known.fields(), &facts, member)
                     .and_then(|index| known.fields().get(index));
                 let (mut field, value) = child_from_entry(registry, member, slot)?;
                 preserve_contended_name(entry.entries(), member, &mut field);

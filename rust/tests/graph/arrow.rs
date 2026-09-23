@@ -8,6 +8,7 @@ use arrow_array::{
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::graph::{
     Book, Element, Event, Execution, MarketElement, MarketEventData, MarketOperation, Order, Quote,
+    Trade,
 };
 use yggdryl::{Currency, Decimal18, Side, State};
 
@@ -18,8 +19,8 @@ fn operation(kind: &str, unix: i64, code: &str) -> MarketOperation {
     event.set_creaunix(Some(unix - 3));
     event.set_execunix(Some(unix - 2));
     event.set_recdunix(Some(unix - 1));
-    event.set_px(Decimal18::from_int(100 + unix));
-    event.set_qty(Decimal18::from_int(10 + unix));
+    event.set_price(Decimal18::from_int(100 + unix));
+    event.set_quantity(Decimal18::from_int(10 + unix));
     event.set_currency(Currency::new("USD").unwrap());
     event.set_unit("share".to_owned());
     event.set_side(Side::read(if kind == "quote" { "Sell" } else { "Buy" }).unwrap());
@@ -32,6 +33,30 @@ fn operation(kind: &str, unix: i64, code: &str) -> MarketOperation {
         "execution" => Execution::from(event).into(),
         _ => unreachable!(),
     }
+}
+
+fn execution(unix: i64, code: &str, side: &str) -> Execution {
+    let mut execution = Execution::try_from(operation("execution", unix, code)).unwrap();
+    execution.set_side(Side::read(side).unwrap());
+    execution.finalize();
+    execution
+}
+
+fn trade(unix: i64, code: &str) -> MarketOperation {
+    let mut event = MarketEventData::at(unix);
+    event.set_crosscode(code.to_owned());
+    event.set_symbolticker(Some("ACME".to_owned()));
+    event.set_state(State::read("Filled").unwrap());
+    event.finalize();
+    Trade::from_parts(
+        event,
+        vec![
+            execution(unix, &format!("{code}-SELL"), "Sell"),
+            execution(unix, &format!("{code}-BUY"), "Buy"),
+        ],
+    )
+    .unwrap()
+    .into()
 }
 
 fn book(unix: i64) -> Book {
@@ -62,17 +87,21 @@ fn operations_round_trip_in_bounded_streaming_batches() {
         operation("order", 1, "O-1"),
         operation("quote", 2, "Q-2"),
         operation("execution", 3, "E-3"),
+        trade(4, "T-4"),
     ];
     let mut encoded = MarketOperation::arrow_reader(expected.clone(), Some(2), None).unwrap();
-    assert_eq!(encoded.schema().fields().len(), 50);
+    assert_eq!(encoded.schema().fields().len(), 51);
     assert_eq!(encoded.schema().field(0).name(), "operationkind");
     assert_eq!(encoded.schema().field(1).name(), "currunix");
-    assert_eq!(encoded.schema().field(20).name(), "px");
+    assert_eq!(encoded.schema().field(19).name(), "marketoperationid");
+    assert_eq!(encoded.schema().field(20).name(), "price");
+    assert_eq!(encoded.schema().field(22).name(), "quantity");
+    assert_eq!(encoded.schema().field(50).name(), "executions");
 
     let first = encoded.next().unwrap().unwrap();
     let second = encoded.next().unwrap().unwrap();
     assert_eq!(first.num_rows(), 2);
-    assert_eq!(second.num_rows(), 1);
+    assert_eq!(second.num_rows(), 2);
     assert!(encoded.next().is_none());
 
     let source = batch_reader(first.schema(), [first, second]);
@@ -115,7 +144,9 @@ fn books_round_trip_with_live_deltas_and_executions() {
     let mut encoded = Book::arrow_reader(expected.clone(), Some(1), None).unwrap();
     assert_eq!(encoded.schema().fields().len(), 52);
     assert_eq!(encoded.schema().field(0).name(), "currunix");
-    assert_eq!(encoded.schema().field(19).name(), "px");
+    assert_eq!(encoded.schema().field(18).name(), "marketoperationid");
+    assert_eq!(encoded.schema().field(19).name(), "price");
+    assert_eq!(encoded.schema().field(21).name(), "quantity");
     assert_eq!(encoded.schema().field(49).name(), "bid");
     assert_eq!(encoded.schema().field(50).name(), "ask");
     assert_eq!(encoded.schema().field(51).name(), "executions");
@@ -210,14 +241,48 @@ fn decoding_names_an_unknown_kind_then_fuses() {
         MarketOperation::arrow_reader([operation("order", 1, "O-1")], Some(1), None).unwrap();
     let batch = encoded.next().unwrap().unwrap();
     let mut columns = batch.columns().to_vec();
-    columns[0] = Arc::new(StringArray::from(vec!["trade"])) as ArrayRef;
+    columns[0] = Arc::new(StringArray::from(vec!["auction"])) as ArrayRef;
     let batch = RecordBatch::try_new(batch.schema(), columns).unwrap();
     let source: BatchReader = batch_reader(batch.schema(), [batch]);
     let mut decoded = MarketOperation::from_arrow_reader(source).unwrap();
     let error = decoded.next().unwrap().unwrap_err().to_string();
     assert!(error.contains("operationkind"), "{error}");
-    assert!(error.contains("trade"), "{error}");
+    assert!(error.contains("auction"), "{error}");
     assert!(decoded.next().is_none());
+}
+
+#[test]
+fn decoding_requires_an_execution_payload_only_for_trades() {
+    let mut encoded =
+        MarketOperation::arrow_reader([operation("order", 1, "O-1")], Some(1), None).unwrap();
+    let batch = encoded.next().unwrap().unwrap();
+    let mut columns = batch.columns().to_vec();
+    columns[0] = Arc::new(StringArray::from(vec!["trade"])) as ArrayRef;
+    let batch = RecordBatch::try_new(batch.schema(), columns).unwrap();
+    let source = batch_reader(batch.schema(), [batch]);
+    let error = MarketOperation::from_arrow_reader(source)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$[0].executions"), "{error}");
+    assert!(error.contains("non-null"), "{error}");
+
+    let mut encoded = MarketOperation::arrow_reader([trade(2, "T-2")], Some(1), None).unwrap();
+    let batch = encoded.next().unwrap().unwrap();
+    let mut columns = batch.columns().to_vec();
+    columns[0] = Arc::new(StringArray::from(vec!["order"])) as ArrayRef;
+    let batch = RecordBatch::try_new(batch.schema(), columns).unwrap();
+    let source = batch_reader(batch.schema(), [batch]);
+    let error = MarketOperation::from_arrow_reader(source)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$[0].executions"), "{error}");
+    assert!(error.contains("expected null for order"), "{error}");
 }
 
 #[test]
@@ -308,10 +373,10 @@ fn book_decoding_locates_an_invalid_nested_typed_code() {
 #[test]
 fn book_encoding_refuses_a_stale_summary_at_the_source_row() {
     let mut invalid = book(10);
-    invalid.set_px(Decimal18::from_int(999));
+    invalid.set_price(Decimal18::from_int(999));
     let mut encoded = Book::arrow_reader([invalid], Some(1), None).unwrap();
     let error = encoded.next().unwrap().unwrap_err().to_string();
-    assert!(error.contains("$[0].px"), "{error}");
+    assert!(error.contains("$[0].price"), "{error}");
     assert!(encoded.next().is_none());
 }
 
@@ -362,5 +427,5 @@ fn book_decoding_refuses_a_serialized_summary_that_disagrees_with_live_depth() {
         .unwrap()
         .unwrap_err()
         .to_string();
-    assert!(error.contains("$[0].px"), "{error}");
+    assert!(error.contains("$[0].price"), "{error}");
 }

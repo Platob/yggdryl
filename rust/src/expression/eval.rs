@@ -27,7 +27,6 @@ use std::cmp::Ordering;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::Attributes;
 use super::bind::{Kind, Node, StepKind};
 use super::path::{FieldSegment, resolve_range, struct_values};
 use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_dictionary};
@@ -35,22 +34,17 @@ use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::is_blank_text;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
 
-/// One row's worth of context: its column values and its holder.
+/// One row's worth of context: its column values.
 ///
-/// Either half may be absent. A constant subtree needs neither, which is what
-/// lets [`bind`](super::bind) fold by evaluating; a listing filter has a
-/// holder and no row, which is what lets it prune before opening anything.
+/// They may be absent: a constant subtree needs none, which is what lets
+/// [`bind`](super::bind) fold by evaluating.
 pub(crate) struct Row<'context> {
     values: Option<&'context [Scalar]>,
-    holder: Option<&'context dyn Attributes>,
 }
 
 impl<'context> Row<'context> {
-    pub(crate) const fn new(
-        values: Option<&'context [Scalar]>,
-        holder: Option<&'context dyn Attributes>,
-    ) -> Self {
-        Self { values, holder }
+    pub(crate) const fn new(values: Option<&'context [Scalar]>) -> Self {
+        Self { values }
     }
 }
 
@@ -95,8 +89,7 @@ impl Node {
     /// # Errors
     ///
     /// Returns an error when a strict cast or checked arithmetic refuses a
-    /// value, when a column is asked for and no row was supplied, or when a
-    /// holder attribute fails.
+    /// value, or when a column is asked for and no row was supplied.
     #[allow(clippy::too_many_lines)]
     pub(crate) fn eval(&self, row: &Row<'_>) -> Result<Scalar> {
         match &self.kind {
@@ -120,7 +113,7 @@ impl Node {
                             let element = step
                                 .element()
                                 .ok_or_else(|| missing("a list of structs to keep elements of"))?;
-                            keep_elements(element, predicate, &value, row.holder)?
+                            keep_elements(element, predicate, &value)?
                         }
                     };
                     field = &step.field;
@@ -130,10 +123,6 @@ impl Node {
                 }
                 Ok(value)
             }
-            Kind::Attribute(attribute) => match row.holder {
-                Some(holder) => holder.attribute(attribute),
-                None => Ok(Scalar::Null),
-            },
             Kind::And(operands) => {
                 let mut unknown = false;
                 for operand in operands {
@@ -330,14 +319,9 @@ impl Node {
 ///
 /// # Errors
 ///
-/// Returns an error when the predicate refuses an element - a strict cast,
-/// checked arithmetic - or a holder attribute it reads cannot be answered.
-pub(crate) fn keep_elements(
-    element: &Field,
-    predicate: &Node,
-    list: &Scalar,
-    holder: Option<&dyn Attributes>,
-) -> Result<Scalar> {
+/// Returns an error when the predicate refuses an element - a strict cast or
+/// checked arithmetic.
+pub(crate) fn keep_elements(element: &Field, predicate: &Node, list: &Scalar) -> Result<Scalar> {
     let Some(items) = list.as_serie() else {
         return Ok(Scalar::Null);
     };
@@ -347,9 +331,7 @@ pub(crate) fn keep_elements(
             continue;
         }
         let keep = match struct_values(element, &item) {
-            Some(values) => {
-                predicate.eval(&Row::new(Some(&values), holder))?.as_bool() == Some(true)
-            }
+            Some(values) => predicate.eval(&Row::new(Some(&values)))?.as_bool() == Some(true),
             None => false,
         };
         if keep {

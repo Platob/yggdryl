@@ -2,11 +2,10 @@
 //!
 //! Every generated schema of an event - a [text line](crate::text::TextLine)
 //! read into a batch, a FIX message parsed out of it, a message the
-//! lifecycle chained - states these nineteen under one name and one datatype
+//! lifecycle chained - states these eighteen under one name and one datatype
 //! each, so the three join on them without a mapping: a message's
 //! `srcuuids` are the `curruuid` of the lines it was read from, and a
-//! chained message's `prevuuid` and `parentuuids` are the `curruuid` of the
-//! messages before it. The names are the traits' own: what
+//! chained message's `prevuuid` is the `curruuid` of the message before it. The names are the traits' own: what
 //! [`Element`](super::Element) and [`Event`] read and write under
 //! `get_`/`set_` is what a column is called.
 
@@ -16,14 +15,14 @@ use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
 
 use super::Event;
 
-/// One column of the nineteen every graph event is stated in.
+/// One column of the eighteen every graph event is stated in.
 ///
 /// [`Self::ALL`] is the canonical order [`Self::fields`] and event-native
 /// schemas use: **when** it happened - the instant, then the instants it is
 /// read against - then **which**
 /// event it is - its identity, the chain's, the codes, what it follows, its
-/// place, what it descends from, what it was read from, the names it goes
-/// by - and last the state it reached.
+/// place, what it was read from, the names it goes by - and last the state
+/// it reached.
 ///
 /// ```
 /// use yggdryl::graph::{EventColumn, MarketEventData, Element, Event};
@@ -31,10 +30,10 @@ use super::Event;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
-/// assert_eq!(fields.len(), 19);
+/// assert_eq!(fields.len(), 18);
 /// assert_eq!(fields[0].name(), "currunix");
 /// assert_eq!(fields[8].name(), "curruuid");
-/// assert_eq!(fields[18].name(), "state");
+/// assert_eq!(fields[17].name(), "state");
 /// // What an event states under a column, and the same fact stated back.
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
@@ -43,7 +42,7 @@ use super::Event;
 /// EventColumn::SrcUuids.record(&mut again, &sources);
 /// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
 /// // Nothing stated is a null: an empty list, an empty code, no instant.
-/// assert_eq!(EventColumn::ParentUuids.fact(&event), None);
+/// assert_eq!(EventColumn::PrevUuid.fact(&event), None);
 /// assert_eq!(EventColumn::CrossCode.fact(&event), None);
 /// assert_eq!(EventColumn::PrevUnix.fact(&event), None);
 /// assert_eq!(EventColumn::of_name("SrcUuids"), Some(EventColumn::SrcUuids));
@@ -84,9 +83,7 @@ pub enum EventColumn {
     /// The event's place in its chain: how many came before it; none where
     /// none did.
     SeqNum,
-    /// The identities this event descends from, oldest first.
-    ParentUuids,
-    /// The identities this event was read from: provenance, never lineage.
+    /// The identities this event was read from: provenance, never its chain.
     SrcUuids,
     /// The names the event goes by, each under the scheme that issued it.
     Identifiers,
@@ -99,7 +96,7 @@ pub enum EventColumn {
 
 impl EventColumn {
     /// Every column, in canonical event order.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 18] = [
         Self::CurrUnix,
         Self::CreaUnix,
         Self::ExecUnix,
@@ -115,7 +112,6 @@ impl EventColumn {
         Self::CrossHashCode,
         Self::PrevUuid,
         Self::SeqNum,
-        Self::ParentUuids,
         Self::SrcUuids,
         Self::Identifiers,
         Self::State,
@@ -140,7 +136,6 @@ impl EventColumn {
             Self::CrossHashCode => "crosshashcode",
             Self::PrevUuid => "prevuuid",
             Self::SeqNum => "seqnum",
-            Self::ParentUuids => "parentuuids",
             Self::SrcUuids => "srcuuids",
             Self::Identifiers => "identifiers",
             Self::State => "state",
@@ -166,7 +161,6 @@ impl EventColumn {
             Self::CrossHashCode => "CrossHashCode",
             Self::PrevUuid => "PrevUuid",
             Self::SeqNum => "SeqNum",
-            Self::ParentUuids => "ParentUuids",
             Self::SrcUuids => "SrcUuids",
             Self::Identifiers => "Identifiers",
             Self::State => "State",
@@ -198,7 +192,7 @@ impl EventColumn {
                 "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
             }
             Self::CurrUuid => {
-                "The event's identity: the UUIDv7 its microsecond instant and code derive."
+                "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash."
             }
             Self::CrossUuid => {
                 "The identity every event of one chain shares, derived from the code they share; the event's own where it names none."
@@ -212,11 +206,8 @@ impl EventColumn {
             }
             Self::PrevUuid => "The identity of the event this one follows, where it follows one.",
             Self::SeqNum => "The event's place in its chain: how many came before it.",
-            Self::ParentUuids => {
-                "The identities of the events this one descends from, oldest first, each once."
-            }
             Self::SrcUuids => {
-                "The identities of the elements this event was read from: provenance, never lineage - no walk moves it."
+                "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."
             }
             Self::Identifiers => {
                 "The names this event goes by, each under the scheme that issued it, in sorted order."
@@ -256,7 +247,6 @@ impl EventColumn {
             Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
             Self::CrossCode => DataType::utf8(),
             Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
-            Self::ParentUuids => DataType::list(DataType::Uuid.required_field("parentuuid")),
             Self::SrcUuids => DataType::list(DataType::Uuid.required_field("srcuuid")),
             Self::Identifiers => DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
             Self::State => DataType::State,
@@ -336,7 +326,6 @@ impl EventColumn {
             Self::CrossHashCode => Some(Scalar::from(event.get_crosshashcode())),
             Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
             Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
-            Self::ParentUuids => uuids_fact(event.get_parentuuids()),
             Self::SrcUuids => uuids_fact(event.get_srcuuids()),
             Self::Identifiers => {
                 let identifiers = event.get_identifiers();
@@ -404,7 +393,6 @@ impl EventColumn {
                 _ => None,
             }),
             Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
-            Self::ParentUuids => event.set_parentuuids(uuids_of(value)),
             Self::SrcUuids => event.set_srcuuids(uuids_of(value)),
             Self::Identifiers => event.set_identifiers(identifiers_of(value)),
             Self::State => event.set_state(match value {

@@ -51,6 +51,10 @@ pub struct Memo {
     /// then by the text, so a question is asked with the text borrowed and
     /// owns it only where the answer is first remembered.
     translations: Mutex<Translations>,
+    /// The wire value a code's name spells, by the address of the set's
+    /// document: the reverse of `translations`, which a message asks for
+    /// every coded value it re-emits.
+    wire_values: Mutex<Translations>,
     /// What the dictionary holds under one key.
     names: Mutex<TextMap<SmolStr, Lookup>>,
 }
@@ -122,6 +126,7 @@ fn remember(table: &mut TextMap<SmolStr, Option<SmolStr>>, text: &str, answer: &
 struct Mirror {
     facts: FixMap<u64, FixMap<usize, Arc<Facts>>>,
     translations: FixMap<u64, Translations>,
+    wire_values: FixMap<u64, Translations>,
     names: FixMap<u64, TextMap<SmolStr, Lookup>>,
 }
 
@@ -155,6 +160,7 @@ impl Memo {
             id: AtomicU64::new(MEMOS.fetch_add(1, Ordering::Relaxed)),
             facts: Mutex::new(FixMap::default()),
             translations: Mutex::new(Translations::default()),
+            wire_values: Mutex::new(Translations::default()),
             names: Mutex::new(HashMap::with_hasher(Xxh64::new())),
         }
     }
@@ -166,6 +172,7 @@ impl Memo {
     pub(super) fn clear(&self) {
         held(&self.facts).clear();
         held(&self.translations).clear();
+        held(&self.wire_values).clear();
         held(&self.names).clear();
         self.id
             .store(MEMOS.fetch_add(1, Ordering::Relaxed), Ordering::Relaxed);
@@ -265,6 +272,51 @@ impl Memo {
             let mut mirror = mirror.borrow_mut();
             let table = table_of(&mut mirror.translations, id, Translations::default);
             remember(table.entry(key).or_default(), text, &answer);
+        });
+        answer
+    }
+
+    /// The wire value the code named `name` has in the set `document` is,
+    /// exactly as [`FixCodeSet::code_by_name`](super::FixCodeSet::code_by_name)
+    /// answers it, read once per distinct question.
+    ///
+    /// Keyed by the document's address: the registry owns every document
+    /// for as long as this memo answers for it, and a set replaced clears
+    /// the memo, so an address names one document under one number.
+    pub(super) fn wire_value(&self, document: &str, name: &str) -> Option<SmolStr> {
+        let key = document.as_ptr() as usize;
+        let id = self.id();
+        let mirrored = MIRROR.with(|mirror| {
+            mirror
+                .borrow()
+                .wire_values
+                .get(&id)
+                .and_then(|table| table.get(&key))
+                .and_then(|table| table.get(name))
+                .cloned()
+        });
+        if let Some(answer) = mirrored {
+            return answer;
+        }
+        let known = held(&self.wire_values)
+            .get(&key)
+            .and_then(|table| table.get(name))
+            .cloned();
+        let answer = match known {
+            Some(answer) => answer,
+            None => {
+                let answer = super::codes::FixCodeSet::new("", document)
+                    .code_by_name(name)
+                    .map(|code| SmolStr::new(code.value()));
+                let mut table = held(&self.wire_values);
+                remember(table.entry(key).or_default(), name, &answer);
+                answer
+            }
+        };
+        MIRROR.with(|mirror| {
+            let mut mirror = mirror.borrow_mut();
+            let table = table_of(&mut mirror.wire_values, id, Translations::default);
+            remember(table.entry(key).or_default(), name, &answer);
         });
         answer
     }

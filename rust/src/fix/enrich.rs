@@ -593,6 +593,15 @@ pub(super) fn enrich(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMs
     // is invisible until it has been canonicalized.
     let mut held = msg;
     super::latest::restate(&mut held)?;
+    enrich_restated(registry, held)
+}
+
+/// [`enrich`] past its restatement, for a message whose row is already
+/// restated: a message redated keeps the row it was built with, and what
+/// its new clock can move is a derivation and its identity - never a rule,
+/// which reads the row and not the clock.
+pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> crate::Result<FixMsg> {
+    let mut held = msg;
     // The derivations, compiled and bound once per registry; a refused
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.
@@ -861,14 +870,6 @@ impl Element for LifecycleMessage {
 
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
         self.message.set_identifiers(identifiers);
-    }
-
-    fn get_parentuuids(&self) -> &[Uuid] {
-        self.message.get_parentuuids()
-    }
-
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-        self.message.set_parentuuids(parents);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {

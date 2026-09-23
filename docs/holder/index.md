@@ -2268,8 +2268,7 @@ Listings are lazy iterators: building one costs nothing, entries are sorted, a f
 ```text
 fn ls(&self, recursive: bool, include_private: bool) -> Listing
 fn glob(&self, pattern: &str, include_private: bool) -> Result<Listing>
-fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing>   // leaves carrying every pair
-fn children_matching(&self, filter: &Filter, include_private: bool) -> Result<Listing>         // the whole expression language
+fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing>   // leaves whose Hive path spells every pair
 fn partitions(&self) -> Vec<(String, String)>                                                  // the pairs the path spells
 ```
 
@@ -2367,7 +2366,7 @@ Python listings are `pathlib`-style (`iterdir`, `glob`, `rglob`); JavaScript's a
 
 ### Pruning and filtering
 
-One [expression](../expression/holder.md) does both halves: the equalities a `filter` pins (`partition_pairs`) prune leaves by path, the rest runs over the rows.
+The equalities a `filter` pins (`partition_pairs`) prune leaves by path: a leaf whose path names another value for a filtered column is never decoded, and one that does not name the column stays for the rows to answer. The whole [filter](../expression/filters.md#pushdown) then runs over the rows that survive; a range or `in` list pins no pair, so it prunes no leaf by path.
 
 === "Rust"
 

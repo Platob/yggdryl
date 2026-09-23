@@ -49,7 +49,6 @@
 //! The scalar tier compiles with no Arrow at all; only the vectorized tier is
 //! behind the `arrow` feature.
 
-mod attribute;
 mod bind;
 mod display;
 pub(crate) mod eval;
@@ -74,7 +73,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::{Error, Field, Result};
 
-pub use attribute::{Attribute, Attributes, Cost, Handle, read_handle};
 pub use bind::Bound;
 pub use filter::{Filter, IntoFilter};
 pub use literal::Literal;
@@ -709,27 +707,6 @@ impl Expression {
             Self::Filter(filter) => filter.columns(),
             Self::Plan(plan) => plan.columns(),
             Self::Sequence(steps) => steps.first().map(Self::columns).unwrap_or_default(),
-        }
-    }
-
-    /// Every handle attribute this expression reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        match self {
-            Self::Selector(selector) => selector.attributes(),
-            Self::Filter(filter) => filter.attributes(),
-            Self::Plan(plan) => plan.attributes(),
-            Self::Sequence(steps) => {
-                let mut attributes = Vec::new();
-                for step in steps {
-                    for attribute in step.attributes() {
-                        if !attributes.contains(&attribute) {
-                            attributes.push(attribute);
-                        }
-                    }
-                }
-                attributes
-            }
         }
     }
 

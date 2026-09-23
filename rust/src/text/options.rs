@@ -33,14 +33,13 @@ pub(crate) const EVENT_CAPTURES: [&str; 9] = [
 /// The event columns no capture can feed, because the line derives them -
 /// its identity, the chain's, the codes, the names it goes by - or a walk
 /// states them: a capture spelled as one is refused.
-pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 10] = [
+pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 9] = [
     "currunix",
     "curruuid",
     "crosscode",
     "crossuuid",
     "currhashcode",
     "crosshashcode",
-    "parentuuids",
     "srcuuids",
     "identifiers",
     "seqnum",
@@ -361,7 +360,7 @@ impl TextOptions {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$.rowheader"),
                     reason: format_smolstr!(
-                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, parentuuids, srcuuids, identifiers, seqnum - got {:?}",
+                        "expected named captures distinct from body, dropped_byte_size and the event columns the line derives - currunix, curruuid, crosscode, crossuuid, currhashcode, crosshashcode, srcuuids, identifiers, seqnum - got {:?}",
                         capture.name()
                     ),
                 });

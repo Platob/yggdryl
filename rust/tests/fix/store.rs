@@ -3007,10 +3007,17 @@ mod committed {
     /// moved, those ten and `recdunix`'s own wording beside them - no
     /// definition, reference, tag or count did, which is why the census below
     /// stands unchanged.
+    /// It moved when MsgCat became the intrinsic int32 market-operation ID
+    /// vocabulary and parent UUIDs became a sorted unique set: the one code
+    /// set now hashes numeric values, and those two crate-field definitions
+    /// hash their current datatypes and descriptions.
+    /// It last moved when `parentuuids` left the crate: a message names its
+    /// predecessor by `prevuuid` alone, so the crate field at 65041 and its
+    /// member of the fixed row are gone and nothing else moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 4_902_395_561_484_260_370);
+        assert_eq!(registry.stable_hash(), 12_241_597_752_383_919_107);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

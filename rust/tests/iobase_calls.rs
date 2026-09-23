@@ -550,6 +550,46 @@ mod records {
         );
     }
 
+    /// A Parquet file past a megabyte is read footer first: one read of its
+    /// end, which holds the footer, then its column chunks as one range.
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn a_parquet_read_past_a_megabyte_reads_its_footer_first() {
+        use yggdryl::media::RecordOptions;
+        use yggdryl::parquet::ParquetOptions;
+
+        let media_type = Url::from_str("file:///lake/large.parquet")
+            .expect("a location")
+            .media_type();
+        let mut sink = Buffer::new();
+        sink.set_media_type(media_type.clone());
+        let written = RecordOptions::Parquet(
+            ParquetOptions::new().with_compression(parquet::basic::Compression::UNCOMPRESSED),
+        );
+        sink.overwrite_arrow_batch(batch(200_000), &written)
+            .expect("a write");
+        assert!(sink.size() > 1024 * 1024, "{} bytes", sink.size());
+        let mut source = Buffer::from_bytes(sink.read_all_bytes().expect("the bytes"));
+        source.set_media_type(media_type);
+        let handle = Counted::new(source);
+        let calls = Arc::clone(handle.calls());
+        let options = handle.record_options().expect("record options");
+
+        costs(
+            "parquet: a full read past a megabyte",
+            &calls,
+            "read_range_bytes=2 size=1 media_type=1 is_container=1",
+            || {
+                let read: usize = handle
+                    .read_arrow_reader(&options)
+                    .expect("a reader")
+                    .map(|batch| batch.expect("a batch").num_rows())
+                    .sum();
+                assert_eq!(read, 200_000);
+            },
+        );
+    }
+
     #[cfg(feature = "parquet")]
     #[test]
     fn parquet_costs() {
@@ -580,7 +620,7 @@ mod records {
 
     #[test]
     fn text_costs() {
-        // Plain-text rows are the nineteen event columns and `body`, so this
+        // Plain-text rows are the eighteen event columns and `body`, so this
         // one is read rather than written from a batch. The one `mtime` call
         // per read buys no column of its own any more - it is what dates the
         // rows, and it is a fact about the handle, so every row shares the one
@@ -607,7 +647,7 @@ mod records {
             &calls,
             "size=1 media_type=1 is_container=2",
             || {
-                assert_eq!(handle.column_size().expect("columns"), 20);
+                assert_eq!(handle.column_size().expect("columns"), 19);
             },
         );
         costs(

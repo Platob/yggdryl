@@ -1,11 +1,12 @@
 //! The graph vocabulary: what an element of a graph answers about itself,
 //! and one walk over elements.
 //!
-//! A graph is elements that know their own identity and the identities of
-//! the elements they descend from, and [`element`] holds the four traits
-//! that state it. [`Element`] is the node: its [`Uuid`](crate::Uuid),
-//! the one it has elsewhere, the names it goes by and its parents' UUIDs,
-//! read and written, the order it stands in, and how it follows and merges.
+//! A graph is elements that know their own identity and, where they follow
+//! one, the identity of the element before them, and [`element`] holds the
+//! four traits that state it. [`Element`] is the node: its
+//! [`Uuid`](crate::Uuid), the one it has elsewhere, the names it goes by
+//! and the UUIDs of what it was read from, read and written, the order it
+//! stands in, and how it follows and merges.
 //! [`Event`] is an element that also happened at one instant and stands in
 //! one state. [`MarketElement`] is one that stands in a market: a price, a
 //! quantity and a side; [`MarketEvent`] is one that did both. The traits
@@ -15,7 +16,7 @@
 //! [`MarketEventData`] hold the facts as plain fields for the holder that
 //! wants nothing more. The one walk, [`EventIterator`], reads events in
 //! their order and states each as the one after the live element it
-//! follows. [`EventColumn`] is the nineteen columns every generated schema
+//! follows. [`EventColumn`] is the eighteen columns every generated schema
 //! of an event states - one per fact the traits answer, under one name and
 //! one datatype each - so a text line's batch, a FIX row and a chained
 //! message join on them without a mapping. Event-native schemas use
@@ -106,19 +107,6 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_parentuuids(&self) -> &[$crate::Uuid] {
-                <$holder as $crate::graph::Element>::get_parentuuids(
-                    <Self as AsRef<$holder>>::as_ref(self),
-                )
-            }
-
-            fn set_parentuuids(&mut self, parents: Vec<$crate::Uuid>) {
-                <$holder as $crate::graph::Element>::set_parentuuids(
-                    <Self as AsMut<$holder>>::as_mut(self),
-                    parents,
-                );
-            }
-
             fn get_srcuuids(&self) -> &[$crate::Uuid] {
                 <$holder as $crate::graph::Element>::get_srcuuids(<Self as AsRef<$holder>>::as_ref(
                     self,
@@ -164,14 +152,29 @@ macro_rules! delegate_market_value {
     };
     ($type:ty, $holder:ty, market_only) => {
         impl $crate::graph::MarketElement for $type {
-            fn get_px(&self) -> $crate::Decimal18 {
-                <$holder as $crate::graph::MarketElement>::get_px(<Self as AsRef<$holder>>::as_ref(
-                    self,
+            fn get_marketoperationid(&self) -> Option<i32> {
+                <$holder as $crate::graph::MarketElement>::get_marketoperationid(<Self as AsRef<
+                    $holder,
+                >>::as_ref(
+                    self
                 ))
             }
 
-            fn set_px(&mut self, px: $crate::Decimal18) {
-                <$holder as $crate::graph::MarketElement>::set_px(
+            fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+                <$holder as $crate::graph::MarketElement>::set_marketoperationid(
+                    <Self as AsMut<$holder>>::as_mut(self),
+                    marketoperationid,
+                );
+            }
+
+            fn get_price(&self) -> $crate::Decimal18 {
+                <$holder as $crate::graph::MarketElement>::get_price(
+                    <Self as AsRef<$holder>>::as_ref(self),
+                )
+            }
+
+            fn set_price(&mut self, px: $crate::Decimal18) {
+                <$holder as $crate::graph::MarketElement>::set_price(
                     <Self as AsMut<$holder>>::as_mut(self),
                     px,
                 );
@@ -190,14 +193,14 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_qty(&self) -> $crate::Decimal18 {
-                <$holder as $crate::graph::MarketElement>::get_qty(
+            fn get_quantity(&self) -> $crate::Decimal18 {
+                <$holder as $crate::graph::MarketElement>::get_quantity(
                     <Self as AsRef<$holder>>::as_ref(self),
                 )
             }
 
-            fn set_qty(&mut self, qty: $crate::Decimal18) {
-                <$holder as $crate::graph::MarketElement>::set_qty(
+            fn set_quantity(&mut self, qty: $crate::Decimal18) {
+                <$holder as $crate::graph::MarketElement>::set_quantity(
                     <Self as AsMut<$holder>>::as_mut(self),
                     qty,
                 );
@@ -559,9 +562,53 @@ macro_rules! delegate_market_value {
     };
     ($type:ty, $holder:ty, event, $is_execution:expr) => {
         delegate_market_value!($type, $holder, element);
-        delegate_market_value!($type, $holder, event_only, $is_execution);
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            |this: &mut $type, unix: i64| {
+                <$holder as $crate::graph::Event>::set_currunix(
+                    <Self as AsMut<$holder>>::as_mut(this),
+                    unix,
+                );
+            },
+            |_: &mut $type| {}
+        );
     };
     ($type:ty, $holder:ty, event_only, $is_execution:expr) => {
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            |this: &mut $type, unix: i64| {
+                <$holder as $crate::graph::Event>::set_currunix(
+                    <Self as AsMut<$holder>>::as_mut(this),
+                    unix,
+                );
+            },
+            |this: &mut $type| <$type as $crate::graph::Element>::finalize(this)
+        );
+    };
+    ($type:ty, $holder:ty, event_only, $is_execution:expr, $set_currunix:expr) => {
+        delegate_market_value!(
+            $type,
+            $holder,
+            @event_impl,
+            $is_execution,
+            $set_currunix,
+            |this: &mut $type| <$type as $crate::graph::Element>::finalize(this)
+        );
+    };
+    (
+        $type:ty,
+        $holder:ty,
+        @event_impl,
+        $is_execution:expr,
+        $set_currunix:expr,
+        $finish_restatement:expr
+    ) => {
         impl $crate::graph::Event for $type {
             fn get_currunix(&self) -> i64 {
                 <$holder as $crate::graph::Event>::get_currunix(<Self as AsRef<$holder>>::as_ref(
@@ -570,10 +617,7 @@ macro_rules! delegate_market_value {
             }
 
             fn set_currunix(&mut self, unix: i64) {
-                <$holder as $crate::graph::Event>::set_currunix(
-                    <Self as AsMut<$holder>>::as_mut(self),
-                    unix,
-                );
+                ($set_currunix)(self, unix);
             }
 
             fn get_state(&self) -> &$crate::State {
@@ -713,6 +757,7 @@ macro_rules! delegate_market_value {
                 let holder = std::mem::take(<Self as AsMut<$holder>>::as_mut(&mut self));
                 let holder = <$holder as $crate::graph::Event>::restating(holder, live);
                 *<Self as AsMut<$holder>>::as_mut(&mut self) = holder;
+                ($finish_restatement)(&mut self);
                 self
             }
 
@@ -783,6 +828,15 @@ macro_rules! delegate_market_event {
             |_: &Self| $is_execution
         );
     };
+    ($type:ty, $field:ident, event_only, $is_execution:expr, $set_currunix:expr) => {
+        delegate_market_value!(
+            $type,
+            $crate::graph::MarketEventData,
+            event_only,
+            |_: &Self| $is_execution,
+            $set_currunix
+        );
+    };
     ($type:ty, $field:ident, $is_execution:expr) => {
         delegate_market_event!(@impl $type, $field, |_: &Self| $is_execution);
     };
@@ -822,6 +876,7 @@ pub mod iterator;
 pub mod market_column;
 pub mod order;
 pub mod quote;
+pub mod trade;
 
 pub use book::{
     Book, BookIterator, BookSide, GLOBAL_SYMBOL, MarketEntry, MarketOperation, MarketOperationKind,
@@ -836,3 +891,4 @@ pub use iterator::EventIterator;
 pub use market_column::MarketColumn;
 pub use order::{Order, OrderEntry};
 pub use quote::{Quote, QuoteEntry};
+pub use trade::Trade;

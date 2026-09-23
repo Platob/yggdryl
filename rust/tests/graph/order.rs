@@ -13,9 +13,9 @@ fn full_order() -> MarketEventData {
     event.set_crosscode("O-100".to_owned());
     event.set_srcuuids(vec![Uuid::from_v8(7)]);
     event.set_state(State::from_spelling("Filled").expect("a shipped state"));
-    event.set_px(Decimal18::from_int(82));
+    event.set_price(Decimal18::from_int(82));
     event.set_currency(Currency::new("USD").expect("a currency"));
-    event.set_qty(Decimal18::from_int(10));
+    event.set_quantity(Decimal18::from_int(10));
     event.set_unit("lot".to_owned());
     event.set_side(Side::read("Buy").expect("a side"));
     event.set_lastpx(Some(Decimal18::from_int(81)));
@@ -72,13 +72,13 @@ fn borrowed_conversion_copies_every_market_fact() {
 fn order_lifecycle_delegates_to_the_market_event_holder() {
     let mut first = MarketEventData::at(1_000_000);
     first.set_crosscode("O-100".to_owned());
-    first.set_px(Decimal18::from_int(80));
+    first.set_price(Decimal18::from_int(80));
     first.finalize();
     let first = Order::from(first);
 
     let mut second = MarketEventData::at(2_000_000);
     second.set_crosscode("O-100".to_owned());
-    second.set_px(Decimal18::from_int(81));
+    second.set_price(Decimal18::from_int(81));
     second.finalize();
     let second = Order::from(second)
         .with_previous(&first)

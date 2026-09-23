@@ -21,8 +21,9 @@
 //! facts, while FIX source `1` and `2` values stay in `SecurityID` or
 //! `secaltids`. The columns read the existing market event holder; they add no
 //! second value. `CFICode(461)` already names its classification, so it keeps
-//! its standard tag. `MsgCat` reads the message component's `FIX:msgcat`
-//! metadata. State and expiry are event facts derived from the standard's
+//! its standard tag. `MsgCat` projects the message component's symbolic
+//! `FIX:msgcat` metadata through the registry code set into the generic
+//! market operation's stable integer ID. State and expiry are event facts derived from the standard's
 //! status and expiry fields, then carried by lifecycle; a newer explicit expiry
 //! replaces the previous deadline.
 //!
@@ -30,7 +31,7 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the nineteen say more than the column
+//! sentence, and join on it. Nine of the eighteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
 //! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
@@ -83,7 +84,7 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
-use crate::graph::EventColumn;
+use crate::graph::{EventColumn, MarketColumn};
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -172,17 +173,13 @@ pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 /// counterparty are two instances.
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");
 
-/// The tag and name carrying the message's identity: the UUIDv7 its microsecond
-/// instant and code derive.
+/// The tag and name carrying the message's identity: UUIDv7 ordered by its
+/// millisecond and sequence, with a content payload seeded by its cross hash.
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
 /// shares, where the message names one.
 pub const CROSSUUID_TAG_NAME: (i32, &str) = (65_040, "crossuuid");
-
-/// The tag and name carrying the identities of the messages this one
-/// descends from.
-pub const PARENTUUIDS_TAG_NAME: (i32, &str) = (65_041, "parentuuids");
 
 /// The tag and name carrying the message's place in its chain: how many
 /// came before it.
@@ -238,15 +235,15 @@ pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
 
 /// The tag and name carrying the fixed business category of the message type.
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
-/// The registry-owned vocabulary the crate's MsgCat column reads by.
+/// The crate-owned vocabulary registered for the MsgCat column to read by.
+/// Its numeric graph identifiers are intrinsic and immutable in a registry.
 pub(super) const MSGCAT_CODESET_NAME: &str = "msgcatcodeset";
 
 /// The canonical MsgCat document every registry shares.
 static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
-    let codes = super::constants::MSGCATEGORIES
+    let codes = super::constants::MSGCATEGORY_CODES
         .iter()
-        .copied()
-        .map(|value| super::FixCode::new(value, value))
+        .map(|(name, _, value)| super::FixCode::new(*name, *value))
         .collect::<Vec<_>>();
     match super::FixCodes::render(&codes) {
         Ok(document) => Some(Arc::from(document)),
@@ -285,7 +282,7 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 /// as the message's merge reference.
 pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
 
-/// The graph event column one crate tag is, for the nineteen that are one.
+/// The graph event column one crate tag is, for the eighteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -295,6 +292,16 @@ pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
 pub fn event_column_of(tag: i32) -> Option<EventColumn> {
     CRATED.iter().find_map(|held| match held.holds {
         Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+        _ => None,
+    })
+}
+
+/// The graph market column one crate tag is, where the FIX field and the
+/// generic market schema are two views of the same fact.
+#[must_use]
+pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
+    CRATED.iter().find_map(|held| match held.holds {
+        Holds::Market { column, .. } if held.tag_name.0 == tag => Some(column),
         _ => None,
     })
 }
@@ -333,7 +340,7 @@ static FIELDS: LazyLock<Option<Vec<Field>>> = LazyLock::new(|| match build() {
 /// Everything else the crate owns is about the session or the chain the
 /// message stands in - the identifiers it resolved, the keys a bridge
 /// stated, the plugin, the context and the session instance - and carries.
-const SETTLED_TO_ONE_MESSAGE: [i32; 20] = [
+const SETTLED_TO_ONE_MESSAGE: [i32; 19] = [
     CURRUNIX_TAG_NAME.0,
     EXECUNIX_TAG_NAME.0,
     RECDUNIX_TAG_NAME.0,
@@ -350,7 +357,6 @@ const SETTLED_TO_ONE_MESSAGE: [i32; 20] = [
     CROSSUUID_TAG_NAME.0,
     CROSSCODE_TAG_NAME.0,
     SEQNUM_TAG_NAME.0,
-    PARENTUUIDS_TAG_NAME.0,
     NOFIXENTRIES_TAG_NAME.0,
     SOURCEURL_TAG_NAME.0,
     SRCUUIDS_TAG_NAME.0,
@@ -374,10 +380,15 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the nineteen [`EventColumn`]s, which owns all three: a text
+    /// One of the eighteen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
+    /// One of the generic market facts shared with graph operations.
+    Market {
+        column: MarketColumn,
+        display: &'static str,
+    },
     /// A fact no graph event states - what a bridge's row header said, where
     /// the line was read from, the residual counter and the six normalized
     /// identifiers - which therefore spells its own.
@@ -418,6 +429,21 @@ impl Crated {
         Self {
             tag_name,
             holds: Holds::Event(column),
+            fix_wording: None,
+            names: &[],
+            codeset: None,
+        }
+    }
+
+    /// One graph market column under the crate's own tag.
+    const fn market(
+        tag_name: (i32, &'static str),
+        column: MarketColumn,
+        display: &'static str,
+    ) -> Self {
+        Self {
+            tag_name,
+            holds: Holds::Market { column, display },
             fix_wording: None,
             names: &[],
             codeset: None,
@@ -473,6 +499,11 @@ impl Crated {
         let (tag, name) = self.tag_name;
         let (dtype, display, description) = match self.holds {
             Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
+            Holds::Market { column, display } => (
+                column.datatype(),
+                display,
+                "The stable integer category of the market operation.",
+            ),
             Holds::Own {
                 datatype,
                 display,
@@ -508,7 +539,7 @@ impl Crated {
 /// The order is the tags', because that is the order a schema, a document
 /// and [`fix_crate_fields`] all walk them in. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 32] = [
+const CRATED: [Crated; 31] = [
     Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
     Crated::own(
         MSGCTXID_TAG_NAME,
@@ -567,7 +598,6 @@ const CRATED: [Crated; 32] = [
     ),
     Crated::event(CURRUUID_TAG_NAME, EventColumn::CurrUuid),
     Crated::event(CROSSUUID_TAG_NAME, EventColumn::CrossUuid),
-    Crated::event(PARENTUUIDS_TAG_NAME, EventColumn::ParentUuids),
     Crated::event(SEQNUM_TAG_NAME, EventColumn::SeqNum),
     Crated::event(CROSSCODE_TAG_NAME, EventColumn::CrossCode).saying(
         "The identifier every message of one lifecycle shares: OrderID, \
@@ -597,13 +627,9 @@ const CRATED: [Crated; 32] = [
          ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
-    Crated::own(
-        MSGCAT_TAG_NAME,
-        || DataType::fixed_ascii(4),
-        "MsgCat",
-        "The four-byte business category of the message type.",
-    )
-    .reading(MSGCAT_CODESET_NAME),
+    Crated::market(MSGCAT_TAG_NAME, MarketColumn::MarketOperationId, "MsgCat")
+        .saying("The stable integer code for the message type's business category.")
+        .reading(MSGCAT_CODESET_NAME),
     Crated::own(
         ISINCODE_TAG_NAME,
         || Ok(DataType::isin()),
@@ -666,7 +692,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 32);
+/// assert_eq!(held.len(), 31);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -

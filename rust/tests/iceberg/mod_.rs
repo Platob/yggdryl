@@ -2888,6 +2888,353 @@ mod tables {
     }
 
     #[test]
+    fn calendar_partitions_group_distinct_instants_by_their_utc_period() {
+        // Every instant is distinct, so only the calendar period can group
+        // them; the ones either side of the epoch are where flooring and
+        // truncating a count disagree.
+        let path = root("calendar-grouping");
+        let at = || DataType::DateTime64 {
+            unit: TimeUnit::Microsecond,
+            timezone: yggdryl::Timezone::NAIVE,
+        };
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            at().required_field("day_at"),
+            at().required_field("hour_at"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![
+                PartitionField {
+                    source_id: 2,
+                    field_id: 1000,
+                    name: "day".into(),
+                    transform: Transform::Day,
+                },
+                PartitionField {
+                    source_id: 3,
+                    field_id: 1001,
+                    name: "hour".into(),
+                    transform: Transform::Hour,
+                },
+            ],
+        };
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        let hour = 3_600_000_000_i64;
+        let instants = [
+            -hour - 1,
+            -1,
+            0,
+            1,
+            hour - 1,
+            23 * hour,
+            24 * hour - 1,
+            24 * hour,
+        ];
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from_iter_values(0..8)) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(instants.to_vec())) as ArrayRef,
+                Arc::new(TimestampMicrosecondArray::from(instants.to_vec())) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let mut tuples: Vec<(Vec<Scalar>, i64)> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| (file.partition, file.record_count))
+            .collect();
+        tuples.sort_by_key(|(_, rows)| *rows);
+        let mut expected = vec![
+            (vec![Scalar::date32(-1), Scalar::from(-2)], 1),
+            (vec![Scalar::date32(-1), Scalar::from(-1)], 1),
+            (vec![Scalar::date32(0), Scalar::from(0)], 3),
+            (vec![Scalar::date32(0), Scalar::from(23)], 2),
+            (vec![Scalar::date32(1), Scalar::from(24)], 1),
+        ];
+        expected.sort_by_key(|(_, rows)| *rows);
+        assert_eq!(tuples.len(), expected.len(), "{tuples:?}");
+        for tuple in &expected {
+            assert!(tuples.contains(tuple), "{tuple:?} in {tuples:?}");
+        }
+    }
+
+    #[test]
+    fn a_day_before_the_epoch_holds_its_last_second_whatever_arrives_first() {
+        // 1969-12-30T23:59:59.5 and 1969-12-30T12:00 are one UTC day, day -2.
+        // Truncating the count toward zero before flooring would move the
+        // first into 1969-12-31, and a write keys every instant of a day
+        // together, so whichever row came first would label both.
+        let last_second = -86_400_500_000_i64;
+        let noon = -129_600_000_000_i64;
+        for (label, order) in [
+            ("day-before-epoch-a", [last_second, noon]),
+            ("day-before-epoch-b", [noon, last_second]),
+        ] {
+            let path = root(label);
+            let at = |unit| DataType::DateTime64 {
+                unit,
+                timezone: yggdryl::Timezone::NAIVE,
+            };
+            let mut schema = StructType::from_fields([
+                DataType::Int64.required_field("id"),
+                at(TimeUnit::Microsecond).required_field("at_us"),
+                at(TimeUnit::Nanosecond).required_field("at_ns"),
+            ])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+            assign_field_ids(&mut schema, 1).unwrap();
+            let spec = PartitionSpec {
+                spec_id: 0,
+                fields: vec![
+                    PartitionField {
+                        source_id: 2,
+                        field_id: 1000,
+                        name: "day_us".into(),
+                        transform: Transform::Day,
+                    },
+                    PartitionField {
+                        source_id: 3,
+                        field_id: 1001,
+                        name: "day_ns".into(),
+                        transform: Transform::Day,
+                    },
+                ],
+            };
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                spec,
+            )
+            .unwrap();
+            let arrow = schema.clone().into_arrow_schema().unwrap();
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![
+                    Arc::new(Int64Array::from_iter_values(0..2)) as ArrayRef,
+                    Arc::new(TimestampMicrosecondArray::from(order.to_vec())) as ArrayRef,
+                    Arc::new(arrow_array::TimestampNanosecondArray::from(
+                        order
+                            .iter()
+                            .map(|micros| micros * 1_000)
+                            .collect::<Vec<_>>(),
+                    )) as ArrayRef,
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+                .unwrap();
+            let tuples: Vec<(Vec<Scalar>, i64)> = table
+                .data_files()
+                .unwrap()
+                .into_iter()
+                .map(|(file, _)| (file.partition, file.record_count))
+                .collect();
+            assert_eq!(
+                tuples,
+                vec![(vec![Scalar::date32(-2), Scalar::date32(-2)], 2)],
+                "{label}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_nan_row_survives_file_pruning_and_clean_files_still_prune() {
+        // Iceberg bounds leave NaN out, and this crate orders NaN past every
+        // number, so only a NaN count of zero lets a float bound skip a file.
+        let path = root("nan-pruning");
+        let mut schema = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::Float64.required_field("price"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        for (ids, prices) in [([1, 2], [1.0, f64::NAN]), ([3, 4], [200.0, 300.0])] {
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![
+                    Arc::new(Int64Array::from(ids.to_vec())) as ArrayRef,
+                    Arc::new(arrow_array::Float64Array::from(prices.to_vec())) as ArrayRef,
+                ],
+            )
+            .unwrap();
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow.clone(), [batch]))
+                .unwrap();
+        }
+        let mut nans: Vec<Vec<(i32, i64)>> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file.nan_value_counts)
+            .collect();
+        nans.sort();
+        assert_eq!(nans, vec![vec![(2, 0)], vec![(2, 1)]]);
+
+        let ids = |filter: &str| {
+            let mut ids: Vec<i64> = table
+                .scan_matching(filter, None)
+                .unwrap()
+                .flat_map(|batch| {
+                    batch
+                        .unwrap()
+                        .column(0)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .unwrap()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            ids.sort_unstable();
+            ids
+        };
+        assert_eq!(ids("price > 100"), vec![2, 3, 4]);
+        assert_eq!(ids("price > 500"), vec![2]);
+        // The NaN-free file is still skipped from its bounds alone.
+        assert_eq!(table.plan_matching("price > 500").unwrap().tasks.len(), 1);
+    }
+
+    #[test]
+    fn sliced_input_is_cut_into_files_by_its_own_rows() {
+        // One batch, then the same rows as zero-copy slices of it: each slice
+        // counts its own extent, so both write the same number of files.
+        let files = |label: &str, slices: usize| {
+            let path = root(label);
+            let mut schema = StructType::from_fields([DataType::Int64.required_field("id")])
+                .map(DataType::from)
+                .unwrap()
+                .required_field("row");
+            assign_field_ids(&mut schema, 1).unwrap();
+            let mut table = Table::create(
+                LocalFolder::new(&path).unwrap(),
+                FormatVersion::V2,
+                schema.clone(),
+                PartitionSpec::unpartitioned(),
+            )
+            .unwrap();
+            let arrow = schema.clone().into_arrow_schema().unwrap();
+            let rows = 200_000_usize;
+            let batch = RecordBatch::try_new(
+                arrow.clone(),
+                vec![Arc::new(Int64Array::from_iter_values(0..rows as i64)) as ArrayRef],
+            )
+            .unwrap();
+            let step = rows / slices;
+            let pieces: Vec<RecordBatch> = (0..slices)
+                .map(|piece| batch.slice(piece * step, step))
+                .collect();
+            let mut options = yggdryl::iceberg::IcebergOptions::default();
+            options.set_target_file_size_bytes(256 * 1024).unwrap();
+            table.set_options(options);
+            table
+                .commit_append(yggdryl::arrow::batch_reader(arrow, pieces))
+                .unwrap();
+            table.data_files().unwrap().len()
+        };
+        let whole = files("sliced-whole", 1);
+        assert!(whole > 1, "{whole}");
+        assert_eq!(files("sliced-pieces", 100), whole);
+    }
+
+    #[test]
+    fn a_source_under_a_null_struct_partitions_as_null_whatever_its_slot_holds() {
+        // The child slot under a null parent still holds bytes, and here they
+        // are exactly the valid row's value: one partition key must not
+        // swallow the other.
+        let path = root("null-parent-partition");
+        let nested = StructType::from_fields([DataType::utf8().required_field("category")])
+            .map(DataType::from)
+            .unwrap()
+            .nullable_field("payload");
+        let mut schema = StructType::from_fields([DataType::Int64.required_field("id"), nested])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        assign_field_ids(&mut schema, 1).unwrap();
+        let spec = PartitionSpec {
+            spec_id: 0,
+            fields: vec![PartitionField {
+                source_id: 3,
+                field_id: 1000,
+                name: "category".into(),
+                transform: Transform::Identity,
+            }],
+        };
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            spec,
+        )
+        .unwrap();
+
+        let arrow = schema.clone().into_arrow_schema().unwrap();
+        let ArrowDataType::Struct(children) = arrow.field(1).data_type() else {
+            panic!("payload must be a struct")
+        };
+        let payload = StructArray::try_new(
+            children.clone(),
+            vec![Arc::new(StringArray::from(vec!["books", "books", "games"])) as ArrayRef],
+            Some(vec![true, false, true].into()),
+        )
+        .unwrap();
+        let batch = RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3])) as ArrayRef,
+                Arc::new(payload) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(arrow, [batch]))
+            .unwrap();
+
+        let mut partitions: Vec<Scalar> = table
+            .data_files()
+            .unwrap()
+            .into_iter()
+            .map(|(file, _)| file.partition[0].clone())
+            .collect();
+        partitions.sort_by_key(|value| format!("{value:?}"));
+        let mut expected = vec![Scalar::from("books"), Scalar::Null, Scalar::from("games")];
+        expected.sort_by_key(|value| format!("{value:?}"));
+        assert_eq!(partitions, expected);
+    }
+
+    #[test]
     fn a_null_partition_value_writes_its_own_directory_and_reads_back_null() {
         let path = root("null-partition");
         let schema = trade_schema();
@@ -3494,14 +3841,6 @@ mod planning {
         assert_eq!(filtered.manifests_skipped(), 2);
         assert_eq!(filtered.manifests_read, 1);
 
-        // A question about the *file* prunes at the same level, because a Hive
-        // path is a statistic and an identity partition writes one.
-        let by_path = table
-            .plan_matching("&holder.partition['venue'] = 'XNYS'")
-            .unwrap();
-        assert_eq!(by_path.tasks.len(), 1);
-        assert_eq!(by_path.manifests_skipped(), 2);
-
         // A range the summaries cannot settle still reads every manifest, and
         // still answers correctly from the rows.
         let ranged = table.plan_matching("id >= 2").unwrap();
@@ -3513,7 +3852,7 @@ mod planning {
     }
 
     #[test]
-    fn one_predicate_mixes_the_file_and_the_rows() {
+    fn one_predicate_mixes_the_partition_and_the_rows() {
         let (_path, mut table) = venues("scan-mixed");
         // A second row in a partition that already exists is what makes the row
         // half of the predicate load-bearing: with one row per venue, a
@@ -3526,10 +3865,7 @@ mod planning {
 
         let rows = collect(
             table
-                .scan_matching(
-                    "id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'",
-                    None,
-                )
+                .scan_matching("id >= 4 and symbol is not null and venue = 'XLON'", None)
                 .unwrap(),
         );
         assert_eq!(rows.len(), 1);
@@ -3537,11 +3873,7 @@ mod planning {
         assert_eq!(rows[0].2.as_deref(), Some("XLON"));
 
         // Each half on its own keeps more, so neither was dropped above.
-        let held = collect(
-            table
-                .scan_matching("&holder.partition['venue'] = 'XLON'", None)
-                .unwrap(),
-        );
+        let held = collect(table.scan_matching("venue = 'XLON'", None).unwrap());
         assert_eq!(held.iter().map(|row| row.0).collect::<Vec<_>>(), vec![3, 4]);
         let ranged = collect(table.scan_matching("id >= 4", None).unwrap());
         assert_eq!(ranged.iter().map(|row| row.0).collect::<Vec<_>>(), vec![4]);
@@ -5581,8 +5913,8 @@ fn options_resolve_explicitly_then_by_property_then_by_default() {
     assert_eq!(options.commit_total_timeout_ms(), 1_800_000);
     assert_eq!(options.target_file_size_bytes(), 512 * 1024 * 1024);
     assert!((1..=8).contains(&options.read_parallelism()));
-    assert_eq!(options.read_parallel_min_files(), 16);
-    assert_eq!(options.read_parallel_min_file_size_bytes(), 4 * 1024 * 1024);
+    assert_eq!(options.read_parallel_min_files(), 2);
+    assert_eq!(options.read_parallel_min_file_size_bytes(), 64 * 1024);
 
     // A table property overrides the default.
     table
@@ -6440,7 +6772,7 @@ mod line_projection {
             .into();
         options.set_batch_row_size(Some(2));
 
-        // The row opens with the nineteen event columns, two of them the
+        // The row opens with the eighteen event columns, two of them the
         // `uint64` codes Iceberg has no type for: the table takes the
         // schema as the scheme widens it, `decimal(20, 0)` for those, as a
         // FIX row's table does.
@@ -6587,9 +6919,13 @@ mod manifest_planning {
             );
             assert_eq!(full.data_file.lower_bounds, pruned.data_file.lower_bounds);
             assert_eq!(full.data_file.upper_bounds, pruned.data_file.upper_bounds);
+            // A float bound counts only beside a NaN count of zero.
+            assert_eq!(
+                full.data_file.nan_value_counts,
+                pruned.data_file.nan_value_counts
+            );
             // ...and skips what it never reads.
             assert!(pruned.data_file.column_sizes.is_empty());
-            assert!(pruned.data_file.nan_value_counts.is_empty());
             assert!(pruned.data_file.split_offsets.is_empty());
         }
     }

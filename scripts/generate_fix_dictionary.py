@@ -95,6 +95,34 @@ MSGCAT_BY_TYPE = {
     for code in codes.split()
 }
 
+# Generic graph operation identifiers are persistent data, not positions in
+# the current alphabetic category list. New categories receive a new explicit
+# value; existing values never move.
+MSGCATEGORY_CODES = {
+    "UNKN": 0,
+    "ACCT": 1,
+    "ALLO": 2,
+    "BOOK": 3,
+    "CERT": 4,
+    "COLL": 5,
+    "COMM": 6,
+    "CONF": 7,
+    "EXEC": 8,
+    "MKST": 9,
+    "ORDR": 10,
+    "PAYM": 11,
+    "POSN": 12,
+    "PRTY": 13,
+    "QUOT": 14,
+    "REGI": 15,
+    "RISK": 16,
+    "SECU": 17,
+    "SESS": 18,
+    "SETL": 19,
+    "STRM": 20,
+    "TRAD": 21,
+}
+
 # Pinned commits. A branch would make the output unreproducible.
 ORCHESTRA_COMMIT = "099914dd0edd49a699326f0441776d6e21cfaf93"
 QUICKFIX_COMMIT = "3536699e830e65f875df4a50b647a6d3bad3b884"
@@ -2317,12 +2345,44 @@ def render_constants(
             ]
         )
     categories = sorted({*MSGCAT_BY_TYPE.values(), "UNKN"})
+    if set(categories) != set(MSGCATEGORY_CODES):
+        missing = ", ".join(sorted(set(categories) - set(MSGCATEGORY_CODES)))
+        extra = ", ".join(sorted(set(MSGCATEGORY_CODES) - set(categories)))
+        raise ValueError(f"message category IDs differ: missing={missing}; extra={extra}")
     rendered = ", ".join(f'"{category}"' for category in categories)
+    category_codes = [
+        (category, MSGCATEGORY_CODES[category])
+        for category in categories
+        if category != "UNKN"
+    ]
+    category_codes.append(("UNKN", MSGCATEGORY_CODES["UNKN"]))
+    rendered_codes = ", ".join(
+        f'("{category}", {code}, "{code}")' for category, code in category_codes
+    )
     lines.extend(
         [
             "/// The fixed categories a FIX message can answer.",
             "#[rustfmt::skip]",
             f"pub const MSGCATEGORIES: [&str; {len(categories)}] = [{rendered}];",
+            "",
+            "/// The stable signed identifiers carried by the MsgCat code set.",
+            "/// Zero is the unknown category; published categories are positive.",
+            "#[rustfmt::skip]",
+            f"pub const MSGCATEGORY_CODES: [(&str, i32, &str); {len(category_codes)}] = [{rendered_codes}];",
+            "",
+            "/// The integer identifier for one symbolic message category.",
+            "pub(super) fn msgcat_code(category: &str) -> Option<i32> {",
+            "    MSGCATEGORY_CODES",
+            "        .iter()",
+            "        .find_map(|(name, code, _)| (*name == category).then_some(*code))",
+            "}",
+            "",
+            "/// The symbolic message category for one integer identifier.",
+            "pub(super) fn msgcat_name(code: i32) -> Option<&'static str> {",
+            "    MSGCATEGORY_CODES",
+            "        .iter()",
+            "        .find_map(|(name, held, _)| (*held == code).then_some(*name))",
+            "}",
             "",
             "/// The exact derivations generated into the shipped FIX dictionary,",
             "/// sorted by target tag. A registry matching every pair can use the",

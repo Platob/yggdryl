@@ -1935,7 +1935,7 @@ impl JsProtocolField {
             .map_err(napi_error)
     }
 
-    /// The fixed four-byte business category this FIX field declares.
+    /// The symbolic business-category name this FIX field declares.
     #[napi(getter)]
     pub fn msgcat(&self, env: Env) -> Result<Option<String>> {
         self.require_fix(env, "msgcat")?;

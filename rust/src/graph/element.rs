@@ -5,7 +5,7 @@
 //! the two readings every element has - following another, and merging with
 //! another statement of itself. The identity is the crate's own [`Uuid`], so
 //! an element is addressed the way every identified value in the crate is,
-//! and a parent, a predecessor or a cross element is named by the same
+//! and a predecessor or a cross element is named by the same
 //! identity rather than by a reference, so an element can name one it does
 //! not hold.
 
@@ -22,23 +22,20 @@ use crate::{
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 
 /// One element of a graph: a node that knows its own identity, the identity
-/// it has elsewhere, the codes it digests to, the names it goes by, the
-/// identities of the elements it descends from and the identities of the
-/// elements it was read from.
+/// it has elsewhere, the codes it digests to, the names it goes by and the
+/// identities of the elements it was read from.
 ///
-/// The parents are the element's lineage, oldest first: every identity of
-/// the lifecycle it stands in, from the first incarnation to the one it
-/// follows, which [`Self::lineage`] hands a follower whole. An element with
-/// no parent is a root. The sources are its provenance: the elements it was
-/// read from - a message parsed from a text line has that line's identity as
-/// its one source - and never its lineage, so an element follows another
-/// without being read from it and is read from a line without descending
-/// from it. Sources travel along no chain: following and restating leave
-/// them as they are, and only a merge of two statements of one element
-/// unions them, because the merged element was built from both. The
-/// sources never feed the code the element digests to: a source is where an
-/// element was read, not what it states. The parents do, as [`Self::digest`]
-/// states them: a lineage is part of what an element says. The cross
+/// The sources are its provenance: the elements it was read from - a message
+/// parsed from a text line has that line's identity as its one source - so
+/// an element follows another without being read from it and is read from a
+/// line without following it. Where an element stands in its chain is the
+/// one element before it, which an event records as its `prevuuid`
+/// ([`Event::get_prevuuid`]); nothing records the chain further back.
+/// Sources travel along no chain: following and restating leave them as they
+/// are, and only a merge of two statements of one element unions them,
+/// because the merged element was built from both. The sources never feed
+/// the code the element digests to: a source is where an element was read,
+/// not what it states. The cross
 /// element, `crossuuid`, is what this element is in another
 /// graph - the same order in a venue's book and in a ledger - and
 /// `crosscode` is the text that names it there: the identifier every
@@ -62,7 +59,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///
 /// Three readings come with the facts. [`Self::is_after`] is the order the
 /// implementor states between two elements - an event's instant, a node's
-/// lineage - and [`Self::is_before`] its mirror, provided.
+/// predecessor - and [`Self::is_before`] its mirror, provided.
 /// [`Self::with_previous`] states this element as the one after another,
 /// and is the other signature the trait leaves to the implementor: what
 /// following means is the element's own - a chain entry records its
@@ -70,8 +67,8 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// reading an event delegates to. [`Self::merge_with`] folds another
 /// statement of the same element into this one, and is provided: the cross
 /// element and the cross code are taken where this one states none, the
-/// identifiers this one lacks are taken, and the parents and the sources
-/// are each the union in this element's order, then the other's. An event
+/// identifiers this one lacks are taken, and the sources become a sorted
+/// unique union. An event
 /// delegates to
 /// [`Event::merging`], which folds the instants and the state too.
 ///
@@ -88,7 +85,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     hashcode: u64,
 ///     crosshashcode: u64,
 ///     identifiers: BTreeMap<String, String>,
-///     parents: Vec<Uuid>,
+///     previous: Option<Uuid>,
 ///     sources: Vec<Uuid>,
 /// }
 ///
@@ -101,7 +98,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///             hashcode: 0,
 ///             crosshashcode: 0,
 ///             identifiers: BTreeMap::new(),
-///             parents: Vec::new(),
+///             previous: None,
 ///             sources: Vec::new(),
 ///         }
 ///     }
@@ -144,21 +141,17 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
 ///         self.identifiers = identifiers;
 ///     }
-///     fn get_parentuuids(&self) -> &[Uuid] {
-///         &self.parents
-///     }
-///     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-///         self.parents = parents;
-///     }
 ///     fn get_srcuuids(&self) -> &[Uuid] {
 ///         &self.sources
 ///     }
-///     fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+///     fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
+///         sources.sort_unstable();
+///         sources.dedup();
 ///         self.sources = sources;
 ///     }
-///     // A node's order is its lineage: it is after the nodes it descends from.
+///     // A node's order is its predecessor: it is after the node it follows.
 ///     fn is_after(&self, other: &Self) -> bool {
-///         self.parents.contains(&other.get_curruuid())
+///         self.previous == Some(other.get_curruuid())
 ///     }
 ///     // A node's identity is assigned, so finalizing keeps it and only
 ///     // recomputes the code its content digests to.
@@ -166,13 +159,12 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///         self.sync_cross();
 ///         self.hashcode = self.digest().as_u64();
 ///     }
-///     // A node follows another by descending from it - taking its whole
-///     // lineage, the node itself last - and never itself.
+///     // A node follows another by recording it - and never itself.
 ///     fn with_previous(mut self, previous: &Self) -> Option<Self> {
 ///         if previous.get_curruuid() == self.get_curruuid() {
 ///             return None;
 ///         }
-///         self.parents = previous.lineage();
+///         self.previous = Some(previous.get_curruuid());
 ///         self.finalize();
 ///         Some(self)
 ///     }
@@ -183,16 +175,9 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// let mut child = Node::new(2);
 /// child.set_crosscode("O-100".to_owned());
 /// child.set_identifiers(BTreeMap::from([("ClOrdID".to_owned(), "C-1".to_owned())]));
-/// assert!(child.get_parentuuids().is_empty(), "a node naming no parent is a root");
 /// assert!(!child.is_after(&root) && !child.is_before(&root), "unrelated, so neither");
 /// let child = child.with_previous(&root).expect("a node follows another");
-/// assert_eq!(child.get_parentuuids(), [root.get_curruuid()]);
 /// assert!(child.is_after(&root) && root.is_before(&child));
-/// // A third node follows the second and descends from the whole lineage,
-/// // oldest first: the root, then the node it follows.
-/// let leaf = Node::new(3).with_previous(&child).expect("a node follows another");
-/// assert_eq!(leaf.get_parentuuids(), [root.get_curruuid(), child.get_curruuid()]);
-/// assert_eq!(leaf.get_parentuuids(), child.lineage());
 /// // The cross code stated, its digest and the cross identity follow it.
 /// assert_ne!(child.get_crosshashcode(), 0);
 /// assert_eq!(child.get_crossuuid(), child.cross_uuid());
@@ -201,20 +186,18 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// assert!(Node::new(1).with_previous(&root).is_none());
 ///
 /// // A second statement of the same node merges into the first: the
-/// // identifiers it states fill the ones the first left out, and the
-/// // parents are the union in order. Another node does not merge at all.
+/// // identifiers it states fill the ones the first left out. Another node
+/// // does not merge at all.
 /// let mut again = Node::new(2);
 /// again.set_identifiers(BTreeMap::from([
 ///     ("ClOrdID".to_owned(), "other".to_owned()),
 ///     ("OrderID".to_owned(), "O-1".to_owned()),
 /// ]));
-/// again.set_parentuuids(vec![Uuid::from_v8(9), root.get_curruuid()]);
 /// again.set_srcuuids(vec![Uuid::from_v8(70)]);
 /// let merged = child.merge_with(&again).expect("the same node");
 /// assert_eq!(merged.get_crosscode(), "O-100", "this element's word wins");
 /// assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
 /// assert_eq!(merged.get_identifiers()["OrderID"], "O-1", "and what it lacked is taken");
-/// assert_eq!(merged.get_parentuuids(), [root.get_curruuid(), Uuid::from_v8(9)]);
 /// // A source is provenance: unioned by the merge, and never fed to the code.
 /// assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(70)]);
 /// assert!(merged.merge_with(&root).is_none());
@@ -264,56 +247,20 @@ pub trait Element {
     /// replaced whole.
     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>);
 
-    /// The identities of the elements this one descends from, in the order
-    /// the element states them; empty for a root.
-    fn get_parentuuids(&self) -> &[Uuid];
-
-    /// Records the identities of the elements this one descends from, in
-    /// the given order; an empty list makes it a root.
-    fn set_parentuuids(&mut self, parents: Vec<Uuid>);
-
     /// The identities of the elements this one was read from: its
-    /// provenance, never its lineage. Empty for an element read from a
+    /// provenance, never its chain. Empty for an element read from a
     /// handle rather than from another element.
     ///
-    /// The merge reference leads, and the statements folded into it follow
-    /// in the order that merge took them, each once. Nothing beyond the
-    /// first entry is specified: which statement becomes the reference is
-    /// decided by recording clock and instant, and where those tie the
-    /// order the caller happened to hand them in survives. So a reader may
-    /// take the head as the reference this row's conflicts were resolved
-    /// against, and may take the set as the whole provenance, but must not
-    /// read the tail as arrival order - a capture fed in the other order
-    /// answers the same set spelled differently.
+    /// The identities are sorted and unique. Reference selection is carried
+    /// by the event clocks rather than encoded in list position.
     fn get_srcuuids(&self) -> &[Uuid];
 
-    /// Records the identities of the elements this one was read from; the
-    /// list is replaced whole, and an empty one states none.
+    /// Records the identities of the elements this one was read from as a
+    /// sorted unique list; an empty one states none.
     fn set_srcuuids(&mut self, sources: Vec<Uuid>);
 
-    /// The lineage an element following this one descends from: this
-    /// element's parents as they stand, oldest first, then this element
-    /// itself where the parents do not name it already.
-    ///
-    /// Provided, and the one rule every following reading sets a follower's
-    /// parents by, so a chain of three ends with two parents in order and a
-    /// chain walked twice answers the same parents. As long as the chain
-    /// before the follower: every provided reading keeps the parents each
-    /// identity once, so the list grows by one per link and is read in one
-    /// pass.
-    fn lineage(&self) -> Vec<Uuid> {
-        let parents = self.get_parentuuids();
-        let own = self.get_curruuid();
-        let mut lineage = Vec::with_capacity(parents.len() + 1);
-        lineage.extend_from_slice(parents);
-        if !parents.contains(&own) {
-            lineage.push(own);
-        }
-        lineage
-    }
-
     /// Whether this element comes after `other` in the order the implementor
-    /// states: an event's instant, a node's lineage.
+    /// states: an event's instant, a node's predecessor.
     ///
     /// With [`Self::is_before`], one strict weak order: an element is never
     /// after itself, and two that are neither after nor before each other
@@ -339,8 +286,8 @@ pub trait Element {
     /// cross codes in step with [`Self::sync_cross`], digests what it says
     /// from [`Self::digest`] or the continuation its traits provide, and
     /// hands the code to [`Self::set_currhashcode`] - or, for an event, to
-    /// [`Event::finalized`], which sets the identity the instant and the code
-    /// derive; an element whose identity is assigned
+    /// [`Event::finalized`], which sets the identity the instant, sequence,
+    /// cross hash and code derive; an element whose identity is assigned
     /// keeps it. Every
     /// provided reading that changes an element calls this once it has, so
     /// a followed or merged element never carries the code of what it was.
@@ -387,8 +334,8 @@ pub trait Element {
 
     /// Starts the digest of this element's content: an XXH3-64 state
     /// already fed the facts every element states that are not derived -
-    /// the cross code, the names it goes by and its parents, each under its
-    /// own name - for an implementor to feed what it says and finish. What
+    /// the cross code and the names it goes by, each under its own name -
+    /// for an implementor to feed what it says and finish. What
     /// is derived is never fed: not the current identity, not the cross hash
     /// code and not the cross element, which the code and the cross code
     /// derive; and neither are the sources, because where an element was
@@ -425,11 +372,9 @@ pub trait Element {
     /// where `other` is another element or where the fold changes nothing.
     ///
     /// Provided: the cross code is taken from `other` where this one states
-    /// none, the identifiers this one lacks are taken from it, the parents
-    /// and the sources each become the union - this element's in its order,
-    /// then the ones only `other` names, in its - the cross codes are
-    /// brought in step, and the element is finalized where any of that
-    /// moved. An event delegates to
+    /// none, the identifiers this one lacks are taken from it, the sources
+    /// become a sorted unique union, the cross codes are brought in step, and
+    /// the element is finalized where any of that moved. An event delegates to
     /// [`Event::merging`], which folds the rest.
     fn merge_with(mut self, other: &Self) -> Option<Self>
     where
@@ -444,8 +389,8 @@ pub trait Element {
 }
 
 /// The facts an element takes from another statement of itself: the cross
-/// code it left out, the identifiers it lacks, and the parents and the
-/// sources it did not name; whether any of them moved.
+/// code it left out, the identifiers it lacks, and the sources it did not
+/// name; whether any of them moved.
 pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
     if this.get_crosscode().is_empty() && !other.get_crosscode().is_empty() {
@@ -454,7 +399,6 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
     }
     changed |= this.sync_cross();
     changed |= take_identifiers(this, other);
-    changed |= union_parents(this, other);
     changed |= union_sources(this, other);
     changed
 }
@@ -487,12 +431,6 @@ fn merge_event_element<E: Element + ?Sized>(
         changed = true;
     }
 
-    let parents = union_uuids(other.get_parentuuids(), this.get_parentuuids())
-        .unwrap_or_else(|| other.get_parentuuids().to_vec());
-    if parents != this.get_parentuuids() {
-        this.set_parentuuids(parents);
-        changed = true;
-    }
     let sources = union_uuids(other.get_srcuuids(), this.get_srcuuids())
         .unwrap_or_else(|| other.get_srcuuids().to_vec());
     if sources != this.get_srcuuids() {
@@ -502,35 +440,71 @@ fn merge_event_element<E: Element + ?Sized>(
     changed
 }
 
-/// The identities `other` names and `held` does not, appended in `other`'s
-/// order behind the held ones, each once; nothing where `other` adds none,
-/// so a union that changes nothing costs no list.
+/// The sorted identities `other` names and `held` does not, merged once;
+/// nothing where `other` adds none, so a union that changes nothing costs no
+/// list. Disjoint suffixes append in one allocation.
 ///
-/// The one union rule, for the parents and the sources alike.
+/// The one union rule for the sources.
 fn union_uuids(held: &[Uuid], other: &[Uuid]) -> Option<Vec<Uuid>> {
-    if other.iter().all(|uuid| held.contains(uuid)) {
-        return None;
-    }
-    let mut union = Vec::with_capacity(held.len() + other.len());
-    union.extend_from_slice(held);
-    for uuid in other {
-        if !union.contains(uuid) {
-            union.push(*uuid);
+    let mut held_at = 0;
+    let mut other_at = 0;
+    while held_at < held.len() && other_at < other.len() {
+        match held[held_at].cmp(&other[other_at]) {
+            std::cmp::Ordering::Less => held_at += 1,
+            std::cmp::Ordering::Equal => {
+                held_at += 1;
+                other_at += 1;
+            }
+            std::cmp::Ordering::Greater => break,
         }
     }
+    if other_at == other.len() {
+        return None;
+    }
+    if held.is_empty() {
+        return Some(other.to_vec());
+    }
+    if other.first().is_some_and(|first| held.last() < Some(first)) {
+        let mut union = Vec::with_capacity(held.len() + other.len());
+        union.extend_from_slice(held);
+        union.extend_from_slice(other);
+        return Some(union);
+    }
+    let mut union = Vec::with_capacity(held.len() + other.len());
+    let (mut left, mut right) = (0, 0);
+    while left < held.len() && right < other.len() {
+        match held[left].cmp(&other[right]) {
+            std::cmp::Ordering::Less => {
+                union.push(held[left]);
+                left += 1;
+            }
+            std::cmp::Ordering::Equal => {
+                union.push(held[left]);
+                left += 1;
+                right += 1;
+            }
+            std::cmp::Ordering::Greater => {
+                union.push(other[right]);
+                right += 1;
+            }
+        }
+    }
+    union.extend_from_slice(&held[left..]);
+    union.extend_from_slice(&other[right..]);
     Some(union)
 }
 
-/// The parents `other` names and `this` does not, taken by [`union_uuids`];
-/// whether any was.
-fn union_parents<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
-    match union_uuids(this.get_parentuuids(), other.get_parentuuids()) {
-        Some(parents) => {
-            this.set_parentuuids(parents);
-            true
-        }
-        None => false,
+/// Normalizes an owned UUID list without reallocating its buffer. Already
+/// strictly sorted input is untouched; sorted duplicates only compact.
+pub(crate) fn canonicalize_uuids(values: &mut Vec<Uuid>) {
+    if values.len() < 2 {
+        return;
     }
+    let sorted = values.windows(2).all(|pair| pair[0] <= pair[1]);
+    if !sorted {
+        values.sort_unstable();
+    }
+    values.dedup();
 }
 
 /// The sources `other` names and `this` does not, taken by [`union_uuids`];
@@ -545,40 +519,14 @@ fn union_sources<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     }
 }
 
-/// The lineage an element takes from following `previous`: the
-/// predecessor's [`Element::lineage`] - its parents, oldest first, then the
-/// predecessor itself - in place of whatever the element named before;
-/// whether it moved.
-pub(super) fn descend_from<E: Element + ?Sized>(this: &mut E, previous: &E) -> bool {
-    // Compared in place before anything is built: a chain walked twice
-    // answers the same parents, and answers them without a list per step.
-    let parents = previous.get_parentuuids();
-    let own = previous.get_curruuid();
-    let held = this.get_parentuuids();
-    let unchanged = if parents.contains(&own) {
-        held == parents
-    } else {
-        held.len() == parents.len() + 1
-            && held[..parents.len()] == *parents
-            && held[parents.len()] == own
-    };
-    if unchanged {
-        return false;
-    }
-    this.set_parentuuids(previous.lineage());
-    true
-}
-
 /// The facts an event takes from restating `live`, another statement of
 /// the same event: the predecessor's chain facts as [`follow_element`]
-/// takes them, the parents `live` names, and the place `live` holds in its
-/// chain - its predecessor, its position, its snapshot - because the two
+/// takes them, and the place `live` holds in its chain - its predecessor, its position, its snapshot - because the two
 /// statements are one event and the chain grows by nothing. Its sources
 /// stay its own: where a statement was read from travels along no chain,
 /// so a twin keeps the line it came from and never the live one's.
 pub(super) fn restate_event<E: Event + ?Sized>(this: &mut E, live: &E) {
     follow_element(this, live);
-    union_parents(this, live);
     this.set_prevuuid(live.get_prevuuid());
     this.set_prevunix(live.get_prevunix());
     this.set_seqnum(live.get_seqnum());
@@ -745,9 +693,8 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 }
 
 /// The timed facts an event takes from following `previous`: the
-/// predecessor's identity and instant, the next place in the chain, the
-/// predecessor's whole lineage as its parents, and what any element takes
-/// from following - the cross code, the names it went by - with the
+/// predecessor's identity and instant, the next place in the chain, and
+/// what any element takes from following - the cross code, the names it went by - with the
 /// lifecycle carried forward. An unstamped execution input dates itself, then
 /// the later of that precise clock and the predecessor's remains the latest
 /// execution the lifecycle has reached; whether any fact moved.
@@ -768,7 +715,6 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
         |place| this.set_seqnum(place),
     );
     changed |= follow_element(this, previous);
-    changed |= descend_from(this, previous);
     let stated_expiry = this.get_exprtime();
     changed |= this.fold_lifecycle(previous);
     // A replacement may shorten its lifetime. Folding simultaneous statements
@@ -826,26 +772,79 @@ fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> b
     changed
 }
 
-/// Continues a digest with the names an element goes by and its parents,
-/// each under its own name: what [`Element::digest`] feeds behind the
-/// cross code.
+/// Continues a digest with the names an element goes by, each under its own
+/// scheme: what [`Element::digest`] feeds behind the cross code.
 fn feed_named<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
 where
     E: Element + ?Sized,
     F: Fn(&str) -> bool,
 {
+    let mut staged = Staged::new(state);
     for (scheme, identifier) in this.get_identifiers() {
         if include_identifier(scheme) {
-            feed(state, scheme, identifier.as_bytes());
+            staged.feed(scheme, identifier.as_bytes());
         }
     }
-    for parent in this.get_parentuuids() {
-        feed(state, "parentuuid", &parent.into_bytes());
+}
+
+/// Facts staged on the stack and written to a digest a chunk at a time.
+///
+/// A fact is four writes, and an element states dozens - its names, its
+/// market, a side's every live entry: staged, a digest costs a write per
+/// chunk instead, and the state reads the same bytes in the same order, so
+/// the code is the one [`feed`] answers.
+/// What is still staged is written when the stage is dropped.
+pub(super) struct Staged<'state> {
+    state: &'state mut Xxh3,
+    held: [u8; 512],
+    len: usize,
+}
+
+impl<'state> Staged<'state> {
+    pub(super) fn new(state: &'state mut Xxh3) -> Self {
+        Self {
+            state,
+            held: [0; 512],
+            len: 0,
+        }
+    }
+
+    /// [`feed`], staged.
+    fn feed(&mut self, name: &str, bytes: &[u8]) {
+        self.write(name.as_bytes());
+        self.write(&[0]);
+        self.write(bytes);
+        self.write(&[0]);
+    }
+
+    pub(super) fn write(&mut self, bytes: &[u8]) {
+        if self.len + bytes.len() > self.held.len() {
+            self.flush();
+            if bytes.len() > self.held.len() {
+                self.state.write(bytes);
+                return;
+            }
+        }
+        self.held[self.len..self.len + bytes.len()].copy_from_slice(bytes);
+        self.len += bytes.len();
+    }
+
+    fn flush(&mut self) {
+        if self.len > 0 {
+            self.state.write(&self.held[..self.len]);
+            self.len = 0;
+        }
+    }
+}
+
+impl Drop for Staged<'_> {
+    fn drop(&mut self) {
+        self.flush();
     }
 }
 
 /// Feeds what [`Event::digest_event`] feeds, less the cross code: the selected
-/// names the event goes by, its parents, its state, its place in the chain and
+/// names the event goes by, its state, its place in the chain and
 /// its predecessor's identity. A holder can leave out a name that records
 /// capture provenance rather than event content without duplicating the
 /// framing this digest owns.
@@ -873,13 +872,13 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///
 /// The instant is `currunix`: a count of nanoseconds since the Unix epoch, UTC,
 /// held as an `i64`, the count every clock this crate reads states. Coupled
-/// with the code the element's content digests to,
-/// [`Element::get_currhashcode`], it is the event's identity: [`Self::txhash`]
-/// is the crate's own [`TxHash`] of the two, and [`Self::time_uuid`] the
-/// UUID it answers - RFC 9562 UUIDv7 with the microsecond instant in front
-/// and the whole code stored behind it, nothing hashed a second time -
-/// which is what an implementor's [`Element::get_curruuid`]
-/// answers where the event's identity is when it happened and what it says.
+/// with the code the element's content digests to, its place in the chain and
+/// its cross code, it is the event's identity: [`Self::txhash`] is the crate's
+/// own [`TxHash`] of the instant and [`Element::get_currhashcode`], and
+/// [`Self::time_uuid`] is RFC 9562 UUIDv7 ordered by millisecond and sequence,
+/// with an XXH3 payload seeded by the cross hash code. That UUID is what an
+/// implementor's [`Element::get_curruuid`] answers where the event's identity
+/// is when it happened and what it says.
 ///
 /// Where the event stands is its [`State`], the crate's ranked lifecycle
 /// code, and every event has one: an event that reached no state says so
@@ -930,7 +929,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     hashcode: u64,
 ///     crosshashcode: u64,
 ///     identifiers: BTreeMap<String, String>,
-///     parents: Vec<Uuid>,
 ///     sources: Vec<Uuid>,
 ///     unix: i64,
 ///     state: State,
@@ -954,7 +952,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             hashcode: 0,
 ///             crosshashcode: 0,
 ///             identifiers: BTreeMap::new(),
-///             parents: Vec::new(),
 ///             sources: Vec::new(),
 ///             unix,
 ///             state: State::from_spelling("New").expect("a shipped state"),
@@ -1007,12 +1004,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     }
 ///     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
 ///         self.identifiers = identifiers;
-///     }
-///     fn get_parentuuids(&self) -> &[Uuid] {
-///         &self.parents
-///     }
-///     fn set_parentuuids(&mut self, parents: Vec<Uuid>) {
-///         self.parents = parents;
 ///     }
 ///     fn get_srcuuids(&self) -> &[Uuid] {
 ///         &self.sources
@@ -1118,7 +1109,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// let second = second.with_previous(&first).expect("the later one follows");
 /// assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
 /// assert_eq!(second.get_prevunix(), Some(10_000));
-/// assert_eq!(second.get_parentuuids(), first.lineage(), "the chain so far");
 /// // Following carries the lifecycle forward: the earliest creation known,
 /// // the names the predecessor went by, the cross code the chain shares -
 /// // its digest and the cross identity in step - and the next place in it.
@@ -1137,7 +1127,7 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// assert_eq!(held.get_currunix(), 20_000);
 /// assert_eq!(held.get_creaunix(), Some(5_000));
 /// assert!(held.get_state().is_live());
-/// // The identity its microsecond instant and its whole code derive.
+/// // The identity its millisecond, sequence and seeded content derive.
 /// let earlier = first.time_uuid().expect("an instant a TxHash holds");
 /// let later = second.time_uuid().expect("an instant a TxHash holds");
 /// assert!(earlier < later);
@@ -1253,10 +1243,7 @@ pub trait Event: Element {
     /// creation holds for the whole lifecycle; and the predecessor's cross
     /// code is forced onto this event where its own differs, with the cross
     /// hash code and the cross element brought in step, because two events
-    /// of one chain share it; and its parents become the predecessor's
-    /// [`lineage`](Element::lineage) - every identity of the chain, oldest
-    /// first, the predecessor last - so a walked event carries its whole
-    /// lifecycle. What the event itself says - its instant, recording clock,
+    /// of one chain share it. What the event itself says - its instant, recording clock,
     /// sources and snapshot - is its own and moves nowhere. An execution state
     /// with no precise clock takes its own instant; following then keeps the
     /// later of this event's clock and the predecessor's latest execution, so
@@ -1286,8 +1273,8 @@ pub trait Event: Element {
     /// the same instant, the same content - read a second time, as a
     /// capture logs one message at every hop it passes. It takes the place
     /// `live` holds in its chain - the predecessor, the position, the
-    /// snapshot - the chain's cross code, the names and parents `live`
-    /// knows, and the lifecycle folded, so the two statements finalize to
+    /// snapshot - the chain's cross code, the names `live` knows, and the
+    /// lifecycle folded, so the two statements finalize to
     /// one identity and the chain grows by nothing. Their execution and
     /// recording instants fold to the earliest either statement knows, while
     /// the selected reference recording clock folds to the latest. Its
@@ -1383,8 +1370,8 @@ pub trait Event: Element {
     }
 
     /// Records the code this event's content digests to and resets the
-    /// identity the instant and that code derive, and the cross element
-    /// behind it.
+    /// identity the instant, sequence, cross hash and that code derive, and
+    /// the cross element behind it.
     ///
     /// Provided, and what an implementor's [`Element::finalize`] hands the
     /// digest of its content to. The identity is [`Self::time_uuid`], and
@@ -1431,20 +1418,16 @@ pub trait Event: Element {
         coupled(self.get_currunix(), self.get_currhashcode())
     }
 
-    /// The identity the instant and the code derive: the UUID
-    /// [`TxHash::into_uuid`] answers for [`Self::txhash`], RFC 9562 UUIDv7
-    /// with the instant floored to microseconds in front - the millisecond it
-    /// falls in leads, and `rand_a` carries the microsecond within that
-    /// millisecond - and [`Element::get_currhashcode`] stored whole behind it.
-    /// Identities therefore sort by microsecond first and by the code within
-    /// one, and two events share an identity only where both agree.
-    ///
-    /// The code is the only content the identifier needs, because the chain,
-    /// the sequence and the lifecycle are already in it:
-    /// [`Element::digest`] feeds the cross code, the names and the parents,
-    /// and [`Self::digest_event`] feeds the state, the place in the chain and
-    /// the predecessor's identity. Rehashing any of them here would spend
-    /// bits restating what the code already says.
+    /// The generic event identity: RFC 9562 UUIDv7 with
+    /// [`Self::get_currunix`] floored to milliseconds in its timestamp,
+    /// [`Self::get_seqnum`] in `rand_a`, and a 62-bit XXH3 payload over the
+    /// content code and the whole sequence, seeded by
+    /// [`Element::get_crosshashcode`]. The explicit sequence lane saturates at
+    /// `4095`; feeding the whole `u64` sequence into the payload keeps larger
+    /// sequence values probabilistically distinct in that terminal lane.
+    /// Identities therefore sort by millisecond and then by every sequence
+    /// the UUID lane can represent, while the seeded payload separates
+    /// content, cross chains and sequence overflow.
     ///
     /// Provided: an implementor whose identity is when it happened and what
     /// it says answers this from [`Element::get_curruuid`], and one whose
@@ -1452,9 +1435,10 @@ pub trait Event: Element {
     ///
     /// # Errors
     ///
-    /// Returns what [`Self::txhash`] returns.
+    /// Returns a clock-restatement failure or the UUIDv7 timestamp refusal.
     fn time_uuid(&self) -> Result<Uuid> {
-        self.txhash()?.into_uuid()
+        self.txhash()?
+            .into_sequenced_uuid(self.get_seqnum(), self.get_crosshashcode())
     }
 }
 
@@ -1462,8 +1446,8 @@ pub trait Event: Element {
 /// of the market it stood on, with no instant of its own.
 ///
 /// Five facts beside what an element already states, each read and
-/// written: `px` is the price, a [`Decimal18`] - exact, as a market's numbers
-/// are - and `currency` the [`Currency`] it is quoted in; `qty` is the
+/// written: `price` is a [`Decimal18`] - exact, as a market's numbers
+/// are - and `currency` the [`Currency`] it is quoted in; `quantity` is the
 /// quantity, a [`Decimal18`] too, and `unit` the text it is counted in - a
 /// lot, a barrel, a megawatt-hour, whatever the market says; `side` is the
 /// crate's [`Side`] code, FIX's `Side(54)`. Two lanes state the quote the
@@ -1496,13 +1480,13 @@ pub trait Event: Element {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
-/// trade.set_px("82.5".parse()?);
+/// trade.set_price("82.5".parse()?);
 /// trade.set_currency(Currency::new("USD")?);
-/// trade.set_qty(Decimal18::from_int(1_000));
+/// trade.set_quantity(Decimal18::from_int(1_000));
 /// trade.set_unit("bbl".to_owned());
 /// trade.set_side(Side::read("1")?);
 /// trade.set_isincode(Some(IsinCode::new("US0378331005")?));
-/// assert_eq!(trade.get_px().to_string(), "82.5");
+/// assert_eq!(trade.get_price().to_string(), "82.5");
 /// assert_eq!(trade.get_currency().as_str(), "USD");
 /// assert_eq!(trade.get_unit(), "bbl");
 /// // A buy is a bid: the lane the side implies fills from the trade's own
@@ -1527,21 +1511,27 @@ pub trait Event: Element {
 /// // Another statement of the trade merges in: this one's price stands,
 /// // and the CFI the other states fills what this one left unknown.
 /// let mut other = trade.clone();
-/// other.set_px("83".parse()?);
+/// other.set_price("83".parse()?);
 /// other.set_cficode(Some(CfiCode::new("ESVUFR")?));
 /// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
 /// let merged = trade.merge_with(&other).expect("the same trade");
-/// assert_eq!(merged.get_px().to_string(), "82.5");
+/// assert_eq!(merged.get_price().to_string(), "82.5");
 /// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
 /// # Ok(())
 /// # }
 /// ```
 pub trait MarketElement: Element {
+    /// The stable integer category of the market operation, where stated.
+    fn get_marketoperationid(&self) -> Option<i32>;
+
+    /// Records the stable integer category of the market operation.
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>);
+
     /// The price.
-    fn get_px(&self) -> Decimal18;
+    fn get_price(&self) -> Decimal18;
 
     /// Records the price.
-    fn set_px(&mut self, px: Decimal18);
+    fn set_price(&mut self, price: Decimal18);
 
     /// The currency the price is quoted in.
     fn get_currency(&self) -> &Currency;
@@ -1550,10 +1540,10 @@ pub trait MarketElement: Element {
     fn set_currency(&mut self, currency: Currency);
 
     /// The quantity.
-    fn get_qty(&self) -> Decimal18;
+    fn get_quantity(&self) -> Decimal18;
 
     /// Records the quantity.
-    fn set_qty(&mut self, qty: Decimal18);
+    fn set_quantity(&mut self, quantity: Decimal18);
 
     /// The unit the quantity is counted in; empty where the market says none.
     fn get_unit(&self) -> &str;
@@ -1616,7 +1606,7 @@ pub trait MarketElement: Element {
 
     /// The price the element last traded at, where it states one.
     ///
-    /// What [`Self::get_px`] settles on is the price the element is *about*:
+    /// What [`Self::get_price`] settles on is the price the element is *about*:
     /// what it orders, else what it last traded, else what it averaged. This
     /// is the last trade alone, so a fill and the order it fills are told
     /// apart without reading which field each settled from.
@@ -1840,14 +1830,14 @@ pub trait MarketElement: Element {
         } else {
             None
         };
-        if self.get_px() == Decimal18::ZERO {
+        if self.get_price() == Decimal18::ZERO {
             if let Some(px) = self.get_lastpx().or_else(|| self.get_avgpx()).or(lane_px) {
-                self.set_px(px);
+                self.set_price(px);
             }
         }
-        if self.get_qty() == Decimal18::ZERO {
+        if self.get_quantity() == Decimal18::ZERO {
             if let Some(qty) = self.get_lastqty().or(lane_qty) {
-                self.set_qty(qty);
+                self.set_quantity(qty);
             }
         }
         if self.get_currency() == &Currency::none() {
@@ -1874,8 +1864,8 @@ pub trait MarketElement: Element {
         }
         // Only a stated fact fills a lane: a price or a quantity of nothing,
         // no currency, no unit, is nothing to state on the lane either.
-        let px = Some(self.get_px()).filter(|px| *px != Decimal18::ZERO);
-        let qty = Some(self.get_qty()).filter(|qty| *qty != Decimal18::ZERO);
+        let px = Some(self.get_price()).filter(|px| *px != Decimal18::ZERO);
+        let qty = Some(self.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
         let currency = Some(self.get_currency().clone()).filter(|held| *held != Currency::none());
         let unit = Some(self.get_unit().to_owned()).filter(|unit| !unit.is_empty());
         if bid {
@@ -1924,7 +1914,7 @@ pub trait MarketElement: Element {
     /// where `other` is another element or where the fold changes nothing.
     ///
     /// The element-level merge first - the cross code, the identifiers, the
-    /// parents' union - and then the market's facts
+    /// sources' union - and then the market's facts
     /// with this element leading: its price, quantity, unit and lane facts
     /// stand where it states them, and the currency, the side and each
     /// instrument code are the better of the two statements as
@@ -1961,7 +1951,7 @@ pub trait MarketElement: Element {
 /// reference statement's price, quantity and unit, and each code the better
 /// of the two as [`CodeValue::merge_with`] reads it, the reference leading -
 /// which an implementor's [`Element::merge_with`] delegates to. Following
-/// is the timed reading, [`Event::following`], unchanged.
+/// adds the market's chain facts to the timed reading, [`Event::following`].
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
@@ -1969,9 +1959,9 @@ pub trait MarketElement: Element {
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketEventData::at(10);
-/// trade.set_px("82.5".parse()?);
+/// trade.set_price("82.5".parse()?);
 /// trade.set_currency(Currency::new("USD")?);
-/// trade.set_qty(Decimal18::from_int(1_000));
+/// trade.set_quantity(Decimal18::from_int(1_000));
 /// trade.set_side(Side::read("1")?);
 /// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
 /// trade.finalize();
@@ -1985,13 +1975,13 @@ pub trait MarketElement: Element {
 /// // word, and the CFI it states fills what this one left unknown.
 /// let mut later = trade.clone();
 /// later.set_currunix(20);
-/// later.set_px("83".parse()?);
+/// later.set_price("83".parse()?);
 /// later.set_cficode(Some(CfiCode::new("ESVUFR")?));
 /// // An outside capture key established that this restatement is the same
 /// // event; changing identity inputs otherwise derives a new UUID eagerly.
 /// later.set_curruuid(trade.get_curruuid());
 /// let merged = trade.merge_with(&later).expect("the same trade");
-/// assert_eq!(merged.get_px(), Decimal18::from_int(83));
+/// assert_eq!(merged.get_price(), Decimal18::from_int(83));
 /// assert_eq!(merged.get_currunix(), 20);
 /// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
 /// # Ok(())
@@ -2012,22 +2002,29 @@ pub trait MarketEvent: Event + MarketElement {
     /// This market event stated as the one after `previous`: the timed
     /// reading, then the price and the quantity that statement settled on
     /// as the step before this one, and what the chain is about - the
-    /// instrument's names, its market, the currency, the unit, the side,
+    /// instrument's names and symbol ticker, its market, the currency, the unit, the side,
     /// the time in force and whether it can trade - where this event
     /// states none of it.
     ///
     /// Provided, and what an implementor's [`Element::with_previous`]
     /// delegates to where following means carrying the step before along.
-    /// An event that moved is finalized.
-    fn following_market(self, previous: &Self) -> Option<Self>
+    /// Missing market facts also propagate when the timed link is unchanged.
+    /// An event that moved is finalized once after both readings settle.
+    fn following_market(mut self, previous: &Self) -> Option<Self>
     where
         Self: Sized,
     {
-        let mut this = self.following(previous)?;
-        if follow_market(&mut this, previous) {
-            this.finalize();
+        if previous.get_curruuid() == self.get_curruuid()
+            || previous.get_currunix() > self.get_currunix()
+        {
+            return None;
         }
-        Some(this)
+        let changed = follow_timed(&mut self, previous);
+        if !(follow_market(&mut self, previous) || changed) {
+            return None;
+        }
+        self.finalize();
+        Some(self)
     }
 
     /// This event with another statement of itself folded in, by the
@@ -2075,7 +2072,7 @@ impl<E: Event + MarketElement + ?Sized> MarketEvent for E {}
 ///
 /// The holder is the one interchange representation. Implementors convert
 /// into it by value and rebuild from it by value, so changing one market
-/// entry wrapper into another moves owned strings, maps, and lineage rather
+/// entry wrapper into another moves owned strings, maps, and sources rather
 /// than cloning them.
 pub trait MarketEntryValue:
     MarketElement + From<MarketElementData> + Into<MarketElementData> + Sized
@@ -2097,7 +2094,7 @@ impl<T> MarketEntryValue for T where
 ///
 /// The holder is the one interchange representation. Implementors convert
 /// into it by value and rebuild from it by value, so changing one operation
-/// wrapper into another moves owned strings, maps, and lineage rather than
+/// wrapper into another moves owned strings, maps, and sources rather than
 /// cloning them.
 pub trait MarketOperationValue:
     MarketEvent + From<MarketEventData> + Into<MarketEventData> + Sized
@@ -2145,21 +2142,25 @@ pub(crate) fn merge_market_event_into_reference<E: MarketEvent>(
 /// the quantity, the unit, the side, each instrument code the market
 /// names, the market itself, and each lane fact stated.
 fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
-    feed(state, "px", &this.get_px().units().to_le_bytes());
-    feed(state, "currency", this.get_currency().as_str().as_bytes());
-    feed(state, "qty", &this.get_qty().units().to_le_bytes());
+    let mut staged = Staged::new(state);
+    if let Some(marketoperationid) = this.get_marketoperationid() {
+        staged.feed("marketoperationid", &marketoperationid.to_le_bytes());
+    }
+    staged.feed("price", &this.get_price().units().to_le_bytes());
+    staged.feed("currency", this.get_currency().as_str().as_bytes());
+    staged.feed("quantity", &this.get_quantity().units().to_le_bytes());
     // What the element traded and how far it has got are its own statements
     // and part of what it says; what came before it is not, so the previous
     // price and quantity are left out exactly as the predecessor's instant
     // and identity are.
     if let Some(tif) = this.get_tif() {
-        feed(state, "tif", tif.as_bytes());
+        staged.feed("tif", tif.as_bytes());
     }
     if let Some(tradable) = this.get_tradable() {
-        feed(state, "tradable", &[u8::from(tradable)]);
+        staged.feed("tradable", &[u8::from(tradable)]);
     }
     if let Some(ticker) = this.get_symbolticker() {
-        feed(state, "symbolticker", ticker.as_bytes());
+        staged.feed("symbolticker", ticker.as_bytes());
     }
     for (name, held) in [
         ("lastpx", this.get_lastpx()),
@@ -2169,11 +2170,11 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
         ("leavesqty", this.get_leavesqty()),
     ] {
         if let Some(held) = held {
-            feed(state, name, &held.units().to_le_bytes());
+            staged.feed(name, &held.units().to_le_bytes());
         }
     }
-    feed(state, "unit", this.get_unit().as_bytes());
-    feed(state, "side", this.get_side().as_str().as_bytes());
+    staged.feed("unit", this.get_unit().as_bytes());
+    staged.feed("side", this.get_side().as_str().as_bytes());
     let codes: [(&str, Option<&str>); 7] = [
         ("isincode", this.get_isincode().map(IsinCode::as_str)),
         ("cusipcode", this.get_cusipcode().map(CusipCode::as_str)),
@@ -2188,11 +2189,11 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
     ];
     for (name, code) in codes {
         if let Some(code) = code {
-            feed(state, name, code.as_bytes());
+            staged.feed(name, code.as_bytes());
         }
     }
     feed_lane(
-        state,
+        &mut staged,
         "bid",
         this.get_bidpx(),
         this.get_bidcurrency(),
@@ -2200,7 +2201,7 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
         this.get_bidunit(),
     );
     feed_lane(
-        state,
+        &mut staged,
         "ask",
         this.get_askpx(),
         this.get_askcurrency(),
@@ -2225,11 +2226,11 @@ fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
 pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = false;
     if this.get_prevpx().is_none() {
-        let px = Some(previous.get_px()).filter(|px| *px != Decimal18::ZERO);
+        let px = Some(previous.get_price()).filter(|px| *px != Decimal18::ZERO);
         changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
     }
     if this.get_prevqty().is_none() {
-        let qty = Some(previous.get_qty()).filter(|qty| *qty != Decimal18::ZERO);
+        let qty = Some(previous.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
         changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
     }
     changed | chain_market(this, previous)
@@ -2314,15 +2315,12 @@ fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
         stated(this.get_tradable(), previous.get_tradable(), false),
         |tradable| this.set_tradable(tradable),
     );
-    changed |= moved(
-        this.get_symbolticker().map(str::to_owned),
-        stated(
-            this.get_symbolticker().map(str::to_owned),
-            previous.get_symbolticker().map(str::to_owned),
-            false,
-        ),
-        |ticker| this.set_symbolticker(ticker),
-    );
+    if this.get_symbolticker().is_none() {
+        if let Some(ticker) = previous.get_symbolticker() {
+            this.set_symbolticker(Some(ticker.to_owned()));
+            changed = true;
+        }
+    }
     changed |= moved(
         this.get_isincode().cloned(),
         better_stated(this.get_isincode().cloned(), previous.get_isincode(), false),
@@ -2374,10 +2372,20 @@ fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
 }
 
 fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
-    let mut changed = false;
+    let mut changed = moved(
+        this.get_marketoperationid(),
+        stated(
+            this.get_marketoperationid(),
+            other.get_marketoperationid(),
+            later,
+        ),
+        |marketoperationid| this.set_marketoperationid(marketoperationid),
+    );
     if later {
-        changed |= moved(this.get_px(), other.get_px(), |px| this.set_px(px));
-        changed |= moved(this.get_qty(), other.get_qty(), |qty| this.set_qty(qty));
+        changed |= moved(this.get_price(), other.get_price(), |px| this.set_price(px));
+        changed |= moved(this.get_quantity(), other.get_quantity(), |qty| {
+            this.set_quantity(qty)
+        });
         changed |= moved(
             this.get_unit().to_owned(),
             other.get_unit().to_owned(),
@@ -2557,7 +2565,7 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
 /// Feeds one quote lane to a digest: each fact it states, under the lane's
 /// name.
 fn feed_lane(
-    state: &mut Xxh3,
+    staged: &mut Staged<'_>,
     lane: &str,
     px: Option<Decimal18>,
     currency: Option<&Currency>,
@@ -2565,16 +2573,16 @@ fn feed_lane(
     unit: Option<&str>,
 ) {
     if let Some(px) = px {
-        feed(state, lane, &px.units().to_le_bytes());
+        staged.feed(lane, &px.units().to_le_bytes());
     }
     if let Some(currency) = currency {
-        feed(state, lane, currency.as_str().as_bytes());
+        staged.feed(lane, currency.as_str().as_bytes());
     }
     if let Some(qty) = qty {
-        feed(state, lane, &qty.units().to_le_bytes());
+        staged.feed(lane, &qty.units().to_le_bytes());
     }
     if let Some(unit) = unit {
-        feed(state, lane, unit.as_bytes());
+        staged.feed(lane, unit.as_bytes());
     }
 }
 

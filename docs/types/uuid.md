@@ -6,11 +6,11 @@ One 128-bit identifier over sixteen fixed bytes, spelled as the canonical 36-cha
 
 | | |
 | --- | --- |
-| Owned | `DataType::Uuid` with `uuid()`, `uuid_packed` and `uuid_value`; the `UuidField` marker over `UuidType`; the `Uuid` value with `new`, `from_bytes`, `from_v7`, `from_v8`, `get`, `version`, `is_nil`, `into_bytes`, `render` and `TEXT_LEN`; the canonical `arrow.uuid` projection |
+| Owned | `DataType::Uuid` with `uuid()`, `uuid_packed` and `uuid_value`; the `UuidField` marker over `UuidType`; the `Uuid` value with `new`, `from_bytes`, `from_v7`, `from_v7_sequence`, `from_v8`, `get`, `version`, `is_nil`, `into_bytes`, `render` and `TEXT_LEN`; the canonical `arrow.uuid` projection |
 | Validated | one rule wherever a value arrives: sixteen bytes, 32 bare hexadecimal digits, or the 36-character hyphenated spelling, in either case - the same rule for [field](field.md) validation, Arrow ingest and every [cast](cast.md) tier |
 | Lazy | nothing; the value is `Copy` and sixteen bytes wide, and `render` writes its spelling into the caller's slot |
 | Cached | the [field](field.md)'s Arrow projection; the datatype takes no parameter and caches nothing |
-| Refused | a spelling that is neither text nor sixteen bytes, a wrong digit count, a misplaced hyphen, `uuid_packed` or `uuid_value` on another datatype, a UUIDv7 instant outside `0..=281474976710655999` Unix microseconds, and a text bound the 36 characters outgrow |
+| Refused | a spelling that is neither text nor sixteen bytes, a wrong digit count, a misplaced hyphen, `uuid_packed` or `uuid_value` on another datatype, a UUIDv7 instant outside `0..=281474976710655999` Unix microseconds for `from_v7` or `0..=281474976710655` Unix milliseconds for `from_v7_sequence`, and a text bound the 36 characters outgrow |
 
 ## DataType
 
@@ -426,13 +426,19 @@ hashed, narrowed or combined, so the 128 bits are filled exactly and both
 facts read back out: two identifiers are equal only where the microsecond and
 all 64 payload bits are. The whole microsecond instant sorts first and the
 whole payload after it, because the two variant bits standing between the
-payload's halves are the same in every identifier. `Uuid::from_v8` sets the version and variant bits over a payload
-that is already resolved. Neither reads a clock, allocates, or supplies
-randomness of its own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection)
-is the one caller that projects an instant and a digest through
-`from_v7`.
+payload's halves are the same in every identifier. `Uuid::from_v7_sequence`
+is the ordered-event layout: the 48-bit timestamp is already Unix
+milliseconds, `sequence.min(4095)` fills the 12-bit `rand_a` lane, and the low
+62 payload bits fill `rand_b`. A caller that can exceed 4095 includes the whole
+sequence in its payload, so overflowed values remain probabilistically distinct
+inside the terminal sequence band. `TxHash::into_sequenced_uuid` builds that
+payload as XXH3 over its 64-bit digest and whole sequence with the caller's
+seed; `Event::time_uuid` supplies its sequence and cross-chain code. `Uuid::from_v8` sets the version and variant bits over a payload that is
+already resolved. None reads a clock, allocates, or supplies randomness of its
+own. [`TxHash::into_uuid`](../hashing.md#order-and-uuidv7-projection) projects an
+instant and digest through the exact `from_v7` layout instead.
 
-The two constructors are Rust-only; a binding receives the identifier they made
+The three constructors are Rust-only; a binding receives the identifier they made
 as any other `uuid` value.
 
 === "Rust"
@@ -463,6 +469,14 @@ as any other `uuid` value.
         0xfedc_ba98_7654_3210,
     );
 
+    // The event layout orders representable sequences within one millisecond.
+    // rand_b carries only 62 payload bits; callers fold any overflow sequence
+    // into those bits before calling.
+    let first = Uuid::from_v7_sequence(1_645_557_742_000, 7, 0x1234)?;
+    let second = Uuid::from_v7_sequence(1_645_557_742_000, 8, 0x1234)?;
+    assert!(first < second);
+    assert_eq!((first.get() >> 64) & 0xfff, 7);
+
     // A UUIDv8 replaces the six version and variant bits and keeps the other 122.
     let derived = Uuid::from_v8(0x5c14_6b14_3c52_4afd_938a_375d_0df1_fbf6);
     assert_eq!(derived.to_string(), "5c146b14-3c52-8afd-938a-375d0df1fbf6");
@@ -475,6 +489,7 @@ as any other `uuid` value.
     // An instant outside `0..=281474976710655999` microseconds has no UUIDv7.
     assert!(Uuid::from_v7(-1, 0).is_err());
     assert!(Uuid::from_v7(281_474_976_710_656_000, 0).is_err());
+    assert!(Uuid::from_v7_sequence(-1, 0, 0).is_err());
     ```
 
 ## Edges

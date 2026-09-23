@@ -37,14 +37,19 @@ nothing at all when it refuses.
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
-``currhashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``currunix``,
+``currhashcode``, ``crosshashcode``, ``identifiers``, ``currunix``,
 ``state``, ``seqnum``, the lifecycle's ``creaunix``, ``exprtime``,
-``prevunix``, ``prevuuid`` and ``snapunix``, the market's ``px``, ``qty``,
-``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL, Bloomberg, CFI and
-MIC codes and the bid and ask lanes); :meth:`FixMsg.header`, the standard
+``execunix``, ``recdunix``, ``refrecdunix``, ``prevunix``, ``prevuuid`` and
+``snapunix``, the market's integer ``marketoperationid``, ``price``, ``quantity``,
+last, average, cumulative, remaining and previous values, time in force,
+tradability, ticker, ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL,
+Bloomberg, FIGI, CFI and MIC codes and the bid and ask lanes);
+:meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
-message type's fixed four-byte ``msgcat``;
+stable integer business category exposed by both ``msgcat`` and
+``marketoperationid`` (the message type definition keeps the symbolic
+four-byte ``MsgType.msgcat``);
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``) - never what a *reader* said about the line, which is
@@ -99,12 +104,15 @@ document expands to - closed on the bytes each row lands as against the
 codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
 of messages lazily - each stated as the one after the live message it
 follows under its cross identity, carrying ``prevuuid``, ``prevunix``,
-``seqnum``, the predecessor's whole lineage as its ``parentuuids`` and the
-lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+``seqnum`` and the lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
+:meth:`FixCodec.book_arrow_reader` streams sorted messages through native
+market operations and books into nested Arrow batches; ``snapshot_millis``
+selects an epoch-aligned snapshot grid and ``global_`` consolidates symbols
+under ``GLOBAL``. Lifecycle enrichment remains an explicit composition.
 :meth:`FixCodec.write_arrow_reader` is the encode direction, re-emitting
 every row's wire. :meth:`FixCodec.format_messages` and
 :meth:`FixCodec.format_arrow_reader` answer the same messages under whatever
