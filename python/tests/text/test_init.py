@@ -28,14 +28,13 @@ ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
-# The eighteen event columns every line batch opens with: the line as the
-# event it is, the same eighteen a FIX row parsed out of it opens with.
+# The seventeen event columns every line batch opens with: the line as the
+# event it is, the same seventeen a FIX row parsed out of it opens with.
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
     "execunix",
     "recdunix",
-    "refrecdunix",
     "exprtime",
     "prevunix",
     "snapunix",
@@ -204,7 +203,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     assert located.startswith("file:///") and located.endswith("app.log")
     assert table.column("crosscode").to_pylist() == [located] * 3
 
-    # The eighteen event columns every row opens with: the line as the event
+    # The seventeen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
     # placed by its row number, named by the captures it matched - and a
     # null wherever it states nothing.
@@ -216,7 +215,6 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "creaunix": None,
             "execunix": None,
             "recdunix": None,
-            "refrecdunix": None,
             "exprtime": None,
             "prevunix": None,
             "snapunix": None,

@@ -1563,8 +1563,7 @@ impl PyFixMsg {
     /// stated one, else the instant. What `OrigSendingTime` says is the
     /// lifecycle's to read.
     /// The identity is then derived:
-    /// the cross code from the bridge's `msgsessionid:msgctxid` where the
-    /// row header stated both, else the first stated of `OrderID`,
+    /// the cross code from the first stated of `OrderID`,
     /// `ClOrdID`, `OrigClOrdID`, `QuoteID`, `QuoteReqID` and `MDReqID`; the
     /// hash code over the facts, the lifted fields and the row, the
     /// standard header and trailer left out; and the identities from both.
@@ -1950,10 +1949,9 @@ impl PyFixMsg {
     }
 
     /// The cross code: the identifier every message of one lifecycle
-    /// shares, as the message spells it - the bridge's conversation,
-    /// `msgsessionid:msgctxid`, where the row header stated both, else
-    /// `OrderID`, `ClOrdID`, `OrigClOrdID`, `QuoteID`, `QuoteReqID` or
-    /// `MDReqID`, the first stated - and empty where it names none.
+    /// shares, as the message spells it - `OrderID`, `ClOrdID`,
+    /// `OrigClOrdID`, `QuoteID`, `QuoteReqID` or `MDReqID`, the first
+    /// stated - and empty where it names none.
     #[getter]
     fn crosscode(&self) -> &str {
         self.inner.get_crosscode()
@@ -2055,7 +2053,9 @@ impl PyFixMsg {
         PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
     }
 
-    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    /// The side, as the `side` code it is: the one stated, else the lane a
+    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
+    /// else `UNKNOWN`.
     #[getter]
     fn side(&self) -> PyScalar {
         code_scalar(self.inner.get_side())
@@ -2319,10 +2319,12 @@ impl PyFixCodec {
     ///
     /// Every pin is the core's, spelled once here.
     /// `default_sending_time` is the `SendingTime` a genuinely new
-    /// message takes when neither it nor its carrier states a valid one -
-    /// a native `Scalar` crosses as itself and must already be a nanosecond
-    /// UTC `datetime64`, a `datetime` is read once into that clock, and any
-    /// other layout is the core's `ValueError`; unstated, each undated new
+    /// message takes when it states no valid one and nothing it was read
+    /// with dates it, neither a capture reaching tag 52 nor the `currunix`
+    /// of the line it was read out of - a native `Scalar` crosses as itself
+    /// and must already be a nanosecond UTC `datetime64`, a `datetime` is
+    /// read once into that clock, and any other layout is the core's
+    /// `ValueError`; unstated, each undated new
     /// message reads UTC now once, so pinning it is what makes a parse of
     /// undated bytes repeatable. `separator` is the byte a numeric frame
     /// splits on where the line does not say; `payload_column` names the
@@ -2439,8 +2441,9 @@ impl PyFixCodec {
         PyFixRegistry::from_arc(Arc::clone(&self.registry))
     }
 
-    /// The nanosecond UTC `SendingTime` an undated new message takes, or
-    /// `None` where each one reads UTC now once.
+    /// The nanosecond UTC `SendingTime` an undated new message takes - one
+    /// neither its row nor its line dates - or `None` where each one reads
+    /// UTC now once.
     #[getter]
     fn default_sending_time(&self) -> Option<PyScalar> {
         self.inner
@@ -2598,10 +2601,17 @@ impl PyFixCodec {
     /// the rest - the plugin that logged it, the version, and every field a
     /// capture's name reaches. `capture_names` is what decides which capture
     /// is which, once for the whole run, because a line answers its captures
-    /// by position. The line's `timestamp` is capture context and stamps
-    /// nothing: `SendingTime` is the message's own, else a `SendingTime`
-    /// capture, else the codec's `default_sending_time`, else UTC now, and
-    /// the instant `currunix` is that `SendingTime`.
+    /// by position. A `timestamp` capture is context and stamps nothing; the
+    /// line's own clock does. Its `currunix` - an `mtime` capture, else its
+    /// handle's modification time - is the message's `recdunix`, and the
+    /// sending clock of a message stating none: `SendingTime` is the
+    /// message's own, else a `SendingTime` capture, else the line's
+    /// `currunix`, else the codec's `default_sending_time`, else UTC now,
+    /// and the instant `currunix` is read against it - the stated one, else
+    /// the official clock standing within `official_time_delay_ms` of it,
+    /// else it. A clock the parse supplied is never the message's own:
+    /// `header().stated_sendingtime` is false, and neither the wire nor the
+    /// row's `sendingtime` column states it.
     ///
     /// A `msgpluginid` capture fills the crate's `msgpluginid` field and selects
     /// nothing: the dictionary is one namespace.
@@ -2651,7 +2661,9 @@ impl PyFixCodec {
     /// `pyarrow.RecordBatchReader` pulling one batch at a time. The schema is
     /// decided before the first row: the capture's own columns lead and the
     /// fixed FIX columns follow. Every row is parsed as the line door
-    /// parses one, and batches close on the bytes each row lands as
+    /// parses one - a row's `currunix` cell is its line's clock, so it is
+    /// the messages' `recdunix` and the sending clock of one stating none -
+    /// and batches close on the bytes each row lands as
     /// against `batch_byte_size`. With more than one `threads`, at most that
     /// many whole input batches are jobs at once and their answers stay in
     /// input-batch order.
@@ -2972,13 +2984,14 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// The definitions this crate lists, in tag order from 65003.
 ///
 /// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
-/// `refrecdunix`, `prevunix`, `snapunix`, `exprtime` - its identities - `currhashcode`, `crosshashcode`,
-/// `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
+/// `prevunix`, `snapunix`, `exprtime` - its identities - `currhashcode`,
+/// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
-/// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl`
-/// a line was read from, the `nofixentries` that counts its content, and the
-/// two Map groups `identifiers` and `metadata`, plus the generic
+/// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` and the
+/// `msgsesseventid` they join to with the message type and sequence - the
+/// `sourceurl` a line was read from, the `nofixentries` that counts its
+/// content, and the two Map groups `identifiers` and `metadata`, plus the generic
 /// `marketoperationid` shared with market operations. Thirty-one in all,
 /// each a fact no FIX dictionary publishes, at the datatype its graph column
 /// names.
@@ -3197,10 +3210,14 @@ impl PyFixHeader {
 /// What a bridge's own row header states about the line it wrote - the
 /// plugin, the message context and the session instance - read off the
 /// line's own bytes like every other fact a message holds. None of it is
-/// FIX and none is content, so none of it is an entry or on the wire; where
-/// the row header brackets both a session instance and a message context,
-/// the two name the chain through the cross code, which is the chain's
-/// identity and not the message's, and which the content code leaves out.
+/// FIX and none is content, so none of it is an entry or on the wire, and
+/// none of it reaches the code the content digests to. Where the message
+/// type, the session instance, the message context and `MsgSeqNum` are all
+/// stated, their values joined by `:` are `msgsesseventid`, the session
+/// event the message was delivered as: derived whenever the message
+/// settles, delivery provenance rather than the message's content identity
+/// or its chain code, and the key two observations of one delivery merge
+/// on.
 ///
 /// What the *reader* said about the line is not here: the object it was
 /// read from, and whatever else the reader carried, are the capture's own
@@ -3240,6 +3257,14 @@ impl PyFixCapture {
         self.inner.msgsessionid()
     }
 
+    /// The session event the message was delivered as - `MsgType`,
+    /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
+    /// `8:e7256476:9effef3e6a:1094` - or `None` where one is missing.
+    #[getter]
+    fn msgsesseventid(&self) -> Option<&str> {
+        self.inner.msgsesseventid()
+    }
+
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return py.NotImplemented();
@@ -3256,6 +3281,7 @@ impl PyFixCapture {
             self.inner.msgpluginid(),
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
+            self.inner.msgsesseventid(),
         )
             .hash(&mut state);
         crate::python_hash(state.finish())
@@ -3378,7 +3404,10 @@ impl PyMarketEventData {
         self.inner.get_creaunix()
     }
 
-    /// The precise execution instant, or `None`.
+    /// The precise execution instant, or `None`: the one the message
+    /// states, else its own `currunix` where the parse read it as reporting
+    /// an execution, and on a chained message the latest its lifecycle
+    /// reached.
     #[getter]
     fn execunix(&self) -> Option<i64> {
         self.inner.get_execunix()
@@ -3388,12 +3417,6 @@ impl PyMarketEventData {
     #[getter]
     fn recdunix(&self) -> Option<i64> {
         self.inner.get_recdunix()
-    }
-
-    /// The recording instant selected as merge reference, or `None`.
-    #[getter]
-    fn refrecdunix(&self) -> Option<i64> {
-        self.inner.get_refrecdunix()
     }
 
     /// When the event stops being good, or `None`.
@@ -3512,7 +3535,9 @@ impl PyMarketEventData {
         self.inner.get_unit()
     }
 
-    /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
+    /// The side, as the `side` code it is: the one stated, else the lane a
+    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
+    /// else `UNKNOWN`.
     #[getter]
     fn side(&self) -> PyScalar {
         code_scalar(self.inner.get_side())

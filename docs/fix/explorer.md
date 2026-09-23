@@ -24,7 +24,7 @@ A List group and its scalar count have separate definitions: `NoPartyIDs` is the
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 736 |
 
-The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `execunix`, `recdunix` and the persisted merge-reference clock `refrecdunix` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 127 columns over 122 tags.
+The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `execunix`, `recdunix` and the session-event key `msgsesseventid` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 127 columns over 122 tags.
 
 === "Rust"
 

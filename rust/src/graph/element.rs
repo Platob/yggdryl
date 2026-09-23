@@ -613,11 +613,16 @@ fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
     }
 }
 
-/// Whether `right` is the reference statement of two observations. The most
-/// recently recorded reference leads; a stated reference clock leads an
-/// unstated one, and equal or absent reference clocks fall back to the later
-/// event instant. Exact ties keep `left`, making an already selected reference
-/// stable while more observations are folded into it.
+/// Whether `right` is the reference statement of two observations, by their
+/// `recdunix`. The most recently recorded statement leads; a stated recording
+/// clock leads an unstated one, and equal or absent recording clocks fall
+/// back to the later event instant. Exact ties keep `left`.
+///
+/// A folded statement keeps the earliest recording its statements know, so
+/// it ranks by that clock against a third, and the reference of three
+/// statements folded pair by pair depends on the order they are folded in.
+/// A caller holding every observation at once chooses the reference over
+/// all of them first and folds the rest into it.
 pub(crate) fn right_is_reference(
     left_recdunix: Option<i64>,
     left_currunix: i64,
@@ -630,13 +635,6 @@ pub(crate) fn right_is_reference(
         (Some(_), None) => false,
         _ => right_currunix > left_currunix,
     }
-}
-
-/// The persisted recording clock used to select an event's reference
-/// observation, falling back to the raw recording clock before any merge has
-/// materialized it.
-pub(crate) fn reference_recdunix<E: Event + ?Sized>(event: &E) -> Option<i64> {
-    latest(event.get_refrecdunix(), event.get_recdunix())
 }
 
 /// The execution instant an event states or, while it is still an unstamped
@@ -664,12 +662,10 @@ pub(super) fn fill_execution<E: Event + ?Sized>(event: &mut E) -> bool {
 }
 
 /// Folds the per-event instants of two statements of the same event: the
-/// earliest execution and recording either statement knows, and the latest
-/// recording clock of their selected reference observations; whether any
+/// earliest execution and recording either statement knows; whether any
 /// moved. An unstamped execution observation first dates itself from its own
 /// event instant. These never fold between successive events in one lifecycle.
 fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
-    let refrecdunix = latest(reference_recdunix(this), reference_recdunix(other));
     let execunix = earliest(execution_unix(this), execution_unix(other));
     let mut changed = moved(this.get_execunix(), execunix, |unix| {
         this.set_execunix(unix)
@@ -677,9 +673,6 @@ fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
     let recdunix = earliest(this.get_recdunix(), other.get_recdunix());
     changed |= moved(this.get_recdunix(), recdunix, |unix| {
         this.set_recdunix(unix)
-    });
-    changed |= moved(this.get_refrecdunix(), refrecdunix, |unix| {
-        this.set_refrecdunix(unix)
     });
     changed
 }
@@ -885,11 +878,10 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// with the code that means exactly that, `00UNKNOWN`, never with an
 /// absence. Where it stands in its chain is `seqnum`: the count of events
 /// before it, which following increments and merging keeps the highest of.
-/// Seven more instants and one more identity are optional, because an event
+/// Six more instants and one more identity are optional, because an event
 /// states them only where it knows them: when it was created, the latest
-/// execution its lifecycle has reached, when it was recorded, the recording
-/// clock of its merge reference and when it expires, each an instant in the
-/// same count; the
+/// execution its lifecycle has reached, when it was recorded and when it
+/// expires, each an instant in the same count; the
 /// event it follows - `prevuuid` and `prevunix`, the predecessor's identity
 /// and instant; and `snapunix`, the grid instant this event was read as the
 /// snapshot of, where a walk over a grid took one of it.
@@ -936,7 +928,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     creaunix: Option<i64>,
 ///     execunix: Option<i64>,
 ///     recdunix: Option<i64>,
-///     refrecdunix: Option<i64>,
 ///     exprtime: Option<i64>,
 ///     prevunix: Option<i64>,
 ///     prevuuid: Option<Uuid>,
@@ -959,7 +950,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             creaunix: None,
 ///             execunix: None,
 ///             recdunix: None,
-///             refrecdunix: None,
 ///             exprtime: None,
 ///             prevunix: None,
 ///             prevuuid: None,
@@ -1067,12 +1057,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     }
 ///     fn set_recdunix(&mut self, unix: Option<i64>) {
 ///         self.recdunix = unix;
-///     }
-///     fn get_refrecdunix(&self) -> Option<i64> {
-///         self.refrecdunix
-///     }
-///     fn set_refrecdunix(&mut self, unix: Option<i64>) {
-///         self.refrecdunix = unix;
 ///     }
 ///     fn get_exprtime(&self) -> Option<i64> {
 ///         self.exprtime
@@ -1188,16 +1172,6 @@ pub trait Event: Element {
     /// Records when this event was recorded; `None` states it does not know.
     fn set_recdunix(&mut self, unix: Option<i64>);
 
-    /// The recording clock of the observation selected as this event's merge
-    /// reference, in the same count as [`Self::get_currunix`], where one has
-    /// been selected. A raw observation falls back to [`Self::get_recdunix`]
-    /// during its first merge.
-    fn get_refrecdunix(&self) -> Option<i64>;
-
-    /// Records the selected reference observation's recording clock; `None`
-    /// states that no merge reference has been materialized.
-    fn set_refrecdunix(&mut self, unix: Option<i64>);
-
     /// When this event expires, in the same count as [`Self::get_currunix`], where
     /// it has an expiry.
     fn get_exprtime(&self) -> Option<i64>;
@@ -1276,8 +1250,7 @@ pub trait Event: Element {
     /// snapshot - the chain's cross code, the names `live` knows, and the
     /// lifecycle folded, so the two statements finalize to
     /// one identity and the chain grows by nothing. Their execution and
-    /// recording instants fold to the earliest either statement knows, while
-    /// the selected reference recording clock folds to the latest. Its
+    /// recording instants fold to the earliest either statement knows. Its
     /// sources stay its own: provenance travels along no chain. What the
     /// event states of its own - its instant, its content - is its own.
     ///
@@ -1305,15 +1278,17 @@ pub trait Event: Element {
     /// identifiers and list order, with the other statement filling what it
     /// leaves unstated - and then the timed facts: the instant and code are
     /// the reference's. The reference is the statement with the latest
-    /// `refrecdunix`, falling back to `recdunix` on a raw observation; a stated
-    /// clock leads an unstated one, and a tie falls back to the later event
-    /// instant. The place in the chain is the
-    /// further of the two; the
+    /// `recdunix`; a stated clock leads an unstated one, a tie falls back
+    /// to the later event instant, and an exact tie keeps this one. The
+    /// place in the chain is the further of the two; the
     /// lifecycle folds as [`Self::following`] folds it - earliest creation,
     /// latest expiration, furthest state; the execution and recording clocks
     /// are the earliest either statement of this event knows; and the
     /// predecessor and snapshot instant are the reference's where it states
-    /// them, else the other's.
+    /// them, else the other's. A merged statement therefore ranks by the
+    /// earliest recording it knows against a third, so which of three leads
+    /// depends on the order they are merged in: a caller holding every
+    /// statement at once picks the reference over all of them first.
     ///
     /// Nothing where `other` is another event, and nothing where the fold
     /// changes nothing, so a caller skips a restatement it already holds;
@@ -1329,9 +1304,9 @@ pub trait Event: Element {
             return None;
         }
         let other_is_reference = right_is_reference(
-            reference_recdunix(&self),
+            self.get_recdunix(),
             self.get_currunix(),
-            reference_recdunix(other),
+            other.get_recdunix(),
             other.get_currunix(),
         );
         let changed = merge_event_element(&mut self, other, other_is_reference);
@@ -1762,6 +1737,14 @@ pub trait MarketElement: Element {
     /// reads them, in one order, each rule filling only what is still
     /// unstated:
     ///
+    /// 0. A quote stating one lane and no side is that lane's side: a bid
+    ///    alone - any of `bidpx`, `bidcurrency`, `bidqty` or `bidunit` - is
+    ///    a party willing to pay, so the element is a buy, and an ask alone
+    ///    one willing to be paid, a sell. A quote is an element the lane is
+    ///    the only price of: one stating a price, a last trade or an average
+    ///    of its own is about that, and a lane beside it is context. A side
+    ///    the element states, a cross or `OPPOSITE` included, is its own and
+    ///    stands, and a quote stating both lanes or neither names no side.
     /// 1. The price is what the element is about, else what it last traded,
     ///    else what it averaged, else what its own side's lane quotes - a
     ///    report stating only `LastPx` is about that price, and a quote
@@ -1779,7 +1762,8 @@ pub trait MarketElement: Element {
     ///
     /// Nothing is invented: a price of nothing, a quantity of nothing, no
     /// currency and no unit fill nothing, an element that states no side
-    /// fills no lane, and a fact the element stated is never overwritten.
+    /// and quotes no single lane fills no lane, and a fact the element
+    /// stated is never overwritten.
     /// Running it twice changes nothing the first run did not.
     ///
     /// Provided, and what an implementor's [`Element::finalize`] runs before
@@ -1795,6 +1779,22 @@ pub trait MarketElement: Element {
                 .and_then(super::instrument::embedded_cusip)
             {
                 self.set_cusipcode(Some(cusip));
+            }
+        }
+        // Only a quote: an element pricing itself - an order at its price, a
+        // trade at its last - is about that, and a lane beside it is context.
+        if self.get_side() == &Side::unknown()
+            && self.get_price() == Decimal18::ZERO
+            && self.get_lastpx().is_none()
+            && self.get_avgpx().is_none()
+        {
+            let named = match lanes_stated(self) {
+                (true, false) => Some("Buy"),
+                (false, true) => Some("Sell"),
+                _ => None,
+            };
+            if let Some(spelling) = named {
+                self.set_side(Side::read(spelling).expect("a shipped side"));
             }
         }
         let side = self.get_side();
@@ -2052,9 +2052,9 @@ pub trait MarketEvent: Event + MarketElement {
             return None;
         }
         let other_is_reference = right_is_reference(
-            reference_recdunix(&self),
+            self.get_recdunix(),
             self.get_currunix(),
-            reference_recdunix(other),
+            other.get_recdunix(),
             other.get_currunix(),
         );
         if !merge_market_event(&mut self, other, other_is_reference) {
@@ -2282,18 +2282,24 @@ fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
 /// statement beside it named. This statement always leads - a code it
 /// spells better is never replaced by a weaker one - and nothing here is
 /// about a step: the price and the quantity a predecessor settled on reach
-/// an element as `prevpx` and `prevqty`, never as its own.
+/// an element as `prevpx` and `prevqty`, never as its own. The side is the
+/// chain's only for an element quoting no lane: one quoting a lane says its
+/// side itself, one lane naming it and two naming none.
 fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(
         this.get_currency().clone(),
         better(this.get_currency().clone(), previous.get_currency(), false),
         |currency| this.set_currency(currency),
     );
-    changed |= moved(
-        this.get_side().clone(),
-        better(this.get_side().clone(), previous.get_side(), false),
-        |side| this.set_side(side),
-    );
+    // An element quoting a lane of its own says its side itself - one lane
+    // names it and two name none - so the chain's is not its to take.
+    if lanes_stated(this) == (false, false) {
+        changed |= moved(
+            this.get_side().clone(),
+            better(this.get_side().clone(), previous.get_side(), false),
+            |side| this.set_side(side),
+        );
+    }
     if this.get_unit().is_empty() {
         changed |= moved(
             this.get_unit().to_owned(),
@@ -2588,6 +2594,20 @@ fn feed_lane(
 
 /// The better of two statements of one code: the selected statement leading,
 /// the other filling what it leaves unknown.
+/// Whether an element's bid lane and its ask lane each state anything, a
+/// lane any of its price, currency, quantity and unit.
+fn lanes_stated<E: MarketElement + ?Sized>(this: &E) -> (bool, bool) {
+    let bid = this.get_bidpx().is_some()
+        || this.get_bidcurrency().is_some()
+        || this.get_bidqty().is_some()
+        || this.get_bidunit().is_some();
+    let ask = this.get_askpx().is_some()
+        || this.get_askcurrency().is_some()
+        || this.get_askqty().is_some()
+        || this.get_askunit().is_some();
+    (bid, ask)
+}
+
 fn better<C: CodeValue>(this: C, other: &C, later: bool) -> C {
     if later {
         other.clone().merge_with(&this)

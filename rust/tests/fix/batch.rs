@@ -192,6 +192,7 @@ fn the_schema_is_decided_before_the_first_row_is_read() {
         yggdryl::CREAUNIX_TAG_NAME.0, // the digest and the clocks
         yggdryl::MSGSESSIONID_TAG_NAME.0,
         yggdryl::MSGCTXID_TAG_NAME.0, // what a bridge's own log states
+        yggdryl::MSGSESSEVENTID_TAG_NAME.0, // the session event it joins to
         yggdryl::MSGDIRECTION_TAG_NAME.0, // which way the line moved
     ] {
         assert!(
@@ -872,7 +873,7 @@ fn lifecycle_delivery_identity_survives_arrow_reconstruction() {
         assert_eq!(arrow.get_seqnum(), direct.get_seqnum());
         assert_eq!(arrow.get_currunix(), direct.get_currunix());
         assert_eq!(arrow.get_recdunix(), direct.get_recdunix());
-        assert_eq!(arrow.get_refrecdunix(), direct.get_refrecdunix());
+        assert_eq!(arrow.get_execunix(), direct.get_execunix());
     }
 }
 
@@ -918,13 +919,12 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert_ne!(older.get_curruuid(), newer.get_curruuid());
     let older_source = older.get_srcuuids()[0];
     let newer_source = newer.get_srcuuids()[0];
+    // The four parts joined as stated, on the capture and no identifier.
     assert_eq!(
-        older
-            .get_identifiers()
-            .get("msgsesseventid")
-            .map(String::as_str),
-        Some("1:D|9:SESSION-A|9:CONTEXT-A|7")
+        older.capture().msgsesseventid(),
+        Some("D:SESSION-A:CONTEXT-A:7")
     );
+    assert!(!older.get_identifiers().contains_key("msgsesseventid"));
 
     let directly_merged = newer
         .clone()
@@ -936,8 +936,57 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         directly_merged.get_isincode().map(|code| code.as_str()),
         Some("US0378331005")
     );
+    // The later recording (200) is the reference, and the merged event
+    // keeps the earliest recording either statement knows.
     assert_eq!(directly_merged.get_recdunix(), Some(100));
-    assert_eq!(directly_merged.get_refrecdunix(), Some(200));
+    assert_eq!(directly_merged.get_execunix(), Some(90));
+    // Either way round: the reference is the later recording, not the
+    // statement merged into.
+    let reversed = older
+        .clone()
+        .with_previous(&newer)
+        .expect("one session event forces a full merge");
+    assert_eq!(reversed.get_by_tag(55), Some(Scalar::from("MSFT")));
+    assert_eq!(reversed.get_recdunix(), Some(100));
+
+    // Recorded at one instant, the later event instant is the reference; a
+    // stated recording leads an unstated one whatever its instant; and an
+    // exact tie keeps the statement merged into.
+    let early = captured(
+        b"CONTEXT-T",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=AAPL|10=0|",
+        100,
+        90,
+    );
+    let late = captured(
+        b"CONTEXT-T",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:31|55=MSFT|10=0|",
+        100,
+        95,
+    );
+    for (into, from) in [(&early, &late), (&late, &early)] {
+        let merged = into.clone().with_previous(from).expect("one event");
+        assert_eq!(merged.get_by_tag(55), Some(Scalar::from("MSFT")));
+        assert_eq!(merged.get_recdunix(), Some(100));
+    }
+    let mut unrecorded = late.clone();
+    unrecorded.set_recdunix(None);
+    for (into, from) in [(&early, &unrecorded), (&unrecorded, &early)] {
+        let merged = into.clone().with_previous(from).expect("one event");
+        assert_eq!(merged.get_by_tag(55), Some(Scalar::from("AAPL")));
+        assert_eq!(merged.get_recdunix(), Some(100));
+    }
+    let twin = captured(
+        b"CONTEXT-T",
+        b"8=FIX.4.4|35=D|52=20260102-10:15:30|55=GOOG|10=0|",
+        100,
+        90,
+    );
+    assert_eq!(twin.get_currunix(), early.get_currunix());
+    for (into, from) in [(&early, &twin), (&twin, &early)] {
+        let merged = into.clone().with_previous(from).expect("one event");
+        assert_eq!(merged.get_by_tag(55), into.get_by_tag(55));
+    }
 
     for source in [
         vec![older.clone(), newer.clone()],
@@ -967,7 +1016,6 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             Some(100),
             "the latest recording selects the base while the merged fact remains the earliest"
         );
-        assert_eq!(message.get_refrecdunix(), Some(200));
         assert_eq!(
             message.get_seqnum(),
             0,
@@ -983,6 +1031,10 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         100,
     );
     let observations = [newer.clone(), older.clone(), middle];
+    // One walk collects every observation of the delivery and folds them
+    // latest-recorded first (200, 150, 100): the fold's earliest recording
+    // is then never earlier than the statement folded next, so the latest
+    // recording stays the reference whatever order the rows arrived in.
     for order in [
         [0, 1, 2],
         [0, 2, 1],
@@ -1007,7 +1059,6 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             "the next-latest observation fills a fact the reference omitted"
         );
         assert_eq!(walked[0].get_recdunix(), Some(100));
-        assert_eq!(walked[0].get_refrecdunix(), Some(200));
     }
 
     let premerged = codec
@@ -1016,8 +1067,14 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         .unwrap()
         .pop()
         .expect("one premerged delivery");
+    assert_eq!(premerged.get_by_tag(55), Some(Scalar::from("MSFT")));
     assert_eq!(premerged.get_recdunix(), Some(100));
-    assert_eq!(premerged.get_refrecdunix(), Some(200));
+    // A folded delivery keeps no trace of the recording its reference was
+    // chosen by: it ranks by the earliest recording it keeps (100) against
+    // a third observation, so the middle one (150) leads a replay. Folding
+    // is not associative in its reference - of three statements, the
+    // reference is the latest-recorded of the pair folded last - and the
+    // one walk above is what picks the latest of all three.
     for source in [
         vec![premerged.clone(), observations[2].clone()],
         vec![observations[2].clone(), premerged.clone()],
@@ -1027,12 +1084,23 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             .collect::<yggdryl::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(replayed.len(), 1);
-        assert_eq!(replayed[0].get_recdunix(), Some(100));
         assert_eq!(
-            replayed[0].get_refrecdunix(),
-            Some(200),
-            "replaying a premerged observation retains its reference rank"
+            replayed[0].get_by_tag(55),
+            Some(Scalar::from("GOOG")),
+            "the later recording of the pair folded last is the reference"
         );
+        assert_eq!(
+            replayed[0].get_isincode().map(|code| code.as_str()),
+            Some("US0378331005"),
+            "the folded pair still fills what the new reference omits"
+        );
+        assert_eq!(
+            replayed[0].get_miccode().map(|code| code.as_str()),
+            Some("XPAR"),
+            "the reference's own fact stands"
+        );
+        assert_eq!(replayed[0].get_recdunix(), Some(100));
+        assert_eq!(replayed[0].get_execunix(), Some(90));
     }
 
     let other_type = captured(
@@ -1059,7 +1127,6 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     expected_sources.sort_unstable();
     assert_eq!(order.get_srcuuids(), expected_sources);
     assert_eq!(order.get_recdunix(), Some(100));
-    assert_eq!(order.get_refrecdunix(), Some(200));
     let cancel = walked
         .iter()
         .find(|message| message.header().msgtype() == "F")
@@ -1106,8 +1173,12 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert_eq!(expired.get_seqnum(), live.get_seqnum() + 1);
     assert_eq!(expired.get_state().as_str(), "95EXPIRED");
     assert_eq!(
-        expired.get_identifiers().get("msgsesseventid"),
-        live.get_identifiers().get("msgsesseventid")
+        live.capture().msgsesseventid(),
+        Some("D:SESSION-A:CONTEXT-C:7")
+    );
+    assert_eq!(
+        expired.capture().msgsesseventid(),
+        live.capture().msgsesseventid()
     );
     assert!(
         expired.clone().with_previous(live).is_none(),
@@ -1199,7 +1270,10 @@ fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
     assert_eq!(value(1, 447), Some("D"), "latest recording wins a conflict");
     assert_eq!(value(1, 452), Some("12"), "older fills the missing role");
     assert_eq!(message.get_recdunix(), Some(100));
-    assert_eq!(message.get_refrecdunix(), Some(200));
+    assert_eq!(
+        message.capture().msgsesseventid(),
+        Some("D:FIDESSA-X1:HOCHE-BAINS-XPAR:42")
+    );
 }
 
 #[test]
@@ -1604,7 +1678,7 @@ fn the_batch_door_states_the_row_as_the_source_the_line_door_states() {
 }
 
 /// The three steps - the lines as a batch, the messages parsed out of it,
-/// the lifecycle's rows - each contain the eighteen columns every event is
+/// the lifecycle's rows - each contain the seventeen columns every event is
 /// stated in, under one name and one datatype, and join on them: a
 /// message's `srcuuids` is the `curruuid` its line's batch states, read off
 /// that column rather than recomputed, and a chained message's `prevuuid`
@@ -1637,7 +1711,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     lines[1].set_curruuid(yggdryl::Uuid::from_v8(7));
     let identities: Vec<yggdryl::Uuid> = lines.iter().map(Element::get_curruuid).collect();
 
-    // Step 1: the lines as a batch, opening with the eighteen as fields.
+    // Step 1: the lines as a batch, opening with the seventeen as fields.
     let carrier = yggdryl::text::into_arrow_batch(lines.clone(), &options).unwrap();
     let stated = yggdryl::Field::from_arrow_schema("lines", &carrier.schema()).unwrap();
     let expected = EventColumn::fields().unwrap();
@@ -1653,7 +1727,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     }
 
     // Step 2: the messages parsed out of the batch, each stating the line
-    // the carrier said it was as its one source, and the same eighteen under
+    // the carrier said it was as its one source, and the same seventeen under
     // the row's own names and datatypes.
     let parsed = codec
         .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
@@ -1688,16 +1762,7 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     assert_eq!(messages[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
     assert_eq!(messages[0].get_recdunix(), Some(1_704_190_530_000_000_000));
     assert_eq!(messages[1].get_recdunix(), Some(1_704_190_530_100_000_000));
-    assert_eq!(
-        messages[0].get_refrecdunix(),
-        Some(1_704_190_530_000_000_000),
-        "a raw message starts with its carrier recording as its reference clock"
-    );
-    assert_eq!(
-        messages[1].get_refrecdunix(),
-        Some(1_704_190_530_100_000_000)
-    );
-    // The row's own eighteen name the message, never the line it came from.
+    // The row's own seventeen name the message, never the line it came from.
     assert_ne!(messages[0].get_curruuid(), identities[0]);
     assert_eq!(messages[0].get_currunix(), 1_704_190_530_000_000_000);
 
@@ -1729,14 +1794,11 @@ fn the_three_steps_join_on_the_columns_every_event_states() {
     // Provenance travels along no chain: each keeps its own line.
     assert_eq!(chained[0].get_srcuuids(), &identities[..1]);
     assert_eq!(chained[1].get_srcuuids(), [yggdryl::Uuid::from_v8(7)]);
+    assert_eq!(chained[0].get_recdunix(), Some(1_704_190_530_000_000_000));
     assert_eq!(
-        chained[0].get_refrecdunix(),
-        Some(1_704_190_530_000_000_000)
-    );
-    assert_eq!(
-        chained[1].get_refrecdunix(),
+        chained[1].get_recdunix(),
         Some(1_704_190_530_100_000_000),
-        "the carrier-derived reference clock survives lifecycle Arrow reread"
+        "the recording clock survives lifecycle Arrow reread"
     );
 }
 

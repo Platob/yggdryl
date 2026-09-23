@@ -203,9 +203,43 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
     assert_eq!(merged.get_seqnum(), 4);
     assert_eq!(merged.get_creaunix(), Some(7));
     assert_eq!(merged.get_recdunix(), Some(10));
-    assert_eq!(merged.get_refrecdunix(), Some(20));
     assert_eq!(merged.get_execunix(), Some(30));
     assert_ne!(merged.get_curruuid(), left.get_curruuid());
+
+    // A merged trade and each merged child keep only the earliest recording
+    // their statements know - the trade 10, its E-1 child 30 - so against a
+    // third statement they rank by it: a trade recorded at 15 whose E-1 was
+    // recorded at 35 leads the merged trade and its child, although it
+    // leads neither `right` (20) nor `right`'s own E-1 (40).
+    let third = Trade::from_parts(
+        event(30, "T-1", Some("IBM"), Some(15)),
+        vec![execution(
+            30,
+            "E-1",
+            Some("IBM"),
+            "Buy",
+            105,
+            1,
+            Some(9),
+            Some(35),
+            Some(29),
+        )],
+    )
+    .unwrap();
+    let e1_price = |trade: &Trade| {
+        trade
+            .executions()
+            .iter()
+            .find(|held| held.get_crosscode() == "E-1")
+            .unwrap()
+            .get_price()
+    };
+    let alone = right.merge_with(&third).unwrap();
+    assert_eq!(e1_price(&alone), Decimal18::from_int(101));
+    assert_eq!(alone.get_recdunix(), Some(15));
+    let folded = merged.merge_with(&third).unwrap();
+    assert_eq!(e1_price(&folded), Decimal18::from_int(105));
+    assert_eq!(folded.get_recdunix(), Some(10));
 }
 
 #[test]
@@ -268,7 +302,7 @@ fn following_combines_distinct_executions_and_preserves_composite_identity() {
 
 #[test]
 fn restating_rederives_the_composite_identity_after_holder_restatement() {
-    let mut live = Trade::from_parts(
+    let live = Trade::from_parts(
         event(45, "T-1", Some("IBM"), Some(12)),
         vec![execution(
             45,
@@ -283,8 +317,6 @@ fn restating_rederives_the_composite_identity_after_holder_restatement() {
         )],
     )
     .unwrap();
-    live.set_refrecdunix(Some(12));
-    live.finalize();
     let mut repeated = live.clone();
     repeated.set_recdunix(Some(8));
 

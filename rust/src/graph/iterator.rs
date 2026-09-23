@@ -370,7 +370,6 @@ where
         expired.set_state(State::read("expired").expect("the shipped expired state"));
         expired.set_execunix(None);
         expired.set_recdunix(None);
-        expired.set_refrecdunix(None);
         expired.set_snapunix(None);
         expired.finalize();
         let fallback = expired.clone();

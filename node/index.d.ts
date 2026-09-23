@@ -1446,10 +1446,15 @@ export type JsFilter = Filter
  * deprecated fields are restated to their latest aliases, the dictionary's
  * `FIX:derivation` rules run, the identifiers and the order lanes fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
- * else the carrier's, else `defaultSendingTime`, else UTC now read once for
- * that new message, and it goes back on the wire only when the message
- * stated it. Parsing undated bytes without a default sending time is
- * deliberately not deterministic.
+ * else a row cell reaching that tag, else the `mtime` of the `TextLine` it
+ * was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
+ * else `defaultSendingTime`, else UTC now read once for that new message,
+ * and it goes back on the wire only when the message stated it: a clock
+ * the parse supplied is never the message's own, so the row's `sendingtime`
+ * column states none either. The raw-byte doors read no line, so parsing
+ * undated bytes there without a default sending time is deliberately not
+ * deterministic. A message reporting an execution that states no execution
+ * clock executed at its instant: its `execunix` is its `currunix`.
  */
 export declare class FixCodec {
   /**
@@ -1479,10 +1484,12 @@ export declare class FixCodec {
    * core refusing `Heartbeat`, `TestRequest` and the untyped line when
    * unstated and an empty `excludeMsgtypes` keeping every type;
    * `defaultSendingTime` is the
-   * `SendingTime` an undated message takes when neither it nor its carrier
-   * states one - a `Scalar` crosses as it is and must already be
-   * `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond instant restated
-   * in nanoseconds, and `null` or absence reads UTC now per new message.
+   * `SendingTime` an undated message takes when nothing it was read with
+   * dates it either, neither a capture reaching tag 52 nor the `mtime` of
+   * the line it was read out of - a `Scalar` crosses as it is and must
+   * already be `DateTime64(ns, UTC)`, a `Date` is its UTC millisecond
+   * instant restated in nanoseconds, and `null` or absence reads UTC now
+   * per new message.
    * `snapshotNs` is an epoch-aligned lifecycle snapshot width in exact
    * nanoseconds; `null`, zero and a negative width disable snapshots;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
@@ -1535,8 +1542,9 @@ export declare class FixCodec {
   /** The message types a parse refuses before it builds a frame. */
   get excludeMsgtypes(): Array<string>
   /**
-   * The `SendingTime` an undated message takes, `DateTime64(ns, UTC)`, or
-   * `null` where each new undated message reads UTC now.
+   * The `SendingTime` an undated message takes - one neither its row nor
+   * its line dates - `DateTime64(ns, UTC)`, or `null` where each new
+   * undated message reads UTC now.
    */
   get defaultSendingTime(): JsScalar | null
   /** The complete raw message code declared by captured bytes. */
@@ -1558,10 +1566,16 @@ export declare class FixCodec {
    *
    * The line's body is the bytes read, and its row-header captures state
    * the rest - the plugin that logged it, the version, and every field a
-   * capture's name reaches. The line's timestamp is capture context only:
-   * it stamps no FIX clock. `SendingTime` is the message's own, else a
-   * capture reaching that field, else the codec's `defaultSendingTime`,
-   * else UTC now.
+   * capture's name reaches. A `timestamp` capture is context and stamps
+   * nothing; the line's own clock does. Its `mtime` - an `mtime` capture,
+   * else its handle's modification time - is the message's `recdunix`,
+   * and the sending clock of a message stating none: `SendingTime` is the
+   * message's own, else a capture reaching that field, else the line's
+   * `mtime`, else the codec's `defaultSendingTime`, else UTC now, and the
+   * instant `currunix` is read against it - the stated one, else the
+   * official clock standing within `officialTimeDelayMs` of it, else it.
+   * A clock the parse supplied is never the message's own: neither the
+   * wire nor the row's `sendingtime` column states it.
    * `withCaptureNames` is what decides which capture is which, once for
    * the whole run, because a line answers its captures by position.
    *
@@ -1578,8 +1592,10 @@ export declare class FixCodec {
    *
    * The schema is decided before the first row: the capture's own columns
    * lead and the fixed FIX columns follow. Every row is parsed as the
-   * line door parses one, and batches close on the bytes each row lands
-   * as against `batchByteSize`. The source is consumed.
+   * line door parses one - a row's `currunix` cell is its line's clock,
+   * so it is the messages' `recdunix` and the sending clock of one
+   * stating none - and batches close on the bytes each row lands as
+   * against `batchByteSize`. The source is consumed.
    *
    * The capture's own columns fill nothing: the carried ones, and the one
    * the crate tags - a `sourceurl` column - are read off the source row
@@ -1714,9 +1730,8 @@ export type JsFixMessages = FixMessages
  * own tags and the entries. The message compares, hashes, renders and clones
  * by its facts and its row, against the registry it was resolved against.
  *
- * Every message carries its identity settled: the cross code read off the
- * bridge's `msgsessionid:msgctxid` where the row header stated both, else
- * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
+ * Every message carries its identity settled: the cross code, the first
+ * stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
  * over it, the `currhashcode` over everything the message says but the
  * standard header and trailer, the `curruuid` ordered by millisecond and
  * sequence with a content payload seeded by the cross hash, and the
@@ -1736,9 +1751,11 @@ export declare class FixMsg {
    * when the value states none; the event's instant is the stated one,
    * else the official transaction clock standing within the core's default
    * one-second delay of that sending time - a `TransactTime(60)`, else a
-   * ranked `TrdRegTimestamp(769)` - else the sending time itself, and the
-   * creation the stated one, else the instant. What `OrigSendingTime(122)`
-   * says is the lifecycle's to read. The identity is then settled.
+   * ranked `TrdRegTimestamp(769)` - else the sending time itself, the
+   * creation the stated one, else the instant, and the execution of a
+   * report stating no execution clock that instant too. What
+   * `OrigSendingTime(122)` says is the lifecycle's to read. The identity
+   * is then settled.
    */
   constructor(field: Field, value: JsScalar, registry?: FixRegistry | undefined | null)
   /**
@@ -1852,7 +1869,10 @@ export declare class FixMsg {
   get price(): string
   /** The quantity, as decimal text; `0` where none is stated. */
   get quantity(): string
-  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  /**
+   * The side: the one stated, else the lane a single-sided quote states -
+   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   */
   get side(): string
   /** The currency; `XXX` where none is stated. */
   get currency(): string
@@ -6340,10 +6360,13 @@ export interface FileSelector {
  *
  * What the line itself said about the capture it was written for: a
  * bridge's own row header. None of it is FIX and none is content, so none
- * of it is an entry or on the wire; where the row header brackets both a
- * session instance and a message context, the two name the chain through
- * the cross code, which is the chain's identity and not the message's,
- * and which the content code leaves out.
+ * of it is an entry or on the wire, and none of it reaches the code the
+ * content digests to. Where the message type, the session instance, the
+ * message context and `MsgSeqNum` are all stated, their values joined by
+ * `:` are `msgsesseventid`, the session event the message was delivered
+ * as: derived whenever the message settles, delivery provenance rather
+ * than the message's content identity or its chain code, and the key two
+ * observations of one delivery merge on.
  *
  * What the *reader* said about the line - the object it came out of, when
  * it was recorded - is not here: those are the capture's own columns,
@@ -6360,6 +6383,13 @@ export interface FixCaptureView {
   msgctxid: string | null
   /** The session instance a bridge handled the line on. */
   msgsessionid: string | null
+  /**
+   * The session event the message was delivered as - `MsgType`,
+   * `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
+   * `8:e7256476:9effef3e6a:1094` - where all four are stated; also
+   * `byTag(65065)`.
+   */
+  msgsesseventid: string | null
 }
 
 /**
@@ -6443,8 +6473,8 @@ export interface FixCodecOptions {
    */
   excludeMsgtypes?: Array<string>
   /**
-   * The `SendingTime` an undated message takes when neither it nor its
-   * carrier states one: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`
+   * The `SendingTime` an undated message takes when neither it, its row
+   * nor its line dates it: a `DateTime64(ns, UTC)` `Scalar`, or a `Date`
    * restated in nanoseconds. UTC now per new message when unstated or
    * `null`.
    */
@@ -6486,14 +6516,15 @@ export interface FixCommitReport {
  * venue publishes.
  *
  * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
- * `recdunix`, `refrecdunix`, `prevunix`, `snapunix` and `exprtime`; the identities `currhashcode`,
- * `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`; the `srcuuids`
- * list of the lines it was read from;
- * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
- * and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
- * `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
- * which whoever read the line states on the row and no message holds; the
- * `nofixentries` that counts the content record; and the generic
+ * `recdunix`, `prevunix`, `snapunix` and `exprtime`; the identities
+ * `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
+ * the `srcuuids` list of the lines it was read from; the `crosscode`, the
+ * `seqnum` and the `state` reached; the `identifiers` and `metadata` Map
+ * groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
+ * `msgsessionid` - and the `msgsesseventid` the session and the context
+ * join to with the message type and sequence; the capture's own column,
+ * `sourceurl`, which whoever read the line states on the row and no message
+ * holds; the `nofixentries` that counts the content record; and the generic
  * `marketoperationid` shared with market operations. Thirty-one in all,
  * each a fact no FIX dictionary publishes, at the datatype its graph column
  * names.
@@ -6563,10 +6594,9 @@ export interface FixEventView {
    */
   crossuuid: string
   /**
-   * The code the chain is named by: the bridge's `msgsessionid:msgctxid`
-   * where the row header stated both, else the first stated of
-   * `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`,
-   * `QuoteReqID(131)` and `MDReqID(262)`, or empty.
+   * The code the chain is named by: the first stated of `OrderID(37)`,
+   * `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
+   * and `MDReqID(262)`, or empty.
    */
   crosscode: string
   /**
@@ -6594,12 +6624,17 @@ export interface FixEventView {
   seqnum: number
   /** When the chain was created, where stated. */
   creaunix: bigint | null
-  /** The precise execution instant, where stated or derived. */
+  /**
+   * The precise execution instant: the one the message states, else its
+   * own `currunix` where the parse read it as reporting an execution, and
+   * on a chained message the latest its lifecycle reached; else `null`.
+   */
   execunix: bigint | null
-  /** The precise recording instant, where stated by the capture. */
+  /**
+   * The precise recording instant, where stated or where the line the
+   * message was read out of dated itself.
+   */
   recdunix: bigint | null
-  /** The recording instant that selected the merge reference, where known. */
-  refrecdunix: bigint | null
   /** When the chain expires, where stated. */
   exprtime: bigint | null
   /**
@@ -6644,7 +6679,10 @@ export interface FixEventView {
   currency: string
   /** The unit the quantity is counted in, empty where none is stated. */
   unit: string
-  /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
+  /**
+   * The side: the one stated, else the lane a single-sided quote states -
+   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   */
   side: string
   /** The instrument's ISIN, where stated. */
   isincode: string | null

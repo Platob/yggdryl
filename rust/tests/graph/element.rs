@@ -52,7 +52,6 @@ struct Report {
     creaunix: Option<i64>,
     execunix: Option<i64>,
     recdunix: Option<i64>,
-    refrecdunix: Option<i64>,
     exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -79,7 +78,6 @@ impl Report {
             creaunix: None,
             execunix: None,
             recdunix: None,
-            refrecdunix: None,
             exprtime: None,
             prevunix: None,
             prevuuid: None,
@@ -219,14 +217,6 @@ impl Event for Report {
 
     fn set_recdunix(&mut self, unix: Option<i64>) {
         self.recdunix = unix;
-    }
-
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.refrecdunix
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.refrecdunix = unix;
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -915,15 +905,16 @@ fn restating_and_merging_keep_the_earliest_per_event_instants() {
     other.set_execunix(Some(18));
     other.set_recdunix(Some(25));
 
+    // Only the earliest recording survives either fold: `one` is the
+    // reference (recorded at 30, after 25), but no separate reference clock
+    // keeps its 30, so the folded statement ranks at 25 from here on.
     let restated = one.clone().restating(&other);
     assert_eq!(restated.get_execunix(), Some(18));
     assert_eq!(restated.get_recdunix(), Some(25));
-    assert_eq!(restated.get_refrecdunix(), Some(30));
 
     let merged = one.merge_with(&other).expect("the instants moved");
     assert_eq!(merged.get_execunix(), Some(18));
     assert_eq!(merged.get_recdunix(), Some(25));
-    assert_eq!(merged.get_refrecdunix(), Some(30));
     assert!(
         merged.clone().merge_with(&other).is_none(),
         "the fold is idempotent"
@@ -953,13 +944,11 @@ fn restating_and_merging_keep_the_earliest_per_event_instants() {
     let restated = market_other.clone().restating(&market);
     assert_eq!(restated.get_execunix(), Some(at(18)));
     assert_eq!(restated.get_recdunix(), Some(at(25)));
-    assert_eq!(restated.get_refrecdunix(), Some(at(30)));
     let merged = market
         .merge_with(&market_other)
         .expect("the market event instants moved");
     assert_eq!(merged.get_execunix(), Some(at(18)));
     assert_eq!(merged.get_recdunix(), Some(at(25)));
-    assert_eq!(merged.get_refrecdunix(), Some(at(30)));
 }
 
 #[test]
@@ -1084,16 +1073,9 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         assert_eq!(merged.get_prevunix(), Some(19));
         assert_eq!(merged.get_snapunix(), Some(21));
         assert_eq!(merged.get_execunix(), Some(12));
-        assert_eq!(
-            merged.get_recdunix(),
-            Some(100),
-            "the reference selects conflicts; recording history still folds earliest"
-        );
-        assert_eq!(
-            merged.get_refrecdunix(),
-            Some(200),
-            "the selected reference's recording clock remains available to the next fold"
-        );
+        // The reference selects conflicts; the recording clock still folds
+        // to the earliest, and the reference's own 200 is kept nowhere.
+        assert_eq!(merged.get_recdunix(), Some(100));
     }
 
     let mut unstated = Report::at(2, 40);
@@ -1108,11 +1090,67 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         (merged.get_currunix(), merged.get_currhashcode()),
         (10, 0xD)
     );
-    assert_eq!(merged.get_refrecdunix(), Some(50));
+    assert_eq!(
+        merged.get_recdunix(),
+        Some(50),
+        "the one stated recording is the earliest either knows"
+    );
+
+    // Equal recording clocks, or none on either side, fall back to the later
+    // event instant, whichever statement merges into which: merged into the
+    // earlier, the later one leads; merged into the later, the earlier one
+    // moves nothing.
+    for recdunix in [Some(50), None] {
+        let mut earlier = Report::at(3, 10);
+        earlier.set_currhashcode(0xE);
+        earlier.set_recdunix(recdunix);
+        let mut later = Report::at(3, 20);
+        later.set_currhashcode(0xF);
+        later.set_recdunix(recdunix);
+        let merged = earlier
+            .clone()
+            .merge_with(&later)
+            .expect("the later instant leads");
+        assert_eq!(
+            (
+                merged.get_currunix(),
+                merged.get_currhashcode(),
+                merged.get_recdunix()
+            ),
+            (20, 0xF, recdunix)
+        );
+        assert!(later.merge_with(&earlier).is_none(), "{recdunix:?}");
+    }
+
+    // An exact tie - the same recording and the same instant - keeps this
+    // statement as the reference: the other only fills what it leaves
+    // unstated, and adds nothing at all where it states nothing more.
+    let mut this = Report::at(4, 10);
+    this.set_currhashcode(0xA);
+    this.set_recdunix(Some(50));
+    this.set_crosscode("THIS".to_owned());
+    this.finalize();
+    let mut that = Report::at(4, 10);
+    that.set_currhashcode(0xB);
+    that.set_recdunix(Some(50));
+    that.set_crosscode("THAT".to_owned());
+    that.finalize();
+    assert!(this.clone().merge_with(&that).is_none());
+    assert!(that.clone().merge_with(&this).is_none());
+    that.set_identifiers(identifiers([("ThatOnly", "1")]));
+    let merged = this.merge_with(&that).expect("the other fills a name");
+    assert_eq!(merged.get_currhashcode(), 0xA);
+    assert_eq!(merged.get_crosscode(), "THIS");
+    assert_eq!(merged.get_identifiers()["ThatOnly"], "1");
 }
 
 #[test]
-fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
+fn a_folded_statement_ranks_by_its_earliest_recording_so_three_way_folds_depend_on_order() {
+    // A fold keeps the earliest recording its statements know and no
+    // separate clock of the reference it chose, so against a third
+    // statement it ranks by that earliest recording. The reference of three
+    // statements is therefore the later recorded of the pair folded last -
+    // merging is not associative in its choice of reference.
     let observation = |unix, recdunix, hashcode, crosscode: &str| {
         let mut event = Report::at(1, unix);
         event.set_recdunix(Some(recdunix));
@@ -1121,17 +1159,22 @@ fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
         event
     };
     let oldest = observation(30, 100, 0xA, "OLD");
-    let reference = observation(20, 200, 0xB, "REFERENCE");
+    let latest = observation(20, 200, 0xB, "LATEST");
     let middle = observation(40, 150, 0xC, "MIDDLE");
-    let observations = [&oldest, &reference, &middle];
+    let observations = [&oldest, &latest, &middle];
 
-    for order in [
-        [0, 1, 2],
-        [0, 2, 1],
-        [1, 0, 2],
-        [1, 2, 0],
-        [2, 0, 1],
-        [2, 1, 0],
+    // Folded last, `middle` (150) meets the pair of `oldest` and `latest`,
+    // which held `latest` (200) as its reference but ranks at its earliest
+    // recording (100), and so leads it. Folded last into the pair of
+    // `latest` and `middle`, which ranks at 150, `oldest` (100) does not
+    // lead. Folded last, `latest` (200) leads either pair.
+    for (order, reference) in [
+        ([0, 1, 2], (40, 0xC, "MIDDLE")),
+        ([1, 0, 2], (40, 0xC, "MIDDLE")),
+        ([0, 2, 1], (20, 0xB, "LATEST")),
+        ([2, 0, 1], (20, 0xB, "LATEST")),
+        ([1, 2, 0], (20, 0xB, "LATEST")),
+        ([2, 1, 0], (20, 0xB, "LATEST")),
     ] {
         let mut merged = observations[order[0]].clone();
         for index in &order[1..] {
@@ -1139,11 +1182,20 @@ fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
                 merged = next;
             }
         }
-        assert_eq!(merged.get_currunix(), 20, "order {order:?}");
-        assert_eq!(merged.get_currhashcode(), 0xB, "order {order:?}");
-        assert_eq!(merged.get_crosscode(), "REFERENCE", "order {order:?}");
-        assert_eq!(merged.get_recdunix(), Some(100), "order {order:?}");
-        assert_eq!(merged.get_refrecdunix(), Some(200), "order {order:?}");
+        assert_eq!(
+            (
+                merged.get_currunix(),
+                merged.get_currhashcode(),
+                merged.get_crosscode()
+            ),
+            reference,
+            "order {order:?}"
+        );
+        assert_eq!(
+            merged.get_recdunix(),
+            Some(100),
+            "every order keeps the earliest recording, order {order:?}"
+        );
     }
 }
 
@@ -2057,6 +2109,118 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
         Decimal18::parse("82.5").expect("a decimal")
     );
     assert_eq!(once, twice);
+}
+
+/// A quote stating one lane and no side is that lane's side, and the ladder
+/// then reads the price, the quantity, the currency and the unit off it.
+#[test]
+fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+    let currency = |code: &str| Currency::new(code).expect("a currency");
+
+    // A bid alone is a party willing to pay: a buy at the bid.
+    let mut bid = MarketEventData::at(at(10));
+    assert_eq!(bid.get_side(), &Side::unknown());
+    bid.set_bidpx(Some(decimal("101.5")));
+    bid.set_bidqty(Some(Decimal18::from_int(200)));
+    bid.set_bidcurrency(Some(currency("USD")));
+    bid.set_bidunit(Some("shares".to_owned()));
+    bid.fill_market();
+    assert_eq!(bid.get_side().as_str(), "BUY");
+    assert_eq!(bid.get_price(), decimal("101.5"));
+    assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
+    assert_eq!(bid.get_currency().as_str(), "USD");
+    assert_eq!(bid.get_unit(), "shares");
+    assert_eq!(bid.get_askpx(), None, "the other lane stays empty");
+
+    // An offer alone is a party willing to be paid: a sell at the offer.
+    let mut ask = MarketEventData::at(at(20));
+    ask.set_askpx(Some(decimal("102")));
+    ask.set_askqty(Some(Decimal18::from_int(50)));
+    ask.fill_market();
+    assert_eq!(ask.get_side().as_str(), "SELL");
+    assert_eq!(ask.get_price(), decimal("102"));
+    assert_eq!(ask.get_quantity(), Decimal18::from_int(50));
+    assert_eq!(ask.get_bidpx(), None);
+
+    // Any fact of a lane states it: a currency alone names the side and
+    // prices the element in it, and invents no price.
+    let mut priced = MarketEventData::at(at(30));
+    priced.set_askcurrency(Some(currency("EUR")));
+    priced.fill_market();
+    assert_eq!(priced.get_side().as_str(), "SELL");
+    assert_eq!(priced.get_currency().as_str(), "EUR");
+    assert_eq!(priced.get_price(), Decimal18::ZERO);
+
+    // Two lanes name no side, so nothing reads off either.
+    let mut two = MarketEventData::at(at(40));
+    two.set_bidpx(Some(decimal("101")));
+    two.set_askpx(Some(decimal("102")));
+    two.fill_market();
+    assert_eq!(two.get_side(), &Side::unknown());
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    // A side the element states is its own, whatever lane it quotes: a
+    // cross takes no lane, so the offer it carries dates nothing either.
+    let mut cross = MarketEventData::at(at(50));
+    cross.set_side(Side::read("Cross").expect("a side"));
+    cross.set_askpx(Some(decimal("102")));
+    cross.fill_market();
+    assert_eq!(cross.get_side().as_str(), "CROSS");
+    assert_eq!(cross.get_price(), Decimal18::ZERO);
+
+    // An element pricing itself is not a quote: a trade at its last price
+    // beside a lone bid is about the trade, and names no side.
+    let mut traded = MarketEventData::at(at(60));
+    traded.set_lastpx(Some(decimal("100")));
+    traded.set_bidpx(Some(decimal("99")));
+    traded.fill_market();
+    assert_eq!(traded.get_side(), &Side::unknown());
+    assert_eq!(traded.get_price(), decimal("100"));
+
+    // Filling twice changes nothing the first run did not.
+    let twice = {
+        let mut held = bid.clone();
+        held.fill_market();
+        held
+    };
+    assert_eq!(bid, twice);
+}
+
+/// A chain's side reaches only an element quoting no lane of its own: one
+/// lane names the element's side itself, and two name none, whatever side
+/// the quote before it named.
+#[test]
+fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
+    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+    let quote = |ms: i64, bid: Option<&str>, ask: Option<&str>| {
+        let mut held = MarketEventData::at(at(ms));
+        held.set_crosscode("Q1".to_owned());
+        held.set_bidpx(bid.map(decimal));
+        held.set_askpx(ask.map(decimal));
+        held.finalize();
+        held
+    };
+    let first = quote(10, Some("101"), None);
+    assert_eq!(first.get_side().as_str(), "BUY");
+
+    let two = quote(20, Some("102"), Some("103"))
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(two.get_side(), &Side::unknown(), "two lanes name no side");
+    assert_eq!(two.get_price(), Decimal18::ZERO);
+
+    let offer = quote(30, None, Some("104"))
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(offer.get_side().as_str(), "SELL", "its own lane names it");
+    assert_eq!(offer.get_price(), decimal("104"));
+
+    // A statement quoting nothing is about the side the chain took.
+    let silent = quote(40, None, None)
+        .with_previous(&first)
+        .expect("the next quote");
+    assert_eq!(silent.get_side().as_str(), "BUY");
 }
 
 #[test]

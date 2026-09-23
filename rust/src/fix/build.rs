@@ -451,9 +451,11 @@ pub(super) struct RowExtras<'row> {
     /// the row answers for states as its one source; none for bytes no line
     /// stands behind.
     pub(super) source: Option<crate::Uuid>,
-    /// When the carrier recorded the row, in nanoseconds since the Unix
-    /// epoch. Applied after the row's explicit fills, so a stated crate
-    /// `recdunix` stands.
+    /// When the carrier recorded the row - the line's own `currunix` - in
+    /// nanoseconds since the Unix epoch. Applied after the row's explicit
+    /// fills, so a stated crate `recdunix` stands; it is also the sending
+    /// clock a message stating no `SendingTime(52)` is dated by where no
+    /// fill reaches tag 52, ahead of the codec's default.
     pub(super) recdunix: Option<i64>,
 }
 

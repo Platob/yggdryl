@@ -310,7 +310,7 @@ Python pickle and copy preserve this full graph. Node `intoJson` / `fromJson`, `
 
 ## The tracked seed
 
-The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds 29 crate scalar definitions, including the source UUID list, six normalized identifier codes and the execution, recording and merge-reference clocks, plus two Map groups: 6,270 scalar fields, 582 groups, 928 components and 181 message types in the live registry, 7,780 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset` makes 736 live sets.
+The committed `config/fix` catalog contains 6,241 scalar fields in 65 shards, 928 components - 181 messages carrying `FIX:msgtype` and `FIX:msgcat` - and 580 groups. Loading adds 29 crate scalar definitions, including the source UUID list, six normalized identifier codes, the execution and recording clocks and the session-event key `msgsesseventid`, plus two Map groups: 6,270 scalar fields, 582 groups, 928 components and 181 message types in the live registry, 7,780 definitions total. The generated catalog holds 735 shared code sets in `codesets/`; the builtin `msgcatcodeset` makes 736 live sets.
 
 Beside those 2,308 the tracked tree carries the crate's own dump, which `commit` writes and a read passes over: `fields/000000650.json`, `groups/identifiers.json`, `groups/metadata.json` and the fixed row `components/fixmsg.json`. The generator neither writes nor removes them, and its `--check` ignores them.
 
