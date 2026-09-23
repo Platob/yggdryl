@@ -138,7 +138,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
         group.bench_function(BenchmarkId::new("restate_fixed", size), |bencher| {
             bencher.iter(|| {
                 black_box(&fixed)
-                    .scalar(Scalar::Bytes(black_box(&value).clone()))
+                    .scalar(Scalar::Binary(black_box(&value).clone()))
                     .expect("the payload is exactly the width")
             });
         });

@@ -722,16 +722,16 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Duration32(unit) => Self::Duration32 { unit: *unit },
             D::Duration64(unit) => Self::Duration64 { unit: *unit },
             D::Interval(leaf) => Self::Interval { unit: *leaf },
-            D::Bytes(parameters) => {
-                let parameters = *parameters;
+            crate::bytes_dtypes!() => {
+                let parameters = value.bytes_parameters().expect("a byte leaf");
                 Self::Binary {
                     layout: Some(parameters).filter(|layout| *layout != crate::BytesType::Binary),
                     max: parameters.max(),
                     fixed: parameters.fixed(),
                 }
             }
-            D::String(parameters) => {
-                let parameters = *parameters;
+            crate::string_dtypes!() => {
+                let parameters = value.string_parameters().expect("a string leaf");
                 Self::String {
                     layout: Some(parameters)
                         .filter(|layout| *layout != crate::StringType::Utf8String),
@@ -1210,8 +1210,8 @@ impl DataType {
                 tag("interval");
                 entries.push((key("unit"), unit_value(*leaf)));
             }
-            D::Bytes(parameters) => {
-                let parameters = *parameters;
+            crate::bytes_dtypes!() => {
+                let parameters = self.bytes_parameters().expect("a byte leaf");
                 tag("binary");
                 if parameters != crate::BytesType::Binary {
                     entries.push((
@@ -1226,8 +1226,8 @@ impl DataType {
                     entries.push((key("fixed"), Scalar::from(fixed)));
                 }
             }
-            D::String(parameters) => {
-                let parameters = *parameters;
+            crate::string_dtypes!() => {
+                let parameters = self.string_parameters().expect("a string leaf");
                 tag("string");
                 if parameters != crate::StringType::Utf8String {
                     entries.push((
@@ -1768,7 +1768,7 @@ pub(crate) fn integer(held: Option<&Scalar>, name: &str) -> Result<i32> {
         // A structured-text document may carry a wide integer as text; the
         // JSON path already accepts the decimal-string spelling for the same
         // reason, so the two stay interchangeable.
-        let Scalar::String(text) = held else {
+        let Some(text) = held.as_string() else {
             return Err(invalid(
                 &format!("$.{name}"),
                 "an integer",

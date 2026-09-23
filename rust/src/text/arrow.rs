@@ -1341,7 +1341,7 @@ pub(crate) fn parse_capture(
         )
     };
     match dtype {
-        DataType::String(_) => Ok(Scalar::from(value)),
+        crate::string_dtypes!() => Ok(Scalar::from(value)),
         DataType::Boolean => value
             .parse::<bool>()
             .map(Scalar::from)

@@ -225,8 +225,8 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Time32(_) | DataType::Time64(_)
             | DataType::Duration32(_) | DataType::Duration64(_)
             | DataType::Interval(_)
-            | DataType::Bytes(_)
-            | DataType::String(_)
+            | crate::bytes_dtypes!()
+            | crate::string_dtypes!()
             | DataType::Country
             | DataType::Currency
             | DataType::MicCode
@@ -318,7 +318,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Interval(_) => fatal(path, "invalid interval layout"),
         // The empty payload, or on the fixed layout the zero-filled slot of
         // its width: bytes are never padded, so the width is the value.
-        D::Bytes(parameters) => {
+        crate::bytes_dtypes!() => {
+            let parameters = dtype.bytes_parameters().expect("a byte leaf");
             plan_bytes(parameters.fixed().map_or(0, |width| width as usize), path)
         }
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
@@ -340,7 +341,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // A string defaults to the empty one, restated under its parameters
         // by the value door; on a fixed layout storage pads it to all-NUL,
         // and a code, which stores as its text, holds the empty text itself.
-        D::String(_)
+        crate::string_dtypes!()
         | D::Country
         | D::Currency
         | D::MicCode

@@ -23,7 +23,7 @@ use crate::text::{
 use crate::{Error, Field, Result, Serie};
 
 use self::parser::YamlParser;
-use crate::code_scalars;
+use crate::{bytes_scalars, code_scalars, string_scalars};
 
 /// Maximum nesting accepted by Saphyr's YAML flow-collection grammar.
 ///
@@ -728,7 +728,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Float16(_)
             | Scalar::Float32(_)
             | Scalar::Float64(_)
-            | Scalar::String(_)
+            | string_scalars!(_)
             | Scalar::Country(_)
             | Scalar::Currency(_)
             | Scalar::MicCode(_)
@@ -792,7 +792,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
+        string_scalars!(value) => write_scalar_string(writer, value.as_str())?,
         code_scalars!() => {
             write_scalar_string(writer, value.as_str().expect("a code borrowed its text"))?;
         }
@@ -806,7 +806,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             write_scalar_string(writer, value.render(&mut slot))?;
         }
-        Scalar::Bytes(value) => {
+        bytes_scalars!(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
             writer.write_all(b"!!binary ")?;
             write_quoted(

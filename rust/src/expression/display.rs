@@ -491,7 +491,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
-        Scalar::String(held) => Some(held.storage().clone()),
+        crate::string_scalars!(held) => Some(held.storage().clone()),
         code_scalars!() => value.code_storage().cloned(),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),
         Scalar::Url(held) => Some(SmolStr::new(held.to_string())),
@@ -506,7 +506,7 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         }
         // A geometry literal spells its WKB the way a bytes literal does: the
         // expression grammar reads hex back losslessly, which WKT is not.
-        Scalar::Bytes(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
+        crate::bytes_scalars!(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         Scalar::Geometry(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         Scalar::Geography(held) => Some(SmolStr::new(hex_text(held.as_bytes()))),
         // Every temporal spells itself the one classic way, which the Arrow

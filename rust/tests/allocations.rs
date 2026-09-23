@@ -1472,8 +1472,8 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
 fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
     // `Str` wraps the compact string, so its threshold is that string's: a
     // value of `INLINE_CAPACITY` bytes lives in the value and one byte more
-    // costs exactly the shared handle. Restating a value under other
-    // parameters retags the handle, so the characters are never copied.
+    // costs exactly the shared handle. Restating the text as a value of
+    // another leaf moves the handle, so the characters are never copied.
     let inline = "s".repeat(INLINE_CAPACITY);
     free("building a string value at the inline capacity", || {
         let value = Str::new(black_box(inline.as_str()));
@@ -1489,11 +1489,13 @@ fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
     let source = Str::new(&shared);
     let large = StringType::LargeUtf8String;
     free("restating a shared string value under another leaf", || {
-        let restated = black_box(&source)
-            .clone()
-            .try_with_parameters(large)
+        let restated = large
+            .scalar(black_box(&source).clone())
             .expect("the leaf holds it");
-        assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+        assert!(std::ptr::eq(
+            source.as_str(),
+            restated.as_str().expect("a string value")
+        ));
         black_box(restated);
     });
 }
@@ -2111,7 +2113,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 36] = [
+    let seeds: [(DataTypeId, Scalar); 46] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2130,9 +2132,19 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
+        (DataTypeId::LargeBinaryView, Scalar::from(&b"ABC"[..])),
         (DataTypeId::Utf8String, Scalar::from("AAPL")),
         (DataTypeId::LargeUtf8String, Scalar::from("AAPL")),
         (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeUtf8StringView, Scalar::from("AAPL")),
+        (DataTypeId::AsciiString, Scalar::from("AAPL")),
+        (DataTypeId::LargeAsciiString, Scalar::from("AAPL")),
+        (DataTypeId::AsciiStringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeAsciiStringView, Scalar::from("AAPL")),
+        (DataTypeId::Cp1252String, Scalar::from("AAPL")),
+        (DataTypeId::LargeCp1252String, Scalar::from("AAPL")),
+        (DataTypeId::Cp1252StringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeCp1252StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Currency, Scalar::from("USD")),
         (DataTypeId::MicCode, Scalar::from("XNAS")),
@@ -3041,15 +3053,15 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let (allocations, projected) = counted(|| {
             let mut projected = 0;
             for line in &held {
-                match line
+                let fact = line
                     .event_fact(EventColumn::CrossCode)
-                    .expect("a crosscode reading")
-                {
-                    Some(Scalar::String(code)) => {
+                    .expect("a crosscode reading");
+                match fact.as_ref().and_then(Scalar::as_string) {
+                    Some(code) => {
                         black_box(code);
                         projected += 1;
                     }
-                    _ => panic!("a located line has a string crosscode"),
+                    None => panic!("a located line has a string crosscode"),
                 }
             }
             projected

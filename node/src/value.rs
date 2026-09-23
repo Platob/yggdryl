@@ -86,11 +86,12 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Decimal256 { .. } => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
-        D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
+        bytes if bytes.bytes_parameters().is_some() => JsValueHint::Buffer,
+        D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
         // A code reads back as the text it stores and a UUID as its
         // hyphenated spelling, so both project as the string family does.
-        D::String(_)
-        | D::Country
+        string if string.is_string() => JsValueHint::String,
+        D::Country
         | D::Currency
         | D::MicCode
         | D::CfiCode
@@ -337,15 +338,19 @@ fn text_or_binary_to_js<'env>(
     use DataType as D;
 
     let output = match dtype {
-        D::Bytes(_) => Buffer::from(
+        bytes if bytes.bytes_parameters().is_some() => Buffer::from(
             value
-                .as_bytes()
+                .as_binary()
                 .ok_or_else(|| napi_error("invalid native binary record value"))?
                 .to_vec(),
         )
         .into_unknown(env)?,
-        D::String(_)
-        | D::Country
+        string if string.is_string() => value
+            .as_str()
+            .ok_or_else(|| napi_error("invalid native string record value"))?
+            .to_owned()
+            .into_unknown(env)?,
+        D::Country
         | D::Currency
         | D::MicCode
         | D::CfiCode

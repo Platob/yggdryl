@@ -5,9 +5,9 @@ use std::io::Write;
 
 use base64::Engine as _;
 
-use crate::code_scalars;
 use crate::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, Serie, TimeUnit, Timezone};
+use crate::{bytes_scalars, code_scalars, string_scalars};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
@@ -292,7 +292,7 @@ fn write_scalar<W: Write>(
         Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::String(value) => write_quoted(writer, value.as_str())?,
+        string_scalars!(value) => write_quoted(writer, value.as_str())?,
         code_scalars!() => {
             write_quoted(writer, value.as_str().expect("a code borrowed its text"))?;
         }
@@ -306,7 +306,7 @@ fn write_scalar<W: Write>(
             let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             write_quoted(writer, value.render(&mut slot))?;
         }
-        Scalar::Bytes(value) => write_quoted(
+        bytes_scalars!(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         )?,

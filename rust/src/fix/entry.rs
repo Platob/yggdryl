@@ -181,7 +181,7 @@ pub(super) fn wire_text_under(
 pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
     use crate::Scalar;
     match value {
-        Scalar::String(_) => value.as_str().map(SmolStr::new),
+        crate::string_scalars!(_) => value.as_str().map(SmolStr::new),
         coded if coded.is_code() => value.as_str().map(SmolStr::new),
         Scalar::Boolean(_) => value
             .as_bool()
@@ -195,7 +195,7 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         | Scalar::SortedMap(_)
         | Scalar::Struct(_)
         | Scalar::Null => None,
-        Scalar::Bytes(held) => Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes()))),
+        crate::bytes_scalars!(held) => Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes()))),
         Scalar::Version(held) => Some(smol_str::format_smolstr!("{held}")),
         Scalar::DateTime64(_) => {
             let (count, unit, _) = value.as_datetime64()?;

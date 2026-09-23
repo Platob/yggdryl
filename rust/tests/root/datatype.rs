@@ -4,7 +4,6 @@ mod arrow {
     use std::sync::Arc;
 
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
-    use yggdryl::BytesType;
 
     use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone, UnionMode};
 
@@ -409,7 +408,7 @@ mod arrow {
         );
         // A leaf carries its own count, so the state a caller can still build by
         // hand is a count of nothing.
-        let invalid_binary = DataType::Bytes(BytesType::FixedBinary(0));
+        let invalid_binary = DataType::FixedBinary(0);
         for error in [
             invalid_binary.validate().unwrap_err(),
             invalid_binary.clone().into_arrow_datatype().unwrap_err(),
@@ -740,5 +739,205 @@ mod families {
         let over_limit = nested_list(DataType::PARSE_RECURSION_LIMIT);
         assert!(DataType::from_arrow_datatype(&over_limit).is_err());
         assert!(DataType::try_from(over_limit).is_err());
+    }
+}
+
+/// A datatype hashes as the shape it had before the text and byte leaves
+/// each took a variant of their own, so no stored digest over one moves.
+///
+/// Every value here was taken from the build before the split, through the
+/// stable sink every digest writes into; `Display` names each datatype so the
+/// table outlives any constructor. Every variant is in it, every string and
+/// byte leaf at two numbers, and a dictionary, a map and a serie over them:
+/// a dictionary's value type is how the discriminant reaches a stored digest.
+#[cfg(feature = "internals")]
+mod structural_hash {
+    use yggdryl::internals::hashing_stable::stable_hash_of;
+    use yggdryl::{DataType, Scalar};
+
+    const PINNED: [(&str, u64); 99] = [
+        ("utf8", 0x5ab6cab83f73e718),
+        ("large_utf8", 0xc049e53a48cbfe3b),
+        ("utf8_view", 0xf4813115041b88d1),
+        ("large_utf8_view", 0x2913339cc7b51d1a),
+        ("fixed_utf8(7)", 0x73565b305d96e374),
+        ("sized_utf8(7)", 0x640514f72e636877),
+        ("ascii", 0x502ad1b174fac85a),
+        ("large_ascii", 0x57001e60b1030761),
+        ("ascii_view", 0x3522740576c708f7),
+        ("large_ascii_view", 0xc1a4bcead29bf9dd),
+        ("fixed_ascii(7)", 0x0bd7750bd3fdcac2),
+        ("sized_ascii(7)", 0x490685a23812fb74),
+        ("cp1252", 0x912c41c4998c089f),
+        ("large_cp1252", 0x751c0f6293b51839),
+        ("cp1252_view", 0xb31b7c0a8df9aaf5),
+        ("large_cp1252_view", 0x47ebd43677182d8b),
+        ("fixed_cp1252(7)", 0x5bd5b6fde721f3cc),
+        ("sized_cp1252(7)", 0xa834da62b05f4266),
+        ("binary", 0xb4f46a1bc25589ed),
+        ("large_binary", 0x144130a4eb9b36cc),
+        ("binary_view", 0x512742e6e2ee1bbb),
+        ("large_binary_view", 0x58ba28841599c919),
+        ("fixed_binary(9)", 0xa904efcec65abcae),
+        ("sized_binary(9)", 0x6f3d1efdae61cba1),
+        ("fixed_utf8(300)", 0x3a3d75282cd92a74),
+        ("sized_utf8(300)", 0x5ec93e6edd75faa8),
+        ("fixed_ascii(300)", 0xf5ff507c073b272a),
+        ("sized_ascii(300)", 0xe5883e398a94bf36),
+        ("fixed_cp1252(300)", 0x8aafb890cb7384e5),
+        ("sized_cp1252(300)", 0xca2af0cceba9471c),
+        ("fixed_binary(302)", 0x6491a68f401fd149),
+        ("sized_binary(302)", 0x47581d086e672b99),
+        ("null", 0xc77b3abb6f87acd9),
+        ("boolean", 0x2fbc593564db792e),
+        ("int8", 0x2086c65c91eee243),
+        ("int16", 0x4d922029c1f42e7d),
+        ("int32", 0xca22290ad95e7178),
+        ("int64", 0x8e03e9aa39aaa78c),
+        ("uint8", 0x6b994bda4763673b),
+        ("uint16", 0x81671e58d6b596af),
+        ("uint32", 0xa1fb3d150676dcfe),
+        ("uint64", 0x0760af8819750497),
+        ("float16", 0xe6ad1be9a8972875),
+        ("float32", 0x2abb136b5b23df0c),
+        ("float64", 0x9e9e459506814997),
+        ("datetime64(ns,\"UTC\")", 0x201d04a8bdf2caea),
+        ("datetime64(ms)", 0x3a14388b75fca7bb),
+        ("date32", 0x311479a7c6e57836),
+        ("date64", 0xe5ce56c10171f463),
+        ("time32(ms)", 0x72e64251ed9fd5ad),
+        ("time32(s)", 0x1e6a9280c8839372),
+        ("time64(ns)", 0x4a584b2f9fae9b66),
+        ("duration32(s)", 0x7a17a809856e8031),
+        ("duration64(us)", 0xa34cad317dd01868),
+        ("interval(month_day_nano)", 0x65a9b60070c1a0c8),
+        ("interval(year_month)", 0xc73891afed11ae2a),
+        ("interval(day_time)", 0x7ad288a441748064),
+        ("country", 0xe41438cbe011bd56),
+        ("currency", 0xbe7f9506a52d0949),
+        ("mic", 0xd7ead9fce536323e),
+        ("cfi", 0xd97e41930d68e393),
+        ("isin", 0x0f222354ded30363),
+        ("side", 0x52a98a94618c687b),
+        ("state", 0x384fa1ab24cdaafb),
+        ("timeinforce", 0x5e9bed84925ef4fe),
+        ("uuid", 0x126c911693422108),
+        ("version", 0xe2fca2fc6cd1c60d),
+        ("url", 0x7e1ee45fc1090ac6),
+        ("urn", 0xeec41aec8a47156d),
+        (
+            "serie(field(\"item\",int64,nullable=true,metadata={}))",
+            0xcb153063d2c38cb6,
+        ),
+        (
+            "serie(field(\"item\",utf8,nullable=true,metadata={}))",
+            0x42f06ab5d1b927e2,
+        ),
+        (
+            "serie_view(field(\"item\",ascii,nullable=true,metadata={}))",
+            0x5bd08201d94be48d,
+        ),
+        (
+            "fixed_size_serie(field(\"item\",binary,nullable=true,metadata={}),3)",
+            0x56bef4dff6aab557,
+        ),
+        (
+            "large_serie(field(\"item\",large_utf8,nullable=true,metadata={}))",
+            0xbfe28c04dbea577b,
+        ),
+        (
+            "large_serie_view(field(\"item\",sized_cp1252(5),nullable=true,metadata={}))",
+            0xe5807a3fc2cee680,
+        ),
+        (
+            "struct(field(\"a\",utf8,nullable=true,metadata={}),field(\"b\",sized_binary(4),nullable=true,metadata={}),field(\"c\",fixed_ascii(3),nullable=true,metadata={}))",
+            0xa82a10c450bbd93d,
+        ),
+        (
+            "union(sparse,0=field(\"a\",int8,nullable=true,metadata={}),1=field(\"b\",utf8,nullable=true,metadata={}))",
+            0xe79e2a7b21eef18e,
+        ),
+        ("dictionary(int32,large_utf8)", 0xc7eddf242e896a89),
+        ("dictionary(int8,fixed_ascii(3))", 0x5ab835d87840b116),
+        ("dictionary(int16,binary_view)", 0x30bead153d23bc1d),
+        ("decimal32(9,2)", 0x8ed9284eef26f840),
+        ("decimal64(18,4)", 0x04c18e7bb778cc69),
+        ("decimal128(38,10)", 0xe69e5a10d7312cdb),
+        ("decimal256(50,3)", 0xf4c1e25784ae9060),
+        (
+            "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",binary,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=false)",
+            0x033cdec8125a26be,
+        ),
+        (
+            "map(field(\"entries\",struct(field(\"key\",cp1252,nullable=false,metadata={}),field(\"value\",fixed_binary(4),nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=false)",
+            0xdbc028340604ff2e,
+        ),
+        (
+            "run_end_encoded(field(\"run_ends\",int32,nullable=false,metadata={}),field(\"values\",utf8,nullable=true,metadata={}))",
+            0x40689b236c921e61,
+        ),
+        ("variant", 0x8c9234f7f2a46cca),
+        ("geometry", 0x640f19434179cf8c),
+        ("geography", 0x7767dd6ad1fdfef9),
+        ("timezone", 0x8f236ea5f57db974),
+        ("mimetype", 0x0e06ee9d32968676),
+        ("mediatype", 0x5a5bfcc13afb0644),
+        ("cusip", 0xc15ec86c30fae930),
+        ("sedol", 0x7c79bb6940cec97c),
+        ("bloomberg", 0x0c4abe1a4bc0cfb3),
+        ("figi", 0x42a68c6154ca5261),
+        (
+            "map(field(\"entries\",struct(field(\"key\",ascii,nullable=false,metadata={}),field(\"value\",sized_binary(4),nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
+            0x820f074fa9fd900f,
+        ),
+        (
+            "map(field(\"entries\",struct(field(\"key\",ascii,nullable=false,metadata={}),field(\"value\",sized_binary(4),nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=false)",
+            0x1d162143e847fd91,
+        ),
+    ];
+
+    #[test]
+    fn every_datatype_hashes_as_it_did_before_the_leaves_split() {
+        for (name, pinned) in PINNED {
+            let dtype = DataType::from_str(name).unwrap_or_else(|error| panic!("{name}: {error}"));
+            assert_eq!(dtype.to_string(), name, "{name} spells itself");
+            assert_eq!(stable_hash_of(&dtype), pinned, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_value_hashes_its_text_or_payload_whichever_leaf_holds_it() {
+        for (text, leaf, pinned) in [
+            ("abc", "utf8", 0x20338bf0cfb053f7),
+            ("abc", "large_ascii", 0x20338bf0cfb053f7),
+            ("ab", "fixed_cp1252(4)", 0x2b6321a650d6efb8),
+            ("ab", "sized_utf8(9)", 0x2b6321a650d6efb8),
+        ] {
+            let value = DataType::from_str(leaf)
+                .unwrap()
+                .scalar(Scalar::from(text))
+                .unwrap();
+            assert_eq!(
+                value.string_parameters().map(DataType::from),
+                Some(DataType::from_str(leaf).unwrap())
+            );
+            assert_eq!(stable_hash_of(&value), pinned, "{text} as {leaf}");
+        }
+        for (payload, leaf, pinned) in [
+            (&b"abc"[..], "binary", 0x26a87cc23ddaf6a5),
+            (&b"abc"[..], "fixed_binary(3)", 0x26a87cc23ddaf6a5),
+            (&b"ab"[..], "sized_binary(9)", 0xa7122a6c11fcece3),
+            (&b"ab"[..], "large_binary_view", 0xa7122a6c11fcece3),
+        ] {
+            let value = DataType::from_str(leaf)
+                .unwrap()
+                .scalar(Scalar::from(payload.to_vec()))
+                .unwrap();
+            assert_eq!(
+                value.bytes_parameters().map(DataType::from),
+                Some(DataType::from_str(leaf).unwrap())
+            );
+            assert_eq!(stable_hash_of(&value), pinned, "{payload:?} as {leaf}");
+        }
     }
 }

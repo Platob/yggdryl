@@ -383,27 +383,35 @@ mod leaves {
     }
 
     #[test]
-    fn an_ascii_value_is_the_string_value_and_carries_no_maximum() {
-        // What comes out of an `ascii` column is the crate's one string value,
+    fn an_ascii_value_carries_the_leaf_of_its_column() {
+        // What comes out of an `ascii` column is a string value of that leaf,
         // equal to the plain spelling of the same characters.
         let value = DataType::ascii().scalar("USD").unwrap();
-        let Scalar::String(held) = &value else {
-            panic!("an ascii value is a string, got {value:?}");
+        let Scalar::AsciiString(held) = &value else {
+            panic!("an ascii value is an ascii string, got {value:?}");
         };
-        assert_eq!(held.charset(), Charset::Ascii);
-        assert_eq!(held.parameters(), StringType::AsciiString);
+        assert_eq!(held.as_str(), "USD");
+        assert_eq!(value.string_parameters(), Some(StringType::AsciiString));
+        assert_eq!(
+            value.string_parameters().map(StringType::charset),
+            Some(Charset::Ascii)
+        );
         assert_eq!(value, Scalar::from("USD"));
         assert_eq!(value.as_str(), Some("USD"));
         assert_eq!(value.id(), DataTypeId::AsciiString);
         assert_eq!(value.dtype().unwrap(), DataType::ascii());
 
-        // A maximum is the column's rule: a value read out of `ascii(4)` is an
-        // `ascii`, and one that outgrows the column is refused naming the bound.
+        // A value read out of `ascii(4)` carries the maximum as its leaf, and
+        // one that outgrows the column is refused naming the bound.
         let bounded = DataType::from_str("ascii(4)").unwrap();
+        let sized = bounded.scalar("USD").unwrap();
+        assert_eq!(sized.id(), DataTypeId::SizedAsciiString);
+        assert_eq!(sized.dtype().unwrap(), bounded);
         assert_eq!(
-            bounded.scalar("USD").unwrap().dtype().unwrap(),
-            DataType::ascii()
+            sized.string_parameters(),
+            Some(StringType::SizedAsciiString(4))
         );
+        assert_eq!(sized, value, "a value is one value in any column");
         let refused = bounded.scalar("EURO!").unwrap_err().to_string();
         assert!(refused.contains("at most 4 bytes"), "{refused}");
 
@@ -414,12 +422,14 @@ mod leaves {
         assert_eq!(padded.as_str(), Some("USD"));
         assert_eq!(padded.id(), DataTypeId::FixedAsciiString);
         assert_eq!(padded.dtype().unwrap(), fixed);
-        let Scalar::String(held) = &padded else {
-            panic!("a fixed ascii value is a string, got {padded:?}");
+        let Scalar::FixedAsciiString(held, width) = &padded else {
+            panic!("a fixed ascii value is a fixed ascii string, got {padded:?}");
         };
-        assert_eq!(held.fixed(), Some(4));
-        assert_eq!(held.encode().unwrap().as_ref(), b"USD\0");
-        assert_eq!(held.encoded_len(), 4);
+        assert_eq!(*width, 4);
+        let leaf = padded.string_parameters().unwrap();
+        assert_eq!(leaf.fixed(), Some(4));
+        assert_eq!(leaf.encode(held.as_str()).unwrap().as_ref(), b"USD\0");
+        assert_eq!(leaf.encoded_len(held.as_str()), 4);
         assert!(fixed.scalar("EURO!").is_err());
     }
 
@@ -473,8 +483,8 @@ mod leaves {
         );
         // The same rule under the value's own door.
         let ascii = StringType::AsciiString;
-        assert!(Str::new("caf\u{e9}").try_with_parameters(ascii).is_err());
-        assert!(Str::from_bytes(&[0x80], ascii).is_err());
+        assert!(ascii.scalar(Str::new("caf\u{e9}")).is_err());
+        assert!(ascii.scalar_from_bytes(&[0x80]).is_err());
     }
 
     #[test]
@@ -700,12 +710,16 @@ mod fields {
         }
         assert!(FieldScalar::new(&note.to_field(), "USD\0").is_err());
 
-        // `sized_ascii(4)` is a maximum the value never carries.
+        // `sized_ascii(4)` is a maximum the value carries as its leaf.
         let bounded =
             StringField::try_new("ccy", DataType::from_str("ascii(4)").unwrap(), true).unwrap();
         let bounded_field = bounded.to_field();
         let held = FieldScalar::new(&bounded_field, "EURO").unwrap();
-        assert_eq!(held.value().dtype().unwrap(), DataType::ascii());
+        assert_eq!(
+            held.value().dtype().unwrap(),
+            DataType::sized_ascii(4).unwrap()
+        );
+        assert_eq!(held.value(), &Scalar::from("EURO"));
         let refused = FieldScalar::new(&bounded.to_field(), "EUROS")
             .unwrap_err()
             .to_string();

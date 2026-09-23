@@ -1013,15 +1013,16 @@ def test_variable_ascii_rides_arrow_text_storage_under_its_declaration() -> None
     with pytest.raises(ValueError, match="at most 16 bytes"):
         note.ascii_packed("USD")
 
-    # A maximum is the column's rule, checked where a value enters, and
-    # never the value's: the cell read back is a plain `ascii`.
+    # A maximum is checked where a value enters, and the value keeps it:
+    # the cell is a `sized_ascii(4)` value.
     bounded = Field("code", DataType("ascii(4)"))
     assert bounded.into_arrow().metadata == {
         b"ARROW:extension:name": b"yggdryl.string",
         b"ARROW:extension:metadata": b'{"layout":"sized_ascii","charset":"us-ascii","max":4}',
     }
     assert Field.from_arrow(bounded.into_arrow()) == bounded
-    assert bounded.scalar("USD").dtype == DataType("ascii")
+    assert bounded.scalar("USD").dtype == DataType("sized_ascii(4)")
+    assert bounded.scalar("USD").kind == "sized_ascii"
     with pytest.raises(ValueError, match="at most 4 bytes"):
         bounded.scalar("EURO!")
     assert Serie.from_arrow_array(

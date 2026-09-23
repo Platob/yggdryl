@@ -31,8 +31,7 @@ use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Nullability, Repres
 use crate::metadata::is_all_sources;
 use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
-use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, TimeUnit};
-use crate::{Serie, Str};
+use crate::{DataType, Digest, DigestAlgorithm, Digester, Field, Scalar, Serie, TimeUnit};
 
 use super::field::{
     DIGEST_ALGORITHM_KEY, DIGEST_ROLE_KEY, DIGEST_SOURCES_KEY, expected_holder_dtypes,
@@ -543,9 +542,7 @@ fn default_holder_algorithm(field: &Field) -> Option<DigestAlgorithm> {
     match field.dtype() {
         DataType::Int32 | DataType::UInt32 => Some(DigestAlgorithm::Xxh32),
         DataType::Int64 | DataType::UInt64 => Some(DigestAlgorithm::Xxh3),
-        DataType::Bytes(parameters) if parameters.fixed() == Some(16) => {
-            Some(DigestAlgorithm::Xxh128)
-        }
+        DataType::FixedBinary(16) => Some(DigestAlgorithm::Xxh128),
         _ => None,
     }
 }
@@ -1140,19 +1137,24 @@ pub(crate) fn downcast<T: 'static>(array: &dyn Array) -> Result<&T> {
     })
 }
 
-/// Feed one string cell a binary layout holds as the characters a [`Str`]
-/// read from it holds.
+/// Feed one string cell a binary layout holds as the characters a
+/// [`Str`](crate::Str) read from it holds.
 ///
-/// Binary storage goes through [`Str::from_bytes`], the one door bytes take
-/// into a string value: a fixed slot is trimmed of its padding, and a legacy
-/// charset is transcribed rather than refused.
+/// Binary storage goes through the reading of
+/// [`crate::StringType::scalar_from_bytes`], the one door bytes take into a
+/// string value: a fixed slot is trimmed of its padding, and a legacy charset
+/// is transcribed rather than refused.
 fn feed_string(digester: &mut impl Hasher, column: &Serie, index: usize) -> Result<()> {
-    let Some(DataType::String(parameters)) = column.field().map(Field::dtype) else {
+    let Some(parameters) = column
+        .field()
+        .map(Field::dtype)
+        .and_then(DataType::string_parameters)
+    else {
         return Err(Error::Internal {
             site: "xxhash::arrow::feed_string",
         });
     };
     let bytes = column.value_bytes(index).unwrap_or_default();
-    write_string(digester, &Str::from_bytes(bytes, *parameters)?);
+    write_string(digester, &parameters.read_text(bytes)?);
     Ok(())
 }

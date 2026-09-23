@@ -507,7 +507,7 @@ mod values {
         let left = Scalar::from(Vec::<u8>::new());
         let encoded = serde_json::to_vec(&left).unwrap();
         let right: Scalar = serde_json::from_slice(&encoded).unwrap();
-        let (Scalar::Bytes(left), Scalar::Bytes(right)) = (&left, &right) else {
+        let (Some(left), Some(right)) = (left.as_binary(), right.as_binary()) else {
             unreachable!();
         };
         // An empty byte value has no backing at all: it is inline on both sides.
@@ -1336,17 +1336,23 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
-    let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringType::LargeUtf8String)
-        .unwrap();
+    // The text alone is a value of the plain leaf; the leaf a column gives
+    // it is the variant of the value that holds it, and any leaf lends it.
+    let text = string::Str::new("AAPL");
     assert_eq!(text.as_str(), "AAPL");
-    assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
-
-    let bytes = bytes::Bytes::new([1, 2, 3])
-        .try_with_parameters(bytes::BytesType::BinaryView)
+    assert_eq!(Value::dtype(&text).unwrap(), DataType::utf8());
+    let large = string::StringType::LargeUtf8String
+        .scalar(text.clone())
         .unwrap();
+    assert_eq!(large.dtype().unwrap(), DataType::large_utf8());
+    assert_eq!(<string::Str as Value>::from_scalar(&large), Some(&text));
+
+    let bytes = bytes::Bytes::new([1, 2, 3]);
     assert_eq!(bytes.as_bytes(), [1, 2, 3]);
-    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
+    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary());
+    let view = bytes::BytesType::BinaryView.scalar(bytes.clone()).unwrap();
+    assert_eq!(view.dtype().unwrap(), DataType::binary_view());
+    assert_eq!(<bytes::Bytes as Value>::from_scalar(&view), Some(&bytes));
 
     let currency = yggdryl::Currency::new("USD").unwrap();
     assert_eq!(<yggdryl::Currency as CodeValue>::WIDTH, 3);
@@ -1369,8 +1375,10 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
 
     let scalar = Value::into_scalar(text);
-    assert_eq!(scalar.id(), DataTypeId::LargeUtf8String);
+    assert_eq!(scalar.id(), DataTypeId::Utf8String);
     assert_eq!(scalar.family(), DataTypeKind::Text);
+    assert_eq!(large.id(), DataTypeId::LargeUtf8String);
+    assert_eq!(large.family(), DataTypeKind::Text);
 }
 
 #[test]
@@ -1396,43 +1404,42 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert!(date::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
     let utf8 = string::Str::new("東京");
-    let view = utf8
-        .clone()
-        .try_with_parameters(string::StringType::Utf8StringView)
+    let view = string::StringType::Utf8StringView
+        .scalar(utf8.clone())
         .unwrap();
-    assert_eq!(utf8.as_str(), view.as_str());
-    assert_eq!(utf8.parameters(), string::StringType::Utf8String);
-    assert_eq!(view.parameters(), string::StringType::Utf8StringView);
+    assert_eq!(view.as_string(), Some(&utf8));
+    assert_eq!(view.as_str(), Some(utf8.as_str()));
+    assert_eq!(
+        Scalar::from(utf8.clone()).string_parameters(),
+        Some(string::StringType::Utf8String)
+    );
+    assert_eq!(
+        view.string_parameters(),
+        Some(string::StringType::Utf8StringView)
+    );
+    // The text alone serializes as the bare text: no leaf rides it.
+    assert_eq!(serde_json::to_string(&utf8).unwrap(), r#""東京""#);
     assert_eq!(
         serde_json::from_str::<string::Str>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
-    let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringType::AsciiString)
-        .unwrap();
+    let ascii = string::StringType::AsciiString.scalar("FIX").unwrap();
     let currency = yggdryl::Currency::new("USD").unwrap();
-    assert_eq!(ascii.as_str(), "FIX");
-    assert_eq!(ascii.charset(), yggdryl::Charset::Ascii);
+    assert_eq!(ascii.as_str(), Some("FIX"));
+    assert_eq!(
+        ascii.string_parameters().map(string::StringType::charset),
+        Some(yggdryl::Charset::Ascii)
+    );
     assert_eq!(currency.as_str(), "USD");
-    assert!(
-        string::Str::new("café")
-            .try_with_parameters(string::StringType::AsciiString)
-            .is_err()
-    );
-    assert!(
-        string::Str::new("")
-            .try_with_parameters(string::StringType::FixedAsciiString(0))
-            .is_err()
-    );
+    assert!(string::StringType::AsciiString.scalar("café").is_err());
+    assert!(string::StringType::FixedAsciiString(0).scalar("").is_err());
     assert!(yggdryl::CfiCode::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
-    let binary_view = binary
-        .clone()
-        .try_with_parameters(bytes::BytesType::BinaryView)
-        .unwrap();
-    assert_eq!(binary.as_bytes(), binary_view.as_bytes());
+    let binary_view = bytes::BytesType::BinaryView.scalar(binary.clone()).unwrap();
+    assert_eq!(Some(binary.as_bytes()), binary_view.as_bytes());
+    assert_eq!(binary_view.as_binary(), Some(&binary));
     assert_eq!(binary.to_string(), "0001ff");
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
@@ -1478,19 +1485,26 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert_eq!(narrow.as_decimal(), Some((i256::from_i128(1_250), 2)));
     assert_eq!(wide.as_decimal(), Some((i256::from_i128(125), 1)));
 
-    let utf8 = string::Str::new("same");
-    let large = utf8
-        .clone()
-        .try_with_parameters(string::StringType::LargeUtf8String)
+    // A string or byte value is one value whichever leaf holds it, a
+    // maximum included: equality reads the text or the payload alone.
+    let utf8 = Scalar::Utf8String(string::Str::new("same"));
+    let large = string::StringType::LargeUtf8String.scalar("same").unwrap();
+    let sized = string::StringType::SizedUtf8String(8)
+        .scalar("same")
         .unwrap();
     assert_eq!(utf8, large);
+    assert_eq!(utf8, sized);
+    assert_eq!(utf8.kind(), "string");
+    assert_eq!(large.kind(), "large_utf8");
+    assert_eq!(sized.kind(), "sized_utf8");
 
-    let binary = bytes::Bytes::from(vec![1, 2]);
-    let view = binary
-        .clone()
-        .try_with_parameters(bytes::BytesType::BinaryView)
-        .unwrap();
+    let binary = Scalar::Binary(bytes::Bytes::from(vec![1, 2]));
+    let view = bytes::BytesType::BinaryView.scalar(vec![1, 2]).unwrap();
+    let fixed = bytes::BytesType::FixedBinary(2).scalar(vec![1, 2]).unwrap();
     assert_eq!(binary, view);
+    assert_eq!(binary, fixed);
+    assert_eq!(binary.kind(), "bytes");
+    assert_eq!(view.kind(), "binary_view");
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.

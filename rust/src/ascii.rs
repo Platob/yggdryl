@@ -168,25 +168,25 @@ impl DataType {
     /// Unbounded US-ASCII with 32-bit offsets.
     #[must_use]
     pub const fn ascii() -> Self {
-        Self::String(StringType::AsciiString)
+        Self::AsciiString
     }
 
     /// Unbounded US-ASCII with 64-bit offsets.
     #[must_use]
     pub const fn large_ascii() -> Self {
-        Self::String(StringType::LargeAsciiString)
+        Self::LargeAsciiString
     }
 
     /// Unbounded US-ASCII in the view layout.
     #[must_use]
     pub const fn ascii_view() -> Self {
-        Self::String(StringType::AsciiStringView)
+        Self::AsciiStringView
     }
 
     /// Unbounded US-ASCII in the view layout over 64-bit offsets.
     #[must_use]
     pub const fn large_ascii_view() -> Self {
-        Self::String(StringType::LargeAsciiStringView)
+        Self::LargeAsciiStringView
     }
 
     /// US-ASCII of exactly `width` stored bytes, padded with trailing NUL.
@@ -304,11 +304,10 @@ impl DataType {
             ));
         }
         let text = ascii_text(width, stored)?;
-        Str::new(text).try_with_parameters(match self {
-            Self::String(parameters) => *parameters,
+        self.string_parameters()
             // A code is US-ASCII bounded at the width its standard fixes.
-            _ => StringType::SizedAsciiString(width as u32),
-        })
+            .unwrap_or(StringType::SizedAsciiString(width as u32))
+            .admit(Str::new(text))
     }
 
     /// The width a packed integer may be built from, refusing the rest.
@@ -390,9 +389,9 @@ pub(crate) fn ascii_text_sized(width: Option<usize>, bytes: &[u8]) -> Result<&st
 /// The bytes a code value carries, in any accepted spelling.
 pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
-        Scalar::String(text) => Some(text.as_str().as_bytes()),
+        crate::string_scalars!(text) => Some(text.as_str().as_bytes()),
         code if code.is_code() => code.as_str().map(str::as_bytes),
-        Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
+        crate::bytes_scalars!(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }
 }
@@ -400,9 +399,9 @@ pub(crate) fn ascii_bytes(value: &Scalar) -> Option<&[u8]> {
 /// Refuse what US-ASCII text never holds: a NUL, or a byte above `0x7F`.
 ///
 /// This is the value door's judgment of the repertoire, which
-/// [`Str::try_with_parameters`] passes every value restated under a US-ASCII
-/// leaf through: the same scan the codec decodes with, so a value and a
-/// buffer cannot disagree about which bytes are US-ASCII.
+/// [`StringType::scalar`] passes every value restated under a US-ASCII leaf
+/// through: the same scan the codec decodes with, so a value and a buffer
+/// cannot disagree about which bytes are US-ASCII.
 pub(crate) fn ascii_repertoire(bytes: &[u8]) -> Result<()> {
     let refusal = |actual: SmolStr| Error::InvalidRecord {
         path: SmolStr::new_static("$"),

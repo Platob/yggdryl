@@ -6,7 +6,7 @@ One byte datatype in six leaves: an opaque payload, the leaf that declares how i
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Bytes(BytesType)`, the six leaves, and the value `Bytes` |
+| Owns | the six leaves - each a `DataType`, `Field` and `Scalar` variant, viewed as `BytesType` - and the payload `Bytes` |
 | Validates | The number at construction; a length at the value door, in stored bytes |
 | Lazy | Nothing - a leaf is a copy value with no registry, no child and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md); a payload up to `INLINE_BYTES` bytes lives inside the `Bytes` itself |
@@ -202,25 +202,28 @@ whole declaration, nullable unless the call says otherwise.
 
 ## Scalar
 
-`Scalar::Bytes(Bytes)` is the value: the payload, beside the leaf it is stored
-under. A maximum is the column's rule and never the value's, so a cell read out
-of `sized_binary(16)` is a `binary`.
+A byte value is the `Scalar` variant of its leaf: `Scalar::Binary(Bytes)` to
+`Scalar::SizedBinary(Bytes, u32)`, the payload and, on a fixed or sized leaf,
+its number. A value carries the leaf of the column it was read from, a maximum
+included, so a cell read out of `sized_binary(16)` is `SizedBinary(payload, 16)`;
+equality, order and hash read the payload alone.
 
 === "Rust"
 
     ```rust
     use yggdryl::{Bytes, DataType, Scalar};
 
-    // The value door checks the length, and answers the plain leaf rather
-    // than the column's maximum.
+    // The value door checks the length, and the value keeps the column's
+    // leaf, its maximum included.
     let bounded = DataType::from_str("binary(4)")?;
     let value = bounded.scalar(vec![1_u8, 2, 3])?;
     assert_eq!(value.as_bytes(), Some(&[1_u8, 2, 3][..]));
-    assert_eq!(value.dtype()?, DataType::binary());
+    assert_eq!(value.dtype()?, DataType::sized_binary(4)?);
+    assert_eq!(value, Scalar::from(vec![1_u8, 2, 3]));
     assert!(bounded.scalar(vec![1_u8, 2, 3, 4, 5]).is_err());
 
-    // `Bytes` is the holder every byte-family API answers with.
-    assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(Bytes::new([1_u8, 2, 3])));
+    // `Bytes` is the payload every byte-family API answers with.
+    assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Binary(Bytes::new([1_u8, 2, 3])));
     assert_eq!(Bytes::new([1_u8, 2, 3]).as_bytes(), &[1, 2, 3]);
     ```
 
@@ -234,7 +237,7 @@ of `sized_binary(16)` is a `binary`.
     bounded = DataType("binary(2)")
     value = bounded.scalar(b"\x01\x02")
     assert value.as_py() == b"\x01\x02"
-    assert value.dtype == DataType("binary")
+    assert value.dtype == DataType("sized_binary(2)")
     assert value.family == "bytes"
     with pytest.raises(ValueError, match="at most 2 bytes"):
         bounded.scalar(b"\x01\x02\x03")
@@ -249,7 +252,7 @@ of `sized_binary(16)` is a `binary`.
     const bounded = DataType.from('binary(2)')
     const value = bounded.scalar(Buffer.from([1, 2]))
     assert.deepEqual(Array.from(value.asJs()), [1, 2])
-    assert.equal(value.dtype.toString(), 'binary')
+    assert.equal(value.dtype.toString(), 'sized_binary(2)')
     assert.equal(value.family, 'bytes')
     assert.throws(() => bounded.scalar(Buffer.from([1, 2, 3])), /at most 2 bytes/)
     ```
@@ -266,13 +269,14 @@ use yggdryl::{Bytes, BytesType, DataType, INLINE_BYTES, Scalar};
 let payload = Bytes::new([1_u8, 2, 3]);
 assert!(payload.is_inline());
 assert!(!Bytes::new(vec![0_u8; INLINE_BYTES + 1]).is_inline());
-assert_eq!(std::mem::size_of::<Bytes>(), 40);
-assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(payload.clone()));
+assert_eq!(std::mem::size_of::<Bytes>(), 32);
+assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Binary(payload.clone()));
 
-// Restating a value under another leaf keeps the payload; a width is exact.
+// The same payload under another leaf is the same value in another variant;
+// a width is exact.
 let fixed = BytesType::FixedBinary(3);
-assert_eq!(payload.clone().try_with_parameters(fixed)?.dtype()?, DataType::fixed_binary(3)?);
-assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
+assert_eq!(fixed.scalar(payload.clone())?.dtype()?, DataType::fixed_binary(3)?);
+assert!(fixed.scalar(Bytes::new([1_u8, 2])).is_err());
 ```
 
 ## Arrow storage
@@ -484,7 +488,7 @@ number). A scalar crosses as `{"type":"bytes","value":...}`.
 - `fixed_binary`, `sized_binary` with no number -> refused; the number is what makes the leaf. A bound of `0` -> refused, `at least one byte, got 0`.
 - `binary(16)` -> `sized_binary(16)` written short; `large_binary(16)` -> refused, a large or view leaf holds no maximum.
 - Bytes are never padded: a `fixed_binary(n)` value is exactly `n` bytes, and a shorter or longer one is refused.
-- A value never carries a maximum: `Scalar::dtype()` of a cell read out of `sized_binary(16)` is `binary`.
+- A value carries the leaf of its column, a maximum included: `Scalar::dtype()` of a cell read out of `sized_binary(16)` is `sized_binary(16)`, and it still equals the plain `binary` value of the same payload.
 - `bytes_parameters` on a [UUID](../uuid.md) or a geospatial value -> `None`; both are bytes with an identity, so each is its own datatype.
 - `string_parameters` on a byte column -> `None`, and `charset` answers `None`: a payload has no repertoire to be text in. A UUID reads into text through the one cast tier rather than a renderer of its own.
 - A `yggdryl.bytes` document over a storage it does not describe -> imports as the storage.

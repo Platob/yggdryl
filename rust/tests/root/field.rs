@@ -181,11 +181,7 @@ mod arrow {
         assert_flag(map, Flags::MAP_KEYS_SORTED);
 
         // A fixed layout built by hand with no width is what `validate` catches.
-        assert!(
-            DataType::Bytes(BytesType::FixedBinary(0))
-                .into_arrow_datatype_ffi()
-                .is_err()
-        );
+        assert!(DataType::FixedBinary(0).into_arrow_datatype_ffi().is_err());
         assert!(
             Field::new(
                 "bad",
@@ -1151,7 +1147,7 @@ mod arrow {
                 ),
             ]));
         let imported = Field::from_arrow_field(&foreign).unwrap();
-        assert!(matches!(imported.dtype(), DataType::Bytes(_)), "{imported}");
+        assert!(imported.dtype().bytes_parameters().is_some(), "{imported}");
 
         // The two binaries a foreign writer laid out as views are the storage
         // too: the extension names the struct, never the layout inside it.

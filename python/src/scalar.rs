@@ -19,7 +19,7 @@ use pyo3::types::{
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
-use yggdryl::bytes::{Bytes, BytesType};
+use yggdryl::bytes::Bytes;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
@@ -326,19 +326,18 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         }
         // The ordinary string - the plain `utf8` leaf - pickles its
         // characters alone. Any other leaf pickles its name beside the text,
-        // and a fixed leaf its width: the name already says the charset.
-        Scalar::String(value) if value.parameters() == StringType::default() => {
-            tagged_pickle_state(
-                py,
-                "string",
-                Some(PyString::new(py, value.as_str()).into_any().unbind()),
-            )
-        }
-        Scalar::String(value) => {
-            let layout = PyString::new(py, value.parameters().as_str())
-                .into_any()
-                .unbind();
-            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
+        // and a fixed or sized leaf its number: the name already says the
+        // charset.
+        Scalar::Utf8String(value) => tagged_pickle_state(
+            py,
+            "string",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        string if string.string_parameters().is_some() => {
+            let parameters = string.string_parameters().expect("a string leaf");
+            let value = string.as_string().expect("a string leaf");
+            let layout = PyString::new(py, parameters.as_str()).into_any().unbind();
+            let fixed = parameters.bound().into_pyobject(py)?.into_any().unbind();
             let text = PyString::new(py, value.as_str()).into_any().unbind();
             tagged_pickle_state(
                 py,
@@ -392,18 +391,18 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "mediatype",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
-        // Plain bytes pickle as the payload alone; another layout or a fixed
-        // width pickles the declaration beside it.
-        Scalar::Bytes(value) if value.parameters() == BytesType::default() => tagged_pickle_state(
+        // Plain bytes pickle as the payload alone; another leaf pickles its
+        // name beside it, and a fixed or sized leaf its number.
+        Scalar::Binary(value) => tagged_pickle_state(
             py,
             "bytes",
             Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         ),
-        Scalar::Bytes(value) => {
-            let layout = PyString::new(py, value.parameters().as_str())
-                .into_any()
-                .unbind();
-            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
+        bytes if bytes.bytes_parameters().is_some() => {
+            let parameters = bytes.bytes_parameters().expect("a byte leaf");
+            let value = bytes.as_binary().expect("a byte leaf");
+            let layout = PyString::new(py, parameters.as_str()).into_any().unbind();
+            let fixed = parameters.bound().into_pyobject(py)?.into_any().unbind();
             let payload = PyBytes::new(py, value.as_bytes()).into_any().unbind();
             tagged_pickle_state(
                 py,
@@ -651,15 +650,12 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 return Ok(Scalar::from(text));
             }
             let (layout, fixed, text) = payload.extract::<(String, Option<u32>, String)>()?;
-            // The name alone lands a fixed leaf on its placeholder, so the
-            // width the state carries is put back before it is read.
+            // The name alone lands a numbered leaf on its placeholder, so the
+            // number the state carries is put back before it is read.
             let parameters = StringType::from_str(&layout)
                 .and_then(|leaf| leaf.with_declared_bound(fixed))
                 .map_err(value_error)?;
-            Str::new(text)
-                .try_with_parameters(parameters)
-                .map(Scalar::String)
-                .map_err(value_error)
+            parameters.scalar(Str::new(text)).map_err(value_error)
         }
         "country" => Country::new(payload()?.extract::<String>()?)
             .map(Scalar::Country)
@@ -736,7 +732,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "bytes" => {
             let payload = payload()?;
             if let Ok(bytes) = payload.cast::<PyBytes>() {
-                return Ok(Scalar::Bytes(Bytes::new(bytes.as_bytes())));
+                return Ok(Scalar::Binary(Bytes::new(bytes.as_bytes())));
             }
             let (layout, fixed, bytes) = payload
                 .extract::<(String, Option<u32>, Bound<'_, PyAny>)>()
@@ -746,9 +742,8 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                     )
                 })?;
             let parameters = crate::parameters::core_bytes_parameters(&layout, fixed)?;
-            Bytes::from_shared(pickle_bytes(&bytes)?)
-                .try_with_parameters(parameters)
-                .map(Scalar::Bytes)
+            parameters
+                .scalar(Bytes::from_shared(pickle_bytes(&bytes)?))
                 .map_err(value_error)
         }
         "geospatial" => Geometry::new(pickle_bytes(&payload()?)?)
@@ -1668,7 +1663,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => decimal_as_py(py, value),
-        Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        string if string.string_parameters().is_some() => Ok(PyString::new(
+            py,
+            string.as_str().expect("a string borrowed its text"),
+        )
+        .into_any()
+        .unbind()),
         code if code.is_code() => Ok(PyString::new(
             py,
             code.as_str().expect("a code borrowed its text"),
@@ -1690,7 +1690,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
-        Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        bytes if bytes.bytes_parameters().is_some() => Ok(PyBytes::new(
+            py,
+            bytes.as_bytes().expect("a byte value borrowed its payload"),
+        )
+        .into_any()
+        .unbind()),
         Scalar::Geometry(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         Scalar::Geography(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         // A variant crosses as the value it holds, which is what a caller

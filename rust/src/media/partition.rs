@@ -83,7 +83,7 @@ pub fn partition_text(value: &crate::Scalar) -> Result<smol_str::SmolStr> {
     // fixed width or a charset other than UTF-8 rides binary storage, which
     // the formatter would spell as hex - and a code is the text it is.
     match value {
-        crate::Scalar::String(text) => return Ok(text.storage().clone()),
+        crate::string_scalars!(text) => return Ok(text.storage().clone()),
         code if code.is_code() => {
             return Ok(code
                 .code_storage()

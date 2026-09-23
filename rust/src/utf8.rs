@@ -190,25 +190,25 @@ impl DataType {
     /// Unbounded UTF-8 with 32-bit offsets - Arrow's `Utf8`.
     #[must_use]
     pub const fn utf8() -> Self {
-        Self::String(StringType::Utf8String)
+        Self::Utf8String
     }
 
     /// Unbounded UTF-8 with 64-bit offsets - Arrow's `LargeUtf8`.
     #[must_use]
     pub const fn large_utf8() -> Self {
-        Self::String(StringType::LargeUtf8String)
+        Self::LargeUtf8String
     }
 
     /// Unbounded UTF-8 in the view layout - Arrow's `Utf8View`.
     #[must_use]
     pub const fn utf8_view() -> Self {
-        Self::String(StringType::Utf8StringView)
+        Self::Utf8StringView
     }
 
     /// Unbounded UTF-8 in the view layout over 64-bit offsets.
     #[must_use]
     pub const fn large_utf8_view() -> Self {
-        Self::String(StringType::LargeUtf8StringView)
+        Self::LargeUtf8StringView
     }
 
     /// UTF-8 of exactly `width` stored bytes, padded with trailing NUL.

@@ -436,7 +436,7 @@ assert!(Geometry::new(doubled).is_err());
 - `DataType::geometry(Some(""))` -> refused; absent is `None`, which fills `OGC:CRS84`.
 - A cell read out of `geometry("EPSG:3857")` -> a `geometry`: the reference system is the column's statement, never the value's.
 - A payload that is not one whole geometry - truncated, trailing, or two payloads laid end to end -> refused naming the byte position.
-- `Scalar::Bytes` holding WKB under a geometry field -> canonicalized to `Scalar::Geometry`; `as_wkb` reads both.
+- A byte value (`Scalar::Binary` or any other byte leaf) holding WKB under a geometry field -> canonicalized to `Scalar::Geometry`; `as_wkb` reads both.
 - A geometry and a [geography](geography.md) over the same bytes -> equal scalars, refused casts: the payload is shared, the reading is not ([the family](index.md#the-casts-the-two-share)).
 - `geometry` -> `geometry("EPSG:3857")` as a cast -> refused naming both reference systems; a reprojection is not a cast.
 - A `geoarrow.wkb` name over a storage that is not `Binary` -> a foreign field wearing our name, imported as that storage with the key kept as metadata.

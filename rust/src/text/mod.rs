@@ -722,7 +722,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Duration32(_)
             | Scalar::Duration64(_)
             | Scalar::Interval(_)
-            | Scalar::String(_)
+            | crate::string_scalars!(_)
             | Scalar::Country(_)
             | Scalar::Currency(_)
             | Scalar::MicCode(_)
@@ -742,7 +742,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Timezone(_)
             | Scalar::MimeType(_)
             | Scalar::MediaType(_)
-            | Scalar::Bytes(_)
+            | crate::bytes_scalars!(_)
             | Scalar::Geometry(_)
             | Scalar::Geography(_) => {}
         }

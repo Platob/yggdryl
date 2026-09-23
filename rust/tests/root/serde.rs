@@ -4,7 +4,7 @@
 mod value {
 
     use yggdryl::Geometry;
-    use yggdryl::{Scalar, TimeUnit, Timezone, i256};
+    use yggdryl::{BytesType, Scalar, StringType, TimeUnit, Timezone, i256};
 
     /// One value of every kind, in the order [`Scalar`]'s total ordering puts them.
     ///
@@ -50,17 +50,45 @@ mod value {
         ]
     }
 
+    /// A value of every string and byte leaf, the numbered ones at four.
+    ///
+    /// Each leaf is a variant of its own, so each is its own arm of the
+    /// mirror; equality reads the text or the payload alone, so the leaf is
+    /// checked apart.
+    fn one_of_every_leaf() -> Vec<Scalar> {
+        let text = StringType::ALL.map(|leaf| {
+            StringType::from_id(leaf.id(), 4)
+                .unwrap()
+                .scalar("AAPL")
+                .unwrap()
+        });
+        let bytes = BytesType::ALL.map(|leaf| {
+            BytesType::from_id(leaf.id(), 4)
+                .unwrap()
+                .scalar(*b"\x00\xff\x00\xff")
+                .unwrap()
+        });
+        text.into_iter().chain(bytes).collect()
+    }
+
     #[test]
     fn structural_serde_reads_back_every_variant() {
         // The hand-written `Deserialize` mirrors `Scalar` variant for variant, and a
         // variant missing from the mirror is not a compile error - it is data serde
         // silently refuses to read. This is the check that makes it loud.
         let naive = Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap();
-        for value in one_of_every_kind().into_iter().chain([naive]) {
+        for value in one_of_every_kind()
+            .into_iter()
+            .chain([naive])
+            .chain(one_of_every_leaf())
+        {
             let encoded = serde_json::to_vec(&value).unwrap();
             let decoded = serde_json::from_slice::<Scalar>(&encoded).unwrap();
             assert_eq!(decoded, value, "{} did not survive serde", value.kind());
             assert_eq!(decoded.kind(), value.kind());
+            assert_eq!(decoded.id(), value.id());
+            assert_eq!(decoded.string_parameters(), value.string_parameters());
+            assert_eq!(decoded.bytes_parameters(), value.bytes_parameters());
         }
     }
 
@@ -174,7 +202,7 @@ mod datatypes {
 mod families {
 
     use yggdryl::Field;
-    use yggdryl::{BytesType, DataType, DictionaryType, RunEndEncodedType, StringType, TimeUnit};
+    use yggdryl::{DataType, DictionaryType, RunEndEncodedType, TimeUnit};
 
     #[test]
     fn structural_json_rejects_malformed_and_duplicate_values() {
@@ -323,8 +351,10 @@ mod families {
     fn structural_serialization_rejects_public_enum_invalid_states() {
         let invalid = [
             DataType::Time32(TimeUnit::Nanosecond),
-            DataType::Bytes(BytesType::FixedBinary(0)),
-            DataType::String(StringType::FixedUtf8String(0)),
+            DataType::FixedBinary(0),
+            DataType::SizedBinary(0),
+            DataType::FixedUtf8String(0),
+            DataType::SizedAsciiString(0),
             DataType::Decimal128 {
                 precision: 0,
                 scale: 0,

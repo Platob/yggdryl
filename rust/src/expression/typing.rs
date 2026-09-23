@@ -406,7 +406,7 @@ pub(crate) fn is_text(dtype: &DataType) -> bool {
 
 /// Return whether a datatype holds bytes.
 pub(crate) fn is_binary(dtype: &DataType) -> bool {
-    matches!(unwrap_dictionary(dtype), DataType::Bytes(_))
+    matches!(unwrap_dictionary(dtype), crate::bytes_dtypes!())
 }
 
 /// Return whether a datatype holds a whole number.

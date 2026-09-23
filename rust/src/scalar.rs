@@ -167,9 +167,44 @@ pub enum Scalar {
     Duration64(Duration64),
     /// A calendar interval in one of its three layouts.
     Interval(Interval),
-    /// A string: its characters, and the layout and charset it is stored
-    /// under.
-    String(Str),
+    // The string leaves, one variant per leaf in identifier order: the
+    // characters, and the number a fixed or sized leaf states.
+    /// UTF-8 text, 32-bit offsets.
+    Utf8String(Str),
+    /// UTF-8 text, 64-bit offsets.
+    LargeUtf8String(Str),
+    /// UTF-8 text, viewed.
+    Utf8StringView(Str),
+    /// UTF-8 text, viewed over 64-bit offsets.
+    LargeUtf8StringView(Str),
+    /// UTF-8 text in a padded slot of the width it carries.
+    FixedUtf8String(Str, u32),
+    /// UTF-8 text under the maximum, in stored bytes, it carries.
+    SizedUtf8String(Str, u32),
+    /// US-ASCII text, 32-bit offsets.
+    AsciiString(Str),
+    /// US-ASCII text, 64-bit offsets.
+    LargeAsciiString(Str),
+    /// US-ASCII text, viewed.
+    AsciiStringView(Str),
+    /// US-ASCII text, viewed over 64-bit offsets.
+    LargeAsciiStringView(Str),
+    /// US-ASCII text in a padded slot of the width it carries.
+    FixedAsciiString(Str, u32),
+    /// US-ASCII text under the maximum, in stored bytes, it carries.
+    SizedAsciiString(Str, u32),
+    /// Windows-1252 text, 32-bit offsets.
+    Cp1252String(Str),
+    /// Windows-1252 text, 64-bit offsets.
+    LargeCp1252String(Str),
+    /// Windows-1252 text, viewed.
+    Cp1252StringView(Str),
+    /// Windows-1252 text, viewed over 64-bit offsets.
+    LargeCp1252StringView(Str),
+    /// Windows-1252 text in a padded slot of the width it carries.
+    FixedCp1252String(Str, u32),
+    /// Windows-1252 text under the maximum, in stored bytes, it carries.
+    SizedCp1252String(Str, u32),
     /// ISO 3166-1 alpha-2 country code.
     Country(Country),
     /// ISO 4217 currency code.
@@ -214,8 +249,20 @@ pub enum Scalar {
     /// coding list, which is wider than this enum, and a column of them is
     /// cloned once per row.
     MediaType(Arc<MediaType>),
-    /// Opaque bytes retaining their storage representation.
-    Bytes(Bytes),
+    // The byte leaves, one variant per leaf in identifier order: the payload,
+    // and the number a fixed or sized leaf states.
+    /// Bytes, 32-bit offsets.
+    Binary(Bytes),
+    /// Bytes, 64-bit offsets.
+    LargeBinary(Bytes),
+    /// Bytes, viewed.
+    BinaryView(Bytes),
+    /// Bytes, viewed over 64-bit offsets.
+    LargeBinaryView(Bytes),
+    /// Bytes of exactly the width they carry.
+    FixedBinary(Bytes, u32),
+    /// Bytes under the maximum they carry.
+    SizedBinary(Bytes, u32),
     /// Planar geometry as validated Well-Known Binary.
     Geometry(Geometry),
     /// Geographic coordinates as validated Well-Known Binary.
@@ -348,12 +395,17 @@ impl Serialize for Scalar {
                 "d256",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
-            // One tag for every string. The ordinary value - UTF-8, the
-            // `string` layout - writes its characters and nothing else, which
-            // is what it always wrote; a layout, a charset or a fixed width
-            // is what makes a value carry more than that, and `Str` writes
-            // the whole declaration rather than half of it.
-            Self::String(value) => tagged(serializer, "string", value),
+            // One tag for every string. The ordinary value - the `utf8`
+            // leaf - writes its characters and nothing else, which is what
+            // it always wrote; any other leaf writes the whole declaration.
+            string_scalars!(_) => {
+                let (leaf, text) = self.string_leaf().expect("a string leaf");
+                tagged(
+                    serializer,
+                    "string",
+                    &crate::string::StringWire { leaf, text },
+                )
+            }
             // A code writes its text under its own datatype's name.
             code_scalars!() => tagged(
                 serializer,
@@ -374,9 +426,16 @@ impl Serialize for Scalar {
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Urn(value) => tagged(serializer, "urn", &value.to_string()),
             // One tag for every byte value: the ordinary payload writes its
-            // bytes and nothing else, and a layout or a fixed width is what
-            // makes a value carry more than that.
-            Self::Bytes(value) => tagged(serializer, "bytes", value),
+            // bytes and nothing else, and any other leaf writes the whole
+            // declaration.
+            bytes_scalars!(_) => {
+                let (leaf, payload) = self.bytes_leaf().expect("a byte leaf");
+                tagged(
+                    serializer,
+                    "bytes",
+                    &crate::bytes::BytesWire { leaf, payload },
+                )
+            }
             Self::Geometry(value) => tagged(serializer, "geometry", &value.as_bytes()),
             Self::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
             // A temporal is its classic ISO spelling wherever it has one; a
@@ -618,7 +677,7 @@ impl<'de> Deserialize<'de> for Scalar {
             D64(i64, i8),
             D128(i128, i8),
             D256(i256, i8),
-            String(Str),
+            String(crate::string::StringDocument),
             Country(SmolStr),
             Currency(SmolStr),
             #[serde(rename = "mic")]
@@ -646,7 +705,7 @@ impl<'de> Deserialize<'de> for Scalar {
             MediaType(SmolStr),
             Url(SmolStr),
             Urn(SmolStr),
-            Bytes(Bytes),
+            Bytes(crate::bytes::BytesDocument),
             Geometry(Arc<[u8]>),
             Geography(Arc<[u8]>),
             Date32(Temporal32),
@@ -703,7 +762,7 @@ impl<'de> Deserialize<'de> for Scalar {
             )),
             StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
-            StructuralWire::String(value) => Ok(Self::String(value)),
+            StructuralWire::String(value) => Ok(value.0),
             StructuralWire::Country(value) => crate::Country::new(value)
                 .map(Self::Country)
                 .map_err(D::Error::custom),
@@ -761,7 +820,7 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Urn(value) => crate::Urn::from_str(value.as_str())
                 .map(|value| Self::Urn(Arc::new(value)))
                 .map_err(D::Error::custom),
-            StructuralWire::Bytes(value) => Ok(Self::Bytes(value)),
+            StructuralWire::Bytes(value) => Ok(value.0),
             StructuralWire::Geometry(value) => crate::geospatial::Geometry::new(value)
                 .map(Self::Geometry)
                 .map_err(D::Error::custom),
@@ -965,7 +1024,9 @@ impl Ord for Scalar {
             | Self::Duration32(_)
             | Self::Duration64(_) => unreachable!("every temporal width returned above"),
             Self::Interval(left) => same_kind!(Self::Interval(right) => left.cmp(right)),
-            Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
+            // A value is one value whichever leaf holds it: every string
+            // compares its characters, every byte value its payload.
+            string_scalars!(left) => same_kind!(string_scalars!(right) => left.cmp(right)),
             Self::Country(_)
             | Self::Currency(_)
             | Self::MicCode(_)
@@ -985,7 +1046,7 @@ impl Ord for Scalar {
             Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
             Self::Urn(left) => same_kind!(Self::Urn(right) => left.cmp(right)),
-            Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
+            bytes_scalars!(left) => same_kind!(bytes_scalars!(right) => left.cmp(right)),
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
             }
@@ -1063,7 +1124,7 @@ impl Hash for Scalar {
                 7_isize.hash(state);
                 value.hash(state);
             }
-            Self::String(value) => value.hash(state),
+            string_scalars!(value) => value.hash(state),
             Self::Country(_)
             | Self::Currency(_)
             | Self::MicCode(_)
@@ -1083,7 +1144,7 @@ impl Hash for Scalar {
             Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
             Self::Urn(value) => value.hash(state),
-            Self::Bytes(value) => value.hash(state),
+            bytes_scalars!(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
             Self::Serie(value)
@@ -1165,6 +1226,47 @@ macro_rules! code_scalars {
     };
 }
 
+/// The eighteen string leaves as one pattern, each binding its characters to
+/// `$text`; the number a fixed or sized leaf states is not bound.
+///
+/// [`Scalar::as_string`] is the same list in value position, and
+/// [`Scalar::string_parameters`] the leaf.
+macro_rules! string_scalars {
+    ($text:pat) => {
+        $crate::Scalar::Utf8String($text)
+            | $crate::Scalar::LargeUtf8String($text)
+            | $crate::Scalar::Utf8StringView($text)
+            | $crate::Scalar::LargeUtf8StringView($text)
+            | $crate::Scalar::FixedUtf8String($text, _)
+            | $crate::Scalar::SizedUtf8String($text, _)
+            | $crate::Scalar::AsciiString($text)
+            | $crate::Scalar::LargeAsciiString($text)
+            | $crate::Scalar::AsciiStringView($text)
+            | $crate::Scalar::LargeAsciiStringView($text)
+            | $crate::Scalar::FixedAsciiString($text, _)
+            | $crate::Scalar::SizedAsciiString($text, _)
+            | $crate::Scalar::Cp1252String($text)
+            | $crate::Scalar::LargeCp1252String($text)
+            | $crate::Scalar::Cp1252StringView($text)
+            | $crate::Scalar::LargeCp1252StringView($text)
+            | $crate::Scalar::FixedCp1252String($text, _)
+            | $crate::Scalar::SizedCp1252String($text, _)
+    };
+}
+
+/// The six byte leaves as one pattern, each binding its payload to
+/// `$payload`; the number a fixed or sized leaf states is not bound.
+macro_rules! bytes_scalars {
+    ($payload:pat) => {
+        $crate::Scalar::Binary($payload)
+            | $crate::Scalar::LargeBinary($payload)
+            | $crate::Scalar::BinaryView($payload)
+            | $crate::Scalar::LargeBinaryView($payload)
+            | $crate::Scalar::FixedBinary($payload, _)
+            | $crate::Scalar::SizedBinary($payload, _)
+    };
+}
+
 /// The reading the twelve registered codes order and hash by.
 ///
 /// They share one value rank, so the identity is what separates them: a
@@ -1205,8 +1307,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => 4,
-        Scalar::String(_) => 5,
-        Scalar::Bytes(_) => 6,
+        string_scalars!(_) => 5,
+        bytes_scalars!(_) => 6,
         Scalar::Date32(_) | Scalar::Date64(_) => 7,
         Scalar::Time32(_) | Scalar::Time64(_) => 8,
         Scalar::DateTime64(_) => 9,
@@ -1289,7 +1391,24 @@ impl Scalar {
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
             // A string names the leaf it is stored in.
-            Self::String(text) => text.parameters().id(),
+            Self::Utf8String(_) => DataTypeId::Utf8String,
+            Self::LargeUtf8String(_) => DataTypeId::LargeUtf8String,
+            Self::Utf8StringView(_) => DataTypeId::Utf8StringView,
+            Self::LargeUtf8StringView(_) => DataTypeId::LargeUtf8StringView,
+            Self::FixedUtf8String(_, _) => DataTypeId::FixedUtf8String,
+            Self::SizedUtf8String(_, _) => DataTypeId::SizedUtf8String,
+            Self::AsciiString(_) => DataTypeId::AsciiString,
+            Self::LargeAsciiString(_) => DataTypeId::LargeAsciiString,
+            Self::AsciiStringView(_) => DataTypeId::AsciiStringView,
+            Self::LargeAsciiStringView(_) => DataTypeId::LargeAsciiStringView,
+            Self::FixedAsciiString(_, _) => DataTypeId::FixedAsciiString,
+            Self::SizedAsciiString(_, _) => DataTypeId::SizedAsciiString,
+            Self::Cp1252String(_) => DataTypeId::Cp1252String,
+            Self::LargeCp1252String(_) => DataTypeId::LargeCp1252String,
+            Self::Cp1252StringView(_) => DataTypeId::Cp1252StringView,
+            Self::LargeCp1252StringView(_) => DataTypeId::LargeCp1252StringView,
+            Self::FixedCp1252String(_, _) => DataTypeId::FixedCp1252String,
+            Self::SizedCp1252String(_, _) => DataTypeId::SizedCp1252String,
             Self::Country(_) => DataTypeId::Country,
             Self::Currency(_) => DataTypeId::Currency,
             Self::MicCode(_) => DataTypeId::MicCode,
@@ -1309,7 +1428,12 @@ impl Scalar {
             Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
             Self::Urn(_) => DataTypeId::Urn,
-            Self::Bytes(bytes) => bytes.parameters().id(),
+            Self::Binary(_) => DataTypeId::Binary,
+            Self::LargeBinary(_) => DataTypeId::LargeBinary,
+            Self::BinaryView(_) => DataTypeId::BinaryView,
+            Self::LargeBinaryView(_) => DataTypeId::LargeBinaryView,
+            Self::FixedBinary(_, _) => DataTypeId::FixedBinary,
+            Self::SizedBinary(_, _) => DataTypeId::SizedBinary,
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
             Self::Serie(_) => DataTypeId::Serie,
@@ -1356,9 +1480,11 @@ impl Scalar {
             Self::Decimal64(_) => "d64",
             Self::Decimal128(_) => "d128",
             Self::Decimal256(_) => "d256",
-            Self::String(text) => match text.parameters() {
-                crate::string::StringType::Utf8String => "string",
-                other => other.as_str(),
+            // The plain leaf keeps the family's own word; every other leaf
+            // is its name.
+            string_scalars!(_) => match self {
+                Self::Utf8String(_) => "string",
+                _ => self.id().as_str(),
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
             Self::Currency(_) => DataTypeId::Currency.as_str(),
@@ -1379,9 +1505,9 @@ impl Scalar {
             Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
             Self::Urn(_) => "urn",
-            Self::Bytes(bytes) => match bytes.parameters() {
-                crate::bytes::BytesType::Binary => "bytes",
-                other => other.as_str(),
+            bytes_scalars!(_) => match self {
+                Self::Binary(_) => "bytes",
+                _ => self.id().as_str(),
             },
             Self::Geometry(_) => "geometry",
             Self::Geography(_) => "geography",
@@ -1602,10 +1728,10 @@ impl Scalar {
         true
     }
 
-    /// Return a string slice when this is a string.
+    /// The text of a string value of any leaf, or of a registered code.
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            Self::String(value) => Some(value.as_str()),
+            string_scalars!(value) => Some(value.as_str()),
             value => value.code_storage().map(SmolStr::as_str),
         }
     }
@@ -1642,10 +1768,10 @@ impl Scalar {
         DataTypeKind::Code.contains(self.id())
     }
 
-    /// Return bytes when this is a byte value.
+    /// The payload of a byte value of any leaf, or of a geospatial value.
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
-            Self::Bytes(value) => Some(value.as_bytes()),
+            bytes_scalars!(value) => Some(value.as_bytes()),
             Self::Geometry(value) => Some(value.as_bytes()),
             Self::Geography(value) => Some(value.as_bytes()),
             _ => None,
@@ -1664,7 +1790,7 @@ impl Scalar {
 
     /// Return the Well-Known Binary payload without allocating.
     ///
-    /// A geospatial column also accepts plain [`Self::Bytes`] on the way in -
+    /// A geospatial column also accepts plain bytes on the way in -
     /// canonicalization is what rewrites it - so this reads both spellings.
     pub fn as_wkb(&self) -> Option<&[u8]> {
         self.as_bytes()
@@ -1871,7 +1997,7 @@ impl Scalar {
             Self::Struct(value) => value,
             Self::Null
             | Self::Boolean(_)
-            | Self::String(_)
+            | string_scalars!(_)
             | Self::Country(_)
             | Self::Currency(_)
             | Self::MicCode(_)
@@ -1888,7 +2014,7 @@ impl Scalar {
             | Self::Version(_)
             | Self::Url(_)
             | Self::Urn(_)
-            | Self::Bytes(_)
+            | bytes_scalars!(_)
             | Self::Geometry(_)
             | Self::Geography(_)
             | Self::Timezone(_)
@@ -2103,7 +2229,9 @@ fn duplicate_key_error(index: usize) -> Error {
     }
 }
 
+pub(crate) use bytes_scalars;
 pub(crate) use code_scalars;
+pub(crate) use string_scalars;
 pub(crate) use text_leaf_value;
 
 impl From<Vec<Scalar>> for Scalar {

@@ -316,16 +316,16 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.extend_from_slice(&held.days().to_le_bytes());
             chunk.extend_from_slice(&held.nanoseconds().to_le_bytes());
         }
-        Scalar::String(held) => {
-            let parameters = held.parameters();
+        crate::string_scalars!(held) => {
+            let parameters = value.string_parameters().expect("a string leaf");
             chunk.push(parameters.id().as_u8());
             if let Some(width) = parameters.fixed().or(parameters.max()) {
                 write_size(chunk, width as usize);
             }
             write_variable(chunk, held.as_str().as_bytes());
         }
-        Scalar::Bytes(held) => {
-            let parameters = held.parameters();
+        crate::bytes_scalars!(held) => {
+            let parameters = value.bytes_parameters().expect("a byte leaf");
             chunk.push(parameters.id().as_u8());
             if let Some(width) = parameters.fixed().or(parameters.max()) {
                 write_size(chunk, width as usize);
@@ -659,7 +659,9 @@ impl<'a> Reader<'a> {
                 let Some(parameters) = BytesType::from_id(other, width) else {
                     return Err(self.refuse(format_smolstr!("{other} is no bytes leaf")));
                 };
-                Scalar::Bytes(crate::Bytes::from_storage(&self.variable()?, parameters))
+                // The stream is input from outside, so the value crosses the
+                // leaf's own door rather than being trusted.
+                parameters.scalar(crate::Bytes::new(&*self.variable()?))?
             }
             other if StringType::from_id(other, 1).is_some() => {
                 let width = match StringType::from_id(other, 0) {
@@ -672,7 +674,7 @@ impl<'a> Reader<'a> {
                 let Some(parameters) = StringType::from_id(other, width) else {
                     return Err(self.refuse(format_smolstr!("{other} is no string leaf")));
                 };
-                Scalar::String(crate::Str::from_storage(&self.text()?, parameters))
+                parameters.scalar(crate::Str::new(&*self.text()?))?
             }
             // A code, a version, a location, a zone, a media type: the text
             // under the identifier, read through the datatype's own door.

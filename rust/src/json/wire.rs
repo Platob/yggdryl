@@ -2,8 +2,8 @@ use base64::Engine as _;
 use serde::ser::{Error as _, SerializeMap, SerializeSeq};
 use serde::{Serialize, Serializer};
 
-use crate::code_scalars;
 use crate::{Scalar, TimeUnit, Timezone};
+use crate::{bytes_scalars, code_scalars, string_scalars};
 
 /// A natural JSON view of [`Scalar`].
 ///
@@ -44,7 +44,7 @@ impl Serialize for JsonRef<'_> {
             Scalar::Decimal64(value) => serializer.collect_str(value),
             Scalar::Decimal128(value) => serializer.collect_str(value),
             Scalar::Decimal256(value) => serializer.collect_str(value),
-            Scalar::String(value) => serializer.serialize_str(value.as_str()),
+            string_scalars!(value) => serializer.serialize_str(value.as_str()),
             code_scalars!() => {
                 serializer.serialize_str(self.0.as_str().expect("a code borrowed its text"))
             }
@@ -58,7 +58,7 @@ impl Serialize for JsonRef<'_> {
                 let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
                 serializer.serialize_str(value.render(&mut slot))
             }
-            Scalar::Bytes(value) => serializer
+            bytes_scalars!(value) => serializer
                 .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),
             Scalar::Geometry(value) => serializer
                 .serialize_str(&base64::engine::general_purpose::STANDARD.encode(value.as_bytes())),

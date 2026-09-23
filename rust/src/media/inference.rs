@@ -183,11 +183,14 @@ impl Scalar {
             Self::Decimal256(value) => {
                 decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::Decimal256)
             }
-            // A string value already declares its layout, its charset and
-            // its width, so the inferred datatype is what the value says it
-            // is rather than a guess over its characters; a code is its own
+            // A string value already declares its leaf - its layout, its
+            // charset and its number - so the inferred datatype is what the
+            // value says it is rather than a guess over its characters; the
+            // door refuses a numbered leaf stating zero. A code is its own
             // identity.
-            Self::String(text) => text.dtype(),
+            crate::string_scalars!(_) => {
+                DataType::string(self.string_parameters().expect("a string leaf"))
+            }
             Self::Country(_) => Ok(DataType::Country),
             Self::Currency(_) => Ok(DataType::Currency),
             Self::MicCode(_) => Ok(DataType::MicCode),
@@ -210,7 +213,9 @@ impl Scalar {
             // A variant declares its own types per value, so the column it
             // proves is the variant itself, never what one row decodes to.
             Self::Variant(_) => Ok(DataType::Variant),
-            Self::Bytes(bytes) => bytes.dtype(),
+            crate::bytes_scalars!(_) => {
+                DataType::bytes(self.bytes_parameters().expect("a byte leaf"))
+            }
             Self::Geometry(_) => DataType::geometry(None),
             Self::Geography(_) => DataType::geography(None, None),
             Self::Date32(_) => Ok(DataType::date32()),

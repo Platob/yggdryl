@@ -563,7 +563,9 @@ const fn variable_bytes_shape(view: bool, large: bool) -> BytesType {
 /// width is a maximum over variable text rather than a layout.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
-        DataType::Bytes(_) | DataType::String(_) | DataType::Uuid => dtype.fixed_byte_width(),
+        crate::bytes_dtypes!() | crate::string_dtypes!() | DataType::Uuid => {
+            dtype.fixed_byte_width()
+        }
         _ => None,
     }
 }
@@ -596,7 +598,7 @@ fn rebuild_binary(
             }
         }
     }
-    Ok(DataType::Bytes(match parameters.is_fixed() {
+    Ok(DataType::from(match parameters.is_fixed() {
         true => BytesType::Binary,
         false => parameters,
     }))
@@ -610,9 +612,9 @@ fn rebuild_binary(
 /// decides only the pairs that disagree, and [`merge_text`] is what says when
 /// the code identity survives.
 fn text_parameters(dtype: &DataType) -> Option<StringType> {
-    match dtype {
-        DataType::String(parameters) => Some(*parameters),
-        _ => {
+    match dtype.string_parameters() {
+        Some(parameters) => Some(parameters),
+        None => {
             let width = u32::try_from(dtype.code_width()?).ok()?;
             Some(StringType::SizedAsciiString(width))
         }

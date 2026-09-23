@@ -161,8 +161,12 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
-        DataType::Bytes(parameters) => bytes_array(*parameters, values)?,
-        DataType::String(parameters) => string_array(*parameters, values)?,
+        crate::bytes_dtypes!() => {
+            bytes_array(dtype.bytes_parameters().expect("a byte leaf"), values)?
+        }
+        crate::string_dtypes!() => {
+            string_array(dtype.string_parameters().expect("a string leaf"), values)?
+        }
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
         DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
         DataType::MicCode => code_array::<MIC_WIDTH>(dtype, values)?,
@@ -533,12 +537,47 @@ read_code!(
     read_time_in_force => TimeInForce,
 );
 
-/// Text storage was validated when it was written, so the cell is adopted
-/// as it stands.
-fn read_text_string(dtype: &DataType, cell: &str) -> Result<Scalar> {
-    match dtype {
-        DataType::String(parameters) => Ok(Scalar::String(Str::from_storage(cell, *parameters))),
-        _ => Err(misread(dtype, "a text run")),
+/// Emit one reader per unnumbered leaf in text or binary storage.
+///
+/// The storage was validated when it was written, so the cell is adopted as
+/// it stands, and the reader is chosen once per run: a cell pays for no leaf
+/// dispatch at all.
+macro_rules! leaf_readers {
+    ($cell:ty, $held:ident: $($reader:ident => $leaf:ident,)+) => {
+        $(
+            fn $reader(_: &DataType, cell: &$cell) -> Result<Scalar> {
+                Ok(Scalar::$leaf($held::from(cell)))
+            }
+        )+
+    };
+}
+
+leaf_readers!(
+    str, Str:
+    read_utf8 => Utf8String,
+    read_large_utf8 => LargeUtf8String,
+    read_utf8_view => Utf8StringView,
+    read_large_utf8_view => LargeUtf8StringView,
+    read_ascii => AsciiString,
+    read_large_ascii => LargeAsciiString,
+    read_ascii_view => AsciiStringView,
+    read_large_ascii_view => LargeAsciiStringView,
+);
+
+leaf_readers!(
+    [u8], Bytes:
+    read_binary => Binary,
+    read_large_binary => LargeBinary,
+    read_binary_view => BinaryView,
+    read_large_binary_view => LargeBinaryView,
+);
+
+/// A numbered leaf in text storage - a sized one - reads its number from
+/// the column once per cell, and adopts the cell as it stands.
+fn read_numbered_text(dtype: &DataType, cell: &str) -> Result<Scalar> {
+    match dtype.string_parameters() {
+        Some(leaf) => Ok(leaf.adopt(Str::from(cell))),
+        None => Err(misread(dtype, "a text run")),
     }
 }
 
@@ -584,9 +623,15 @@ fn read_media_type(_: &DataType, cell: &str) -> Result<Scalar> {
 /// Returns an error for a datatype no text storage holds.
 pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
     Ok(match dtype {
-        DataType::String(parameters) if is_text_storage(*parameters) && !parameters.is_fixed() => {
-            read_text_string
-        }
+        DataType::Utf8String => read_utf8,
+        DataType::LargeUtf8String => read_large_utf8,
+        DataType::Utf8StringView => read_utf8_view,
+        DataType::LargeUtf8StringView => read_large_utf8_view,
+        DataType::AsciiString => read_ascii,
+        DataType::LargeAsciiString => read_large_ascii,
+        DataType::AsciiStringView => read_ascii_view,
+        DataType::LargeAsciiStringView => read_large_ascii_view,
+        DataType::SizedUtf8String(_) | DataType::SizedAsciiString(_) => read_numbered_text,
         DataType::Country => read_country,
         DataType::Currency => read_currency,
         DataType::MicCode => read_mic,
@@ -611,21 +656,21 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
 
 /// The cell is the column's own storage, so it is adopted as it stands: a
 /// short payload is copied inline and a long one is shared once, with no
-/// `Vec` on the way.
+/// `Vec` on the way. The numbered leaves read their number from the column.
 fn read_bytes(dtype: &DataType, cell: &[u8]) -> Result<Scalar> {
-    match dtype {
-        DataType::Bytes(parameters) => Ok(Scalar::Bytes(Bytes::from_storage(cell, *parameters))),
-        _ => Err(misread(dtype, "a byte run")),
+    match dtype.bytes_parameters() {
+        Some(leaf) => Ok(leaf.adopt(Bytes::from(cell))),
+        None => Err(misread(dtype, "a byte run")),
     }
 }
 
-/// Binary storage goes through [`Str::from_bytes`], the one door bytes take
-/// into a string value: a fixed slot is trimmed of its padding, and a legacy
-/// charset is transcribed rather than refused.
+/// Binary storage goes through [`StringType::scalar_from_bytes`], the one
+/// door bytes take into a string value: a fixed slot is trimmed of its
+/// padding, and a legacy charset is transcribed rather than refused.
 fn read_binary_string(dtype: &DataType, cell: &[u8]) -> Result<Scalar> {
-    match dtype {
-        DataType::String(parameters) => Ok(Scalar::String(Str::from_bytes(cell, *parameters)?)),
-        _ => Err(misread(dtype, "a string's byte run")),
+    match dtype.string_parameters() {
+        Some(leaf) => Ok(leaf.scalar_from_bytes(cell)?),
+        None => Err(misread(dtype, "a string's byte run")),
     }
 }
 
@@ -657,8 +702,12 @@ fn read_geography(_: &DataType, cell: &[u8]) -> Result<Scalar> {
 /// Returns an error for a datatype no binary storage holds.
 pub(crate) fn binary_reading(dtype: &DataType) -> Result<RunReading<[u8]>> {
     Ok(match dtype {
-        DataType::Bytes(_) => read_bytes,
-        DataType::String(_) => read_binary_string,
+        DataType::Binary => read_binary,
+        DataType::LargeBinary => read_large_binary,
+        DataType::BinaryView => read_binary_view,
+        DataType::LargeBinaryView => read_large_binary_view,
+        DataType::FixedBinary(_) | DataType::SizedBinary(_) => read_bytes,
+        crate::string_dtypes!() => read_binary_string,
         DataType::Uuid => read_uuid,
         DataType::Geometry(_) => read_geometry,
         DataType::Geography(_) => read_geography,
@@ -737,8 +786,15 @@ pub(crate) fn value_from_array(
             cell!(IntervalMonthDayNanoArray, read_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
-        DataType::Bytes(parameters) => read_bytes(dtype, bytes_cell(*parameters, array, index)?)?,
-        DataType::String(parameters) => string_value(dtype, *parameters, array, index)?,
+        crate::bytes_dtypes!() => {
+            let leaf = dtype.bytes_parameters().expect("a byte leaf");
+            leaf.adopt(Bytes::from(bytes_cell(leaf, array, index)?))
+        }
+        crate::string_dtypes!() => string_value(
+            dtype.string_parameters().expect("a string leaf"),
+            array,
+            index,
+        )?,
         DataType::Uuid => cell!(FixedSizeBinaryArray, read_uuid),
         // A code and every rendered text datatype is stored as one `utf8`
         // run.
@@ -1719,7 +1775,7 @@ fn date_i64(value: &Scalar) -> Result<i64> {
 fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
+        crate::bytes_scalars!(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("bytes", value)),
     }
 }
@@ -1976,17 +2032,13 @@ fn binary_view_from_parts(
     builder.finish()
 }
 
-/// Read one cell of a string column, under the parameters it declares:
-/// text storage through [`read_text_string`], binary storage - a fixed slot,
-/// a legacy charset - through [`read_binary_string`].
-fn string_value(
-    dtype: &DataType,
-    parameters: StringType,
-    array: &dyn Array,
-    index: usize,
-) -> Result<Scalar> {
+/// Read one cell of a string column, under the leaf it declares: text
+/// storage adopted as it stands, binary storage - a fixed slot, a legacy
+/// charset - through [`StringType::scalar_from_bytes`].
+fn string_value(parameters: StringType, array: &dyn Array, index: usize) -> Result<Scalar> {
     if parameters.is_fixed() {
-        return read_binary_string(dtype, downcast::<FixedSizeBinaryArray>(array)?.value(index));
+        let cell = downcast::<FixedSizeBinaryArray>(array)?.value(index);
+        return Ok(parameters.scalar_from_bytes(cell)?);
     }
     if is_text_storage(parameters) {
         let cell = match (parameters.is_view(), parameters.is_large()) {
@@ -1995,14 +2047,14 @@ fn string_value(
             // A maximum is the column's rule; the storage it fills is plain.
             (false, false) => downcast::<StringArray>(array)?.value(index),
         };
-        return read_text_string(dtype, cell);
+        return Ok(parameters.adopt(Str::from(cell)));
     }
     let cell = match (parameters.is_view(), parameters.is_large()) {
         (true, _) => downcast::<BinaryViewArray>(array)?.value(index),
         (false, true) => downcast::<LargeBinaryArray>(array)?.value(index),
         (false, false) => downcast::<BinaryArray>(array)?.value(index),
     };
-    read_binary_string(dtype, cell)
+    Ok(parameters.scalar_from_bytes(cell)?)
 }
 
 /// Read the WKB a geospatial column stores, in either value spelling.
@@ -2011,7 +2063,7 @@ fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
         Scalar::Null => Ok(None),
         Scalar::Geometry(value) => Ok(Some(value.as_bytes())),
         Scalar::Geography(value) => Ok(Some(value.as_bytes())),
-        Scalar::Bytes(bytes) => Ok(Some(bytes.as_bytes())),
+        crate::bytes_scalars!(bytes) => Ok(Some(bytes.as_bytes())),
         _ => Err(invalid_value_kind("well-known binary", value)),
     }
 }
@@ -2020,7 +2072,7 @@ fn optional_wkb(value: &Scalar) -> Result<Option<&[u8]>> {
 fn optional_str(value: &Scalar) -> Result<Option<&str>> {
     match value {
         Scalar::Null => Ok(None),
-        Scalar::String(text) => Ok(Some(text.as_str())),
+        crate::string_scalars!(text) => Ok(Some(text.as_str())),
         _ => Err(invalid_value_kind("string", value)),
     }
 }

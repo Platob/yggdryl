@@ -6,7 +6,7 @@ One string datatype in eighteen real leaves: six shapes in each of the three cha
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::String(StringType)`, the eighteen leaves, the value `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar |
+| Owns | the eighteen leaves - each a `DataType`, `Field` and `Scalar` variant, viewed as `StringType` - the characters `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar |
 | Validates | The number at construction, the charset and the bound at the value door; a US-ASCII value holds no NUL and no byte above `0x7F` |
 | Lazy | Nothing - a leaf is a copy value, and a `Str` decodes at the seam rather than on read |
 | Cached | The Arrow projection of a [`Field`](../field.md); a value up to `INLINE_CAPACITY` bytes lives inside the `Str` itself |
@@ -263,27 +263,31 @@ field carries are on [Protocol](../protocol.md).
 
 ## Scalar
 
-`Scalar::String(Str)` is the value: the characters, beside the leaf they are
-stored under. A maximum is the column's rule and never the value's, so
-`storage()` is what a value in a sized column carries - the plain leaf of its
-charset - and a cell read out of `sized_utf8(32)` is a `utf8`.
+A string value is the `Scalar` variant of its leaf: `Scalar::Utf8String(Str)`
+to `Scalar::SizedCp1252String(Str, u32)`, the characters and, on a fixed or
+sized leaf, its number. A value carries the leaf of the column it was read
+from, a maximum as well as a width, so a cell read out of `sized_utf8(32)` is
+`SizedUtf8String(text, 32)`; equality, order and hash read the characters
+alone, so it is still the value `"text"` is.
 
 === "Rust"
 
     ```rust
     use yggdryl::{DataType, Scalar, Str, StringType};
 
-    // The value door checks the charset and the bound, and answers the plain
-    // leaf of its charset rather than the column's maximum.
+    // The value door checks the charset and the bound, and the value keeps
+    // the column's leaf, its maximum included.
     let bounded = DataType::sized_ascii(4)?;
     let value = bounded.scalar("USD")?;
     assert_eq!(value.as_str(), Some("USD"));
-    assert_eq!(value.dtype()?, DataType::ascii());
+    assert_eq!(value.dtype()?, bounded);
+    assert_eq!(value, Scalar::SizedAsciiString(Str::new("USD"), 4));
+    assert_eq!(value, Scalar::from("USD"));
     assert!(bounded.scalar("EURO!").is_err());
 
-    // `Str` is the holder every string-family API answers with.
-    assert_eq!(Scalar::from("AAPL"), Scalar::String(Str::new("AAPL")));
-    assert_eq!(Str::new("AAPL").parameters(), StringType::Utf8String);
+    // `Str` is the characters every string-family API answers with.
+    assert_eq!(Scalar::from("AAPL"), Scalar::Utf8String(Str::new("AAPL")));
+    assert_eq!(Scalar::from("AAPL").string_parameters(), Some(StringType::Utf8String));
     assert_eq!(Str::new("AAPL").as_str(), "AAPL");
     ```
 
@@ -297,8 +301,8 @@ charset - and a cell read out of `sized_utf8(32)` is a `utf8`.
     bounded = DataType("sized_ascii(4)")
     value = bounded.scalar("USD")
     assert value.as_py() == "USD"
-    assert value.dtype == DataType("ascii")
-    assert value.kind == "ascii"
+    assert value.dtype == bounded
+    assert value.kind == "sized_ascii"
     assert value.family == "text"
     with pytest.raises(ValueError, match="at most 4 bytes"):
         bounded.scalar("EURO!")
@@ -313,8 +317,8 @@ charset - and a cell read out of `sized_utf8(32)` is a `utf8`.
     const bounded = DataType.from('sized_ascii(4)')
     const value = bounded.scalar('USD')
     assert.equal(value.asJs(), 'USD')
-    assert.equal(value.dtype.toString(), 'ascii')
-    assert.equal(value.kind, 'ascii')
+    assert.equal(value.dtype.toString(), 'sized_ascii(4)')
+    assert.equal(value.kind, 'sized_ascii')
     assert.equal(value.family, 'text')
     assert.throws(() => bounded.scalar('EURO!'), /at most 4 bytes/)
     ```
@@ -324,30 +328,32 @@ lives inside it with no heap behind it, a `'static` one costs nothing, and a
 longer one is one shared `Arc` that clones by reference count. Equality, order
 and hash read the characters alone, so a value is one value whichever column
 holds it, and `as_str` is infallible on every string value there is.
+`StringType` holds the leaf's rules: `scalar` is the value door,
+`scalar_from_bytes` the one door bytes take, and `encode` what a leaf writes.
 
 ```rust
-use yggdryl::{DataType, INLINE_CAPACITY, Str, StringType};
+use yggdryl::{DataType, INLINE_CAPACITY, Scalar, Str, StringType};
 
 // Short text lives inside the value; longer text is one shared handle.
 let short = Str::new("AAPL");
 assert!(short.is_inline());
 assert!(!Str::new("a".repeat(INLINE_CAPACITY + 1)).is_inline());
-assert_eq!(std::mem::size_of::<Str>(), 32);
+assert_eq!(std::mem::size_of::<Str>(), 24);
 
-// Restating a value under another leaf keeps the characters and changes what
-// `encode` writes and `dtype` declares; a maximum is checked, not kept.
-let latin = short.clone().try_with_parameters(StringType::LargeCp1252String)?;
-assert_eq!(latin, short);
+// The same characters under another leaf are the same value in another
+// variant; the number a leaf states is checked and kept.
+let latin = StringType::LargeCp1252String.scalar(short.clone())?;
+assert_eq!(latin, Scalar::from(short.clone()));
 assert_eq!(latin.dtype()?, DataType::large_cp1252());
-let bounded = short.clone().try_with_parameters(StringType::SizedUtf8String(8))?;
-assert_eq!(bounded.parameters(), StringType::Utf8String);
-assert!(short.clone().try_with_parameters(StringType::SizedUtf8String(2)).is_err());
+let bounded = StringType::SizedUtf8String(8).scalar(short.clone())?;
+assert_eq!(bounded.string_parameters(), Some(StringType::SizedUtf8String(8)));
+assert!(StringType::SizedUtf8String(2).scalar(short.clone()).is_err());
 
 // A fixed leaf pads on the way out and trims on the way in.
-let ccy = Str::from_bytes(b"USD\0", StringType::FixedAsciiString(4))?;
-assert_eq!(ccy, "USD");
-assert_eq!(ccy.encode()?.as_ref(), b"USD\0");
-assert_eq!(ccy.fixed(), Some(4));
+let ccy = StringType::FixedAsciiString(4).scalar_from_bytes(b"USD\0")?;
+assert_eq!(ccy.as_str(), Some("USD"));
+assert_eq!(StringType::FixedAsciiString(4).encode("USD")?.as_ref(), b"USD\0");
+assert_eq!(ccy, Scalar::FixedAsciiString(Str::new("USD"), 4));
 ```
 
 ## Arrow storage
@@ -911,7 +917,7 @@ stays `utf8`.
 - A US-ASCII value -> no NUL, no byte above `0x7F`, refused naming the byte and its position; a variable US-ASCII value keeps its length, only a fixed leaf trims trailing NUL.
 - A fixed string stores its value padded with trailing NUL and reads back trimmed.
 - Text windows-1252 has no bytes for -> held as a value, refused when the column is written, naming the scalar.
-- A value never carries a maximum: `Scalar::dtype()` of a cell read out of `sized_utf8(32)` is `utf8`.
+- A value carries the leaf of its column, a maximum as well as a width: `Scalar::dtype()` of a cell read out of `sized_utf8(32)` is `sized_utf8(32)`, and it still equals the plain `utf8` value of the same text.
 - `Scalar::from("USD")` and a value read out of an `ascii` column are one value; `Str` equality, order and hash read the characters alone.
 - `string_parameters` on a [code](../codes/index.md) -> `None`; a code answers `code_width`, the maximum its standard fixes over the text it stores.
 - A `yggdryl.string` document over a storage it does not describe -> imports as the storage.

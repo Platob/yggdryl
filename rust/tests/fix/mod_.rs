@@ -4440,7 +4440,7 @@ mod internal {
                     assert!(!tail.is_nullable(), "{column} level {level} tail");
                     held = deeper;
                 }
-                DataType::String(_) if level == 3 => {
+                leaf if level == 3 && leaf.string_parameters().is_some() => {
                     // Nullable, because "nothing was folded" is an absence and a
                     // leaf that spelled it as the empty string could not be told
                     // from one that folded an empty subtree.

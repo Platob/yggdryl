@@ -118,7 +118,7 @@ pub trait FixedLeaf: Sized {
 /// A string leaf and a registered code both do; everything else stored in
 /// bytes - a UUID, a geospatial reading, a plain byte column - does not.
 pub(crate) fn is_text(dtype: &DataType) -> bool {
-    matches!(dtype, DataType::String(_)) || dtype.kind() == DataTypeKind::Code
+    dtype.is_string() || dtype.kind() == DataTypeKind::Code
 }
 
 /// Lay canonical `rows` out as the array `field` projects to, once.
@@ -177,8 +177,10 @@ pub(crate) fn require_run_fits<T: ByteArrayType>(
 pub(crate) fn stored_bytes(row: &Scalar) -> usize {
     match row {
         Scalar::Null => 0,
-        Scalar::String(text) => text.encoded_len(),
-        Scalar::Bytes(bytes) => bytes.as_bytes().len(),
+        crate::string_scalars!(text) => row
+            .string_parameters()
+            .map_or(0, |leaf| leaf.encoded_len(text.as_str())),
+        crate::bytes_scalars!(bytes) => bytes.as_bytes().len(),
         Scalar::Geometry(value) => value.as_bytes().len(),
         Scalar::Geography(value) => value.as_bytes().len(),
         Scalar::Timezone(zone) => zone.as_str().len(),

@@ -61,8 +61,8 @@ pub(super) fn scalar_text(value: &Scalar) -> SmolStr {
 /// string bound holds. A missing statistic costs a planner one file read; a
 /// wrong one costs correctness.
 pub(super) const fn is_portable(dtype: &DataType) -> bool {
-    if let DataType::String(parameters) = dtype {
-        return is_text_storage(*parameters);
+    if let Some(parameters) = dtype.string_parameters() {
+        return is_text_storage(parameters);
     }
     // Iceberg has `string` and nothing that carries a code's identity, so
     // every registered code is portable as the text it is.
@@ -83,8 +83,17 @@ pub(super) const fn is_portable(dtype: &DataType) -> bool {
                 ..
             }
             | DataType::Uuid
-            | DataType::Bytes(_)
+            | crate::bytes_dtypes!()
     )
+}
+
+/// Return whether `dtype` is a string whose bytes are the UTF-8 an Iceberg
+/// string holds.
+const fn is_text_string(dtype: &DataType) -> bool {
+    match dtype.string_parameters() {
+        Some(parameters) => is_text_storage(parameters),
+        None => false,
+    }
 }
 
 /// Encode one scalar as the single value a manifest bound carries.
@@ -123,9 +132,7 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
         } => OfficialDatum::timestamptz_nanos(count(value)?),
         // A bound over a text-storage string or a code is a string bound: the
         // value is the trimmed text.
-        DataType::String(parameters) if is_text_storage(*parameters) => {
-            OfficialDatum::string(value.as_str()?)
-        }
+        text if is_text_string(text) => OfficialDatum::string(value.as_str()?),
         code if code.is_code() => OfficialDatum::string(value.as_str()?),
         // An identifier is a `uuid` datum, built from the sixteen bytes the
         // canonical spelling parses to.
@@ -136,9 +143,9 @@ pub(super) fn single_value(value: &Scalar, dtype: &DataType) -> Option<Vec<u8>> 
             };
             OfficialDatum::uuid(uuid::Uuid::from_bytes(bytes))
         }
-        DataType::Bytes(parameters) => {
+        crate::bytes_dtypes!() => {
             let bytes = value.as_bytes()?;
-            match parameters.fixed() {
+            match dtype.bytes_parameters()?.fixed() {
                 None => OfficialDatum::binary(bytes.iter().copied()),
                 Some(width) if usize::try_from(width).ok()? == bytes.len() => {
                     OfficialDatum::fixed(bytes.iter().copied())
@@ -184,9 +191,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (DataType::Float64, OfficialPrimitiveLiteral::Double(value)) => {
             Scalar::from(crate::Float64::from_f64((*value).into_inner()))
         }
-        (DataType::String(parameters), OfficialPrimitiveLiteral::String(value))
-            if is_text_storage(*parameters) =>
-        {
+        (text, OfficialPrimitiveLiteral::String(value)) if is_text_string(text) => {
             Scalar::from(value.as_str())
         }
         // A bound is read off a column, so it becomes the value the column
@@ -198,7 +203,7 @@ pub(super) fn single_to_value(bytes: &[u8], dtype: &DataType) -> Option<Scalar> 
         (DataType::Uuid, OfficialPrimitiveLiteral::UInt128(value)) => {
             Scalar::from(crate::uuid_text(&value.to_be_bytes()))
         }
-        (DataType::Bytes(_), OfficialPrimitiveLiteral::Binary(value)) => {
+        (crate::bytes_dtypes!(), OfficialPrimitiveLiteral::Binary(value)) => {
             Scalar::from(value.as_slice())
         }
         _ => return None,
@@ -237,12 +242,10 @@ fn official_datum(bytes: &[u8], dtype: &DataType) -> Option<OfficialDatum> {
             unit: TimeUnit::Nanosecond,
             ..
         } if bytes.len() == 8 => OfficialPrimitiveType::TimestamptzNs,
-        DataType::String(parameters) if is_text_storage(*parameters) => {
-            OfficialPrimitiveType::String
-        }
+        text if is_text_string(text) => OfficialPrimitiveType::String,
         code if code.is_code() => OfficialPrimitiveType::String,
         DataType::Uuid => OfficialPrimitiveType::Uuid,
-        DataType::Bytes(parameters) => match parameters.fixed() {
+        crate::bytes_dtypes!() => match dtype.bytes_parameters()?.fixed() {
             None => OfficialPrimitiveType::Binary,
             Some(width) if usize::try_from(width).ok() == Some(bytes.len()) => {
                 OfficialPrimitiveType::Fixed(u64::from(width))

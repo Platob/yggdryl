@@ -310,7 +310,6 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
-    use crate::{BytesType, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
 
     /// The name every shared field carries - the name an inferred scalar field
@@ -363,41 +362,6 @@ mod shared {
             .map(Field::dtype)
     }
 
-    /// One nullable field per plain unbounded UTF-8 leaf.
-    ///
-    /// Every string identifier is parameterized, so none has a slot in
-    /// [`PREBUILT`]; these four are what a bare string value names, and a value
-    /// typed by inference borrows one of them rather than interning anything.
-    static PLAIN_UTF8: LazyLock<[(StringType, Field); 4]> = LazyLock::new(|| {
-        [
-            StringType::Utf8String,
-            StringType::LargeUtf8String,
-            StringType::Utf8StringView,
-            StringType::LargeUtf8StringView,
-        ]
-        .map(|parameters| {
-            (
-                parameters,
-                Field::new(SHARED_NAME, DataType::String(parameters), true),
-            )
-        })
-    });
-
-    /// One nullable field per plain unbounded byte layout, for the same reason.
-    static PLAIN_BYTES: LazyLock<[(BytesType, Field); 3]> = LazyLock::new(|| {
-        [
-            BytesType::Binary,
-            BytesType::LargeBinary,
-            BytesType::BinaryView,
-        ]
-        .map(|parameters| {
-            (
-                parameters,
-                Field::new(SHARED_NAME, DataType::Bytes(parameters), true),
-            )
-        })
-    });
-
     /// The interned fields of parameterized leaf datatypes, bounded by
     /// [`INTERN_LIMIT`].
     static INTERNED: LazyLock<RwLock<HashMap<DataType, &'static Field>>> =
@@ -406,12 +370,11 @@ mod shared {
     impl DataType {
         /// The shared nullable `value` field of this datatype, when it has one.
         ///
-        /// Every parameter-free leaf answers a field built once for the program,
-        /// and so does a plain unbounded UTF-8 string or a plain unbounded byte
-        /// column in any layout; every other parameterized leaf - a string
-        /// declaring a charset, a bound or a fixed width, bounded or fixed bytes,
-        /// a decimal, a timestamp, a time, a duration, an interval - answers one
-        /// interned on its first ask, so a second ask for the same datatype is a
+        /// Every parameter-free leaf answers a field built once for the program -
+        /// every string and byte leaf with no number among them, in any charset
+        /// and layout; every other parameterized leaf - a fixed or sized string,
+        /// fixed or sized bytes, a decimal, a timestamp, a time, a duration, an
+        /// interval - answers one interned on its first ask, so a second ask for the same datatype is a
         /// lookup that allocates nothing. A nested datatype, and a geometry or
         /// geography whose coordinate reference is unbounded text, answers
         /// `None`; so does a parameterized leaf once 4096 distinct ones are held,
@@ -444,17 +407,15 @@ mod shared {
                 return PREBUILT[usize::from(id.as_u8())].as_ref();
             }
             match self {
-                Self::String(parameters) => PLAIN_UTF8
-                    .iter()
-                    .find(|(plain, _)| plain == parameters)
-                    .map(|(_, field)| field)
-                    .or_else(|| interned(self)),
-                Self::Bytes(parameters) => PLAIN_BYTES
-                    .iter()
-                    .find(|(plain, _)| plain == parameters)
-                    .map(|(_, field)| field)
-                    .or_else(|| interned(self)),
-                Self::DateTime64 { .. }
+                Self::FixedUtf8String(_)
+                | Self::SizedUtf8String(_)
+                | Self::FixedAsciiString(_)
+                | Self::SizedAsciiString(_)
+                | Self::FixedCp1252String(_)
+                | Self::SizedCp1252String(_)
+                | Self::FixedBinary(_)
+                | Self::SizedBinary(_)
+                | Self::DateTime64 { .. }
                 | Self::Time32(_)
                 | Self::Time64(_)
                 | Self::Duration32(_)
@@ -782,7 +743,7 @@ fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Resul
         Some(Ok(text)) => formatter.write_str(&text),
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
-            Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
+            crate::bytes_scalars!(held) => fmt::Display::fmt(held, formatter),
             Scalar::Geometry(held) => fmt::Display::fmt(held, formatter),
             Scalar::Geography(held) => fmt::Display::fmt(held, formatter),
             // A temporal without a classic spelling and a nested value write

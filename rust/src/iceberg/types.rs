@@ -205,7 +205,7 @@ impl PrimitiveType {
             // storage is one whatever its layout - a fixed width is storage,
             // never a value - and a string in any other charset is refused
             // below by name rather than written as bytes that are not UTF-8.
-            DataType::String(parameters) if is_text_storage(*parameters) => Self::String,
+            text if text.string_parameters().is_some_and(is_text_storage) => Self::String,
             // Iceberg has `string` and `fixed[n]` and nothing that carries a
             // code's identity, so every registered code writes as the text
             // it is - asked through the accessor that knows which they are.
@@ -218,10 +218,12 @@ impl PrimitiveType {
             DataType::Uuid => Self::Uuid,
             // Iceberg's `binary` has no maximum, so a bound is dropped here;
             // the cast on the way in already held every value to it.
-            DataType::Bytes(parameters) => match parameters.fixed() {
-                Some(width) => Self::Fixed(width),
-                None => Self::Binary,
-            },
+            DataType::FixedBinary(width) => Self::Fixed(*width),
+            DataType::Binary
+            | DataType::LargeBinary
+            | DataType::BinaryView
+            | DataType::LargeBinaryView
+            | DataType::SizedBinary(_) => Self::Binary,
             other => {
                 return Err(Error::InvalidDataType {
                     kind: "iceberg",

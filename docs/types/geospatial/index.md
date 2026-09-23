@@ -478,7 +478,7 @@ geospatial cell crosses a binding as.
 - EWKB SRID -> read past, not modeled: bounds and text are the same in every reference system.
 - `POINT EMPTY` -> NaN coordinates decode as `coordinate: None`, and the dimension marker survives: `POINT ZM EMPTY`.
 - An empty geometry -> `bounding_box` is the fold identity, and `BoundingBox::is_empty` names it so a statistics writer can skip the box.
-- `Scalar::Bytes` holding WKB under either field -> canonicalized to `Scalar::Geometry` or `Scalar::Geography`; `as_wkb` reads all three spellings.
+- A byte value (`Scalar::Binary` or any other byte leaf) holding WKB under either field -> canonicalized to `Scalar::Geometry` or `Scalar::Geography`; `as_wkb` reads all three spellings.
 - The same payload as a geometry and as a geography -> equal scalars; as a plain byte value -> a different value, because the kind is part of the identity.
 - A geospatial value in arithmetic -> refused: it reads as bytes, but two WKB payloads do not join.
 - `bytes_parameters` on either type -> `None`; a geospatial value is bytes with an identity, like a [UUID](../uuid.md) ([Strings & bytes](../text/index.md)).

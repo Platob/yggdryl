@@ -116,21 +116,20 @@ mod values {
         ] {
             let value = dtype.default_value().unwrap();
             assert_eq!(value.as_bytes(), Some(&[][..]), "{dtype}");
-            // A value never carries a maximum.
-            assert_eq!(
-                value.dtype().unwrap(),
-                DataType::Bytes(dtype.bytes_parameters().unwrap().storage())
-            );
+            // A value carries the leaf of its column, a maximum included.
+            assert_eq!(value.dtype().unwrap(), dtype);
+            assert_eq!(value.bytes_parameters(), dtype.bytes_parameters());
             assert!(dtype.is_default_value(&value).unwrap());
         }
         let fixed = DataType::fixed_binary(4).unwrap();
         let value = fixed.default_value().unwrap();
-        assert_eq!(value, Scalar::Bytes(Bytes::new([0_u8; 4])));
+        assert_eq!(value, Scalar::Binary(Bytes::new([0_u8; 4])));
+        assert_eq!(value, Scalar::FixedBinary(Bytes::new([0_u8; 4]), 4));
         assert_eq!(value.dtype().unwrap(), fixed);
         assert!(fixed.is_default_value(&value).unwrap());
         assert!(
             !fixed
-                .is_default_value(&Scalar::Bytes(Bytes::new([0_u8; 3])))
+                .is_default_value(&Scalar::Binary(Bytes::new([0_u8; 3])))
                 .unwrap()
         );
     }
@@ -216,7 +215,8 @@ mod leaves {
 
         // The sugar constructors are the same datatypes, and `binary` is the
         // family's default.
-        assert_eq!(DataType::binary(), DataType::Bytes(BytesType::default()));
+        assert_eq!(DataType::binary(), DataType::from(BytesType::default()));
+        assert_eq!(DataType::binary(), DataType::Binary);
         assert_eq!(
             DataType::large_binary(),
             DataType::bytes(BytesType::LargeBinary).unwrap()
@@ -290,8 +290,8 @@ mod leaves {
         assert_eq!(fixed.fixed_byte_width(), Some(16));
         assert_ne!(bounded, fixed);
 
-        // The value a sized column holds is the plain binary it fills: the
-        // maximum is the column's rule and never the value's.
+        // The storage of a sized column is the plain binary it fills: no
+        // Arrow type states the maximum.
         assert_eq!(BytesType::SizedBinary(16).storage(), BytesType::Binary);
         assert_eq!(
             BytesType::FixedBinary(16).storage(),
@@ -307,7 +307,7 @@ mod leaves {
         assert!(BytesType::FixedBinary(0).validate().is_err());
         assert!(BytesType::SizedBinary(0).validate().is_err());
         assert!(
-            DataType::Bytes(BytesType::FixedBinary(0))
+            DataType::from(BytesType::FixedBinary(0))
                 .validate()
                 .is_err()
         );
@@ -325,14 +325,14 @@ mod leaves {
     }
 
     #[test]
-    fn a_byte_value_is_the_compact_byte_string_and_carries_no_maximum() {
+    fn a_byte_value_is_the_compact_byte_string_and_carries_its_leaf() {
         // A short payload lives inside the value with no heap behind it, a
         // static one costs nothing, and a longer one is one shared handle.
         let short = Bytes::new([1_u8, 2, 3]);
         assert!(short.is_inline());
         assert!(Bytes::new(vec![0_u8; INLINE_BYTES]).is_inline());
         assert!(!Bytes::new(vec![0_u8; INLINE_BYTES + 1]).is_inline());
-        assert_eq!(std::mem::size_of::<Bytes>(), 40);
+        assert_eq!(std::mem::size_of::<Bytes>(), 32);
         assert_eq!(std::mem::size_of::<Scalar>(), 48);
         assert_eq!(Bytes::new_static(&[1, 2, 3]), short);
         assert_eq!(Bytes::default(), &[][..]);
@@ -342,44 +342,40 @@ mod leaves {
         assert_eq!(short.to_string(), "010203");
         assert_eq!(Vec::from(short.clone()), vec![1_u8, 2, 3]);
         assert_eq!([1_u8, 2, 3].into_iter().collect::<Bytes>(), short);
-        assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(short.clone()));
+        assert_eq!(
+            Scalar::from(vec![1_u8, 2, 3]),
+            Scalar::Binary(short.clone())
+        );
         assert_eq!(
             Scalar::from(&[1_u8, 2, 3][..]),
-            Scalar::Bytes(short.clone())
+            Scalar::Binary(short.clone())
         );
 
-        // A value is one value whichever layout holds it; the layout and the
-        // width ride beside the payload, and a maximum never does.
-        let large = short
-            .clone()
-            .try_with_parameters(BytesType::LargeBinary)
-            .unwrap();
-        assert_eq!(large, short);
-        assert_eq!(large.layout(), BytesType::LargeBinary);
+        // A value is one value whichever leaf holds it: the leaf is the
+        // variant, its width or maximum included, and equality reads the
+        // payload alone.
+        let plain = Scalar::from(short.clone());
+        let large = BytesType::LargeBinary.scalar(short.clone()).unwrap();
+        assert_eq!(large, plain);
+        assert_eq!(large.as_binary(), Some(&short));
+        assert_eq!(large.bytes_parameters(), Some(BytesType::LargeBinary));
         assert_eq!(large.dtype().unwrap(), DataType::large_binary());
-        assert_ne!(format!("{large:?}"), format!("{short:?}"));
-        let bounded = short
-            .clone()
-            .try_with_parameters(BytesType::SizedBinary(4))
-            .unwrap();
-        assert_eq!(bounded.parameters(), BytesType::default());
-        assert!(
-            short
-                .clone()
-                .try_with_parameters(BytesType::SizedBinary(2))
-                .is_err()
-        );
+        // The payload alone prints no leaf; the value prints its variant.
+        assert_eq!(format!("{short:?}"), "0x010203");
+        assert_eq!(format!("{large:?}"), "LargeBinary(0x010203)");
+        assert_ne!(format!("{large:?}"), format!("{plain:?}"));
+        let bounded = BytesType::SizedBinary(4).scalar(short.clone()).unwrap();
+        assert_eq!(bounded, plain);
+        assert_eq!(bounded.bytes_parameters(), Some(BytesType::SizedBinary(4)));
+        assert_eq!(bounded.dtype().unwrap(), DataType::sized_binary(4).unwrap());
+        assert!(BytesType::SizedBinary(2).scalar(short.clone()).is_err());
         // Bytes are never padded: a fixed value is exactly its width.
         let fixed = BytesType::FixedBinary(3);
-        let held = short.clone().try_with_parameters(fixed).unwrap();
-        assert_eq!(held.fixed(), Some(3));
+        let held = fixed.scalar(short.clone()).unwrap();
+        assert_eq!(held.bytes_parameters().and_then(BytesType::fixed), Some(3));
         assert_eq!(held.dtype().unwrap(), DataType::fixed_binary(3).unwrap());
-        assert!(Bytes::new([1_u8, 2]).try_with_parameters(fixed).is_err());
-        assert!(
-            Bytes::new([1_u8, 2, 3, 4])
-                .try_with_parameters(fixed)
-                .is_err()
-        );
+        assert!(fixed.scalar(Bytes::new([1_u8, 2])).is_err());
+        assert!(fixed.scalar(Bytes::new([1_u8, 2, 3, 4])).is_err());
 
         // The value door reads the same way, and reads text and a UUID as
         // their bytes.
@@ -387,8 +383,8 @@ mod leaves {
             .unwrap()
             .scalar(Scalar::from(vec![1_u8, 2, 3]))
             .unwrap();
-        assert_eq!(value.dtype().unwrap(), DataType::binary());
-        assert_eq!(value.id(), DataTypeId::Binary);
+        assert_eq!(value.dtype().unwrap(), DataType::sized_binary(4).unwrap());
+        assert_eq!(value.id(), DataTypeId::SizedBinary);
         assert_eq!(
             DataType::fixed_binary(3)
                 .unwrap()
@@ -445,7 +441,7 @@ mod leaves {
             // A bare storage is the layout it names, with no maximum.
             assert_eq!(
                 DataType::from_arrow_datatype(&storage).unwrap(),
-                DataType::Bytes(dtype.bytes_parameters().unwrap().storage()),
+                DataType::from(dtype.bytes_parameters().unwrap().storage()),
                 "{spelling}"
             );
 
@@ -553,13 +549,18 @@ mod leaves {
         }
 
         // One `bytes` tag for every byte value: the plain one writes its payload
-        // and nothing else, and a layout or a width makes the value an object.
+        // and nothing else, and a layout, a width or a maximum makes the value
+        // an object, the number under `fixed` either way.
         assert_eq!(
             serde_json::to_string(&Scalar::from(vec![1_u8, 2, 3])).unwrap(),
             r#"{"type":"bytes","value":[1,2,3]}"#
         );
         for (spelling, json) in [
-            ("binary(16)", r#"{"type":"bytes","value":[1,2,3]}"#),
+            ("binary", r#"{"type":"bytes","value":[1,2,3]}"#),
+            (
+                "binary(16)",
+                r#"{"type":"bytes","value":{"layout":"sized_binary","fixed":16,"bytes":[1,2,3]}}"#,
+            ),
             (
                 "large_binary",
                 r#"{"type":"bytes","value":{"layout":"large_binary","bytes":[1,2,3]}}"#,
@@ -651,14 +652,18 @@ mod fields {
     }
 
     #[test]
-    fn a_bounded_value_is_at_most_the_maximum_and_never_carries_it() {
+    fn a_bounded_value_is_at_most_the_maximum_and_carries_it() {
         let field =
             BytesField::try_new("payload", DataType::from_str("binary(4)").unwrap(), true).unwrap();
         let field_field = field.to_field();
         let held = FieldScalar::new(&field_field, vec![7_u8; 4]).unwrap();
         assert_eq!(held.as_bytes(), Some(&[7_u8; 4][..]));
-        // The maximum is the column's rule: the value answers the layout alone.
-        assert_eq!(held.value().dtype().unwrap(), DataType::binary());
+        // The value carries the leaf of its column, the maximum included.
+        assert_eq!(held.value().id(), DataTypeId::SizedBinary);
+        assert_eq!(
+            held.value().dtype().unwrap(),
+            DataType::sized_binary(4).unwrap()
+        );
         assert!(FieldScalar::new(&field.to_field(), Vec::<u8>::new()).is_ok());
 
         let refused = FieldScalar::new(&field.to_field(), vec![7_u8; 5])
@@ -683,11 +688,17 @@ mod fields {
         let large = BytesField::try_new("payload", DataType::large_binary(), false).unwrap();
         let large_field = large.to_field();
         let held = FieldScalar::new(&large_field, Scalar::from(b"abc")).unwrap();
-        let Scalar::Bytes(bytes) = held.value() else {
+        let Some(bytes) = held.value().as_binary() else {
             panic!("a byte column holds a byte value");
         };
-        assert_eq!(bytes.parameters(), BytesType::LargeBinary);
-        assert_eq!(bytes.fixed(), None);
+        assert_eq!(
+            held.value().bytes_parameters(),
+            Some(BytesType::LargeBinary)
+        );
+        assert_eq!(
+            held.value().bytes_parameters().and_then(BytesType::fixed),
+            None
+        );
         // The layout is a retag over the same payload, so equality reads the
         // payload alone.
         assert_eq!(*bytes, Bytes::new(b"abc"));
@@ -701,10 +712,10 @@ mod fields {
                 .as_bytes(),
             Some(&b"abc"[..])
         );
-        let Scalar::Bytes(inline) = FieldScalar::new(&plain.to_field(), "abc")
+        let inline = FieldScalar::new(&plain.to_field(), "abc")
             .unwrap()
-            .into_value()
-        else {
+            .into_value();
+        let Some(inline) = inline.as_binary() else {
             panic!("a byte column holds a byte value");
         };
         assert!(inline.is_inline());

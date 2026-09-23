@@ -509,28 +509,12 @@ impl DataTypeId {
                 | Self::Duration32
                 | Self::Duration64
                 | Self::Interval
-                | Self::Binary
                 | Self::FixedBinary
-                | Self::LargeBinaryView
                 | Self::SizedBinary
-                | Self::LargeBinary
-                | Self::BinaryView
-                | Self::Utf8String
                 | Self::FixedUtf8String
-                | Self::Utf8StringView
-                | Self::LargeUtf8String
-                | Self::LargeUtf8StringView
                 | Self::SizedUtf8String
-                | Self::AsciiString
-                | Self::LargeAsciiString
-                | Self::AsciiStringView
-                | Self::LargeAsciiStringView
                 | Self::FixedAsciiString
                 | Self::SizedAsciiString
-                | Self::Cp1252String
-                | Self::LargeCp1252String
-                | Self::Cp1252StringView
-                | Self::LargeCp1252StringView
                 | Self::FixedCp1252String
                 | Self::SizedCp1252String
                 | Self::Serie

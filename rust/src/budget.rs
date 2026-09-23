@@ -389,8 +389,12 @@ mod limits {
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
-                DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
-                DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
+                crate::bytes_dtypes!() => {
+                    self.add_bytes_rows(rows, dtype.bytes_parameters().expect("a byte leaf"))?;
+                }
+                crate::string_dtypes!() => {
+                    self.add_string_rows(rows, dtype.string_parameters().expect("a string leaf"))?;
+                }
                 DataType::Null
                 | DataType::FixedSizeSerie(..)
                 | DataType::Struct(_)
@@ -503,8 +507,12 @@ mod limits {
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
-                DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
-                DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
+                crate::bytes_dtypes!() => {
+                    self.add_bytes_rows(rows, dtype.bytes_parameters().expect("a byte leaf"))?;
+                }
+                crate::string_dtypes!() => {
+                    self.add_string_rows(rows, dtype.string_parameters().expect("a string leaf"))?;
+                }
                 DataType::FixedSizeSerie(child, size) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
@@ -1016,15 +1024,15 @@ fn reserve_source_children_and_payload(
 ) -> Result<()> {
     let selected_count = selection.row_count(array.len())?;
     match source_type {
-        DataType::Bytes(parameters) => reserve_storage_source_payload(
+        crate::bytes_dtypes!() => reserve_storage_source_payload(
             array,
-            bytes::arrow_storage(*parameters)?,
+            bytes::arrow_storage(source_type.bytes_parameters().expect("a byte leaf"))?,
             selection,
             budget,
         )?,
-        DataType::String(parameters) => reserve_storage_source_payload(
+        crate::string_dtypes!() => reserve_storage_source_payload(
             array,
-            string::arrow_storage(*parameters)?,
+            string::arrow_storage(source_type.string_parameters().expect("a string leaf"))?,
             selection,
             budget,
         )?,
@@ -1309,28 +1317,31 @@ pub(crate) fn reserve_cast_output_payload(
         // A string's payload is its characters whatever charset writes them:
         // every charset here is at most one byte per scalar above US-ASCII,
         // so the UTF-8 rendering is the reservation's upper bound.
-        DataType::String(parameters) => {
+        crate::string_dtypes!() => {
+            let parameters = target_type.string_parameters().expect("a string leaf");
             reserve_formatted_payload(array, selection, parameters.is_view(), budget)
         }
         // Offset storage copies every projected payload; a view shares its
         // buffers and a fixed width was charged by the layout.
-        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
-            ArrowDataType::Binary | ArrowDataType::LargeBinary => {
-                let mut bytes = 0usize;
-                selection.try_for_each(array.len(), |index| {
-                    bytes = bytes
-                        .checked_add(projected_byte_len(array, source_type, index)?)
-                        .ok_or_else(|| {
-                            Error::IncompatibleSchema(
-                                "Arrow cast output payload exceeds usize".to_owned(),
-                            )
-                        })?;
-                    Ok(())
-                })?;
-                budget.add_bytes(bytes)
+        crate::bytes_dtypes!() => {
+            match bytes::arrow_storage(target_type.bytes_parameters().expect("a byte leaf"))? {
+                ArrowDataType::Binary | ArrowDataType::LargeBinary => {
+                    let mut bytes = 0usize;
+                    selection.try_for_each(array.len(), |index| {
+                        bytes = bytes
+                            .checked_add(projected_byte_len(array, source_type, index)?)
+                            .ok_or_else(|| {
+                                Error::IncompatibleSchema(
+                                    "Arrow cast output payload exceeds usize".to_owned(),
+                                )
+                            })?;
+                        Ok(())
+                    })?;
+                    budget.add_bytes(bytes)
+                }
+                _ => Ok(()),
             }
-            _ => Ok(()),
-        },
+        }
         DataType::Serie(_)
         | DataType::LargeSerie(_)
         | DataType::FixedSizeSerie(..)
@@ -1369,7 +1380,7 @@ pub(crate) fn reserve_concat_copy(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::Bytes(parameters) if parameters.is_view() => {
+        DataType::BinaryView | DataType::LargeBinaryView => {
             let array = downcast::<BinaryViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
@@ -1479,27 +1490,33 @@ fn reserve_new_materialized_array_without_dictionary_values(
         budget.add_array_layout(dtype, output.len())?;
     }
     match dtype {
-        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
-            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
-            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
-            ArrowDataType::BinaryView => {
-                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+        crate::bytes_dtypes!() => {
+            match bytes::arrow_storage(dtype.bytes_parameters().expect("a byte leaf"))? {
+                ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+                ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+                ArrowDataType::BinaryView => {
+                    reserve_new_views::<BinaryViewType>(output, source, budget)?;
+                }
+                // A fixed width was charged by the layout.
+                _ => {}
             }
-            // A fixed width was charged by the layout.
-            _ => {}
-        },
-        DataType::String(parameters) => match string::arrow_storage(*parameters)? {
-            ArrowDataType::Utf8 => reserve_new_bytes::<Utf8Type>(output, budget)?,
-            ArrowDataType::LargeUtf8 => reserve_new_bytes::<LargeUtf8Type>(output, budget)?,
-            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
-            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
-            ArrowDataType::Utf8View => reserve_new_views::<StringViewType>(output, source, budget)?,
-            ArrowDataType::BinaryView => {
-                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+        }
+        crate::string_dtypes!() => {
+            match string::arrow_storage(dtype.string_parameters().expect("a string leaf"))? {
+                ArrowDataType::Utf8 => reserve_new_bytes::<Utf8Type>(output, budget)?,
+                ArrowDataType::LargeUtf8 => reserve_new_bytes::<LargeUtf8Type>(output, budget)?,
+                ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+                ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+                ArrowDataType::Utf8View => {
+                    reserve_new_views::<StringViewType>(output, source, budget)?
+                }
+                ArrowDataType::BinaryView => {
+                    reserve_new_views::<BinaryViewType>(output, source, budget)?;
+                }
+                // A fixed width was charged by the layout.
+                _ => {}
             }
-            // A fixed width was charged by the layout.
-            _ => {}
-        },
+        }
         DataType::Serie(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),

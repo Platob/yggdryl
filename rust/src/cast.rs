@@ -61,7 +61,7 @@ use crate::{
     MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
     code_refusal, recognized_arrow_extension,
 };
-use crate::{DataType, Field, Scalar};
+use crate::{BytesType, DataType, Field, Scalar};
 
 mod kernel {
     use std::sync::Arc;
@@ -932,7 +932,7 @@ pub(crate) mod text {
     /// its canonical default - holds it as that member.
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
-            DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
+            crate::string_dtypes!() | crate::bytes_dtypes!() | DataType::Interval(_) => true,
             DataType::Serie(item)
             | DataType::LargeSerie(item)
             | DataType::SerieView(item)
@@ -946,7 +946,7 @@ pub(crate) mod text {
     /// Whether a row value is an empty text cell entering a datatype that reads
     /// it as absence: the empty-cell rule at the scalar door.
     pub(crate) fn is_blank_text(target: &DataType, value: &Scalar) -> bool {
-        matches!(value, Scalar::String(text) if text.as_str().is_empty())
+        matches!(value.as_string(), Some(text) if text.as_str().is_empty())
             && !keeps_empty_text(target)
     }
 
@@ -1623,8 +1623,11 @@ impl ArrayCastPlan {
         // where only a maximum says more than the layout.
         let ingest_validated = match field.dtype() {
             DataType::Geometry(_) | DataType::Geography(_) => true,
-            DataType::String(parameters) => {
-                needs_extension(*parameters)
+            crate::string_dtypes!() => {
+                field
+                    .dtype()
+                    .string_parameters()
+                    .is_some_and(needs_extension)
                     && !matches!(
                         source_extension.as_ref(),
                         Some(RecognizedExtension::String(source)) if source == field.dtype()
@@ -1632,8 +1635,11 @@ impl ArrayCastPlan {
             }
             // A fixed width is not re-read: the storage Arrow declares is the
             // width, so a column already in it holds nothing to check.
-            DataType::Bytes(parameters) => {
-                crate::bytes::needs_extension(*parameters)
+            crate::bytes_dtypes!() => {
+                field
+                    .dtype()
+                    .bytes_parameters()
+                    .is_some_and(crate::bytes::needs_extension)
                     && !matches!(
                         source_extension.as_ref(),
                         Some(RecognizedExtension::Bytes(source)) if source == field.dtype()
@@ -1742,6 +1748,13 @@ impl ArrayCastPlan {
         let dictionary_value = path.child(Segment::DictionaryValue);
         let run_end_values = path.child(Segment::RunEndValues);
         let dtype = field.dtype();
+        // The leaf a string or byte target declares, read once for the guards
+        // below. A string whose storage is text and whose bound has nothing
+        // to check is what the text renderings write into as they are.
+        let string_leaf = dtype.string_parameters();
+        let bytes_leaf = dtype.bytes_parameters();
+        let plain_text =
+            string_leaf.is_some_and(|leaf| is_text_storage(leaf) && !leaf.is_bounded());
         let kind = match (dtype, source_type) {
             // The extension-typed variants follow declared rules, never the
             // positional kernel: WKB is validated entering a geospatial
@@ -1815,9 +1828,8 @@ impl ArrayCastPlan {
             // The renderings below spell a value as text and write it into
             // the target's text storage as it is, so they take only a string
             // whose storage is text and whose bound has nothing to check.
-            (DataType::String(parameters), ArrowDataType::Binary)
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
+            (crate::string_dtypes!(), ArrowDataType::Binary)
+                if plain_text
                     && matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
                 ArrayCastKind::GeospatialWkt
@@ -1863,11 +1875,7 @@ impl ArrayCastPlan {
             (DataType::MediaType, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to mediatype is not supported"),
             },
-            (DataType::String(parameters), source)
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
-                    && is_temporal_arrow(source) =>
-            {
+            (crate::string_dtypes!(), source) if plain_text && is_temporal_arrow(source) => {
                 ArrayCastKind::TemporalText
             }
             // A string reads its values, never its buffers: a recognized
@@ -1878,11 +1886,11 @@ impl ArrayCastPlan {
             // nothing to check, so it stays with Arrow's own kernel below; an
             // encoded source is decoded first, by the arms below, so the
             // reading sees the column the encoding was hiding.
-            (DataType::String(parameters), source)
+            (crate::string_dtypes!(), source)
                 if !matches!(
                     source,
                     ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
-                ) && (needs_extension(*parameters)
+                ) && (string_leaf.is_some_and(needs_extension)
                     || matches!(
                         source_extension,
                         Some(
@@ -1910,9 +1918,9 @@ impl ArrayCastPlan {
                 }
                 ArrayCastKind::StringIngest {
                     source: match source_extension {
-                        Some(RecognizedExtension::String(DataType::String(parameters))) => {
-                            StringSource::String(*parameters)
-                        }
+                        Some(RecognizedExtension::String(declared)) => declared
+                            .string_parameters()
+                            .map_or(StringSource::Bare, StringSource::String),
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
                         Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
@@ -1923,10 +1931,8 @@ impl ArrayCastPlan {
             // pair gets: the payload a row holds is not the payload the target
             // declares, so it is a value change rather than a framing change,
             // and Arrow's own message names neither datatype.
-            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
-                if parameters
-                    .fixed()
-                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
+            (DataType::FixedBinary(width), ArrowDataType::FixedSizeBinary(source_width))
+                if u32::try_from(*source_width) != Ok(*width) =>
             {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
@@ -1943,8 +1949,8 @@ impl ArrayCastPlan {
             // check at all; a fixed width it checks, but only with a message
             // that names neither side. An encoded source is decoded first, by
             // the arms below.
-            (DataType::Bytes(parameters), source)
-                if parameters.is_bounded()
+            (crate::bytes_dtypes!(), source)
+                if bytes_leaf.is_some_and(BytesType::is_bounded)
                     && !matches!(
                         source,
                         ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
@@ -2690,6 +2696,12 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     let Some(source) = source else {
         return Ok(());
     };
+    // A string target whose storage is text takes a canonical text source's
+    // characters as they are.
+    let text_target = target
+        .dtype()
+        .string_parameters()
+        .is_some_and(is_text_storage);
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
         (_, RecognizedExtension::Code(_) | RecognizedExtension::String(_)) => Ok(()),
@@ -2701,27 +2713,15 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // the bytes as it reads bare storage.
         (_, RecognizedExtension::Bytes(_)) => Ok(()),
         (DataType::Version, RecognizedExtension::Version) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Version)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Version) if text_target => Ok(()),
         (other, RecognizedExtension::Version) => Err(Error::Unsupported {
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
         (DataType::Url, RecognizedExtension::Url) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Url)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Url) if text_target => Ok(()),
         (DataType::Urn, RecognizedExtension::Urn) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Urn)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Urn) if text_target => Ok(()),
         (other, RecognizedExtension::Url) => Err(Error::Unsupported {
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),
@@ -2736,11 +2736,11 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         | (DataType::MimeType, RecognizedExtension::MimeType)
         | (DataType::MediaType, RecognizedExtension::MediaType) => Ok(()),
         (
-            DataType::String(parameters),
+            crate::string_dtypes!(),
             RecognizedExtension::Timezone
             | RecognizedExtension::MimeType
             | RecognizedExtension::MediaType,
-        ) if is_text_storage(*parameters) => Ok(()),
+        ) if text_target => Ok(()),
         (other, RecognizedExtension::Timezone) => Err(Error::Unsupported {
             kind: "timezone",
             reason: format!("casting timezone to {} is not supported", other.name()),

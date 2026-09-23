@@ -136,6 +136,21 @@ fn field_snapshots_identical(left: &Field, right: &Field, with_metadata: bool) -
             && (!with_metadata || left.as_metadata().shares_storage_with(right.as_metadata()))
 }
 
+/// The bounds two string leaves, or two byte leaves, of one shape state.
+///
+/// `None` is anything else: two shapes, two families, or a datatype that is
+/// neither, each of which differs in kind rather than in bound.
+fn shared_shape_bounds(left: &DataType, right: &DataType) -> Option<(Option<u32>, Option<u32>)> {
+    if let (Some(left), Some(right)) = (left.string_parameters(), right.string_parameters()) {
+        return left
+            .same_shape_as(right)
+            .then_some((left.bound(), right.bound()));
+    }
+    let (left, right) = (left.bytes_parameters()?, right.bytes_parameters()?);
+    left.same_shape_as(right)
+        .then_some((left.bound(), right.bound()))
+}
+
 impl DiffEngine {
     fn from_fields(left: &Field, right: &Field, with_metadata: bool) -> Self {
         Self {
@@ -288,6 +303,19 @@ impl DiffEngine {
         if dtype_snapshots_identical(&left, &right) {
             return;
         }
+        // The shape is the identifier - and for a string the charset is part
+        // of it - so two shapes are two kinds below; one shape leaves the
+        // bound to compare.
+        if let Some((left_bound, right_bound)) = shared_shape_bounds(&left, &right) {
+            if left_bound != right_bound {
+                self.pending.push_back(changed_debug(
+                    &property_path(&path, "bound"),
+                    left_bound,
+                    right_bound,
+                ));
+            }
+            return;
+        }
         use DataType as D;
         match (&left, &right) {
             (
@@ -325,27 +353,6 @@ impl DiffEngine {
                         &property_path(&path, "unit"),
                         left,
                         right,
-                    ));
-                }
-            }
-            // The shape is the identifier - and for a string the charset is
-            // part of it - so two shapes are two kinds below; one shape
-            // leaves the bound to compare.
-            (D::Bytes(left), D::Bytes(right)) if left.same_shape_as(*right) => {
-                if left.bound() != right.bound() {
-                    self.pending.push_back(changed_debug(
-                        &property_path(&path, "bound"),
-                        left.bound(),
-                        right.bound(),
-                    ));
-                }
-            }
-            (D::String(left), D::String(right)) if left.same_shape_as(*right) => {
-                if left.bound() != right.bound() {
-                    self.pending.push_back(changed_debug(
-                        &property_path(&path, "bound"),
-                        left.bound(),
-                        right.bound(),
                     ));
                 }
             }

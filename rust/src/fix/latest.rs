@@ -703,7 +703,7 @@ fn converted(registry: &FixRegistry, target: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
-    if !matches!(value, Scalar::String(_)) {
+    if !matches!(value, crate::string_scalars!(_)) {
         if let Ok(typed) = target.scalar(value.clone()) {
             if !typed.is_null() {
                 return typed;

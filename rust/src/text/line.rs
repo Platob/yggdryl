@@ -1280,7 +1280,7 @@ impl TextLine {
                 return Ok(self
                     .crosscode_value()
                     .filter(|code| !code.is_empty())
-                    .map(|code| Scalar::String(code.clone())));
+                    .map(|code| Scalar::Utf8String(code.clone())));
             }
             // The instant is the `mtime` capture where one reads as an
             // instant, else the handle's, whatever the column flag says; the

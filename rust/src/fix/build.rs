@@ -2466,7 +2466,7 @@ pub(super) fn beginstring_field(registry: &FixRegistry) -> Field {
 /// A `data` field's value is bytes and the row is where they live, so the
 /// typed read hands them over untouched instead of reading a spelling.
 const fn is_binary(dtype: &DataType) -> bool {
-    matches!(dtype, DataType::Bytes(_))
+    matches!(dtype, crate::bytes_dtypes!())
 }
 
 /// One unknown key's own spelling, folded the way every built name is.

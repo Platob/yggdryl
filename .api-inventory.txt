@@ -217,7 +217,7 @@ pub enum DataTypeId
   pub const fn from_u8(byte: u8) -> Option<Self>  (the leaf one byte names; none for a family's own number, a placeholder in a family's range, or a byte past every family)
   pub const fn kind(self) -> DataTypeKind  (the family whose DataTypeKind::range the byte is in)
   pub const fn temporal_family(self) -> Option<&'static str>  (date, time, datetime, duration or interval: which of the five temporal families the leaf is in, the widths of one family sharing it; None outside DataTypeKind::Temporal)
-  pub const fn is_parameterized(self) -> bool
+  pub const fn is_parameterized(self) -> bool  (a leaf whose datatype carries more than its identity: the temporal units, the fixed and sized string and byte leaves, the nested, dictionary, decimal and geospatial ones; the unnumbered string and byte leaves are their identifier)
   pub const fn is_integer(self) -> bool  (DataTypeKind::Integer.contains(self))
   pub const fn is_signed_integer(self) -> bool
   pub const fn is_unsigned_integer(self) -> bool
@@ -3271,7 +3271,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn apply_arrow_schema( &self, schema: arrow_schema::SchemaRef, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<arrow_schema::SchemaRef>
   pub fn apply_arrow_reader( &self, inner: crate::arrow::BatchReader, digest: bool, partition: bool, cast: bool, options: crate::ArrowCastOptions, ) -> Result<crate::arrow::BatchReader>
 
-### yggdryl::bytes  [rust/src/bytes.rs]  (the byte family: six real leaves, the number on fixed_binary and sized_binary being the leaf)
+### yggdryl::bytes  [rust/src/bytes.rs]  (the byte family: six leaves, each a DataType, Field and Scalar variant of its own, the number on fixed_binary and sized_binary carried inline; BytesType the view over them)
 pub use scalars::{Bytes, INLINE_BYTES};  (re-exported at yggdryl::types through `pub use bytes::*`; Bytes and BytesType also at the crate root)
 pub const BYTES_EXTENSION_NAME: &str = "yggdryl.bytes";
 pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBinary, BinaryView, LargeBinaryView, FixedBinary(u32), SizedBinary(u32); Display = the canonical name plus "(n)" on a numbered leaf - binary, large_binary_view, fixed_binary(16), sized_binary(16); serde as the name alone)
@@ -3286,7 +3286,7 @@ pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBin
   pub const fn is_bounded(self) -> bool
   pub const fn is_view(self) -> bool
   pub const fn is_large(self) -> bool
-  pub const fn storage(self) -> Self  (SizedBinary answers Binary; every other leaf itself)
+  pub const fn storage(self) -> Self  (the leaf whose storage the column fills: SizedBinary answers Binary; every other leaf itself)
   pub const fn same_shape_as(self, other: Self) -> bool  (the same storage shape, the number ignored)
   pub fn with_bound(self, bound: u32) -> Result<Self>  (FixedBinary keeps its shape; Binary and SizedBinary become SizedBinary(n); the large and view leaves refuse)
   pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self>  (None on a numbered leaf refused)
@@ -3295,6 +3295,9 @@ pub enum BytesType  (#[non_exhaustive]; Copy; Default = Binary; Binary, LargeBin
   pub fn from_extension_json(value: &str) -> Result<Self>  (fixed only on the fixed leaf; a max makes the leaf sized whichever unbounded shape was named)
   pub fn from_str(value: &str) -> Result<Self>  (from_spelling over the folded text)
   pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: binary, bytes, blob, bytea, varbinary, fixedbinary, fixedsizebinary, sizedbinary, ...)
+  pub fn scalar(self, payload: impl Into<Bytes>) -> Result<Scalar>  (the value door: a fixed leaf needs len == width exactly, a sized one at most its maximum; answers the leaf's own Scalar variant, the number kept)
+impl From<BytesType> for DataType  (the leaf's own variant, unchecked; DataType::bytes validates)
+impl TryFrom<&DataType> for BytesType
 impl DataType
   pub fn bytes(parameters: impl Into<BytesType>) -> Result<Self>
   pub const fn binary() -> Self
@@ -3304,21 +3307,19 @@ impl DataType
   pub fn sized_binary(max: u32) -> Result<Self>
   pub fn fixed_binary(width: u32) -> Result<Self>
   pub const fn bytes_parameters(&self) -> Option<BytesType>
+impl Scalar
+  pub const fn bytes_parameters(&self) -> Option<BytesType>  (the leaf a byte value is written under, its number included; None for a UUID or a geospatial value)
+  pub const fn as_binary(&self) -> Option<&Bytes>  (the payload of any byte leaf; as_bytes also reads a geospatial payload)
 pub const INLINE_BYTES: usize = 30;
-pub struct Bytes  (40 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence, or {layout, fixed?, bytes} when not default; Value; Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Bytes)
+pub struct Bytes  (the payload alone, 32 bytes; Deref<Target=[u8]>, AsRef<[u8]>, Borrow<[u8]>; Eq/Ord/Hash over the payload, PartialEq<[u8]>/<&[u8]>/<[u8; N]>/<Vec<u8>> both ways; Display = lowercase hex; From<&[u8]|&[u8; N]|[u8; N]|Vec<u8>|Box<[u8]>|Arc<[u8]>|Cow<[u8]>>, From<Bytes> for Vec<u8>|Arc<[u8]>, FromIterator<u8>, Default; serde = the byte sequence; Value (binary); Scalar::from(Bytes|Vec<u8>|&[u8]|&[u8; N]|Arc<[u8]>) -> Scalar::Binary; the Scalar wire writes a non-binary leaf as {layout, fixed?, bytes} under the `bytes` tag, the number of a fixed or sized leaf under fixed)
   pub const fn new_static(payload: &'static [u8]) -> Self
   pub fn new(payload: impl AsRef<[u8]>) -> Self
   pub fn from_shared(payload: Arc<[u8]>) -> Self
-  pub fn try_with_parameters(mut self, parameters: BytesType) -> Result<Self>  (a fixed leaf needs len == width exactly; a max is checked and the plain leaf stored)
   pub fn as_bytes(&self) -> &[u8]
-  pub const fn parameters(&self) -> BytesType
-  pub const fn layout(&self) -> BytesType
-  pub const fn fixed(&self) -> Option<u32>
   pub const fn is_inline(&self) -> bool
   pub fn into_vec(self) -> Vec<u8>
   pub fn into_shared(self) -> Arc<[u8]>
-  pub fn dtype(&self) -> Result<DataType>
-  pub type BytesField = FieldOf<BytesType>;  (the Field leaf over DataType::Bytes(_); see yggdryl::field)
+  pub type BytesField = FieldOf<BytesType>;  (the Field leaf over the six byte variants; see yggdryl::field)
 
 ### yggdryl::cast  [rust/src/cast.rs]  (the one recursive cast engine, reached through Serie::cast, the Serie Arrow doors, SerieReader and a held ArrowCastPlan)
 
@@ -4038,7 +4039,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, String, Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Bytes, Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -4743,7 +4744,7 @@ impl Scalar
   pub fn geometry_type_ids(bytes: &[u8]) -> Result<Vec<u32>>
   pub fn into_wkt(bytes: &[u8]) -> Result<String>
 
-### yggdryl::string  [rust/src/string.rs]  (the string family: eighteen real leaves, six shapes in each of the three charsets with a datatype - UTF-8, US-ASCII, windows-1252)
+### yggdryl::string  [rust/src/string.rs]  (the string family: eighteen leaves, six shapes in each of the three charsets with a datatype - UTF-8, US-ASCII, windows-1252 - each a DataType, Field and Scalar variant of its own, the number of a fixed or sized leaf carried inline; StringType the view over them)
 pub use scalars::{INLINE_CAPACITY, Str};  (re-exported at the crate root through `pub use string::*`; Str, StringEnum and StringType also at the crate root)
 pub const STRING_EXTENSION_NAME: &str = "yggdryl.string";
 pub enum StringType  (#[non_exhaustive]; Copy; Default = Utf8String; Utf8String, LargeUtf8String, Utf8StringView, LargeUtf8StringView, FixedUtf8String(u32), SizedUtf8String(u32), then the same six as AsciiString.. and Cp1252String..; Display = the canonical name plus "(n)" on a numbered leaf - utf8, sized_utf8(32), fixed_ascii(4), cp1252, large_cp1252_view; serde as the name alone)
@@ -4759,7 +4760,7 @@ pub enum StringType  (#[non_exhaustive]; Copy; Default = Utf8String; Utf8String,
   pub const fn is_bounded(self) -> bool
   pub const fn is_view(self) -> bool
   pub const fn is_large(self) -> bool
-  pub const fn storage(self) -> Self  (a Sized* leaf answers the plain leaf of its charset; every other leaf itself)
+  pub const fn storage(self) -> Self  (the leaf whose storage the column fills: a Sized* leaf answers the plain leaf of its charset; every other leaf itself)
   pub const fn same_shape_as(self, other: Self) -> bool  (the same charset and storage shape, the number ignored)
   pub fn with_bound(self, bound: u32) -> Result<Self>  (Fixed* keeps its shape; a plain or Sized* leaf becomes Sized*(n) of its charset; the large and view leaves refuse)
   pub fn with_declared_bound(self, bound: Option<u32>) -> Result<Self>  (None on a numbered leaf refused)
@@ -4771,31 +4772,32 @@ pub enum StringType  (#[non_exhaustive]; Copy; Default = Utf8String; Utf8String,
   pub fn from_spelling(word: &str) -> Option<Self>  (every alias, folded: general_spelling plus the charset-named ones - utf8, largeutf8, utf8view, fixedutf8, sizedutf8, ascii, usascii, cp1252, windows1252, ...)
   pub fn general_spelling(word: &str) -> Option<Self>  (the charset-free spellings alone - string, str, text, varchar, char, fixedstring, stringview, largestring, largestringview, sizedstring - naming the UTF-8 leaf of their shape; the only spellings a charset may stand beside)
   pub fn from_declaration(layout: &str, charset: Option<&str>, bound: Option<u32>) -> Result<Self>  (what both bindings call: the spelling, a charset only beside a general spelling, then with_declared_bound)
+  pub fn scalar(self, text: impl Into<Str>) -> Result<Scalar>  (the value door: a fixed leaf's trailing NUL trimmed, the US-ASCII repertoire judged, the width and the bound counted in stored bytes; answers the leaf's own Scalar variant, the number kept)
+  pub fn scalar_from_bytes(self, bytes: &[u8]) -> Result<Scalar>  (the one door bytes take: the UTF-8 and US-ASCII leaves decode strictly, the windows-1252 leaves transcribe; a fixed leaf trims trailing NUL; then scalar)
+  pub fn encode(self, text: &str) -> Result<Cow<'_, [u8]>>  (the stored bytes in the leaf's charset, padded on a fixed leaf; text wider than the slot refused)
+  pub fn encoded_len(self, text: &str) -> usize  (a fixed leaf's width, else what the charset counts)
+impl From<StringType> for DataType  (the leaf's own variant, unchecked; DataType::string validates)
+impl TryFrom<&DataType> for StringType
 impl DataType
   pub fn string(parameters: impl Into<StringType>) -> Result<Self>
-  pub const fn string_parameters(&self) -> Option<StringType>  (String only; codes answer None)
+  pub const fn string_parameters(&self) -> Option<StringType>  (the eighteen string variants; codes answer None)
   pub const fn is_string(&self) -> bool
   pub const fn charset(&self) -> Option<Charset>
   pub const fn fixed_byte_width(&self) -> Option<usize>  (a fixed string or fixed bytes width, else DataTypeId::fixed_byte_width; None for a code)
 
 ### yggdryl::string::scalars  [rust/src/string.rs]
 pub const INLINE_CAPACITY: usize = 23;
-pub struct Str  (32 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text, or {layout, fixed?, text} when not the utf8 leaf - the leaf names its charset, and a charset key read back restates it; Value; Scalar::from(Str|&str|String|SmolStr) -> Scalar::String)
+pub struct Str  (the characters alone, 24 bytes, SmolStr-backed; Deref<Target=str>, AsRef<str>, AsRef<[u8]>, Borrow<str>; Eq/Ord/Hash over the characters, PartialEq<str>/<&str>/<String>/<SmolStr> both ways; Display = the characters; Debug = the quoted characters; From<&str|&mut str|&String|String|Box<str>|Arc<str>|Cow<str>|char|SmolStr|&SmolStr>, From<Str> for String|SmolStr|Arc<str>, FromStr (infallible), FromIterator<char>, FromIterator<&str>, Default; serde = the bare text; Value (utf8); Scalar::from(Str|&str|String|SmolStr) -> Scalar::Utf8String; the Scalar wire writes a non-utf8 leaf as {layout, fixed?, text} under the `string` tag - the leaf names its charset, the number of a fixed or sized leaf goes under fixed, and a charset key read back restates it)
   pub const fn new_static(text: &'static str) -> Self
   pub fn new(text: impl AsRef<str>) -> Self
-  pub fn from_bytes(bytes: &[u8], parameters: StringType) -> Result<Self>  (the UTF-8 and US-ASCII leaves decode strictly, the windows-1252 leaves transcribe; a fixed leaf trims trailing NUL)
-  pub fn try_with_parameters(mut self, parameters: StringType) -> Result<Self>  (checks the bound; stores the leaf's storage(), never a maximum)
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
-  pub const fn parameters(&self) -> StringType  (never a Sized* leaf)
-  pub const fn charset(&self) -> Charset
-  pub const fn fixed(&self) -> Option<u32>
   pub fn is_inline(&self) -> bool
-  pub fn encode(&self) -> Result<Cow<'_, [u8]>>  (padded on a fixed leaf)
-  pub fn encoded_len(&self) -> usize
   pub fn into_string(self) -> String
   pub fn into_inner(self) -> SmolStr
-  pub fn dtype(&self) -> Result<DataType>
+impl Scalar
+  pub const fn string_parameters(&self) -> Option<StringType>  (the leaf a string value is written under, its number included - a cell read out of sized_utf8(32) answers SizedUtf8String(32); None for a code)
+  pub const fn as_string(&self) -> Option<&Str>  (the characters of any string leaf; as_str also reads a code's text)
 pub struct Country  // and Currency, MicCode, CfiCode, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; IsinCode, CusipCode and SedolCode fold lower case and refuse a check digit that does not close them, while BloombergCode holds ASCII to its width and FIGICode folds ASCII case, validates its twelve-character shape and check digit
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
@@ -4878,7 +4880,7 @@ impl StringEnum
   pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, state, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
-  pub type StringField = FieldOf<StringType>;  (the Field leaf over DataType::String(_); see yggdryl::field)
+  pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
 pub struct CountryType  // and CurrencyType, MicCodeType, CfiCodeType, IsinCodeType, CusipCodeType, SedolCodeType, BloombergCodeType, FIGICodeType, SideType, StateType, TimeInForceType: the twelve code markers (country, currency, mic, cfi, isin, cusip, sedol, bloomberg, figi, side, state, timeinforce)
   pub type CountryField = FieldOf<CountryType>;
   pub type CurrencyField = FieldOf<CurrencyType>;

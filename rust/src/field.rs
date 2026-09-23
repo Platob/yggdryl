@@ -1606,8 +1606,13 @@ field_leaves! {
     [Time32, Time64] => TimeField / TimeType,
     [Duration32, Duration64] => DurationField / DurationType,
     [Interval] => IntervalField / IntervalType,
-    [Bytes] => BytesField / BytesType,
-    [String] => StringField / StringType,
+    [Binary, LargeBinary, BinaryView, LargeBinaryView, FixedBinary, SizedBinary] => BytesField / BytesType,
+    [
+        Utf8String, LargeUtf8String, Utf8StringView, LargeUtf8StringView, FixedUtf8String,
+        SizedUtf8String, AsciiString, LargeAsciiString, AsciiStringView, LargeAsciiStringView,
+        FixedAsciiString, SizedAsciiString, Cp1252String, LargeCp1252String, Cp1252StringView,
+        LargeCp1252StringView, FixedCp1252String, SizedCp1252String
+    ] => StringField / StringType,
     [Country] => CountryField / CountryType,
     [Currency] => CurrencyField / CurrencyType,
     [MicCode] => MicCodeField / MicCodeType,

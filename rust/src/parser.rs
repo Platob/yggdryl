@@ -911,8 +911,18 @@ impl fmt::Display for DataType {
             D::Interval(unit) => {
                 fmt::Display::fmt(&crate::IntervalType::Interval(*unit), formatter)
             }
-            D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::String(parameters) => fmt::Display::fmt(parameters, formatter),
+            leaf_dtype @ crate::bytes_dtypes!() => {
+                let leaf = leaf_dtype
+                    .bytes_parameters()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(&leaf, formatter)
+            }
+            leaf_dtype @ crate::string_dtypes!() => {
+                let leaf = leaf_dtype
+                    .string_parameters()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(&leaf, formatter)
+            }
             D::Serie(field) => fmt_single_field_type(formatter, "serie", field),
             D::SerieView(field) => fmt_single_field_type(formatter, "serie_view", field),
             D::FixedSizeSerie(field, length) => {

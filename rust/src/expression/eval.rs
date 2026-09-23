@@ -644,7 +644,7 @@ fn call(
         Function::Upper => text_value(first, str::to_uppercase),
         Function::Trim => text_value(first, |text| text.trim().to_owned()),
         Function::Length => match first {
-            Scalar::Bytes(bytes) => {
+            crate::bytes_scalars!(bytes) => {
                 Scalar::from(i64::try_from(bytes.as_bytes().len()).unwrap_or(i64::MAX))
             }
             other => scalar_text(other).map_or(Scalar::Null, |text| {
@@ -1029,13 +1029,14 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
                 Err(error) => Err(error),
             }
         }
-        // A string already holds its characters: the value door restates
-        // them under the target's layout, charset and bound without a copy.
-        DataType::String(_) if matches!(value, Scalar::String(_)) => canonical(value.clone()),
+        // A string of any leaf already holds its characters: the value door
+        // restates them under the target's leaf, charset and bound without a
+        // copy.
+        crate::string_dtypes!() if value.as_string().is_some() => canonical(value.clone()),
         // A code takes the same tier at the width its own type fixes.
         code if code.is_code() => canonical(value.clone()),
         DataType::Version => match value {
-            Scalar::Version(_) | Scalar::String(_) => canonical(value.clone()),
+            Scalar::Version(_) | crate::string_scalars!(_) => canonical(value.clone()),
             _ => refuse("version text"),
         },
         other if is_text(other) => {
@@ -1049,7 +1050,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             }
         }
         other if is_binary(other) => match value {
-            Scalar::Bytes(_) => canonical(value.clone()),
+            crate::bytes_scalars!(_) => canonical(value.clone()),
             other => match other.as_str() {
                 Some(text) => canonical(Scalar::from(text.as_bytes())),
                 None => refuse("bytes"),

@@ -2,11 +2,10 @@
 //! and what the leaves of one family share.
 //!
 //! [`DataType`], [`Field`] and [`Scalar`] are redirectors: each holds one
-//! variant per leaf, or, where one payload names the leaf - the eighteen
-//! string leaves under `String(StringType)`, the six byte leaves under
-//! `Bytes(BytesType)` - one variant for them all, and the traits here are
-//! the same verbs on the three sides, so a leaf reads the same whichever
-//! side is being asked:
+//! variant per leaf - the eighteen string and six byte leaves included, which
+//! a string or byte field holds through its [`crate::StringType`] or
+//! [`crate::BytesType`] view - and the traits here are the same verbs on the
+//! three sides, so a leaf reads the same whichever side is being asked:
 //!
 //! | side | trait | widen | narrow |
 //! | --- | --- | --- | --- |
@@ -572,11 +571,12 @@ impl FieldSidecar for DictionaryOptions {
 
 /// One datatype: a family's payload, or the root that redirects to it.
 ///
-/// The implementor is what a [`DataType`] variant holds - an enum over the
-/// family's leaves when it has several, one leaf's parameters when it has one,
-/// and a parameter-free marker for the variants that carry nothing. Either way
-/// [`Self::id`] names the exact leaf, which is what a caller branching on the
-/// variant actually wants.
+/// The implementor is the view a field leaf holds of its [`DataType`]
+/// variants - an enum over the family's leaves when it has several, such as
+/// [`crate::StringType`] over the eighteen string variants, one leaf's
+/// parameters when it has one, and a parameter-free marker for the variants
+/// that carry nothing. Either way [`Self::id`] names the exact leaf, which is
+/// what a caller branching on the variant actually wants.
 pub trait DataTypeValue:
     Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static
 {

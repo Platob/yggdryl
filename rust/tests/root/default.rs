@@ -1,8 +1,6 @@
 //! `rust/src/default.rs`.
 
 mod datatypes {
-    use yggdryl::BytesType;
-
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone, UnionMode};
 
     fn all_variants() -> Vec<DataType> {
@@ -233,7 +231,7 @@ mod datatypes {
             DataType::Duration32(TimeUnit::DayTime),
             DataType::Duration64(TimeUnit::DayTime),
             DataType::Interval(TimeUnit::Second),
-            DataType::Bytes(BytesType::FixedBinary(0)),
+            DataType::FixedBinary(0),
             DataType::FixedSizeSerie(
                 std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
                 -1,

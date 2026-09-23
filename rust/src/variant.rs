@@ -871,8 +871,8 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
                 out,
             )?,
         },
-        Scalar::String(held) => write_text(out, held.as_str())?,
-        Scalar::Bytes(held) => write_binary(out, held.as_bytes())?,
+        crate::string_scalars!(held) => write_text(out, held.as_str())?,
+        crate::bytes_scalars!(held) => write_binary(out, held.as_bytes())?,
         Scalar::Uuid(held) => primitive(out, UUID, &held.into_bytes()),
         // A geospatial value is its WKB payload, which is bytes.
         Scalar::Geometry(held) => write_binary(out, held.as_bytes())?,

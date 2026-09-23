@@ -144,7 +144,7 @@ impl From<Vocabulary> for Scalar {
     ///
     /// [`DataType::Dictionary`]: crate::DataType::Dictionary
     fn from(value: Vocabulary) -> Self {
-        Self::String(Str::new_static(value.as_str()))
+        Self::Utf8String(Str::new_static(value.as_str()))
     }
 }
 

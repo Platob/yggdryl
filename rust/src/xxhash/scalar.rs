@@ -77,7 +77,9 @@ impl Scalar {
             | Self::Url(_)
             | Self::Urn(_)
             | Self::MediaType(_) => return None,
-            Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            crate::string_scalars!(value) => {
+                return Some(ValueBytes::borrowed(value.as_str().as_bytes()));
+            }
             code_scalars!() => {
                 return Some(ValueBytes::borrowed(
                     self.as_str().expect("a code borrowed its text").as_bytes(),
@@ -85,7 +87,7 @@ impl Scalar {
             }
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
+            crate::bytes_scalars!(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
             Self::Geometry(value) => {
                 return Some(ValueBytes::borrowed(value.as_bytes()));
             }
@@ -171,8 +173,9 @@ impl Scalar {
     /// The tag is the value's own [`DataTypeId`], except where a family
     /// compares equal across its members and one member's tag then stands for
     /// all of them: integers feed `int128` or `uint128` by sign, floats and
-    /// decimals feed their widest member, every string feeds `utf8`
-    /// whatever leaf its column declares, and a geography feeds `geometry`. A
+    /// decimals feed their widest member, every string leaf feeds `utf8` and
+    /// every byte leaf `binary` whatever width or bound it carries, and a
+    /// geography feeds `geometry`. A
     /// code feeds its own identifier, because a currency and a country whose
     /// bytes agree are two values.
     ///
@@ -183,14 +186,14 @@ impl Scalar {
     /// | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
     /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
     /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-    /// | `String` | `utf8` | length `u64` little-endian, then UTF-8 |
+    /// | `Utf8String`..`SizedCp1252String` | `utf8` | length `u64` little-endian, then UTF-8 |
     /// | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
     /// | `MimeType` | `mimetype` | length `u64` little-endian, then the canonical name |
     /// | `MediaType` | `mediatype` | rendered length `u64` little-endian, then the canonical rendering |
-    /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
+    /// | `Binary`..`SizedBinary` | `binary` | length `u64` little-endian, then the bytes |
     /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
     /// | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
     /// | `Time32`/`Time64` | `time64` | as above |
@@ -325,7 +328,9 @@ impl Scalar {
         match self {
             Self::Null => write_null(sink),
             Self::Boolean(value) => write_bool(sink, value.get()),
-            Self::String(value) => write_string(sink, value.as_str()),
+            // Every string leaf feeds the one string shape: a value is one
+            // value whichever column holds it.
+            crate::string_scalars!(value) => write_string(sink, value.as_str()),
             code_scalars!() => {
                 write_tag(sink, self.id());
                 write_text(sink, self.as_str().expect("a code borrowed its text"));
@@ -367,7 +372,7 @@ impl Scalar {
                 write_len(sink, canonical.len());
                 sink.write(canonical.as_bytes());
             }
-            Self::Bytes(value) => write_binary(sink, value.as_bytes()),
+            crate::bytes_scalars!(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
             Self::Serie(values)

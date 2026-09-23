@@ -402,8 +402,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ),
         ("string", "naïve"),
         # Any leaf but plain `utf8` pickles its name beside the text, and a
-        # fixed leaf its width; the name says the charset, and a maximum is
-        # the column's rule and never the value's.
+        # fixed or sized leaf its number; the name says the charset.
         ("string", ("fixed_ascii", 4, "USD")),
         ("string", ("large_cp1252_view", None, "café")),
         ("currency", "USD"),
@@ -420,6 +419,11 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("datetime64", (1, "ns", "UTC")),
         ("duration32", (1, "ms", "NAIVE")),
         ("duration64", (1, "ns", "NAIVE")),
+        # A value keeps its column's maximum, so a sized leaf pickles it as a
+        # fixed leaf does its width. Last, so the references below keep
+        # naming what they name.
+        ("string", ("sized_utf8", 32, "abc")),
+        ("bytes", ("sized_binary", 16, b"\x01\x02")),
     ]
     # Every registered code, because "every native scalar variant" is what this
     # test claims: `state` and `timeinforce` used to raise "unsupported Scalar

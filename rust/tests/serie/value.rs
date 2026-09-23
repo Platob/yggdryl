@@ -23,7 +23,7 @@ fn round_trip(dtype: DataType, value: Scalar) -> Scalar {
 
 mod widths {
     use super::{DataType, Field, Scalar, TimeUnit, lay_out, round_trip};
-    use yggdryl::BytesType;
+    use yggdryl::{BytesType, StringType};
     use yggdryl::{DataTypeId, i256};
 
     #[test]
@@ -93,7 +93,7 @@ mod widths {
             // A cell answers the column's layout and, on the fixed one, its
             // width; a short cell is held inline.
             assert_eq!(decoded.dtype().unwrap(), column);
-            let Scalar::Bytes(bytes) = decoded else {
+            let Some(bytes) = decoded.as_binary() else {
                 panic!("bytes read back as {decoded:?}");
             };
             assert!(bytes.is_inline());
@@ -101,17 +101,26 @@ mod widths {
     }
 
     #[test]
-    fn a_maximum_is_the_columns_rule_and_never_the_cells() {
+    fn a_cell_carries_the_maximum_of_its_column() {
         let column = DataType::bytes(BytesType::SizedBinary(8)).unwrap();
-        let decoded = round_trip(column, Scalar::from(b"AAPL".as_slice()));
-        assert_eq!(decoded.dtype().unwrap(), DataType::binary());
+        let payload = Scalar::from(b"AAPL".as_slice());
+        let decoded = round_trip(column.clone(), payload.clone());
+        assert_eq!(decoded.dtype().unwrap(), column);
+        assert_eq!(decoded.bytes_parameters(), Some(BytesType::SizedBinary(8)));
+        assert_eq!(decoded, payload, "a value is one value in any column");
     }
 
     #[test]
-    fn a_text_maximum_is_the_columns_rule_and_never_the_cells() {
+    fn a_text_cell_carries_the_maximum_of_its_column() {
         let column = DataType::sized_cp1252(8).unwrap();
-        let decoded = round_trip(column, Scalar::from("café"));
-        assert_eq!(decoded.dtype().unwrap(), DataType::cp1252());
+        let text = Scalar::from("café");
+        let decoded = round_trip(column.clone(), text.clone());
+        assert_eq!(decoded.dtype().unwrap(), column);
+        assert_eq!(
+            decoded.string_parameters(),
+            Some(StringType::SizedCp1252String(8))
+        );
+        assert_eq!(decoded, text, "a value is one value in any column");
     }
 
     #[test]

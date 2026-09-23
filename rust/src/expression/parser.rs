@@ -1758,9 +1758,9 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             })?),
             *scale,
         ),
-        D::String(_) | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
+        crate::string_dtypes!() | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
         code if code.is_code() => Scalar::from(SmolStr::new(text)),
-        D::Bytes(_) => Scalar::from(
+        crate::bytes_dtypes!() => Scalar::from(
             bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
         ),
         other => {

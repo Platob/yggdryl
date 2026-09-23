@@ -266,7 +266,7 @@ Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(I
 | integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale |
-| text and binary | `String`, `Bytes`, `Geometry`, `Geography` |
+| text and binary | one variant per string leaf - `Utf8String`, `LargeUtf8String`, `Utf8StringView`, `LargeUtf8StringView`, `FixedUtf8String`, `SizedUtf8String` and the same six for `Ascii` and `Cp1252` - each holding the characters and, fixed or sized, its number; one per byte leaf - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`, `FixedBinary`, `SizedBinary` - likewise; `Geometry`, `Geography`. Every string leaf writes the one wire tag `string` and every byte leaf `bytes`: the plain leaf its characters or payload alone, any other its `layout`, its number under `fixed`, and the text or bytes |
 | registered codes | `Country`, `Currency`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
@@ -330,7 +330,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 | item | rule |
 | --- | --- |
 | rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Serie` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
-| accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, `id` and its [family](#families) with the range checks `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
+| accessors | `as_bytes`, `as_str`, `as_binary` / `as_string` (the byte or string payload of any leaf, Rust only), `string_parameters` / `bytes_parameters` (the leaf a value is written under), `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, `id` and its [family](#families) with the range checks `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number`; one row across Arrow through a one-row [`Serie`](serie.md#arrow-one-row); binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar
 

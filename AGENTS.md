@@ -333,8 +333,8 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - the typed field's payload over the flat `DataType::Interval(TimeUnit)` leaf, with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
 | `timezone.rs` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
 | `mime_type.rs` + `mime_type/`, `media_type.rs` + `media_type/` | the root `MimeType` and `MediaType` values, which stay the media routing vocabulary, each with a `datatype.rs` beneath it for the `mimetype` and `mediatype` datatypes a column declares; `mime_type/` also holds the extension registry and the line classifier |
-| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the one string datatype `DataType::String(StringType)`, the one string value `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The twelve registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, the seven `*_code.rs` leaves, `side.rs`, `state.rs` and `timeinforce.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all leaves of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `Str::from_bytes` and `encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
-| `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
+| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the eighteen `DataType` and `Scalar` leaf variants it views, the characters `Str` every string value holds, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The twelve registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, the seven `*_code.rs` leaves, `side.rs`, `state.rs` and `timeinforce.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all string leaves and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `StringType::scalar_from_bytes` and `StringType::encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
+| `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `StringType::read_text` and `StringType::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
@@ -1231,12 +1231,17 @@ every byte that becomes text anywhere else.
 hold one charset's six leaves beside that charset's codec; these bind a change
 to any of the eighteen leaves or to what a string declares.
 
-- **One datatype, one value, eighteen leaves.** `StringType` is an enum whose
-  leaves are the columns: six shapes - plain, large, view, large view,
+- **Eighteen leaves, each a variant of its own.** A string is one of
+  eighteen leaves: six shapes - plain, large, view, large view,
   `Fixed*(u32)`, `Sized*(u32)` - in each of the three charsets that have a
   datatype, UTF-8, US-ASCII and windows-1252 (`Utf8String` through
-  `SizedCp1252String`). `DataType::String(StringType)` is every string the
-  crate has, `DataType::string` its one constructor and `utf8()`,
+  `SizedCp1252String`). Each leaf is a `DataType` variant, a `Field` variant
+  and a `Scalar` variant of its own, one to one with its `DataTypeId`, the
+  number a numbered leaf states carried inline. `StringType` is the view over
+  the eighteen - what a `StringField` holds, what `string_parameters` answers
+  on a datatype and on a value, and the owner of every rule a leaf has - and
+  `DataType::from(leaf)` is the variant it names. `DataType::string` is the
+  one validating constructor and `utf8()`,
   `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(n)`,
   `sized_utf8(n)` and the same six for `ascii` and `cp1252` that constructor
   picking a leaf once. There is no layout beside a charset beside a bound, no
@@ -1280,17 +1285,25 @@ to any of the eighteen leaves or to what a string declares.
   `from_declaration(layout, charset, bound)` is the sequence a binding's three
   arguments run, so a binding decides nothing. The grammar tracks what was
   *read*, never the placeholder `1` a numbered leaf carries in `ALL`.
-- **`Str` is the string.** `Scalar::String(Str)` holds the characters in the
-  crate's compact string - inline to `INLINE_CAPACITY` bytes, static for free,
-  one `Arc<str>` beyond - beside the leaf they are stored under. A maximum is
-  the column's rule and never the value's: `storage()` is what a value in a
-  sized column carries, the plain leaf of its charset, so a cell read out of
-  `sized_utf8(32)` is a `utf8`. Equality, order and hash read the characters
-  alone, so a value is one value whichever column holds it, and `Borrow<str>`
-  is sound for that reason and no other. `Str` is the holder every
-  string-family API answers with - `ascii_value`, `StringEnum` members,
-  `str_from_value` - and `SmolStr` stays the crate's utility string for names,
-  keys and errors.
+- **`Str` is the characters; the variant is the leaf.** Every string
+  `Scalar` variant holds a `Str` - the crate's compact string, inline to
+  `INLINE_CAPACITY` bytes, static for free, one `Arc<str>` beyond - and the
+  numbered ones their number beside it: `Scalar::FixedAsciiString(Str, u32)`.
+  A value carries the leaf of the column it was read from, a maximum as well
+  as a width, so a cell read out of `sized_utf8(32)` is
+  `SizedUtf8String(text, 32)` and its `id`, `kind` and `dtype` say so.
+  Equality, order and hash read the characters alone, so a value is one value
+  whichever leaf holds it, and `Borrow<str>` is sound for that reason and no
+  other. `StringType::scalar` is the value door - the NUL trim of a fixed
+  slot, the US-ASCII repertoire, the width and the bound - and a canonical row
+  holds the column's exact leaf: a value of another leaf, or of the same leaf
+  under another number, is restated under the column's, and the validation
+  that precedes it judges the text against the column's leaf, never the one a
+  value names. `Str` is the holder every string-family API answers with -
+  `ascii_value`, `StringEnum` members, `str_from_value` - and `SmolStr` stays
+  the crate's utility string for names, keys and errors. `string_scalars!`
+  and `string_dtypes!` are the or-patterns over the eighteen variants that
+  every match in the crate spells them through.
 - **The bound counts stored bytes**: the exact width on a `Fixed*` leaf, the
   maximum on a `Sized*` one. Bytes, because that is what the buffer holds and
   what Arrow's offsets measure; a scalar count would make a bound a walk of
@@ -1301,9 +1314,10 @@ to any of the eighteen leaves or to what a string declares.
   it here would make the permissive read useless, and the refusal names the
   scalar where it is written instead.
 - **A value holds UTF-8 and remembers its charset.** Decoding happens at the
-  seam, as everywhere else; what a `Str` keeps is the leaf it is *written*
-  under, so it goes back out the way it came without the column being read
-  twice. `as_str` is therefore infallible on every string value there is.
+  seam, as everywhere else; what a value keeps is the leaf it is *written*
+  under - its variant - so it goes back out the way it came without the column
+  being read twice. `as_str` is therefore infallible on every string value
+  there is.
 - **Arrow gets the truth about the bytes.** UTF-8 and US-ASCII ride Arrow's
   string layouts - ASCII bytes are UTF-8 - and windows-1252 rides the matching
   *binary* layout, because the bytes are not UTF-8 and an Arrow reader told
@@ -1322,7 +1336,7 @@ to any of the eighteen leaves or to what a string declares.
   all still read the pairing they replaced - a shape name beside a `charset`
   key, a `max` beside any unbounded shape - as the leaf it names.
 - **A code's identity is its extension name, not its storage.** That split
-  governs `DataType::String`; a registered code is outside it. A code is
+  governs the string leaves; a registered code is outside it. A code is
   US-ASCII text held to one width, so it rides Arrow's `Utf8` whatever else
   is true, and what separates it from the text beside it is the *name*:
   `yggdryl.currency` over `Utf8` with an empty document is a currency, the
@@ -1332,16 +1346,19 @@ to any of the eighteen leaves or to what a string declares.
   storage, by the same rule a string document does. The width no column
   enforces is enforced where values enter, which is what makes it a value
   rule rather than a layout.
-- **`Str::from_bytes` is the one door bytes take, and the charset decides how
-  strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
+- **`StringType::scalar_from_bytes` is the one door bytes take, and the
+  charset decides how strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
   guarantees the first and the second rides Arrow's text storage - so bytes
   that are not what they claim are refused, and a US-ASCII value holds no NUL
   and no byte above `0x7F`. windows-1252 is a declaration that the column
   holds legacy bytes, and those are transcribed rather than refused:
   `Charset::transcribe` reads an unassigned byte as its ISO 8859-1 scalar.
-  The row door, the Arrow cell reader and the cast all call that one function,
-  so a batch and a row cannot read bytes differently; a text-storage cell is
-  `Str::from_storage`, checked when it was written and not again.
+  The row door, the Arrow cell reader and the cast all call that one function
+  (or `read_text`, its text beneath it), so a batch and a row cannot read
+  bytes differently; a text-storage cell is adopted as the column's leaf,
+  checked when it was written and not again, through one reader per leaf
+  chosen once per run. The value stream is input from outside, so every
+  string and byte value it decodes crosses the leaf's door.
 - **The value door judges US-ASCII and counts everything else.** A value
   restated under windows-1252 may hold scalars that charset cannot write -
   that is what recovering damage means - and the write seam (the Arrow array
@@ -1359,11 +1376,13 @@ to any of the eighteen leaves or to what a string declares.
 these bind a change to any of the six leaves or to what a byte column
 declares.
 
-- **One datatype, one value, six leaves.** `BytesType` is an enum whose
-  leaves are the columns - `Binary`, `LargeBinary`, `BinaryView`,
-  `LargeBinaryView`, `FixedBinary(u32)`, `SizedBinary(u32)` -
-  `DataType::Bytes(BytesType)` is every byte column the crate has,
-  `DataType::bytes` is its one constructor and `binary()`, `large_binary()`,
+- **Six leaves, each a variant of its own.** A byte column is one of six
+  leaves - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`,
+  `FixedBinary(u32)`, `SizedBinary(u32)` - and each is a `DataType`, `Field`
+  and `Scalar` variant of its own. `BytesType` is the view over the six, what
+  a `BytesField` holds and `bytes_parameters` answers, and
+  `DataType::from(leaf)` the variant it names. `DataType::bytes` is the one
+  validating constructor and `binary()`, `large_binary()`,
   `binary_view()`, `large_binary_view()`, `fixed_binary(n)`, `sized_binary(n)`
   are that constructor picking a leaf once. There is no `BytesLayout` and no
   parameter struct beside a bound. `bytes_parameters` reads back for every
@@ -1387,14 +1406,16 @@ declares.
   spellings and render as the canonical ones; `BytesType::from_spelling`,
   `with_bound` and `with_declared_bound` are the one table and the one rule
   the grammar and both bindings read.
-- **`Bytes` is the byte string.** `Scalar::Bytes(Bytes)` holds the payload
-  inline to `INLINE_BYTES` bytes with no heap behind it, static for free, one
-  `Arc<[u8]>` beyond, beside the leaf it is stored under. A maximum is the
-  column's rule and never the value's: `storage()` is the plain leaf a value
-  in a sized column carries. Equality, order and hash read the payload alone,
-  and `Borrow<[u8]>` is sound for that reason and no other. `Bytes::from_storage`
-  adopts a cell of a column's own storage; `bytes_from_value` is what a value
-  spells as bytes.
+- **`Bytes` is the payload; the variant is the leaf.** Every byte `Scalar`
+  variant holds a `Bytes` - inline to `INLINE_BYTES` bytes with no heap behind
+  it, static for free, one `Arc<[u8]>` beyond - and the numbered ones their
+  number beside it. A value carries the leaf of the column it was read from, a
+  maximum included. Equality, order and hash read the payload alone, and
+  `Borrow<[u8]>` is sound for that reason and no other. `BytesType::scalar`
+  is the value door; a cell of a column's own storage is adopted as the
+  column's leaf; `bytes_from_value` is what a value spells as bytes.
+  `as_bytes` reads the payload of a byte or a geospatial value, `as_binary`
+  of a byte value alone.
 - **Arrow already says the layout.** The storage is the leaf, and only what
   no Arrow type can state - a maximum, and the second view width - rides the
   `yggdryl.bytes` document; a fixed width is the storage itself. A document

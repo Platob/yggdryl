@@ -117,7 +117,7 @@ impl PyStringParameters {
 
     /// A deterministic cross-language hash of the canonical spelling.
     fn stable_hash(&self) -> u64 {
-        CoreDataType::String(self.inner).stable_hash()
+        CoreDataType::from(self.inner).stable_hash()
     }
 
     fn __str__(&self) -> String {
@@ -233,7 +233,7 @@ impl PyBytesParameters {
 
     /// A deterministic cross-language hash of the canonical spelling.
     fn stable_hash(&self) -> u64 {
-        CoreDataType::Bytes(self.inner).stable_hash()
+        CoreDataType::from(self.inner).stable_hash()
     }
 
     fn __str__(&self) -> String {

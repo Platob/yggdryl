@@ -617,19 +617,22 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
         // A string column stores the spelling every tier prints, and bytes
         // arriving at one are read through the charset the column declares:
         // the payload is that charset by definition, so decoding it here is
-        // what the declaration is for. `Str::from_bytes` is the one door
-        // that decides how strict that read is.
-        D::String(parameters) if !matches!(value, Scalar::String(_)) => match value {
-            Scalar::Bytes(bytes) => {
-                Some(Str::from_bytes(bytes.as_bytes(), *parameters).map(Scalar::String))
-            }
-            _ => Some(str_from_value(value)?.map(Scalar::from)),
+        // what the declaration is for. `StringType::scalar_from_bytes` is
+        // the one door that decides how strict that read is.
+        crate::string_dtypes!() if value.as_string().is_none() => match value.as_binary() {
+            Some(bytes) => Some(
+                dtype
+                    .string_parameters()
+                    .expect("a string leaf")
+                    .scalar_from_bytes(bytes.as_bytes()),
+            ),
+            None => Some(str_from_value(value)?.map(Scalar::from)),
         },
         // A byte column stores one payload, however the value spells it. The
-        // declared layout is the offset width, which the restatement below
+        // declared leaf is the offset width, which the restatement below
         // retags without copying the payload.
-        D::Bytes(_) if !matches!(value, Scalar::Bytes(_)) => {
-            Some(Ok(Scalar::Bytes(bytes_from_value(value)?)))
+        crate::bytes_dtypes!() if value.as_binary().is_none() => {
+            Some(Ok(Scalar::from(bytes_from_value(value)?)))
         }
         // A record is a name-to-value map, so a map column reads it as its
         // entries; the key field then reads each name as its own datatype,
@@ -649,15 +652,12 @@ fn read_as(dtype: &DataType, value: &Scalar) -> Option<Result<Scalar>> {
 
 /// The text a value offers a datatype that stores something else.
 ///
-/// Only [`Scalar::String`] is a spelling waiting to be read. A code and a
-/// generic enum member also answer [`Scalar::as_str`], but their identity is
-/// the registry and the member rather than the characters, and a column
+/// Only a string, of any leaf, is a spelling waiting to be read. A code and
+/// a generic enum member also answer [`Scalar::as_str`], but their identity
+/// is the registry and the member rather than the characters, and a column
 /// refuses them into a number for the same reason.
 fn text_reading(value: &Scalar) -> Option<&str> {
-    match value {
-        Scalar::String(text) => Some(text.as_str()),
-        _ => None,
-    }
+    value.as_string().map(Str::as_str)
 }
 
 /// Read one text spelling into the family a datatype declares.
@@ -849,38 +849,37 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         D::Float16 => canonical_float(value, FloatWidth::Float16),
         D::Float32 => canonical_float(value, FloatWidth::Float32),
         D::Float64 => canonical_float(value, FloatWidth::Float64),
-        // A byte layout is an Arrow offset width over the same payload, so a
-        // value already stored in the declared one is its own canonical form
-        // once it fits the bound and nothing is built; a rewrite adopts the
-        // source's storage under the column's parameters rather than copying
-        // the payload into a second buffer. The reading above rewrote every
-        // other kind into bytes, so only bytes reach here.
-        D::Bytes(parameters) => {
-            let Scalar::Bytes(source) = value else {
+        // A byte leaf is an Arrow offset width over the same payload, so a
+        // value already of the declared leaf - its number included - is its
+        // own canonical form once it fits, and nothing is built; a rewrite
+        // adopts the source's storage under the column's leaf rather than
+        // copying the payload into a second buffer. The reading above
+        // rewrote every other kind into bytes, so only bytes reach here.
+        crate::bytes_dtypes!() => {
+            let (Some(leaf), Some(source)) = (dtype.bytes_parameters(), value.as_binary()) else {
                 return canonicalization_failure(dtype);
             };
-            let restated = source.clone().try_with_parameters(*parameters)?;
-            match source.parameters() == restated.parameters() {
+            let restated = leaf.admit(source.clone())?;
+            match value.bytes_parameters() == Some(leaf) {
                 true => Ok((value.clone(), false)),
-                false => Ok((Scalar::Bytes(restated), true)),
+                false => Ok((leaf.adopt(restated), true)),
             }
         }
-        // A string is one layout, one charset and one bound, and a value
-        // already stored under that layout and charset is its own canonical
-        // form once it fits the bound. Anything else adopts the source's
-        // storage handle under the column's parameters rather than copying
-        // its characters into a second buffer: the reading above rewrote
-        // every other kind into a string, so only a string reaches here.
-        D::String(parameters) => {
-            let Scalar::String(source) = value else {
+        // A string is one layout, one charset and one number, and a value
+        // already of that leaf is its own canonical form once it fits.
+        // Anything else adopts the source's storage handle under the
+        // column's leaf rather than copying its characters into a second
+        // buffer: the reading above rewrote every other kind into a string,
+        // so only a string reaches here.
+        crate::string_dtypes!() => {
+            let (Some(leaf), Some(source)) = (dtype.string_parameters(), value.as_string()) else {
                 return canonicalization_failure(dtype);
             };
-            if string_matches(*parameters, source) {
-                check_string_bound(*parameters, source.as_str())?;
+            if string_matches(leaf, value) {
+                check_string_bound(leaf, source.as_str())?;
                 return Ok((value.clone(), false));
             }
-            let restated = source.clone().try_with_parameters(*parameters)?;
-            Ok((Scalar::String(restated), true))
+            Ok((leaf.adopt(leaf.admit(source.clone())?), true))
         }
         // The canonical code spelling is the trimmed string; bytes and a
         // string carrying trailing NULs are rewritten here, at the width the
@@ -946,7 +945,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         }
         D::Version => match value {
             Scalar::Version(_) => Ok((value.clone(), false)),
-            Scalar::String(text) => text
+            crate::string_scalars!(text) => text
                 .as_str()
                 .parse::<crate::Version>()
                 .map(|version| (Scalar::Version(version), true))
@@ -960,7 +959,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             Scalar::Url(_) => Ok((value.clone(), false)),
             // Text is canonicalized on the way in, so a column of URLs holds
             // one spelling per location however it was written.
-            Scalar::String(text) => crate::Url::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Url::from_str(text.as_str())
                 .map(|url| (Scalar::Url(std::sync::Arc::new(url)), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -970,7 +969,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         },
         D::Urn => match value {
             Scalar::Urn(_) => Ok((value.clone(), false)),
-            Scalar::String(text) => crate::Urn::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Urn::from_str(text.as_str())
                 .map(|urn| (Scalar::Urn(std::sync::Arc::new(urn)), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -983,7 +982,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         // crosses the same `from_str` every other spelling of them crosses.
         D::Timezone => match value {
             Scalar::Timezone(_) => Ok((value.clone(), false)),
-            Scalar::String(text) => crate::Timezone::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Timezone::from_str(text.as_str())
                 .map(|zone| (Scalar::Timezone(zone), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -993,7 +992,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         },
         D::MimeType => match value {
             Scalar::MimeType(_) => Ok((value.clone(), false)),
-            Scalar::String(text) => crate::MimeType::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::MimeType::from_str(text.as_str())
                 .map(|mime| (Scalar::MimeType(mime), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1003,7 +1002,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         },
         D::MediaType => match value {
             Scalar::MediaType(_) => Ok((value.clone(), false)),
-            Scalar::String(text) => crate::MediaType::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::MediaType::from_str(text.as_str())
                 .map(|media| (Scalar::from(media), true))
                 .map_err(|error| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1483,10 +1482,15 @@ fn canonicalize_slice(
 
 /// Whether a string value is already stored the way its column declares.
 ///
-/// A value never carries a maximum, so the leaf a value in the column is
-/// stored as is the whole comparison; the maximum is checked beside it.
-fn string_matches(parameters: StringType, value: &Str) -> bool {
-    value.parameters() == parameters.storage()
+/// The value's leaf, its number included, is the column's, and a fixed
+/// leaf's value holds no trailing NUL - that is the slot's padding, taken off
+/// where a value is admitted. The maximum is checked beside it.
+fn string_matches(leaf: StringType, value: &Scalar) -> bool {
+    value.string_parameters() == Some(leaf)
+        && !(leaf.is_fixed()
+            && value
+                .as_string()
+                .is_some_and(|text| text.as_str().ends_with('\0')))
 }
 
 /// Check one string against the maximum its column declares.
@@ -1498,8 +1502,8 @@ fn string_matches(parameters: StringType, value: &Str) -> bool {
 /// is what recovering damage means - and refusing it at the value door would
 /// make the permissive read useless.
 ///
-/// A fixed width is checked where the value is built, because the padding is
-/// built there too, and so is the US-ASCII repertoire.
+/// A fixed width and the US-ASCII repertoire are checked where the value is
+/// validated against its column, before it reaches here.
 fn check_string_bound(parameters: StringType, text: &str) -> Result<()> {
     let Some(max) = parameters.max() else {
         return Ok(());
@@ -1685,21 +1689,21 @@ fn validate_dtype_value(
             validate_time(value, leaf.unit())
         }
         D::Interval(leaf) => validate_interval_value(value, *leaf),
-        // Bytes are checked the way they are built: the bound alone.
-        D::Bytes(parameters) => match value {
-            Scalar::Bytes(bytes) => bytes
-                .clone()
-                .try_with_parameters(*parameters)
+        // Bytes are checked the way they are built, against the column's
+        // leaf and never the one the value names: the number alone.
+        crate::bytes_dtypes!() => match (dtype.bytes_parameters(), value.as_binary()) {
+            (Some(leaf), Some(bytes)) => leaf
+                .admit(bytes.clone())
                 .map(|_| ())
                 .map_err(|error| ValidationFailure::new(reason_of(&error))),
             _ => Err(expected(dtype.name(), value)),
         },
-        // A string is checked the way it is built: the bound, and the
-        // US-ASCII repertoire where the column declares it.
-        D::String(parameters) => match value {
-            Scalar::String(text) => text
-                .clone()
-                .try_with_parameters(*parameters)
+        // A string is checked the way it is built, against the column's leaf
+        // and never the one the value names: the number, and the US-ASCII
+        // repertoire where the column declares it.
+        crate::string_dtypes!() => match (dtype.string_parameters(), value.as_string()) {
+            (Some(leaf), Some(text)) => leaf
+                .admit(text.clone())
                 .map(|_| ())
                 .map_err(|error| ValidationFailure::new(reason_of(&error))),
             _ => Err(expected(dtype.name(), value)),
@@ -1735,7 +1739,7 @@ fn validate_dtype_value(
         },
         D::Version => match value {
             Scalar::Version(_) => Ok(()),
-            Scalar::String(text) => text
+            crate::string_scalars!(text) => text
                 .as_str()
                 .parse::<crate::Version>()
                 .map(|_| ())
@@ -1744,35 +1748,35 @@ fn validate_dtype_value(
         },
         D::Url => match value {
             Scalar::Url(_) => Ok(()),
-            Scalar::String(text) => crate::Url::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Url::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("url", value)),
             _ => Err(expected("url", value)),
         },
         D::Urn => match value {
             Scalar::Urn(_) => Ok(()),
-            Scalar::String(text) => crate::Urn::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Urn::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("urn", value)),
             _ => Err(expected("urn", value)),
         },
         D::Timezone => match value {
             Scalar::Timezone(_) => Ok(()),
-            Scalar::String(text) => crate::Timezone::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::Timezone::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("timezone", value)),
             _ => Err(expected("timezone", value)),
         },
         D::MimeType => match value {
             Scalar::MimeType(_) => Ok(()),
-            Scalar::String(text) => crate::MimeType::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::MimeType::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("mimetype", value)),
             _ => Err(expected("mimetype", value)),
         },
         D::MediaType => match value {
             Scalar::MediaType(_) => Ok(()),
-            Scalar::String(text) => crate::MediaType::from_str(text.as_str())
+            crate::string_scalars!(text) => crate::MediaType::from_str(text.as_str())
                 .map(|_| ())
                 .map_err(|_| expected("mediatype", value)),
             _ => Err(expected("mediatype", value)),

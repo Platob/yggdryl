@@ -16,7 +16,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, StringArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::StringType;
-use yggdryl::{ArrowCastOptions, Charset, DataType, Field, Scalar, Serie, Str};
+use yggdryl::{ArrowCastOptions, Charset, DataType, Field, Scalar, Serie};
 
 use super::doors;
 
@@ -160,7 +160,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             group.bench_function(
                 BenchmarkId::new(format!("transcribe_cell_{name}"), width),
                 |bencher| {
-                    bencher.iter(|| Str::from_bytes(black_box(&ascii), black_box(parameters)));
+                    bencher.iter(|| black_box(parameters).scalar_from_bytes(black_box(&ascii)));
                 },
             );
             // US-ASCII has no byte above 0x7F to pay for.
@@ -171,7 +171,7 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
             group.bench_function(
                 BenchmarkId::new(format!("transcribe_cell_high_{name}"), width),
                 |bencher| {
-                    bencher.iter(|| Str::from_bytes(black_box(&high), black_box(parameters)));
+                    bencher.iter(|| black_box(parameters).scalar_from_bytes(black_box(&high)));
                 },
             );
         }

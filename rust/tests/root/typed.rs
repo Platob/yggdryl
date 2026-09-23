@@ -55,16 +55,25 @@ fn replacing_the_datatype_moves_the_field_to_the_matching_leaf() {
     field
         .set_dtype(DataType::utf8())
         .expect("utf8 is a valid datatype");
-    assert!(matches!(field, Field::String(_)));
+    assert!(matches!(field, Field::Utf8String(_)));
     assert_eq!(field.dtype(), &DataType::utf8());
     assert_eq!(field.name(), "value", "the name survives the move");
 
     // The leaf follows the datatype, so the two can never disagree.
-    let leaf = StringField::from_field(&field).expect("the field is the String leaf now");
+    let leaf = StringField::from_field(&field).expect("the field is a string leaf now");
     assert_eq!(
         leaf.typed_dtype_ref(),
         &StringType::from_dtype(&DataType::utf8()).expect("utf8 is a string datatype")
     );
+
+    // Each string leaf is a variant of its own, and the one payload type
+    // reads every one of them.
+    field
+        .set_dtype(DataType::sized_utf8(8).unwrap())
+        .expect("sized_utf8(8) is a valid datatype");
+    assert!(matches!(field, Field::SizedUtf8String(_)));
+    let leaf = StringField::from_field(&field).expect("the field is a string leaf");
+    assert_eq!(leaf.typed_dtype_ref(), &StringType::SizedUtf8String(8));
 }
 
 #[test]

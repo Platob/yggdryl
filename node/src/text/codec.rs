@@ -2141,7 +2141,12 @@ pub(crate) fn value_to_transport(
         Scalar::Float16(value) => float_transport(value.as_f64()),
         Scalar::Float32(value) => float_transport(value.as_f64()),
         Scalar::Float64(value) => float_transport(value.as_f64()),
-        Scalar::String(value) => Ok(JsonValue::String(value.as_str().to_owned())),
+        string if string.string_parameters().is_some() => Ok(JsonValue::String(
+            string
+                .as_str()
+                .expect("a string borrowed its text")
+                .to_owned(),
+        )),
         code if code.is_code() => Ok(JsonValue::String(
             code.as_str().expect("a code borrowed its text").to_owned(),
         )),
@@ -2164,9 +2169,14 @@ pub(crate) fn value_to_transport(
         Scalar::MediaType(value) => Ok(JsonValue::String(value.to_string())),
         // A geometry has no JavaScript binding surface yet, so its WKB crosses
         // as its plain shape: the bytes transport that becomes a Buffer.
-        Scalar::Bytes(value) => Ok(marker(
+        bytes if bytes.bytes_parameters().is_some() => Ok(marker(
             "bytes",
-            [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
+            [(
+                "value",
+                JsonValue::String(
+                    BASE64.encode(bytes.as_bytes().expect("a byte value borrowed its payload")),
+                ),
+            )],
         )),
         Scalar::Geometry(value) => Ok(marker(
             "bytes",

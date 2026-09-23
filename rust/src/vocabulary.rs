@@ -100,7 +100,7 @@ use crate::parser::normalized;
 /// Every width in the listing is a literal above zero, so the leaf is built
 /// without the validation `DataType::fixed_ascii` runs.
 const fn fixed_ascii(width: u32) -> DataType {
-    DataType::String(crate::StringType::FixedAsciiString(width))
+    DataType::FixedAsciiString(width)
 }
 
 impl DataType {

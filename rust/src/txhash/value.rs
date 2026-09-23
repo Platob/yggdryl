@@ -8,7 +8,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::{Bytes, BytesType, Uuid};
+use crate::{Bytes, Uuid};
 use crate::{DataType, Digest, DigestAlgorithm, Error, Result, Scalar, TimeUnit, Timezone};
 
 use super::time::{DEFAULT_UNIT, restate_unix, validate_unit};
@@ -41,7 +41,7 @@ pub const fn width(algorithm: DigestAlgorithm) -> usize {
 /// fixed-unit, fixed-algorithm and sign-range bounds.
 pub const fn dtype(algorithm: DigestAlgorithm) -> DataType {
     match NonZeroU32::new(fixed_width(algorithm)) {
-        Some(width) => DataType::Bytes(BytesType::FixedBinary(width.get())),
+        Some(width) => DataType::FixedBinary(width.get()),
         // Every width below is a literal above zero.
         None => DataType::binary(),
     }
@@ -444,10 +444,10 @@ impl TxHash {
     /// array it came from spell the same bytes: the canonical layout at the
     /// algorithm's exact width, which every width here fits inline.
     pub fn into_scalar(self) -> Scalar {
-        let DataType::Bytes(parameters) = self.dtype() else {
+        let Some(parameters) = self.dtype().bytes_parameters() else {
             unreachable!("a coupled hash is stored as fixed-width bytes")
         };
-        Scalar::Bytes(Bytes::from_storage(&self.into_bytes(), parameters))
+        parameters.adopt(Bytes::new(self.into_bytes()))
     }
 
     /// Read a value back out of the two representations a value has.
@@ -462,7 +462,7 @@ impl TxHash {
     /// Returns an error when the value is neither, when bytes have the wrong
     /// width, or when a spelling names another unit or algorithm.
     pub fn from_scalar(unit: TimeUnit, algorithm: DigestAlgorithm, value: &Scalar) -> Result<Self> {
-        if let Scalar::Bytes(bytes) = value {
+        if let Some(bytes) = value.as_binary() {
             return Self::from_bytes(unit, algorithm, bytes.as_bytes());
         }
         if let Some(text) = value.as_str() {

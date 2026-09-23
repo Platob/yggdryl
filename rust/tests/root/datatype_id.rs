@@ -105,9 +105,22 @@ fn the_strings_and_the_codes_are_text() {
     ] {
         assert_eq!(id.kind(), DataTypeKind::Text);
         assert!(id.is_string());
-        // Every string leaf is a parameter of `DataType::String`, so no
-        // identifier of the family is a complete datatype on its own.
-        assert!(id.is_parameterized());
+        // Every string leaf is a datatype variant of its own, so a leaf
+        // with no number is a complete datatype on its identifier, and only
+        // the fixed and sized ones carry a parameter.
+        assert_eq!(
+            id.is_parameterized(),
+            matches!(
+                id,
+                DataTypeId::FixedUtf8String
+                    | DataTypeId::SizedUtf8String
+                    | DataTypeId::FixedAsciiString
+                    | DataTypeId::SizedAsciiString
+                    | DataTypeId::FixedCp1252String
+                    | DataTypeId::SizedCp1252String
+            ),
+            "{id}"
+        );
         // A numbered leaf's width is that parameter, so the identifier
         // names no fixed width.
         assert_eq!(id.fixed_byte_width(), None);

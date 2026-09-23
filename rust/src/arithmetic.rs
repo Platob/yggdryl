@@ -349,8 +349,11 @@ fn target_from_dtype(dtype: &DataType) -> Option<ArithmeticTarget> {
 /// on. The two sides must be the same repertoire: text joins text, bytes join
 /// bytes, a sequence extends a sequence.
 ///
-/// A code joins as the text it is, and the result is a plain string rather
-/// than a code - `FR` and `X` concatenated are not a country. Geospatial
+/// A string of any leaf and a code join as the text they are, and the result
+/// is a plain `utf8` string whatever leaf either side held - `FR` and `X`
+/// concatenated are not a country, and two fixed-width texts end to end need
+/// not fit the width. Two byte values of any leaf likewise join as plain
+/// `binary`. Geospatial
 /// values are deliberately absent even though they read as bytes: two WKB
 /// payloads laid end to end are not a geometry.
 fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<Scalar> {
@@ -358,14 +361,17 @@ fn concatenated(left: &Scalar, operation: Arithmetic, right: &Scalar) -> Option<
         return None;
     }
     match (left, right) {
-        (Scalar::String(_) | code_scalars!(), Scalar::String(_) | code_scalars!()) => {
+        (
+            crate::string_scalars!(_) | code_scalars!(),
+            crate::string_scalars!(_) | code_scalars!(),
+        ) => {
             let (left, right) = (left.as_str()?, right.as_str()?);
             let mut joined = String::with_capacity(left.len() + right.len());
             joined.push_str(left);
             joined.push_str(right);
             Some(Scalar::from(SmolStr::new(joined)))
         }
-        (Scalar::Bytes(left), Scalar::Bytes(right)) => {
+        (crate::bytes_scalars!(left), crate::bytes_scalars!(right)) => {
             let (left, right) = (left.as_bytes(), right.as_bytes());
             let mut joined = Vec::with_capacity(left.len() + right.len());
             joined.extend_from_slice(left);
