@@ -2346,7 +2346,6 @@ where
             operation.set_identifiers(identifiers);
             operation.set_execunix(None);
             operation.set_recdunix(None);
-            operation.set_refrecdunix(None);
             operation.set_snapunix(None);
             operation.finalize();
             expired.entry(expiration.book).or_default().push(operation);
@@ -2704,10 +2703,7 @@ fn grid_at_or_after(unix: i64, step: i64) -> Option<i64> {
 }
 
 fn reference_clock<E: Event>(event: &E) -> (Option<i64>, i64) {
-    (
-        event.get_refrecdunix().or_else(|| event.get_recdunix()),
-        event.get_currunix(),
-    )
+    (event.get_recdunix(), event.get_currunix())
 }
 
 fn earliest(left: Option<i64>, right: Option<i64>) -> Option<i64> {

@@ -21,15 +21,15 @@ mod text {
         TextOptions::new().try_with_rowheader(rowheader).unwrap()
     }
 
-    /// The eighteen event columns every line batch opens with, in front of the
-    /// line's own: the line is an event of the graph, and a message parsed out
-    /// of it contains the same eighteen under the same names and datatypes.
-    const EVENT_COLUMNS: [&str; 18] = [
+    /// The seventeen event columns every line batch opens with, in front of
+    /// the line's own: the line is an event of the graph, and a message parsed
+    /// out of it contains the same seventeen under the same names and
+    /// datatypes.
+    const EVENT_COLUMNS: [&str; 17] = [
         "currunix",
         "creaunix",
         "execunix",
         "recdunix",
-        "refrecdunix",
         "exprtime",
         "prevunix",
         "snapunix",
@@ -515,7 +515,7 @@ mod text {
                     field.name()
                 );
             }
-            // And the eighteen a line opens with carry the spelling their own
+            // And the seventeen a line opens with carry the spelling their own
             // column states, so a line's row and a message's row name one fact
             // one way.
             for name in EVENT_COLUMNS {

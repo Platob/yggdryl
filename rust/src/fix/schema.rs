@@ -166,10 +166,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
         EXPRTIME_TAG_NAME as EXPRTIME, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
         METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
         MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
-        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PREVUNIX_TAG_NAME as PREVUNIX,
-        PREVUUID_TAG_NAME as PREVUUID, RECDUNIX_TAG_NAME as RECDUNIX,
-        REFRECDUNIX_TAG_NAME as REFRECDUNIX, SEQNUM_TAG_NAME as SEQNUM,
-        SNAPUNIX_TAG_NAME as SNAPUNIX, SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
+        MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
+        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
+        RECDUNIX_TAG_NAME as RECDUNIX, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
+        SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -184,28 +184,13 @@ pub fn fix_schema_tags() -> Vec<i32> {
         }
     };
     // When it happened: the settled instant, the execution and recording where
-    // stated, the recording clock of the merge reference, then the instants
-    // that instant is read against - created, followed, snapped, expiring -
-    // and the clocks the protocol states.
+    // known, then the instants that instant is read against - created,
+    // followed, snapped, expiring - and the clocks the protocol states.
     band(
         &mut tags,
         &[
-            UNIX.0,
-            EXECUNIX.0,
-            RECDUNIX.0,
-            REFRECDUNIX.0,
-            CREAUNIX.0,
-            PREVUNIX.0,
-            SNAPUNIX.0,
-            EXPRTIME.0,
-            52,
-            122,
-            60,
-            64,
-            75,
-            126,
-            62,
-            432,
+            UNIX.0, EXECUNIX.0, RECDUNIX.0, CREAUNIX.0, PREVUNIX.0, SNAPUNIX.0, EXPRTIME.0, 52,
+            122, 60, 64, 75, 126, 62, 432,
         ],
     );
     // Which event: its own identity, the chain it stands in, what it
@@ -226,7 +211,8 @@ pub fn fix_schema_tags() -> Vec<i32> {
         ],
     );
     // Which message, over which session: what the frame says it is, who sent
-    // it to whom, and which bridge handled it. Not where this capture read
+    // it to whom, which bridge handled it and the session event it delivered
+    // the message as. Not where this capture read
     // it: that is the reader's statement about the line and not the
     // message's about itself, so it travels as one of the capture's own
     // columns, beside the body and the row number, and no column of this row
@@ -245,6 +231,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
             MSGPLUGINID.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
+            MSGSESSEVENTID.0,
         ],
     );
     // Which instrument: what the venue calls it and the ticker that settled

@@ -31,6 +31,8 @@ from yggdryl import (
     MimeType,
     Scalar,
     TextLine,
+    TextOptions,
+    Timezone,
     Url,
     refresh_logging,
 )
@@ -1630,11 +1632,11 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "figicode",
         "execunix",
         "recdunix",
-        "refrecdunix",
+        "msgsesseventid",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65064
+    assert tags[0] == UNIX_TAG and tags[-1] == 65065
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -1660,7 +1662,6 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "exprtime",
         "execunix",
         "recdunix",
-        "refrecdunix",
     ):
         assert fields[name].dtype == DataType('datetime64(ns,"UTC")'), name
     assert fields["state"].dtype == DataType("state")
@@ -1679,6 +1680,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         assert fields[name].dtype == DataType("uint64"), name
     assert fields["sourceurl"].dtype == DataType("url")
     assert fields["crosscode"].dtype == DataType("utf8")
+    # The session event a bridge delivered the message as is the text its
+    # four values join to.
+    assert fields["msgsesseventid"].dtype == DataType("utf8")
     assert fields["nofixentries"].dtype == DataType("int32")
     # How a layout is cut is the target's: no partition column.
     assert all(not field.is_partition for field in fields.values())
@@ -2196,6 +2200,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert capture.msgpluginid is None
     assert capture.msgctxid is None
     assert capture.msgsessionid is None
+    assert capture.msgsesseventid is None
 
     event = message.event()
     assert isinstance(event, MarketEventData)
@@ -2206,7 +2211,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert event.creaunix == event.currunix
     assert event.execunix is None
     assert event.recdunix is None
-    assert event.refrecdunix is None
+    assert not hasattr(event, "refrecdunix")
     assert event.marketoperationid == 10
     assert event.price.as_py() == 10.5
     assert event.quantity.as_py() == 100
@@ -2341,55 +2346,79 @@ def test_a_message_settles_its_identity_from_what_it_states(seed: FixRegistry) -
     assert written.crossuuid != order.crossuuid
 
 
-def test_bridge_capture_context_is_an_identifier_but_never_the_crosscode_or_content(
+def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content(
     seed: FixRegistry,
 ) -> None:
-    """FIX names the chain; a complete bridge bracket names its capture."""
+    """FIX names the chain; a complete bridge bracket names its delivery."""
     codec = _fixed(seed)
     message = codec.parse_ullink_line(
         b"MSGTYPE=8|#ORDERID=ORDER-1|#CLORDID=CLIENT-1|#MSGSESSIONID=SESSION-1|"
         b"#MSGCTXID=CONTEXT-1|#MSGSEQNUM=7|#SYMBOL=n/A|#VENUEOWNTHING=n/A|"
     )
 
+    # The message type, session, context and sequence joined as they are
+    # stated, on the capture: delivery provenance, never a name the message
+    # goes by.
     assert message.crosscode == "ORDER-1"
-    assert message.identifiers == {
-        "clordid": "CLIENT-1",
-        "msgsesseventid": "1:8|9:SESSION-1|9:CONTEXT-1|7",
-        "orderid": "ORDER-1",
-    }
+    assert message.capture().msgsesseventid == "8|SESSION-1|CONTEXT-1|7"
+    assert message.get_by_tag(65065).as_py() == "8|SESSION-1|CONTEXT-1|7"
+    assert message.identifiers == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
     assert message.get_by_tag(55) is None
     assert message.get_by_name("venueownthing") is None
     content_hash = message.currhashcode
     content_uuid = message.curruuid
 
+    # Every write settles it again, and none of it is content.
     message.set("msgsessionid", "SESSION-2")
     assert message.capture().msgsessionid == "SESSION-2"
-    assert message.identifiers == {
-        "clordid": "CLIENT-1",
-        "msgsesseventid": "1:8|9:SESSION-2|9:CONTEXT-1|7",
-        "orderid": "ORDER-1",
-    }
+    assert message.capture().msgsesseventid == "8|SESSION-2|CONTEXT-1|7"
+    assert message.identifiers == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
     assert message.currhashcode == content_hash
     assert message.curruuid == content_uuid
 
+    # A missing part unsays it rather than leaving a stale key behind.
     message.set("msgctxid", None)
     assert message.capture().msgctxid is None
-    assert message.identifiers == {
-        "clordid": "CLIENT-1",
-        "orderid": "ORDER-1",
-    }
+    assert message.capture().msgsesseventid is None
     assert message.currhashcode == content_hash
 
     message.set("msgctxid", "CONTEXT-2")
-    assert message.identifiers["msgsesseventid"] == "1:8|9:SESSION-2|9:CONTEXT-2|7"
+    assert message.capture().msgsesseventid == "8|SESSION-2|CONTEXT-2|7"
     assert message.currhashcode == content_hash
 
+    # It is a column of the fixed row, and a row read back states it again.
     schema = fix_schema(seed)
     row = message.into_row(schema)
+    assert row.as_py()[schema.index_of("msgsesseventid")] == "8|SESSION-2|CONTEXT-2|7"
     rebuilt = FixMsg.from_row(schema, row, seed)
     assert rebuilt.crosscode == message.crosscode
     assert rebuilt.identifiers == message.identifiers
+    assert rebuilt.capture() == message.capture()
     assert rebuilt.into_row(schema) == row
+
+
+def test_a_lines_session_event_joins_its_four_values_as_stated(seed: FixRegistry) -> None:
+    """The bridge's session and context captures, the type and the sequence."""
+    codec = _fixed(seed, capture_names=["msgsessionid", "msgctxid"])
+    line = TextLine(0, b"8=FIX.4.4|35=8|34=1094|10=0|", ["e7256476", "9effef3e6a"])
+    (message,) = list(codec.parse_text_line(line))
+
+    capture = message.capture()
+    assert capture.msgsessionid == "e7256476"
+    assert capture.msgctxid == "9effef3e6a"
+    # Joined by `|` with nothing in front of a part, and held by the capture
+    # rather than among the names the message goes by.
+    assert capture.msgsesseventid == "8|e7256476|9effef3e6a|1094"
+    assert message.by_tag(65065).as_py() == "8|e7256476|9effef3e6a|1094"
+    assert "msgsesseventid" not in message.identifiers
+
+    # A part missing is no session event at all.
+    for body, captures in (
+        (b"8=FIX.4.4|35=8|10=0|", ["e7256476", "9effef3e6a"]),
+        (b"8=FIX.4.4|35=8|34=1094|10=0|", ["e7256476", None]),
+    ):
+        (partial,) = list(codec.parse_text_line(TextLine(0, body, captures)))
+        assert partial.capture().msgsesseventid is None, body
 
 
 def test_a_write_reaches_the_holder_or_the_row_by_the_key_it_resolves(seed: FixRegistry) -> None:
@@ -2710,6 +2739,100 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     for refused in (DataType('datetime64(us,"UTC")').scalar(0), DataType("datetime64(ns)").scalar(0), "1970-01-01T00:00:00Z"):
         with pytest.raises(ValueError, match="default_sending_time"):
             FixCodec(registry, default_sending_time=refused)
+
+
+# A row header dating each line by an `mtime` capture, the line's own clock.
+DATED = r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) "
+RECORDED = "2024-03-05 10:15:30.250"
+RECORDED_NS = 1_709_633_730_250_000_000
+
+
+def _dated_line(body: bytes) -> TextLine:
+    """``body`` as a line the header dated at ``RECORDED``, in UTC."""
+    options = TextOptions()
+    options.rowheader = DATED
+    options.timezone = Timezone.UTC
+    return TextLine(0, body, [RECORDED], options)
+
+
+def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegistry) -> None:
+    """The line was recorded as its message went by: nearer the send than any pin."""
+    line = _dated_line(b"8=FIX.4.4|35=8|10=0|")
+    assert line.currunix == RECORDED_NS
+    schema = fix_schema(seed)
+
+    # Unpinned and pinned alike, the line's clock is the sending clock an
+    # undated frame on it is read against - ahead of the default and of now -
+    # and so the instant, the creation and the recording.
+    for codec in (FixCodec(seed), _fixed(seed)):
+        (message,) = list(codec.parse_text_line(line))
+        assert message.header().sendingtime == RECORDED_NS
+        assert message.currunix == RECORDED_NS
+        assert message.event().creaunix == RECORDED_NS
+        assert message.event().recdunix == RECORDED_NS
+        # Supplied, never stated: neither the wire nor the row's own column
+        # says what the frame did not.
+        assert not message.header().stated_sendingtime
+        assert b"52=" not in message.into_bytes(ord("|"))
+        assert message.into_row(schema).as_py()[schema.index_of("sendingtime")] is None
+
+    # A frame stating its own SendingTime keeps it; the line still says when
+    # it was recorded.
+    stated = _dated_line(b"8=FIX.4.4|35=8|52=20240102-10:15:30|10=0|")
+    (message,) = list(FixCodec(seed).parse_text_line(stated))
+    assert message.header().sendingtime == CLOCK_NS
+    assert message.header().stated_sendingtime
+    assert message.currunix == CLOCK_NS
+    assert message.event().recdunix == RECORDED_NS
+
+    # The Arrow door reads the same clock off a row's `currunix` cell.
+    source = pa.table(
+        {
+            "currunix": pa.array([RECORDED_NS], pa.timestamp("ns", tz="UTC")),
+            "body": pa.array([b"8=FIX.4.4|35=8|10=0|"], pa.binary()),
+        }
+    )
+    parsed = _fixed(seed).parse_text_arrow_reader(source).read_all()
+    assert parsed.column("currunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
+    assert parsed.column("recdunix").cast(pa.int64()).to_pylist() == [RECORDED_NS]
+    assert parsed.column("sendingtime").to_pylist() == [None]
+
+    # A raw-byte door holds no line, so the same frame there takes the pin.
+    assert _fixed(seed).parse_fix_line(b"8=FIX.4.4|35=8|10=0|").currunix == CLOCK_NS
+
+
+def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
+    seed: FixRegistry,
+) -> None:
+    """Intake dates the execution a report states, rather than a later walk."""
+    codec = _fixed(seed)
+
+    # A fill stating no ExecutionTimestamp, no execution TrdRegTimestamp and
+    # no TransactTime executed when it happened.
+    fill = codec.parse_fix_line(b"8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|")
+    assert fill.currunix == CLOCK_NS
+    assert fill.event().execunix == CLOCK_NS
+    assert fill.event().prevuuid is None
+    # The row states it, and a row read back keeps it.
+    schema = fix_schema(seed)
+    row = fill.into_row(schema)
+    assert row.as_py()[schema.index_of("execunix")] == CLOCK_INSTANT
+    assert FixMsg.from_row(schema, row, seed).event().execunix == CLOCK_NS
+    # On a dated line, that instant is the line's clock.
+    (dated,) = list(codec.parse_text_line(_dated_line(b"8=FIX.4.4|35=8|150=F|39=2|10=0|")))
+    assert dated.event().execunix == RECORDED_NS
+
+    # A trade's own TransactTime is its execution clock.
+    traded = codec.parse_fix_line(
+        b"8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=2|60=20240102-10:15:30.5|10=0|"
+    )
+    assert traded.event().execunix == CLOCK_NS + 500_000_000
+
+    # An acknowledgement and an order report no execution.
+    acknowledged = codec.parse_fix_line(b"8=FIX.4.4|35=8|37=O1|17=E0|150=0|39=0|10=0|")
+    assert acknowledged.event().execunix is None
+    order = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|10=0|")
+    assert order.event().execunix is None
 
 
 def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: FixRegistry) -> None:
@@ -3064,8 +3187,24 @@ def test_the_fixed_row_is_named_by_fold_and_never_shifts(seed: FixRegistry) -> N
     assert schema[schema.index_of("curruuid")].dtype == DataType("uuid")
     assert schema[schema.index_of("identifiers")].fix.counter == IDENTIFIERS_TAG
 
+    # The session event a bridge delivered the message as closes the session
+    # band it is joined from.
+    at = schema.index_of("msgsessionid")
+    assert at is not None
+    assert columns[at + 1] == "msgsesseventid"
+    assert schema[at + 1].fix.tag == 65065
+
     # The retired columns are gone rather than renamed.
-    for retired in ("updatedat", "createdat", "msghash", "msgphash", "altids", "code", "version"):
+    for retired in (
+        "updatedat",
+        "createdat",
+        "msghash",
+        "msgphash",
+        "altids",
+        "code",
+        "version",
+        "refrecdunix",
+    ):
         assert schema.index_of(retired) is None, retired
 
     reader = _fixed(seed)
@@ -3188,7 +3327,8 @@ def test_a_rows_own_columns_feed_the_message(seed: FixRegistry) -> None:
     assert names[-2:] == ["nofixentries", "fixentries"]
 
     # The capture's clock stamps nothing: the wire's own clock settles the
-    # message, else the codec's default SendingTime.
+    # message, else - with no `currunix` column dating the row's line - the
+    # codec's default SendingTime.
     instant = dt.datetime(2026, 1, 2, 9, 29, 59, 250000, tzinfo=dt.timezone.utc)
     assert parsed.column("timestamp").to_pylist() == [clock, None]
     assert parsed.column("currunix").to_pylist() == [CLOCK_INSTANT, instant]

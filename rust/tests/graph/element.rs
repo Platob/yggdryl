@@ -52,7 +52,6 @@ struct Report {
     creaunix: Option<i64>,
     execunix: Option<i64>,
     recdunix: Option<i64>,
-    refrecdunix: Option<i64>,
     exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -79,7 +78,6 @@ impl Report {
             creaunix: None,
             execunix: None,
             recdunix: None,
-            refrecdunix: None,
             exprtime: None,
             prevunix: None,
             prevuuid: None,
@@ -219,14 +217,6 @@ impl Event for Report {
 
     fn set_recdunix(&mut self, unix: Option<i64>) {
         self.recdunix = unix;
-    }
-
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.refrecdunix
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.refrecdunix = unix;
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -915,15 +905,16 @@ fn restating_and_merging_keep_the_earliest_per_event_instants() {
     other.set_execunix(Some(18));
     other.set_recdunix(Some(25));
 
+    // Only the earliest recording survives either fold: `one` is the
+    // reference (recorded at 30, after 25), but no separate reference clock
+    // keeps its 30, so the folded statement ranks at 25 from here on.
     let restated = one.clone().restating(&other);
     assert_eq!(restated.get_execunix(), Some(18));
     assert_eq!(restated.get_recdunix(), Some(25));
-    assert_eq!(restated.get_refrecdunix(), Some(30));
 
     let merged = one.merge_with(&other).expect("the instants moved");
     assert_eq!(merged.get_execunix(), Some(18));
     assert_eq!(merged.get_recdunix(), Some(25));
-    assert_eq!(merged.get_refrecdunix(), Some(30));
     assert!(
         merged.clone().merge_with(&other).is_none(),
         "the fold is idempotent"
@@ -953,13 +944,11 @@ fn restating_and_merging_keep_the_earliest_per_event_instants() {
     let restated = market_other.clone().restating(&market);
     assert_eq!(restated.get_execunix(), Some(at(18)));
     assert_eq!(restated.get_recdunix(), Some(at(25)));
-    assert_eq!(restated.get_refrecdunix(), Some(at(30)));
     let merged = market
         .merge_with(&market_other)
         .expect("the market event instants moved");
     assert_eq!(merged.get_execunix(), Some(at(18)));
     assert_eq!(merged.get_recdunix(), Some(at(25)));
-    assert_eq!(merged.get_refrecdunix(), Some(at(30)));
 }
 
 #[test]
@@ -1084,16 +1073,9 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         assert_eq!(merged.get_prevunix(), Some(19));
         assert_eq!(merged.get_snapunix(), Some(21));
         assert_eq!(merged.get_execunix(), Some(12));
-        assert_eq!(
-            merged.get_recdunix(),
-            Some(100),
-            "the reference selects conflicts; recording history still folds earliest"
-        );
-        assert_eq!(
-            merged.get_refrecdunix(),
-            Some(200),
-            "the selected reference's recording clock remains available to the next fold"
-        );
+        // The reference selects conflicts; the recording clock still folds
+        // to the earliest, and the reference's own 200 is kept nowhere.
+        assert_eq!(merged.get_recdunix(), Some(100));
     }
 
     let mut unstated = Report::at(2, 40);
@@ -1108,11 +1090,67 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         (merged.get_currunix(), merged.get_currhashcode()),
         (10, 0xD)
     );
-    assert_eq!(merged.get_refrecdunix(), Some(50));
+    assert_eq!(
+        merged.get_recdunix(),
+        Some(50),
+        "the one stated recording is the earliest either knows"
+    );
+
+    // Equal recording clocks, or none on either side, fall back to the later
+    // event instant, whichever statement merges into which: merged into the
+    // earlier, the later one leads; merged into the later, the earlier one
+    // moves nothing.
+    for recdunix in [Some(50), None] {
+        let mut earlier = Report::at(3, 10);
+        earlier.set_currhashcode(0xE);
+        earlier.set_recdunix(recdunix);
+        let mut later = Report::at(3, 20);
+        later.set_currhashcode(0xF);
+        later.set_recdunix(recdunix);
+        let merged = earlier
+            .clone()
+            .merge_with(&later)
+            .expect("the later instant leads");
+        assert_eq!(
+            (
+                merged.get_currunix(),
+                merged.get_currhashcode(),
+                merged.get_recdunix()
+            ),
+            (20, 0xF, recdunix)
+        );
+        assert!(later.merge_with(&earlier).is_none(), "{recdunix:?}");
+    }
+
+    // An exact tie - the same recording and the same instant - keeps this
+    // statement as the reference: the other only fills what it leaves
+    // unstated, and adds nothing at all where it states nothing more.
+    let mut this = Report::at(4, 10);
+    this.set_currhashcode(0xA);
+    this.set_recdunix(Some(50));
+    this.set_crosscode("THIS".to_owned());
+    this.finalize();
+    let mut that = Report::at(4, 10);
+    that.set_currhashcode(0xB);
+    that.set_recdunix(Some(50));
+    that.set_crosscode("THAT".to_owned());
+    that.finalize();
+    assert!(this.clone().merge_with(&that).is_none());
+    assert!(that.clone().merge_with(&this).is_none());
+    that.set_identifiers(identifiers([("ThatOnly", "1")]));
+    let merged = this.merge_with(&that).expect("the other fills a name");
+    assert_eq!(merged.get_currhashcode(), 0xA);
+    assert_eq!(merged.get_crosscode(), "THIS");
+    assert_eq!(merged.get_identifiers()["ThatOnly"], "1");
 }
 
 #[test]
-fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
+fn a_folded_statement_ranks_by_its_earliest_recording_so_three_way_folds_depend_on_order() {
+    // A fold keeps the earliest recording its statements know and no
+    // separate clock of the reference it chose, so against a third
+    // statement it ranks by that earliest recording. The reference of three
+    // statements is therefore the later recorded of the pair folded last -
+    // merging is not associative in its choice of reference.
     let observation = |unix, recdunix, hashcode, crosscode: &str| {
         let mut event = Report::at(1, unix);
         event.set_recdunix(Some(recdunix));
@@ -1121,17 +1159,22 @@ fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
         event
     };
     let oldest = observation(30, 100, 0xA, "OLD");
-    let reference = observation(20, 200, 0xB, "REFERENCE");
+    let latest = observation(20, 200, 0xB, "LATEST");
     let middle = observation(40, 150, 0xC, "MIDDLE");
-    let observations = [&oldest, &reference, &middle];
+    let observations = [&oldest, &latest, &middle];
 
-    for order in [
-        [0, 1, 2],
-        [0, 2, 1],
-        [1, 0, 2],
-        [1, 2, 0],
-        [2, 0, 1],
-        [2, 1, 0],
+    // Folded last, `middle` (150) meets the pair of `oldest` and `latest`,
+    // which held `latest` (200) as its reference but ranks at its earliest
+    // recording (100), and so leads it. Folded last into the pair of
+    // `latest` and `middle`, which ranks at 150, `oldest` (100) does not
+    // lead. Folded last, `latest` (200) leads either pair.
+    for (order, reference) in [
+        ([0, 1, 2], (40, 0xC, "MIDDLE")),
+        ([1, 0, 2], (40, 0xC, "MIDDLE")),
+        ([0, 2, 1], (20, 0xB, "LATEST")),
+        ([2, 0, 1], (20, 0xB, "LATEST")),
+        ([1, 2, 0], (20, 0xB, "LATEST")),
+        ([2, 1, 0], (20, 0xB, "LATEST")),
     ] {
         let mut merged = observations[order[0]].clone();
         for index in &order[1..] {
@@ -1139,11 +1182,20 @@ fn repeated_merges_keep_the_latest_recorded_reference_in_every_order() {
                 merged = next;
             }
         }
-        assert_eq!(merged.get_currunix(), 20, "order {order:?}");
-        assert_eq!(merged.get_currhashcode(), 0xB, "order {order:?}");
-        assert_eq!(merged.get_crosscode(), "REFERENCE", "order {order:?}");
-        assert_eq!(merged.get_recdunix(), Some(100), "order {order:?}");
-        assert_eq!(merged.get_refrecdunix(), Some(200), "order {order:?}");
+        assert_eq!(
+            (
+                merged.get_currunix(),
+                merged.get_currhashcode(),
+                merged.get_crosscode()
+            ),
+            reference,
+            "order {order:?}"
+        );
+        assert_eq!(
+            merged.get_recdunix(),
+            Some(100),
+            "every order keeps the earliest recording, order {order:?}"
+        );
     }
 }
 

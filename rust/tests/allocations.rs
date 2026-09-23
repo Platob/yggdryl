@@ -2504,7 +2504,7 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// Four of the thirteen are the eighteen event columns the plan compiles once
+/// Four of the thirteen are the seventeen event columns the plan compiles once
 /// per read: the identity list, the names' map and the state's own type
 /// allocate as the columns are planned, and nothing of them per line.
 ///

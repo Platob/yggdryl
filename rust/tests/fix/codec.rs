@@ -12,7 +12,7 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use yggdryl::SequenceType;
 use yggdryl::State;
-use yggdryl::graph::Event;
+use yggdryl::graph::{Element, Event};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, Field, FixCodec, FixEntry, FixId, FixRegistry, Scalar, StructType};
 
@@ -83,7 +83,6 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         None,
         "FIX sending clocks are not carrier recording time"
     );
-    assert_eq!(raw.get_refrecdunix(), None);
 
     let options = Arc::new(yggdryl::text::TextOptions::new());
     let carried = TextLine::from_bytes(
@@ -100,7 +99,6 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .expect("one message")
         .unwrap();
     assert_eq!(message.get_recdunix(), Some(CARRIER));
-    assert_eq!(message.get_refrecdunix(), Some(CARRIER));
 
     let direct = TextLine::from_bytes(
         0,
@@ -119,7 +117,166 @@ fn carrier_mtime_records_the_message_unless_the_message_states_recdunix() {
         .expect("one message")
         .unwrap();
     assert_eq!(message.get_recdunix(), Some(DIRECT));
-    assert_eq!(message.get_refrecdunix(), Some(REFERENCE));
+    // 65064 once carried the merge reference's recording clock; the slot is
+    // retired now that the reference is the latest `recdunix` alone, so a
+    // frame still spelling it states no clock at all - not the recording,
+    // which stays the stated 65063, and no value, entry or wire byte either,
+    // as any crate tag with no definition behind it.
+    assert_ne!(message.get_recdunix(), Some(REFERENCE));
+    assert!(message.by_tag(65_064).is_err());
+    assert!(message.entries().iter().all(|entry| entry.tag() != 65_064));
+    let wire = message.into_bytes(b'|');
+    assert!(
+        !wire.windows(7).any(|held| held == b"|65064="),
+        "{}",
+        String::from_utf8_lossy(&wire)
+    );
+}
+
+/// A message stating no `SendingTime(52)` is dated by the line it was read
+/// out of - the line's `currunix`, from its `mtime` capture or its handle -
+/// ahead of the codec's pinned default and of now, and the clock stays a
+/// stand-in: nothing of it reaches the wire.
+#[test]
+fn an_undated_message_is_sent_at_its_lines_currunix() {
+    const CARRIER: i64 = 1_704_190_530_900_000_000;
+    const STATED: i64 = 1_704_190_530_100_000_000;
+    const TRANSACT: i64 = 1_704_190_530_850_000_000;
+    const PINNED: i64 = 1_704_190_530_000_000_000;
+
+    let options = Arc::new(yggdryl::text::TextOptions::new());
+    let line = |body: &[u8], mtime: Option<i64>| {
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(body).unwrap(),
+            Arc::clone(&options),
+        )
+        .unwrap();
+        line.set_handle_mtime(mtime);
+        line
+    };
+    let sole = |codec: &FixCodec, line: &TextLine| {
+        codec
+            .parse_text_line(line)
+            .unwrap()
+            .next()
+            .expect("one message")
+            .unwrap()
+    };
+    let bare = FixCodec::new(registry()).with_threads(1);
+    let pinned = reader();
+    let undated = line(b"8=FIX.4.4|35=8|10=0|", Some(CARRIER));
+    for codec in [&bare, &pinned] {
+        let message = sole(codec, &undated);
+        assert_eq!(undated.get_currunix(), CARRIER);
+        assert_eq!(message.header().sendingtime(), CARRIER);
+        assert!(!message.header().stated_sendingtime());
+        assert_eq!(message.get_currunix(), CARRIER);
+        assert_eq!(message.get_creaunix(), Some(CARRIER));
+        assert_eq!(message.get_recdunix(), Some(CARRIER));
+        // A stand-in is no fact of the message: the wire states no tag 52.
+        let wire = message.into_bytes(b'|');
+        assert!(
+            !wire.windows(4).any(|held| held == b"|52="),
+            "{}",
+            String::from_utf8_lossy(&wire)
+        );
+    }
+
+    // A clock the message states is its own, whatever the line says.
+    let stated = sole(
+        &bare,
+        &line(
+            b"8=FIX.4.4|35=8|52=20240102-10:15:30.100|10=0|",
+            Some(CARRIER),
+        ),
+    );
+    assert_eq!(stated.header().sendingtime(), STATED);
+    assert!(stated.header().stated_sendingtime());
+    assert_eq!(stated.get_currunix(), STATED);
+
+    // The line's clock is a reference like any sending clock: a transaction
+    // standing within the official delay of it dates the message.
+    let transacted = sole(
+        &bare,
+        &line(
+            b"8=FIX.4.4|35=8|60=20240102-10:15:30.850|10=0|",
+            Some(CARRIER),
+        ),
+    );
+    assert_eq!(transacted.header().sendingtime(), CARRIER);
+    assert_eq!(transacted.get_currunix(), TRANSACT);
+
+    // A line with no clock at all leaves the codec's pin to date it.
+    let clockless = sole(&pinned, &line(b"8=FIX.4.4|35=8|10=0|", None));
+    assert_eq!(clockless.header().sendingtime(), PINNED);
+    assert_eq!(clockless.get_recdunix(), None);
+    // Nor does one dated at the epoch, which is what a line nothing dated
+    // reads as on the batch door: both doors date its message by the pin.
+    let epoch = sole(&pinned, &line(b"8=FIX.4.4|35=8|10=0|", Some(0)));
+    assert_eq!(epoch.header().sendingtime(), PINNED);
+
+    // A capture reaching tag 52 is the row's word, and outranks the line's
+    // own clock.
+    let captured = pinned
+        .clone()
+        .with_capture_names(["SendingTime"])
+        .parse_text_line(
+            &line(b"8=FIX.4.4|35=8|10=0|", Some(CARRIER))
+                .with_captures(vec![Some(
+                    TextBytes::from_bytes(b"20240102-10:15:30.100").unwrap(),
+                )])
+                .unwrap(),
+        )
+        .unwrap()
+        .next()
+        .expect("one message")
+        .unwrap();
+    assert_eq!(captured.header().sendingtime(), STATED);
+    assert!(!captured.header().stated_sendingtime());
+
+    // The row header's own `mtime` capture is the line's clock too.
+    let headed = Arc::new(
+        yggdryl::text::TextOptions::new()
+            .try_with_rowheader(r"^(?P<mtime>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) ")
+            .unwrap()
+            .with_timezone(yggdryl::Timezone::UTC),
+    );
+    let headed = TextLine::from_bytes(
+        0,
+        TextBytes::from_bytes(b"2024-01-02 10:15:30.900 8=FIX.4.4|35=8|10=0|").unwrap(),
+        headed,
+    )
+    .unwrap();
+    let message = sole(&bare, &headed);
+    assert_eq!(message.header().sendingtime(), CARRIER);
+    assert_eq!(message.get_currunix(), CARRIER);
+
+    // The batch door reads the same clock off the batch's `currunix`
+    // column, and dates the same message the same way.
+    let batch = yggdryl::text::into_arrow_batch(vec![undated.clone()], &options).unwrap();
+    for codec in [&bare, &pinned] {
+        let parsed = codec
+            .parse_text_arrow_reader(yggdryl::arrow::batch_reader(
+                batch.schema(),
+                [batch.clone()],
+            ))
+            .unwrap()
+            .map(std::result::Result::unwrap)
+            .collect::<Vec<RecordBatch>>();
+        let messages = codec
+            .messages(yggdryl::arrow::batch_reader(parsed[0].schema(), parsed))
+            .collect::<yggdryl::Result<Vec<_>>>()
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].get_currunix(), CARRIER);
+        assert_eq!(messages[0].get_creaunix(), Some(CARRIER));
+        assert_eq!(
+            messages[0].get_curruuid(),
+            sole(codec, &undated).get_curruuid(),
+            "both doors settle the one identity"
+        );
+    }
 }
 
 #[test]
@@ -2851,19 +3008,28 @@ mod clock_intake_tests {
     #[test]
     fn capture_context_clock_is_not_a_fix_clock() {
         let codec = codec().with_capture_names(["timestamp"]);
-        let line = text_line(b"8=FIX.4.4|35=D|")
-            .with_handle_mtime(99)
-            .with_captures(vec![Some(
-                TextBytes::from_bytes(b"not-a-FIX-clock").unwrap(),
-            )])
-            .unwrap();
-        let message = codec
-            .parse_text_line(&line)
-            .unwrap()
-            .next()
-            .unwrap()
-            .unwrap();
-        assert_eq!(message.by_tag(52).unwrap(), clock(17));
+        let captured = |line: TextLine| {
+            let line = line
+                .with_captures(vec![Some(
+                    TextBytes::from_bytes(b"not-a-FIX-clock").unwrap(),
+                )])
+                .unwrap();
+            codec
+                .parse_text_line(&line)
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+        };
+        // A `timestamp` capture dates nothing: a line with no clock of its
+        // own leaves the codec's pin to date the message.
+        let undated = captured(text_line(b"8=FIX.4.4|35=D|"));
+        assert_eq!(undated.by_tag(52).unwrap(), clock(17));
+        // The line's own clock - here its handle's - is what dates a message
+        // stating no SendingTime, ahead of the pin, and still not the capture.
+        let message = captured(text_line(b"8=FIX.4.4|35=D|").with_handle_mtime(99));
+        assert_eq!(message.by_tag(52).unwrap(), clock(99));
+        assert!(!message.header().stated_sendingtime());
         // `snapunix` says this row is a reading a walk took. An intake that
         // took none leaves it unstated rather than copying a clock into it,
         // which is what makes the question answerable from the row.

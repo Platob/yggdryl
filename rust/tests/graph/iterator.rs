@@ -231,23 +231,21 @@ fn the_walk_carries_and_replaces_the_latest_execution_clock() {
         None,
         "recording is never inferred"
     );
-    assert_eq!(walked[0].get_refrecdunix(), None);
     assert_eq!(
         walked[1].get_execunix(),
         Some(at(15)),
         "an explicit instant is kept"
     );
     assert_eq!(walked[1].get_recdunix(), Some(at(16)));
-    assert_eq!(walked[1].get_refrecdunix(), Some(at(16)));
     assert_eq!(
         walked[2].get_execunix(),
         Some(at(30)),
         "a later execution replaces the carried clock"
     );
     assert_eq!(
-        walked[2].get_refrecdunix(),
+        walked[2].get_recdunix(),
         None,
-        "following does not inherit the predecessor's merge reference clock"
+        "following does not inherit the predecessor's recording clock"
     );
     assert_eq!(
         walked[3].get_execunix(),
@@ -572,7 +570,6 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
         "expiry carries the lifecycle's latest execution"
     );
     assert_eq!(expired.get_recdunix(), None, "expiry is a new event");
-    assert_eq!(expired.get_refrecdunix(), None, "expiry is a new event");
     assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
     assert_eq!(expired.get_seqnum(), 1);
     assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());

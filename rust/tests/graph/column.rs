@@ -1,4 +1,4 @@
-//! `rust/src/graph/column.rs`: the eighteen columns every event schema opens
+//! `rust/src/graph/column.rs`: the seventeen columns every event schema opens
 //! with, each stating back exactly the fact it read.
 
 use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
@@ -10,7 +10,6 @@ fn every_column_states_back_what_it_read() {
     event.set_creaunix(Some(1_600_000_000_000_000_000));
     event.set_execunix(Some(1_650_000_000_000_000_000));
     event.set_recdunix(Some(1_675_000_000_000_000_000));
-    event.set_refrecdunix(Some(1_676_000_000_000_000_000));
     event.set_exprtime(Some(1_800_000_000_000_000_000));
     event.set_prevunix(Some(1_650_000_000_000_000_000));
     event.set_snapunix(Some(1_700_000_000_000_000_001));
@@ -38,7 +37,6 @@ fn every_column_states_back_what_it_read() {
     assert_eq!(again.get_creaunix(), event.get_creaunix());
     assert_eq!(again.get_execunix(), event.get_execunix());
     assert_eq!(again.get_recdunix(), event.get_recdunix());
-    assert_eq!(again.get_refrecdunix(), event.get_refrecdunix());
     assert_eq!(again.get_exprtime(), event.get_exprtime());
     assert_eq!(again.get_prevunix(), event.get_prevunix());
     assert_eq!(again.get_snapunix(), event.get_snapunix());
@@ -61,19 +59,16 @@ fn a_null_clears_and_nothing_stated_is_none() {
     event.set_crosscode("X".to_owned());
     event.set_execunix(Some(4));
     event.set_recdunix(Some(5));
-    event.set_refrecdunix(Some(6));
     EventColumn::SeqNum.record(&mut event, &Scalar::Null);
     EventColumn::CrossCode.record(&mut event, &Scalar::Null);
     EventColumn::State.record(&mut event, &Scalar::Null);
     EventColumn::ExecUnix.record(&mut event, &Scalar::Null);
     EventColumn::RecdUnix.record(&mut event, &Scalar::Null);
-    EventColumn::RefRecdUnix.record(&mut event, &Scalar::Null);
     assert_eq!(event.get_seqnum(), 0);
     assert_eq!(event.get_crosscode(), "");
     assert_eq!(event.get_state(), &State::unknown());
     assert_eq!(event.get_execunix(), None);
     assert_eq!(event.get_recdunix(), None);
-    assert_eq!(event.get_refrecdunix(), None);
     assert_eq!(EventColumn::SeqNum.fact(&event), None);
     assert_eq!(EventColumn::CrossCode.fact(&event), None);
     assert_eq!(
@@ -92,7 +87,6 @@ fn a_null_clears_and_nothing_stated_is_none() {
             "creaunix",
             "execunix",
             "recdunix",
-            "refrecdunix",
             "exprtime",
             "prevunix",
             "snapunix",
@@ -109,4 +103,7 @@ fn a_null_clears_and_nothing_stated_is_none() {
         ]
     );
     assert_eq!(EventColumn::of_name("no such"), None);
+    // The merge reference is chosen from `recdunix` alone, so no column
+    // persists a separate reference recording clock any more.
+    assert_eq!(EventColumn::of_name("refrecdunix"), None);
 }

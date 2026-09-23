@@ -560,7 +560,6 @@ pub struct MarketEventData {
     creaunix: Option<i64>,
     execunix: Option<i64>,
     recdunix: Option<i64>,
-    refrecdunix: Option<i64>,
     exprtime: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
@@ -581,7 +580,6 @@ impl MarketEventData {
             creaunix: None,
             execunix: None,
             recdunix: None,
-            refrecdunix: None,
             exprtime: None,
             prevunix: None,
             prevuuid: None,
@@ -768,19 +766,7 @@ impl Event for MarketEventData {
     }
 
     fn set_recdunix(&mut self, unix: Option<i64>) {
-        let tracks_recording = self.refrecdunix.is_none() || self.refrecdunix == self.recdunix;
         self.recdunix = unix;
-        if tracks_recording {
-            self.refrecdunix = unix;
-        }
-    }
-
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.refrecdunix
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.refrecdunix = unix;
     }
 
     fn get_exprtime(&self) -> Option<i64> {
@@ -1086,7 +1072,6 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_creaunix(other.get_creaunix());
     this.set_execunix(other.get_execunix());
     this.set_recdunix(other.get_recdunix());
-    this.set_refrecdunix(other.get_refrecdunix());
     this.set_exprtime(other.get_exprtime());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());

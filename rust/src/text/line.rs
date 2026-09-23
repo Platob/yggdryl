@@ -35,7 +35,7 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
 /// | `get_seqnum` | the row number under `start_rownum`, else the physical index |
 /// | `get_state` | a `state` capture, else `00UNKNOWN` |
-/// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_refrecdunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
+/// | `get_creaunix`, `get_execunix`, `get_recdunix`, `get_exprtime`, `get_prevunix`, `get_snapunix` | the capture of that name as an instant, else none |
 /// | `get_prevuuid` | a `prevuuid` capture, else none |
 /// | `get_crosscode` | the canonical text of the identifier the line was read under, else none |
 /// | `get_currhashcode` | the XXH3-64 of the cross code, the row number and the body |
@@ -236,7 +236,6 @@ struct Stated {
     creaunix: Option<Option<i64>>,
     execunix: Option<Option<i64>>,
     recdunix: Option<Option<i64>>,
-    refrecdunix: Option<Option<i64>>,
     exprtime: Option<Option<i64>>,
     prevunix: Option<Option<i64>>,
     prevuuid: Option<Option<Uuid>>,
@@ -291,7 +290,6 @@ struct Resolved {
     creaunix: OnceLock<Reading<Option<i64>>>,
     execunix: OnceLock<Reading<Option<i64>>>,
     recdunix: OnceLock<Reading<Option<i64>>>,
-    refrecdunix: OnceLock<Reading<Option<i64>>>,
     exprtime: OnceLock<Reading<Option<i64>>>,
     prevunix: OnceLock<Reading<Option<i64>>>,
     snapunix: OnceLock<Reading<Option<i64>>>,
@@ -768,7 +766,6 @@ impl TextLine {
         self.resolved.creaunix = OnceLock::new();
         self.resolved.execunix = OnceLock::new();
         self.resolved.recdunix = OnceLock::new();
-        self.resolved.refrecdunix = OnceLock::new();
         self.resolved.exprtime = OnceLock::new();
         self.resolved.prevunix = OnceLock::new();
         self.resolved.snapunix = OnceLock::new();
@@ -1047,24 +1044,6 @@ impl TextLine {
         self.answer(reading).copied()
     }
 
-    /// The recording clock of the observation selected as this line's merge
-    /// reference: a `refrecdunix` capture, else none.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidRecord`](crate::Error::InvalidRecord) naming
-    /// the capture when it does not read as an instant.
-    pub fn refrecdunix(&self) -> Result<Option<i64>> {
-        if let Some(stated) = self.stated.refrecdunix {
-            return Ok(stated);
-        }
-        let reading = self
-            .resolved
-            .refrecdunix
-            .get_or_init(|| self.instant_capture("refrecdunix"));
-        self.answer(reading).copied()
-    }
-
     /// When the line's record expires: an `exprtime` capture, else none.
     ///
     /// # Errors
@@ -1305,9 +1284,6 @@ impl TextLine {
             }
             EventColumn::RecdUnix => {
                 self.recdunix()?;
-            }
-            EventColumn::RefRecdUnix => {
-                self.refrecdunix()?;
             }
             EventColumn::ExprTime => {
                 self.exprtime()?;
@@ -1555,15 +1531,6 @@ impl Event for TextLine {
 
     fn set_recdunix(&mut self, unix: Option<i64>) {
         self.stated.recdunix = Some(unix);
-    }
-
-    /// [`TextLine::refrecdunix`]; none over a refused capture.
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.refrecdunix().ok().flatten()
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.stated.refrecdunix = Some(unix);
     }
 
     /// [`TextLine::exprtime`]; none over a refused capture.

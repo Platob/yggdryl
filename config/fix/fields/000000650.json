@@ -360,7 +360,7 @@
     "metadata": {
       "FIX:tag": "65062",
       "FIX:transient": "false",
-      "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated.",
+      "description": "When the message's execution happened: ExecutionTimestamp, an execution TrdRegTimestamp, a proprietary EventTimestamp, or a trade's TransactTime, the first one stated; an execution report stating none executed at its currunix; the latest its chain reached once followed.",
       "display": "ExecUnix"
     }
   },
@@ -380,18 +380,16 @@
     }
   },
   {
-    "name": "refrecdunix",
+    "name": "msgsesseventid",
     "dtype": {
-      "type": "datetime64",
-      "unit": "nanosecond",
-      "timezone": "UTC"
+      "type": "string"
     },
     "nullable": true,
     "metadata": {
-      "FIX:tag": "65064",
+      "FIX:tag": "65065",
       "FIX:transient": "false",
-      "description": "The recording clock of the observation selected as this event's merge reference; the latest its statements know.",
-      "display": "RefRecdUnix"
+      "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `|`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
+      "display": "MsgSessEventId"
     }
   }
 ]

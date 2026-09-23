@@ -2769,9 +2769,9 @@ mod committed {
         }
         assert_eq!(times, 57, "zone-less times of day");
         assert_eq!(naive, 369, "local values, stating no zone");
-        // Sixty-eight shipped fields, plus the crate's eight clocks: `currunix`,
-        // `creaunix`, `prevunix`, `snapunix`, `execunix`, `recdunix`,
-        // `refrecdunix` and `exprtime`.
+        // Sixty-eight shipped fields, plus the crate's seven clocks: `currunix`,
+        // `creaunix`, `prevunix`, `snapunix`, `execunix`, `recdunix` and
+        // `exprtime`.
         let crated = registry
             .iter()
             .filter(|field| {
@@ -2784,7 +2784,7 @@ mod committed {
                         .is_some_and(yggdryl::is_crate_tag)
             })
             .count();
-        assert_eq!(crated, 8, "the crate's own clocks");
+        assert_eq!(crated, 7, "the crate's own clocks");
         assert_eq!(utc, 68 + crated, "instants stated in UTC");
     }
 
@@ -3013,13 +3013,20 @@ mod committed {
     /// vocabulary and parent UUIDs became a sorted unique set: the one code
     /// set now hashes numeric values, and those two crate-field definitions
     /// hash their current datatypes and descriptions.
-    /// It last moved when `parentuuids` left the crate: a message names its
+    /// It moved when `parentuuids` left the crate: a message names its
     /// predecessor by `prevuuid` alone, so the crate field at 65041 and its
     /// member of the fixed row are gone and nothing else moved.
+    /// It last moved when `refrecdunix` left the crate and `msgsesseventid`
+    /// took a field of its own: the definition at 65064 and its member of
+    /// the fixed row are gone, one at 65065 and its member beside
+    /// `msgsessionid` stand in their place - so the count holds - the
+    /// identifiers group stopped describing a key it no longer carries, and
+    /// `execunix` says an execution report stating no clock executed at its
+    /// `currunix`.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 12_241_597_752_383_919_107);
+        assert_eq!(registry.stable_hash(), 8_266_979_291_867_402_847);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

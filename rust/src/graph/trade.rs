@@ -315,7 +315,7 @@ fn merge_execution(left: &Execution, right: &Execution) -> Execution {
 
 fn reference_key<E: Event + ?Sized>(event: &E) -> (Option<i64>, i64, Uuid) {
     (
-        super::element::reference_recdunix(event),
+        event.get_recdunix(),
         event.get_currunix(),
         event.get_curruuid(),
     )

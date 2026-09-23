@@ -46,20 +46,19 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat, three optional event clocks and six normalized identifiers join
-    // the existing standard CFI column.
+    // MsgCat, two optional event clocks, the session event and six normalized
+    // identifiers join the existing standard CFI column.
     assert_eq!(tags.len(), 122);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
     // groups kept whole, and last the frame.
     assert_eq!(
-        &tags[..16],
+        &tags[..15],
         [
             yggdryl::CURRUNIX_TAG_NAME.0,
             yggdryl::EXECUNIX_TAG_NAME.0,
             yggdryl::RECDUNIX_TAG_NAME.0,
-            yggdryl::REFRECDUNIX_TAG_NAME.0,
             yggdryl::CREAUNIX_TAG_NAME.0,
             yggdryl::PREVUNIX_TAG_NAME.0,
             yggdryl::SNAPUNIX_TAG_NAME.0,
@@ -76,7 +75,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[16..25],
+        &tags[15..24],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -91,7 +90,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[25..33],
+        &tags[24..36],
         [
             8,
             35,
@@ -100,9 +99,14 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             49,
             56,
             43,
-            yggdryl::MSGDIRECTION_TAG_NAME.0
+            yggdryl::MSGDIRECTION_TAG_NAME.0,
+            yggdryl::MSGPLUGINID_TAG_NAME.0,
+            yggdryl::MSGCTXID_TAG_NAME.0,
+            yggdryl::MSGSESSIONID_TAG_NAME.0,
+            yggdryl::MSGSESSEVENTID_TAG_NAME.0,
         ],
-        "which message"
+        "which message, over which session - the session event it was \
+         delivered as right after the session that delivered it"
     );
     // And not where the capture read it: the object a line came out of is
     // the reader's word about the line, carried beside the row with the body
@@ -155,7 +159,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     for tag in [
         yggdryl::EXECUNIX_TAG_NAME.0,
         yggdryl::RECDUNIX_TAG_NAME.0,
-        yggdryl::REFRECDUNIX_TAG_NAME.0,
+        yggdryl::MSGSESSEVENTID_TAG_NAME.0,
         yggdryl::PREVUNIX_TAG_NAME.0,
         yggdryl::PREVUUID_TAG_NAME.0,
     ] {
@@ -171,13 +175,18 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     }
     let clock = DataType::datetime64(yggdryl::TimeUnit::Nanosecond, yggdryl::Timezone::UTC)
         .expect("the event clock");
-    for tag in [
-        yggdryl::EXECUNIX_TAG_NAME.0,
-        yggdryl::RECDUNIX_TAG_NAME.0,
-        yggdryl::REFRECDUNIX_TAG_NAME.0,
-    ] {
+    for tag in [yggdryl::EXECUNIX_TAG_NAME.0, yggdryl::RECDUNIX_TAG_NAME.0] {
         assert_eq!(schema.fields()[column_of(&schema, tag)].dtype(), &clock);
     }
+    // The session event is the text its four parts join to.
+    assert_eq!(
+        schema.fields()[column_of(&schema, yggdryl::MSGSESSEVENTID_TAG_NAME.0)].dtype(),
+        &DataType::utf8()
+    );
+    // The merge reference's recording clock is no column: the reference is
+    // the latest `recdunix`, which the row already states.
+    assert!(schema.index_of("refrecdunix").is_none());
+    assert!(!tags.contains(&65_064));
 }
 
 #[test]
@@ -248,6 +257,7 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
         (yggdryl::MSGCTXID_TAG_NAME.0, "MsgCtxId"),
         (yggdryl::MSGPLUGINID_TAG_NAME.0, "MsgPluginId"),
         (yggdryl::MSGSESSIONID_TAG_NAME.0, "MsgSessionId"),
+        (yggdryl::MSGSESSEVENTID_TAG_NAME.0, "MsgSessEventId"),
         (yggdryl::CURRHASHCODE_TAG_NAME.0, "CurrHashCode"),
         (yggdryl::CROSSHASHCODE_TAG_NAME.0, "CrossHashCode"),
         (yggdryl::CROSSCODE_TAG_NAME.0, "CrossCode"),

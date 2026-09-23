@@ -732,18 +732,18 @@ struct SessionEventObservations {
 /// ties exactly as the graph's reference selection does.
 fn reference_order(left: &FixMsg, right: &FixMsg) -> Ordering {
     let right_leads = crate::graph::element::right_is_reference(
-        crate::graph::element::reference_recdunix(left),
+        left.get_recdunix(),
         left.get_currunix(),
-        crate::graph::element::reference_recdunix(right),
+        right.get_recdunix(),
         right.get_currunix(),
     );
     if right_leads {
         return Ordering::Greater;
     }
     let left_leads = crate::graph::element::right_is_reference(
-        crate::graph::element::reference_recdunix(right),
+        right.get_recdunix(),
         right.get_currunix(),
-        crate::graph::element::reference_recdunix(left),
+        left.get_recdunix(),
         left.get_currunix(),
     );
     if left_leads {
@@ -790,9 +790,12 @@ fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -
             held.others.push(held.message);
             held.others.sort_by(reference_order);
             let mut observations = held.others.into_iter();
+            // The first is the reference, chosen once over every observation:
+            // each fold keeps the earliest recording, so deciding again at
+            // every pair would rank the rest against that instead.
             let mut reference = observations.next().expect("one session-event observation");
             for other in observations {
-                match reference.clone().merge_session_event(&other) {
+                match reference.clone().fold_session_event(&other) {
                     Ok(merged) => reference = merged,
                     Err(error) => {
                         failures.push_back(error);
@@ -987,14 +990,6 @@ impl Event for LifecycleMessage {
 
     fn set_recdunix(&mut self, unix: Option<i64>) {
         self.message.set_recdunix(unix);
-    }
-
-    fn get_refrecdunix(&self) -> Option<i64> {
-        self.message.get_refrecdunix()
-    }
-
-    fn set_refrecdunix(&mut self, unix: Option<i64>) {
-        self.message.set_refrecdunix(unix);
     }
 
     fn get_exprtime(&self) -> Option<i64> {

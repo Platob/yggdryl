@@ -181,7 +181,6 @@ const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creaunix
 const eventExecuted: bigint | null = event.execunix
 const eventRecorded: bigint | null = event.recdunix
-const eventReferenceRecorded: bigint | null = event.refrecdunix
 const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprtime
@@ -214,6 +213,7 @@ const msgdirection: string | null = header.msgdirection
 const msgpluginid: string | null = capture.msgpluginid
 const msgctxid: string | null = capture.msgctxid
 const msgsessionid: string | null = capture.msgsessionid
+const msgsesseventid: string | null = capture.msgsesseventid
 
 void entries
 void nested
@@ -246,7 +246,6 @@ void eventCurrunix
 void eventCreated
 void eventExecuted
 void eventRecorded
-void eventReferenceRecorded
 void eventPrevUnix
 void eventSnap
 void eventExpiry
@@ -278,11 +277,14 @@ void msgdirection
 void msgpluginid
 void msgctxid
 void msgsessionid
+void msgsesseventid
 
 // @ts-expect-error a graph fact is read, never assigned
 message.curruuid = 'other'
 // @ts-expect-error the entries are derived from the row
 message.entries = []
+// @ts-expect-error a merge keeps no clock of the reference it chose
+void event.refrecdunix
 
 const equalMessages: boolean = message.equals(explicit)
 const messageHash: bigint = message.stableHash()

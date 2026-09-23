@@ -580,7 +580,7 @@ mod records {
 
     #[test]
     fn text_costs() {
-        // Plain-text rows are the eighteen event columns and `body`, so this
+        // Plain-text rows are the seventeen event columns and `body`, so this
         // one is read rather than written from a batch. The one `mtime` call
         // per read buys no column of its own any more - it is what dates the
         // rows, and it is a fact about the handle, so every row shares the one
@@ -607,7 +607,7 @@ mod records {
             &calls,
             "size=1 media_type=1 is_container=2",
             || {
-                assert_eq!(handle.column_size().expect("columns"), 19);
+                assert_eq!(handle.column_size().expect("columns"), 18);
             },
         );
         costs(

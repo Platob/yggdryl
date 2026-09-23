@@ -176,10 +176,19 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
             .map(|(name, value)| (name.as_str(), value.as_str()))
             .collect::<Vec<_>>(),
         [
-            ("msgsesseventid", "1:S|8:e7254b17|10:9f02625007|86416"),
             ("quoteid", "quote-20260814-1"),
             ("quotereqid", "request-20260814-1"),
         ]
+    );
+    // The session event it was delivered as is the capture's, its four
+    // values joined as stated.
+    assert_eq!(
+        quote.capture().msgsesseventid(),
+        Some("S|e7254b17|9f02625007|86416")
+    );
+    assert_eq!(
+        parsed[0].capture().msgsesseventid(),
+        Some("b|e7254b17|9f02625007|86416")
     );
 
     let walked = reader
