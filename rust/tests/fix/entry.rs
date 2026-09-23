@@ -87,8 +87,8 @@ mod residual {
         let restored = FixMsg::from_row(registry, &schema, &row).expect("the row reads");
         assert_eq!(restored.get_side(), original.get_side());
         assert_eq!(restored.get_currency(), original.get_currency());
-        assert_eq!(restored.get_qty(), original.get_qty());
-        assert_eq!(restored.get_px(), original.get_px());
+        assert_eq!(restored.get_quantity(), original.get_quantity());
+        assert_eq!(restored.get_price(), original.get_price());
         assert_eq!(
             (
                 restored.get_currunix(),

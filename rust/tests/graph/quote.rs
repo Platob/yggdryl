@@ -30,7 +30,7 @@ fn quote_wrappers_are_transparent_and_never_classify_as_executions() {
 #[test]
 fn generic_market_value_conversion_changes_only_the_wrapper_kind() {
     let mut event = MarketEventData::at(11);
-    event.set_px(Decimal18::from_int(42));
+    event.set_price(Decimal18::from_int(42));
     event.set_symbolticker(Some("ABC".to_owned()));
     let expected = event.clone();
 
@@ -38,7 +38,7 @@ fn generic_market_value_conversion_changes_only_the_wrapper_kind() {
     assert_eq!(MarketEventData::from(quote), expected);
 
     let mut element = MarketElementData::default();
-    element.set_qty(Decimal18::from_int(7));
+    element.set_quantity(Decimal18::from_int(7));
     element.set_tif(Some("Day".to_owned()));
     let expected = element.clone();
     let quote: QuoteEntry = OrderEntry::from(element).into_entry();
@@ -48,14 +48,14 @@ fn generic_market_value_conversion_changes_only_the_wrapper_kind() {
 #[test]
 fn quote_and_entry_drop_or_add_only_event_facts() {
     let mut event = MarketEventData::at(17);
-    event.set_px(Decimal18::from_int(5));
+    event.set_price(Decimal18::from_int(5));
     event.set_symbolticker(Some("XYZ".to_owned()));
     let quote = Quote::from(event);
     let entry = QuoteEntry::from(quote);
-    assert_eq!(entry.get_px(), Decimal18::from_int(5));
+    assert_eq!(entry.get_price(), Decimal18::from_int(5));
     assert_eq!(entry.get_symbolticker(), Some("XYZ"));
 
     let quote = Quote::from(entry);
     assert_eq!(quote.get_currunix(), 0);
-    assert_eq!(quote.get_px(), Decimal18::from_int(5));
+    assert_eq!(quote.get_price(), Decimal18::from_int(5));
 }

@@ -649,7 +649,7 @@ Python spells the class accessor `into_field` because a `@scalar` class converts
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A
-[`PARTITION:`](../holder/iobase/partitions.md#derived-partition-columns) declaration says a
+[`PARTITION:`](../holder/index.md#derived-partition-columns) declaration says a
 column is *derived* from another; a [`DIGEST:`](../hashing.md) role says a column *holds*
 the row's hash. `apply_arrow_batch` is the one entry point that asks every declaring protocol,
 in the order their answers depend on: `cast` reconciles the batch to this root, `partition`

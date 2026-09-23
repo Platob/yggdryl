@@ -115,8 +115,8 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
     assert_eq!(third.get_seqnum(), 2);
     assert_eq!(third.get_creaunix(), Some(at(5)));
-    // The parents are the whole lifecycle, oldest first, the one followed
-    // last - and a walk over the walked answers the same parents.
+    // The parents are the whole lifecycle as a sorted identity set, and a
+    // walk over the walked answers the same parents.
     assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
     assert_eq!(
         third.get_parentuuids(),

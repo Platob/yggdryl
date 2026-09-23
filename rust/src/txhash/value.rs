@@ -333,7 +333,41 @@ impl TxHash {
     /// before the epoch or past the microsecond count its 48-bit millisecond
     /// timestamp reaches.
     pub fn into_uuid(self) -> Result<Uuid> {
-        let digest = self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
+        let digest = self.uuid_digest()?;
+        let microseconds = restate_unix(self.unix, self.unit, TimeUnit::Microsecond)?;
+        Uuid::from_v7(microseconds, digest)
+    }
+
+    /// Project this value to a sequence-ordered RFC 9562 UUIDv7.
+    ///
+    /// The instant is floored to Unix milliseconds, `sequence` occupies
+    /// UUIDv7's twelve-bit `rand_a` lane (saturating at `4095`), and `rand_b`
+    /// holds XXH3-64 over the digest and the whole `u64` sequence with `seed`.
+    /// Including the whole sequence in the payload keeps values beyond the
+    /// explicit lane probabilistically distinct; the UUID retains the low 62
+    /// payload bits around its RFC variant.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] at `$.digest` when the digest is not
+    /// 64 bits wide, a clock-restatement failure, or
+    /// [`Uuid::from_v7_sequence`]'s timestamp refusal.
+    pub fn into_sequenced_uuid(self, sequence: u64, seed: u64) -> Result<Uuid> {
+        let digest = self.uuid_digest()?;
+        let milliseconds = restate_unix(self.unix, self.unit, TimeUnit::Millisecond)?;
+        let mut input = [0_u8; 16];
+        input[..8].copy_from_slice(&digest.to_le_bytes());
+        input[8..].copy_from_slice(&sequence.to_le_bytes());
+        Uuid::from_v7_sequence(
+            milliseconds,
+            sequence,
+            crate::xxhash::xxh3_with_seed(&input, seed),
+        )
+    }
+
+    /// The 64-bit digest both UUID projections require.
+    fn uuid_digest(self) -> Result<u64> {
+        self.digest.as_u64().ok_or_else(|| Error::InvalidRecord {
             path: "$.digest".into(),
             reason: crate::text::expected_got(
                 "a 64-bit digest for UUIDv7",
@@ -343,9 +377,7 @@ impl TxHash {
                     self.algorithm().width() * 8
                 ),
             ),
-        })?;
-        let microseconds = restate_unix(self.unix, self.unit, TimeUnit::Microsecond)?;
-        Uuid::from_v7(microseconds, digest)
+        })
     }
 
     /// Rebuild a value from its canonical bytes.

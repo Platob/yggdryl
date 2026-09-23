@@ -7,8 +7,7 @@
 //! `SigV4` header checks - for the client to be exercised end to end over a
 //! real socket, and it records every request so a test can count and inspect
 //! what went on the wire. It is a leaf file included with `#[path]` from the
-//! `s3` test harness and from two benchmarks, so it depends on `std` alone
-//! and names nothing of the crate.
+//! `s3` test harness and from two benchmarks, so it names nothing of the crate.
 //!
 //! Every answer is deterministic: `ETag` is a quoted FNV-1a hash of the bytes
 //! (multipart: `"{hash}-{parts}"`), `Last-Modified` is one fixed instant, and
@@ -285,8 +284,12 @@ impl FakeS3 {
 impl Drop for FakeS3 {
     fn drop(&mut self) {
         self.inner.stopping.store(true, Ordering::SeqCst);
-        // A connection is the only thing that returns from `accept`.
-        drop(TcpStream::connect(self.inner.address));
+        // A queued connection may let accept close the listener before this
+        // wake-up connects. Bound the refused-connect delay on Windows.
+        drop(TcpStream::connect_timeout(
+            &self.inner.address,
+            std::time::Duration::from_millis(100),
+        ));
         if let Some(accept) = self.accept.take() {
             drop(accept.join());
         }

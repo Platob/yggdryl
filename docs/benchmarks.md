@@ -14,12 +14,14 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
-| Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
-| Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
-| Holder | [Object stores](holder/backends/s3.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
-| Holder | [Bytes](holder/iobase/bytes.md) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
-| Holder | [Records](holder/iobase/records.md) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
-| Holder | [Values](holder/iobase/values.md) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
+| Holder | [Buffered](holder/index.md#buffered-performance) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
+| Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
+| Holder | [Object stores](holder/index.md#object-stores-performance) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
+| Holder | [Bytes](holder/index.md#bytes-performance) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
+| Holder | [Records](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
+| Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
+| Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
+| Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
 | Media | [gzip](media/index.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
 | Media | [zlib](media/index.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
 | Media | [zstd](media/index.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |

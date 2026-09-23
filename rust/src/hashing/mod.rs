@@ -10,8 +10,9 @@
 //! independently of its delivery envelope. A message's `currhashcode` is the
 //! XXH3-64 of what its event states and the canonical named content behind
 //! it; its `crosshashcode` is the XXH3-64 of the chain identifier it shares.
-//! Its microsecond instant and its whole `currhashcode` form the UUIDv7 that
-//! is its identity, the code stored rather than hashed again. These
+//! Its millisecond, sequence and an XXH3 payload over its `currhashcode` and
+//! whole sequence, seeded by `crosshashcode`, form the UUIDv7 that is its
+//! identity. These
 //! FIX recipes reuse the shared algorithms; they do not define another hash
 //! engine. A raw
 //! [`crate::txhash::TxHash`] is a time/digest pair, not an RFC UUID.

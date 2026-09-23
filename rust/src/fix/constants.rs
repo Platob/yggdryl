@@ -29,6 +29,25 @@ pub const STANDARD_TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 #[rustfmt::skip]
 pub const MSGCATEGORIES: [&str; 22] = ["ACCT", "ALLO", "BOOK", "CERT", "COLL", "COMM", "CONF", "EXEC", "MKST", "ORDR", "PAYM", "POSN", "PRTY", "QUOT", "REGI", "RISK", "SECU", "SESS", "SETL", "STRM", "TRAD", "UNKN"];
 
+/// The stable signed identifiers carried by the MsgCat code set.
+/// Zero is the unknown category; published categories are positive.
+#[rustfmt::skip]
+pub const MSGCATEGORY_CODES: [(&str, i32, &str); 22] = [("ACCT", 1, "1"), ("ALLO", 2, "2"), ("BOOK", 3, "3"), ("CERT", 4, "4"), ("COLL", 5, "5"), ("COMM", 6, "6"), ("CONF", 7, "7"), ("EXEC", 8, "8"), ("MKST", 9, "9"), ("ORDR", 10, "10"), ("PAYM", 11, "11"), ("POSN", 12, "12"), ("PRTY", 13, "13"), ("QUOT", 14, "14"), ("REGI", 15, "15"), ("RISK", 16, "16"), ("SECU", 17, "17"), ("SESS", 18, "18"), ("SETL", 19, "19"), ("STRM", 20, "20"), ("TRAD", 21, "21"), ("UNKN", 0, "0")];
+
+/// The integer identifier for one symbolic message category.
+pub(super) fn msgcat_code(category: &str) -> Option<i32> {
+    MSGCATEGORY_CODES
+        .iter()
+        .find_map(|(name, code, _)| (*name == category).then_some(*code))
+}
+
+/// The symbolic message category for one integer identifier.
+pub(super) fn msgcat_name(code: i32) -> Option<&'static str> {
+    MSGCATEGORY_CODES
+        .iter()
+        .find_map(|(name, held, _)| (*held == code).then_some(*name))
+}
+
 /// The exact derivations generated into the shipped FIX dictionary,
 /// sorted by target tag. A registry matching every pair can use the
 /// native evaluator; any changed, added, or removed rule stays on the

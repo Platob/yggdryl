@@ -5,6 +5,7 @@ mod coupled {
     use yggdryl::txhash::{
         DEFAULT_UNIT, TxHash, UNIX_WIDTH, digest, dtype, restate_unix, txh3, txh64, txh128,
     };
+    use yggdryl::xxhash::Xxh3;
     use yggdryl::{Digest, DigestAlgorithm, Error, TimeUnit};
 
     const INSTANT: i64 = 1_700_000_000_000_000;
@@ -109,6 +110,40 @@ mod coupled {
             pinned.into_uuid().unwrap().to_string(),
             "017f22e2-79b0-71ef-bedc-ba9876543210"
         );
+    }
+
+    #[test]
+    fn sequenced_uuid_projection_orders_by_millis_and_hashes_the_full_sequence_with_the_seed() {
+        let content = 0x0123_4567_89ab_cdef_u64;
+        let value = TxHash::new_in(
+            1_234_567,
+            TimeUnit::Nanosecond,
+            Digest::new(DigestAlgorithm::Xxh3, u128::from(content)),
+        )
+        .unwrap();
+        let payload = |sequence: u64, seed: u64| {
+            let mut state = Xxh3::with_seed(seed);
+            state.write_bytes(&content.to_le_bytes());
+            state.write_bytes(&sequence.to_le_bytes());
+            state.as_u64() & ((1 << 62) - 1)
+        };
+        let uuid = value.into_sequenced_uuid(7, 11).unwrap();
+        assert_eq!(uuid.version(), 7);
+        assert_eq!(uuid.get() >> 80, 1);
+        assert_eq!((uuid.get() >> 64) & 0xfff, 7);
+        assert_eq!(uuid.get() & ((1 << 62) - 1), u128::from(payload(7, 11)));
+        assert_ne!(uuid, value.into_sequenced_uuid(7, 12).unwrap());
+        assert!(uuid < value.into_sequenced_uuid(8, 0).unwrap());
+
+        let overflow = value.into_sequenced_uuid(4_096, 11).unwrap();
+        let farther = value.into_sequenced_uuid(8_192, 11).unwrap();
+        assert_eq!((overflow.get() >> 64) & 0xfff, 4_095);
+        assert_eq!((farther.get() >> 64) & 0xfff, 4_095);
+        assert_eq!(
+            overflow.get() & ((1 << 62) - 1),
+            u128::from(payload(4_096, 11))
+        );
+        assert_ne!(overflow, farther);
     }
 
     #[test]

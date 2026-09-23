@@ -44,7 +44,7 @@ test('a malformed path is refused where it stopped', () => {
 test('every line becomes one typed row', () => {
   const lines = [...source().readTextLines(new TextOptions())]
   assert.equal(lines.length, 2)
-  assert.equal(Number(lines[0].index), 0)
+  assert.equal(lines[0].index, 0n)
   assert.equal(lines[0].body, '8=FIX|55=AAPL|35=D')
   assert.equal(lines[0].decodedByteSize, 0)
   assert.notEqual(lines[0].sourceurl, null)
@@ -77,23 +77,25 @@ test('a line reads itself on the first ask', () => {
 test('a line is an event under the options it reads itself by', () => {
   const options = new TextOptions()
   options.rowheader = String.raw`^\[(?P<level>[A-Z]+)\] `
-  const line = new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
+  const line = new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
   // The body is the line past its header, which comes off where the line is
   // made; the captures are what the header named.
   assert.equal(line.body, '8=FIX|55=AAPL|35=D')
   assert.deepEqual(line.captures, ['INFO'])
   assert.equal(line.mtime, null)
   assert.equal(line.currunix, 0n)
+  assert.equal(line.seqnum, 0n)
   // Its identity derives from its instant, physical sequence and bytes.
   assert.match(line.curruuid, /^[0-9a-f-]{36}$/)
-  const later = new TextLine(7, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
-  assert.equal(later.index, 7)
+  const later = new TextLine(7n, '[INFO] 8=FIX|55=AAPL|35=D', null, options)
+  assert.equal(later.index, 7n)
+  assert.equal(later.seqnum, 7n)
   assert.notEqual(line.curruuid, later.curruuid)
   // A line read under no header states the whole text as its body and names
   // nothing, so it is a different event from this one.
   assert.notEqual(
     line.currhashcode,
-    new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
+    new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D').currhashcode,
   )
   // A line a caller holds was read under no identifier, so both accessors
   // answer null and nothing spells a cross code.
@@ -103,20 +105,36 @@ test('a line is an event under the options it reads itself by', () => {
   assert.equal(line.crosshashcode, 0n)
   assert.match(line.crossuuid, /^[0-9a-f-]{36}$/)
   // Stated captures are the line's word over its own header.
-  assert.deepEqual(new TextLine(0, '[INFO] 8=FIX|55=AAPL|35=D', ['WARN'], options).captures, ['WARN'])
+  assert.deepEqual(new TextLine(0n, '[INFO] 8=FIX|55=AAPL|35=D', ['WARN'], options).captures, ['WARN'])
+})
+
+test('line indices and sequences keep the full unsigned 64-bit boundary', () => {
+  const maximum = (1n << 64n) - 1n
+  const line = new TextLine(maximum, 'x')
+  assert.equal(line.index, maximum)
+  assert.equal(line.seqnum, maximum)
+  assert.throws(() => new TextLine(-1n, 'x'), /index must be an unsigned 64-bit integer/)
+  assert.throws(() => new TextLine(1n << 64n, 'x'), /index must be an unsigned 64-bit integer/)
+
+  const options = new TextOptions()
+  options.startRownum = 10n
+  assert.equal(new TextLine(7n, 'x', null, options).seqnum, 17n)
+
+  options.startRownum = -1n
+  assert.throws(() => new TextLine(0n, 'x', null, options).seqnum, /seqnum/)
 })
 
 test('a line with no body is no line', () => {
   // A line is the line it holds, so the door that makes one refuses a body
   // stating nothing - which is what lets a read's `body` column hold no null
   // and no empty cell.
-  assert.throws(() => new TextLine(0, ''), /body/)
-  assert.throws(() => new TextLine(0, Buffer.alloc(0)), /body/)
+  assert.throws(() => new TextLine(0n, ''), /body/)
+  assert.throws(() => new TextLine(0n, Buffer.alloc(0)), /body/)
   // And a blank physical line is a separator rather than a record, so the
   // reader never answers one.
   const lines = [...source('alpha\n\nbeta\n').readTextLines(new TextOptions())]
   assert.deepEqual(lines.map((line) => line.body), ['alpha', 'beta'])
-  assert.deepEqual(lines.map((line) => Number(line.index)), [0, 2])
+  assert.deepEqual(lines.map((line) => line.index), [0n, 2n])
 })
 
 test('the entry tree is built and found by path', () => {
@@ -169,8 +187,8 @@ test('an entry is text, and its bytes are beside it', () => {
 })
 
 test('a string body round-trips as text', () => {
-  const line = new TextLine(3, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
-  assert.equal(Number(line.index), 3)
+  const line = new TextLine(3n, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
+  assert.equal(line.index, 3n)
   assert.equal(line.body, '58=caf\u00e9|10=0|')
   assert.equal(line.decodedByteSize, 0)
   assert.deepEqual(line.captures, ['FIX.4.4', null])
@@ -179,21 +197,21 @@ test('a string body round-trips as text', () => {
 test('a buffer body with one Latin-1 byte is decoded where the line is made', () => {
   // `caf` then the lone 0xE9 Windows-1252 gives `\u00e9`, among UTF-8.
   const wire = Buffer.concat([Buffer.from('58=caf'), Buffer.from([0xe9]), Buffer.from('|10=0|')])
-  const line = new TextLine(0, wire)
+  const line = new TextLine(0n, wire)
   assert.equal(line.body, '58=caf\u00e9|10=0|')
   assert.equal(line.decodedByteSize, 1)
   // A buffer that was text costs nothing and counts nothing.
-  assert.equal(new TextLine(0, Buffer.from('58=caf\u00e9|10=0|')).decodedByteSize, 0)
+  assert.equal(new TextLine(0n, Buffer.from('58=caf\u00e9|10=0|')).decodedByteSize, 0)
 })
 
 test('the five bytes the classic table leaves undefined read as their own code points', () => {
   for (const byte of [0x81, 0x8d, 0x8f, 0x90, 0x9d]) {
-    const line = new TextLine(0, Buffer.from([0x61, byte, 0x62]))
+    const line = new TextLine(0n, Buffer.from([0x61, byte, 0x62]))
     assert.equal(line.body, `a${String.fromCharCode(byte)}b`)
     assert.equal(line.decodedByteSize, 1)
   }
   // And the classic row reads as the table has it.
-  const quoted = new TextLine(0, Buffer.from([0x80, 0x20, 0x93, 0x71, 0x94]))
+  const quoted = new TextLine(0n, Buffer.from([0x80, 0x20, 0x93, 0x71, 0x94]))
   assert.equal(quoted.body, '\u20ac \u201cq\u201d')
   assert.equal(quoted.decodedByteSize, 3)
 })
@@ -205,7 +223,7 @@ test('a valid character is kept beside a lone byte on the same line', () => {
     Buffer.from([0xe9]),
     Buffer.from(' caf\u00e9|10=0|'),
   ])
-  const line = new TextLine(0, wire)
+  const line = new TextLine(0n, wire)
   assert.equal(line.body, '58=caf\u00e9 caf\u00e9|10=0|')
   assert.equal(line.decodedByteSize, 1)
 })

@@ -17,7 +17,7 @@ A handle's name picks the encoding, the compression and the charset; the read an
 
 ## Read and write
 
-Every record encoding answers the same calls through [`IOMedia`](../holder/iobase/records.md): `overwrite_records`, `append_records`, `merge_records`, `read_records` for native rows, and the `*_arrow_*` twins for Arrow batches.
+Every record encoding answers the same calls through [`IOMedia`](../holder/index.md#records): `overwrite_records`, `append_records`, `merge_records`, `read_records` for native rows, and the `*_arrow_*` twins for Arrow batches.
 
 === "Rust"
 
@@ -934,6 +934,8 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 ## Plain text
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
+
+`TextLine` exposes the [event identity](../graph.md#contract) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 
 === "Rust"
 

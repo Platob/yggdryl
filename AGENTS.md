@@ -344,7 +344,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop; recursive cast planning stays with `Field` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
-| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names, its parents' UUIDs (the whole lineage, oldest first) and its sources' UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants plus the persisted recording clock of its merge reference, a state and a place in its chain, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the nineteen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
+| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names, its canonically sorted parent UUIDs (the whole lineage) and source UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants plus the persisted recording clock of its merge reference, a state and a place in its chain, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the nineteen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
 | `variant.rs` | the Apache Parquet Variant binary encoding, version 1: `Variant` - one metadata dictionary and one value payload - `Scalar::Variant`, the encode and decode doors, the canonical `arrow.parquet.variant` projection, and what every medium writes for a `variant` column |
@@ -862,7 +862,7 @@ under the names its own index has: `ZipNode` is a prefix of that index,
   reserves the sizes a stream does not know yet, and the index learns about a
   member only once its bytes are in the handle.
 - `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
-  handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
+  handle beneath it; the cost model in the ZIP section of `docs/holder/index.md` is stated
   and asserted in those terms.
 
 ### Object stores (`s3/`, non-default `s3` feature)
@@ -1410,7 +1410,7 @@ and not a silent update.
 | ZIP / Avro exchange | `zipfile` and fastavro writing the archive and the container this crate then reads: the direction whose in-tree tests skip when nothing produced the input | `python scripts/check_zip_interop.py`, `python scripts/check_avro_interop.py` |
 | PyIceberg exchange | v1, v2, and v3 tables against PyIceberg | `python scripts/check_iceberg_interop.py` |
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
-| Python binding wheel | `stage_cli.py`, the maturin wheel, and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3 |
+| Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
 | Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
 | Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
@@ -1595,8 +1595,9 @@ Write for lookup - the readers are human scanners and LLM retrieval. Contract,
 then the smallest runnable example, then non-obvious edges, then measured
 performance. Canonical symbol names, stable headings, short paragraphs, tables
 only for exact mappings, exact commands and results preserved. One fact in one
-place: link instead of paraphrasing, and never narrate signatures, repeat
-examples in prose, add marketing text, or create benchmark-only pages.
+place: link instead of paraphrasing, and never narrate signatures in prose (a
+signature block is code, see below), repeat examples in prose, add marketing
+text, or create benchmark-only pages.
 
 The layer tabs, the page skeleton, and the per-change docs rules are spelled out
 in `docs/architecture.md` and `docs/contributing.md`; those pages and this
@@ -1616,6 +1617,13 @@ section change together. What binds every page:
   and Charsets. Each section is a sentence or two and a tabbed example; the
   example carries the detail, not the prose. A section's benchmarks sit in its
   own `<section> performance` subsection, never in a shared one.
+  `docs/holder/index.md` is the same kind of page for storage: Handles
+  (`Holder`, roles, delegation), then the `IOBase` surfaces - Bytes, Values,
+  Records, Partitions, Call counts - then one section per backend: Buffer,
+  Local, Filesystems, Object stores, Buffered, ZIP. A section may open with a
+  `text` block of the few public signatures a caller implements or reaches for
+  first, each with a one-line comment on what it promises; it is never the
+  whole surface, which rustdoc owns.
   `docs/types/` is a theme of the same kind: the Core pages - `datatype.md`,
   `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
   subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,

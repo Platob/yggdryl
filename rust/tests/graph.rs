@@ -21,3 +21,5 @@ mod market_column;
 mod order;
 #[path = "graph/quote.rs"]
 mod quote;
+#[path = "graph/trade.rs"]
+mod trade;

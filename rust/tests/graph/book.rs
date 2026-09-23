@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::graph::{
     Book, BookIterator, BookSide, Element, Event, Execution, GLOBAL_SYMBOL, MarketElement,
-    MarketEventData, MarketOperation, Order, Quote,
+    MarketEventData, MarketOperation, Order, Quote, Trade,
 };
 use yggdryl::{Currency, Decimal18, Side, State};
 
@@ -13,16 +15,16 @@ fn operation(
     identity: &str,
     unix: i64,
     side: &str,
-    px: &str,
-    qty: i64,
+    price: &str,
+    quantity: i64,
     state: &str,
 ) -> MarketOperation {
     let mut event = MarketEventData::at(unix);
     event.set_crosscode(identity.to_owned());
     event.set_symbolticker(Some(symbol.to_owned()));
     event.set_side(Side::read(side).unwrap());
-    event.set_px(px.parse().unwrap());
-    event.set_qty(Decimal18::from_int(qty));
+    event.set_price(price.parse().unwrap());
+    event.set_quantity(Decimal18::from_int(quantity));
     event.set_currency(Currency::new("USD").unwrap());
     event.set_unit("share".to_owned());
     event.set_state(State::read(state).unwrap());
@@ -65,7 +67,9 @@ fn side_keeps_best_price_order_and_aggregates_exact_level_quantity() {
         .unwrap();
 
     assert_eq!(
-        side.live().map(MarketElement::get_px).collect::<Vec<_>>(),
+        side.live()
+            .map(MarketElement::get_price)
+            .collect::<Vec<_>>(),
         [
             "101".parse().unwrap(),
             "101".parse().unwrap(),
@@ -94,8 +98,8 @@ fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
 
     assert_eq!(book.bbo_midpoint(), Some("101".parse().unwrap()));
     assert_eq!(book.median_quantity(), Some(Decimal18::from_int(6)));
-    assert_eq!(book.get_px(), "101".parse().unwrap());
-    assert_eq!(book.get_qty(), Decimal18::from_int(6));
+    assert_eq!(book.get_price(), "101".parse().unwrap());
+    assert_eq!(book.get_quantity(), Decimal18::from_int(6));
     assert_eq!(book.get_bidqty(), Some(Decimal18::from_int(8)));
     assert_eq!(book.get_askqty(), Some(Decimal18::from_int(4)));
 
@@ -103,7 +107,7 @@ fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
         .unwrap();
     assert!(book.is_crossed());
     assert_eq!(book.bbo_midpoint(), None);
-    assert_eq!(book.get_px(), Decimal18::ZERO);
+    assert_eq!(book.get_price(), Decimal18::ZERO);
 }
 
 #[test]
@@ -180,6 +184,66 @@ fn iterator_emits_one_book_per_symbol_and_timestamp_or_one_global_book() {
             .iter()
             .all(|book| book.get_symbolticker() == Some(GLOBAL_SYMBOL))
     );
+}
+
+#[test]
+fn iterator_emits_a_completed_timestamp_before_a_source_error_then_fuses() {
+    struct Counted {
+        source: std::vec::IntoIter<yggdryl::Result<MarketOperation>>,
+        pulled: Arc<AtomicUsize>,
+    }
+
+    impl Iterator for Counted {
+        type Item = yggdryl::Result<MarketOperation>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            let item = self.source.next()?;
+            self.pulled.fetch_add(1, Ordering::SeqCst);
+            Some(item)
+        }
+    }
+
+    let pulled = Arc::new(AtomicUsize::new(0));
+    let source = vec![
+        Ok(operation(
+            "quote", "IBM", "IBM-B", 1_000_000, "Buy", "100", 2, "New",
+        )),
+        Ok(operation(
+            "quote", "IBM", "IBM-A", 1_000_000, "Sell", "102", 4, "New",
+        )),
+        Err(yggdryl::Error::InvalidRecord {
+            path: "$[2]".into(),
+            reason: "broken operation source".into(),
+        }),
+        Ok(operation(
+            "quote", "IBM", "IBM-LATE", 2_000_000, "Buy", "101", 1, "New",
+        )),
+    ];
+    let mut books = BookIterator::new(
+        Counted {
+            source: source.into_iter(),
+            pulled: Arc::clone(&pulled),
+        },
+        0,
+        false,
+    )
+    .unwrap();
+
+    assert_eq!(pulled.load(Ordering::SeqCst), 0);
+    let book = books.next().unwrap().unwrap();
+    assert_eq!(book.get_currunix(), 1_000_000);
+    assert_eq!((book.bid().len(), book.ask().len()), (1, 1));
+    assert_eq!(pulled.load(Ordering::SeqCst), 3);
+
+    let error = books.next().unwrap().unwrap_err();
+    assert!(
+        matches!(&error, yggdryl::Error::InvalidRecord { path, reason }
+            if path == "$[2]" && reason == "broken operation source"),
+        "{error}"
+    );
+    assert!(books.next().is_none());
+    assert!(books.next().is_none());
+    assert_eq!(pulled.load(Ordering::SeqCst), 3);
 }
 
 #[test]
@@ -269,8 +333,8 @@ fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() 
     let replacement = book.bid().live().next().unwrap();
     assert_eq!(replacement.get_seqnum(), 1);
     assert_eq!(replacement.get_prevuuid(), Some(first.get_curruuid()));
-    assert_eq!(replacement.get_prevpx(), Some(first.get_px()));
-    assert_eq!(replacement.get_prevqty(), Some(first.get_qty()));
+    assert_eq!(replacement.get_prevpx(), Some(first.get_price()));
+    assert_eq!(replacement.get_prevqty(), Some(first.get_quantity()));
     assert_eq!(book.get_seqnum(), 1);
 
     let before = book.clone();
@@ -329,12 +393,201 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
 }
 
 #[test]
+fn partial_market_updates_continue_orders_without_restating_order_id() {
+    let mut book = Book::new(1, "IBM");
+    book.add_operations([with_identifiers(
+        operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+        &[("OrderID", "ORDER-1"), ("MDUpdateAction", "0")],
+    )])
+    .unwrap();
+    let previous = book.bid().live().next().unwrap().clone();
+
+    book.add_operations([with_identifiers(
+        operation("quote", "IBM", "O-1", 2, "Buy", "0", 3, "Replaced"),
+        &[("MDUpdateAction", "1"), ("MDEntrySize", "3")],
+    )])
+    .unwrap();
+
+    let live = book.bid().live().next().unwrap();
+    assert!(matches!(live, MarketOperation::Order(_)));
+    assert_eq!(live.get_identifiers()["OrderID"], "ORDER-1");
+    assert_eq!(live.get_price(), previous.get_price());
+    assert_eq!(live.get_quantity(), Decimal18::from_int(3));
+    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(live.get_prevpx(), Some(previous.get_price()));
+    assert_eq!(live.get_prevqty(), Some(previous.get_quantity()));
+    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+    let mut finalized = live.clone();
+    finalized.finalize();
+    assert_eq!(*live, finalized);
+}
+
+#[test]
+fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() {
+    let mut book = Book::new(1, "IBM");
+    book.add_operations([
+        operation("quote", "IBM", "X", 1, "Buy", "100", 2, "New"),
+        operation("quote", "IBM", "Y", 1, "Sell", "101", 3, "New"),
+    ])
+    .unwrap();
+    let before = book.clone();
+    let error = book
+        .add_operations([with_identifiers(
+            operation("quote", "IBM", "Y", 2, "Buy", "99", 4, "Replaced"),
+            &[
+                ("MDUpdateAction", "1"),
+                ("MDEntryRefID", "X"),
+                ("MDEntryPx", "99"),
+                ("MDEntrySize", "4"),
+            ],
+        )])
+        .expect_err("a reference cannot replace a different live destination on either side");
+    assert!(
+        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.identifiers.MDEntryID"),
+        "{error}"
+    );
+    assert_eq!(book, before);
+}
+
+#[test]
+fn partial_market_updates_move_between_sides_with_their_predecessor() {
+    let mut book = Book::new(1, "IBM");
+    book.add_operations([with_identifiers(
+        operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+        &[("OrderID", "ORDER-1"), ("MDUpdateAction", "0")],
+    )])
+    .unwrap();
+    let previous = book.bid().live().next().unwrap().clone();
+
+    book.add_operations([with_identifiers(
+        operation("quote", "IBM", "O-2", 2, "Sell", "0", 3, "Replaced"),
+        &[
+            ("MDUpdateAction", "1"),
+            ("MDEntryRefID", "O-1"),
+            ("MDEntrySize", "3"),
+        ],
+    )])
+    .unwrap();
+    assert!(book.bid().is_empty());
+    let live = book.ask().live().next().unwrap();
+    assert!(matches!(live, MarketOperation::Order(_)));
+    assert_eq!(live.get_price(), previous.get_price());
+    assert_eq!(live.get_quantity(), Decimal18::from_int(3));
+    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(live.get_prevpx(), Some(previous.get_price()));
+    assert_eq!(live.get_prevqty(), Some(previous.get_quantity()));
+    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+    assert_eq!(live.get_identifiers()["MDEntryID"], "O-2");
+    let previous = live.clone();
+
+    book.add_operations([with_identifiers(
+        operation("quote", "IBM", "O-2", 3, "Buy", "101", 0, "Replaced"),
+        &[("MDUpdateAction", "5"), ("MDEntryPx", "101")],
+    )])
+    .unwrap();
+    assert!(book.ask().is_empty());
+    let live = book.bid().live().next().unwrap();
+    assert!(matches!(live, MarketOperation::Order(_)));
+    assert_eq!(live.get_price(), Decimal18::from_int(101));
+    assert_eq!(live.get_quantity(), previous.get_quantity());
+    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+}
+
+#[test]
+fn renamed_market_entry_expires_using_its_current_identity() {
+    let mut initial = with_identifiers(
+        operation("order", "IBM", "X", 1, "Buy", "100", 2, "New"),
+        &[("MDUpdateAction", "0"), ("OrderID", "ORDER-1")],
+    );
+    initial.set_exprtime(Some(4));
+    initial.finalize();
+    let renamed = with_identifiers(
+        operation("quote", "IBM", "Y", 2, "Sell", "101", 3, "Replaced"),
+        &[
+            ("MDUpdateAction", "1"),
+            ("MDEntryRefID", "X"),
+            ("MDEntryPx", "101"),
+            ("MDEntrySize", "3"),
+        ],
+    );
+    let books = BookIterator::new([initial, renamed].into_iter(), 0, false)
+        .unwrap()
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .expect("expiry deletes the current entry after its reference has been resolved");
+    assert_eq!(books.len(), 3);
+    let previous = books[1].ask().live().next().unwrap();
+    assert_eq!(previous.get_identifiers()["MDEntryID"], "Y");
+    assert!(books[2].bid().is_empty());
+    assert!(books[2].ask().is_empty());
+    assert_eq!(books[2].get_currunix(), 4);
+    let expired = &books[2].ask().deltas()[0];
+    assert!(matches!(expired, MarketOperation::Order(_)));
+    assert_eq!(expired.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(expired.get_identifiers()["MDEntryID"], "Y");
+    assert!(!expired.get_state().is_live());
+}
+
+#[test]
+fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
+    let mut book = Book::new(1, "IBM");
+    book.add_operations([with_identifiers(
+        operation("quote", "IBM", "Q-1", 1, "Buy", "100", 2, "New"),
+        &[("MDUpdateAction", "0")],
+    )])
+    .unwrap();
+    let previous = book.bid().live().next().unwrap().clone();
+    book.add_operations([with_identifiers(
+        operation("order", "IBM", "Q-1", 2, "Buy", "0", 3, "Replaced"),
+        &[
+            ("MDUpdateAction", "1"),
+            ("OrderID", "ORDER-1"),
+            ("MDEntrySize", "3"),
+        ],
+    )])
+    .unwrap();
+    let live = book.bid().live().next().unwrap();
+    assert!(matches!(live, MarketOperation::Order(_)));
+    assert_eq!(live.get_price(), previous.get_price());
+    assert_eq!(live.get_identifiers()["OrderID"], "ORDER-1");
+    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+}
+
+#[test]
+fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor() {
+    let mut book = Book::new(1, "IBM");
+    book.add_operations([with_identifiers(
+        operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
+        &[("OrderID", "ORDER-1"), ("MDUpdateAction", "0")],
+    )])
+    .unwrap();
+    let before = book.clone();
+    let error = book
+        .add_operations([with_identifiers(
+            operation("order", "IBM", "O-1", 2, "Sell", "101", 3, "Replaced"),
+            &[
+                ("MDUpdateAction", "1"),
+                ("OrderID", "ORDER-2"),
+                ("MDEntryPx", "101"),
+                ("MDEntrySize", "3"),
+            ],
+        )])
+        .expect_err("a continuation cannot replace a known order identity");
+    assert!(
+        matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.identifiers.OrderID"),
+        "{error}"
+    );
+    assert_eq!(book, before);
+}
+
+#[test]
 fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock() {
     let mut first = MarketEventData::at(10);
     first.set_crosscode("E-1".to_owned());
     first.set_symbolticker(Some("IBM".to_owned()));
-    first.set_px("100".parse().unwrap());
-    first.set_qty(Decimal18::from_int(2));
+    first.set_price("100".parse().unwrap());
+    first.set_quantity(Decimal18::from_int(2));
     first.set_state(State::read("Filled").unwrap());
     first.set_execunix(Some(7));
     first.finalize();
@@ -353,6 +606,60 @@ fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock
     assert!(book.bid().is_empty());
     assert!(book.ask().is_empty());
     assert_eq!(book.get_execunix(), Some(9));
+}
+
+#[test]
+fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
+    let buy = Execution::try_from(operation(
+        "execution",
+        "IBM",
+        "E-BUY",
+        10,
+        "Buy",
+        "100",
+        2,
+        "Filled",
+    ))
+    .unwrap();
+    let sell = Execution::try_from(operation(
+        "execution",
+        "IBM",
+        "E-SELL",
+        10,
+        "Sell",
+        "101",
+        3,
+        "Filled",
+    ))
+    .unwrap();
+    let mut event = MarketEventData::at(10);
+    event.set_crosscode("T-1".to_owned());
+    event.set_symbolticker(Some("IBM".to_owned()));
+    event.set_state(State::read("Filled").unwrap());
+    event.finalize();
+    let trade = Trade::from_parts(event, vec![sell, buy]).unwrap();
+    assert_eq!(
+        trade
+            .executions()
+            .iter()
+            .map(Element::get_crosscode)
+            .collect::<Vec<_>>(),
+        ["E-BUY", "E-SELL"]
+    );
+    let mut expected = trade.executions().to_vec();
+    expected.sort_by_key(Element::get_curruuid);
+
+    let mut book = Book::new(10, "IBM");
+    book.add_operations([trade.into()]).unwrap();
+
+    assert!(book.bid().is_empty());
+    assert!(book.ask().is_empty());
+    assert_eq!(book.executions(), expected);
+    assert!(
+        book.executions()
+            .windows(2)
+            .all(|pair| pair[0].get_curruuid() < pair[1].get_curruuid())
+    );
 }
 
 #[test]
@@ -388,7 +695,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     assert_eq!(books[0].executions().len(), 1);
     assert!(books[1].executions().is_empty());
     let replacement = books[1].bid().live().next().unwrap();
-    assert_eq!(replacement.get_px(), "101".parse().unwrap());
+    assert_eq!(replacement.get_price(), "101".parse().unwrap());
     assert_eq!(
         (replacement.get_seqnum(), replacement.get_prevuuid()),
         (0, None)
@@ -476,8 +783,8 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     let mut identifiers = snapshot.get_identifiers().clone();
     identifiers.insert("SnapshotView".to_owned(), "2".to_owned());
     snapshot.set_identifiers(identifiers);
-    snapshot.set_px("101".parse().unwrap());
-    snapshot.set_qty(Decimal18::from_int(5));
+    snapshot.set_price("101".parse().unwrap());
+    snapshot.set_quantity(Decimal18::from_int(5));
     snapshot.finalize();
     snapshot.set_snapunix(Some(2));
     let snapshot_only = snapshot.clone();
@@ -493,8 +800,8 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     let mut live = books[1].bid().live();
     let first = live.next().unwrap();
     assert_eq!(first.get_crosscode(), "O-1");
-    assert_eq!(first.get_px(), "101".parse().unwrap());
-    assert_eq!(first.get_qty(), Decimal18::from_int(5));
+    assert_eq!(first.get_price(), "101".parse().unwrap());
+    assert_eq!(first.get_quantity(), Decimal18::from_int(5));
     assert_eq!(live.next().unwrap().get_crosscode(), "O-OTHER");
 
     let only = BookIterator::new([snapshot_only].into_iter(), 0, false)
@@ -505,7 +812,7 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     assert_eq!(only.get_snapunix(), Some(2));
     assert_eq!(only.bid().len(), 1);
     assert_eq!(
-        only.bid().live().next().unwrap().get_px(),
+        only.bid().live().next().unwrap().get_price(),
         "101".parse().unwrap()
     );
 }
@@ -529,6 +836,65 @@ fn snapshotted_execution_is_reported_without_replacing_live_depth() {
     assert_eq!(books[1].executions().len(), 1);
     assert_eq!(books[1].executions()[0].get_currunix(), 3);
     assert_eq!(books[1].executions()[0].get_execunix(), Some(2));
+}
+
+#[test]
+fn snapshotted_trade_rebases_every_child_and_preserves_execution_time() {
+    let mut buy = Execution::try_from(operation(
+        "execution",
+        "IBM",
+        "E-BUY",
+        2,
+        "Buy",
+        "101",
+        4,
+        "Trade",
+    ))
+    .unwrap();
+    buy.set_execunix(Some(1));
+    buy.finalize();
+    let mut sell = Execution::try_from(operation(
+        "execution",
+        "IBM",
+        "E-SELL",
+        2,
+        "Sell",
+        "101",
+        4,
+        "Trade",
+    ))
+    .unwrap();
+    sell.set_execunix(Some(2));
+    sell.finalize();
+    let mut root = MarketEventData::at(2);
+    root.set_crosscode("T-1".to_owned());
+    root.set_symbolticker(Some("IBM".to_owned()));
+    root.set_snapunix(Some(3));
+    root.set_state(State::read("Trade").unwrap());
+    root.finalize();
+    let trade = Trade::from_parts(root, vec![sell, buy]).unwrap();
+
+    let book = BookIterator::new([MarketOperation::Trade(trade)].into_iter(), 0, false)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(book.get_currunix(), 3);
+    assert_eq!(book.get_snapunix(), Some(3));
+    assert_eq!(book.executions().len(), 2);
+    assert!(
+        book.executions()
+            .iter()
+            .all(|execution| execution.get_currunix() == 3)
+    );
+    let mut execunix = book
+        .executions()
+        .iter()
+        .map(Event::get_execunix)
+        .collect::<Vec<_>>();
+    execunix.sort_unstable();
+    assert_eq!(execunix, [Some(1), Some(2)]);
 }
 
 #[test]
@@ -664,6 +1030,63 @@ fn operation_kind_participates_in_book_identity() {
         .add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     assert_ne!(order_book.get_curruuid(), quote_book.get_curruuid());
+}
+
+#[test]
+fn composite_identity_consumes_nested_uuid_without_rehashing_nested_content() {
+    let canonical = operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New");
+    let mut left_operation = canonical.clone();
+    let mut right_operation = canonical;
+    let operation_uuid = left_operation.get_curruuid();
+    left_operation.set_currhashcode(11);
+    right_operation.set_currhashcode(29);
+    left_operation.set_curruuid(operation_uuid);
+    right_operation.set_curruuid(operation_uuid);
+    assert_eq!(
+        left_operation.get_curruuid(),
+        right_operation.get_curruuid()
+    );
+    assert_ne!(
+        left_operation.get_currhashcode(),
+        right_operation.get_currhashcode()
+    );
+
+    let mut left = Book::new(1, "IBM");
+    left.add_operations([left_operation]).unwrap();
+    let mut right = Book::new(1, "IBM");
+    right.add_operations([right_operation]).unwrap();
+
+    assert_eq!(left.bid().get_curruuid(), right.bid().get_curruuid());
+    assert_eq!(
+        left.bid().get_currhashcode(),
+        right.bid().get_currhashcode()
+    );
+    assert_eq!(left.get_curruuid(), right.get_curruuid());
+    assert_eq!(left.get_currhashcode(), right.get_currhashcode());
+}
+
+#[test]
+fn restating_rederives_the_book_identity_after_holder_restatement() {
+    let mut live = Book::new(1, "IBM");
+    live.add_operations([
+        operation("quote", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
+        operation("quote", "IBM", "A-1", 1, "Sell", "102", 4, "New"),
+    ])
+    .unwrap();
+    live.set_recdunix(Some(12));
+    live.set_refrecdunix(Some(12));
+    live.finalize();
+    let mut repeated = live.clone();
+    repeated.set_recdunix(Some(8));
+
+    let restated = repeated.restating(&live);
+    assert_eq!(restated.get_recdunix(), Some(8));
+    let mut canonical = restated.clone();
+    canonical.finalize();
+    assert_eq!(restated.get_curruuid(), canonical.get_curruuid());
+    assert_eq!(restated.get_currhashcode(), canonical.get_currhashcode());
+    assert_eq!(restated.bid(), canonical.bid());
+    assert_eq!(restated.ask(), canonical.ask());
 }
 
 #[test]
@@ -834,6 +1257,33 @@ fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression()
     assert!(book.executions().is_empty());
     assert!(book.bid().deltas().is_empty());
     assert_eq!(book.ask().deltas().len(), 1);
+    let mut canonical_bid = book.bid().clone();
+    canonical_bid.finalize();
+    assert_eq!(book.bid(), &canonical_bid);
+
+    book.add_operations([operation(
+        "execution",
+        "IBM",
+        "E-2",
+        3,
+        "Buy",
+        "101",
+        1,
+        "Filled",
+    )])
+    .unwrap();
+    assert!(book.bid().deltas().is_empty());
+    assert!(book.ask().deltas().is_empty());
+    let mut canonical_bid = book.bid().clone();
+    canonical_bid.finalize();
+    let mut canonical_ask = book.ask().clone();
+    canonical_ask.finalize();
+    assert_eq!(book.bid(), &canonical_bid);
+    assert_eq!(book.ask(), &canonical_ask);
+    let mut canonical_book = book.clone();
+    canonical_book.finalize();
+    assert_eq!(book.get_curruuid(), canonical_book.get_curruuid());
+    assert_eq!(book.get_currhashcode(), canonical_book.get_currhashcode());
     assert!(
         book.add_operations([operation("quote", "IBM", "OLD", 1, "Buy", "99", 1, "New")])
             .is_err()
@@ -986,12 +1436,12 @@ fn decimal_means_do_not_overflow_representable_results() {
     let bid = Decimal18::from_units(Decimal18::MAX.units() - 2).unwrap();
     let ask = Decimal18::MAX;
     let mut bid_operation = operation("quote", "IBM", "B", 1, "Buy", "0", 1, "New");
-    bid_operation.set_px(bid);
-    bid_operation.set_qty(Decimal18::MAX);
+    bid_operation.set_price(bid);
+    bid_operation.set_quantity(Decimal18::MAX);
     bid_operation.finalize();
     let mut ask_operation = operation("quote", "IBM", "A", 1, "Sell", "0", 1, "New");
-    ask_operation.set_px(ask);
-    ask_operation.set_qty(Decimal18::MAX);
+    ask_operation.set_price(ask);
+    ask_operation.set_quantity(Decimal18::MAX);
     ask_operation.finalize();
     let mut book = Book::new(1, "IBM");
     book.add_operations([bid_operation, ask_operation]).unwrap();

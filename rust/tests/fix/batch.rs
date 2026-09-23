@@ -702,9 +702,9 @@ fn composed_fallible_stages_are_lazy_preserve_errors_and_fuse_exhaustion() {
 
 /// A walked message descends from the whole of its chain.
 ///
-/// Its parents are every message before it in the chain, oldest first, each
-/// once - the lineage the walk carries forward - and its previous is the
-/// last of them. Its sources stay its own line's: provenance names what a
+/// Its parents are every message before it in the chain, sorted by UUID and
+/// deduplicated - the lineage the walk carries forward - while `prevuuid`
+/// names the immediate predecessor. Its sources stay its own line's: provenance names what a
 /// node was read from and never what it follows, so nothing of a
 /// predecessor's source reaches its successor. Walked again, the chain is
 /// the same chain under the same identities.
@@ -744,7 +744,7 @@ fn a_walked_message_descends_from_the_whole_chain_and_keeps_its_own_source() {
     assert_eq!(
         walked[2].get_parentuuids(),
         [identities[0], identities[1]],
-        "the whole chain, oldest first"
+        "the whole chain as a sorted identity set"
     );
     assert_eq!(walked[2].get_prevuuid(), Some(identities[1]));
     for (message, source) in walked.iter().zip(&sources) {
@@ -965,7 +965,9 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             Some("US0378331005"),
             "the reference keeps its row and the full graph merge fills a missing market fact"
         );
-        assert_eq!(message.get_srcuuids(), [newer_source, older_source]);
+        let mut expected_sources = [newer_source, older_source];
+        expected_sources.sort_unstable();
+        assert_eq!(message.get_srcuuids(), expected_sources);
         assert_eq!(message.get_execunix(), Some(90));
         assert_eq!(
             message.get_recdunix(),
@@ -1060,7 +1062,9 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         .find(|message| message.header().msgtype() == "D")
         .expect("the order delivery");
     assert_eq!(order.get_by_tag(55), Some(Scalar::from("MSFT")));
-    assert_eq!(order.get_srcuuids(), [newer_source, older_source]);
+    let mut expected_sources = [newer_source, older_source];
+    expected_sources.sort_unstable();
+    assert_eq!(order.get_srcuuids(), expected_sources);
     assert_eq!(order.get_recdunix(), Some(100));
     assert_eq!(order.get_refrecdunix(), Some(200));
     let cancel = walked

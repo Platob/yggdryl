@@ -21,8 +21,9 @@
 //! facts, while FIX source `1` and `2` values stay in `SecurityID` or
 //! `secaltids`. The columns read the existing market event holder; they add no
 //! second value. `CFICode(461)` already names its classification, so it keeps
-//! its standard tag. `MsgCat` reads the message component's `FIX:msgcat`
-//! metadata. State and expiry are event facts derived from the standard's
+//! its standard tag. `MsgCat` projects the message component's symbolic
+//! `FIX:msgcat` metadata through the registry code set into the generic
+//! market operation's stable integer ID. State and expiry are event facts derived from the standard's
 //! status and expiry fields, then carried by lifecycle; a newer explicit expiry
 //! replaces the previous deadline.
 //!
@@ -83,7 +84,7 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
-use crate::graph::EventColumn;
+use crate::graph::{EventColumn, MarketColumn};
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -172,8 +173,8 @@ pub const NOFIXENTRIES_TAG_NAME: (i32, &str) = (65_027, "nofixentries");
 /// counterparty are two instances.
 pub const MSGSESSIONID_TAG_NAME: (i32, &str) = (65_032, "msgsessionid");
 
-/// The tag and name carrying the message's identity: the UUIDv7 its microsecond
-/// instant and code derive.
+/// The tag and name carrying the message's identity: UUIDv7 ordered by its
+/// millisecond and sequence, with a content payload seeded by its cross hash.
 pub const CURRUUID_TAG_NAME: (i32, &str) = (65_039, "curruuid");
 
 /// The tag and name carrying the identity every message of one lifecycle
@@ -238,15 +239,15 @@ pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");
 
 /// The tag and name carrying the fixed business category of the message type.
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");
-/// The registry-owned vocabulary the crate's MsgCat column reads by.
+/// The crate-owned vocabulary registered for the MsgCat column to read by.
+/// Its numeric graph identifiers are intrinsic and immutable in a registry.
 pub(super) const MSGCAT_CODESET_NAME: &str = "msgcatcodeset";
 
 /// The canonical MsgCat document every registry shares.
 static MSGCAT_CODESET: LazyLock<Option<Arc<str>>> = LazyLock::new(|| {
-    let codes = super::constants::MSGCATEGORIES
+    let codes = super::constants::MSGCATEGORY_CODES
         .iter()
-        .copied()
-        .map(|value| super::FixCode::new(value, value))
+        .map(|(name, _, value)| super::FixCode::new(*name, *value))
         .collect::<Vec<_>>();
     match super::FixCodes::render(&codes) {
         Ok(document) => Some(Arc::from(document)),
@@ -295,6 +296,16 @@ pub const REFRECDUNIX_TAG_NAME: (i32, &str) = (65_064, "refrecdunix");
 pub fn event_column_of(tag: i32) -> Option<EventColumn> {
     CRATED.iter().find_map(|held| match held.holds {
         Holds::Event(column) if held.tag_name.0 == tag => Some(column),
+        _ => None,
+    })
+}
+
+/// The graph market column one crate tag is, where the FIX field and the
+/// generic market schema are two views of the same fact.
+#[must_use]
+pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
+    CRATED.iter().find_map(|held| match held.holds {
+        Holds::Market { column, .. } if held.tag_name.0 == tag => Some(column),
         _ => None,
     })
 }
@@ -378,6 +389,11 @@ enum Holds {
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
+    /// One of the generic market facts shared with graph operations.
+    Market {
+        column: MarketColumn,
+        display: &'static str,
+    },
     /// A fact no graph event states - what a bridge's row header said, where
     /// the line was read from, the residual counter and the six normalized
     /// identifiers - which therefore spells its own.
@@ -418,6 +434,21 @@ impl Crated {
         Self {
             tag_name,
             holds: Holds::Event(column),
+            fix_wording: None,
+            names: &[],
+            codeset: None,
+        }
+    }
+
+    /// One graph market column under the crate's own tag.
+    const fn market(
+        tag_name: (i32, &'static str),
+        column: MarketColumn,
+        display: &'static str,
+    ) -> Self {
+        Self {
+            tag_name,
+            holds: Holds::Market { column, display },
             fix_wording: None,
             names: &[],
             codeset: None,
@@ -473,6 +504,11 @@ impl Crated {
         let (tag, name) = self.tag_name;
         let (dtype, display, description) = match self.holds {
             Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
+            Holds::Market { column, display } => (
+                column.datatype(),
+                display,
+                "The stable integer category of the market operation.",
+            ),
             Holds::Own {
                 datatype,
                 display,
@@ -597,13 +633,9 @@ const CRATED: [Crated; 32] = [
          ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
-    Crated::own(
-        MSGCAT_TAG_NAME,
-        || DataType::fixed_ascii(4),
-        "MsgCat",
-        "The four-byte business category of the message type.",
-    )
-    .reading(MSGCAT_CODESET_NAME),
+    Crated::market(MSGCAT_TAG_NAME, MarketColumn::MarketOperationId, "MsgCat")
+        .saying("The stable integer code for the message type's business category.")
+        .reading(MSGCAT_CODESET_NAME),
     Crated::own(
         ISINCODE_TAG_NAME,
         || Ok(DataType::isin()),

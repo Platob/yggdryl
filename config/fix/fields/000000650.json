@@ -172,7 +172,7 @@
     "metadata": {
       "FIX:tag": "65039",
       "FIX:transient": "false",
-      "description": "The event's identity: the UUIDv7 its microsecond instant and code derive.",
+      "description": "The event's identity: UUIDv7 ordered by millisecond and sequence, with a content payload seeded by its cross hash.",
       "display": "CurrUuid"
     }
   },
@@ -206,7 +206,7 @@
     "metadata": {
       "FIX:tag": "65041",
       "FIX:transient": "false",
-      "description": "The identities of the events this one descends from, oldest first, each once.",
+      "description": "The identities of the events this one descends from, sorted and unique.",
       "display": "ParentUuids"
     }
   },
@@ -288,15 +288,13 @@
   {
     "name": "msgcat",
     "dtype": {
-      "type": "string",
-      "layout": "fixed_ascii",
-      "fixed": 4
+      "type": "int32"
     },
     "nullable": true,
     "metadata": {
       "FIX:codeset": "msgcatcodeset",
       "FIX:tag": "65054",
-      "description": "The four-byte business category of the message type.",
+      "description": "The stable integer code for the message type's business category.",
       "display": "MsgCat"
     }
   },

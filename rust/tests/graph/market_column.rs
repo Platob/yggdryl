@@ -4,9 +4,10 @@ use yggdryl::{BloombergCode, Currency, Decimal18, Scalar, Side};
 #[test]
 fn market_columns_round_trip_every_optional_band() {
     let mut source = MarketEventData::at(10);
-    source.set_px("101.25".parse().unwrap());
+    source.set_marketoperationid(Some(14));
+    source.set_price("101.25".parse().unwrap());
     source.set_currency(Currency::new("USD").unwrap());
-    source.set_qty(Decimal18::from_int(7));
+    source.set_quantity(Decimal18::from_int(7));
     source.set_unit("share".to_owned());
     source.set_side(Side::read("Buy").unwrap());
     source.set_bloombergcode(Some(BloombergCode::new("BBG000B9XRY4").unwrap()));
@@ -32,7 +33,8 @@ fn market_columns_round_trip_every_optional_band() {
         column.record(&mut restored, value);
     }
 
-    assert_eq!(restored.get_px(), source.get_px());
+    assert_eq!(restored.get_marketoperationid(), Some(14));
+    assert_eq!(restored.get_price(), source.get_price());
     assert_eq!(restored.get_bloombergcode(), source.get_bloombergcode());
     assert_eq!(restored.get_lastpx(), source.get_lastpx());
     assert_eq!(restored.get_lastqty(), source.get_lastqty());
@@ -51,9 +53,22 @@ fn market_columns_round_trip_every_optional_band() {
 #[test]
 fn market_column_schema_has_one_owner_and_order() {
     let fields = MarketColumn::fields().unwrap();
-    assert_eq!(fields.len(), 30);
-    assert_eq!(fields.first().unwrap().name(), "px");
+    assert_eq!(fields.len(), 31);
+    assert_eq!(fields.first().unwrap().name(), "marketoperationid");
+    assert_eq!(fields[1].name(), "price");
+    assert_eq!(fields[3].name(), "quantity");
     assert_eq!(fields.last().unwrap().name(), "askunit");
+    assert_eq!(MarketColumn::of_name("Price"), Some(MarketColumn::Price));
+    assert_eq!(
+        MarketColumn::of_name("Quantity"),
+        Some(MarketColumn::Quantity)
+    );
+    assert_eq!(MarketColumn::of_name("px"), None);
+    assert_eq!(MarketColumn::of_name("qty"), None);
+    assert_eq!(
+        MarketColumn::of_name("MarketOperationID"),
+        Some(MarketColumn::MarketOperationId)
+    );
     assert_eq!(
         MarketColumn::of_name("BloombergCode"),
         Some(MarketColumn::BloombergCode)

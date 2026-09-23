@@ -842,7 +842,7 @@ def test_a_name_resolves_to_where_it_is_and_opens_there(tmp_path: Any) -> None:
     # what lets a reader open it.
     leaf = tmp_path / "lake" / "trades" / "2026"
     leaf.mkdir(parents=True)
-    (leaf / "part.csv").write_text("symbol\nMSFT\n", encoding="utf-8")
+    (leaf / "part.csv").write_bytes(b"symbol\nMSFT\n")
     previous = os.getcwd()
     os.chdir(tmp_path)
     try:
