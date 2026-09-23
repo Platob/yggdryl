@@ -39,8 +39,6 @@ mod grammar {
         assert!(format!("{error}").contains("at byte "), "{error}");
         let error = "nosuchfn(a)".parse::<Term>().unwrap_err();
         assert!(format!("{error}").contains("lower"), "{error}");
-        let error = "&holder.nosuch".parse::<Term>().unwrap_err();
-        assert!(format!("{error}").contains("partition"), "{error}");
         let error = "a in ()".parse::<Term>().unwrap_err();
         assert!(format!("{error}").contains("at least one"), "{error}");
         let error = "select a as".parse::<Expression>().unwrap_err();

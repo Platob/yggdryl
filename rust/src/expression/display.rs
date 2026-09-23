@@ -177,7 +177,6 @@ pub(crate) fn write_at(
     match term {
         Term::Literal(held) => write_literal(formatter, held),
         Term::Path(steps) => write_segments(formatter, steps),
-        Term::Attribute(attribute) => write!(formatter, "&holder.{attribute}"),
         Term::Parameter(name) => {
             formatter.write_char(':')?;
             write_identifier(formatter, name)

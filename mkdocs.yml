@@ -225,7 +225,6 @@ nav:
     - Filters: expression/filters.md
     - Functions: expression/functions.md
     - Plans: expression/plans.md
-    - Holder attributes: expression/holder.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
   - Graph: graph.md

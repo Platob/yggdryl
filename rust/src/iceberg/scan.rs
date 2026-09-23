@@ -16,16 +16,14 @@
 //! - a **data file** carries per-column bounds and null counts, so a file whose
 //!   statistics cannot hold the value is skipped without being opened.
 //!
-//! A filter is a [`Filter`], the same one that filters a lake through
-//! [`IOBase::children_matching`](crate::IOBase::children_matching) and a
-//! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
-//! level of the chain answers it from the statistics it carries, expressed as
-//! the [`Bounds`] every other container in this crate expresses them as: a
-//! partition tuple is a minimum equal to its maximum, so a conjunct it proves
-//! is dropped rather than re-tested, and a file's own path answers every free
-//! `&holder.*` attribute. What no level settles is filtered row by row after
-//! the file is read, because a statistic bounds a *file* and does not select a
-//! row.
+//! A filter is a [`Filter`], the same one that filters a Parquet file's row
+//! groups and a batch through [`Bound::filter`](crate::expression::Bound::filter).
+//! Each level of the chain answers it from the statistics it carries,
+//! expressed as the [`Bounds`] every other container in this crate expresses
+//! them as: a partition tuple is a minimum equal to its maximum, so a conjunct
+//! it proves is dropped rather than re-tested. What no level settles is
+//! filtered row by row after the file is read, because a statistic bounds a
+//! *file* and does not select a row.
 
 use std::sync::Arc;
 
@@ -39,7 +37,7 @@ use super::value::single_to_value;
 use crate::FieldValue as _;
 use crate::arrow::BatchReader;
 use crate::cast::ArrowCastOptions;
-use crate::expression::{Attribute, Bound, Bounds};
+use crate::expression::{Bound, Bounds};
 use crate::holder::Holder;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
 
@@ -201,21 +199,6 @@ pub(super) fn manifest_bounds(
                 .and_then(|bytes| single_to_value(bytes, dtype))
         };
         let (minimum, maximum) = (decode(&summary.lower_bound), decode(&summary.upper_bound));
-        // A partition column is spelled in the path too, so the summary bounds
-        // it as an attribute as well - but only when the two ends meet. A range
-        // of values does not bound the *text* of those values, because text
-        // does not order the way a number does.
-        if let (Some(low), Some(high)) = (&minimum, &maximum) {
-            if low == high {
-                let text = Scalar::from(super::value::scalar_text(low).as_str());
-                bounds = bounds.with_attribute(
-                    Attribute::Partition(column.name().into()),
-                    Some(text.clone()),
-                    Some(text),
-                    Some(0),
-                );
-            }
-        }
         bounds = bounds.with_column(
             column.name(),
             minimum,
@@ -237,12 +220,6 @@ pub(super) fn manifest_bounds(
 pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
     let rows = u64::try_from(file.record_count).ok();
     let mut bounds = Bounds::new(rows);
-    // The file's own path answers every free holder attribute exactly, so a
-    // predicate about the file - its name, its extension, its partition
-    // directories - is settled here without opening it.
-    if let Ok(url) = crate::Url::from_str(&file.file_path) {
-        bounds = bounds.with(Bounds::from_url(&url));
-    }
     let mut settled: Vec<&str> = Vec::new();
     for position in 0..spec.fields.len() {
         let Some(column) = identity_column(spec, position, schema) else {
@@ -258,17 +235,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
             bounds = bounds.with_column(column.name(), None, None, rows);
             continue;
         }
-        // The manifest is the authority on the value, and a path spells the
-        // same one, so both spellings are recorded from the same source.
-        let text = Scalar::from(super::value::scalar_text(&value).as_str());
-        bounds = bounds
-            .with_attribute(
-                Attribute::Partition(column.name().into()),
-                Some(text.clone()),
-                Some(text),
-                Some(0),
-            )
-            .with_column(column.name(), Some(value.clone()), Some(value), Some(0));
+        bounds = bounds.with_column(column.name(), Some(value.clone()), Some(value), Some(0));
     }
     for column in schema.fields() {
         if settled.contains(&column.name()) {

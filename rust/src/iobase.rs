@@ -413,74 +413,6 @@ pub trait IOBase: Send + IOMedia {
         self.url().map(Url::hive_partitions).unwrap_or_default()
     }
 
-    /// Iterate the entries beneath this one a predicate does not rule out.
-    ///
-    /// The predicate is asked of the *holder*, not of the rows: `&holder.name`,
-    /// `&holder.partition['year']`, `&holder.size`, and anything built from
-    /// them. A conjunct that reads a row column is not answerable from a
-    /// listing, so it is dropped rather than guessed at - which means this can
-    /// keep a file the rows will later discard, and can never discard a file
-    /// the rows would have kept.
-    ///
-    /// Cost drives the order. [`bind`](crate::Filter::bind) puts the free
-    /// attributes - the ones a URL answers - in front of the ones that cost a
-    /// stat, and evaluation stops at the first `false`, so a listing filtered
-    /// by path alone performs no call into the backing store at all.
-    ///
-    /// ```no_run
-    /// use yggdryl::IOBase;
-    /// use yggdryl::local::LocalFolder;
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let lake = LocalFolder::new(LocalFolder::temporary()?.path()?.join("lake"))?;
-    ///
-    /// let filter = "&holder.partition['year'] = '2024' and &holder.extension = 'parquet'"
-    ///     .parse()?;
-    /// for part in lake.children_matching(&filter, false)? {
-    ///     let _ = part;
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns a bind failure when the predicate names something a holder
-    /// cannot answer, or the backing store's listing failure.
-    fn children_matching(&self, filter: &crate::Filter, include_private: bool) -> Result<Listing> {
-        // Only the conjuncts a listing can settle are kept. Dropping a conjunct
-        // from a conjunction only ever widens what is kept, which is the whole
-        // reason this is sound - and the simplified form is what is split, so
-        // a negated conjunction has already become the conjuncts it hides.
-        let answerable = crate::Filter::all(
-            filter
-                .simplify()
-                .conjuncts()
-                .into_iter()
-                .filter(|conjunct| conjunct.columns().is_empty()),
-        );
-        let bound = answerable.bind(
-            &crate::DataType::from(crate::StructType::from_fields([])?).required_field("holder"),
-        )?;
-        // The predicate is asked of each entry as it arrives, so a losing entry
-        // is dropped before the next one is fetched and nothing accumulates.
-        Ok(Listing::new(
-            self.ls(true, include_private)
-                .map(move |entry| {
-                    let entry = entry?;
-                    Ok((
-                        bound.matches_holder(&crate::expression::Handle(&entry))?,
-                        entry,
-                    ))
-                })
-                .filter_map(|matched| match matched {
-                    Ok((true, entry)) => Some(Ok(entry)),
-                    Ok((false, _)) => None,
-                    Err(error) => Some(Err(error)),
-                }),
-        ))
-    }
-
     /// Iterate the leaves beneath this one that carry every given partition.
     ///
     /// This is the handle a partitioned write reaches for: select the parts of
@@ -488,13 +420,11 @@ pub trait IOBase: Send + IOMedia {
     /// instead of rewriting the table. Containers are not yielded - only the
     /// resources that hold bytes - and an empty filter yields every leaf.
     ///
-    /// The pairs are sugar: each one builds
-    /// `&holder.partition['column'] is not null and`
-    /// `&holder.partition['column'] = 'value'` and the whole thing is answered
-    /// by [`children_matching`](Self::children_matching). There is no second
-    /// filter behind them. The null test is what makes this *select* rather
-    /// than *prune*: a leaf whose path never names the column is not one of
-    /// the leaves that carry it.
+    /// Each pair is answered from the entry's own location: a leaf is kept
+    /// when its Hive path spells `column=value` for every pair. This *selects*
+    /// rather than prunes - a leaf whose path never names the column is not
+    /// one of the leaves that carry it - and it costs no call into the backing
+    /// store beyond the listing itself.
     ///
     /// ```no_run
     /// use yggdryl::IOBase;
@@ -514,10 +444,25 @@ pub trait IOBase: Send + IOMedia {
     ///
     /// Returns the backing store's listing failure.
     fn children_where(&self, filters: &[(&str, &str)], include_private: bool) -> Result<Listing> {
-        let filter = crate::Filter::all_holder_partitions_carried(filters.iter().copied());
-        Ok(self
-            .children_matching(&filter, include_private)?
-            .keeping(|entry| !entry.is_container()))
+        let wanted: Vec<(String, String)> = filters
+            .iter()
+            .map(|&(column, value)| (column.to_owned(), value.to_owned()))
+            .collect();
+        // The path test runs first: it reads only the URL, so a losing entry
+        // never pays for the kind probe.
+        Ok(self.ls(true, include_private).keeping(move |entry| {
+            let carried = wanted.is_empty()
+                || entry.url().is_some_and(|url| {
+                    let partitions = url.hive_partitions();
+                    wanted.iter().all(|(column, value)| {
+                        partitions
+                            .iter()
+                            .find(|(key, _)| key == column)
+                            .is_some_and(|(_, held)| held == value)
+                    })
+                });
+            carried && !entry.is_container()
+        }))
     }
 
     /// Return what kind of resource this handle addresses.

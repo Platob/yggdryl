@@ -1145,13 +1145,10 @@ term_parsed: Term = Term.parse("ccy = 'EUR'")
 term_restored: Term = Term.from_json(term.into_json())
 term_named: Term = Term.column("ccy")
 term_constant: Term = Term.literal("EUR")
-term_held: Term = Term.attribute("partition", "year")
-term_stat: Term = Term.attribute("size")
 term_late: Term = Term.parameter("floor")
 term_true: Term = Term.always_true()
 term_false: Term = Term.always_false()
 term_columns: list[str] = term.columns()
-term_attributes: list[str] = term_held.attributes()
 term_parameters: list[str] = term_late.parameters()
 term_conjuncts: list[Term] = term.conjuncts()
 term_depth: int = term.depth()
@@ -1268,16 +1265,12 @@ expression_records: Records = expression.apply_records([{"ccy": "EUR", "price": 
 expression_records_reader: pa.RecordBatchReader = expression_records.into_arrow_reader()
 expression_explained: str = expression.explain()
 
-expression_matched: list[IOBase] = list(
-    IOBase("file:///lake").children_matching("&holder.partition['year'] = '2024'")
-)
-
 assert str(term)
 assert term_parsed and term_restored
-assert term_named and term_constant and term_held
-assert term_stat and term_late and term_true and term_false
+assert term_named and term_constant
+assert term_late and term_true and term_false
 assert term_columns == ["ccy", "price"]
-assert term_attributes and not term_parameters or term_parameters
+assert term_parameters == ["floor"]
 assert term_conjuncts and term_depth >= 1
 assert term_document and term_simplified and term_explained and term_sliced
 assert term_both and term_either and term_negated and term_field
@@ -1324,7 +1317,6 @@ assert expression_columns and expression_field
 assert expression_batch is not None and expression_reader is not None
 assert expression_records is not None and expression_records_reader is not None
 assert expression_explained
-assert expression_matched == [] or expression_matched
 
 fix_field: Field = Field("OrderQty", "decimal128(20, 8)")
 fix_field.fix.tag = 38

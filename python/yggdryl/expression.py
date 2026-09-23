@@ -13,8 +13,7 @@ carries one container's per-column statistics, so a caller can skip a file
 without opening it.
 
 The vocabularies the grammar closes over cross as their canonical spellings:
-:data:`COMPARISONS`, :data:`FUNCTIONS`, :data:`HOLDER_ATTRIBUTES`, and
-:data:`VERBS`.
+:data:`COMPARISONS`, :data:`FUNCTIONS`, and :data:`VERBS`.
 """
 
 from __future__ import annotations
@@ -52,9 +51,6 @@ COMPARISONS: tuple[str, ...] = tuple(_VOCABULARIES["comparisons"])
 
 #: Every function the closed scalar set knows, e.g. ``"year"``, ``"truncate"``.
 FUNCTIONS: tuple[str, ...] = tuple(_VOCABULARIES["functions"])
-
-#: Every holder attribute ``&holder.<name>`` can name, e.g. ``"size"``.
-HOLDER_ATTRIBUTES: tuple[str, ...] = tuple(_VOCABULARIES["holder_attributes"])
 
 #: Every write verb a plan spells canonically, e.g. ``"upsert into"``.
 VERBS: tuple[str, ...] = tuple(_VOCABULARIES["verbs"])
@@ -222,7 +218,6 @@ __all__ = [
     "unregister_user_function",
     "COMPARISONS",
     "FUNCTIONS",
-    "HOLDER_ATTRIBUTES",
     "VERBS",
     "Bound",
     "Bounds",

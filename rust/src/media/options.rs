@@ -373,22 +373,6 @@ pub trait IORecordOptions: Sized {
             .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
     }
 
-    /// The predicate the `where` section's partition equalities spell about
-    /// a *path*.
-    ///
-    /// One filter, built from the pairs, asked of the holder rather than of
-    /// the rows: `&holder.partition['year'] = '2024'`. This is what prunes a
-    /// listing before anything is opened, and it is the same predicate type
-    /// the rows are filtered with - the pairs are sugar over one
-    /// representation, not a second filter.
-    fn partition_filter(&self) -> Filter {
-        Filter::all_holder_partitions_equal(
-            self.partition_pairs()
-                .iter()
-                .map(|(column, value)| (column, value)),
-        )
-    }
-
     /// Build the declared field, or say that one is required.
     ///
     /// # Errors

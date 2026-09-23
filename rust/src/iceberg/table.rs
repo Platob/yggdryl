@@ -536,9 +536,8 @@ impl<H: IOBase> Table<H> {
     /// Plan a scan under one predicate, opening only what the metadata allows.
     ///
     /// The predicate is the crate's one filter type, so the same text prunes a
-    /// table here, a lake through
-    /// [`IOBase::children_matching`](crate::IOBase::children_matching), and
-    /// a batch through [`Bound::filter`](crate::expression::Bound::filter).
+    /// table here, a Parquet file's row groups, and a batch through
+    /// [`Bound::filter`](crate::expression::Bound::filter).
     /// Each level of the metadata chain answers it from the statistics it
     /// carries: a manifest-list summary, then a manifest entry's partition
     /// tuple and column bounds. What none of them settles is left for the rows.
@@ -1027,10 +1026,10 @@ impl<H: IOBase> Table<H> {
     /// Read the rows matching one predicate, keeping the columns `field` names.
     ///
     /// This is [`Self::scan_where`] with the whole expression language rather
-    /// than equality pairs: ranges, null tests, `in` lists, nested paths, and
-    /// `&holder.*` attributes about the files themselves. Planning prunes with
-    /// [`Self::plan_matching`], and only the conjuncts the metadata could not
-    /// settle are tested against the rows a surviving file holds.
+    /// than equality pairs: ranges, null tests, `in` lists, and nested paths.
+    /// Planning prunes with [`Self::plan_matching`], and only the conjuncts the
+    /// metadata could not settle are tested against the rows a surviving file
+    /// holds.
     ///
     /// ```no_run
     /// use yggdryl::iceberg::Table;
@@ -1039,7 +1038,7 @@ impl<H: IOBase> Table<H> {
     /// # fn main() -> yggdryl::Result<()> {
     /// let table = Table::open(LocalFolder::new("/lake/trades")?)?;
     /// let reader = table.scan_matching(
-    ///     "ccy = 'EUR' and price > 100 and &holder.partition['year'] = '2024'",
+    ///     "ccy = 'EUR' and price > 100 and year = 2024",
     ///     None,
     /// )?;
     /// # let _ = reader;
@@ -1141,9 +1140,8 @@ impl<H: IOBase> Table<H> {
     ///
     /// This is the one door every options-driven read takes: the `where`
     /// clause and `scope` - the partition a folder handle addresses - are
-    /// pushed into the scan plan whole, so a range, an `in` list, a null test
-    /// or a `&holder.*` attribute prunes manifests and files exactly as an
-    /// equality does; the scan reads only the columns the clauses need; and
+    /// pushed into the scan plan whole, so a range, an `in` list or a null test
+    /// prunes manifests and files exactly as an equality does; the scan reads only the columns the clauses need; and
     /// the selector and the limit wrap what comes back. A `where` that names
     /// a column only the `select` publishes cannot prune - the scan does not
     /// know the name - so it runs after the projection, as DuckDB lets a

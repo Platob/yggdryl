@@ -12,7 +12,7 @@
 //!
 //! *Which part of this predicate can a directory layout answer?*
 //! [`Bound::partition_split`] answers it by splitting the conjunction into the
-//! part that reads only partition columns and holder attributes, and the
+//! part that reads only partition columns, and the
 //! [`Residual`] that does not. The first part prunes the listing; the second
 //! runs over the rows that survive. Splitting a conjunction is sound because
 //! dropping conjuncts only ever widens what is kept.
@@ -26,7 +26,6 @@
 
 use smol_str::SmolStr;
 
-use super::attribute::Attribute;
 use super::bind::{Bound, Kind, Node};
 use super::eval::{compare as compare_values, order};
 use super::{Comparison, Filter, Function};
@@ -101,7 +100,6 @@ impl ColumnBounds {
 #[derive(Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Bounds {
     columns: Vec<(SmolStr, ColumnBounds)>,
-    attributes: Vec<(Attribute, ColumnBounds)>,
     rows: Option<u64>,
 }
 
@@ -111,7 +109,6 @@ impl Bounds {
     pub const fn new(rows: Option<u64>) -> Self {
         Self {
             columns: Vec::new(),
-            attributes: Vec::new(),
             rows,
         }
     }
@@ -171,55 +168,6 @@ impl Bounds {
         bounds
     }
 
-    /// Record what a holder attribute is known to hold.
-    ///
-    /// A container's *identity* is a statistic too: a file at
-    /// `year=2024/part-0.parquet` says its `year` partition is `2024` for every
-    /// row it holds, and it says so without being opened. Recording it here is
-    /// what lets `&holder.partition['year'] = '2024'` prune through the same
-    /// rule a column minimum and maximum prune through.
-    #[must_use]
-    pub fn with_attribute(
-        mut self,
-        attribute: Attribute,
-        minimum: Option<Scalar>,
-        maximum: Option<Scalar>,
-        nulls: Option<u64>,
-    ) -> Self {
-        self.attributes.push((
-            attribute,
-            ColumnBounds {
-                minimum,
-                maximum,
-                nulls,
-            },
-        ));
-        self
-    }
-
-    /// The statistics an identifier states about itself.
-    ///
-    /// Every free attribute answers exactly, so each one is a minimum equal to
-    /// its maximum: a path does not bound its own name, it *is* its name.
-    #[must_use]
-    pub fn from_url(url: &crate::Url) -> Self {
-        let mut bounds = Self::new(None);
-        for attribute in Attribute::ALL {
-            if !matches!(attribute.cost(), super::attribute::Cost::Free) {
-                continue;
-            }
-            let value = attribute.read_url(url);
-            let nulls = Some(u64::from(value.is_null()));
-            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), nulls);
-        }
-        for (column, _) in url.hive_partitions() {
-            let attribute = Attribute::Partition(SmolStr::new(&column));
-            let value = attribute.read_url(url);
-            bounds = bounds.with_attribute(attribute, Some(value.clone()), Some(value), Some(0));
-        }
-        bounds
-    }
-
     /// Merge another set of statistics into this one, keeping both.
     ///
     /// A later entry never replaces an earlier one: the lookup takes the first
@@ -227,7 +175,6 @@ impl Bounds {
     #[must_use]
     pub fn with(mut self, other: Self) -> Self {
         self.columns.extend(other.columns);
-        self.attributes.extend(other.attributes);
         if self.rows.is_none() {
             self.rows = other.rows;
         }
@@ -238,15 +185,6 @@ impl Bounds {
     #[must_use]
     pub const fn row_count(&self) -> Option<u64> {
         self.rows
-    }
-
-    /// One attribute's statistics.
-    #[must_use]
-    pub fn attribute(&self, attribute: &Attribute) -> Option<&ColumnBounds> {
-        self.attributes
-            .iter()
-            .find(|(held, _)| held == attribute)
-            .map(|(_, bounds)| bounds)
     }
 
     /// One column's statistics, ASCII case-insensitively.
@@ -325,8 +263,7 @@ impl Bound {
     /// rest.
     ///
     /// A conjunct is answerable when every column it reads is declared a
-    /// partition field and it reads nothing else that needs a row. Holder
-    /// attributes are answerable too, because a listing knows them.
+    /// partition field and it reads nothing else that needs a row.
     #[must_use]
     pub fn partition_split(&self) -> Residual {
         let fields = self.schema().fields();
@@ -499,9 +436,6 @@ fn column_bounds<'bounds>(
     schema: &Field,
     bounds: &'bounds Bounds,
 ) -> Option<&'bounds ColumnBounds> {
-    if let Kind::Attribute(attribute) = &node.kind {
-        return bounds.attribute(attribute);
-    }
     let index = node.as_column()?;
     let field = schema.get_field(index)?;
     bounds.column(field.name())

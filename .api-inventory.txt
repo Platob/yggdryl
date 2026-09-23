@@ -326,11 +326,8 @@ pub enum Error
 
 ### yggdryl::expression::arrow  [rust/src/expression/arrow.rs]
 pub fn evaluate(&self, batch: &RecordBatch) -> Result<ArrayRef>
-  pub fn evaluate_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<ArrayRef>
   pub fn filter_mask(&self, batch: &RecordBatch) -> Result<BooleanArray>
-  pub fn filter_mask_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<BooleanArray>
   pub fn filter(&self, batch: &RecordBatch) -> Result<RecordBatch>
-  pub fn filter_with( &self, batch: &RecordBatch, holder: Option<&dyn Attributes>, ) -> Result<RecordBatch>
   pub fn filter_reader(self, inner: BatchReader) -> BatchReader
   pub fn apply_arrow_reader(&self, reader: BatchReader) -> crate::Result<BatchReader>
   pub fn apply_arrow_batch(&self, batch: &RecordBatch) -> crate::Result<RecordBatch>
@@ -349,11 +346,7 @@ pub struct Bound
   pub fn column_names(&self) -> Vec<String>
   pub fn reads_rows(&self) -> bool
   pub fn eval(&self, row: &Scalar) -> Result<Scalar>
-  pub fn eval_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<Scalar>
   pub fn matches(&self, row: &Scalar) -> Result<bool>
-  pub fn matches_with(&self, row: &Scalar, holder: &dyn Attributes) -> Result<bool>
-  pub fn settle_holder(&self, holder: &dyn Attributes) -> Result<Scalar>
-  pub fn matches_holder(&self, holder: &dyn Attributes) -> Result<bool>
   pub fn bind(&self, schema: &Field) -> Result<Bound>
   pub fn bind_with(&self, schema: &Field, parameters: &[(&str, Scalar)]) -> Result<Bound>
   pub fn bind(&self, schema: &Field) -> Result<Bound>
@@ -397,7 +390,6 @@ pub const RECURSION_LIMIT: usize = 32
   pub const fn as_plan(&self) -> Option<&Plan>
   pub fn steps(&self) -> &[Self]
   pub fn columns(&self) -> Vec<String>
-  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
   pub fn is_identity(&self) -> bool
   pub fn simplify(&self) -> Self
@@ -418,11 +410,8 @@ pub struct ColumnBounds
   pub const fn new(rows: Option<u64>) -> Self
   pub fn with_column( mut self, name: impl Into<SmolStr>, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>, ) -> Self
   pub fn from_partitions(schema: &Field, partitions: &[(String, String)]) -> Self
-  pub fn with_attribute( mut self, attribute: Attribute, minimum: Option<Scalar>, maximum: Option<Scalar>, nulls: Option<u64>, ) -> Self
-  pub fn from_url(url: &crate::Url) -> Self
   pub fn with(mut self, other: Self) -> Self
   pub const fn row_count(&self) -> Option<u64>
-  pub fn attribute(&self, attribute: &Attribute) -> Option<&ColumnBounds>
   pub fn column(&self, name: &str) -> Option<&ColumnBounds>
   pub struct Residual
   pub const fn answerable(&self) -> &Filter
@@ -467,7 +456,6 @@ pub struct Projection
   pub fn with_projection(&self, projection: Projection) -> Self
   pub fn without_columns(&self, names: &[&str]) -> Self
   pub fn columns(&self) -> Vec<String>
-  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
   pub fn is_columns(&self) -> bool
   pub fn simplify(&self) -> Self
@@ -2493,7 +2481,6 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn partition_pairs(&self) -> Vec<(String, String)>
   fn apply_columns(&self) -> Option<Vec<String>>
   fn apply_arrow_expressions( &self, reader: crate::arrow::BatchReader, ) -> Result<crate::arrow::BatchReader>
-  fn partition_filter(&self) -> Filter
   fn require_field(&self) -> Result<Field>
   fn with_field(mut self, field: Field) -> Self
   fn with_name(mut self, name: impl Into<SmolStr>) -> Self
@@ -5098,9 +5085,7 @@ pub struct Filter(Term)
   pub fn is_always_false(&self) -> bool
   pub fn conjuncts(&self) -> Vec<Self>
   pub fn columns(&self) -> Vec<String>
-  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
-  pub fn has_attributes(&self) -> bool
   pub fn simplify(&self) -> Self
   pub fn check_budget(&self) -> Result<()>
   pub fn field(&self, schema: &Field) -> Result<Field>
@@ -5111,11 +5096,7 @@ pub struct Filter(Term)
   pub trait IntoFilter
   fn into_filter(self) -> Result<Filter>
   pub fn partition_equals(column: &str, value: &str, dtype: &DataType) -> Self
-  pub fn holder_partition_equals(column: &str, value: &str) -> Self
   pub fn all_partitions_equal<C: AsRef<str>, V: AsRef<str>>( schema: &Field, pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
-  pub fn all_holder_partitions_equal<C: AsRef<str>, V: AsRef<str>>( pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
-  pub fn holder_carries_partition(column: &str, value: &str) -> Self
-  pub fn all_holder_partitions_carried<C: AsRef<str>, V: AsRef<str>>( pairs: impl IntoIterator<Item = (C, V)>, ) -> Self
 
 ### yggdryl::expression::plan  [rust/src/expression/plan.rs]
 pub enum Location
@@ -5190,7 +5171,6 @@ pub enum Location
   pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
   pub fn columns(&self) -> Vec<String>
   pub fn read_columns(&self) -> Option<Vec<String>>
-  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
   pub fn simplify(&self) -> Self
   pub fn check_budget(&self) -> Result<()>
@@ -5212,7 +5192,6 @@ pub enum Term
   pub fn typed_literal(dtype: DataType, value: Scalar) -> Result<Self>
   pub fn from_scalar(value: &Scalar) -> Result<Self>
   pub fn column(name: impl Into<SmolStr>) -> Self
-  pub const fn attribute(attribute: Attribute) -> Self
   pub fn parameter(name: impl Into<SmolStr>) -> Self
   pub fn path(self, segments: impl IntoIterator<Item = FieldSegment>) -> Result<Self>
   pub fn child(self, name: impl Into<SmolStr>) -> Self
@@ -5261,9 +5240,7 @@ pub enum Term
   pub fn node_count(&self) -> usize
   pub fn check_budget(&self) -> Result<()>
   pub fn columns(&self) -> Vec<String>
-  pub fn attributes(&self) -> Vec<Attribute>
   pub fn parameters(&self) -> Vec<String>
-  pub fn has_attributes(&self) -> bool
   pub fn conjuncts(&self) -> Vec<Self>
   pub fn simplify(&self) -> Self
   fn into_term(self) -> Result<Term>
@@ -5279,23 +5256,6 @@ pub struct Records
   pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
   pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
   pub fn apply_records<I, R>(&self, schema: Option<&Field>, records: I) -> Result<Records> where
-
-### yggdryl::expression::attribute  [rust/src/expression/attribute.rs]
-pub enum Cost
-  pub const fn as_str(self) -> &'static str
-  pub enum Attribute
-  pub const ALL: [Self; 13] = [ Self::Url, Self::Path, Self::Name, Self::Stem, Self::Extension, Self::Scheme, Self::Parent, Self::Depth, Self::MimeType, Self::Size, Self::Kind, Self::IsContainer,
-  pub fn as_str(&self) -> &str
-  pub fn from_name(name: &str) -> Option<Self>
-  pub fn vocabulary() -> String
-  pub const fn cost(&self) -> Cost
-  pub fn dtype(&self) -> DataType
-  pub fn field(&self) -> Field
-  pub fn read_url(&self, url: &Url) -> Scalar
-  pub trait Attributes
-  fn attribute(&self, attribute: &Attribute) -> Result<Scalar>
-  pub struct Handle<'handle, H: IOBase + ?Sized>(pub &'handle H)
-  pub fn read_handle<H: IOBase + ?Sized>(handle: &H, attribute: &Attribute) -> Result<Scalar>
 
 ### yggdryl::expression::explain  [rust/src/expression/explain.rs]
 pub fn explain(&self) -> String

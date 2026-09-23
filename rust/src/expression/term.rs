@@ -28,7 +28,6 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::Attribute;
 use super::literal::Literal;
 use super::path::FieldSegment;
 use super::{Comparison, Function, NODE_LIMIT, Operator, RECURSION_LIMIT, Safety};
@@ -68,9 +67,6 @@ pub enum Term {
     /// reached with [`Function::Get`] and [`Function::Slice`] instead, so a
     /// path is always something a reader can push down.
     Path(Arc<[FieldSegment]>),
-    /// An attribute of the *handle* rather than of the rows - `&holder.size`,
-    /// `&holder.partition['year']`. See [`Attribute`] for the cost table.
-    Attribute(Attribute),
     /// A late-bound value, supplied when the term is bound.
     Parameter(SmolStr),
 
@@ -207,12 +203,6 @@ impl Term {
     #[must_use]
     pub fn column(name: impl Into<SmolStr>) -> Self {
         Self::Path(Arc::from([FieldSegment::Field(name.into())]))
-    }
-
-    /// Name a handle attribute.
-    #[must_use]
-    pub const fn attribute(attribute: Attribute) -> Self {
-        Self::Attribute(attribute)
     }
 
     /// Name a late-bound value.
@@ -662,11 +652,11 @@ impl Term {
     /// One traversal serves every walk in the module, so a variant added later
     /// is wired into all of them by editing exactly one function. A path's
     /// children are the predicates its segments carry: they nest, they name
-    /// parameters and attributes, and they count against the budget, even
+    /// parameters, and they count against the budget, even
     /// though the columns they read are the element's and not the row's.
     pub(crate) fn for_each_child<'node>(&'node self, mut visit: impl FnMut(&'node Self)) {
         match self {
-            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => {}
+            Self::Literal(_) | Self::Parameter(_) => {}
             Self::Path(steps) => steps
                 .iter()
                 .filter_map(FieldSegment::as_predicate)
@@ -814,20 +804,6 @@ impl Term {
         names
     }
 
-    /// Every handle attribute this term reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        let mut found: Vec<Attribute> = Vec::new();
-        self.walk(&mut |node| {
-            if let Self::Attribute(attribute) = node {
-                if !found.contains(attribute) {
-                    found.push(attribute.clone());
-                }
-            }
-        });
-        found
-    }
-
     /// Every parameter this term names, in first-seen order.
     #[must_use]
     pub fn parameters(&self) -> Vec<String> {
@@ -842,10 +818,9 @@ impl Term {
         found
     }
 
-    /// Return whether this term reads no column, no handle attribute and no
-    /// parameter: what [`columns`](Self::columns),
-    /// [`has_attributes`](Self::has_attributes) and
-    /// [`parameters`](Self::parameters) together answer, stopping at the
+    /// Return whether this term reads no column and no parameter: what
+    /// [`columns`](Self::columns) and [`parameters`](Self::parameters)
+    /// together answer, stopping at the
     /// first node that reads anything. A path reads the column it starts
     /// at, so one rooted at a column is never constant; one rooted
     /// elsewhere is constant exactly where its predicate segments are.
@@ -856,27 +831,11 @@ impl Term {
         while let Some(node) = pending.pop() {
             match node {
                 Self::Path(_) if node.root_column().is_some() => return false,
-                Self::Attribute(_) | Self::Parameter(_) => return false,
+                Self::Parameter(_) => return false,
                 _ => node.for_each_child(|child| pending.push(child)),
             }
         }
         true
-    }
-
-    /// Return whether this term reads any handle attribute.
-    ///
-    /// A predicate that reads none can be answered by the rows alone; one that
-    /// reads only attributes can be answered by the listing alone. Both are
-    /// worth knowing before anything is opened.
-    #[must_use]
-    pub fn has_attributes(&self) -> bool {
-        let mut found = false;
-        self.walk(&mut |node| {
-            if matches!(node, Self::Attribute(_)) {
-                found = true;
-            }
-        });
-        found
     }
 
     /// Walk every node of this term, depth-first, in evaluation order.
@@ -920,7 +879,7 @@ impl Term {
             return Ok(replaced);
         }
         Ok(match self {
-            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => self.clone(),
+            Self::Literal(_) | Self::Parameter(_) => self.clone(),
             Self::Path(steps) => {
                 if steps.iter().all(|step| step.as_predicate().is_none()) {
                     return Ok(self.clone());
@@ -1134,7 +1093,7 @@ impl Term {
                         .collect(),
                 )
             }
-            Self::Literal(_) | Self::Attribute(_) | Self::Parameter(_) => self.clone(),
+            Self::Literal(_) | Self::Parameter(_) => self.clone(),
         }
     }
 }
@@ -1351,7 +1310,6 @@ impl Ord for Term {
         match (self, other) {
             (Self::Literal(left), Self::Literal(right)) => left.cmp(right),
             (Self::Parameter(left), Self::Parameter(right)) => left.cmp(right),
-            (Self::Attribute(left), Self::Attribute(right)) => left.cmp(right),
             (Self::Path(left), Self::Path(right)) => left.iter().cmp(right.iter()),
             (Self::And(left), Self::And(right))
             | (Self::Or(left), Self::Or(right))
@@ -1445,7 +1403,6 @@ const fn variant_rank(term: &Term) -> u8 {
     match term {
         Term::Literal(_) => 0,
         Term::Path(_) => 1,
-        Term::Attribute(_) => 2,
         Term::Parameter(_) => 3,
         Term::And(_) => 4,
         Term::Or(_) => 5,

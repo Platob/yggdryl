@@ -3653,14 +3653,6 @@ mod planning {
         assert_eq!(filtered.manifests_skipped(), 2);
         assert_eq!(filtered.manifests_read, 1);
 
-        // A question about the *file* prunes at the same level, because a Hive
-        // path is a statistic and an identity partition writes one.
-        let by_path = table
-            .plan_matching("&holder.partition['venue'] = 'XNYS'")
-            .unwrap();
-        assert_eq!(by_path.tasks.len(), 1);
-        assert_eq!(by_path.manifests_skipped(), 2);
-
         // A range the summaries cannot settle still reads every manifest, and
         // still answers correctly from the rows.
         let ranged = table.plan_matching("id >= 2").unwrap();
@@ -3672,7 +3664,7 @@ mod planning {
     }
 
     #[test]
-    fn one_predicate_mixes_the_file_and_the_rows() {
+    fn one_predicate_mixes_the_partition_and_the_rows() {
         let (_path, mut table) = venues("scan-mixed");
         // A second row in a partition that already exists is what makes the row
         // half of the predicate load-bearing: with one row per venue, a
@@ -3685,10 +3677,7 @@ mod planning {
 
         let rows = collect(
             table
-                .scan_matching(
-                    "id >= 4 and symbol is not null and &holder.partition['venue'] = 'XLON'",
-                    None,
-                )
+                .scan_matching("id >= 4 and symbol is not null and venue = 'XLON'", None)
                 .unwrap(),
         );
         assert_eq!(rows.len(), 1);
@@ -3696,11 +3685,7 @@ mod planning {
         assert_eq!(rows[0].2.as_deref(), Some("XLON"));
 
         // Each half on its own keeps more, so neither was dropped above.
-        let held = collect(
-            table
-                .scan_matching("&holder.partition['venue'] = 'XLON'", None)
-                .unwrap(),
-        );
+        let held = collect(table.scan_matching("venue = 'XLON'", None).unwrap());
         assert_eq!(held.iter().map(|row| row.0).collect::<Vec<_>>(), vec![3, 4]);
         let ranged = collect(table.scan_matching("id >= 4", None).unwrap());
         assert_eq!(ranged.iter().map(|row| row.0).collect::<Vec<_>>(), vec![4]);

@@ -1305,10 +1305,9 @@ impl PyTable {
     ///
     /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
     /// parses. It is the whole expression language rather than equality
-    /// pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
-    /// questions about the files themselves. Planning prunes with the
-    /// metadata chain, and only the conjuncts it could not settle are tested
-    /// against the rows.
+    /// pairs: ranges, null tests, `in` lists, and nested paths. Planning
+    /// prunes with the metadata chain, and only the conjuncts it could not
+    /// settle are tested against the rows.
     #[pyo3(signature = (filter, schema = None))]
     fn scan_matching<'py>(
         &self,

@@ -25,7 +25,7 @@
 //! unary      := "-" unary | accessor
 //! accessor   := atom ("." identifier | "[" segment "]")*
 //! segment    := integer | "'key'" | [integer] ":" [integer] | term
-//! atom       := literal | "(" term ")" | column | "&holder." attribute | ":" parameter
+//! atom       := literal | "(" term ")" | column | ":" parameter
 //!             | "cast" "(" term "as" datatype ")" | "case" .. "end"
 //!             | function "(" term,* ")" | "[" term,* "]" | "{" term ":" term,* "}"
 //!             | "struct" "(" term "as" identifier,* ")" | datatype text
@@ -45,7 +45,6 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::attribute::Attribute;
 use super::display::{is_bare_identifier, is_reserved};
 use super::path::{FieldPath, FieldSegment};
 use super::plan::{Location, Ordering, Plan, Source, Target, Verb, Write};
@@ -223,9 +222,9 @@ struct Spanned {
 }
 
 /// The multi-character symbols, longest first so `<=` never reads as `<`.
-const SYMBOLS: [&str; 23] = [
-    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "&", "*",
-    "+", "-", "/", "%", "=",
+const SYMBOLS: [&str; 22] = [
+    "<>", "<=", ">=", "!=", "<", ">", "(", ")", "[", "]", "{", "}", ",", ".", ":", ";", "*", "+",
+    "-", "/", "%", "=",
 ];
 
 fn tokenize(input: &str) -> Result<Vec<Spanned>> {
@@ -1354,9 +1353,6 @@ impl<'input> Parser<'input> {
             self.expect_symbol("}")?;
             return Ok(Term::Map(Arc::from(entries)));
         }
-        if self.eat_symbol("&") {
-            return self.attribute(position);
-        }
         if self.eat_symbol(":") {
             return Ok(Term::parameter(self.identifier()?));
         }
@@ -1470,35 +1466,6 @@ impl<'input> Parser<'input> {
         }
         self.cursor += 1;
         Ok(Term::column(word))
-    }
-
-    /// Read `&holder.<attribute>`, the one attribute spelling.
-    fn attribute(&mut self, position: usize) -> Result<Term> {
-        let holder = self.identifier()?;
-        if !holder.eq_ignore_ascii_case("holder") {
-            return Err(parse_error(
-                position,
-                format_smolstr!("expected `&holder.<attribute>`, got `&{holder}`"),
-            ));
-        }
-        self.expect_symbol(".")?;
-        let name_position = self.position();
-        let name = self.identifier()?;
-        if name.eq_ignore_ascii_case("partition") {
-            self.expect_symbol("[")?;
-            let key_position = self.position();
-            let Some(Token::Text(column)) = self.advance() else {
-                return Err(parse_error(
-                    key_position,
-                    "expected a quoted partition column name",
-                ));
-            };
-            self.expect_symbol("]")?;
-            return Ok(Term::attribute(Attribute::Partition(column)));
-        }
-        let attribute = Attribute::from_name(&name)
-            .ok_or_else(|| super::attribute::unknown(&name, name_position))?;
-        Ok(Term::attribute(attribute))
     }
 
     fn arguments(&mut self) -> Result<Vec<Term>> {

@@ -16,7 +16,7 @@ mod grammar {
     // ---------------------------------------------------------------------------
 
     /// Every spelling the grammar accepts, one of each shape.
-    const CORPUS: [&str; 36] = [
+    const CORPUS: [&str; 33] = [
         "ccy = 'EUR' and price > 100",
         "a or b and c",
         "(a or b) and c",
@@ -33,9 +33,6 @@ mod grammar {
         "name ilike 'A%'",
         "name not like 'a%'",
         "path glob '**/*.parquet'",
-        "&holder.size > 0",
-        "&holder.partition['year'] = '2024'",
-        "&holder.name like 'part-%'",
         "lower(name) = 'x'",
         "coalesce(a, b, 0) > 1",
         "cast(x as int32) = 1",

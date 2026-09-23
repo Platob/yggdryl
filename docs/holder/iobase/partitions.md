@@ -6,10 +6,10 @@ This page owns globbing and Hive partitions over a folder: lazy listings, prunin
 
 | Item | Rule |
 | --- | --- |
-| Owns | `ls`, `glob`, `rglob`, `children_where`, `children_matching`, the partition equalities a `filter` pins, partition columns in folder records, the `PARTITION:` derivation vocabulary |
+| Owns | `ls`, `glob`, `rglob`, `children_where`, the partition equalities a `filter` pins, partition columns in folder records, the `PARTITION:` derivation vocabulary |
 | Listing | Lazy until the first `next`; items are `Result`; fused after the first failure; deterministic order |
 | Pattern location | `kind` is `IOKind::Directory` before any backend call; `ls` expands from the fixed root; syntax in [Patterns](../../uri/patterns.md) |
-| `children_where` | Leaves only, carrying every pair; what a folder-addressed record method resolves through; sugar over `children_matching` with `&holder.partition['column'] = 'value'` |
+| `children_where` | Leaves only, whose Hive path spells `column=value` for every pair; answered from the path alone; what a folder-addressed record method resolves through |
 | `filter` | the options' `where` section; the equalities it pins (`partition_pairs`) are spelled as paths spell them, a pruned leaf is never listed or decoded, a carried column is filtered row by row, the rest of the predicate runs over the rows |
 | Layout authority | Leaves spelling `column=value`, else partition-marked schema fields, else one leaf named after the encoding |
 | Restored values | Declared type with a schema; text without |
@@ -127,7 +127,7 @@ Every listing yields one entry at a time, so a folder with a million leaves list
 
 ## Partition pruning and filtering
 
-Both halves are one bound [expression](../../expression/holder.md): `&holder.partition['year'] = '2024'` against the path, `year = 2024` against the rows.
+The `filter`'s partition equalities prune by path: a leaf whose path names another value for a filtered column is never decoded, and one that does not name the column stays for the rows to answer. The whole [filter](../../expression/filters.md#pushdown) then runs over the rows that survive.
 
 === "Rust"
 
@@ -472,7 +472,8 @@ column that is absent, or present holding nothing but nulls, is filled.
 
 ## Edges
 
-- A range, null test, or `in` list -> `children_matching`, which takes the whole [expression](../../expression/holder.md) language.
+- A range or `in` list in the `filter` -> pins no pair, so no leaf is pruned by its path; the rows answer it.
+- `children_where` over a leaf whose path does not name the column -> not yielded; it does not carry the pair.
 - `len(list(listing))` in Python -> pays for the whole walk.
 - A pair on an `int32` column -> an integer comparison, the text read through the column's datatype.
 - `price is null` in the `filter` -> the pair `("price", "null")`, the way a path spells a null partition.
