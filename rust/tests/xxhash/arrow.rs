@@ -15,7 +15,6 @@ mod columns {
         DataType, DataTypeId, Digest, DigestAlgorithm, Field, Scalar, StructType, TimeUnit,
         Timezone,
     };
-    use yggdryl::{DateTimeType, DurationType};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
@@ -477,10 +476,10 @@ mod columns {
             (
                 Field::new(
                     "timestamp_utc",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: utc,
-                    }),
+                    },
                     true,
                 ),
                 Scalar::from_sequence([
@@ -491,10 +490,10 @@ mod columns {
             (
                 Field::new(
                     "timestamp_naive",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Nanosecond,
                         timezone: Timezone::NAIVE,
-                    }),
+                    },
                     true,
                 ),
                 Scalar::from_sequence([
@@ -505,10 +504,10 @@ mod columns {
             (
                 Field::new(
                     "timestamp_second",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Second,
                         timezone: utc,
-                    }),
+                    },
                     true,
                 ),
                 Scalar::from_sequence([
@@ -519,10 +518,10 @@ mod columns {
             (
                 Field::new(
                     "timestamp_millisecond_offset",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Millisecond,
                         timezone: offset,
-                    }),
+                    },
                     true,
                 ),
                 Scalar::from_sequence([
@@ -531,11 +530,7 @@ mod columns {
                 ]),
             ),
             (
-                Field::new(
-                    "duration64",
-                    DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
-                    true,
-                ),
+                Field::new("duration64", DataType::Duration64(TimeUnit::Second), true),
                 Scalar::from_sequence([
                     Scalar::duration64_in(90, TimeUnit::Second, Timezone::NAIVE).unwrap(),
                     Scalar::Null,
@@ -544,7 +539,7 @@ mod columns {
             (
                 Field::new(
                     "duration64_millisecond",
-                    DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+                    DataType::Duration64(TimeUnit::Millisecond),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -555,7 +550,7 @@ mod columns {
             (
                 Field::new(
                     "duration64_microsecond",
-                    DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
+                    DataType::Duration64(TimeUnit::Microsecond),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -566,7 +561,7 @@ mod columns {
             (
                 Field::new(
                     "duration64_nanosecond",
-                    DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
+                    DataType::Duration64(TimeUnit::Nanosecond),
                     true,
                 ),
                 Scalar::from_sequence([

@@ -402,4 +402,87 @@ mod iceberg {
         let _ = std::fs::remove_dir_all(&by_symbol);
         let _ = std::fs::remove_dir_all(&plain);
     }
+
+    #[test]
+    fn batches_changing_layout_mid_commit_each_cast_to_the_table_schema() {
+        let path = root("table_layouts");
+        let schema = schema();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema.clone(),
+            PartitionSpec::identity(1, &schema, &["venue"]).unwrap(),
+        )
+        .unwrap();
+        let exact = schema.clone().into_arrow_schema().unwrap();
+        // The same columns, reordered, nullable, and carrying no field ids.
+        let loose = Arc::new(arrow_schema::Schema::new(vec![
+            arrow_schema::Field::new("venue", arrow_schema::DataType::Utf8, true),
+            arrow_schema::Field::new("id", arrow_schema::DataType::Int64, true),
+            arrow_schema::Field::new("symbol", arrow_schema::DataType::Utf8, true),
+        ]));
+        let exact_rows = |id: i64, symbol: &str, venue: &str| {
+            RecordBatch::try_new(
+                Arc::clone(&exact),
+                vec![
+                    Arc::new(Int64Array::from(vec![id])),
+                    Arc::new(StringArray::from(vec![symbol])),
+                    Arc::new(StringArray::from(vec![venue])),
+                ],
+            )
+            .unwrap()
+        };
+        let loose_rows = |id: i64, symbol: &str, venue: &str| {
+            RecordBatch::try_new(
+                Arc::clone(&loose),
+                vec![
+                    Arc::new(StringArray::from(vec![venue])),
+                    Arc::new(Int64Array::from(vec![id])),
+                    Arc::new(StringArray::from(vec![symbol])),
+                ],
+            )
+            .unwrap()
+        };
+        table
+            .commit_append(yggdryl::arrow::batch_reader(
+                Arc::clone(&exact),
+                [
+                    exact_rows(1, "AAPL", "XNAS"),
+                    loose_rows(2, "VOD", "XLON"),
+                    exact_rows(3, "MSFT", "XNAS"),
+                    loose_rows(4, "BP", "XLON"),
+                ],
+            ))
+            .unwrap();
+
+        let mut read: Vec<(i64, String, String)> = Vec::new();
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            let column = |name: &str| Arc::clone(batch.column_by_name(name).unwrap());
+            let (ids, symbols, venues) = (column("id"), column("symbol"), column("venue"));
+            let ids = ids.as_any().downcast_ref::<Int64Array>().unwrap();
+            let symbols = symbols.as_any().downcast_ref::<StringArray>().unwrap();
+            let venues = venues.as_any().downcast_ref::<StringArray>().unwrap();
+            for row in 0..batch.num_rows() {
+                read.push((
+                    ids.value(row),
+                    symbols.value(row).to_owned(),
+                    venues.value(row).to_owned(),
+                ));
+            }
+        }
+        read.sort();
+        let expected: Vec<(i64, String, String)> = [
+            (1, "AAPL", "XNAS"),
+            (2, "VOD", "XLON"),
+            (3, "MSFT", "XNAS"),
+            (4, "BP", "XLON"),
+        ]
+        .into_iter()
+        .map(|(id, symbol, venue)| (id, symbol.to_owned(), venue.to_owned()))
+        .collect();
+        assert_eq!(read, expected);
+        assert_eq!(table.data_files().unwrap().len(), 2, "one file per venue");
+        let _ = std::fs::remove_dir_all(&path);
+    }
 }

@@ -678,8 +678,8 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       assert.deepEqual(format.loads(format.dumps(type)), type.toJSON())
       assert.deepEqual(format.loads(format.dumps(field)), field.toJSON())
     }
-    assert.equal(Scalar.from(type).kind, 'mapping')
-    assert.equal(Scalar.from(field).kind, 'mapping')
+    assert.equal(Scalar.from(type).kind, 'map')
+    assert.equal(Scalar.from(field).kind, 'map')
 
     for (const value of [
       Uri.fromString('https://example.com/value'),
@@ -968,7 +968,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(record.path('legs.9.at'), null)
 
     // Record iteration is deterministic field-name order and yields values.
-    assert.deepEqual([...record].map((value) => value.kind), ['sequence', 'i64'])
+    assert.deepEqual([...record].map((value) => value.kind), ['list', 'i64'])
     // Sequence iteration yields its exact children.
     assert.equal([...legs][0].path('at').count, instant.count)
 
@@ -977,7 +977,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(changed.get('z').kind, 'datetime64')
     assert.deepEqual([...changed].map((value) => value.kind), [
       'i64',
-      'sequence',
+      'list',
       'datetime64',
     ])
     const removed = changed.remove('legs')
@@ -1138,7 +1138,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
   test('Scalar Arrow scalar and array interop uses standard IPC', () => {
     const vector = arrow.vectorFromArray(Int32Array.from([1, 2, 3]))
     const values = Scalar.fromArrowArray(vector)
-    assert.equal(values.kind, 'sequence')
+    assert.equal(values.kind, 'list')
     assert.deepEqual(values.asJs(), [1, 2, 3])
     assert.deepEqual([...values.intoArrowArray()], [1, 2, 3])
 
@@ -1227,6 +1227,45 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     )
   })
 
+  test('the Scalar Arrow doors cast under the three answers the caller gave', () => {
+    const overflowing = arrow.vectorFromArray(Int32Array.of(7, 200))
+    const quantity = new Field('value', 'int8', false)
+    assert.deepEqual(Scalar.fromArrowArray(overflowing, quantity).asJs(), [7, 0])
+    assert.throws(
+      () => Scalar.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
+      /required Arrow field \$\.value holds 1 null values/,
+    )
+    assert.throws(
+      () => Scalar.fromArrowArray(overflowing, 'value: int8', { safe: false }),
+      /Can't cast value 200 to type Int8/,
+    )
+    assert.equal(
+      Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity).asJs(),
+      0,
+    )
+    assert.throws(
+      () =>
+        Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
+          safe: false,
+        }),
+      /Can't cast value 200 to type Int8/,
+    )
+
+    const table = arrow.tableFromArrays({ id: Int32Array.from([1, 2]) })
+    const root = Field.from('row: struct<id: int64, venue: utf8 not null> not null')
+    assert.deepEqual(Scalar.fromArrowTable(table, root).asJs(), [[1, ''], [2, '']])
+    for (const read of [
+      () => Scalar.fromArrowTable(table, root, { nullability: 'strict' }),
+      () => Scalar.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
+    ]) {
+      assert.throws(read, /required Arrow field \$\.venue is missing from the source/)
+    }
+    assert.throws(
+      () => Scalar.fromArrowTable(table, root, { strict: true }),
+      /cast options take safe, nullability and representation/,
+    )
+  })
+
   test('a Date is the JavaScript spelling of a UTC millisecond datetime64', () => {
     const date = new Date('2026-08-15T12:30:00.000Z')
     assert.ok(Scalar.from(date).equals(new DataType('datetime64(ms,"UTC")').scalar(1786797000000n)))
@@ -1258,9 +1297,9 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
   test('fromJs and asJs are the conversion every codec entry point crosses', () => {
     // The pivot answers what a JavaScript value becomes, losses included.
-    assert.equal(Scalar.from(new Set([1, 2])).kind, 'sequence')
+    assert.equal(Scalar.from(new Set([1, 2])).kind, 'list')
     assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
-    assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'mapping')
+    assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'map')
     assert.deepEqual(Scalar.from(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
     assert.equal(Scalar.from({ id: 1 }).kind, 'struct')
     assert.equal(Scalar.from(undefined).kind, 'null')
@@ -1283,7 +1322,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(Scalar.from(null, { field: new Field('count', 'int8', true) }).kind, 'null')
     const row = new Field('row', 'struct<id: int8 not null, release: version not null>', false)
     const resolved = Scalar.from({ release: '5.0.300', id: 7 }, { field: row })
-    assert.equal(resolved.kind, 'sequence')
+    assert.equal(resolved.kind, 'list')
     assert.equal(resolved.get(0).kind, 'i8')
     assert.ok(resolved.get(1).asJs().equals(new Version(5, 0, 300)))
   })

@@ -120,9 +120,8 @@ mod internal {
 
 mod grammar {
 
-    use yggdryl::DateTimeType;
-    use yggdryl::expression::Term;
-    use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
+    use yggdryl::expression::{Selector, Term};
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType, TimeUnit, Timezone};
 
     // ---------------------------------------------------------------------------
     // The shared fixture
@@ -140,10 +139,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),
@@ -365,5 +364,64 @@ mod grammar {
         let row = &rows()[2];
         assert_eq!(bound.eval(row).unwrap(), Scalar::Null);
         assert!(!bound.matches(row).unwrap());
+    }
+
+    // ---------------------------------------------------------------------------
+    // A list held as a column
+    // ---------------------------------------------------------------------------
+
+    /// `row` with the list at `index` replaced by a column of `items` under
+    /// `item`.
+    fn with_column(row: &Scalar, index: usize, item: Field, items: Vec<Scalar>) -> Scalar {
+        let mut cells = row.sequence_rows().unwrap().into_owned();
+        cells[index] = Scalar::from(Serie::from_scalars(item, items).unwrap());
+        Scalar::from_sequence(cells)
+    }
+
+    #[test]
+    fn slice_of_a_column_is_a_window_of_it() {
+        let schema = rows_schema();
+        let row = with_column(
+            &rows()[0],
+            9,
+            DataType::Int64.nullable_field("item"),
+            (1..=4_i64).map(Scalar::from).collect(),
+        );
+        let answer = "slice(xs, 1, 3) as s"
+            .parse::<Selector>()
+            .unwrap()
+            .apply_scalar(&schema, &row)
+            .unwrap();
+        let cell = answer.sequence_rows().unwrap()[0].clone();
+        assert_eq!(
+            cell,
+            Scalar::from_sequence([Scalar::from(2_i64), Scalar::from(3_i64)])
+        );
+        assert!(
+            cell.as_serie().is_some_and(Serie::is_column),
+            "a window of a column is a column: {cell:?}"
+        );
+    }
+
+    #[test]
+    fn a_predicate_keeps_the_same_elements_of_a_column_as_of_a_run() {
+        let schema = rows_schema();
+        let bound = "legs[size > 1]"
+            .parse::<Term>()
+            .unwrap()
+            .bind(&schema)
+            .unwrap();
+        for (position, row) in rows().iter().enumerate() {
+            let cells = row.sequence_rows().unwrap();
+            let Some(legs) = cells[10].sequence_rows().map(|legs| legs.into_owned()) else {
+                continue;
+            };
+            let column = with_column(row, 10, leg_field(), legs);
+            assert_eq!(
+                bound.eval(&column).unwrap(),
+                bound.eval(row).unwrap(),
+                "row {position}"
+            );
+        }
     }
 }

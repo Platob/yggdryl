@@ -788,13 +788,11 @@ impl DatumCodec<'_> {
                 }
                 Node::Array(items) => {
                     let depth = self.descend(depth)?;
-                    let values = value
-                        .as_sequence()
-                        .ok_or_else(|| mismatch("array", value))?;
+                    let values = value.as_serie().ok_or_else(|| mismatch("array", value))?;
                     if !values.is_empty() {
                         put_long(target, values.len() as i64);
-                        for item in values {
-                            self.encode(items, item, target, depth)?;
+                        for item in values.iter() {
+                            self.encode(items, &item, target, depth)?;
                         }
                     }
                     // A zero count closes the last block, so an empty array is one byte.
@@ -812,7 +810,7 @@ impl DatumCodec<'_> {
                                 }
                             }
                         }
-                        Scalar::Mapping(entries) => {
+                        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                             if !entries.as_slice().is_empty() {
                                 put_long(target, entries.as_slice().len() as i64);
                                 for (key, item) in entries.as_slice() {
@@ -933,7 +931,7 @@ impl DatumCodec<'_> {
                 }
             }
             Node::Map(_) => value.as_struct().is_some() || value.as_mapping().is_some(),
-            Node::Array(_) => value.as_sequence().is_some(),
+            Node::Array(_) => value.as_serie().is_some(),
             Node::Union(_) => false,
             Node::Ref(name) => self
                 .names

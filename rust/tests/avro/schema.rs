@@ -254,7 +254,7 @@ mod avro {
             let container = yggdryl::avro::read_container(&handle).unwrap();
             let tail = container.rows[0]
                 .path("next.next.value")
-                .and_then(yggdryl::Scalar::as_i64);
+                .and_then(|value| value.as_i64());
             assert_eq!(tail, Some(3));
         }
 
@@ -303,6 +303,51 @@ mod avro {
                 assert!(message.contains("one definition"), "{message}");
                 assert!(message.contains("dup"), "{message}");
             }
+        }
+
+        /// The column of `values` under a `utf8` item.
+        fn texts(values: &[&str]) -> yggdryl::Result<yggdryl::Scalar> {
+            let item = yggdryl::Field::new("item", yggdryl::DataType::utf8(), false);
+            let values = values.iter().copied().map(yggdryl::Scalar::from);
+            Ok(yggdryl::Scalar::from(yggdryl::Serie::from_scalars(
+                item, values,
+            )?))
+        }
+
+        #[test]
+        fn every_array_a_schema_spells_reads_the_same_from_a_column() -> yggdryl::Result<()> {
+            let union = Schema::from_json(&texts(&["null", "long"])?)?;
+            let expected = Schema::from_str(r#"["null","long"]"#)?;
+            assert_eq!(union, expected);
+            assert_eq!(union.fingerprint(), expected.fingerprint());
+
+            let symbols = yggdryl::json::from_utf8(r#"{"type":"enum","name":"side"}"#)?
+                .with_field("symbols", texts(&["BUY", "SELL"])?)?;
+            let expected =
+                Schema::from_str(r#"{"type":"enum","name":"side","symbols":["BUY","SELL"]}"#)?;
+            let symbols = Schema::from_json(&symbols)?;
+            assert_eq!(symbols, expected);
+            assert_eq!(symbols.fingerprint(), expected.fingerprint());
+
+            let entry = yggdryl::Scalar::from_mapping([
+                (yggdryl::Scalar::from("name"), yggdryl::Scalar::from("a")),
+                (yggdryl::Scalar::from("type"), yggdryl::Scalar::from("long")),
+            ])?;
+            let item = yggdryl::Field::new(
+                "item",
+                yggdryl::DataType::from_str("map<utf8, utf8>")?,
+                false,
+            );
+            let fields = yggdryl::Serie::from_scalars(item, [entry])?;
+            let record = yggdryl::json::from_utf8(r#"{"type":"record","name":"row"}"#)?
+                .with_field("fields", yggdryl::Scalar::from(fields))?;
+            let expected = Schema::from_str(
+                r#"{"type":"record","name":"row","fields":[{"name":"a","type":"long"}]}"#,
+            )?;
+            let record = Schema::from_json(&record)?;
+            assert_eq!(record, expected);
+            assert_eq!(record.fingerprint(), expected.fingerprint());
+            Ok(())
         }
     }
 }

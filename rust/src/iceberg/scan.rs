@@ -34,9 +34,8 @@ use smol_str::{SmolStr, format_smolstr};
 use super::manifest::{DataFile, EntryStatus, ManifestContent, ManifestEntry, ManifestFile};
 use super::partition::{PartitionSpec, Transform};
 use super::value::single_to_value;
-use crate::FieldValue as _;
 use crate::arrow::BatchReader;
-use crate::cast::ArrowCastOptions;
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::{Bound, Bounds};
 use crate::holder::Holder;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
@@ -561,28 +560,51 @@ impl Refine {
     /// Restore, align, cast, filter, and project one decoded batch.
     fn batch(
         &self,
+        plans: &mut Plans,
         batch: &RecordBatch,
         partition: &[(Field, Scalar)],
         residual: &[usize],
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
             .and_then(|batch| align_by_field_id(batch, &self.read_root))
-            .and_then(|batch| {
-                Ok(self
-                    .read_root
-                    .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?)
-            })
+            .and_then(|batch| Ok(Self::cast(&mut plans.read, batch, &self.read_root)?))
             .and_then(|batch| apply_predicates(batch, &self.predicates, residual))
             .and_then(|batch| {
                 if self.project {
-                    return Ok(self
-                        .root
-                        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?);
+                    return Ok(Self::cast(&mut plans.project, batch, &self.root)?);
                 }
                 Ok(batch)
             })
             .map_err(scan_error)
     }
+
+    /// Reconcile one batch to `root` through the plan its layout compiled.
+    fn cast(
+        plans: &mut PlanCache<ArrowCastPlan>,
+        batch: RecordBatch,
+        root: &Field,
+    ) -> crate::arrow::Result<RecordBatch> {
+        plans
+            .get_or_compile(batch.schema_ref().fields(), || {
+                ArrowCastPlan::compile_schema(
+                    batch.schema_ref(),
+                    root,
+                    ArrowCastOptions::new().with_safe(false),
+                    Deferred::default(),
+                )
+            })?
+            .reconcile_batch(batch)
+    }
+}
+
+/// The two casts one stream of decoded batches holds, each compiled once per
+/// layout: into the read root, and from it into the scan root.
+#[derive(Default)]
+struct Plans {
+    /// Decoded batches into the read root.
+    read: PlanCache<ArrowCastPlan>,
+    /// Filtered batches of the read root into the scan root.
+    project: PlanCache<ArrowCastPlan>,
 }
 
 /// A reader over every data file one plan selected, one file at a time.
@@ -595,6 +617,8 @@ struct Scan {
     schema: SchemaRef,
     /// The shared per-batch pipeline.
     refine: Arc<Refine>,
+    /// The casts every file's batches go through.
+    plans: Plans,
 }
 
 /// Build the reader over one set of planned files.
@@ -665,6 +689,7 @@ pub(super) fn reader(
         current: None,
         schema,
         refine,
+        plans: Plans::default(),
     }))
 }
 
@@ -676,7 +701,12 @@ impl Iterator for Scan {
             if let Some(open) = self.current.as_mut() {
                 match open.reader.next() {
                     Some(Ok(batch)) => {
-                        return Some(self.refine.batch(&batch, &open.partition, &open.residual));
+                        return Some(self.refine.batch(
+                            &mut self.plans,
+                            &batch,
+                            &open.partition,
+                            &open.residual,
+                        ));
                     }
                     Some(Err(error)) => return Some(Err(error)),
                     None => self.current = None,
@@ -861,9 +891,10 @@ fn read_part(
                 return;
             }
         };
+        let mut plans = Plans::default();
         for batch in reader {
             let produced = match batch {
-                Ok(batch) => refine.batch(&batch, &part.partition, &part.residual),
+                Ok(batch) => refine.batch(&mut plans, &batch, &part.partition, &part.residual),
                 Err(error) => Err(error),
             };
             if sender.send((index, Some(produced))).is_err() {

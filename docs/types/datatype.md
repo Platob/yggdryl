@@ -291,7 +291,6 @@ to the outer node and Arrow's values are a bare datatype.
 === "Rust"
 
     ```rust
-    use yggdryl::TimeType;
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
@@ -302,7 +301,7 @@ to the outer node and Arrow's values are a bare datatype.
     assert_eq!(DataType::try_from(arrow)?, value);
 
     // Projection re-checks parameters, so a directly built leaf cannot escape.
-    let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+    let broken = DataType::Time32(TimeUnit::Nanosecond);
     assert!(broken.clone().into_arrow_datatype().is_err());
     assert!(broken.into_arrow_datatype_ffi().is_err());
     ```
@@ -349,7 +348,8 @@ The core computes one default; each binding projects it.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, Field, Scalar, StructType};
+    use arrow_array::Array;
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
 
     let value = DataType::from(StructType::from_fields([
         Field::new("id", DataType::Int32, false),
@@ -364,6 +364,10 @@ The core computes one default; each binding projects it.
     assert!(value.is_default_value(&value.default_value()?)?);
     assert_eq!(DataType::utf8().default_value()?, Scalar::from(""));
 
+    // A column of defaults crosses into Arrow like any other column.
+    let defaults = Serie::from_default(value.clone().required_field("value"), 2)?;
+    assert_eq!(defaults.require_arrow_array()?.len(), 2);
+
     // A default is bounded: a layout too large to materialize is an error, not a null.
     assert!(DataType::fixed_binary(64 * 1024 * 1024 + 1)?.default_value().is_err());
     ```
@@ -371,7 +375,7 @@ The core computes one default; each binding projects it.
 === "Python"
 
     ```python
-    from yggdryl import DataType, Field
+    from yggdryl import DataType, Field, Serie
 
     value = DataType.from_fields([
         Field("id", "int32", nullable=False),
@@ -384,14 +388,17 @@ The core computes one default; each binding projects it.
     assert row.as_py() == [0, None]
     assert DataType("utf8").default_scalar().as_py() == ""
     assert DataType("int64").default_pyhint() is int
-    assert value.default_arrow_scalar().as_py() == {"id": 0, "note": None}
+
+    # A column of defaults crosses into Arrow like any other column.
+    defaults = Serie.from_default(Field("value", value, nullable=False))
+    assert defaults.into_arrow_scalar().as_py() == {"id": 0, "note": None}
     ```
 
 === "JavaScript"
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { DataType, fields } = require('yggdryl')
+    const { DataType, Field, Serie, fields } = require('yggdryl')
 
     const value = DataType.fromFields([
       fields.int32('id', { nullable: false }),
@@ -402,7 +409,9 @@ The core computes one default; each binding projects it.
     assert.deepEqual(value.defaultJSValue(), [0, null])
     assert.equal(new DataType('utf8').defaultJSValue(), '')
     assert.equal(new DataType('int64').defaultJSHint().constructor, BigInt)
-    assert.equal(new DataType('int32').defaultArrowScalar(), 0)
+
+    // A column of defaults crosses into Arrow like any other column.
+    assert.equal(Serie.fromDefault(new Field('value', 'int32', false)).intoArrowScalar(), 0)
     ```
 
 `is_default_value` checks a candidate without building the default; nullability is a [Field](field.md) question.
@@ -610,10 +619,9 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
-use yggdryl::TimeType;
 use yggdryl::{DataType, Field, TimeUnit};
 
-let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+let broken = DataType::Time32(TimeUnit::Nanosecond);
 assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 

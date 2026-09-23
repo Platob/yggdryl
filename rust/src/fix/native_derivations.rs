@@ -6,8 +6,8 @@
 //! evaluator, so `FIX:derivation` remains the public customization surface.
 
 use crate::{
-    CusipCode, DataType, DateTimeType, Decimal18, DecimalType, FixCategory, IsinCode, Result,
-    Scalar, SedolCode, SequenceType, StringEnum, TimeUnit, Timezone,
+    CusipCode, DataType, Decimal18, FixCategory, IsinCode, Result, Scalar, SedolCode, StringEnum,
+    TimeUnit, Timezone,
 };
 
 use super::msg::FixMsg;
@@ -19,15 +19,15 @@ const RULE_COUNT: usize = super::constants::SHIPPED_DERIVATIONS.len();
 // generic path until its hard-coded implementation is updated too.
 const NATIVE_DERIVATIONS_SHA256: &str =
     "953409e8bfabe9a3e26b2272346bffbb470d70ce29820a06a60520160cf5a104";
-const DECIMAL9: DataType = DataType::Decimal(DecimalType::Decimal128 {
+const DECIMAL9: DataType = DataType::Decimal128 {
     precision: 38,
     scale: 9,
-});
+};
 const DECIMAL18: DataType = DataType::DECIMAL;
-const DATETIME_NS_UTC: DataType = DataType::DateTime(DateTimeType::DateTime64 {
+const DATETIME_NS_UTC: DataType = DataType::DateTime64 {
     unit: TimeUnit::Nanosecond,
     timezone: Timezone::UTC,
-});
+};
 
 #[derive(Clone, Copy)]
 enum NativeKind {
@@ -133,7 +133,7 @@ fn supports_secaltids(registry: &FixRegistry) -> bool {
     if group.name() != "secaltids" || group.as_fix().counter().ok().flatten() != Some(454) {
         return false;
     }
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         return false;
     };
     if item.name() != "secaltid" || !matches!(item.dtype(), DataType::Struct(_)) {
@@ -233,14 +233,12 @@ impl<'message> NativeRow<'message> {
     fn alternate(&self, source_value: &str) -> Option<Scalar> {
         let at = self.msg.as_field().index_of("secaltids")?;
         let column = self.msg.as_field().fields().get(at)?;
-        let crate::DataType::Sequence(sequence) = column.dtype() else {
-            return None;
-        };
+        let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let identifier = item.index_of("securityaltid")?;
         let source = item.index_of("securityaltidsource")?;
-        let group = self.msg.as_value().as_sequence()?.get(at)?.as_sequence()?;
-        for occurrence in group {
+        let group = self.msg.as_value().as_sequence()?.get(at)?.as_serie()?;
+        for occurrence in group.iter() {
             let held = occurrence.as_sequence()?;
             if held.get(source).and_then(Scalar::as_str) == Some(source_value) {
                 return held

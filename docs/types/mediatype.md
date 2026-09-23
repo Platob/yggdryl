@@ -245,8 +245,11 @@ cell on the way in.
 === "Rust"
 
     ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, StringArray};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::{DataType, Field};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     for (dtype, extension) in [
         (DataType::MimeType, "yggdryl.mimetype"),
@@ -258,6 +261,12 @@ cell on the way in.
         assert_eq!(arrow.metadata()["ARROW:extension:name"], extension);
         assert_eq!(Field::from_arrow_field(&arrow)?, field);
     }
+
+    // A cast into the column canonicalizes every cell on the way in.
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["APPLICATION/JSON"]));
+    let held = Field::new("held", DataType::MimeType, true);
+    let held = Serie::from_arrow_array(Some(&held), text, ArrowCastOptions::new())?;
+    assert_eq!(held.as_utf8().expect("the text column").value(0), Some("application/json"));
     ```
 
 === "Python"
@@ -267,7 +276,7 @@ cell on the way in.
 
     import yggdryl
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     for field, extension in (
         (yggdryl.mimetype("held"), b"yggdryl.mimetype"),
@@ -279,9 +288,8 @@ cell on the way in.
         assert Field.from_arrow(arrow) == field
 
     # A cast into the column canonicalizes every cell on the way in.
-    assert yggdryl.mimetype("held").cast_arrow_array(
-        pa.array(["APPLICATION/JSON"])
-    ).to_pylist() == ["application/json"]
+    held = Serie.from_arrow_array(pa.array(["APPLICATION/JSON"]), yggdryl.mimetype("held"))
+    assert held.into_arrow_array().to_pylist() == ["application/json"]
     ```
 
 === "JavaScript"
@@ -289,16 +297,13 @@ cell on the way in.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
+    // A column crossing out as a table answers the Arrow field it is written as.
     const projected = (field, value) =>
-      fields
-        .struct('row', [field], { nullable: false })
-        .castArrow(
-          new arrow.Table({ [field.name]: arrow.vectorFromArray([value], new arrow.Utf8()) }),
-          { safe: false },
-        )
+      Serie.fromArrowArray(arrow.vectorFromArray([value], new arrow.Utf8()), field, {
+        safe: false,
+      }).intoArrowBatch()
 
     const held = projected(fields.mimetype('held', { nullable: false }), 'APPLICATION/JSON')
     assert.equal(String(held.schema.fields[0].type), 'Utf8')

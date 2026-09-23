@@ -23,7 +23,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { DataType, StringEnum, Version, fields } = require('../node/binding.js')
+const { DataType, Serie, StringEnum, Version, fields } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const MANIFEST = path.join(ROOT, 'docs', 'assets', 'playground.json')
@@ -314,6 +314,13 @@ const rowCall = (dtype) => `fields.struct('row', [${fieldCall(dtype)}], { nullab
 const STRICT = { safe: false }
 const STRICT_CALL = '{ safe: false }'
 
+/** A table landed as the record column of `dtype`'s row, back as its batch. */
+const cast = (dtype, table, options) =>
+  Serie.fromArrowBatch(table, row(dtype), options).intoArrowBatch()
+const castCall = (dtype, tableCall, optionsCall) =>
+  `Serie.fromArrowBatch(${tableCall}, ${rowCall(dtype)}` +
+  `${optionsCall === undefined ? '' : `, ${optionsCall}`}).intoArrowBatch()`
+
 /** A one-element Arrow JS table of text, the input side of an encode. */
 const textTable = (value) =>
   new arrow.Table({ ccy: arrow.vectorFromArray([value], new arrow.Utf8()) })
@@ -339,22 +346,21 @@ const storageTableCall = (dtype, bytes) =>
   `new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(${bytes.join(', ')})], ` +
   `${dtype === 'ascii' ? 'new arrow.Binary()' : `new arrow.FixedSizeBinary(${bytes.length})`}) })`
 
-/** The storage bytes of the single row of a cast table.
+/** The storage bytes of the single row of a cast batch.
  *
  * A fixed width reads back as its `FixedSizeBinary` cell; the variable form
  * rides `Utf8`, whose cell is the text, and US-ASCII text is its own bytes.
  */
-const stored = (table) => {
-  const cell = table.getChild('ccy').get(0)
+const stored = (batch) => {
+  const cell = batch.getChild('ccy').get(0)
   return typeof cell === 'string' ? [...Buffer.from(cell, 'utf8')] : Array.from(cell)
 }
 
 /** What one US-ASCII datatype is, read off a field projected to Arrow. */
-const projectedField = (dtype) =>
-  row(dtype).castArrow(textTable('A')).schema.fields[0]
+const projectedField = (dtype) => cast(dtype, textTable('A')).schema.fields[0]
 
 /** The single row read back under a declared `utf8` field: the trimmed text. */
-const readBack = (table) => [...row('utf8').castArrow(table).getChild('ccy')][0]
+const readBack = (batch) => [...cast('utf8', batch).getChild('ccy')][0]
 
 /** What every US-ASCII datatype is, read off a field projected to Arrow. */
 function widths() {
@@ -370,7 +376,7 @@ function widths() {
       arrow: String(projected.type),
       extensionName: projected.metadata.get('ARROW:extension:name'),
       extensionDocument: projected.metadata.get('ARROW:extension:metadata'),
-      call: `${rowCall(dtype)}.castArrow(${textTableCall('A')}).schema.fields[0]`,
+      call: `${castCall(dtype, textTableCall('A'))}.schema.fields[0]`,
     }
   })
 }
@@ -384,45 +390,43 @@ function encodeCase(dtype, label, input) {
     // The literal is what the page shows, so a NUL or an accented byte is
     // visible there instead of rendering as nothing.
     inputLiteral: literal(input),
-    call: `${rowCall(dtype)}.castArrow(${textTableCall(input)}, ${STRICT_CALL})`,
+    call: castCall(dtype, textTableCall(input), STRICT_CALL),
   }
-  let table
+  let batch
   try {
-    table = row(dtype).castArrow(textTable(input), STRICT)
+    batch = cast(dtype, textTable(input), STRICT)
   } catch (error) {
     return { ...head, ok: false, error: error.message }
   }
-  const bytes = stored(table)
+  const bytes = stored(batch)
   return {
     ...head,
     ok: true,
     storage: bytes,
     storageHex: hex(bytes),
     storageEscaped: escapedText(bytes),
-    readBack: readBack(table),
+    readBack: readBack(batch),
     // A refusal stops at the storage cast, but a stored row also reports the
     // read-back text, so its call carries the second statement that produced it.
     call:
-      `const stored = ${rowCall(dtype)}\n` +
-      `  .castArrow(${textTableCall(input)}, ${STRICT_CALL})\n` +
-      `${rowCall('utf8')}.castArrow(stored)`,
+      `const stored = ${castCall(dtype, textTableCall(input), STRICT_CALL)}\n` +
+      castCall('utf8', 'stored'),
   }
 }
 
 /** One decode case: what the package answers for a run of storage bytes. */
 function decodeCase(dtype, label, bytes) {
-  const table = row(dtype).castArrow(storageTable(dtype, bytes), STRICT)
+  const batch = cast(dtype, storageTable(dtype, bytes), STRICT)
   return {
     dtype,
     label,
     storage: bytes,
     storageHex: hex(bytes),
     storageEscaped: escapedText(bytes),
-    text: readBack(table),
+    text: readBack(batch),
     call:
-      `const stored = ${rowCall(dtype)}\n` +
-      `  .castArrow(${storageTableCall(dtype, bytes)}, ${STRICT_CALL})\n` +
-      `${rowCall('utf8')}.castArrow(stored)`,
+      `const stored = ${castCall(dtype, storageTableCall(dtype, bytes), STRICT_CALL)}\n` +
+      castCall('utf8', 'stored'),
   }
 }
 
@@ -454,9 +458,10 @@ function vocabulary() {
   // back as the enum that wrote it.
   const field = fields.currency('ccy', { nullable: false })
   field.setStringEnum(declared)
-  const projected = fields
-    .struct('row', [field], { nullable: false })
-    .castArrow(textTable('USD')).schema.fields[0]
+  const projected = Serie.fromArrowBatch(
+    textTable('USD'),
+    fields.struct('row', [field], { nullable: false }),
+  ).intoArrowBatch().schema.fields[0]
 
   return {
     name: ENUM,
@@ -480,8 +485,9 @@ function vocabulary() {
         `const ccy = ${fieldCall('currency')}\n` +
         `ccy.setStringEnum(new StringEnum(${literal(ENUM)}, ` +
         `${JSON.stringify(Object.fromEntries(DECLARED))}))\n` +
-        `fields.struct('row', [ccy], { nullable: false })\n` +
-        `  .castArrow(${textTableCall('USD')}).schema.fields[0].metadata`,
+        `Serie.fromArrowBatch(${textTableCall('USD')}, ` +
+        `fields.struct('row', [ccy], { nullable: false }))\n` +
+        `  .intoArrowBatch().schema.fields[0].metadata`,
     },
     enum: {
       name: ENUM,

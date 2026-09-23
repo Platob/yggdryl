@@ -1,5 +1,6 @@
 //! A FIX message: its typed facts, its row, and the registry that types it.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
@@ -13,13 +14,12 @@ use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::registry::FixMap;
 use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-use crate::sequence::SequenceType;
 use crate::xxhash;
 use crate::{
     BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
     Side, State, StructType, Uuid,
 };
-use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar};
+use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
 /// The nanoseconds in one day: what a transaction time at midnight to the
 /// nanosecond is a multiple of, and what a day-only `TransactTime(60)` is
@@ -869,15 +869,13 @@ impl FixMsg {
     /// `TrdRegTimestamp(769)` and `TrdRegTimestampType(770)` members hold in
     /// each of them; nothing where the dictionary declares no such group, or
     /// where the group it declares does not carry both members.
-    fn trdregtimestamp_members(&self) -> Option<(&[Scalar], usize, usize)> {
+    fn trdregtimestamp_members(&self) -> Option<(&Serie, usize, usize)> {
         let at = self.index_of_group(768)?;
-        let DataType::Sequence(sequence) = self.field.fields().get(at)?.dtype() else {
-            return None;
-        };
+        let sequence = (self.field.fields().get(at)?.dtype()).as_serie_type()?;
         let members = sequence.item().fields();
         let stamp = position_of_tag(&self.registry, members, 769)?;
         let kind = position_of_tag(&self.registry, members, 770)?;
-        let occurrences = self.value.as_sequence()?.get(at)?.as_sequence()?;
+        let occurrences = self.value.as_sequence()?.get(at)?.as_serie()?;
         Some((occurrences, stamp, kind))
     }
 
@@ -1204,9 +1202,7 @@ impl FixMsg {
     fn trdreg_execution_instant(&self) -> Option<i64> {
         let at = self.index_of_group(768)?;
         let column = self.field.fields().get(at)?;
-        let DataType::Sequence(sequence) = column.dtype() else {
-            return None;
-        };
+        let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let (timestamp, kind) = (
             item.index_of("trdregtimestamp")?,
@@ -1215,7 +1211,7 @@ impl FixMsg {
         self.value
             .as_sequence()?
             .get(at)?
-            .as_sequence()?
+            .as_serie()?
             .iter()
             .find_map(|occurrence| {
                 let held = occurrence.as_sequence()?;
@@ -1441,9 +1437,7 @@ impl FixMsg {
         // every occurrence is read by those positions.
         let at = self.field.index_of("secaltids")?;
         let column = self.field.fields().get(at)?;
-        let DataType::Sequence(sequence) = column.dtype() else {
-            return None;
-        };
+        let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let (identifier, source) = (
             item.index_of("securityaltid")?,
@@ -1451,7 +1445,7 @@ impl FixMsg {
         );
         let group = self.value.as_sequence()?.get(at)?;
         group
-            .as_sequence()?
+            .as_serie()?
             .iter()
             .filter_map(|occurrence| {
                 let held = occurrence.as_sequence()?;
@@ -2349,7 +2343,9 @@ impl FixMsg {
                 return self.typed_fact(tag);
             }
         }
-        self.value.get(self.field.index_of(known.name())?).cloned()
+        self.value
+            .get(self.field.index_of(known.name())?)
+            .map(Cow::into_owned)
     }
 
     /// Returns the value the root child an identifier names, raising
@@ -2375,7 +2371,9 @@ impl FixMsg {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
         }
-        self.value.get(self.reached_by_tag(tag)?).cloned()
+        self.value
+            .get(self.reached_by_tag(tag)?)
+            .map(Cow::into_owned)
     }
 
     /// The value a tag names by the index alone: a typed fact, else the
@@ -2387,7 +2385,7 @@ impl FixMsg {
         if identity::is_typed_tag(tag) {
             return self.typed_fact(tag);
         }
-        self.value.get(self.index_of_tag(tag)?).cloned()
+        self.value.get(self.index_of_tag(tag)?).map(Cow::into_owned)
     }
 
     /// The child a tag reaches: the one carrying the tag, by one hash-free
@@ -2477,7 +2475,7 @@ impl FixMsg {
         }
         self.value
             .get(self.child_index(&self.field, name)?)
-            .cloned()
+            .map(Cow::into_owned)
     }
 
     /// Returns the value a name reaches, raising absence.
@@ -2521,7 +2519,7 @@ impl FixMsg {
                 let index = self.child_index(&self.field, name)?;
                 (
                     self.field.fields().get(index)?.clone(),
-                    self.value.get(index)?.clone(),
+                    self.value.get(index)?.into_owned(),
                 )
             }
         };
@@ -2583,7 +2581,7 @@ impl FixMsg {
         self.registry.get_field_by_tag(tag).or_else(|| {
             self.registry
                 .get_group_by_tag(tag)
-                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Map(_) | DataType::SortedMap(_)))
         })
     }
 
@@ -2635,26 +2633,29 @@ impl FixMsg {
                 let index = self.segment_index(field, segment)?;
                 Some((
                     field.fields().get(index)?.clone(),
-                    value.get(index)?.clone(),
+                    value.get(index)?.into_owned(),
                 ))
             }
-            DataType::Sequence(SequenceType::List(item))
-            | DataType::Sequence(SequenceType::LargeList(item))
-            | DataType::Sequence(SequenceType::FixedSizeList(item, _))
-            | DataType::Sequence(SequenceType::ListView(item))
-            | DataType::Sequence(SequenceType::LargeListView(item)) => {
+            DataType::List(item)
+            | DataType::LargeList(item)
+            | DataType::FixedSizeList(item, _)
+            | DataType::ListView(item)
+            | DataType::LargeListView(item) => {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
-                let held = value.as_sequence()?;
+                let len = value.as_serie()?.len();
                 let at = if *position < 0 {
-                    held.len().checked_sub(position.unsigned_abs() as usize)?
+                    len.checked_sub(position.unsigned_abs() as usize)?
                 } else {
                     usize::try_from(*position).ok()?
                 };
-                Some((item.as_ref().clone(), value.get(at)?.clone()))
+                Some((item.as_ref().clone(), value.get(at)?.into_owned()))
             }
-            DataType::Mapping(map) => {
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let FieldSegment::Key(key) = segment else {
                     return None;
                 };
@@ -2778,9 +2779,8 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let (tag, counter) = super::schema::tag_and_counter(registry, field);
     let tag = tag.unwrap_or(0);
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item)) => {
-            let occurrences = value.as_sequence()?;
+        DataType::List(item) | DataType::LargeList(item) => {
+            let occurrences = value.as_serie()?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.
             let item_facts = super::schema::tag_and_counter(registry, item);
@@ -2793,7 +2793,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
                         let own = item_facts.0.unwrap_or(0);
                         Some(FixEntry::new(own, item.name(), None).with_entries(members))
                     }
-                    _ => entry_of(registry, item, occurrence),
+                    _ => entry_of(registry, item, &occurrence),
                 })
                 .collect();
             match counter {
@@ -2812,7 +2812,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
             let members = entries_of(registry, field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }
-        DataType::Mapping(_) => {
+        DataType::Map(_) | DataType::SortedMap(_) => {
             let members = value
                 .as_mapping()?
                 .iter()

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 const arrow = require('apache-arrow')
 
-const { DataType, Field, Scalar, Version, enums, fields, json } = require('yggdryl')
+const { DataType, Field, Scalar, Serie, Version, enums, fields, json } = require('yggdryl')
 const { Version: NativeVersion } = require('../index.js')
 
 test('Version native integer parts use u8, u8, u16 and canonical numeric text', () => {
@@ -152,8 +152,7 @@ test('Version field defaults and hints expose the native value with Arrow string
   assert.equal(field.defaultJSHint().constructor, Version)
   assert.equal(field.defaultJSHint().nullable, false)
   assert.equal(fields.version('release').defaultJSHint().nullable, true)
-  assert.equal(dtype.defaultArrowScalar(), '0')
-  assert.equal(field.defaultArrowScalar(), '0')
+  assert.equal(Serie.fromDefault(field).intoArrowScalar(), '0')
   const value = new Version(5, 0, 300)
   const scalar = Scalar.from(value)
   assert.equal(scalar.intoArrowScalar(field), '5.0.300')

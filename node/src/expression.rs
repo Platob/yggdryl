@@ -212,7 +212,7 @@ fn parameter_refs(parameters: &[(String, Scalar)]) -> Vec<(&str, Scalar)> {
 /// Read native rows out of one Scalar sequence: a record is taken as is, and
 /// a mapping keyed by text becomes the record it names.
 fn rows_from_scalar(rows: &JsScalar) -> Result<Vec<Scalar>> {
-    let held = rows.inner.as_sequence().ok_or_else(|| {
+    let held = rows.inner.as_serie().ok_or_else(|| {
         Error::from_reason("rows must be a Scalar sequence of records, one per row")
     })?;
     let mut records = Vec::with_capacity(held.len());
@@ -227,7 +227,7 @@ fn rows_from_scalar(rows: &JsScalar) -> Result<Vec<Scalar>> {
             }
             records.push(Scalar::from_struct(named).map_err(napi_error)?);
         } else {
-            records.push(row.clone());
+            records.push(row.into_owned());
         }
     }
     Ok(records)

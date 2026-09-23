@@ -39,7 +39,6 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::typing::{common_type, unwrap_dictionary};
 use super::{Literal, Term};
-use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// What a parse failure names itself as.
@@ -210,7 +209,12 @@ impl FieldSegment {
         match self {
             Self::Field(name) => match dtype {
                 DataType::Struct(_) => struct_child_field(field, name),
-                DataType::Mapping(map) => Ok(map_value_field(map)?.with_nullable(true)),
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    Ok(map_value_field(map)?.with_nullable(true))
+                }
                 other => Err(typing_error(format_smolstr!(
                     "expected a struct or a map to reach .{name} through, got {other}"
                 ))),
@@ -233,7 +237,10 @@ impl FieldSegment {
                 Ok(kept_list_field(field, &element))
             }
             Self::Key(key) => match dtype {
-                DataType::Mapping(map) => {
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
                     let keys = map_key_field(map)?;
                     common_type(keys.dtype(), key.dtype()).ok_or_else(|| {
                         typing_error(format_smolstr!(
@@ -280,20 +287,20 @@ impl FieldSegment {
         Ok(match self {
             Self::Field(name) => struct_child(field, value, name),
             Self::Index(position) => {
-                let Some(items) = value.as_sequence() else {
+                let Some(items) = value.as_serie() else {
                     return Ok(Scalar::Null);
                 };
+                // One row: lent by a run, built by a column.
                 resolve_index(*position, items.len())
                     .and_then(|index| items.get(index))
-                    .cloned()
-                    .unwrap_or(Scalar::Null)
+                    .map_or(Scalar::Null, Cow::into_owned)
             }
             Self::Range { start, end } => {
-                let Some(items) = value.as_sequence() else {
+                let Some(items) = value.as_serie() else {
                     return Ok(Scalar::Null);
                 };
                 let (from, until) = resolve_range(*start, *end, items.len());
-                Scalar::from_sequence(items[from..until].iter().cloned())
+                Scalar::from(items.slice(from, until - from)?)
             }
             Self::Key(key) => {
                 if let Some(entries) = value.as_mapping() {
@@ -369,9 +376,9 @@ pub(crate) fn struct_values<'value>(
     value: &'value Scalar,
 ) -> Option<Cow<'value, [Scalar]>> {
     let width = field.field_len();
-    if let Some(values) = value.as_sequence() {
+    if let Some(values) = value.sequence_rows() {
         if values.len() == width {
-            return Some(Cow::Borrowed(values));
+            return Some(values);
         }
         // A short or long sequence still reads in schema order: what is
         // missing is null, and what is past the schema is not there to read.
@@ -440,7 +447,7 @@ fn struct_child(field: &Field, value: &Scalar, name: &str) -> Scalar {
     }
     // A struct spelled as a bare sequence takes its order from the schema.
     if let (Some(values), DataType::Struct(fields)) =
-        (value.as_sequence(), unwrap_dictionary(field.dtype()))
+        (value.sequence_rows(), unwrap_dictionary(field.dtype()))
     {
         return fields
             .as_fields()
@@ -471,11 +478,11 @@ fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
 /// The item field of a list-shaped datatype, whichever layout it uses.
 pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
     match dtype {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::ListView(item))
-        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
-        | DataType::Sequence(SequenceType::LargeList(item))
-        | DataType::Sequence(SequenceType::LargeListView(item)) => Some(item.as_ref()),
+        DataType::List(item)
+        | DataType::ListView(item)
+        | DataType::FixedSizeList(item, _)
+        | DataType::LargeList(item)
+        | DataType::LargeListView(item) => Some(item.as_ref()),
         _ => None,
     }
 }

@@ -110,3 +110,19 @@ fn a_null_clears_and_nothing_stated_is_none() {
     );
     assert_eq!(EventColumn::of_name("no such"), None);
 }
+
+#[test]
+fn a_column_of_identities_records_like_the_run_of_them() -> yggdryl::Result<()> {
+    let column = Scalar::from(yggdryl::Serie::from_scalars(
+        yggdryl::Field::new("item", yggdryl::DataType::Uuid, false),
+        [
+            Scalar::Uuid(Uuid::from_v8(7)),
+            Scalar::Uuid(Uuid::from_v8(8)),
+        ],
+    )?);
+    assert_eq!(column.as_sequence(), None, "the fixture holds a column");
+    let mut event = MarketEventData::default();
+    EventColumn::SrcUuids.record(&mut event, &column);
+    assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7), Uuid::from_v8(8)]);
+    Ok(())
+}

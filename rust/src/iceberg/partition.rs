@@ -22,7 +22,6 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::DecimalType;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -608,7 +607,7 @@ impl PartitionSpec {
     /// bare field array a v1 table writes.
     pub fn from_json(document: &Scalar) -> Result<Self> {
         // v1 wrote `partition-spec` as a bare array of fields with no id.
-        if let Some(entries) = document.as_sequence() {
+        if let Some(entries) = document.as_serie() {
             let mut fields = Vec::with_capacity(entries.len());
             for (offset, entry) in entries.iter().enumerate() {
                 let offset = i32::try_from(offset).map_err(|_| {
@@ -622,7 +621,7 @@ impl PartitionSpec {
                     ))
                 })?;
                 fields.push(PartitionField::from_json_with_field_id(
-                    entry,
+                    &entry,
                     Some(field_id),
                 )?);
             }
@@ -642,15 +641,15 @@ impl PartitionSpec {
             })?;
         let entries = document
             .get_key_str("fields")
-            .and_then(Scalar::as_sequence)
+            .and_then(Scalar::as_serie)
             .ok_or_else(|| {
                 invalid(format_smolstr!(
                     "expected a \"fields\" array in partition spec {spec_id}"
                 ))
             })?;
         let mut fields = Vec::with_capacity(entries.len());
-        for entry in entries {
-            fields.push(PartitionField::from_json(entry)?);
+        for entry in entries.iter() {
+            fields.push(PartitionField::from_json(&entry)?);
         }
         let spec = Self { spec_id, fields };
         spec.validate_shape()?;
@@ -835,9 +834,7 @@ impl PartitionTransform {
         // write keys every instant of one UTC day together, so one row would
         // label the whole day.
         if self.transform == Transform::Day {
-            if let DataType::DateTime(crate::DateTimeType::DateTime64 { unit, .. }) =
-                self.source.dtype()
-            {
+            if let DataType::DateTime64 { unit, .. } = self.source.dtype() {
                 let count = super::value::single_value(&value, self.source.dtype())
                     .and_then(|bytes| <[u8; 8]>::try_from(bytes.as_slice()).ok())
                     .map(i64::from_le_bytes)
@@ -936,9 +933,9 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
 
 fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
     let primitive = official_primitive_type(dtype)?;
-    let bytes = if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    let bytes = if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         let (unscaled, actual_scale) = value.as_decimal().ok_or_else(|| {
             invalid(format_smolstr!(
@@ -968,9 +965,9 @@ fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
 }
 
 fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scalar> {
-    if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
             OfficialLiteral::Int128(unscaled) => dtype.scalar(Scalar::d128(*unscaled, *scale)),

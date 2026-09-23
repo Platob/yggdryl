@@ -5,9 +5,8 @@ mod arrow {
 
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
     use yggdryl::BytesType;
-    use yggdryl::SequenceType;
+
     use yggdryl::{DataType, Field, StructType, TimeUnit, Timezone, UnionMode};
-    use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
     fn assert_invalid(error: yggdryl::Error, expected_kind: &str, expected_reason: &str) {
         match error {
@@ -51,33 +50,33 @@ mod arrow {
     #[test]
     fn every_temporal_and_interval_unit_round_trips_through_all_core_formats() {
         let values = [
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::UTC,
-            }),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::from_str("Europe/Paris").unwrap(),
-            }),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            }),
-            DataType::Time(TimeType::Time32(TimeUnit::Second)),
-            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+            },
+            DataType::Time32(TimeUnit::Second),
+            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Duration64(TimeUnit::Second),
+            DataType::Duration64(TimeUnit::Millisecond),
+            DataType::Duration64(TimeUnit::Microsecond),
+            DataType::Duration64(TimeUnit::Nanosecond),
+            DataType::Interval(TimeUnit::YearMonth),
+            DataType::Interval(TimeUnit::DayTime),
+            DataType::Interval(TimeUnit::MonthDayNano),
         ];
 
         for value in values {
@@ -145,18 +144,18 @@ mod arrow {
             DataType::Float16,
             DataType::Float32,
             DataType::Float64,
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::from_str("Europe/Paris").unwrap(),
-            }),
+            },
             DataType::date32(),
             DataType::date64(),
-            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Duration64(TimeUnit::Nanosecond),
+            DataType::Interval(TimeUnit::YearMonth),
+            DataType::Interval(TimeUnit::DayTime),
+            DataType::Interval(TimeUnit::MonthDayNano),
             DataType::binary(),
             DataType::fixed_binary(16).unwrap(),
             DataType::large_binary(),
@@ -331,24 +330,16 @@ mod arrow {
 
     #[test]
     fn invalid_arrow_parameters_and_nested_shapes_fail_before_projection() {
-        assert!(
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond))
-                .validate()
-                .is_err()
-        );
-        assert!(
-            DataType::Time(TimeType::Time64(TimeUnit::Second))
-                .validate()
-                .is_err()
-        );
+        assert!(DataType::Time32(TimeUnit::Nanosecond).validate().is_err());
+        assert!(DataType::Time64(TimeUnit::Second).validate().is_err());
         for invalid in [
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::YearMonth,
                 timezone: Timezone::NAIVE,
-            }),
-            DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
+            },
+            DataType::Duration32(TimeUnit::DayTime),
+            DataType::Duration64(TimeUnit::DayTime),
+            DataType::Interval(TimeUnit::Second),
         ] {
             assert!(invalid.validate().is_err());
             assert!(invalid.clone().into_arrow_datatype().is_err());
@@ -396,7 +387,7 @@ mod arrow {
 
     #[test]
     fn invariant_errors_match_across_construction_validation_and_arrow_projection() {
-        let invalid_time = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+        let invalid_time = DataType::Time32(TimeUnit::Nanosecond);
         for error in [
             DataType::time32(TimeUnit::Nanosecond).unwrap_err(),
             invalid_time.validate().unwrap_err(),
@@ -430,8 +421,7 @@ mod arrow {
         }
 
         let item = Field::new("item", DataType::utf8(), true);
-        let invalid_list =
-            DataType::Sequence(SequenceType::FixedSizeList(Arc::new(item.clone()), -1));
+        let invalid_list = DataType::FixedSizeList(Arc::new(item.clone()), -1);
         for error in [
             DataType::fixed_size_list(item, -1).unwrap_err(),
             invalid_list.validate().unwrap_err(),
@@ -607,10 +597,11 @@ mod families {
 
         let first = DataType::map_of(DataType::utf8(), DataType::Int32, false).unwrap();
         let later = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
-        let (DataType::Mapping(first), DataType::Mapping(later)) = (first, later) else {
+        assert!(first < later);
+        let (DataType::Map(unsorted), DataType::SortedMap(sorted)) = (&first, &later) else {
             unreachable!()
         };
-        assert!(first < later);
+        assert_eq!(unsorted, sorted);
 
         let first = DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),

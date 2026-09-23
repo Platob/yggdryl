@@ -19,6 +19,9 @@ export {
   RecordOptions,
   Records,
   Selector,
+  Serie,
+  SerieReader,
+  ArrowCastPlan,
   StringEnum,
   Term,
   TextLine,
@@ -76,6 +79,9 @@ import type {
   RecordOptions,
   Records,
   Selector,
+  Serie,
+  SerieReader,
+  ArrowCastPlan,
   StringParametersInput,
   Term,
   TextLine,
@@ -115,6 +121,7 @@ import {
 } from './index'
 import type {
   RecordBatch as ArrowRecordBatch,
+  Schema as ArrowSchema,
   Table as ArrowTable,
   Vector as ArrowVector,
 } from 'apache-arrow'
@@ -586,7 +593,6 @@ declare module './index' {
   interface DataType {
     defaultJSValue(): unknown
     defaultJSHint(): JSValueHint
-    defaultArrowScalar(): unknown
     intoSchemeCompat(target: CompatibilityScheme): DataType
   }
 
@@ -655,28 +661,98 @@ declare module './index' {
   interface Field {
     defaultJSValue(): unknown
     defaultJSHint(): JSValueHint
-    defaultArrowScalar(): unknown
     intoSchemeCompat(target: CompatibilityScheme): Field
+  }
+
+  namespace Serie {
+    /** The column `field` types `rows` into, each through the field's own contract. */
+    function fromScalars(field: Field | string, rows: Iterable<unknown>): Serie
+    /** The empty column of `field`. */
+    function empty(field: Field | string): Serie
+    /** The empty column of `field`, with room for `rows` rows. */
+    function withCapacity(field: Field | string, rows: number): Serie
+    /** `rows` copies of `field`'s canonical default, one by default. */
+    function fromDefault(field: Field | string, rows?: number): Serie
     /**
-     * Cast whatever Arrow JS holds - a Table, RecordBatch, BatchReader, or
-     * IPC bytes - to this exact Field, batch by batch, as a Table. Eager: the
-     * stream is drained here.
+     * One Apache Arrow JS vector as a column: of its own layout under the
+     * field `item`, nullable only where a row is null, or cast once into
+     * `field` under `options`.
      */
-    castArrow(rows: BatchSource, options?: ArrowCastOptions): unknown
-    /** Cast one Apache Arrow JS record batch to this exact Field. */
-    castArrowBatch(
-      batch: ArrowRecordBatch,
+    function fromArrowArray(
+      vector: ArrowVector,
+      field?: Field | string,
       options?: ArrowCastOptions,
-    ): ArrowRecordBatch
+    ): Serie
     /**
-     * Cast a whole stream to this exact Field, lazily. The source reader is
-     * consumed and the returned reader casts one batch per pull.
+     * One Apache Arrow JS record batch or table as the record column of its
+     * rows: of its own schema, named `row`, or cast into `root`.
      */
-    castArrowReader(rows: BatchSource, options?: ArrowCastOptions): BatchReader
-    /** Cast one Apache Arrow JS vector to this exact Field. */
-    castArrowArray(values: ArrowVector, options?: ArrowCastOptions): ArrowVector
-    /** The same cast under the generic name. */
-    cast(rows: BatchSource, options?: ArrowCastOptions): unknown
+    function fromArrowBatch(
+      batch: ArrowRecordBatch | ArrowTable,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): Serie
+    /**
+     * Drain a native reader into the record column of its rows, every batch
+     * cast by one plan; the reader is consumed.
+     */
+    function fromArrowReader(
+      reader: BatchReader,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): Serie
+  }
+
+  interface Serie extends Iterable<Scalar> {
+    /**
+     * This column under `field` - a DataType as its required `value` field -
+     * cast once; a run is refused.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): Serie
+    /** This one-row column as the Apache Arrow JS value of its row. */
+    intoArrowScalar(): unknown
+    /** This column as one Apache Arrow JS vector. */
+    intoArrowArray(): ArrowVector
+    /** Every row of this column as one Apache Arrow JS record batch. */
+    intoArrowBatch(): ArrowRecordBatch
+  }
+
+  namespace SerieReader {
+    /**
+     * Read a native reader's batches as record series: of its own schema,
+     * named `row`, or cast into `root` by one plan compiled here. The reader
+     * is consumed.
+     */
+    function fromArrowReader(
+      reader: BatchReader,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): SerieReader
+  }
+
+  interface SerieReader extends Iterable<Serie> {
+    /** One record serie per batch, each cast as it is pulled. */
+    [Symbol.iterator](): Generator<Serie, void, undefined>
+  }
+
+  namespace ArrowCastPlan {
+    /**
+     * Compile the cast from `source` to `target` once. An Apache Arrow JS
+     * schema, table or batch names its source by its schema, imported as the
+     * record `row` its batches are read as.
+     */
+    function compile(
+      source: Field | string | ArrowSchema | ArrowTable | ArrowRecordBatch,
+      target: Field | string,
+      options?: ArrowCastOptions,
+    ): ArrowCastPlan
+  }
+
+  interface ArrowCastPlan {
+    /** Cast one column laid out as `source`. */
+    apply(serie: Serie): Serie
+    /** The three cast answers this plan was compiled under. */
+    readonly options: Readonly<Required<ArrowCastOptions>>
   }
 
   interface Xxh32 {
@@ -746,7 +822,6 @@ type NonNullableDataTypeValue<K extends DataTypeId, V> = K extends 'null'
 type TypedDefaultMethods<K extends DataTypeId, V> = {
   defaultJSValue(): V
   defaultJSHint(): JSValueHint<K, NonNullableDataTypeValue<K, V>>
-  defaultArrowScalar(): unknown
 }
 
 /** A static variant/value view over the one native DataType runtime class. */
@@ -2826,14 +2901,30 @@ declare module './index' {
   namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
     function from(value: unknown, options?: CodecOptions): Scalar
-    /** Read one item from a one-item Apache Arrow Vector. */
-    function fromArrowScalar(value: ArrowVector, field?: Field): Scalar
-    /** Read an Apache Arrow Vector through native Arrow IPC. */
-    function fromArrowArray(value: ArrowVector, field?: Field): Scalar
-    /** Read an Apache Arrow RecordBatch through native Arrow IPC. */
-    function fromArrowBatch(value: ArrowRecordBatch, field?: Field): Scalar
-    /** Read an Apache Arrow Table through native Arrow IPC. */
-    function fromArrowTable(value: ArrowTable, field?: Field): Scalar
+    /** Read one item from a one-item Apache Arrow Vector, cast into `field`. */
+    function fromArrowScalar(
+      value: ArrowVector,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): Scalar
+    /** Read an Apache Arrow Vector as the sequence of its column, cast into `field`. */
+    function fromArrowArray(
+      value: ArrowVector,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): Scalar
+    /** Read an Apache Arrow RecordBatch as the sequence of its rows, cast into `field`. */
+    function fromArrowBatch(
+      value: ArrowRecordBatch,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): Scalar
+    /** Read an Apache Arrow Table as the sequence of its rows, cast into `field`. */
+    function fromArrowTable(
+      value: ArrowTable,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): Scalar
   }
   interface Uri extends Iterable<string> {
     /** Join path components through the generic URI core. */
@@ -3207,9 +3298,10 @@ export type Nullability = 'default' | 'strict'
 export type Representation = 'value' | 'bits'
 
 /**
- * The two independent answers every Arrow cast needs: `safe` decides whether a
- * present value may be converted, `nullability` whether a declared value may be
- * absent.
+ * The three independent answers every Arrow cast needs: `safe` decides whether
+ * a present value may be converted, `nullability` whether a declared value may
+ * be absent, `representation` what a same-width pair carries. An absent answer
+ * takes the core's default: safe, `"default"`, `"value"`.
  */
 export interface ArrowCastOptions {
   safe?: boolean

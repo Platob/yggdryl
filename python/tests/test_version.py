@@ -10,7 +10,7 @@ import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import DataType, Field, Scalar, Version, enums, field, json, scalar
+from yggdryl import DataType, Field, Scalar, Serie, Version, enums, field, json, scalar
 from yggdryl.arrow import ArrowScalar
 
 
@@ -152,7 +152,9 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     arrow_field = field.into_arrow()
     assert arrow_field.type == pa.string()
     assert Field.from_arrow(arrow_field) == field
-    array = field.cast_arrow_array(pa.array(["005.00.00300", "5.0", "255.255.65535"]))
+    array = Serie.from_arrow_array(
+        pa.array(["005.00.00300", "5.0", "255.255.65535"]), field
+    ).into_arrow_array()
     assert array.to_pylist() == ["5.0.300", "5", "255.255.65535"]
     scalar = Scalar.from_(Version(5, 0, 300))
     assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"

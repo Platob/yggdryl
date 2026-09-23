@@ -1583,7 +1583,11 @@ mod arrow {
                         Some(&root).filter(|root| root.field_len() > 0),
                         self.root_name(),
                     )?;
-                    return super::Selector::from_field(&field).apply_arrow_reader(reader);
+                    let declared = super::Selector::from_field(&field);
+                    if declared.is_all() {
+                        return Ok(reader);
+                    }
+                    return declared.bind(&root)?.apply_arrow_reader(reader);
                 }
                 return Ok(reader);
             };

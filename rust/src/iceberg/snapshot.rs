@@ -185,7 +185,7 @@ impl Snapshot {
             Some(paths) if paths.is_null() => None,
             Some(paths) => Some(
                 paths
-                    .as_sequence()
+                    .as_serie()
                     .ok_or_else(|| {
                         invalid(format_smolstr!(
                             "expected a manifests array on snapshot {snapshot_id}"

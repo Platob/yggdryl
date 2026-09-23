@@ -43,7 +43,7 @@ fn identical_schemas_pass_through_uncast() {
     let joined = combined(left, right).expect("a merge");
 
     // The short-circuit itself: the merged schema is the input schema, so
-    // `cast_reader` hands each side back rather than rebuilding its arrays.
+    // `SerieReader` hands each side back rather than rebuilding its arrays.
     assert_eq!(joined.schema(), schema);
     let batches = drain(joined);
     assert_eq!(batches.len(), 2);

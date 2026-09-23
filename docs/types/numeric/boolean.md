@@ -296,15 +296,18 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, BooleanArray, StringArray};
-    use yggdryl::{ArrowCastOptions, BooleanField};
+    use arrow_array::{ArrayRef, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let text: ArrayRef = Arc::new(StringArray::from(vec!["true", "no"]));
-    let flags: BooleanArray = BooleanField::unit("ok", true)
-        .cast_arrow_array(text, ArrowCastOptions::new())?;
+    let ok = Field::new("ok", DataType::Boolean, true);
+    let text: ArrayRef = Arc::new(StringArray::from(vec!["true", "no", "maybe"]));
+    let column = Serie::from_arrow_array(Some(&ok), text, ArrowCastOptions::new())?;
+    let flags = column.as_boolean().expect("a boolean column");
 
-    assert_eq!(flags.value(0), true);
-    assert_eq!(flags.value(1), false);
+    assert_eq!(flags.value(0), Some(true));
+    assert_eq!(flags.value(1), Some(false));
+    // Text that names nothing becomes null under the default `safe`.
+    assert_eq!(flags.value(2), None);
     ```
 
 === "Python"
@@ -312,18 +315,18 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
-    flags = Field("ok", "boolean").cast_arrow_array(pa.array(["true", "false", "no", "yes"]))
-    assert flags.to_pylist() == [True, False, False, True]
+    ok = Field("ok", "boolean")
+    flags = Serie.from_arrow_array(pa.array(["true", "false", "no", "yes"]), ok)
+    assert flags.as_py() == [True, False, False, True]
 
     # Text that names nothing becomes null under the default `safe`.
-    assert Field("ok", "boolean").cast_arrow_array(pa.array(["maybe"])).to_pylist() == [None]
+    assert Serie.from_arrow_array(pa.array(["maybe"]), ok).as_py() == [None]
 
     # A number converts by whether it is zero.
-    assert Field("ok", "boolean").cast_arrow_array(
-        pa.array([1, 0], type=pa.int32())
-    ).to_pylist() == [True, False]
+    numbers = pa.array([1, 0], type=pa.int32())
+    assert Serie.from_arrow_array(numbers, ok).as_py() == [True, False]
     ```
 
 === "JavaScript"
@@ -331,10 +334,11 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const text = arrow.vectorFromArray(['true', 'no'], new arrow.Utf8())
-    assert.deepEqual([...fields.boolean('ok').castArrowArray(text)], [true, false])
+    const flags = Serie.fromArrowArray(text, fields.boolean('ok'))
+    assert.deepEqual([...flags.intoArrowArray()], [true, false])
     ```
 
 ## Edges

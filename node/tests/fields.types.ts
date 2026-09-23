@@ -2,7 +2,6 @@ import {
   DataType,
   Field,
   fields,
-  type ArrowCastOptions,
   type AsciiField,
   type BytesDataTypeId,
   type BytesField,
@@ -31,19 +30,9 @@ import {
   type UrlField,
   type VariantField,
   type VersionField,
-  type BatchReader,
-  type BatchSource,
 } from '..'
-import type {
-  RecordBatch as ArrowRecordBatch,
-  Vector as ArrowVector,
-} from 'apache-arrow'
 
 const id: Int32Field = fields.int32('id', { nullable: false })
-declare const unsignedBits: ArrowVector
-const signedBits: ArrowVector = id.castArrowArray(unsignedBits, {
-  representation: 'bits',
-})
 // `kind` is the coarse family a variant belongs to; `id` is the variant itself.
 const idKind: 'integer' = id.dtype.kind
 const idId: 'int32' = id.dtype.id
@@ -168,13 +157,6 @@ void mediaId
 void shapeKind
 void projectedShape
 void region
-// The two Arrow cast halves keep their kinds: the lazy one answers a reader
-// that has not been read, the eager batch one answers a single Arrow batch.
-declare const castSource: BatchSource
-declare const castBatch: ArrowRecordBatch
-const strictly: ArrowCastOptions = { safe: false, nullability: 'strict' }
-const castReader: BatchReader = id.castArrowReader(castSource, strictly)
-const castOne: ArrowRecordBatch = id.castArrowBatch(castBatch, strictly)
 
 const clockType: DataType = DataType.time('milliseconds')
 const generic: Field = ids
@@ -199,12 +181,8 @@ const defaultedValue: number | null = defaulted.defaultJSValue()
 
 // @ts-expect-error internal factory bridges are not part of the package API
 DataType._simple('int32')
-// @ts-expect-error an array cast accepts an Arrow Vector, not a JavaScript array
-id.castArrowArray([0])
-// @ts-expect-error `representation` is a closed vocabulary, not any name
-id.castArrowArray(unsignedBits, { representation: 'raw' })
-// @ts-expect-error `nullability` is a closed vocabulary, not any name
-id.castArrowReader(castSource, { nullability: 'lenient' })
+// @ts-expect-error a Field casts nothing: a column casts, through Serie
+id.castArrowArray
 // @ts-expect-error the native diff bridge is hidden behind showDiffs
 id._showDiffs(fields.int32('native_other'))
 // @ts-expect-error metadata values are never string-coerced
@@ -221,9 +199,6 @@ const nonNullDefault: number = fields.int32('defaulted').defaultJSValue()
 const nonNullAlias: Int32Field = fields.int32('defaulted')
 
 void idKind
-void signedBits
-void castReader
-void castOne
 void idId
 void eventTime
 void labels

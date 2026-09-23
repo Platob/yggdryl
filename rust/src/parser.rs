@@ -1,7 +1,5 @@
 //! Canonical display and recursive Arrow, SQL, Hive, and Spark parsing.
 
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use std::fmt;
 use std::fmt::Write as _;
 use std::str::FromStr;
@@ -9,7 +7,6 @@ use std::str::FromStr;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::BytesType;
-use crate::DecimalType;
 use crate::StringType;
 use crate::UnionMode;
 use crate::{DataType, StructType, TimeUnit};
@@ -883,33 +880,48 @@ impl fmt::Display for DataType {
             | D::Timezone
             | D::MimeType
             | D::MediaType
-            | D::Uri(_)
+            | D::Url
+            | D::Urn
             | D::Variant => formatter.write_str(self.name()),
             // Each temporal family spells its own leaf and parameters.
-            D::DateTime(leaf) => fmt::Display::fmt(leaf, formatter),
-            D::Date(leaf) => fmt::Display::fmt(leaf, formatter),
-            D::Time(leaf) => fmt::Display::fmt(leaf, formatter),
-            D::Duration(leaf) => fmt::Display::fmt(leaf, formatter),
-            D::Interval(leaf) => fmt::Display::fmt(leaf, formatter),
+            leaf_dtype @ D::DateTime64 { .. } => {
+                let leaf = &leaf_dtype
+                    .datetime_type()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(leaf, formatter)
+            }
+            leaf_dtype @ (D::Date32 | D::Date64) => {
+                let leaf = &leaf_dtype
+                    .date_type()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(leaf, formatter)
+            }
+            leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
+                let leaf = &leaf_dtype
+                    .time_type()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(leaf, formatter)
+            }
+            leaf_dtype @ (D::Duration32(_) | D::Duration64(_)) => {
+                let leaf = &leaf_dtype
+                    .duration_type()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(leaf, formatter)
+            }
+            D::Interval(unit) => {
+                fmt::Display::fmt(&crate::IntervalType::Interval(*unit), formatter)
+            }
             D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
             D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::Sequence(SequenceType::List(field)) => {
-                fmt_single_field_type(formatter, "list", field)
-            }
-            D::Sequence(SequenceType::ListView(field)) => {
-                fmt_single_field_type(formatter, "list_view", field)
-            }
-            D::Sequence(SequenceType::FixedSizeList(field, length)) => {
+            D::List(field) => fmt_single_field_type(formatter, "list", field),
+            D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
+            D::FixedSizeList(field, length) => {
                 formatter.write_str("fixed_size_list(")?;
                 fmt_field(formatter, field)?;
                 write!(formatter, ",{length})")
             }
-            D::Sequence(SequenceType::LargeList(field)) => {
-                fmt_single_field_type(formatter, "large_list", field)
-            }
-            D::Sequence(SequenceType::LargeListView(field)) => {
-                fmt_single_field_type(formatter, "large_list_view", field)
-            }
+            D::LargeList(field) => fmt_single_field_type(formatter, "large_list", field),
+            D::LargeListView(field) => fmt_single_field_type(formatter, "large_list_view", field),
             D::Struct(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {
@@ -928,26 +940,29 @@ impl fmt::Display for DataType {
                 }
                 formatter.write_char(')')
             }
-            D::Enum(EnumType::Dictionary(dictionary)) => {
+            D::Dictionary(dictionary) => {
                 write!(
                     formatter,
                     "dictionary({},{})",
                     dictionary.key, dictionary.value
                 )
             }
-            D::Decimal(DecimalType::Decimal32 { precision, scale }) => {
+            D::Decimal32 { precision, scale } => {
                 write!(formatter, "decimal32({precision},{scale})")
             }
-            D::Decimal(DecimalType::Decimal64 { precision, scale }) => {
+            D::Decimal64 { precision, scale } => {
                 write!(formatter, "decimal64({precision},{scale})")
             }
-            D::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+            D::Decimal128 { precision, scale } => {
                 write!(formatter, "decimal128({precision},{scale})")
             }
-            D::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            D::Decimal256 { precision, scale } => {
                 write!(formatter, "decimal256({precision},{scale})")
             }
-            D::Mapping(map) => {
+            map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 formatter.write_str("map(")?;
                 fmt_field(formatter, map.entries())?;
                 write!(formatter, ",keys_sorted={})", map.keys_sorted())

@@ -8,7 +8,7 @@ mod families {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
     use std::sync::Arc;
     use yggdryl::Field;
-    use yggdryl::{DataType, StructType, TimeType, TimeUnit, UnionFields};
+    use yggdryl::{DataType, StructType, TimeUnit, UnionFields};
 
     #[test]
     fn arrow_import_preserves_nested_field_projection_arcs() {
@@ -47,11 +47,7 @@ mod families {
 
     #[test]
     fn public_field_collections_validate_children_without_clone_helpers() {
-        let invalid = Field::new(
-            "invalid",
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
-            false,
-        );
+        let invalid = Field::new("invalid", DataType::Time32(TimeUnit::Nanosecond), false);
         assert!(StructType::from_fields([invalid.clone()]).is_err());
         assert!(UnionFields::from_fields([(0, invalid)]).is_err());
     }
@@ -66,12 +62,12 @@ mod arrow {
         DataType as ArrowDataType, Field as ArrowField, Schema,
         ffi::{FFI_ArrowSchema, Flags},
     };
+    use yggdryl::BytesType;
     use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
     use yggdryl::{
         ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, StructType, TimeUnit,
         Timezone,
     };
-    use yggdryl::{BytesType, DateTimeType};
 
     fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
         assert!(schema.flags().unwrap().contains(flag));
@@ -193,10 +189,10 @@ mod arrow {
         assert!(
             Field::new(
                 "bad",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::YearMonth,
                     timezone: Timezone::NAIVE
-                }),
+                },
                 false,
             )
             .into_arrow_field_ffi()
@@ -723,6 +719,104 @@ mod arrow {
         );
     }
 
+    /// [`applied_root`] with a signed holder beside the unsigned one: both read
+    /// the same sources, and the signed one stores the digest's bits.
+    fn signed_applied_root() -> Field {
+        let mut signed = DataType::Int64.nullable_field("signed_digest");
+        signed.as_digest_mut().set_holder().unwrap();
+        let unsigned = applied_root();
+        StructType::from_fields(unsigned.fields().iter().cloned().chain([signed]))
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    }
+
+    fn events_on(days: &[i32]) -> arrow_array::RecordBatch {
+        arrow_array::RecordBatch::try_from_iter([(
+            "trade",
+            Arc::new(arrow_array::StructArray::from(vec![(
+                Arc::new(ArrowField::new("event", ArrowDataType::Date32, false)),
+                Arc::new(arrow_array::Date32Array::from(days.to_vec())) as arrow_array::ArrayRef,
+            )])) as arrow_array::ArrayRef,
+        )])
+        .unwrap()
+    }
+
+    #[test]
+    fn apply_arrow_reader_digests_every_batch_as_the_batch_path_does() {
+        let root = signed_applied_root();
+        let batches = vec![
+            events_on(&[19_723, 20_089]),
+            events_on(&[20_454]),
+            events_on(&[]),
+        ];
+        let stored = batches[0].schema();
+        let streamed = |digest, transform, cast| {
+            root.apply_arrow_reader(
+                yggdryl::arrow::batch_reader(Arc::clone(&stored), batches.clone()),
+                digest,
+                transform,
+                cast,
+                ArrowCastOptions::new(),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        };
+
+        // The stream plans its digest fill once, over the batches its cast
+        // step already landed; each answers what the digest verb answers over
+        // that landed batch, which casts and plans for itself.
+        let applied = streamed(true, true, true);
+        assert_eq!(applied.len(), batches.len());
+        for (batch, applied) in batches.iter().zip(&applied) {
+            let landed = root
+                .apply_arrow_batch(batch, false, true, true, ArrowCastOptions::new())
+                .unwrap();
+            assert_eq!(
+                applied,
+                &root.as_digest().apply_arrow_batch(&landed).unwrap()
+            );
+            assert_eq!(
+                applied,
+                &root
+                    .apply_arrow_batch(batch, true, true, true, ArrowCastOptions::new())
+                    .unwrap()
+            );
+            let unsigned = applied
+                .column_by_name("row_digest")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::UInt64Array>()
+                .unwrap();
+            let signed = applied
+                .column_by_name("signed_digest")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap();
+            assert_eq!(arrow_array::Array::null_count(signed), 0);
+            assert_eq!(
+                signed
+                    .values()
+                    .iter()
+                    .map(|value| u64::from_ne_bytes(value.to_ne_bytes()))
+                    .collect::<Vec<_>>(),
+                unsigned.values().to_vec()
+            );
+        }
+
+        // With no cast step the fill lands every batch on the root itself.
+        let digested = streamed(true, false, false);
+        assert_eq!(digested.len(), batches.len());
+        for (batch, digested) in batches.iter().zip(&digested) {
+            assert_eq!(
+                digested,
+                &root.as_digest().apply_arrow_batch(batch).unwrap()
+            );
+        }
+    }
+
     /// A root whose derived and held columns are declared non-null.
     ///
     /// This is the shape strictness has to reason about: `year` and `row_digest`
@@ -1224,7 +1318,7 @@ mod generic {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
     use std::collections::{BTreeSet, HashSet};
     use std::sync::Arc;
-    use yggdryl::TimeType;
+
     use yggdryl::{DataType, Field, StructType, TimeUnit};
 
     fn arrow_field_with_nested_noncanonical_location() -> ArrowField {
@@ -1357,7 +1451,7 @@ mod generic {
         let mut field = Field::new("value", DataType::utf8(), true);
         assert!(
             field
-                .set_dtype(DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)))
+                .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
                 .is_err()
         );
         assert_eq!(field.dtype(), &DataType::utf8());
@@ -1784,11 +1878,11 @@ mod nested {
     #[test]
     fn nested_markers_cover_every_child_layout() {
         let item = || Field::new("item", DataType::utf8(), true);
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::list(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::list_view(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::fixed_size_list(item(), 3).unwrap());
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::list(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::list_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::fixed_size_list(item(), 3).unwrap());
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list_view(item()));
         assert_typed_marker::<yggdryl::StructType>(DataType::from(
             StructType::from_fields([item()]).unwrap(),
         ));

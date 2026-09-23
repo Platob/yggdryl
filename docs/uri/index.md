@@ -270,7 +270,7 @@ A column of locations declares `url`; a column of names declares `urn`. The two 
 
     let location = Field::new("location", DataType::url(), false);
     let name = Field::new("name", DataType::urn(), false);
-    assert_eq!(DataType::urn(), DataType::Uri(UriType::Urn));
+    assert_eq!(DataType::urn(), DataType::Urn);
     assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
 
     // One spelling per identifier, whichever spelling the text carries.

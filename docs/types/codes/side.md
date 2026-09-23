@@ -167,7 +167,7 @@ The value is one of the explicit spellings, whichever vocabulary named it. A spe
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     side = Field("side", "side")
     arrow_field = side.into_arrow()
@@ -176,8 +176,8 @@ The value is one of the explicit spellings, whichever vocabulary named it. A spe
     assert Field.from_arrow(arrow_field) == side
 
     # A column holds the explicit spellings, whichever vocabulary wrote them.
-    stored = side.cast_arrow_array(pa.array(["BUY", "SSHORT"]), safe=False)
-    assert stored.to_pylist() == ["BUY", "SSHORT"]
+    stored = Serie.from_arrow_array(pa.array(["BUY", "SSHORT"]), side, safe=False)
+    assert stored.as_py() == ["BUY", "SSHORT"]
     ```
 
 === "JavaScript"
@@ -185,10 +185,11 @@ The value is one of the explicit spellings, whichever vocabulary named it. A spe
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.side('side').castArrowArray(utf8(['BUY', 'SSHORT']))], ['BUY', 'SSHORT'])
+    const stored = Serie.fromArrowArray(utf8(['BUY', 'SSHORT']), fields.side('side'))
+    assert.deepEqual([...stored.intoArrowArray()], ['BUY', 'SSHORT'])
     ```
 
 ## Three vocabularies, one value

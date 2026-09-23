@@ -65,3 +65,29 @@ fn all_dispatch_paths_share_exact_document_limits() {
         assert!(text::from_reader_all_with_limits(Cursor::new(input), format, one).is_err());
     }
 }
+
+#[test]
+fn a_list_column_writes_one_json_line_per_row_as_its_run_does() {
+    let item = yggdryl::Field::new("item", yggdryl::DataType::Int64, false);
+    let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
+    let column = Scalar::from(yggdryl::Serie::from_scalars(item, rows.clone()).unwrap());
+    let run = Scalar::from_sequence(rows);
+    let written = |value: &Scalar| {
+        let mut sink = Vec::new();
+        text::into_writer(value, &mut sink, Format::JsonLines).unwrap();
+        sink
+    };
+    assert_eq!(
+        text::into_utf8(&column, Format::JsonLines).unwrap(),
+        text::into_utf8(&run, Format::JsonLines).unwrap()
+    );
+    assert_eq!(
+        text::into_bytes(&column, Format::JsonLines).unwrap(),
+        text::into_bytes(&run, Format::JsonLines).unwrap()
+    );
+    assert_eq!(written(&column), written(&run));
+    assert_eq!(
+        text::into_utf8(&column, Format::JsonLines).unwrap(),
+        "1\n2\n"
+    );
+}

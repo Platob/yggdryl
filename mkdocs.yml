@@ -134,6 +134,7 @@ nav:
       - DataType: types/datatype.md
       - Field: types/field.md
       - Scalar: types/scalar.md
+      - Serie: types/serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
       - Protocol: types/protocol.md

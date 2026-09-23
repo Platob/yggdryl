@@ -12,6 +12,7 @@
 //! | field | [`FieldValue`] | `into_field` | `from_field` |
 //! | value | [`Value`] | `into_scalar` | `from_scalar` |
 //! | family value | [`FamilyValue`] | `into_scalar` | `from_scalar` |
+//! | column | [`SerieValue`] | `into_serie` | `from_serie` |
 //!
 //! The roots implement their own trait too - [`DataType`] is a
 //! [`DataTypeValue`] and [`Field`] is a `FieldValue<DataType>` - so code that
@@ -30,15 +31,27 @@
 //! [`GeospatialValue`], [`CodeValue`] and [`NestedValue`] - declared here
 //! and implemented beside each leaf.
 //!
+//! A fourth side stands beside the three: many values of one field, which is
+//! a column. The root is [`Serie`] - one column leaf per family, beside the
+//! schema-free [`Run`] a row canonicalizes to - and [`SerieValue`] is what
+//! each column leaf and each family enum owes it. A serie is a value as well,
+//! because it *is* the serie family's value, `Scalar::List(Serie)`:
+//! [`Serie`] implements [`Value`] and [`NestedValue`], and nothing about a
+//! column is a second value model. It does not implement [`SerieValue`],
+//! whose every method answers from a field, because the run leaf declares
+//! none.
+//!
 //! `canonical` is the schema-directed validation and canonicalization of row
 //! values: a struct [`Field`] is the schema of the rows it describes, so
-//! validating a row is validating one [`crate::sequence::Sequence`] against
-//! that field's children, and canonicalization is the same walk with
-//! rewriting - integers, floats and nested containers narrowed into the exact
+//! validating a row is validating one [`Run`] against that field's
+//! children, and canonicalization is the same walk with rewriting -
+//! integers, floats and nested containers narrowed into the exact
 //! representation the schema declares, and the input answered untouched when
 //! nothing needed changing.
 //!
 //! [`Field`]: crate::Field
+//! [`Run`]: crate::Run
+//! [`Serie`]: crate::Serie
 //! [`Scalar`]: crate::Scalar
 //! [`Integer`]: crate::Integer
 //! [`Floating`]: crate::Floating
@@ -51,16 +64,21 @@ mod canonical;
 
 pub(crate) use canonical::*;
 
+use std::borrow::Cow;
 use std::fmt;
 use std::hash::Hash;
+use std::ops::Range;
 use std::sync::Arc;
 
+use arrow_array::ArrayRef;
 use smol_str::SmolStr;
 
+use crate::mapping::Map;
 use crate::{
-    DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, TimeUnit, Timezone, i256,
+    DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, Serie, TimeUnit, Timezone,
+    i256,
 };
-use crate::{Mapping, Sequence, Struct, Variant};
+use crate::{Struct, Variant};
 
 /// One concrete scalar representation.
 ///
@@ -143,16 +161,35 @@ pub trait FamilyValue:
 /// variant that leaf widens to, so the enum, the scalar and the leaf share
 /// one spelling: `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`.
 macro_rules! family_value {
+    // A family whose variant names are its leaf types: the common shape.
     (
         $(#[$meta:meta])*
         $family:ident, $kind:ident, [$($leaf:ident),+ $(,)?]
+    ) => {
+        family_value!($(#[$meta])* $family, $kind, [$($leaf => $leaf),+]);
+
+        $(
+            impl From<$leaf> for $family {
+                fn from(value: $leaf) -> Self {
+                    Self::$leaf(value)
+                }
+            }
+        )+
+    };
+    // A family where a variant is spelled as the `Scalar` variant it carries
+    // rather than as the type it holds - the nested family, whose five list
+    // layouts each hold a `Serie` and whose two maps each hold a `Map`. A held
+    // type may repeat, so the value is typed through the `Scalar` it is.
+    (
+        $(#[$meta:meta])*
+        $family:ident, $kind:ident, [$($leaf:ident => $held:ty),+ $(,)?]
     ) => {
         $(#[$meta])*
         #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         pub enum $family {
             $(
-                #[doc = concat!("One `", stringify!($leaf), "`.")]
-                $leaf($leaf),
+                #[doc = concat!("One `", stringify!($held), "`.")]
+                $leaf($held),
             )+
         }
 
@@ -169,7 +206,7 @@ macro_rules! family_value {
 
             fn dtype(&self) -> $crate::Result<$crate::DataType> {
                 match self {
-                    $(Self::$leaf(value) => $crate::Value::dtype(value),)+
+                    $(Self::$leaf(value) => $crate::Scalar::$leaf(value.clone()).dtype(),)+
                 }
             }
 
@@ -186,14 +223,6 @@ macro_rules! family_value {
                 }
             }
         }
-
-        $(
-            impl From<$leaf> for $family {
-                fn from(value: $leaf) -> Self {
-                    Self::$leaf(value)
-                }
-            }
-        )+
 
         impl From<$family> for $crate::Scalar {
             fn from(value: $family) -> Self {
@@ -314,6 +343,255 @@ pub trait NestedValue: Value {
     fn children(&self) -> Children<'_>;
 }
 
+/// One column: a family's leaf column, or the family enum over its leaves.
+///
+/// A column is many values of one field, and it holds them the way Arrow
+/// lays them out - a values buffer, offsets where the layout has them, a
+/// validity bitmap - never one boxed value per row. The field is the
+/// authority the rest of the project already uses: it decides nullability,
+/// dictionary options and extension identity, and it says which of the
+/// crate's leaves the buffers under it are.
+///
+/// What every column owes is this trait; what one leaf's buffers *are* is the
+/// leaf's own inherent surface - [`Int32Serie::values`](crate::Int32Serie::values)
+/// lends `&[i32]`, [`StructSerie::child`](crate::StructSerie::child) lends a
+/// child column - because a buffer is the one thing a family cannot share a
+/// spelling for.
+///
+/// Every write is one verb, [`Self::splice`], and the rest are spelled over
+/// it. A column holds only rows its field accepts: `splice` proves every row
+/// through the field's contract exactly once, then checks what a write could
+/// not do, then writes without failing - so a refusal leaves the column
+/// exactly as it was, and a stored row never refuses to be read.
+///
+/// [`Serie`] itself does *not* implement this, because its
+/// [`Run`](crate::Serie::Run) leaf is a schema-free run with no field to
+/// answer `field` with. The root answers the same verbs inherently, with
+/// [`Serie::field`] returning `Option`; this trait is what a column - a
+/// leaf, or the family enum over leaves - owes.
+///
+/// ```
+/// use yggdryl::{DataType, Field, Int64Serie, Scalar, Serie, SerieValue};
+///
+/// # fn main() -> yggdryl::Result<()> {
+/// let field = Field::new("size", DataType::Int64, true);
+/// let serie = Serie::from_scalars(field, [Scalar::from(7_i64), Scalar::Null])?;
+///
+/// // The column leaf owes this contract.
+/// let column: &Int64Serie = serie.as_int64().expect("an int64 column");
+/// assert_eq!(SerieValue::field(column).name(), "size");
+/// assert_eq!(SerieValue::len(column), 2);
+/// assert_eq!(SerieValue::scalar(column, 0)?, Scalar::from(7_i64));
+/// assert!(SerieValue::is_null(column, 1)?);
+///
+/// // A write goes through the field's contract and lands in the buffer.
+/// let mut owned = column.clone();
+/// owned.push(Scalar::from(9_i8))?;
+/// assert_eq!(owned.values(), &[7, 0, 9]);
+/// assert!(owned.set(9, Scalar::Null).is_err());
+///
+/// // The root answers the same verbs, and says a run has no field.
+/// assert_eq!(serie.field().map(|held| held.name()), Some("size"));
+/// assert_eq!(Serie::new(vec![Scalar::from(7_i64)]).field(), None);
+/// # Ok(())
+/// # }
+/// ```
+// `into_arrow_array` borrows: the buffers are already shared, and moving the
+// column to share them would make every caller clone it first.
+#[allow(clippy::wrong_self_convention)]
+pub trait SerieValue:
+    Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static
+{
+    /// Return the field every row of this column is typed by.
+    fn field(&self) -> &Field;
+
+    /// Return the shared field, without cloning it.
+    fn field_ref(&self) -> &Arc<Field>;
+
+    /// Return the number of rows.
+    ///
+    /// Constant: a column reads its length off its buffers.
+    fn len(&self) -> usize;
+
+    /// Return whether this column holds no rows.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Return how many rows hold no value.
+    ///
+    /// Constant: the validity bitmap keeps the count, and an encoding counts
+    /// its logical nulls once.
+    fn null_count(&self) -> usize;
+
+    /// Return whether row `index` holds no value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the column and both counts when `index` is
+    /// past the end.
+    fn is_null(&self, index: usize) -> Result<bool>;
+
+    /// Build row `index` as a value.
+    ///
+    /// One row is read off the buffers here; the rest are not touched. A
+    /// stored row is one its field accepts - the door proved it - so the only
+    /// refusal is an index past the end.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the column and both counts when `index` is
+    /// past the end.
+    fn scalar(&self, index: usize) -> Result<Scalar>;
+
+    /// Return the window `offset..offset + length`, sharing the buffers.
+    ///
+    /// Zero copy: an Arrow slice of the values and the validity, and a
+    /// nested column slices its children to the reached window.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the column and both counts when the window
+    /// reaches past the end.
+    fn slice(&self, offset: usize, length: usize) -> Result<Self>;
+
+    /// Replace `range` by `rows`: the one mutation every other write is
+    /// spelled over.
+    ///
+    /// Proves every row through the field's contract once, checks what a
+    /// write could not do - an offsets total past the offset type, a fixed
+    /// width total past `i32` - and then writes without failing, so a
+    /// refusal leaves the column exactly as it was. The buffers are written
+    /// in place where this column holds them alone and copied once where it
+    /// does not.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the column when `range` is reversed or reaches
+    /// past the end, when a row is not one the field accepts, or when the
+    /// layout cannot hold the total the write would reach.
+    fn splice(&mut self, range: Range<usize>, rows: Vec<Scalar>) -> Result<()>;
+
+    /// Return this column's rows as the Arrow array they already are.
+    ///
+    /// The buffers are shared, never copied; a nested column assembles from
+    /// its children's arrays, which are aligned by construction.
+    fn into_arrow_array(&self) -> ArrayRef;
+
+    /// Widen this column to the dynamic serie root.
+    fn into_serie(self) -> Serie;
+
+    /// Narrow a dynamic serie to this leaf without re-validating it.
+    fn from_serie(value: &Serie) -> Option<&Self>;
+
+    /// Overwrite row `index` with `value`, through the field's contract.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `index` is past the end, or [`Self::splice`]'s
+    /// refusal.
+    fn set(&mut self, index: usize, value: Scalar) -> Result<()> {
+        crate::serie::require_row(self.field().name(), index, self.len())?;
+        self.splice(index..index + 1, vec![value])
+    }
+
+    /// Append one row, through the field's contract.
+    ///
+    /// Amortized in place once the column owns its buffers.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::splice`] carries the rule.
+    fn push(&mut self, value: Scalar) -> Result<()> {
+        let len = self.len();
+        self.splice(len..len, vec![value])
+    }
+
+    /// Insert one row before `index`, which may be `len`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `index` is past `len`, or [`Self::splice`]'s
+    /// refusal.
+    fn insert(&mut self, index: usize, value: Scalar) -> Result<()> {
+        crate::serie::require_range(self.field().name(), &(index..index), self.len())?;
+        self.splice(index..index, vec![value])
+    }
+
+    /// Remove row `index` and answer it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `index` is past the end.
+    fn remove(&mut self, index: usize) -> Result<Scalar> {
+        let row = self.scalar(index)?;
+        self.splice(index..index + 1, Vec::new())?;
+        Ok(row)
+    }
+
+    /// Remove the last row and answer it, or `None` when the column is empty.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::splice`] carries the rule.
+    fn pop(&mut self) -> Result<Option<Scalar>> {
+        match self.len().checked_sub(1) {
+            Some(last) => self.remove(last).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Drop every row from `len` on; a no-op when the column is no longer.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::splice`] carries the rule.
+    fn truncate(&mut self, len: usize) -> Result<()> {
+        let held = self.len();
+        if len >= held {
+            return Ok(());
+        }
+        self.splice(len..held, Vec::new())
+    }
+
+    /// Drop every row and keep the field.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::splice`] carries the rule.
+    fn clear(&mut self) -> Result<()> {
+        self.truncate(0)
+    }
+
+    /// Append `rows`, each through the field's contract.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::splice`] carries the rule.
+    fn extend(&mut self, rows: Vec<Scalar>) -> Result<()> {
+        let len = self.len();
+        self.splice(len..len, rows)
+    }
+
+    /// Truncate to `len`, or grow to it with clones of `value`.
+    ///
+    /// `value` is proved once; the clones re-enter [`Self::splice`] already
+    /// canonical, where the field's contract answers them untouched.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `value` is not one the field accepts, or
+    /// [`Self::splice`]'s refusal.
+    fn resize(&mut self, len: usize, value: Scalar) -> Result<()> {
+        let held = self.len();
+        if len <= held {
+            return self.truncate(len);
+        }
+        let canonical = self.field().scalar(value)?;
+        self.splice(held..held, vec![canonical; len - held])
+    }
+}
+
 family_value!(
     /// The nested family as one value: a sequence, a mapping, a record or
     /// one semi-structured [`Variant`](crate::Variant).
@@ -323,12 +601,24 @@ family_value!(
     ///
     /// let value = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
     /// let held = Nested::from_scalar(&value).expect("a sequence");
-    /// assert!(matches!(held, Nested::Sequence(_)));
+    /// assert!(matches!(held, Nested::List(_)));
     /// assert_eq!(held.dtype().unwrap(), DataType::list(DataType::Int64.required_field("item")));
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence, Mapping, Struct, Variant]
+    Nested,
+    Nested,
+    [
+        List => Serie,
+        ListView => Serie,
+        FixedSizeList => Serie,
+        LargeList => Serie,
+        LargeListView => Serie,
+        Map => Map,
+        SortedMap => Map,
+        Struct => Struct,
+        Variant => Variant,
+    ]
 );
 
 /// The per-column facts a field carries that only one datatype has.
@@ -517,71 +807,6 @@ pub trait DataTypeValue:
     {
         self.clone().into_dtype().decode_value_stream_bytes(chunks)
     }
-
-    /// Cast an Arrow array to this datatype's exact physical array.
-    ///
-    /// [`ArrowCastOptions::is_safe`](crate::ArrowCastOptions::is_safe) decides
-    /// whether a conversion failure becomes null or an error. There is no
-    /// field here, so nothing decides nullability: an incoming null stays one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for an unsupported cast or a value this datatype
-    /// cannot hold.
-    fn cast_arrow_array(
-        &self,
-        array: arrow_array::ArrayRef,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::ArrayRef> {
-        crate::cast::cast_dtype_arrow_array(&self.clone().into_dtype(), array, options)
-    }
-
-    /// Cast a one-row Arrow array to this datatype, as a scalar.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the array does not hold exactly one row, or any
-    /// error [`Self::cast_arrow_array`] returns.
-    fn cast_arrow_scalar(
-        &self,
-        array: arrow_array::ArrayRef,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>> {
-        crate::cast::one_row(&array)?;
-        Ok(arrow_array::Scalar::new(
-            self.cast_arrow_array(array, options)?,
-        ))
-    }
-
-    /// Reconcile an Arrow record batch to this Struct datatype.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless this is a Struct datatype, or when a child cast
-    /// or a missing-column default cannot be materialized.
-    fn cast_arrow_batch(
-        &self,
-        batch: arrow_array::RecordBatch,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::RecordBatch> {
-        let root = Field::new("record", self.clone().into_dtype(), false);
-        crate::cast::cast_field_arrow_batch(&root, batch, options)
-    }
-
-    /// Wrap a reader so every batch it yields is reconciled to this datatype.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::cast_arrow_batch`] carries the rule, raised once from the
-    /// reader's schema rather than once per batch.
-    fn cast_arrow_reader(
-        &self,
-        reader: crate::arrow::BatchReader,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<crate::arrow::BatchReader> {
-        let root = Field::new("record", self.clone().into_dtype(), false);
-        crate::cast::cast_field_arrow_reader(&root, reader, options)
-    }
 }
 
 /// One field: a family's field, or the root that redirects to it.
@@ -640,81 +865,6 @@ pub trait FieldValue<D: DataTypeValue>: Clone + fmt::Debug + fmt::Display + Size
     fn cast_scalar(&self, value: &crate::Scalar) -> Result<crate::Scalar> {
         self.clone().into_field().scalar(value.clone())
     }
-
-    /// Cast an Arrow array to this field's exact physical array.
-    ///
-    /// The field is the target: `array` is reconciled to its datatype *and*
-    /// its nullability.
-    /// [`ArrowCastOptions::nullability`](crate::ArrowCastOptions::nullability)
-    /// decides what happens to a null a non-nullable field cannot hold - the
-    /// canonical default, or a refusal naming the path.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error for an unsupported cast, a value that cannot satisfy
-    /// the field, or a default that cannot be materialized.
-    fn cast_arrow_array(
-        &self,
-        array: arrow_array::ArrayRef,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::ArrayRef> {
-        crate::cast::cast_field_arrow_array(&self.clone().into_field(), array, options)
-    }
-
-    /// Cast a one-row Arrow array to this field, as a scalar.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the array does not hold exactly one row, or any
-    /// error [`Self::cast_arrow_array`] returns.
-    fn cast_arrow_scalar(
-        &self,
-        array: arrow_array::ArrayRef,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::Scalar<arrow_array::ArrayRef>> {
-        crate::cast::one_row(&array)?;
-        Ok(arrow_array::Scalar::new(
-            self.cast_arrow_array(array, options)?,
-        ))
-    }
-
-    /// Reconcile an Arrow record batch to this Struct root.
-    ///
-    /// Children are selected in target order by ASCII-case-insensitive name.
-    /// Extra source columns are dropped and missing nullable columns are
-    /// null-filled. An already exact batch comes back unchanged - the same
-    /// batch object, not a rebuilt one.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless this is a bounded, non-nullable Struct root, or
-    /// when a child cast or a missing-column default cannot be materialized.
-    fn cast_arrow_batch(
-        &self,
-        batch: arrow_array::RecordBatch,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<arrow_array::RecordBatch> {
-        crate::cast::cast_field_arrow_batch(&self.clone().into_field(), batch, options)
-    }
-
-    /// Wrap a reader so every batch it yields is reconciled to this root.
-    ///
-    /// The plan is compiled once from the reader's schema, so the returned
-    /// reader answers the cast schema before the first batch is pulled: a lake
-    /// being read into a lake being written is never held in memory to be
-    /// reconciled.
-    ///
-    /// # Errors
-    ///
-    /// [`Self::cast_arrow_batch`] carries the rule, raised once from the
-    /// reader's schema rather than once per batch.
-    fn cast_arrow_reader(
-        &self,
-        reader: crate::arrow::BatchReader,
-        options: crate::ArrowCastOptions,
-    ) -> crate::arrow::Result<crate::arrow::BatchReader> {
-        crate::cast::cast_field_arrow_reader(&self.clone().into_field(), reader, options)
-    }
 }
 
 /// The root is a datatype like any other family payload.
@@ -745,7 +895,13 @@ impl DataTypeValue for DataType {
     }
 }
 
-/// A borrowed iterator over sequence values, mapping keys or record values.
+/// An iterator over sequence values, mapping keys or record values.
+///
+/// Three of the four shapes already hold the values and lend them; a column
+/// holds Arrow buffers and builds one row at a time, so the item is a
+/// [`Cow`] - borrowed where the value is already there, owned where it had
+/// to be built. A walk therefore costs nothing extra on the shapes that were
+/// always values, and costs one row at a time on the one that is not.
 pub enum Children<'a> {
     /// Sequence values.
     Sequence(std::slice::Iter<'a, Scalar>),
@@ -753,16 +909,81 @@ pub enum Children<'a> {
     Mapping(std::slice::Iter<'a, (Scalar, Scalar)>),
     /// Struct field values in sorted name order.
     Struct(std::collections::btree_map::Values<'a, SmolStr, Scalar>),
+    /// A column's rows, each built as it is reached.
+    Column(ColumnRows<'a>),
 }
 
+/// The rows of one column, built one at a time as the walk reaches them.
+///
+/// A column holds only rows its field accepts (the door proved them), so a
+/// row is built and never refused; the walk stops at the column's length.
+pub struct ColumnRows<'a> {
+    column: &'a Serie,
+    front: usize,
+    back: usize,
+}
+
+impl<'a> ColumnRows<'a> {
+    /// Walk every row of `column`.
+    pub(crate) fn new(column: &'a Serie) -> Self {
+        Self {
+            column,
+            front: 0,
+            back: column.len(),
+        }
+    }
+
+    /// Build row `index`, which the walk keeps below the column's length.
+    fn row(&self, index: usize) -> Scalar {
+        crate::serie::proven_row(self.column, index)
+    }
+}
+
+impl Iterator for ColumnRows<'_> {
+    type Item = Scalar;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.front >= self.back {
+            return None;
+        }
+        let row = self.row(self.front);
+        self.front += 1;
+        Some(row)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let length = self.back - self.front;
+        (length, Some(length))
+    }
+}
+
+impl DoubleEndedIterator for ColumnRows<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.front >= self.back {
+            return None;
+        }
+        self.back -= 1;
+        Some(self.row(self.back))
+    }
+}
+
+impl ExactSizeIterator for ColumnRows<'_> {
+    fn len(&self) -> usize {
+        self.back - self.front
+    }
+}
+
+impl std::iter::FusedIterator for ColumnRows<'_> {}
+
 impl<'a> Iterator for Children<'a> {
-    type Item = &'a Scalar;
+    type Item = Cow<'a, Scalar>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Sequence(values) => values.next(),
-            Self::Mapping(entries) => entries.next().map(|(key, _)| key),
-            Self::Struct(entries) => entries.next(),
+            Self::Sequence(values) => values.next().map(Cow::Borrowed),
+            Self::Mapping(entries) => entries.next().map(|(key, _)| Cow::Borrowed(key)),
+            Self::Struct(entries) => entries.next().map(Cow::Borrowed),
+            Self::Column(rows) => rows.next().map(Cow::Owned),
         }
     }
 
@@ -775,9 +996,10 @@ impl<'a> Iterator for Children<'a> {
 impl DoubleEndedIterator for Children<'_> {
     fn next_back(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Sequence(values) => values.next_back(),
-            Self::Mapping(entries) => entries.next_back().map(|(key, _)| key),
-            Self::Struct(entries) => entries.next_back(),
+            Self::Sequence(values) => values.next_back().map(Cow::Borrowed),
+            Self::Mapping(entries) => entries.next_back().map(|(key, _)| Cow::Borrowed(key)),
+            Self::Struct(entries) => entries.next_back().map(Cow::Borrowed),
+            Self::Column(rows) => rows.next_back().map(Cow::Owned),
         }
     }
 }
@@ -788,6 +1010,7 @@ impl ExactSizeIterator for Children<'_> {
             Self::Sequence(values) => values.len(),
             Self::Mapping(entries) => entries.len(),
             Self::Struct(entries) => entries.len(),
+            Self::Column(rows) => rows.len(),
         }
     }
 }

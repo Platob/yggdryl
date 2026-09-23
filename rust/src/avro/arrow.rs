@@ -14,8 +14,6 @@ use crate::{DataType, Field, Result, Scalar, StructType, TimeUnit};
 
 use super::datum::invalid;
 use super::schema::{Node, Schema};
-use crate::sequence::SequenceType;
-use crate::{DateTimeType, DateType, DecimalType, IntervalType, TimeType};
 
 /// Project an Avro schema as the crate's `Field` schema.
 ///
@@ -218,10 +216,10 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         // Avro's `bytes` has no maximum, so a bound is dropped here; the cast
         // on the way in already held every value to it.
         DataType::Bytes(parameters) if !parameters.is_fixed() => plain("bytes"),
-        DataType::Date(DateType::Date32) => logical("int", "date"),
-        DataType::Time(TimeType::Time32(TimeUnit::Millisecond)) => logical("int", "time-millis"),
-        DataType::Time(TimeType::Time64(TimeUnit::Microsecond)) => logical("long", "time-micros"),
-        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+        DataType::Date32 => logical("int", "date"),
+        DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
+        DataType::Time64(TimeUnit::Microsecond) => logical("long", "time-micros"),
+        DataType::DateTime64 { unit, timezone } => {
             let annotation = match (unit, !timezone.is_naive()) {
                 (TimeUnit::Millisecond, true) => "timestamp-millis",
                 (TimeUnit::Microsecond, true) => "timestamp-micros",
@@ -233,7 +231,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             };
             logical("long", annotation)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
+        DataType::Interval(TimeUnit::MonthDayNano) => {
             *counter += 1;
             Scalar::from_struct([
                 ("type", Scalar::from("fixed")),
@@ -251,9 +249,9 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("size", Scalar::from(i64::from(width))),
             ])
         }
-        DataType::Decimal(DecimalType::Decimal32 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal64 { precision, scale })
-        | DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+        DataType::Decimal32 { precision, scale }
+        | DataType::Decimal64 { precision, scale }
+        | DataType::Decimal128 { precision, scale } => {
             if *scale < 0 {
                 return Err(unspellable(dtype));
             }
@@ -296,15 +294,17 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ),
             ])
         }
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item)) => {
+        DataType::List(item) | DataType::LargeList(item) => {
             let mut items = node_json(item.dtype(), item.name(), counter)?;
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);
             }
             Scalar::from_struct([("type", Scalar::from("array")), ("items", items)])
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let entries = map.entries().fields();
             let key = entries.first().ok_or_else(|| unspellable(dtype))?;
             let value = entries.get(1).ok_or_else(|| unspellable(dtype))?;

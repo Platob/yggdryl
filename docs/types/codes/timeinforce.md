@@ -176,10 +176,11 @@ The value is the wire code itself, under the time-in-force identity. Nothing is 
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.timeinforce('tif').castArrowArray(utf8(['0', '1']))], ['0', '1'])
+    const stored = Serie.fromArrowArray(utf8(['0', '1']), fields.timeinforce('tif'))
+    assert.deepEqual([...stored.intoArrowArray()], ['0', '1'])
     ```
 
 ## The FIX vocabulary

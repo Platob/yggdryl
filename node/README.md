@@ -199,12 +199,18 @@ Apache Arrow JS conversion is an explicit copied IPC boundary. `Scalar` exposes
 values need a Field when their schema cannot be inferred. A `BatchReader`
 read yields Arrow JS batches, and a write consumes a native reader, Arrow JS
 table/batch/reader, IPC bytes, named columns, or plain rows through that same
-reader path. `Field.castArrow` and `Field.cast` route holders through the native
-cast engine with `{ safe: true }` by default. Run `npm run bench:records` for
-the copied-IPC read, projection, cast, and write paths.
+reader path. A column is a `Serie`: `Serie.fromArrowArray`,
+`Serie.fromArrowBatch` and `Serie.fromArrowReader` land Arrow JS data under its
+own field or cast it once into the one you pass, `serie.cast` casts a column in
+hand, `SerieReader.fromArrowReader` casts a stream batch by batch under one
+plan, and `ArrowCastPlan.compile` holds one cast for every column of a layout.
+Each takes `{ safe, nullability, representation }`, an absent answer taking the
+core's default: a safe cast that repairs a required hole. Run
+`npm run bench:records` for the copied-IPC read, projection, cast, and write
+paths.
 
 ```javascript
-const { fields } = require('yggdryl')
+const { Serie, fields } = require('yggdryl')
 
 const payload = fields.struct('payload', [
   fields.int32('count', { nullable: false }),
@@ -214,9 +220,9 @@ const value = payload.defaultJSValue()
 
 console.assert(value[0] === 0 && value[1] === null)
 console.assert(payload.defaultJSHint().constructor === Array)
-console.assert(fields.int32('id', { nullable: false }).defaultArrowScalar() === 0)
+console.assert(Serie.fromDefault(fields.int32('id', { nullable: false })).intoArrowScalar() === 0)
 console.assert(
-  fields.uint8('small').intoSchemeCompat('spark').dtype.kind === 'int16',
+  fields.uint8('small').intoSchemeCompat('spark').dtype.id === 'int16',
 )
 ```
 

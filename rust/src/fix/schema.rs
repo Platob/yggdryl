@@ -41,6 +41,7 @@
 //! value and children remain in place, and `tagname` spells the key itself
 //! rather than nothing. No second projection duplicates them.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Weak};
@@ -49,11 +50,10 @@ use crate::graph::MarketElement;
 
 use smol_str::SmolStr;
 
+use crate::StructType;
 use crate::{DataType, Field, Result};
-use crate::{DateTimeType, StructType};
 
 use super::FixRegistry;
-use crate::sequence::SequenceType;
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -850,7 +850,7 @@ fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::M
         }
         match field.dtype() {
             DataType::Struct(children) => digest_shape(children.as_fields(), metadata, state),
-            DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
+            DataType::List(item) | DataType::LargeList(item) => {
                 digest_shape(std::slice::from_ref(&**item), metadata, state);
             }
             _ => {}
@@ -1102,12 +1102,12 @@ fn entries_from_scalar(
         value
     };
     value
-        .as_sequence()
+        .as_serie()
         .ok_or_else(|| entry_error(path, "a sequence of arrival entries", value.kind()))?
         .iter()
         .enumerate()
         .map(|(index, entry)| {
-            entry_from_scalar(entry, &path.child(crate::path::Segment::Index(index)))
+            entry_from_scalar(&entry, &path.child(crate::path::Segment::Index(index)))
         })
         .collect()
 }
@@ -1167,7 +1167,7 @@ fn push_child(
     if let Some(counter) = field.as_fix().counter().ok().flatten() {
         if let Some(scalar) = registry.get_scalar_by_tag(counter) {
             if !taken(fields, scalar.name()) {
-                let count = value.as_sequence().map_or(0, <[crate::Scalar]>::len);
+                let count = value.as_serie().map_or(0, crate::Serie::len);
                 let count = super::build::typed_spelling(registry, scalar, &count.to_string());
                 let mut scalar = scalar.clone();
                 scalar.set_nullable(count.is_null());
@@ -1259,8 +1259,8 @@ fn covers_entry(
                     entry.entries(),
                 )
         }
-        DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
-            let Some(occurrences) = value.as_sequence() else {
+        DataType::List(item) | DataType::LargeList(item) => {
+            let Some(occurrences) = value.as_serie() else {
                 return false;
             };
             if entry.value().and_then(|count| count.parse::<usize>().ok())
@@ -1278,7 +1278,7 @@ fn covers_entry(
             entry
                 .entries()
                 .iter()
-                .zip(occurrences)
+                .zip(occurrences.iter())
                 .all(|(occurrence, value)| match item.dtype() {
                     DataType::Struct(_) => {
                         occurrence.value().is_none()
@@ -1287,14 +1287,18 @@ fn covers_entry(
                                 registry,
                                 item.fields(),
                                 &facts,
-                                value,
+                                &value,
                                 occurrence.entries(),
                             )
                     }
-                    _ => covers_entry(registry, item, value, occurrence),
+                    _ => covers_entry(registry, item, &value, occurrence),
                 })
         }
-        DataType::Mapping(_) | DataType::Sequence(_) => false,
+        DataType::Map(_)
+        | DataType::SortedMap(_)
+        | DataType::ListView(_)
+        | DataType::FixedSizeList(..)
+        | DataType::LargeListView(_) => false,
         _ => {
             entry.entries().is_empty()
                 && super::entry::wire_text_under(registry, field, value).as_deref() == entry.value()
@@ -1363,11 +1367,9 @@ fn covers_members(
             };
             owners.next().is_none()
                 && covered_member_index(fields, facts, owner) == Some(group_index)
-                && values[group_index]
-                    .as_sequence()
-                    .is_some_and(|occurrences| {
-                        value.as_i128() == i128::try_from(occurrences.len()).ok()
-                    })
+                && values[group_index].as_serie().is_some_and(|occurrences| {
+                    value.as_i128() == i128::try_from(occurrences.len()).ok()
+                })
         })
 }
 
@@ -1526,8 +1528,13 @@ fn group_from_entry(
     );
     let occurrence = DataType::from(StructType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
-        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
-        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
+        DataType::LargeList(_) => DataType::large_list(occurrence),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            DataType::map(occurrence, map.keys_sorted())?
+        }
         _ => DataType::list(occurrence),
     };
     // A group the dictionary does not declare stands under the counter's own
@@ -1713,9 +1720,7 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::Sequence(SequenceType::List(_))
-        | DataType::Sequence(SequenceType::LargeList(_))
-        | DataType::Mapping(_) => {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) | DataType::SortedMap(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -2050,9 +2055,9 @@ impl super::FixMsg {
     /// // An unresolved numeric key stays in the one arrival record as tag zero,
     /// // named after itself rather than nulled, with its value as it arrived.
     /// let entries = held.last().and_then(yggdryl::Scalar::as_sequence).unwrap();
-    /// let entry = entries.iter().find(|entry| entry.get(1).and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
-    /// assert_eq!(entry.get(0).and_then(yggdryl::Scalar::as_i128), Some(0));
-    /// assert_eq!(entry.get(2).and_then(yggdryl::Scalar::as_str), Some("x"));
+    /// let entry = entries.iter().find(|entry| entry.get(1).as_deref().and_then(yggdryl::Scalar::as_str) == Some("9999")).unwrap();
+    /// assert_eq!(entry.get(0).as_deref().and_then(yggdryl::Scalar::as_i128), Some(0));
+    /// assert_eq!(entry.get(2).as_deref().and_then(yggdryl::Scalar::as_str), Some("x"));
     /// # Ok(())
     /// # }
     /// ```
@@ -2103,7 +2108,7 @@ impl super::FixMsg {
                     let value = self
                         .index_of_group(counter)
                         .and_then(|index| self.as_value().get(index))
-                        .cloned()
+                        .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null);
                     self.regrouped(counter, column, value)
                 }
@@ -2114,7 +2119,7 @@ impl super::FixMsg {
                     crate::Scalar::Null => self
                         .index_of_name(column.name())
                         .and_then(|at| self.as_value().get(at))
-                        .cloned()
+                        .map(Cow::into_owned)
                         .unwrap_or(crate::Scalar::Null),
                     carried => carried,
                 },
@@ -2204,7 +2209,7 @@ impl super::FixMsg {
                 } else if source_field.dtype().is_nested()
                     || !crate::folds_equal(source_field.name(), entry.name())
                     || !entry.entries().is_empty()
-                    || source_value != &values[index]
+                    || *source_value != values[index]
                     || !covers_entry(self.registry(), column, &values[index], entry)
                 {
                     continue;
@@ -2267,7 +2272,7 @@ impl super::FixMsg {
         let Some(members) = item_fields(declared) else {
             return held;
         };
-        let Some(occurrences) = held.as_sequence() else {
+        let Some(occurrences) = held.as_serie() else {
             return held;
         };
         // The message's own member names, in the order its values sit in.
@@ -2316,7 +2321,7 @@ impl super::FixMsg {
         }
         crate::Scalar::from_sequence(occurrences.iter().map(|occurrence| {
             let Some(stated) = occurrence.as_sequence() else {
-                return occurrence.clone();
+                return occurrence.into_owned();
             };
             crate::Scalar::from_sequence(placed.iter().map(|(at, group_at)| {
                 let explicit = at.and_then(|at| stated.get(at));
@@ -2325,7 +2330,7 @@ impl super::FixMsg {
                 }
                 group_at
                     .and_then(|at| stated.get(at))
-                    .and_then(crate::Scalar::as_sequence)
+                    .and_then(crate::Scalar::as_serie)
                     .map(|occurrences| {
                         crate::Scalar::from(i32::try_from(occurrences.len()).unwrap_or(i32::MAX))
                     })
@@ -2385,8 +2390,7 @@ impl super::FixMsg {
         if let Some(count) = self
             .index_of_group(tag)
             .and_then(|index| self.as_value().get(index))
-            .and_then(crate::Scalar::as_sequence)
-            .map(<[crate::Scalar]>::len)
+            .and_then(|held| held.as_serie().map(crate::Serie::len))
         {
             return Ok(crate::Scalar::from(
                 i32::try_from(count).unwrap_or(i32::MAX),
@@ -2525,7 +2529,7 @@ pub(super) fn narrowed(column: &Field, value: crate::Scalar) -> crate::Scalar {
 /// for it.
 fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
     let rebuilt = match field.dtype() {
-        DataType::Struct(members) => value.as_sequence().map(|stated| {
+        DataType::Struct(members) => value.sequence_rows().map(|stated| {
             // A member the value never reached is the null the column would
             // have held anyway; one it reached is refitted in place.
             let held: Option<Vec<crate::Scalar>> = members
@@ -2538,33 +2542,36 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                 .collect();
             held.map(crate::Scalar::from_sequence)
         }),
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item))
-        | DataType::Sequence(SequenceType::ListView(item))
-        | DataType::Sequence(SequenceType::LargeListView(item))
-        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => {
-            value.as_sequence().map(|stated| {
-                Some(crate::Scalar::from_sequence(
-                    stated
-                        .iter()
-                        .filter_map(|held| refit(item, held.clone()))
-                        .collect::<Vec<_>>(),
-                ))
+        DataType::List(item)
+        | DataType::LargeList(item)
+        | DataType::ListView(item)
+        | DataType::LargeListView(item)
+        | DataType::FixedSizeList(item, _) => value.as_serie().map(|stated| {
+            Some(crate::Scalar::from_sequence(
+                stated
+                    .iter()
+                    .filter_map(|held| refit(item, held.into_owned()))
+                    .collect::<Vec<_>>(),
+            ))
+        }),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            value.as_mapping().map(|stated| {
+                // A pair whose key will not read names nothing, so it is left
+                // out; one whose value will not read keeps its name and loses
+                // the value, which is what every other column does.
+                let entries = map.entries().dtype().as_fields()?;
+                let [key, held] = entries else {
+                    return None;
+                };
+                crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
+                    Some((refit(key, name.clone())?, refit(held, value.clone())?))
+                }))
+                .ok()
             })
         }
-        DataType::Mapping(map) => value.as_mapping().map(|stated| {
-            // A pair whose key will not read names nothing, so it is left
-            // out; one whose value will not read keeps its name and loses
-            // the value, which is what every other column does.
-            let entries = map.entries().dtype().as_fields()?;
-            let [key, held] = entries else {
-                return None;
-            };
-            crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
-                Some((refit(key, name.clone())?, refit(held, value.clone())?))
-            }))
-            .ok()
-        }),
         // A leaf has no members to keep, so it is the value or the null.
         _ => None,
     };
@@ -2578,10 +2585,10 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
 }
 
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
-pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::DateTime64 {
+pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
-});
+};
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

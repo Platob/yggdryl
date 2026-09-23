@@ -135,7 +135,7 @@ assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 
 ## Families
 
-A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`. `Nested` has four leaves, not three: a sequence, a mapping, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children.
+A family with several leaves is one value enum over them - `Integer`, `Floating`, `Decimal`, `Temporal`, `Code`, `Geospatial` and `Nested` - each a `FamilyValue`: it stands for any one leaf, answers that leaf's datatype (`dtype`) and the kind every leaf shares (`KIND`), widens to the scalar the leaf widens to (`into_scalar`), and narrows a scalar whose variant is one of its leaves (`from_scalar`, by value: the scalar holds the leaf and not the family, and every leaf is `Copy` or one shared pointer). A variant is named as the leaf and the `Scalar` variant are, so `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`. A kind with one leaf value - a boolean, a string, a byte value, a UUID, a version, a time zone, a MIME type, a media type - has no enum: the leaf is the family. The uri family has no enum either: its two leaves hold `Url` and `Urn`, the narrowings of one `Uri`, and `as_uri` borrows that identifier from either scalar. `Scalar` narrows to a family through `as_integer`, `as_floating`, `as_temporal`, `as_code`, `as_geospatial` and `as_nested`, `None` for another kind; the decimal family narrows through `Decimal::from_scalar`, because `as_decimal` is the coefficient-and-scale reader. A `Temporal` also answers `family()`: `date`, `time`, `datetime`, `duration` or `interval`. `Nested` has nine leaves: the five sequence layouts (`List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`), `Map` and `SortedMap`, a record and one [variant](variant.md), which is the Parquet Variant encoding of a value and carries its own bytes rather than children.
 Rust only.
 
 ```rust
@@ -156,7 +156,7 @@ assert!(matches!(at.as_temporal(), Some(Temporal::DateTime64(_))));
 assert_eq!(at.as_temporal().map(|held| held.family()), Some("datetime"));
 assert_eq!(at.as_integer(), None);
 assert!(matches!(Scalar::from(1.5_f64).as_floating(), Some(Floating::Float64(_))));
-assert!(matches!(Scalar::from_sequence([Scalar::from(1_i64)]).as_nested(), Some(Nested::Sequence(_))));
+assert!(matches!(Scalar::from_sequence([Scalar::from(1_i64)]).as_nested(), Some(Nested::List(_))));
 
 // The decimal family narrows through its own enum, because `as_decimal`
 // is the coefficient-and-scale reader.
@@ -234,7 +234,7 @@ Every width is a direct `Scalar` variant, with no family enum between (`Scalar::
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
-| containers | `Sequence`, `Mapping`, `Record`, `Variant` |
+| containers | `List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList`, `Map`, `SortedMap`, `Record`, `Variant`; each of the five list variants holds a [`Serie`](serie.md) - a schema-free `Run`, or a column of one field - and `kind()` answers `list`, `list_view`, `large_list`, `large_list_view` or `fixed_size_list` by leaf, `as_sequence` lending a run's values and `sequence_rows` reading any of the five |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
 
@@ -292,7 +292,7 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
 
 | item | rule |
 | --- | --- |
-| rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `Sequence` in child-field order; `Mapping` is insertion-ordered with any unique `Scalar` key |
+| rows | `Record` is sorted name-to-value input; a Struct `Field` resolves it into one `List` in child-field order; `Map` (or `SortedMap`) is insertion-ordered with any unique `Scalar` key |
 | accessors | `as_bytes`, `as_str`, `into_json_bytes` / `into_json`, `as_decimal`, the temporal readers `temporal_unit`, `temporal_timezone`, `temporal_count`, and the [family accessors](#families) `as_integer` .. `as_nested`; native `from_*` / `into_*` [Arrow](../arrow/scalars.md) conversions; binding read-only `count`, `unit`, `zone`, `unscaled`, `scale` |
 
 ## FieldScalar

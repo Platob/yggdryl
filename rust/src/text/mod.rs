@@ -411,14 +411,11 @@ pub fn into_bytes_with_formatting(
 ) -> Result<Vec<u8>> {
     match format {
         Format::Json => crate::json::into_bytes_with_formatting(value, formatting),
-        Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
-                crate::json::into_bytes_all_with_formatting(values.as_slice(), formatting)
-            }
-            value => {
-                crate::json::into_bytes_all_with_formatting(std::slice::from_ref(value), formatting)
-            }
-        },
+        Format::JsonLines => {
+            let mut output = Vec::new();
+            into_writer_with_formatting(value, &mut output, format, formatting)?;
+            Ok(output)
+        }
         Format::Yaml => crate::yaml::into_bytes_with_formatting(value, formatting),
         Format::Toml => crate::toml::into_bytes_with_formatting(value, formatting),
     }
@@ -437,14 +434,14 @@ pub fn into_utf8_with_formatting(
 ) -> Result<String> {
     match format {
         Format::Json => crate::json::into_utf8_with_formatting(value, formatting),
-        Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
-                crate::json::into_utf8_all_with_formatting(values.as_slice(), formatting)
-            }
-            value => {
-                crate::json::into_utf8_all_with_formatting(std::slice::from_ref(value), formatting)
-            }
-        },
+        Format::JsonLines => String::from_utf8(into_bytes_with_formatting(
+            value, format, formatting,
+        )?)
+        .map_err(|error| Error::Codec {
+            format: "json",
+            position: error.utf8_error().valid_up_to(),
+            reason: "encoded JSON is not valid UTF-8".into(),
+        }),
         Format::Yaml => crate::yaml::into_utf8_with_formatting(value, formatting),
         Format::Toml => crate::toml::into_utf8_with_formatting(value, formatting),
     }
@@ -465,11 +462,13 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => crate::json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => crate::json::into_writer_all_with_formatting(
-                values.as_slice().iter(),
-                writer,
-                formatting,
-            ),
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
+                crate::json::into_writer_all_with_formatting(values.iter(), writer, formatting)
+            }
             value => crate::json::into_writer_all_with_formatting(
                 std::slice::from_ref(value),
                 writer,
@@ -673,12 +672,16 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::Sequence(values) => {
-                for value in values.as_slice() {
-                    visit(value, child_depth, maximum, format)?;
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
+                for value in values.iter() {
+                    visit(&value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Mapping(entries) => {
+            Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                 for (key, value) in entries.as_slice() {
                     visit(key, child_depth, maximum, format)?;
                     visit(value, child_depth, maximum, format)?;

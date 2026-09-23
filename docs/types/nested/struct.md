@@ -217,7 +217,7 @@ positional and path accessors.
 
 Two spellings of one row. `Scalar::Struct` is named input - the children by
 name, sorted, so two statements of one row in two orders are one value - and
-the ordered `Scalar::Sequence` is what a row **is** once a struct field has
+the ordered `Scalar::List` is what a row **is** once a struct field has
 canonicalized it. The field decides: `Field::scalar` takes either spelling and
 answers the sequence in the schema's declared order, filling a child the input
 did not name with that child's default.
@@ -363,7 +363,7 @@ Arrow *schema* rather than a column, which is the one asymmetry -
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const schema = fields.struct(
       'trade',
@@ -371,15 +371,16 @@ Arrow *schema* rather than a column, which is the one asymmetry -
       { nullable: false },
     )
 
-    // A cast through the struct root answers the Arrow schema a row is written as.
-    const table = schema.castArrow(
+    // A table read under the struct root answers the Arrow schema a row is written as.
+    const batch = Serie.fromArrowBatch(
       new arrow.Table({
         id: arrow.vectorFromArray([7n], new arrow.Int64()),
         symbol: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
       }),
-    )
-    assert.deepEqual(table.schema.fields.map((field) => field.name), ['id', 'symbol'])
-    assert.equal(table.schema.fields[0].nullable, false)
+      schema,
+    ).intoArrowBatch()
+    assert.deepEqual(batch.schema.fields.map((field) => field.name), ['id', 'symbol'])
+    assert.equal(batch.schema.fields[0].nullable, false)
     ```
 
 ## Replacing and removing children

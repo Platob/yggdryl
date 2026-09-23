@@ -6,7 +6,7 @@ A value stored as a code that stands for it: an integer key column over a value 
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Enum(EnumType)` with its one `Dictionary` leaf over `DictionaryType`, the `EnumField` marker, and the `DictionaryOptions` sidecar a dictionary field carries |
+| Owns | `DataType::Dictionary(Arc<DictionaryType>)`, the one leaf `EnumType` views, the `EnumField` marker, and the `DictionaryOptions` sidecar a dictionary field carries |
 | Validates | At construction: the key is one of the eight integer datatypes; the value is any datatype |
 | Lazy | Nothing - the two datatypes are checked once, where the leaf is built |
 | Cached | The pair behind one `Arc<DictionaryType>`, so a clone shares both datatypes; the Arrow projection on the [`Field`](../field.md) |
@@ -29,7 +29,7 @@ the value is whatever the column decodes to, a nested datatype included.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeId, DataTypeKind, EnumType};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind};
 
     let codes = DataType::dictionary(DataType::Int16, DataType::utf8())?;
     assert_eq!(codes.to_string(), "dictionary(int16,utf8)");
@@ -42,7 +42,7 @@ the value is whatever the column decodes to, a nested datatype included.
     assert_eq!(codes.field_len(), 0);
 
     // The pair reads back as two datatypes, never as two fields.
-    let DataType::Enum(EnumType::Dictionary(dictionary)) = &codes else { panic!("dictionary") };
+    let DataType::Dictionary(dictionary) = &codes else { panic!("dictionary") };
     assert_eq!(dictionary.key(), &DataType::Int16);
     assert_eq!(dictionary.value(), &DataType::utf8());
 
@@ -319,17 +319,15 @@ node writes the extension entries and the values node does not.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
-    const row = fields.struct('row', [fields.dictionary('codes', 'int16', 'utf8')], {
-      nullable: false,
-    })
-    const table = row.castArrow(
-      new arrow.Table({ codes: arrow.vectorFromArray(['AAPL'], new arrow.Utf8()) }),
+    // A column crossing out as a table answers the Arrow field it is written as.
+    const codes = Serie.fromArrowArray(
+      arrow.vectorFromArray(['AAPL'], new arrow.Utf8()),
+      fields.dictionary('codes', 'int16', 'utf8'),
     )
 
-    const projected = table.schema.fields[0]
+    const projected = codes.intoArrowBatch().schema.fields[0]
     assert.equal(projected.name, 'codes')
     assert.ok(arrow.DataType.isDictionary(projected.type))
     assert.equal(projected.type.indices.toString(), 'Int16')

@@ -85,7 +85,7 @@ pub use selector::{BoundSelector, IntoSelector, Projection, Selector};
 pub use term::{Term, col, lit};
 pub(crate) use transform::{
     TRANSFORM_EXPRESSION_KEY, TRANSFORM_FUNCTION_KEY, TRANSFORM_KEYS, TRANSFORM_SOURCES_KEY,
-    canonicalize_transform_expression, canonicalize_transform_function,
+    TransformPlan, canonicalize_transform_expression, canonicalize_transform_function,
 };
 pub use user::{
     FunctionSignature, UserFunction, UserRef, lookup_function, register_function,
@@ -602,10 +602,10 @@ impl Expression {
         if matches!(value, crate::Scalar::Boolean(_)) {
             return Filter::from_scalar(value).map(Self::Filter);
         }
-        if let Some(items) = value.as_sequence() {
+        if let Some(items) = value.as_serie() {
             let steps = items
                 .iter()
-                .map(Self::from_scalar)
+                .map(|item| Self::from_scalar(&item))
                 .collect::<Result<Vec<_>>>()?;
             return Ok(Self::sequence(steps));
         }

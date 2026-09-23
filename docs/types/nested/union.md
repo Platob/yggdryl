@@ -220,7 +220,7 @@ around it.
 
 A union value is the two things a row of one needs: the type id that names the
 branch, and the payload under that branch's field. It is stored as the ordered
-pair - a two-item `Scalar::Sequence` - and the id canonicalizes to `Int64`, so
+pair - a two-item `Scalar::List` - and the id canonicalizes to `Int64`, so
 a narrower spelling of the same number reads back the same value.
 
 === "Rust"

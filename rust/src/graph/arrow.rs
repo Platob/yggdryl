@@ -17,7 +17,7 @@ use super::{
     MarketEventData, MarketOperation, Order, Quote, Trade,
 };
 use crate::arrow::BatchReader;
-use crate::{DataType, Error, Field, Result, Scalar, SequenceType, StructType, Uuid};
+use crate::{DataType, Error, Field, Result, Scalar, StructType, Uuid};
 
 const KIND: &str = "operationkind";
 const OPERATION_ROOT: &str = "marketoperation";
@@ -1097,7 +1097,7 @@ fn value_from_array_at(
                 .collect::<Result<Vec<_>>>()
                 .map(Scalar::from_sequence)
         }
-        DataType::Sequence(SequenceType::List(item)) => {
+        DataType::List(item) => {
             let array = array.as_any().downcast_ref::<ListArray>().ok_or_else(|| {
                 invalid(
                     path.clone(),
@@ -1122,13 +1122,14 @@ fn value_from_array_at(
     }
 }
 
+/// A value's rows: lent by a run, built once by a column.
 fn sequence<'a>(
     value: &'a Scalar,
     path: impl FnOnce() -> SmolStr,
     expected: &str,
-) -> Result<&'a [Scalar]> {
+) -> Result<std::borrow::Cow<'a, [Scalar]>> {
     value
-        .as_sequence()
+        .sequence_rows()
         .ok_or_else(|| invalid(path(), format_smolstr!("expected {expected}, got scalar")))
 }
 

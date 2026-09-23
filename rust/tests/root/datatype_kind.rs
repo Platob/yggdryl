@@ -8,13 +8,10 @@ mod nested {
         use std::collections::BTreeMap;
         use std::sync::Arc;
 
-        use yggdryl::{DataTypeKind, FamilyValue, Map, Mapping, Nested, Scalar, Sequence, Struct};
+        use yggdryl::{DataTypeKind, FamilyValue, Map, Nested, Scalar, Serie, Struct};
 
-        let sequence = Sequence::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
-        let mapping = Mapping::Map(Map::new(Arc::from([(
-            Scalar::from("k"),
-            Scalar::from(1_i64),
-        )])));
+        let sequence = Serie::new(Arc::from([Scalar::from(1_i64), Scalar::from(2_i64)]));
+        let mapping = Map::new(Arc::from([(Scalar::from("k"), Scalar::from(1_i64))]));
         let record = Struct::new(Arc::new(BTreeMap::from([(
             "id".into(),
             Scalar::from(1_i64),
@@ -22,9 +19,27 @@ mod nested {
 
         crate::scalar::assert_family_round_trip(
             vec![
-                crate::family_leaf!(Nested::Sequence, sequence.clone()),
-                crate::family_leaf!(Nested::Mapping, mapping.clone()),
-                crate::family_leaf!(Nested::Struct, record.clone()),
+                (
+                    Nested::List(sequence.clone()),
+                    Nested::List(sequence.clone()),
+                    Scalar::List(sequence.clone()),
+                    yggdryl::Value::dtype(&sequence).unwrap(),
+                    sequence.to_string(),
+                ),
+                (
+                    Nested::Map(mapping.clone()),
+                    Nested::Map(mapping.clone()),
+                    Scalar::Map(mapping.clone()),
+                    yggdryl::Value::dtype(&mapping).unwrap(),
+                    mapping.to_string(),
+                ),
+                (
+                    Nested::Struct(record.clone()),
+                    Nested::Struct(record.clone()),
+                    Scalar::Struct(record.clone()),
+                    yggdryl::Value::dtype(&record).unwrap(),
+                    record.to_string(),
+                ),
             ],
             DataTypeKind::Nested,
             &Scalar::from(1_i64),
@@ -33,15 +48,15 @@ mod nested {
         // The family answers the datatype the held leaf's children name: a list
         // of the items, a map of the keys and values, a struct of the fields.
         assert_eq!(
-            Nested::from(sequence).dtype().unwrap(),
+            Nested::List(sequence).dtype().unwrap(),
             DataType::list(DataType::Int64.required_field("item"))
         );
         assert_eq!(
-            Nested::from(mapping).dtype().unwrap(),
+            Nested::Map(mapping).dtype().unwrap(),
             DataType::map_of(DataType::utf8(), DataType::Int64, false).unwrap()
         );
         assert_eq!(
-            Nested::from(record).dtype().unwrap(),
+            Nested::Struct(record).dtype().unwrap(),
             DataType::from(
                 StructType::from_fields([DataType::Int64.required_field("id")]).unwrap()
             )

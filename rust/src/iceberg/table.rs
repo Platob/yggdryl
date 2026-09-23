@@ -110,9 +110,8 @@ use super::scan::{ScanPart, ScanPlan, ScanTask, identity_column};
 use super::snapshot::{Snapshot, SnapshotRef};
 use super::staging::{Staging, container, leaf, sized};
 use super::value::{compare_single, is_portable, single_value};
-use crate::FieldValue as _;
 use crate::arrow::BatchReader;
-use crate::cast::ArrowCastOptions;
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, PlanCache};
 use crate::expression::Projection;
 use crate::holder::Holder;
 use crate::media::{IORecordOptions, RecordOptions};
@@ -3637,12 +3636,20 @@ fn grouped_batches(
     #[allow(clippy::mutable_key_type)]
     let mut index: HashMap<Vec<Scalar>, usize> = HashMap::new();
     let transforms = spec.write_transforms(schema, partition)?;
+    let mut plans = PlanCache::new();
 
     for batch in batches {
-        let batch = schema.cast_arrow_batch(
-            batch.map_err(Error::Arrow)?,
-            ArrowCastOptions::new().with_safe(safe),
-        )?;
+        let batch = batch.map_err(Error::Arrow)?;
+        let batch = plans
+            .get_or_compile(batch.schema_ref().fields(), || {
+                ArrowCastPlan::compile_schema(
+                    batch.schema_ref(),
+                    schema,
+                    ArrowCastOptions::new().with_safe(safe),
+                    Deferred::default(),
+                )
+            })?
+            .reconcile_batch(batch)?;
         if batch.num_rows() == 0 {
             continue;
         }

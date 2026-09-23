@@ -41,6 +41,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::IOBase;
 use crate::arrow::{BatchReader, Result, arrow_schema_from_field, field_from_arrow_schema};
+use crate::cast::{ArrowCastPlan, Deferred, PlanCache};
 use crate::media::{IORecordOptions, RecordOptions};
 use crate::{ArrowCastOptions, Field, Level, Limits};
 
@@ -50,7 +51,6 @@ use super::container::{
 };
 use super::datum::{Cursor, DatumCodec, block_count, codec, invalid, put_bytes, put_long};
 use super::schema::{Node, Schema};
-use crate::FieldValue as _;
 
 /// The settings an Avro record read or write takes.
 ///
@@ -374,13 +374,23 @@ where
         threads,
     };
     let mut pending: Vec<RecordBatch> = Vec::new();
+    let mut plans = PlanCache::new();
     for batch in batches {
         let batch = batch.map_err(crate::arrow::from_reader_error)?;
         let rows = batch.num_rows();
         if rows == 0 {
             continue;
         }
-        let batch = canonical.cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))?;
+        let batch = plans
+            .get_or_compile(batch.schema_ref().fields(), || {
+                ArrowCastPlan::compile_schema(
+                    batch.schema_ref(),
+                    &canonical,
+                    ArrowCastOptions::new().with_safe(false),
+                    Deferred::default(),
+                )
+            })?
+            .reconcile_batch(batch)?;
         // The rows' own in-memory extent estimates their encoded width - a
         // slice counts itself, not its parent's buffers - and a value takes at
         // least a byte on the wire whatever it takes in memory, so a bit-packed

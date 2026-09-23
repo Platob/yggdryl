@@ -1,5 +1,6 @@
 //! A registry-owned message definition, carrying its native Struct Field.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -207,7 +208,7 @@ impl MsgType {
                 .as_field()
                 .index_of(field.name())
                 .or_else(|| tag.and_then(|tag| message.unique_index_of_tag(tag)))
-                .and_then(|index| message.as_value().get(index).cloned())
+                .and_then(|index| message.as_value().get(index).map(Cow::into_owned))
                 .or_else(|| tag.and_then(|tag| message.get_by_tag(tag)))
                 .filter(|value| !value.is_null())?;
             Some((field, value))
@@ -301,7 +302,11 @@ impl MsgType {
 
     pub(super) fn get_group_plan_by_tag(&self, tag: i32) -> Option<&GroupPlan> {
         let plan = &self.groups.get(&tag)?.as_ref()?.plan;
-        (!matches!(plan.field().dtype(), DataType::Mapping(_))).then_some(plan)
+        (!matches!(
+            plan.field().dtype(),
+            DataType::Map(_) | DataType::SortedMap(_)
+        ))
+        .then_some(plan)
     }
 
     fn index_groups(

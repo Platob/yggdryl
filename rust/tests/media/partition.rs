@@ -223,6 +223,78 @@ mod lake {
     }
 
     #[test]
+    fn every_incoming_batch_spells_its_partition_the_same_way() {
+        let (root, mut handle) = lake("ascii-batches");
+        let field = StructType::from_fields([
+            DataType::fixed_ascii(4).unwrap().required_field("ccy"),
+            DataType::Int64.required_field("qty"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+        .with_partition_fields(&["ccy"])
+        .unwrap();
+        let batch = |ccy: Vec<&str>, qty: Vec<i64>| {
+            RecordBatch::try_from_iter([
+                (
+                    "ccy",
+                    std::sync::Arc::new(StringArray::from(ccy)) as arrow_array::ArrayRef,
+                ),
+                (
+                    "qty",
+                    std::sync::Arc::new(arrow_array::Int64Array::from(qty)),
+                ),
+            ])
+            .unwrap()
+        };
+        let first = batch(vec!["USD", "EUR"], vec![1, 2]);
+        let second = batch(vec!["EUR", "USD"], vec![3, 4]);
+
+        handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(first.schema(), [first, second]),
+                &options(Some(field.clone())),
+            )
+            .unwrap();
+
+        // One directory per currency, whichever batch its rows arrived in.
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 2);
+        let mut found = Vec::new();
+        for batch in handle.read_arrow_reader(&options(Some(field))).unwrap() {
+            let batch = batch.unwrap();
+            let ccy = batch
+                .column_by_name("ccy")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::FixedSizeBinaryArray>()
+                .unwrap()
+                .clone();
+            let qty = batch
+                .column_by_name("qty")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::Int64Array>()
+                .unwrap()
+                .clone();
+            for row in 0..batch.num_rows() {
+                found.push((ccy.value(row).to_vec(), qty.value(row)));
+            }
+        }
+        found.sort_unstable();
+        assert_eq!(
+            found,
+            vec![
+                (b"EUR\0".to_vec(), 2),
+                (b"EUR\0".to_vec(), 3),
+                (b"USD\0".to_vec(), 1),
+                (b"USD\0".to_vec(), 4),
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_code_partition_column_keeps_its_identity_through_the_path() {
         let (root, mut handle) = lake("code");
         let field = StructType::from_fields([
@@ -722,10 +794,9 @@ use std::sync::Arc;
 
 use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
 
-use yggdryl::FieldValue as _;
 use yggdryl::media::RecordOptions;
 use yggdryl::media::partition::{partitioned_reader, with_partitions, without_partitions};
-use yggdryl::{ArrowCastOptions, DataType, Field, IOBase, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Field, IOBase, Serie, StructType};
 
 fn schema() -> Field {
     StructType::from_fields([
@@ -918,6 +989,79 @@ fn the_reader_reports_the_widened_schema_before_the_first_batch() {
     assert_eq!(batches[0].num_columns(), 3);
 }
 
+#[test]
+fn every_batch_of_a_location_restores_its_columns_at_its_own_length() {
+    let batch = |prices: Vec<i64>| {
+        RecordBatch::try_from_iter([("price", Arc::new(Int64Array::from(prices)) as ArrayRef)])
+            .unwrap()
+    };
+    let batches = vec![batch(vec![10, 20]), batch(vec![]), batch(vec![30, 40, 50])];
+    let inner: yggdryl::arrow::BatchReader = Box::new(arrow_array::RecordBatchIterator::new(
+        batches.clone().into_iter().map(Ok),
+        prices().schema(),
+    ));
+
+    let restored = partitioned_reader(inner, partitions(), Some(schema()))
+        .unwrap()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .unwrap();
+
+    // The path's value is read once and repeated into every batch, at that
+    // batch's length and as the one-shot restoration of its rows would be.
+    assert_eq!(restored.len(), batches.len());
+    for (restored, batch) in restored.iter().zip(&batches) {
+        assert_eq!(
+            restored,
+            &with_partitions(batch, &partitions(), Some(&schema())).unwrap()
+        );
+        let year = restored
+            .column_by_name("year")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .unwrap();
+        assert_eq!(year, &Int32Array::from(vec![2024; batch.num_rows()]));
+        let month = restored
+            .column_by_name("month")
+            .unwrap()
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(month, &StringArray::from(vec!["01"; batch.num_rows()]));
+    }
+}
+
+#[test]
+fn a_path_value_its_column_refuses_is_refused_as_the_whole_column_would_be() {
+    let broken = vec![("year".to_owned(), "not-a-year".to_owned())];
+    let year = DataType::Int32.required_field("year");
+    let column: ArrayRef = Arc::new(StringArray::from(vec!["not-a-year"; 3]));
+    let expected = Serie::from_arrow_array(
+        Some(&year),
+        column,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap_err()
+    .to_string();
+
+    // The value is read once and repeated, and its refusal is the one the
+    // batch's whole column of it would raise.
+    let refused = with_partitions(&prices(), &broken, Some(&schema()))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains(&expected), "{refused}");
+
+    let inner: yggdryl::arrow::BatchReader = Box::new(arrow_array::RecordBatchIterator::new(
+        [Ok(RecordBatch::new_empty(prices().schema())), Ok(prices())],
+        prices().schema(),
+    ));
+    let mut reader = partitioned_reader(inner, broken, Some(schema())).unwrap();
+    // A batch with no rows holds nothing to refuse.
+    assert_eq!(reader.next().unwrap().unwrap().num_rows(), 0);
+    let refused = reader.next().unwrap().unwrap_err().to_string();
+    assert!(refused.contains(&expected), "{refused}");
+}
+
 /// A declared folder shape must leave both its listing and its leaves lazy.
 /// A root declaring `year` as `year(event)` beside the column it reads.
 fn derived_schema() -> Field {
@@ -1007,9 +1151,11 @@ fn a_derived_column_carrying_values_is_left_alone() {
 fn a_column_holding_nothing_but_nulls_is_filled_from_the_batchs_own_schema() {
     // A batch cast to its root carries the declared column null-filled, which
     // is a column that was never written rather than one written null.
-    let placeholder = derived_schema()
-        .cast_arrow_batch(events(), ArrowCastOptions::new())
-        .unwrap();
+    let placeholder =
+        Serie::from_arrow_batch(Some(&derived_schema()), &events(), ArrowCastOptions::new())
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
     assert_eq!(placeholder.column(1).null_count(), 2);
 
     let filled = Field::from_arrow_schema("row", placeholder.schema().as_ref())
@@ -1314,8 +1460,9 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
 
     // A required column cannot be null, so a cast fills it with the canonical
     // default rather than nothing, and that is what "never written" looks like.
-    let placeholder = root
-        .cast_arrow_batch(events(), ArrowCastOptions::new())
+    let placeholder = Serie::from_arrow_batch(Some(&root), &events(), ArrowCastOptions::new())
+        .unwrap()
+        .into_arrow_batch()
         .unwrap();
     assert_eq!(
         placeholder
@@ -1345,7 +1492,7 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
 
 #[test]
 fn every_temporal_family_survives_the_directory_name_it_spells() {
-    use yggdryl::{DateTimeType, Scalar, TimeUnit, Timezone};
+    use yggdryl::{Scalar, TimeUnit, Timezone};
 
     // A partition name is written by one renderer and read by the field cast,
     // so every temporal family has to make the round trip - a zoned instant
@@ -1363,24 +1510,24 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
             Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::UTC).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: paris,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris).unwrap(),
         ),
         (

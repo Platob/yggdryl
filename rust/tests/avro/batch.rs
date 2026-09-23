@@ -106,9 +106,7 @@ mod avro {
         use yggdryl::avro::AvroOptions;
         use yggdryl::holder::Buffer;
         use yggdryl::media::{IORecordOptions, RecordOptions};
-        use yggdryl::{
-            DataType, DataTypeId, DateTimeType, Field, MediaType, Scalar, TimeUnit, Url,
-        };
+        use yggdryl::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
         use yggdryl::{IOBase, IOMedia};
 
         /// One canonical batch with a nullable column and a list column.
@@ -399,6 +397,92 @@ mod avro {
             let values = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
             let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
             assert_eq!(row.iter().map(Scalar::id).collect::<Vec<_>>(), ids);
+        }
+
+        #[test]
+        fn batches_changing_layout_mid_stream_each_reconcile_to_the_container_schema() {
+            let canonical = Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int64, false),
+                arrow_schema::Field::new("symbol", arrow_schema::DataType::Utf8, true),
+            ]));
+            let narrow = Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int32, false),
+                arrow_schema::Field::new("symbol", arrow_schema::DataType::LargeUtf8, true),
+            ]));
+            let exact = |ids: Vec<i64>, symbol: &str| {
+                RecordBatch::try_new(
+                    Arc::clone(&canonical),
+                    vec![
+                        Arc::new(arrow_array::Int64Array::from(ids.clone())),
+                        Arc::new(arrow_array::StringArray::from(vec![symbol; ids.len()])),
+                    ],
+                )
+                .unwrap()
+            };
+            let other = RecordBatch::try_new(
+                Arc::clone(&narrow),
+                vec![
+                    Arc::new(arrow_array::Int32Array::from(vec![3, 4])),
+                    Arc::new(arrow_array::LargeStringArray::from(vec![
+                        None,
+                        Some("MSFT"),
+                    ])),
+                ],
+            )
+            .unwrap();
+            let mut handle = handle();
+            avro::overwrite_arrow_reader(
+                &mut handle,
+                yggdryl::arrow::batch_reader(
+                    Arc::clone(&canonical),
+                    [
+                        exact(vec![1, 2], "AAPL"),
+                        other.clone(),
+                        exact(vec![5], "IBM"),
+                        other,
+                    ],
+                ),
+                &AvroOptions::new(),
+            )
+            .unwrap();
+
+            let batches = avro::read_batch_reader(&handle, None, &AvroOptions::new())
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap();
+            let ids: Vec<i64> = batches
+                .iter()
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_primitive::<Int64Type>()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+            assert_eq!(ids, [1, 2, 3, 4, 5, 3, 4]);
+            let symbols: Vec<Option<String>> = batches
+                .iter()
+                .flat_map(|batch| {
+                    let column = batch.column(1).as_string::<i32>();
+                    (0..column.len())
+                        .map(|row| column.is_valid(row).then(|| column.value(row).to_owned()))
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            assert_eq!(
+                symbols,
+                [
+                    Some("AAPL"),
+                    Some("AAPL"),
+                    None,
+                    Some("MSFT"),
+                    Some("IBM"),
+                    None,
+                    Some("MSFT")
+                ]
+                .map(|symbol| symbol.map(str::to_owned))
+            );
         }
 
         #[test]
@@ -1135,10 +1219,10 @@ mod avro {
                 "row",
                 StructType::from_fields([
                     DataType::date32().required_field("day"),
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: yggdryl::TimeUnit::Microsecond,
                         timezone: yggdryl::Timezone::UTC,
-                    })
+                    }
                     .nullable_field("at"),
                     DataType::decimal(10, 2).unwrap().required_field("cost"),
                 ])

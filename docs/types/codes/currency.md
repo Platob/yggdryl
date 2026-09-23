@@ -201,12 +201,13 @@ The value is the text, under the currency's identity. `Currency::new` is the Rus
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     // The column holds the text itself: nothing is padded, so nothing is
     // trimmed back.
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.currency('ccy').castArrowArray(utf8(['USD', 'EUR']))], ['USD', 'EUR'])
+    const stored = Serie.fromArrowArray(utf8(['USD', 'EUR']), fields.currency('ccy'))
+    assert.deepEqual([...stored.intoArrowArray()], ['USD', 'EUR'])
     ```
 
 ## `XXX` states no currency

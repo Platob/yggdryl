@@ -12,7 +12,6 @@ use yggdryl::internals::fix_group_plan::{GroupPlan, tags_is_empty};
 use yggdryl::internals::fix_msgtype::{
     from_field as msgtype_from_field, get_group_plan_by_tag as msgtype_plan,
 };
-use yggdryl::sequence::SequenceType;
 use yggdryl::{DataType, Field, FixCategory, FixRegistry, Scalar, StructType};
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {
@@ -57,10 +56,7 @@ fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
     assert!(plan.column(1).is_nullable());
     let (column, nested) = plan.nested(802).unwrap();
     assert_eq!(column, 3);
-    assert!(matches!(
-        nested.field().dtype(),
-        DataType::Sequence(SequenceType::LargeList(_))
-    ));
+    assert!(matches!(nested.field().dtype(), DataType::LargeList(_)));
     assert_eq!(nested.tag_index(523), Some(0));
     let row = plan.row(vec![
         Scalar::from("broker"),
@@ -77,7 +73,7 @@ fn plans_flatten_components_preserve_list_width_and_project_nullable_members() {
             Scalar::Null,
         ])
     );
-    let DataType::Sequence(SequenceType::List(item)) = source.dtype() else {
+    let DataType::List(item) = source.dtype() else {
         panic!("list")
     };
     assert!(!item.fields()[0].is_nullable());
@@ -135,7 +131,7 @@ fn maps_keep_native_key_shape_and_declare_no_numeric_wire_layout() {
     field.as_fix_mut().set_tag(65_090).unwrap();
     field.as_fix_mut().set_counter(65_090).unwrap();
     let plan = GroupPlan::from_field(&field).unwrap();
-    let DataType::Mapping(map) = plan.field().dtype() else {
+    let Some(map) = (plan.field().dtype()).as_mapping() else {
         panic!("the native Map layout is preserved")
     };
     assert!(map.keys_sorted());

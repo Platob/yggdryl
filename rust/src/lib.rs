@@ -100,8 +100,8 @@ pub mod s3;
 mod scalar;
 mod scheme;
 pub mod sedol_code;
-pub mod sequence;
 pub(crate) mod serde;
+pub mod serie;
 pub mod side;
 pub mod state;
 pub mod string;
@@ -137,7 +137,7 @@ pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_s
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
-pub use cast::{ArrowCastOptions, ArrowCastPlan, ArrowFieldType, Nullability, Representation};
+pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
 pub use charset::Charset;
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
@@ -252,7 +252,7 @@ pub use runend::*;
 pub use scalar::Scalar;
 pub(crate) use scalar::code_scalars;
 pub use sedol_code::*;
-pub use sequence::*;
+pub use serie::*;
 pub use side::*;
 pub use state::*;
 pub(crate) use string::trim_padding;
@@ -272,9 +272,9 @@ pub(crate) use uuid::{
 };
 pub(crate) use value::dtype_scalar;
 pub use value::{
-    Children, CodeValue, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue, FieldSidecar,
-    FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue, Nested,
-    NestedValue, RunEndType, TemporalValue, UnionType, Value,
+    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue,
+    FieldSidecar, FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue,
+    IntegerValue, Nested, NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
 };
 pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
 pub use variant::{
@@ -386,6 +386,7 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
+    pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;
     pub use crate::text::line::internals as text_line;

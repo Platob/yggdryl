@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, UInt64Array};
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::{ArrowCastOptions, DataType, Field, Representation};
+use yggdryl::{ArrowCastOptions, DataType, Field, Representation, Serie};
 
 use super::nested_field;
-use yggdryl::FieldValue as _;
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("arrow");
@@ -116,9 +115,14 @@ pub fn benchmarks(criterion: &mut Criterion) {
     ] {
         group.bench_function(name, |bencher| {
             bencher.iter(|| {
-                black_box(&target)
-                    .cast_arrow_array(black_box(Arc::clone(&source)), bits)
-                    .expect("one width read two ways always crosses")
+                Serie::from_arrow_array(
+                    Some(black_box(&target)),
+                    black_box(Arc::clone(&source)),
+                    bits,
+                )
+                .expect("one width read two ways always crosses")
+                .require_arrow_array()
+                .expect("a cast column has a layout")
             });
         });
     }

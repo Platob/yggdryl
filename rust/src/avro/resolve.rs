@@ -956,11 +956,11 @@ fn default_value_at(
         },
         Node::Array(items) => {
             let values = default
-                .as_sequence()
+                .as_serie()
                 .ok_or_else(|| bad_default("array", default))?;
             let mut converted = Vec::with_capacity(values.len());
-            for value in values {
-                converted.push(default_value_at(items, value, names, depth)?);
+            for value in values.iter() {
+                converted.push(default_value_at(items, &value, names, depth)?);
             }
             Scalar::from_sequence(converted)
         }

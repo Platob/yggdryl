@@ -46,6 +46,7 @@
 //!
 //! [spec]: https://github.com/apache/parquet-format/blob/master/VariantEncoding.md
 
+use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, OnceLock};
 
@@ -557,9 +558,13 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
     }
     match value {
         Scalar::Arrow(_) => collect_keys(&value.into_native()?, depth, keys)?,
-        Scalar::Sequence(held) => {
-            for item in held.as_slice() {
-                collect_keys(item, depth + 1, keys)?;
+        Scalar::List(held)
+        | Scalar::ListView(held)
+        | Scalar::FixedSizeList(held)
+        | Scalar::LargeList(held)
+        | Scalar::LargeListView(held) => {
+            for item in held.iter() {
+                collect_keys(&item, depth + 1, keys)?;
             }
         }
         Scalar::Struct(held) => {
@@ -568,7 +573,7 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
                 collect_keys(child, depth + 1, keys)?;
             }
         }
-        Scalar::Mapping(held) => {
+        Scalar::Map(held) | Scalar::SortedMap(held) => {
             for (key, child) in held.as_slice() {
                 keys.insert(SmolStr::new(key_text(key)?));
                 collect_keys(child, depth + 1, keys)?;
@@ -847,20 +852,22 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Interval(held) => match held.unit() {
             TimeUnit::YearMonth => primitive(out, INT32, &held.months().to_le_bytes()),
             TimeUnit::DayTime => write_array(
-                &[
+                [
                     Scalar::from(i64::from(held.days())),
                     Scalar::from(held.nanoseconds() / 1_000_000),
-                ],
+                ]
+                .iter(),
                 keys,
                 depth,
                 out,
             )?,
             _ => write_array(
-                &[
+                [
                     Scalar::from(i64::from(held.months())),
                     Scalar::from(i64::from(held.days())),
                     Scalar::from(held.nanoseconds()),
-                ],
+                ]
+                .iter(),
                 keys,
                 depth,
                 out,
@@ -878,7 +885,11 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Timezone(held) => write_text(out, held.as_str())?,
         Scalar::MimeType(held) => write_text(out, held.as_str())?,
         Scalar::MediaType(held) => write_text(out, &held.to_string())?,
-        Scalar::Sequence(held) => write_array(held.as_slice(), keys, depth, out)?,
+        Scalar::List(held)
+        | Scalar::ListView(held)
+        | Scalar::FixedSizeList(held)
+        | Scalar::LargeList(held)
+        | Scalar::LargeListView(held) => write_array(held.iter(), keys, depth, out)?,
         Scalar::Struct(held) => {
             let entries: Vec<(&str, &Scalar)> = held
                 .as_map()
@@ -887,7 +898,7 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
                 .collect();
             write_object(&entries, keys, depth, out)?;
         }
-        Scalar::Mapping(held) => {
+        Scalar::Map(held) | Scalar::SortedMap(held) => {
             let mut entries = BTreeMap::new();
             for (key, child) in held.as_slice() {
                 let key = key_text(key)?;
@@ -924,18 +935,24 @@ fn write_duration(out: &mut Vec<u8>, count: i64, unit: TimeUnit) -> Result<()> {
 }
 
 /// Append one array: the header, the count, the offsets and the values.
-fn write_array(items: &[Scalar], keys: &[SmolStr], depth: usize, out: &mut Vec<u8>) -> Result<()> {
-    let mut fields = Vec::with_capacity(items.len() * 4);
-    let mut offsets = Vec::with_capacity(items.len() + 1);
+fn write_array(
+    items: impl ExactSizeIterator<Item = impl Borrow<Scalar>>,
+    keys: &[SmolStr],
+    depth: usize,
+    out: &mut Vec<u8>,
+) -> Result<()> {
+    let count = items.len();
+    let mut fields = Vec::with_capacity(count * 4);
+    let mut offsets = Vec::with_capacity(count + 1);
     for item in items {
         offsets.push(fields.len());
-        write_value(item, keys, depth + 1, &mut fields)?;
+        write_value(item.borrow(), keys, depth + 1, &mut fields)?;
     }
     offsets.push(bounded(fields.len(), "an array payload")?);
     let width = width_of(fields.len());
-    let large = items.len() >= LARGE_FROM;
+    let large = count >= LARGE_FROM;
     out.push(ARRAY | (((u8::from(large) << 2) | (width as u8 - 1)) << 2));
-    write_le(out, items.len(), if large { 4 } else { 1 });
+    write_le(out, count, if large { 4 } else { 1 });
     for offset in offsets {
         write_le(out, offset, width);
     }

@@ -11,7 +11,6 @@ mod grammar {
 
     use std::hash::Hash;
 
-    use yggdryl::DateTimeType;
     use yggdryl::expression::{
         Bounds, ColumnBounds, Expression, Filter, Projection, Residual, Selector, Term,
     };
@@ -33,10 +32,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),

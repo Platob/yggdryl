@@ -2,9 +2,7 @@
 //! refuses to name.
 
 mod scalars {
-    use yggdryl::{
-        DataType, DateTimeType, DurationType, Scalar, TimeType, TimeUnit, Timezone, i256,
-    };
+    use yggdryl::{DataType, Scalar, TimeUnit, Timezone, i256};
 
     #[test]
     fn each_integer_width_keeps_the_column_that_holds_it() {
@@ -95,44 +93,44 @@ mod scalars {
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Time(TimeType::Time64(TimeUnit::Microsecond))
+            DataType::Time64(TimeUnit::Microsecond)
         );
         assert_eq!(
             Scalar::time32(0, TimeUnit::Second, Timezone::NAIVE)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Time(TimeType::Time32(TimeUnit::Second))
+            DataType::Time32(TimeUnit::Second)
         );
         assert_eq!(
             Scalar::duration32(0, TimeUnit::Nanosecond)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Duration(DurationType::Duration32(TimeUnit::Nanosecond))
+            DataType::Duration32(TimeUnit::Nanosecond)
         );
         assert_eq!(
             Scalar::duration64(0, TimeUnit::Nanosecond)
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond))
+            DataType::Duration64(TimeUnit::Nanosecond)
         );
         assert_eq!(
             Scalar::datetime64_in(0, TimeUnit::Microsecond, "Asia/Calcutta")
                 .unwrap()
                 .dtype()
                 .unwrap(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::from_str("Asia/Kolkata").unwrap()
-            })
+            }
         );
     }
 }
 
 mod containers {
-    use yggdryl::SequenceType;
+
     use yggdryl::{DataType, Field, Scalar};
 
     #[test]
@@ -179,7 +177,7 @@ mod containers {
                 .unwrap(),
         ]);
         let dtype = rows.dtype().unwrap();
-        let DataType::Sequence(SequenceType::List(item)) = dtype else {
+        let DataType::List(item) = dtype else {
             panic!("expected a list")
         };
         let fields = item.dtype().as_fields().expect("record fields");

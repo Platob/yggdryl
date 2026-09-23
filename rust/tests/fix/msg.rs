@@ -1083,3 +1083,69 @@ fn folded_arrivals_refuse_malformed_shapes_instead_of_dropping_them() {
     );
     assert_eq!(message.into_row(&schema).unwrap(), original);
 }
+
+/// A group a row holds as a column - what a row read out of Arrow carries -
+/// answers every reading the run the parse built answers: the alternate
+/// identifier it names, the entry it is, and the path into its occurrences.
+#[test]
+fn a_group_held_as_a_column_reads_as_its_run() {
+    let (registry, reader) = reader();
+    let parsed = reader
+        .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=US0378331005|456=4|10=0|")
+        .expect("an order stating its ISIN as an alternate identifier");
+    let root = parsed.as_field().clone();
+    let at = root.index_of("secaltids").expect("the group's column");
+    let row = super::with_column_at(parsed.as_value(), at, &super::item_of(&root.fields()[at]));
+    let message = FixMsg::with_registry(Arc::clone(&registry), root, row).expect("a message");
+    assert!(super::holds_column(&message, "secaltids"));
+
+    assert_eq!(
+        message.get_isincode(),
+        Some(&IsinCode::new("US0378331005").unwrap())
+    );
+    let group = message
+        .entries()
+        .iter()
+        .find(|entry| entry.tag() == 454)
+        .expect("the group's entry");
+    assert_eq!(group.value(), Some("1"));
+    assert_eq!(group.entries().len(), 1);
+    assert_eq!(
+        message
+            .get_by_path(&super::path("secaltids[-1].securityaltid"))
+            .as_ref()
+            .and_then(Scalar::as_str),
+        Some("US0378331005")
+    );
+}
+
+/// The regulatory group dates and times the message it states whether the
+/// row holds it as a run or as a column.
+#[test]
+fn a_regulatory_group_held_as_a_column_dates_the_message() {
+    /// `20260102-10:15:29.990` UTC, the execution the group stamps.
+    const EXECUTION: i64 = 1_767_348_929_990_000_000;
+    let (registry, reader) = reader();
+    let parsed = reader
+        .sole_line(
+            b"8=FIX.4.4|35=AE|52=20260102-10:15:30|768=1|769=20260102-10:15:29.990|770=1|10=0|",
+        )
+        .expect("a report stamping its execution");
+    assert_eq!(parsed.get_execunix(), Some(EXECUTION));
+    assert_eq!(parsed.get_currunix(), EXECUTION);
+    let (root, row) = super::restatable(&registry, &parsed, &[35, 52]);
+    let run = FixMsg::with_registry(Arc::clone(&registry), root.clone(), row.clone())
+        .expect("the run-backed message");
+    let at = root
+        .index_of("trdregtimestamps")
+        .expect("the group's column");
+    let row = super::with_column_at(&row, at, &super::item_of(&root.fields()[at]));
+    let column =
+        FixMsg::with_registry(Arc::clone(&registry), root, row).expect("the column-backed message");
+    assert!(super::holds_column(&column, "trdregtimestamps"));
+
+    assert_eq!(run.get_execunix(), Some(EXECUTION));
+    assert_eq!(column.get_execunix(), Some(EXECUTION));
+    assert_eq!(run.get_currunix(), EXECUTION);
+    assert_eq!(column.get_currunix(), EXECUTION);
+}

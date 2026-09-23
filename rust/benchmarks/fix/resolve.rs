@@ -4,7 +4,6 @@
 use criterion::Criterion;
 use std::collections::HashMap;
 use std::hint::black_box;
-use yggdryl::SequenceType;
 use yggdryl::graph::{Element, Event};
 use yggdryl::{
     DataType, Field, FieldPath, FixCode, FixCodeValue, FixCodec, FixId, FixKey, FixRegistry,
@@ -18,7 +17,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
         registry.field_by_name("Parties").unwrap().dtype(),
-        DataType::Sequence(SequenceType::List(_))
+        DataType::List(_)
     ));
     assert_eq!(
         registry.field_by_counter(453).unwrap(),

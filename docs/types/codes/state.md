@@ -163,7 +163,7 @@ The value is the ranked spelling, whichever vocabulary named it: `40PARTFILL` fo
     ```python
     import pyarrow as pa
 
-    from yggdryl import Field
+    from yggdryl import Field, Serie
 
     state = Field("state", "state")
     arrow_field = state.into_arrow()
@@ -172,8 +172,9 @@ The value is the ranked spelling, whichever vocabulary named it: `40PARTFILL` fo
     assert Field.from_arrow(arrow_field) == state
 
     # The stored bytes sort by lifecycle, with nothing but ASCII order needed.
-    stored = state.cast_arrow_array(pa.array(["80FILLED", "20NEW", "40PARTFILL"]), safe=False)
-    assert sorted(stored.to_pylist()) == ["20NEW", "40PARTFILL", "80FILLED"]
+    source = pa.array(["80FILLED", "20NEW", "40PARTFILL"])
+    stored = Serie.from_arrow_array(source, state, safe=False)
+    assert sorted(stored.as_py()) == ["20NEW", "40PARTFILL", "80FILLED"]
     ```
 
 === "JavaScript"
@@ -181,11 +182,11 @@ The value is the ranked spelling, whichever vocabulary named it: `40PARTFILL` fo
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    const stored = [...fields.state('state').castArrowArray(utf8(['80FILLED', '20NEW']))]
-    assert.deepEqual(stored.sort(), ['20NEW', '80FILLED'])
+    const stored = Serie.fromArrowArray(utf8(['80FILLED', '20NEW']), fields.state('state'))
+    assert.deepEqual([...stored.intoArrowArray()].sort(), ['20NEW', '80FILLED'])
     ```
 
 ## The rank leads

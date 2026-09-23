@@ -17,9 +17,9 @@ use crate::{
 /// Every payload fits in one byte. The outer discriminant preserves which
 /// vocabulary the member belongs to even when two vocabularies share a
 /// spelling. This is the closed set of names a core enum draws from, not the
-/// dictionary encoding [`DataType::Enum`] describes.
+/// dictionary encoding [`DataType::Dictionary`] describes.
 ///
-/// [`DataType::Enum`]: crate::DataType::Enum
+/// [`DataType::Dictionary`]: crate::DataType::Dictionary
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(tag = "kind", content = "value")]
 pub enum Vocabulary {
@@ -138,11 +138,11 @@ impl From<Vocabulary> for Scalar {
     /// A member is its canonical name, which is what a column holds.
     ///
     /// A member's datatype is `string`, so the value is the text and the
-    /// vocabulary is the column's business. [`DataType::Enum`] is a
+    /// vocabulary is the column's business. [`DataType::Dictionary`] is a
     /// different fact: it is the dictionary encoding a column is stored
     /// under, not the closed set a name is drawn from.
     ///
-    /// [`DataType::Enum`]: crate::DataType::Enum
+    /// [`DataType::Dictionary`]: crate::DataType::Dictionary
     fn from(value: Vocabulary) -> Self {
         Self::String(Str::new_static(value.as_str()))
     }

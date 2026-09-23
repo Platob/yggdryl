@@ -1,37 +1,29 @@
-//! Casting an Arrow array into the exact array a typed field describes.
+//! The one recursive cast engine, and it is [`Serie`](crate::Serie)'s.
 //!
-//! [`FieldValue::cast_arrow_array`](crate::FieldValue::cast_arrow_array)
-//! answers "make this array fit that field" for any field, and returns an
-//! [`ArrayRef`] because any field could be any datatype. A field leaf already
-//! holds its own datatype, so it can answer with the array type itself:
-//! [`Int64Field`](crate::Int64Field) casts to an
-//! [`Int64Array`](arrow_array::Int64Array), and the caller reads values without
-//! a downcast of its own.
-//!
-//! The field is always the *target*: an incoming array is reconciled to the
-//! field's datatype and nullability, never the other way around.
+//! A cast makes a column, a batch or a stream fit a field: its datatype and
+//! its nullability. [`ArrowCastPlan`] is the schema-dependent half, compiled
+//! once from a source field to a target field and applied to every column of
+//! that layout; [`Serie::cast`](crate::Serie::cast), the `Serie` Arrow doors
+//! and [`SerieReader`](crate::SerieReader) are the ways in. The field is
+//! always the *target*: an incoming layout is reconciled to it, never the
+//! other way around, and a typed read is a narrowing of the column that
+//! comes out.
 //!
 //! ```
 //! use std::sync::Arc;
 //!
 //! use arrow_array::{ArrayRef, StringArray};
-//! use yggdryl::ArrowCastOptions;
-//! use yggdryl::Int64Field;
+//! use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let field = Int64Field::unit("id", false);
+//! let field = Field::new("id", DataType::Int64, false);
 //! let source: ArrayRef = Arc::new(StringArray::from(vec!["1", "2"]));
 //!
-//! // The result is an Int64Array, not an ArrayRef needing a downcast.
-//! let ids = field.cast_arrow_array(source, ArrowCastOptions::new().with_safe(false))?;
-//! assert_eq!(ids.values(), &[1, 2]);
+//! let ids = Serie::from_arrow_array(Some(&field), source, ArrowCastOptions::new().with_safe(false))?;
+//! assert_eq!(ids.as_int64().expect("an int64 column").values(), &[1, 2]);
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! A few datatypes carry a parameter that decides their physical array -
-//! a timestamp's unit, a dictionary's key type - so those cast to an
-//! [`ArrayRef`]. Every other variant casts to its concrete array.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -40,14 +32,11 @@ use arrow_array::{Array, ArrayRef, RecordBatch, StructArray};
 use arrow_buffer::BooleanBuffer;
 use arrow_cast::can_cast_types;
 use arrow_schema::{DataType as ArrowDataType, FieldRef as ArrowFieldRef};
-pub use batch::{preflight_arrow_batch_cast, validate_arrow_batch};
 pub(crate) use kernel::arrow_cast_exposed;
 pub use options::{ArrowCastOptions, Nullability, Representation};
 pub use plan::ArrowCastPlan;
 use smol_str::SmolStr;
-pub use typed::ArrowFieldType;
 
-use crate::UriType;
 use crate::arrow::{Error, Result};
 use crate::budget::MaterializationBudget;
 use crate::bytes::casts::{bridges_through_binary, ingest_bytes_array};
@@ -58,10 +47,8 @@ use crate::cast::columns::{
 };
 use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keeps_empty_text};
 use crate::decimal::casts::holds_decimal;
-use crate::enums::EnumType;
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::path::{Path, Segment};
-use crate::sequence::SequenceType;
 use crate::string::casts::{StringSource, ingest_code_array, ingest_string_array};
 use crate::string::{is_text_storage, needs_extension};
 use crate::temporal::casts::{
@@ -76,69 +63,6 @@ use crate::{
 };
 use crate::{DataType, Field, Scalar};
 
-/// Exact and preflight record-batch boundaries.
-mod batch {
-    use arrow_array::RecordBatch;
-
-    use super::{ArrowCastOptions, ArrowCastPlan};
-    use crate::Field;
-    use crate::FieldValue as _;
-    use crate::arrow::{Error, Result, arrow_schema_from_field};
-
-    /// Validates an exact source batch against one declared Struct root Field.
-    ///
-    /// This low-level hook is public for native runtime bindings that already own
-    /// Arrow arrays but intentionally hidden from their user-facing APIs. It uses
-    /// IPC-compatible schema comparison and rejects recursive logical values that
-    /// would require default filling or another canonical repair.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error unless `field` is a valid non-null Struct root and the
-    /// batch has a compatible schema plus valid recursive values.
-    #[doc(hidden)]
-    pub fn validate_arrow_batch(field: &Field, batch: &RecordBatch) -> Result<()> {
-        field.validate_bounded()?;
-        let root_field = field.clone();
-        root_field.validate_struct_root()?;
-
-        // Valid means "needs no repair": casting an exact batch returns the very
-        // arrays it was given, so a changed column is a validation failure.
-        let cast = field.cast_arrow_batch(batch.clone(), ArrowCastOptions::new())?;
-        for (index, (before, after)) in batch.columns().iter().zip(cast.columns()).enumerate() {
-            if !std::sync::Arc::ptr_eq(before, after) {
-                let name = batch.schema().field(index).name().clone();
-                return Err(Error::IncompatibleSchema(format!(
-                    "field {name:?} requires canonical repair and is not valid as stored"
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    /// Preflights an empty source-to-target batch cast for runtime readers.
-    ///
-    /// This binding hook validates both Struct roots and constructs the recursive
-    /// cast plan from the canonical source schema without materializing arrays. It
-    /// lets an empty backend reject an invalid target before a lazy checked read is
-    /// attempted, without maintaining another schema table.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when either root Field is invalid/nullable/non-Struct or
-    /// the recursive source-to-target cast plan cannot be constructed.
-    #[doc(hidden)]
-    pub fn preflight_arrow_batch_cast(
-        source: &Field,
-        target: Option<&Field>,
-        options: ArrowCastOptions,
-    ) -> Result<()> {
-        let schema = arrow_schema_from_field(source)?;
-        let target = target.unwrap_or(source);
-        ArrowCastPlan::compile(&schema, target, options)?.preflight()
-    }
-}
-/// Bounded execution of Arrow kernel casts.
 mod kernel {
     use std::sync::Arc;
 
@@ -570,69 +494,152 @@ mod plan {
     use std::fmt;
     use std::sync::Arc;
 
-    use arrow_array::{RecordBatch, RecordBatchOptions, StructArray};
-    use arrow_schema::{DataType as ArrowDataType, Schema, SchemaRef};
+    use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions, StructArray};
+    use arrow_schema::{
+        DataType as ArrowDataType, Field as ArrowField, FieldRef, Schema, SchemaRef,
+    };
 
-    use crate::Field;
     use crate::arrow::{Error, Result, arrow_schema_from_field};
     use crate::budget::MaterializationBudget;
+    use crate::media::DEFAULT_ROOT_NAME;
+    use crate::serie::{Proof, land};
+    use crate::{Field, Serie};
 
-    use super::{ArrayCastPlan, ArrowCastOptions, Deferred, downcast};
+    use super::{ArrayCastPlan, ArrowCastOptions, Deferred, PlanRules, downcast};
+    use crate::path::Path;
 
-    /// A compiled Arrow record-batch cast: immutable, shareable, and reusable.
+    /// The Arrow metadata keys that carry a column's extension identity: the
+    /// part of a layout that is not its storage.
+    const EXTENSION_KEYS: [&str; 2] = ["ARROW:extension:name", "ARROW:extension:metadata"];
+
+    /// A compiled cast from one field to another: immutable, shareable, and
+    /// reusable.
+    ///
+    /// The plan is the schema-dependent half of every cast in the crate. It is
+    /// compiled once from the two fields and applied to each column or batch of
+    /// the source layout, so only masks, offsets, dictionary reachability and
+    /// the proof of what it did not certify vary per application. Beside the
+    /// cast it compiles which target leaves it proved: an ingest that read
+    /// every value under the target's rule, or an exact node over a column that
+    /// had already landed, needs no second read. An extension label is never
+    /// such a proof.
     ///
     /// ```
-    /// use std::sync::Arc;
-    ///
-    /// use arrow_array::{ArrayRef, Int32Array, RecordBatch};
-    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, StructType};
+    /// use arrow_array::{ArrayRef, Int32Array};
+    /// use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Serie};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
-    ///     .required_field("row");
-    /// let source = RecordBatch::try_from_iter([(
-    ///     "id",
-    ///     Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef,
-    /// )])?;
+    /// let source = Field::new("id", DataType::Int32, false);
+    /// let target = Field::new("id", DataType::Int64, false);
+    /// let plan = ArrowCastPlan::compile(&source, &target, ArrowCastOptions::new())?;
     ///
-    /// // The schemas decide everything; the plan is compiled from them alone.
-    /// let plan = ArrowCastPlan::compile(source.schema_ref(), &root, ArrowCastOptions::new())?;
-    /// assert_eq!(plan.as_schema().field(0).name(), "id");
-    ///
-    /// // The same plan answers every batch of that schema.
-    /// let cast = plan.apply(source)?;
-    /// assert_eq!(cast.column(0).data_type(), &arrow_schema::DataType::Int64);
+    /// // The same plan answers every column of that layout.
+    /// let ids = Serie::from_arrow_array(
+    ///     Some(&source),
+    ///     std::sync::Arc::new(Int32Array::from(vec![1, 2])) as ArrayRef,
+    ///     ArrowCastOptions::new(),
+    /// )?;
+    /// let cast = plan.apply(&ids)?;
+    /// assert_eq!(cast.as_int64().expect("an int64 column").values(), &[1, 2]);
     /// # Ok(())
     /// # }
     /// ```
     pub struct ArrowCastPlan {
-        field: Field,
-        source: SchemaRef,
-        schema: SchemaRef,
+        source: FieldRef,
+        source_schema: Option<SchemaRef>,
+        target: Arc<Field>,
+        schema: Option<SchemaRef>,
         options: ArrowCastOptions,
         root: ArrayCastPlan,
+        identity: bool,
+        foreign: Proof,
+        serie: Proof,
+    }
+
+    /// Whether `target` is the non-null record a batch crosses into.
+    fn is_record_root(target: &Field) -> bool {
+        !target.is_nullable() && target.dtype().as_fields().is_some()
+    }
+
+    /// Whether two Arrow fields carry the same extension identity.
+    fn same_extension(left: &ArrowField, right: &ArrowField) -> bool {
+        EXTENSION_KEYS
+            .iter()
+            .all(|key| left.metadata().get(*key) == right.metadata().get(*key))
     }
 
     impl ArrowCastPlan {
-        /// Compiles the cast from one source schema to one non-null Struct root.
+        /// Compiles the cast from `source` to `target`, a column or a record.
         ///
-        /// Every failure the two schemas alone can produce - an unsupported
+        /// Every failure the two fields alone can produce - an unsupported
         /// conversion, an ambiguous case-insensitive name, a required field no
-        /// source column carries under
-        /// [`Nullability::Strict`](super::Nullability::Strict) - is raised here,
-        /// before a single batch exists.
+        /// source child carries under
+        /// [`Nullability::Strict`](super::Nullability::Strict), a refused
+        /// extension crossing - is raised here, before a single row exists.
         ///
         /// # Errors
         ///
-        /// Returns an error unless `target` is a bounded, non-nullable Struct
-        /// root, or when the recursive cast cannot be planned.
-        pub fn compile(source: &Schema, target: &Field, options: ArrowCastOptions) -> Result<Self> {
-            Self::compile_deferring(source, target, options, Deferred::default())
+        /// Returns an error when either field has no Arrow projection, or when
+        /// the recursive cast cannot be planned.
+        pub fn compile(source: &Field, target: &Field, options: ArrowCastOptions) -> Result<Self> {
+            let source = Arc::clone(source.as_arrow_field_ref()?);
+            Self::compile_arrow(&source, target, options, Deferred::default())
         }
 
-        /// Compiles the cast, leaving the columns a named protocol still has to
-        /// materialize out of the strict nullability check.
-        pub(crate) fn compile_deferring(
+        /// Compiles the cast from the Arrow field a foreign input lays out as.
+        ///
+        /// A foreign source is planned from its Arrow field and never imported,
+        /// so its extension metadata travels with it as a label and every
+        /// source the engine can read stays readable.
+        pub(crate) fn compile_arrow(
+            source: &FieldRef,
+            target: &Field,
+            options: ArrowCastOptions,
+            deferred: Deferred,
+        ) -> Result<Self> {
+            target.validate_bounded()?;
+            let record =
+                is_record_root(target) && matches!(source.data_type(), ArrowDataType::Struct(_));
+            // A record root is the `$` every child hangs from; a column *is*
+            // its field, so the field names the root: a refusal reads `$.id`.
+            let root = Path::root();
+            let path = if record {
+                root
+            } else {
+                root.field(target.name())
+            };
+            let plan = ArrayCastPlan::new_validated_with(
+                target,
+                source.data_type(),
+                (!record).then(|| source.metadata()),
+                PlanRules::nested(options, deferred),
+                path,
+            )?;
+            let projection = target.as_arrow_field_ref()?;
+            let identity = !options.nullability().is_strict()
+                && projection.data_type() == source.data_type()
+                && same_extension(projection, source);
+            Ok(Self {
+                source: Arc::clone(source),
+                source_schema: None,
+                target: Arc::new(target.clone()),
+                schema: if record {
+                    Some(arrow_schema_from_field(target)?)
+                } else {
+                    None
+                },
+                options,
+                foreign: plan.proof(false),
+                serie: plan.proof(true),
+                root: plan,
+                identity,
+            })
+        }
+
+        /// Compiles the cast from one batch schema to one non-null Struct root,
+        /// leaving the columns a named protocol still has to materialize out of
+        /// the strict nullability check.
+        pub(crate) fn compile_schema(
             source: &Schema,
             target: &Field,
             options: ArrowCastOptions,
@@ -650,30 +657,31 @@ mod plan {
                     target.name()
                 )));
             }
-            let source_type = ArrowDataType::Struct(source.fields().clone());
-            let root = ArrayCastPlan::new_root(target, &source_type, options, deferred)?;
-            Ok(Self {
-                field: target.clone(),
-                source: Arc::new(source.clone()),
-                schema: arrow_schema_from_field(target)?,
-                options,
-                root,
-            })
+            let field = Arc::new(ArrowField::new(
+                DEFAULT_ROOT_NAME,
+                ArrowDataType::Struct(source.fields().clone()),
+                false,
+            ));
+            let mut plan = Self::compile_arrow(&field, target, options, deferred)?;
+            let source = Arc::new(source.clone());
+            plan.identity = !options.nullability().is_strict()
+                && plan
+                    .schema
+                    .as_ref()
+                    .is_some_and(|schema| schema.as_ref() == source.as_ref());
+            plan.source_schema = Some(source);
+            Ok(plan)
         }
 
-        /// The root Field every batch is reconciled to.
-        pub const fn as_field(&self) -> &Field {
-            &self.field
-        }
-
-        /// The schema batches must carry to be applied.
-        pub const fn as_source_schema(&self) -> &SchemaRef {
+        /// The Arrow field an input must lay out as: its storage and its
+        /// extension identity.
+        pub const fn as_source(&self) -> &FieldRef {
             &self.source
         }
 
-        /// The schema every applied batch carries, target metadata included.
-        pub const fn as_schema(&self) -> &SchemaRef {
-            &self.schema
+        /// The field every cast lands under.
+        pub fn as_target(&self) -> &Field {
+            &self.target
         }
 
         /// The conversion and nullability policy this plan was compiled under.
@@ -681,38 +689,117 @@ mod plan {
             &self.options
         }
 
+        /// Whether the plan hands every input of its source layout straight
+        /// back.
+        ///
+        /// Strictness is what makes an equal layout not enough: a non-null
+        /// Arrow field can still carry a logical null inside a nested child,
+        /// and refusing that is the whole point of asking.
+        pub const fn is_identity(&self) -> bool {
+            self.identity
+        }
+
         /// Runs the compiled cast over no rows.
         ///
-        /// A caller planning a read rejects an impossible cast here rather than on
-        /// the first batch: an empty batch of the source schema exercises the whole
-        /// recursive plan without materializing a value. Row-dependent refusals -
-        /// a null in a required column, a value the target cannot hold - have no
-        /// rows to find and stay for [`Self::apply`].
+        /// A caller planning a read rejects an impossible cast here rather than
+        /// on the first batch: an empty column of the source layout exercises
+        /// the whole recursive plan without materializing a value.
         ///
         /// # Errors
         ///
         /// Returns any error the cast raises with no rows to read.
         pub fn preflight(&self) -> Result<()> {
-            self.apply(RecordBatch::new_empty(Arc::clone(&self.source)))
-                .map(|_| ())
+            let empty = arrow_array::new_empty_array(self.source.data_type());
+            let mut budget = MaterializationBudget::default();
+            self.root.cast(empty, &mut budget).map(|_| ())
         }
 
-        /// Reconciles one batch of the source schema to the target root.
+        /// Casts one column whose field lays out as [`Self::as_source`].
         ///
-        /// An exact batch comes back as itself: the same `RecordBatch`, holding the
-        /// same column `Arc`s, not a rebuilt one carrying equal arrays.
+        /// Its name and nullability may differ from the source's; its storage
+        /// and extension identity may not. An identity plan hands the same
+        /// buffers back, and the column itself when the target is its own
+        /// field.
         ///
         /// # Errors
         ///
-        /// Returns an error when the batch does not carry the schema this plan was
-        /// compiled for, when a value cannot be converted, or when a required field
-        /// is null under [`Nullability::Strict`](super::Nullability::Strict).
-        pub fn apply(&self, batch: RecordBatch) -> Result<RecordBatch> {
-            if batch.schema_ref().fields() != self.source.fields() {
+        /// Returns an error for a run, which has no layout, for a column of
+        /// another layout, naming both, for a value the target refuses, and for
+        /// an absent row a required target refuses under
+        /// [`Nullability::Strict`](super::Nullability::Strict).
+        pub fn apply(&self, serie: &Serie) -> Result<Serie> {
+            let field = serie.require_field()?;
+            let layout = field.as_arrow_field_ref()?;
+            let same_layout = layout.data_type() == self.source.data_type()
+                && (matches!(self.source.data_type(), ArrowDataType::Struct(_))
+                    || same_extension(layout, &self.source));
+            if !same_layout {
                 return Err(Error::IncompatibleSchema(format!(
-                    "batch schema {:?} differs from the schema this cast plan was compiled for, {:?}",
+                    "column {:?} lays out as {}, and this cast plan was compiled for {}",
+                    field.name(),
+                    layout.data_type(),
+                    self.source.data_type()
+                )));
+            }
+            if self.identity && field == self.target.as_ref() {
+                return Ok(serie.clone());
+            }
+            let array = serie.require_arrow_array()?;
+            let mut budget = MaterializationBudget::default();
+            let cast = self.root.cast(array, &mut budget)?;
+            land(Arc::clone(&self.target), cast, &self.serie)
+        }
+
+        /// Casts foreign buffers of the source layout as transport: the array
+        /// that comes back is not landed, so no row is proven beyond what the
+        /// engine itself reads, and an exact array comes back as itself.
+        pub(crate) fn reconcile_array(&self, array: ArrayRef) -> Result<ArrayRef> {
+            let mut budget = MaterializationBudget::default();
+            self.root.cast(array, &mut budget)
+        }
+
+        /// Casts foreign buffers of the source layout and lands them.
+        pub(crate) fn cast_array(&self, array: ArrayRef) -> Result<Serie> {
+            let mut budget = MaterializationBudget::default();
+            let cast = self.root.cast(array, &mut budget)?;
+            land(Arc::clone(&self.target), cast, &self.foreign)
+        }
+
+        /// Casts one foreign batch of the source layout and lands it as the
+        /// target record column.
+        pub(crate) fn cast_batch(&self, batch: &RecordBatch) -> Result<Serie> {
+            self.cast_array(super::struct_array_from_batch(batch.clone()))
+        }
+
+        /// The schema a record plan's batches carry after the cast.
+        pub(crate) fn target_schema(&self) -> Result<&SchemaRef> {
+            self.schema.as_ref().ok_or_else(|| {
+                Error::IncompatibleSchema(format!(
+                    "cast target {:?} is not a non-null record root, so it is not a table",
+                    self.target.name()
+                ))
+            })
+        }
+
+        /// Reconciles one batch of the source layout to the target root as
+        /// transport: no row lands, and so no row is proven beyond what the
+        /// engine itself reads.
+        ///
+        /// An exact batch comes back as itself: the same `RecordBatch`,
+        /// holding the same column `Arc`s, not a rebuilt one carrying equal
+        /// arrays.
+        pub(crate) fn reconcile_batch(&self, batch: RecordBatch) -> Result<RecordBatch> {
+            let schema = self.target_schema()?;
+            let ArrowDataType::Struct(fields) = self.source.data_type() else {
+                return Err(Error::IncompatibleSchema(format!(
+                    "cast source {:?} is not a record, so it reconciles no batch",
+                    self.source.name()
+                )));
+            };
+            if batch.schema_ref().fields() != fields {
+                return Err(Error::IncompatibleSchema(format!(
+                    "batch schema {:?} differs from the schema this cast plan was compiled for, {fields:?}",
                     batch.schema_ref().fields(),
-                    self.source.fields()
                 )));
             }
             let row_count = batch.num_rows();
@@ -721,10 +808,11 @@ mod plan {
             let cast = self.root.cast(source, &mut budget)?;
             let columns = downcast::<StructArray>(cast.as_ref())?.columns();
 
-            // Ownership allows handing the caller's own batch back only when every
-            // column survived by pointer and the batch already declares the target
-            // schema; anything else would be a different batch wearing that claim.
-            if batch.schema_ref().as_ref() == self.schema.as_ref()
+            // Ownership allows handing the caller's own batch back only when
+            // every column survived by pointer and the batch already declares
+            // the target schema; anything else would be a different batch
+            // wearing that claim.
+            if batch.schema_ref().as_ref() == schema.as_ref()
                 && columns.len() == batch.num_columns()
                 && columns
                     .iter()
@@ -734,21 +822,11 @@ mod plan {
                 return Ok(batch);
             }
 
-            // A batch carries its row count even with no columns, which a struct
-            // array cannot, so the count is restored explicitly.
+            // A batch carries its row count even with no columns, which a
+            // struct array cannot, so the count is restored explicitly.
             let options = RecordBatchOptions::new().with_row_count(Some(row_count));
-            RecordBatch::try_new_with_options(Arc::clone(&self.schema), columns.to_vec(), &options)
+            RecordBatch::try_new_with_options(Arc::clone(schema), columns.to_vec(), &options)
                 .map_err(Into::into)
-        }
-
-        /// Whether the plan hands every batch of its source schema straight back.
-        ///
-        /// A reader over such a plan is the reader itself, so nothing wraps it.
-        /// Strictness is what makes an equal schema not enough: a non-null Arrow
-        /// field can still carry a logical null inside a nested child, and refusing
-        /// that is the whole point of asking.
-        pub(crate) fn is_identity(&self) -> bool {
-            !self.options.nullability().is_strict() && self.source.as_ref() == self.schema.as_ref()
         }
     }
 
@@ -761,9 +839,8 @@ mod plan {
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
             formatter
                 .debug_struct("ArrowCastPlan")
-                .field("field", &self.field)
+                .field("target", &self.target)
                 .field("source", &self.source)
-                .field("schema", &self.schema)
                 .field("options", &self.options)
                 .finish()
         }
@@ -788,7 +865,7 @@ mod plan {
 /// behind the reading for the spellings only it takes, so a column still reads
 /// everything it used to.
 pub(crate) mod text {
-    use crate::enums::EnumType;
+
     use std::sync::Arc;
 
     use arrow_array::types::{
@@ -809,7 +886,7 @@ pub(crate) mod text {
     use crate::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::cast::columns::{is_exposed, run_value_exposure};
     use crate::cast::{arrow_cast_exposed, downcast};
-    use crate::sequence::SequenceType;
+
     use crate::value::dtype_canonical;
     use crate::{DataType, Field, Scalar};
 
@@ -826,9 +903,7 @@ pub(crate) mod text {
     /// tail encodes them, so a dictionary column reads like a plain one.
     pub(crate) fn encoded_value_of(target: &DataType) -> &DataType {
         match target {
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
-                encoded_value_of(dictionary.value())
-            }
+            DataType::Dictionary(dictionary) => encoded_value_of(dictionary.value()),
             DataType::RunEndEncoded(encoded) => encoded_value_of(encoded.values().dtype()),
             other => other,
         }
@@ -858,13 +933,11 @@ pub(crate) mod text {
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
             DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
-            DataType::Sequence(
-                SequenceType::List(item)
-                | SequenceType::LargeList(item)
-                | SequenceType::ListView(item)
-                | SequenceType::LargeListView(item)
-                | SequenceType::FixedSizeList(item, _),
-            ) => keeps_empty_text(item.dtype()),
+            DataType::List(item)
+            | DataType::LargeList(item)
+            | DataType::ListView(item)
+            | DataType::LargeListView(item)
+            | DataType::FixedSizeList(item, _) => keeps_empty_text(item.dtype()),
             code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
             _ => false,
         }
@@ -1147,253 +1220,47 @@ pub(crate) mod text {
         Ok(cast)
     }
 }
-/// Typed-field Arrow array projections.
-mod typed {
-    use arrow_array::{Array, ArrayRef, Scalar};
+/// One compiled plan per distinct source layout, for a loop whose batches
+/// can change schema.
+///
+/// This is the one owner of "recompile only when the schema changes": a
+/// writer or a decoder holds one cache and asks it per batch, and a batch of
+/// the fields the last one carried reuses that plan - the pointer compared
+/// first, then the fields.
+pub(crate) struct PlanCache<P> {
+    last: Option<(arrow_schema::Fields, P)>,
+}
 
-    use crate::FieldValue as _;
-    use crate::arrow::{Error, Result};
-    use crate::cast::ArrowCastOptions;
-
-    /// The Arrow array a field's values materialize into.
-    ///
-    /// Implemented for every datatype payload. A variant whose physical array
-    /// depends on a datatype parameter reports [`ArrayRef`], because there is no
-    /// single concrete type to name.
-    pub trait ArrowFieldType: crate::DataTypeValue {
-        /// The array produced by casting to this field's datatype.
-        type Array: Array + Clone + 'static;
-
-        /// Narrow a cast array to this marker's array type.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when the cast produced a different physical array,
-        /// which would mean the cast engine and this table disagree.
-        fn downcast_array(array: ArrayRef) -> Result<Self::Array>;
+impl<P> PlanCache<P> {
+    /// An empty cache: the first batch compiles.
+    pub(crate) const fn new() -> Self {
+        Self { last: None }
     }
 
-    /// Narrow one cast array, naming both sides when the narrowing fails.
-    fn downcast_owned<A: Array + Clone + 'static>(
-        array: ArrayRef,
-        expected: &'static str,
-    ) -> Result<A> {
-        array.as_any().downcast_ref::<A>().cloned().ok_or_else(|| {
-            Error::IncompatibleSchema(format!(
-                "expected a cast to produce an Arrow {expected} array, got {}",
-                array.data_type()
-            ))
-        })
-    }
-
-    /// Bind a marker to the concrete Arrow array its datatype materializes into.
-    macro_rules! typed_array {
-        ($marker:path, $array:ty) => {
-            impl ArrowFieldType for $marker {
-                type Array = $array;
-
-                fn downcast_array(array: ArrayRef) -> Result<Self::Array> {
-                    downcast_owned(array, stringify!($array))
-                }
-            }
-        };
-    }
-
-    /// Bind a marker whose physical array depends on a datatype parameter.
-    macro_rules! opaque_array {
-        ($marker:path) => {
-            impl ArrowFieldType for $marker {
-                type Array = ArrayRef;
-
-                fn downcast_array(array: ArrayRef) -> Result<Self::Array> {
-                    Ok(array)
-                }
-            }
-        };
-    }
-
-    typed_array!(crate::NullType, arrow_array::NullArray);
-    typed_array!(crate::BooleanType, arrow_array::BooleanArray);
-    typed_array!(crate::integer::Int8Type, arrow_array::Int8Array);
-    typed_array!(crate::integer::Int16Type, arrow_array::Int16Array);
-    typed_array!(crate::integer::Int32Type, arrow_array::Int32Array);
-    typed_array!(crate::integer::Int64Type, arrow_array::Int64Array);
-    typed_array!(crate::integer::UInt8Type, arrow_array::UInt8Array);
-    typed_array!(crate::integer::UInt16Type, arrow_array::UInt16Array);
-    typed_array!(crate::integer::UInt32Type, arrow_array::UInt32Array);
-    typed_array!(crate::integer::UInt64Type, arrow_array::UInt64Array);
-    typed_array!(crate::floating::Float16Type, arrow_array::Float16Array);
-    typed_array!(crate::floating::Float32Type, arrow_array::Float32Array);
-    typed_array!(crate::floating::Float64Type, arrow_array::Float64Array);
-    // A date's width is the leaf, so the family has no single array type: a
-    // `date32` column is a `Date32Array` and a `date64` one a `Date64Array`.
-    opaque_array!(crate::DateType);
-    // A decimal's backing integer is the leaf, so the family has no single
-    // array type: a `decimal32` column is a `Decimal32Array` and a
-    // `decimal256` one a `Decimal256Array`.
-    opaque_array!(crate::DecimalType);
-    typed_array!(crate::version::VersionType, arrow_array::StringArray);
-    // A registered code stores as the text it is, exactly as a version does.
-    typed_array!(crate::CountryType, arrow_array::StringArray);
-    typed_array!(crate::CurrencyType, arrow_array::StringArray);
-    typed_array!(crate::MicCodeType, arrow_array::StringArray);
-    typed_array!(crate::CfiCodeType, arrow_array::StringArray);
-    typed_array!(crate::IsinCodeType, arrow_array::StringArray);
-    typed_array!(crate::CusipCodeType, arrow_array::StringArray);
-    typed_array!(crate::SedolCodeType, arrow_array::StringArray);
-    typed_array!(crate::BloombergCodeType, arrow_array::StringArray);
-    typed_array!(crate::FIGICodeType, arrow_array::StringArray);
-    typed_array!(crate::SideType, arrow_array::StringArray);
-    typed_array!(crate::StateType, arrow_array::StringArray);
-    typed_array!(crate::TimeInForceType, arrow_array::StringArray);
-    // A UUID stores as the fixed binary of its sixteen bytes.
-    typed_array!(crate::uuid::UuidType, arrow_array::FixedSizeBinaryArray);
-    // The sequence family covers five layouts whose arrays genuinely differ,
-    // so it names none of them; a struct is one struct array.
-    typed_array!(crate::SequenceType, ArrayRef);
-    typed_array!(crate::StructType, arrow_array::StructArray);
-    typed_array!(crate::UnionType, arrow_array::UnionArray);
-    typed_array!(crate::MappingType, arrow_array::MapArray);
-    // A variant's storage is the struct of its two binaries, and a
-    // geospatial value is its WKB payload, so their physical arrays are
-    // fixed.
-    typed_array!(crate::VariantType, arrow_array::StructArray);
-    typed_array!(crate::GeometryType, arrow_array::BinaryArray);
-    typed_array!(crate::GeographyType, arrow_array::BinaryArray);
-
-    // A leaf and its unit decide the physical width of a temporal value, a key
-    // type decides the physical width of a dictionary index, a string's layout
-    // and charset decide which text or byte array holds it and a byte layout
-    // which binary array, so these have no single array type.
-    opaque_array!(crate::string::StringType);
-    opaque_array!(crate::bytes::BytesType);
-    opaque_array!(crate::DateTimeType);
-    opaque_array!(crate::TimeType);
-    opaque_array!(crate::DurationType);
-    opaque_array!(crate::IntervalType);
-    opaque_array!(crate::EnumType);
-    opaque_array!(crate::RunEndType);
-
-    impl<D: ArrowFieldType> crate::FieldOf<D> {
-        /// Cast an incoming Arrow array to this field, returning its exact array.
-        ///
-        /// The field is the target: `array` is reconciled to the field's datatype
-        /// and nullability. [`ArrowCastOptions`] carries both answers - whether a
-        /// failed conversion becomes null, and whether a null a non-nullable field
-        /// cannot hold takes its canonical default or is refused by path.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error for an unsupported cast, a value that cannot satisfy
-        /// the field, or a default that cannot be materialized.
-        pub fn cast_arrow_array(
-            &self,
-            array: ArrayRef,
-            options: ArrowCastOptions,
-        ) -> Result<D::Array> {
-            D::downcast_array(self.to_field().cast_arrow_array(array, options)?)
+    /// The plan for `fields`, compiled only when they differ from the last.
+    pub(crate) fn get_or_compile(
+        &mut self,
+        fields: &arrow_schema::Fields,
+        compile: impl FnOnce() -> Result<P>,
+    ) -> Result<&P> {
+        let hit = self
+            .last
+            .as_ref()
+            .is_some_and(|(held, _)| held.as_ptr() == fields.as_ptr() || held == fields);
+        if !hit {
+            self.last = Some((fields.clone(), compile()?));
         }
-
-        /// Cast a one-element Arrow array to this field as a typed scalar.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when `array` does not hold exactly one value, or any
-        /// error [`Self::cast_arrow_array`] returns.
-        pub fn cast_arrow_scalar(
-            &self,
-            array: ArrayRef,
-            options: ArrowCastOptions,
-        ) -> Result<Scalar<D::Array>> {
-            if array.len() != 1 {
-                return Err(Error::IncompatibleSchema(format!(
-                    "expected exactly 1 value to cast as a scalar, got {}",
-                    array.len()
-                )));
-            }
-            Ok(Scalar::new(self.cast_arrow_array(array, options)?))
+        match &self.last {
+            Some((_, plan)) => Ok(plan),
+            None => unreachable!("a cache miss fills the slot before answering"),
         }
     }
 }
 
-/// Casts one Arrow array to a datatype, with no field around it.
-///
-/// # Errors
-///
-/// Returns an error for an unsupported cast or a value the datatype cannot
-/// hold.
-pub(crate) fn cast_dtype_arrow_array(
-    dtype: &DataType,
-    array: ArrayRef,
-    options: ArrowCastOptions,
-) -> Result<ArrayRef> {
-    let plan = ArrayCastPlan::new_dtype(dtype, array.data_type(), options)?;
-    let mut budget = MaterializationBudget::default();
-    plan.cast(array, &mut budget)
-}
-
-/// Casts one Arrow array to a field: its datatype and its nullability.
-///
-/// # Errors
-///
-/// Returns an error for an unsupported cast, a value that cannot satisfy the
-/// field, or a default that cannot be materialized.
-pub(crate) fn cast_field_arrow_array(
-    field: &Field,
-    array: ArrayRef,
-    options: ArrowCastOptions,
-) -> Result<ArrayRef> {
-    cast_field_array(field, None, array, options)
-}
-
-/// Reconciles one Arrow record batch to a non-null Struct root.
-///
-/// # Errors
-///
-/// Returns an error unless the field is a Struct schema, or when a child cast
-/// or missing-column default cannot be materialized.
-pub(crate) fn cast_field_arrow_batch(
-    field: &Field,
-    batch: RecordBatch,
-    options: ArrowCastOptions,
-) -> Result<RecordBatch> {
-    ArrowCastPlan::compile(batch.schema_ref(), field, options)?.apply(batch)
-}
-
-/// Wraps a reader so every batch it yields is reconciled to one root.
-///
-/// The streaming form of [`cast_field_arrow_batch`], and a reader for the
-/// reason every streaming shape in this crate is one: the plan is compiled
-/// once from the reader's own schema, so the returned reader answers the cast
-/// schema before the first batch is pulled and no batch is planned for twice.
-/// A reader already carrying the declared shape comes back as itself.
-///
-/// # Errors
-///
-/// Returns an error when the cast cannot be planned from the reader's schema.
-/// A failure on one batch surfaces as that batch's `Err`, and the reader is
-/// not fused after it.
-pub(crate) fn cast_field_arrow_reader(
-    field: &Field,
-    reader: crate::arrow::BatchReader,
-    options: ArrowCastOptions,
-) -> Result<crate::arrow::BatchReader> {
-    crate::arrow::cast_reader(reader, field, options)
-}
-
-/// Refuses an array that is not the one row a scalar cast takes.
-///
-/// # Errors
-///
-/// Returns an error naming the row count.
-pub(crate) fn one_row(array: &ArrayRef) -> Result<()> {
-    if array.len() == 1 {
-        return Ok(());
+impl<P> Default for PlanCache<P> {
+    fn default() -> Self {
+        Self::new()
     }
-    Err(Error::IncompatibleSchema(format!(
-        "a scalar cast takes exactly one row, got {}",
-        array.len()
-    )))
 }
 
 /// View a batch as one struct array, keeping the row count of an empty batch.
@@ -1407,7 +1274,6 @@ pub(crate) fn struct_array_from_batch(batch: RecordBatch) -> ArrayRef {
 #[derive(Clone, Copy)]
 enum NullPolicy {
     Field,
-    DataType,
     Reject,
 }
 
@@ -1492,6 +1358,11 @@ pub(crate) struct ArrayCastPlan {
     /// The dot/bracket path from the cast root, rendered once at compile time.
     path: SmolStr,
     null_policy: NullPolicy,
+    /// Whether null is the target datatype's own canonical default - `null`,
+    /// or an encoding whose values hold only nulls - decided once here: such
+    /// a column holds its nulls under a required field, the one exception
+    /// the landing admits too.
+    null_default: bool,
     kind: ArrayCastKind,
     /// Whether this node turns an exposed empty text cell null before reading
     /// it, decided once at compile time.
@@ -1509,6 +1380,54 @@ impl ArrayCastPlan {
     /// Whether a failed conversion becomes null rather than an error.
     pub(crate) const fn safe(&self) -> bool {
         self.options.is_safe()
+    }
+
+    /// Which target rows this node certifies, in the order the landing
+    /// recurses into the target field.
+    ///
+    /// A node certifies only on evidence: an ingest that read every value
+    /// under the target's rule, a default or placeholder the plan laid out, a
+    /// null-only column, or an exact node whose input already landed as a
+    /// `Serie` - the crate's projection is lossless, so an equal layout over
+    /// a landed column is the same datatype. An exact, bit, kernel or
+    /// byte-bridge node over foreign bytes certifies nothing, whatever the
+    /// extension label on them says.
+    pub(crate) fn proof(&self, serie: bool) -> crate::serie::Proof {
+        use crate::serie::Proof;
+        match &self.kind {
+            ArrayCastKind::Exact if serie => Proof::Proven,
+            ArrayCastKind::StringIngest { .. }
+            | ArrayCastKind::BytesIngest
+            | ArrayCastKind::CodeIngest
+            | ArrayCastKind::UuidIngest
+            | ArrayCastKind::UrlIngest
+            | ArrayCastKind::UrnIngest
+            | ArrayCastKind::DeferredUnsupported { .. } => Proof::Proven,
+            ArrayCastKind::Struct { columns, .. } => Proof::of_children(
+                columns
+                    .iter()
+                    .map(|column| match column {
+                        StructColumnPlan::Source { cast, .. } => cast.proof(serie),
+                        StructColumnPlan::Missing { .. } => Proof::Proven,
+                    })
+                    .collect(),
+            ),
+            ArrayCastKind::List { child, .. } => Proof::of_children(vec![child.proof(serie)]),
+            ArrayCastKind::Map { entries, .. } => Proof::of_children(vec![entries.proof(serie)]),
+            ArrayCastKind::Dictionary { values, .. }
+            | ArrayCastKind::Encoded { values }
+            | ArrayCastKind::RunEndEncoded { values, .. } => {
+                Proof::of_children(vec![values.proof(serie)])
+            }
+            ArrayCastKind::Decoded { plan, .. } => plan.proof(serie),
+            ArrayCastKind::Union { children, .. } => Proof::of_children(
+                children
+                    .iter()
+                    .map(|(_, child)| child.proof(serie))
+                    .collect(),
+            ),
+            _ => Proof::Unproven,
+        }
     }
 }
 
@@ -1649,39 +1568,6 @@ pub(crate) enum ListPlanKind {
 }
 
 impl ArrayCastPlan {
-    fn new_dtype(
-        dtype: &DataType,
-        source_type: &ArrowDataType,
-        options: ArrowCastOptions,
-    ) -> Result<Self> {
-        dtype.validate_bounded()?;
-        Self::new_validated_with(
-            &Field::new("value", dtype.clone(), false),
-            source_type,
-            None,
-            PlanRules::nested(options, Deferred::default()).with_null_policy(NullPolicy::DataType),
-            Path::root(),
-        )
-    }
-
-    /// Plans the root of a record-batch cast, where the batch's own schema is
-    /// the source struct and `$` is the path every child hangs from.
-    pub(crate) fn new_root(
-        field: &Field,
-        source_type: &ArrowDataType,
-        options: ArrowCastOptions,
-        deferred: Deferred,
-    ) -> Result<Self> {
-        field.validate_bounded()?;
-        Self::new_validated_with(
-            field,
-            source_type,
-            None,
-            PlanRules::nested(options, deferred),
-            Path::root(),
-        )
-    }
-
     fn new_nested_validated(
         field: &Field,
         source_type: &ArrowDataType,
@@ -1765,12 +1651,8 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
             ),
-            DataType::Uri(UriType::Url) => {
-                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url))
-            }
-            DataType::Uri(UriType::Urn) => {
-                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Urn))
-            }
+            DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
+            DataType::Urn => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Urn)),
             DataType::Timezone => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Timezone)
@@ -1831,6 +1713,7 @@ impl ArrayCastPlan {
             options,
             path: SmolStr::from(path.render()),
             null_policy,
+            null_default: matches!(field.dtype().is_default_value(&Scalar::Null), Ok(true)),
             kind,
             blanks_text,
         })
@@ -1958,16 +1841,12 @@ impl ArrayCastPlan {
             (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to version is not supported"),
             },
-            (DataType::Uri(UriType::Url), source) if is_text_layout(source) => {
-                ArrayCastKind::UrlIngest
-            }
-            (DataType::Uri(UriType::Url), source) => ArrayCastKind::DeferredUnsupported {
+            (DataType::Url, source) if is_text_layout(source) => ArrayCastKind::UrlIngest,
+            (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
             },
-            (DataType::Uri(UriType::Urn), source) if is_text_layout(source) => {
-                ArrayCastKind::UrnIngest
-            }
-            (DataType::Uri(UriType::Urn), source) => ArrayCastKind::DeferredUnsupported {
+            (DataType::Urn, source) if is_text_layout(source) => ArrayCastKind::UrnIngest,
+            (DataType::Urn, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to urn is not supported"),
             },
             (DataType::Timezone, source) if is_text_layout(source) => ArrayCastKind::TimezoneIngest,
@@ -2160,7 +2039,7 @@ impl ArrayCastPlan {
                             default: if target.is_nullable() {
                                 None
                             } else {
-                                target.default_arrow_array().ok()
+                                crate::serie::default_array(target).ok()
                             },
                         },
                     };
@@ -2179,21 +2058,19 @@ impl ArrayCastPlan {
             // fixed sizes are a different row shape rather than a layout, and
             // that pair is refused below by name.
             (
-                DataType::Sequence(SequenceType::List(child))
-                | DataType::Sequence(SequenceType::LargeList(child))
-                | DataType::Sequence(SequenceType::ListView(child))
-                | DataType::Sequence(SequenceType::LargeListView(child))
-                | DataType::Sequence(SequenceType::FixedSizeList(child, _)),
+                DataType::List(child)
+                | DataType::LargeList(child)
+                | DataType::ListView(child)
+                | DataType::LargeListView(child)
+                | DataType::FixedSizeList(child, _),
                 ArrowDataType::List(source_child)
                 | ArrowDataType::LargeList(source_child)
                 | ArrowDataType::ListView(source_child)
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (
-                    DataType::Sequence(SequenceType::FixedSizeList(_, size)),
-                    ArrowDataType::FixedSizeList(_, source),
-                ) = (dtype, source_type)
+                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
+                    (dtype, source_type)
                 {
                     if size != source {
                         return Err(Error::Unsupported {
@@ -2217,11 +2094,18 @@ impl ArrayCastPlan {
                     kind: source_list_kind(source_type)?,
                 }
             }
-            (DataType::Mapping(map), ArrowDataType::Map(source_entries, _)) => {
+            (
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)),
+                ArrowDataType::Map(source_entries, _),
+            ) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let ArrowDataType::Map(target_entries, ordered) = expected else {
                     return Err(internal_target_error("map"));
                 };
-                let DataType::Mapping(source) = DataType::from_arrow_datatype(source_type)? else {
+                let Some(source) = (DataType::from_arrow_datatype(source_type)?).as_mapping()
+                else {
                     return Err(Error::IncompatibleSchema(
                         "source Arrow Map did not import as a Map datatype".to_owned(),
                     ));
@@ -2242,7 +2126,7 @@ impl ArrayCastPlan {
                 }
             }
             (
-                DataType::Enum(EnumType::Dictionary(dictionary)),
+                DataType::Dictionary(dictionary),
                 ArrowDataType::Dictionary(source_key, source_value),
             ) => ArrayCastKind::Dictionary {
                 source_key: source_key.as_ref().clone(),
@@ -2316,7 +2200,7 @@ impl ArrayCastPlan {
             // wrapper to Arrow's kernel silently skipped. The two arms above
             // stay ahead of this one because a source already in this encoding
             // is re-encoded rather than decoded and rebuilt.
-            (DataType::Enum(EnumType::Dictionary(dictionary)), _) => ArrayCastKind::Encoded {
+            (DataType::Dictionary(dictionary), _) => ArrayCastKind::Encoded {
                 values: Box::new(Self::new_nested_validated(
                     &Field::new("values", dictionary.value().clone(), true),
                     source_type,
@@ -2433,7 +2317,8 @@ impl ArrayCastPlan {
                 exposure,
                 &self.field,
                 budget,
-            )?,
+            )
+            .map_err(|error| self.located(error))?,
             ArrayCastKind::ByteBridge => {
                 let bytes = arrow_cast_exposed(
                     &array,
@@ -2442,7 +2327,8 @@ impl ArrayCastPlan {
                     exposure,
                     &self.field,
                     budget,
-                )?;
+                )
+                .map_err(|error| self.located(error))?;
                 arrow_cast_exposed(
                     &bytes,
                     &self.expected,
@@ -2450,7 +2336,8 @@ impl ArrayCastPlan {
                     exposure,
                     &self.field,
                     budget,
-                )?
+                )
+                .map_err(|error| self.located(error))?
             }
             ArrayCastKind::GeospatialIngest => {
                 let binary = if array.data_type() == &ArrowDataType::Binary {
@@ -2717,21 +2604,18 @@ impl ArrayCastPlan {
                     self.path
                 )));
             }
-            // A datatype target is a value of that type, so a null is absence
-            // there too - unless null is the datatype's own only value.
-            NullPolicy::DataType if null_count != 0 => {
-                if self.refuses_absence() && !self.field.dtype().is_default_value(&Scalar::Null)? {
-                    return Err(self.required_field(null_count));
-                }
-                cast = fill_nulls(&self.field, cast, true, exposure, budget)?;
-            }
-            NullPolicy::Field if !self.field.is_nullable() && null_count != 0 => {
+            // A null under a required field is absence - unless null is the
+            // datatype's own canonical default, the one exception the landing
+            // admits too, where the column holds its nulls as they are.
+            NullPolicy::Field
+                if !self.field.is_nullable() && null_count != 0 && !self.null_default =>
+            {
                 if self.refuses_absence() {
                     return Err(self.required_field(null_count));
                 }
-                cast = fill_nulls(&self.field, cast, false, exposure, budget)?;
+                cast = fill_nulls(&self.field, cast, exposure, budget)?;
             }
-            NullPolicy::Field | NullPolicy::DataType | NullPolicy::Reject => {}
+            NullPolicy::Field | NullPolicy::Reject => {}
         }
         if cast.data_type() != &self.expected {
             return Err(Error::IncompatibleSchema(format!(
@@ -2745,19 +2629,16 @@ impl ArrayCastPlan {
         // handed on untouched, so recounting it would re-answer the count
         // taken a few lines up.
         let remaining_nulls = if null_count != 0
-            && matches!(self.null_policy, NullPolicy::Field | NullPolicy::DataType)
-            && (matches!(self.null_policy, NullPolicy::DataType) || !self.field.is_nullable())
+            && matches!(self.null_policy, NullPolicy::Field)
+            && !self.field.is_nullable()
+            && !self.null_default
         {
             exposed_logical_null_count(cast.as_ref(), self.field.dtype(), exposure)?
         } else {
             0
         };
         if remaining_nulls != 0 {
-            let default = if matches!(self.null_policy, NullPolicy::DataType) {
-                self.field.dtype().default_arrow_array()?
-            } else {
-                self.field.default_arrow_array()?
-            };
+            let default = crate::serie::default_array(&self.field)?;
             if !is_logically_null(default.as_ref(), 0) {
                 return Err(Error::IncompatibleSchema(format!(
                     "required field {} still contains {remaining_nulls} logical null values after default filling",
@@ -2766,6 +2647,17 @@ impl ArrayCastPlan {
             }
         }
         Ok(cast)
+    }
+
+    /// Name this node's path on a value Arrow's kernel refused, which Arrow
+    /// reports without the column it was reading.
+    fn located(&self, error: Error) -> Error {
+        match error {
+            Error::Arrow(arrow_schema::ArrowError::CastError(message)) => Error::Arrow(
+                arrow_schema::ArrowError::CastError(format!("field {}: {message}", self.path)),
+            ),
+            other => other,
+        }
     }
 
     /// Whether this node refuses absence rather than repairing it.
@@ -2780,33 +2672,6 @@ impl ArrayCastPlan {
             nulls: Some(nulls),
         }
     }
-}
-
-/// Casts an array into the shape a field declares.
-///
-/// `source_metadata` is the Arrow metadata of the field the array came from,
-/// when the caller has one: it carries the extension identity, so a
-/// recognized string or geospatial column follows the declared rules
-/// exactly as a batch column does. A bare array casts as its storage.
-pub(crate) fn cast_field_array(
-    field: &Field,
-    source_metadata: Option<&HashMap<String, String>>,
-    array: ArrayRef,
-    options: ArrowCastOptions,
-) -> Result<ArrayRef> {
-    field.validate_bounded()?;
-    // A bare array *is* the field, so the field names the root rather than
-    // hanging off one: a refusal reads `$.id`, not a bare `$`.
-    let root = Path::root();
-    let plan = ArrayCastPlan::new_validated_with(
-        field,
-        array.data_type(),
-        source_metadata,
-        PlanRules::nested(options, Deferred::default()),
-        root.field(field.name()),
-    )?;
-    let mut budget = MaterializationBudget::default();
-    plan.cast(array, &mut budget)
 }
 
 /// Enforces the declared rules a recognized extension source adds to a cast.
@@ -2843,13 +2708,13 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
-        (DataType::Uri(UriType::Url), RecognizedExtension::Url) => Ok(()),
+        (DataType::Url, RecognizedExtension::Url) => Ok(()),
         (DataType::String(parameters), RecognizedExtension::Url)
             if is_text_storage(*parameters) =>
         {
             Ok(())
         }
-        (DataType::Uri(UriType::Urn), RecognizedExtension::Urn) => Ok(()),
+        (DataType::Urn, RecognizedExtension::Urn) => Ok(()),
         (DataType::String(parameters), RecognizedExtension::Urn)
             if is_text_storage(*parameters) =>
         {
@@ -3070,32 +2935,32 @@ pub(crate) mod columns {
         ArrayCastPlan, ListPlanKind, StructColumnPlan, downcast, internal_target_error,
     };
     use crate::decimal::casts::DecimalText;
-    use crate::{DataType, Field, Scalar, UnionMode};
+    use crate::{DataType, Field, UnionMode};
 
-    use crate::DecimalType;
-    use crate::enums::EnumType;
-    use crate::sequence::SequenceType;
     mod dictionary {
 
         use super::*;
 
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
-                DataType::Enum(EnumType::Dictionary(_)) => true,
-                DataType::Sequence(SequenceType::List(field))
-                | DataType::Sequence(SequenceType::ListView(field))
-                | DataType::Sequence(SequenceType::FixedSizeList(field, _))
-                | DataType::Sequence(SequenceType::LargeList(field))
-                | DataType::Sequence(SequenceType::LargeListView(field)) => {
-                    contains_dictionary(field.dtype())
-                }
+                DataType::Dictionary(_) => true,
+                DataType::List(field)
+                | DataType::ListView(field)
+                | DataType::FixedSizeList(field, _)
+                | DataType::LargeList(field)
+                | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
                 DataType::Struct(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
                 DataType::Union(fields, _) => fields
                     .iter()
                     .any(|(_, field)| contains_dictionary(field.dtype())),
-                DataType::Mapping(map) => contains_dictionary(map.entries().dtype()),
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    contains_dictionary(map.entries().dtype())
+                }
                 DataType::RunEndEncoded(encoded) => contains_dictionary(encoded.values().dtype()),
                 _ => false,
             }
@@ -3152,7 +3017,7 @@ pub(crate) mod columns {
             }
 
             match field.dtype() {
-                DataType::Enum(EnumType::Dictionary(dictionary)) => align_dictionary_arrays(
+                DataType::Dictionary(dictionary) => align_dictionary_arrays(
                     field,
                     dictionary,
                     left,
@@ -3189,7 +3054,7 @@ pub(crate) mod columns {
                         replace_array_children(right, right_children, budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::List(child)) => {
+                DataType::List(child) => {
                     let left_list = downcast::<ListArray>(left.as_ref())?;
                     let right_list = downcast::<ListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3231,7 +3096,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::LargeList(child)) => {
+                DataType::LargeList(child) => {
                     let left_list = downcast::<LargeListArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3263,7 +3128,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::ListView(child)) => {
+                DataType::ListView(child) => {
                     let left_list = downcast::<ListViewArray>(left.as_ref())?;
                     let right_list = downcast::<ListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3305,7 +3170,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::LargeListView(child)) => {
+                DataType::LargeListView(child) => {
                     let left_list = downcast::<LargeListViewArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3337,7 +3202,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
                     let width = usize::try_from(*size).map_err(|_| {
@@ -3388,7 +3253,10 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Mapping(map) => {
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
                     let left_map = downcast::<MapArray>(left.as_ref())?;
                     let right_map = downcast::<MapArray>(right.as_ref())?;
                     let left_entry_exposure = range_exposure(
@@ -4231,11 +4099,11 @@ pub(crate) mod columns {
                         ordered,
                     )?) as ArrayRef
                 };
-                let DataType::Mapping(target_map) = self.field.dtype() else {
+                let Some(target_map) = (self.field.dtype()).as_mapping() else {
                     return Err(internal_target_error("map"));
                 };
-                if !unchanged || source_map != target_map {
-                    validate_map_invariants(target_map, output.as_ref(), exposure, budget)?;
+                if !unchanged || *source_map != target_map {
+                    validate_map_invariants(&target_map, output.as_ref(), exposure, budget)?;
                 }
                 Ok(output)
             }
@@ -4247,14 +4115,10 @@ pub(crate) mod columns {
         pub(crate) fn fill_nulls(
             field: &Field,
             array: ArrayRef,
-            dtype_semantics: bool,
             exposure: Option<&BooleanBuffer>,
             budget: &mut MaterializationBudget,
         ) -> Result<ArrayRef> {
-            if dtype_semantics && field.dtype().is_default_value(&Scalar::Null)? {
-                return Ok(array);
-            }
-            if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
+            if let DataType::Dictionary(dictionary) = field.dtype() {
                 return fill_dictionary_nulls(field, dictionary, array, exposure, budget);
             }
             let phase = budget.mark();
@@ -4304,11 +4168,7 @@ pub(crate) mod columns {
             }
 
             let source_for_retention = Arc::clone(&array);
-            let default = if dtype_semantics {
-                field.dtype().default_arrow_array()?
-            } else {
-                field.default_arrow_array()?
-            };
+            let default = crate::serie::default_array(field)?;
             if is_logically_null(default.as_ref(), 0) {
                 budget.restore(phase);
                 return Ok(array);
@@ -4414,7 +4274,7 @@ pub(crate) mod columns {
             if has_derived_logical_nulls(value_type) {
                 budget.add_bitmap(1)?;
             }
-            let default = value_type.default_arrow_array()?;
+            let default = crate::serie::default_dtype_array(value_type)?;
             if is_logically_null(default.as_ref(), 0) {
                 budget.restore(phase);
                 return Ok(array);
@@ -4727,7 +4587,7 @@ pub(crate) mod columns {
                 // Arrow validates a List child Field independently of the parent List
                 // validity bitmap. Hidden child slots therefore need a present
                 // canonical value even when their parent row is null.
-                fill_nulls(field, array, false, None, budget)
+                fill_nulls(field, array, None, budget)
             }
         }
 
@@ -4742,7 +4602,7 @@ pub(crate) mod columns {
 
         /// The same column, over a one-row default a caller already holds.
         ///
-        /// `prebuilt` is exactly what `Field::default_arrow_array` would answer
+        /// `prebuilt` is exactly the one-row default `serie::default_array` answers
         /// for this Field; a compiled plan materializes it once so a per-batch
         /// fill does not re-run the schema preflight behind it. `None` keeps the
         /// original behaviour, failure timing included.
@@ -4757,7 +4617,7 @@ pub(crate) mod columns {
             let default_row = || -> Result<ArrayRef> {
                 match prebuilt {
                     Some(prebuilt) => Ok(Arc::clone(prebuilt)),
-                    None => field.default_arrow_array(),
+                    None => crate::serie::default_array(field),
                 }
             };
             let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
@@ -4778,7 +4638,7 @@ pub(crate) mod columns {
                 return Ok(new_null_array(&arrow_type, len));
             }
             if exposed != 0 && hidden != 0 {
-                if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
+                if let DataType::Dictionary(dictionary) = field.dtype() {
                     let exposure = exposure.ok_or_else(|| {
                         Error::IncompatibleSchema(
                             "mixed missing dictionary exposure requires a mask".to_owned(),
@@ -4892,7 +4752,7 @@ pub(crate) mod columns {
             let zero = K::Native::try_from(0).map_err(|_| {
                 Error::IncompatibleSchema("dictionary key cannot represent zero".to_owned())
             })?;
-            let values = dictionary.value().default_arrow_array()?;
+            let values = crate::serie::default_dtype_array(dictionary.value())?;
             let mut keys =
                 arrow_array::builder::PrimitiveBuilder::<K>::with_capacity(exposure.len());
             for index in 0..exposure.len() {
@@ -5115,21 +4975,24 @@ pub(crate) mod columns {
             DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::Decimal(DecimalType::Decimal256 { .. })
+            | DataType::Decimal256 { .. }
             | DataType::Union(..)
-            | DataType::Enum(EnumType::Dictionary(_))
+            | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
-            DataType::Sequence(SequenceType::List(child))
-            | DataType::Sequence(SequenceType::ListView(child))
-            | DataType::Sequence(SequenceType::FixedSizeList(child, _))
-            | DataType::Sequence(SequenceType::LargeList(child))
-            | DataType::Sequence(SequenceType::LargeListView(child)) => {
-                requires_yggdryl_key_comparator(child.dtype())
-            }
+            DataType::List(child)
+            | DataType::ListView(child)
+            | DataType::FixedSizeList(child, _)
+            | DataType::LargeList(child)
+            | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
             DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
-            DataType::Mapping(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
+                requires_yggdryl_key_comparator(map.entries().dtype())
+            }
             _ => false,
         }
     }
@@ -5138,7 +5001,7 @@ pub(crate) mod columns {
         matches!(
             dtype,
             DataType::Null
-                | DataType::Enum(EnumType::Dictionary(_))
+                | DataType::Dictionary(_)
                 | DataType::Union(..)
                 | DataType::RunEndEncoded(_)
         )
@@ -5290,7 +5153,7 @@ pub(crate) mod columns {
                         .cmp(&crate::Float64::from_f64(right_values[right]))
                 })
             }
-            DataType::Decimal(DecimalType::Decimal256 { .. }) => {
+            DataType::Decimal256 { .. } => {
                 let left_values = downcast::<Decimal256Array>(left.as_ref())?.values().clone();
                 let right_values = downcast::<Decimal256Array>(right.as_ref())?
                     .values()
@@ -5301,7 +5164,7 @@ pub(crate) mod columns {
                         .cmp(DecimalText::new(right_values[right]).as_bytes())
                 })
             }
-            DataType::Sequence(SequenceType::List(child)) => {
+            DataType::List(child) => {
                 let left_source = downcast::<ListArray>(left.as_ref())?;
                 let right_source = downcast::<ListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5323,7 +5186,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Sequence(SequenceType::LargeList(child)) => {
+            DataType::LargeList(child) => {
                 let left_source = downcast::<LargeListArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5345,7 +5208,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Sequence(SequenceType::ListView(child)) => {
+            DataType::ListView(child) => {
                 let left_source = downcast::<ListViewArray>(left.as_ref())?;
                 let right_source = downcast::<ListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5370,7 +5233,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::Sequence(SequenceType::LargeListView(child)) => {
+            DataType::LargeListView(child) => {
                 let left_source = downcast::<LargeListViewArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5395,7 +5258,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+            DataType::FixedSizeList(child, size) => {
                 let left_values =
                     Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
                 let right_values =
@@ -5436,7 +5299,10 @@ pub(crate) mod columns {
                         .unwrap_or(Ordering::Equal)
                 })
             }
-            DataType::Mapping(map) => {
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let left_source = downcast::<MapArray>(left.as_ref())?;
                 let right_source = downcast::<MapArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5462,7 +5328,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            DataType::Dictionary(dictionary) => {
                 return match dictionary.key() {
                     DataType::Int8 => {
                         dictionary_key_comparator::<Int8Type>(left, right, dictionary, budget)
@@ -5791,18 +5657,16 @@ pub(crate) mod columns {
 
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
-            DataType::Struct(_) | DataType::Mapping(_) => true,
-            DataType::Sequence(SequenceType::List(field))
-            | DataType::Sequence(SequenceType::ListView(field))
-            | DataType::Sequence(SequenceType::FixedSizeList(field, _))
-            | DataType::Sequence(SequenceType::LargeList(field))
-            | DataType::Sequence(SequenceType::LargeListView(field)) => {
-                contains_struct(field.dtype())
-            }
+            DataType::Struct(_) | DataType::Map(_) | DataType::SortedMap(_) => true,
+            DataType::List(field)
+            | DataType::ListView(field)
+            | DataType::FixedSizeList(field, _)
+            | DataType::LargeList(field)
+            | DataType::LargeListView(field) => contains_struct(field.dtype()),
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
-            DataType::Enum(EnumType::Dictionary(dictionary)) => contains_struct(dictionary.value()),
+            DataType::Dictionary(dictionary) => contains_struct(dictionary.value()),
             DataType::RunEndEncoded(encoded) => contains_struct(encoded.values().dtype()),
             _ => false,
         }
@@ -5811,15 +5675,16 @@ pub(crate) mod columns {
     pub(crate) fn is_reconcilable_nested(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::Sequence(SequenceType::List(_))
-                | DataType::Sequence(SequenceType::ListView(_))
-                | DataType::Sequence(SequenceType::FixedSizeList(_, _))
-                | DataType::Sequence(SequenceType::LargeList(_))
-                | DataType::Sequence(SequenceType::LargeListView(_))
+            DataType::List(_)
+                | DataType::ListView(_)
+                | DataType::FixedSizeList(_, _)
+                | DataType::LargeList(_)
+                | DataType::LargeListView(_)
                 | DataType::Struct(_)
                 | DataType::Union(_, _)
-                | DataType::Enum(EnumType::Dictionary(_))
-                | DataType::Mapping(_)
+                | DataType::Dictionary(_)
+                | DataType::Map(_)
+                | DataType::SortedMap(_)
                 | DataType::RunEndEncoded(_)
         )
     }
@@ -5876,7 +5741,7 @@ pub(crate) mod columns {
         }
         match dtype {
             DataType::Null => Ok(true),
-            DataType::Enum(EnumType::Dictionary(dictionary)) => match dictionary.key() {
+            DataType::Dictionary(dictionary) => match dictionary.key() {
                 DataType::Int8 => dictionary_logical_null_at::<Int8Type>(array, dictionary, index),
                 DataType::Int16 => {
                     dictionary_logical_null_at::<Int16Type>(array, dictionary, index)

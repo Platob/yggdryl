@@ -6,7 +6,7 @@ Five families - date, time, datetime, duration and interval - eight leaves over 
 
 | | |
 | --- | --- |
-| Owned | `DataType::Date(DateType)`, `Time(TimeType)`, `DateTime(DateTimeType)`, `Duration(DurationType)`, `Interval(IntervalType)`; the values `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64`, `Interval`; `Temporal`, the one value enum over the eight leaves; the `TimeUnit` vocabulary and the [`Timezone`](timezone.md) value |
+| Owned | `DataType::Date32`, `Date64`, `Time32(TimeUnit)`, `Time64(TimeUnit)`, `DateTime64 { unit, timezone }`, `Duration32(TimeUnit)`, `Duration64(TimeUnit)`, `Interval(TimeUnit)` - the eight leaves - with `DateType`, `TimeType`, `DateTimeType`, `DurationType`, `IntervalType` the family views over them; the values `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64`, `Interval`; `Temporal`, the one value enum over the eight leaves; the `TimeUnit` vocabulary and the [`Timezone`](timezone.md) value |
 | Validated | once, at construction: a width refuses a resolution it does not carry, an interval refuses a resolution, a datetime refuses a layout; a leaf built by hand is caught by `validate` and again by the Arrow projection |
 | Lazy | nothing; every leaf is `Copy` and every value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection, as every field caches it; a datatype caches nothing |
@@ -31,7 +31,6 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
 
     ```rust
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
-    use yggdryl::{DateTimeType, DateType, DurationType, IntervalType, TimeType};
     use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, Temporal, TimeUnit, Timezone};
 
     // Five families; each constructor picks a leaf and validates its unit once.
@@ -41,14 +40,14 @@ The leaf is the storage and its unit the parameter; the family is what a reader 
     let elapsed = DataType::duration64(TimeUnit::Nanosecond)?;
     let span = DataType::interval(TimeUnit::MonthDayNano)?;
 
-    assert_eq!(day, DataType::Date(DateType::Date32));
-    assert_eq!(clock, DataType::Time(TimeType::Time32(TimeUnit::Millisecond)));
+    assert_eq!(day, DataType::Date32);
+    assert_eq!(clock, DataType::Time32(TimeUnit::Millisecond));
     assert_eq!(
         at,
-        DataType::DateTime(DateTimeType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC })
+        DataType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::UTC }
     );
-    assert_eq!(elapsed, DataType::Duration(DurationType::Duration64(TimeUnit::Nanosecond)));
-    assert_eq!(span, DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)));
+    assert_eq!(elapsed, DataType::Duration64(TimeUnit::Nanosecond));
+    assert_eq!(span, DataType::Interval(TimeUnit::MonthDayNano));
 
     // The identifier, the spelling and the grammar are the leaf's.
     assert_eq!(day.id(), DataTypeId::Date32);

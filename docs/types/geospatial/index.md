@@ -296,49 +296,33 @@ layout the bytes can be re-read under.
     ```rust
     use std::sync::Arc;
 
-    use arrow_array::{Array, ArrayRef, BinaryArray, RecordBatch, StringArray};
-    use yggdryl::cast::ArrowCastOptions;
-    use yggdryl::{DataType, Field, FieldValue as _, GeometryField, StructType};
+    use arrow_array::{ArrayRef, BinaryArray, StringArray};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     // A little-endian XY point: order byte, type code 1, then x and y.
     let mut point = vec![1_u8, 1, 0, 0, 0];
     point.extend(1.0_f64.to_le_bytes());
     point.extend(2.0_f64.to_le_bytes());
     let strict = ArrowCastOptions::new().with_safe(false);
-    let row = |field: Field| -> Field {
-        Field::new(
-            "row",
-            DataType::from(StructType::from_fields([field]).expect("one named field")),
-            false,
-        )
-    };
 
     // Bytes entering the column are read as WKB; a truncated payload names
     // the field, the row and what the reader wanted.
-    let shape = GeometryField::try_new("shape", DataType::geometry(None)?, true)?;
+    let shape = Field::new("shape", DataType::geometry(None)?, true);
     let source: ArrayRef = Arc::new(BinaryArray::from(vec![Some(point.as_slice()), None]));
-    assert_eq!(
-        shape.cast_arrow_array(Arc::clone(&source), strict)?.value(0),
-        point.as_slice()
-    );
+    let stored = Serie::from_arrow_array(Some(&shape), source, strict)?;
+    assert_eq!(stored.as_binary().expect("a WKB column").value(0), Some(point.as_slice()));
     let broken: ArrayRef = Arc::new(BinaryArray::from(vec![Some([1_u8, 1, 0].as_slice())]));
-    let refused = shape.cast_arrow_array(broken, strict).unwrap_err().to_string();
+    let refused = Serie::from_arrow_array(Some(&shape), broken, strict).unwrap_err().to_string();
     assert!(refused.contains("shape") && refused.contains("row 0"), "{refused}");
 
     // The column renders as WKT through the same reader.
-    let declared = row(Field::new("shape", DataType::geometry(None)?, true));
-    let batch = RecordBatch::try_new(declared.into_arrow_schema()?, vec![source])?;
-    let text = row(Field::new("shape", DataType::utf8(), true)).cast_arrow_batch(batch, strict)?;
-    let rendered = text.column(0).as_any().downcast_ref::<StringArray>().unwrap();
-    assert_eq!(rendered.value(0), "POINT (1 2)");
-    assert!(rendered.is_null(1));
+    let text = stored.cast(&Field::new("shape", DataType::utf8(), true), strict)?;
+    assert_eq!(text.as_utf8().expect("a utf8 column").value(0), Some("POINT (1 2)"));
+    assert!(text.is_null(1)?);
 
     // Text has no way in: the reader decodes, it does not parse.
     let words: ArrayRef = Arc::new(StringArray::from(vec!["POINT (1 2)"]));
-    let refused = Field::new("shape", DataType::geometry(None)?, true)
-        .cast_arrow_array(words, strict)
-        .unwrap_err()
-        .to_string();
+    let refused = Serie::from_arrow_array(Some(&shape), words, strict).unwrap_err().to_string();
     assert!(refused.contains("WKT parser"), "{refused}");
     ```
 
@@ -352,32 +336,26 @@ layout the bytes can be re-read under.
 
     import yggdryl
 
+    from yggdryl import Serie
+
     # A little-endian XY point: order byte, type code 1, then x and y.
     point = b"\x01\x01\x00\x00\x00" + struct.pack("<dd", 1.0, 2.0)
 
     # Bytes entering the column are read as WKB; a truncated payload names
     # the field and the row.
     shape = yggdryl.geometry("shape")
-    stored = shape.cast_arrow_array(pa.array([point, None], pa.binary()))
-    assert stored.to_pylist() == [point, None]
+    stored = Serie.from_arrow_array(pa.array([point, None], pa.binary()), shape)
+    assert stored.into_arrow_array().to_pylist() == [point, None]
     with pytest.raises(ValueError, match="row 0"):
-        shape.cast_arrow_array(pa.array([b"\x01\x01\x00"], pa.binary()), safe=False)
+        Serie.from_arrow_array(pa.array([b"\x01\x01\x00"], pa.binary()), shape, safe=False)
 
     # The column renders as WKT through the same reader.
-    declared = yggdryl.struct("row", [shape], nullable=False)
-    batch = pa.record_batch(
-        {"shape": pa.array([point, None], pa.binary())},
-        schema=declared.into_arrow_schema(),
-    )
-    text = yggdryl.struct("row", [yggdryl.utf8("shape")], nullable=False)
-    assert text.cast_arrow_batch(batch, safe=False).column(0).to_pylist() == [
-        "POINT (1 2)",
-        None,
-    ]
+    text = stored.cast(yggdryl.utf8("shape"), safe=False)
+    assert text.as_py() == ["POINT (1 2)", None]
 
     # Text has no way in: the reader decodes, it does not parse.
     with pytest.raises(ValueError, match="WKT parser"):
-        shape.cast_arrow_array(pa.array(["POINT (1 2)"]), safe=False)
+        Serie.from_arrow_array(pa.array(["POINT (1 2)"]), shape, safe=False)
     ```
 
 === "JavaScript"
@@ -385,7 +363,7 @@ layout the bytes can be re-read under.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     // A little-endian XY point: order byte, type code 1, then x and y.
     const point = Buffer.alloc(21)
@@ -398,29 +376,26 @@ layout the bytes can be re-read under.
     // Bytes entering the column are read as WKB; a truncated payload names
     // the field and the row.
     const shape = fields.geometry('shape')
-    assert.deepEqual(Buffer.from(shape.castArrowArray(payload).get(0)), point)
+    const stored = Serie.fromArrowArray(payload, shape)
+    assert.deepEqual(Buffer.from(stored.intoArrowArray().get(0)), point)
     assert.throws(
       () =>
-        shape.castArrowArray(
+        Serie.fromArrowArray(
           arrow.vectorFromArray([Uint8Array.of(1, 1, 0)], new arrow.Binary()),
+          shape,
           { safe: false },
         ),
       /row 0/,
     )
 
     // The column renders as WKT through the same reader.
-    const declared = fields
-      .struct('row', [shape], { nullable: false })
-      .castArrow(new arrow.Table({ shape: payload }))
-    const text = fields
-      .struct('row', [fields.utf8('shape')], { nullable: false })
-      .castArrow(declared, { safe: false })
-    assert.equal(text.getChild('shape').get(0), 'POINT (1 2)')
+    const text = stored.cast(fields.utf8('shape'), { safe: false })
+    assert.equal(text.intoArrowArray().get(0), 'POINT (1 2)')
 
     // Text has no way in: the reader decodes, it does not parse.
     assert.throws(
       () =>
-        shape.castArrowArray(arrow.vectorFromArray(['POINT (1 2)'], new arrow.Utf8()), {
+        Serie.fromArrowArray(arrow.vectorFromArray(['POINT (1 2)'], new arrow.Utf8()), shape, {
           safe: false,
         }),
       /WKT parser/,

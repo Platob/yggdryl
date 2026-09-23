@@ -520,7 +520,14 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Duration64(_)
         | Scalar::Interval(_) => value.into_temporal_text(),
         Scalar::Null => matches!(dtype, DataType::Null).then(|| SmolStr::new_static("null")),
-        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Struct(_) => None,
+        Scalar::List(_)
+        | Scalar::ListView(_)
+        | Scalar::FixedSizeList(_)
+        | Scalar::LargeList(_)
+        | Scalar::LargeListView(_)
+        | Scalar::Map(_)
+        | Scalar::SortedMap(_)
+        | Scalar::Struct(_) => None,
         Scalar::Arrow(_) => None,
     }
 }
@@ -534,8 +541,8 @@ fn write_constructed(
     // The element type is carried by the cast around the constructor, so a
     // list of nothing still knows what it is a list of.
     write!(formatter, "cast(")?;
-    if let (Some(fields), Some(values)) = (dtype.as_fields(), value.as_sequence()) {
-        write_struct_constructor(formatter, fields, values)?;
+    if let (Some(fields), Some(values)) = (dtype.as_fields(), value.sequence_rows()) {
+        write_struct_constructor(formatter, fields, &values)?;
     } else {
         write_constructor_body(formatter, value)?;
     }
@@ -561,17 +568,21 @@ fn write_struct_constructor(
 
 fn write_constructor_body(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Result {
     match value {
-        Scalar::Sequence(items) => {
+        Scalar::List(items)
+        | Scalar::ListView(items)
+        | Scalar::FixedSizeList(items)
+        | Scalar::LargeList(items)
+        | Scalar::LargeListView(items) => {
             formatter.write_char('[')?;
-            for (index, item) in items.as_slice().iter().enumerate() {
+            for (index, item) in items.iter().enumerate() {
                 if index != 0 {
                     formatter.write_str(", ")?;
                 }
-                write_constructor_item(formatter, item)?;
+                write_constructor_item(formatter, &item)?;
             }
             formatter.write_char(']')
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             formatter.write_char('{')?;
             for (index, (key, held)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {

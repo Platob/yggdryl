@@ -35,6 +35,7 @@ a page at the root of this tab instead of a folder of one page.
 | [DataType](datatype.md) | The owned logical type: parsing, canonical display, Arrow projection, defaults |
 | [Field](field.md) | Name, datatype, nullability, metadata: the struct root, merge, and diffs |
 | [Scalar](scalar.md) | The value every layer speaks, the shared enums, and `FieldScalar` |
+| [Serie](serie.md) | Many values: a schema-free `Run`, or the Arrow buffers of one field nested as `Serie` children, read and written as a collection and crossing to Arrow by sharing buffers |
 | [Cast](cast.md) | The field as cast target, over Scalar rows, Arrow arrays, and record batches |
 | [Paths](paths.md) | `FieldPath`: the one path into a nested schema or value, resolved once and applied many times |
 | [Protocol](protocol.md) | Reserved metadata keys and scheme-prefixed protocol properties |

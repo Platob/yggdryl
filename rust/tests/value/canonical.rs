@@ -2,10 +2,7 @@
 //! canonicalization, readings, and absence.
 
 mod value {
-    use yggdryl::{
-        DataType, Field, Map, Mapping, Scalar, StructType, TimeUnit, Timezone, UnionMode,
-    };
-    use yggdryl::{DateTimeType, DurationType, TimeType};
+    use yggdryl::{DataType, Field, Map, Scalar, Serie, StructType, TimeUnit, Timezone, UnionMode};
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
         DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
@@ -44,17 +41,17 @@ mod value {
         let map_root = root([map.required_field("lookup")]);
         for (value, path) in [
             (
-                Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::Map(Map::new(vec![(
                     Scalar::from("not an integer"),
                     Scalar::from(1_i32),
-                )]))),
+                )])),
                 "$.row.lookup[0].key",
             ),
             (
-                Scalar::Mapping(Mapping::Map(Map::new(vec![(
+                Scalar::Map(Map::new(vec![(
                     Scalar::from(1_i32),
                     Scalar::from("not an integer"),
-                )]))),
+                )])),
                 "$.row.lookup[0].value",
             ),
         ] {
@@ -135,14 +132,13 @@ mod value {
     #[test]
     fn temporal_casts_preserve_family_and_timezone() {
         let schema = root([
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::UTC,
-            })
+            }
             .required_field("at"),
-            DataType::Time(TimeType::Time32(TimeUnit::Second)).required_field("clock"),
-            DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond))
-                .required_field("elapsed"),
+            DataType::Time32(TimeUnit::Second).required_field("clock"),
+            DataType::Duration32(TimeUnit::Millisecond).required_field("elapsed"),
         ]);
         let valid = Scalar::from_sequence([
             Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
@@ -183,8 +179,8 @@ mod value {
     /// The spellings a value takes on the way into a datatype, and the ones it
     /// prints on the way out - the same readings a column takes and prints.
     mod readings {
+        use yggdryl::Map;
         use yggdryl::{DataType, Scalar};
-        use yggdryl::{Map, Mapping};
 
         fn dtype(expression: &str) -> DataType {
             expression.parse().unwrap()
@@ -346,10 +342,10 @@ mod value {
         fn a_map_carries_its_invariants_however_its_entries_were_built() {
             // `Map::new` takes already-unique entries on trust, so the value
             // contract is what refuses a map that is not a function.
-            let duplicates = Scalar::Mapping(Mapping::Map(Map::new(vec![
+            let duplicates = Scalar::Map(Map::new(vec![
                 (Scalar::from("a"), Scalar::from(1_i32)),
                 (Scalar::from("a"), Scalar::from(2_i32)),
-            ])));
+            ]));
             let refused = dtype("map<utf8, int32>")
                 .scalar(duplicates)
                 .unwrap_err()
@@ -357,10 +353,10 @@ mod value {
             assert!(refused.contains("collide"), "{refused}");
 
             // A declared ordering is checked whether or not anything was restated.
-            let unsorted = Scalar::Mapping(Mapping::Map(Map::new(vec![
+            let unsorted = Scalar::Map(Map::new(vec![
                 (Scalar::from("b"), Scalar::from(1_i32)),
                 (Scalar::from("a"), Scalar::from(2_i32)),
-            ])));
+            ]));
             let sorted = DataType::map_of(DataType::utf8(), DataType::Int32, true).unwrap();
             let refused = sorted.scalar(unsorted.clone()).unwrap_err().to_string();
             assert!(refused.contains("not sorted"), "{refused}");
@@ -430,5 +426,44 @@ mod value {
             // Every other datatype still takes absence as a value of its own.
             assert_eq!(DataType::Int32.scalar(Scalar::Null).unwrap(), Scalar::Null);
         }
+    }
+
+    /// The column of `values` under a required `int64` item.
+    fn int64_column(values: &[i64]) -> Scalar {
+        let item = DataType::Int64.required_field("item");
+        Scalar::from(Serie::from_scalars(item, values.iter().copied().map(Scalar::from)).unwrap())
+    }
+
+    /// The run of `values`.
+    fn int64_run(values: &[i64]) -> Scalar {
+        Scalar::from_sequence(values.iter().copied().map(Scalar::from))
+    }
+
+    #[test]
+    fn a_column_fails_where_the_run_of_its_rows_fails() {
+        let refusal =
+            |schema: &Field, value: &Scalar| schema.validate_value(value).unwrap_err().to_string();
+
+        // A row given as a column: the arity, then the second value's shape.
+        let row = root([
+            DataType::Int64.required_field("id"),
+            DataType::from_str("struct<a: int64>")
+                .unwrap()
+                .required_field("pair"),
+        ]);
+        for values in [&[1_i64][..], &[1, 2][..]] {
+            assert_eq!(
+                refusal(&row, &int64_column(values)),
+                refusal(&row, &int64_run(values))
+            );
+        }
+
+        // A list column whose item field is not the one the list declares.
+        let list =
+            root([DataType::list(DataType::Int8.required_field("item")).required_field("xs")]);
+        assert_eq!(
+            refusal(&list, &Scalar::from_sequence([int64_column(&[1, 300])])),
+            refusal(&list, &Scalar::from_sequence([int64_run(&[1, 300])]))
+        );
     }
 }

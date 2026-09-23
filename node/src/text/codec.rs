@@ -1,5 +1,6 @@
 //! Byte-first JSON, YAML, and TOML adapters for JavaScript values.
 
+use std::borrow::Cow;
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Write};
 use std::path::Path;
@@ -19,8 +20,6 @@ use napi::bindgen_prelude::{
 };
 use napi_derive::napi;
 use serde_json::{Map as JsonMap, Number as JsonNumber, Value as JsonValue};
-use yggdryl::ArrowCastOptions;
-use yggdryl::FieldValue as _;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::text::{Format, Formatting, Indent, Limits, Scalar};
 use yggdryl::{
@@ -29,6 +28,7 @@ use yggdryl::{
 };
 use yggdryl::{json, text, toml, yaml};
 
+use crate::serie::{column_from_ipc, records_from_ipc};
 use crate::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsArn, JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
 
@@ -327,13 +327,29 @@ impl JsScalar {
         let index = crate::exact_u64(index, "index")?;
         let index = usize::try_from(index)
             .map_err(|_| napi_error(format!("index {index} exceeds this platform's range")))?;
-        Ok(self.inner.get(index).cloned().map(Self::from_core))
+        Ok(self
+            .inner
+            .get(index)
+            .map(Cow::into_owned)
+            .map(Self::from_core))
+    }
+
+    /// The serie a sequence holds - a run or a column - or `null`.
+    #[napi(js_name = "_asSerieNative", skip_typescript)]
+    pub fn as_serie_native(&self) -> Option<crate::serie::JsSerie> {
+        self.inner
+            .as_serie()
+            .cloned()
+            .map(crate::serie::JsSerie::from_core)
     }
 
     /// Look up a dotted mapping/record key and sequence-index path.
     #[napi]
     pub fn path(&self, path: String) -> Option<JsScalar> {
-        self.inner.path(&path).cloned().map(Self::from_core)
+        self.inner
+            .path(&path)
+            .map(Cow::into_owned)
+            .map(Self::from_core)
     }
 
     /// Iterate direct children under the core convention.
@@ -343,7 +359,12 @@ impl JsScalar {
     #[napi(js_name = "_iterNative", skip_typescript)]
     pub fn iter_native(&self) -> JsScalarIterator {
         JsScalarIterator {
-            inner: self.inner.iter().cloned().collect::<Vec<_>>().into_iter(),
+            inner: self
+                .inner
+                .iter()
+                .map(Cow::into_owned)
+                .collect::<Vec<_>>()
+                .into_iter(),
         }
     }
 
@@ -355,7 +376,7 @@ impl JsScalar {
                 .inner
                 .as_str()
                 .and_then(|name| self.inner.get_key_str(name)),
-            Scalar::Mapping(_) => self.inner.get_key(&key.inner),
+            Scalar::Map(_) | Scalar::SortedMap(_) => self.inner.get_key(&key.inner),
             _ => None,
         };
         value.cloned().map(Self::from_core)
@@ -365,7 +386,9 @@ impl JsScalar {
     #[napi(js_name = "_setNative", skip_typescript)]
     pub fn set_native(&self, key: &JsScalar, value: &JsScalar) -> Result<Self> {
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
+            Scalar::Map(_) | Scalar::SortedMap(_) => {
+                self.inner.with_key(key.inner.clone(), value.inner.clone())
+            }
             Scalar::Struct(_) => {
                 let name = key
                     .inner
@@ -391,7 +414,7 @@ impl JsScalar {
             .as_str()
             .ok_or_else(|| napi_error("remove requires a string key"))?;
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.without_key(name),
+            Scalar::Map(_) | Scalar::SortedMap(_) => self.inner.without_key(name),
             Scalar::Struct(_) => self.inner.without_field(name),
             _ => {
                 return Err(napi_error(format!(
@@ -643,94 +666,77 @@ impl JsScalar {
         self.inner == other.inner
     }
 
-    /// Decode one Arrow JS scalar from its one-column IPC bridge.
+    /// Decode one Arrow JS scalar from its one-column IPC bridge, cast into
+    /// `field` under the three cast answers when one is given.
     #[napi(factory, js_name = "_fromArrowScalarIpcNative", skip_typescript)]
     pub fn from_arrow_scalar_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(&bytes)?;
-        ensure_one_column(&schema, "Arrow scalar")?;
-        let rows = batches.iter().map(RecordBatch::num_rows).sum::<usize>();
-        if rows != 1 {
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let column = column_from_ipc(
+            &bytes,
+            "Arrow scalar",
+            field.as_ref().map(|field| &field.inner),
+            options,
+        )?;
+        if column.len() != 1 {
             return Err(napi_error(format!(
-                "Arrow scalar IPC must contain exactly one row, got {rows}"
+                "Arrow scalar IPC must contain exactly one row, got {}",
+                column.len()
             )));
         }
-        let inferred =
-            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        let array = batches
-            .into_iter()
-            .find(|batch| batch.num_rows() != 0)
-            .and_then(|batch| batch.columns().first().cloned())
-            .ok_or_else(|| napi_error("Arrow scalar IPC has no value column"))?;
-        let array = if field == inferred {
-            array
-        } else {
-            field
-                .cast_arrow_array(array, ArrowCastOptions::new())
-                .map_err(napi_error)?
-        };
-        yggdryl::arrow::scalar_value(&field, array.as_ref())
-            .map(Self::from_core)
-            .map_err(napi_error)
+        column.scalar(0).map(Self::from_core).map_err(napi_error)
     }
 
-    /// Decode one Arrow JS vector from its one-column IPC bridge.
+    /// Decode one Arrow JS vector from its one-column IPC bridge as the
+    /// sequence its column is, cast into `field` when one is given.
     #[napi(factory, js_name = "_fromArrowArrayIpcNative", skip_typescript)]
     pub fn from_arrow_array_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(&bytes)?;
-        ensure_one_column(&schema, "Arrow array")?;
-        let inferred =
-            CoreField::from_arrow_field_ref(Arc::clone(&schema.fields()[0])).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        let mut values = Vec::new();
-        for batch in batches {
-            let array = batch
-                .columns()
-                .first()
-                .cloned()
-                .ok_or_else(|| napi_error("Arrow array IPC has no value column"))?;
-            let array = if field == inferred {
-                array
-            } else {
-                field
-                    .cast_arrow_array(array, ArrowCastOptions::new())
-                    .map_err(napi_error)?
-            };
-            let decoded =
-                yggdryl::arrow::array_to_value(&field, array.as_ref()).map_err(napi_error)?;
-            values.extend_from_slice(decoded.as_sequence().ok_or_else(|| {
-                napi_error("native Arrow array decode did not return a sequence")
-            })?);
-        }
-        Ok(Self::from_core(Scalar::from_sequence(values)))
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        column_from_ipc(
+            &bytes,
+            "Arrow array",
+            field.as_ref().map(|field| &field.inner),
+            options,
+        )
+        .map(|column| Self::from_core(Scalar::from(column)))
     }
 
-    /// Decode Arrow JS record batches from standard IPC.
+    /// Decode Arrow JS record batches from standard IPC as the sequence of
+    /// their rows, cast into the root `field` when one is given.
     #[napi(factory, js_name = "_fromArrowBatchIpcNative", skip_typescript)]
     pub fn from_arrow_batch_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        Self::from_arrow_batches_ipc(&bytes, field)
+        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        records_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
+            .map(|records| Self::from_core(Scalar::from(records)))
     }
 
-    /// Decode an Arrow JS table from standard IPC.
+    /// Decode an Arrow JS table from standard IPC, as a batch is decoded.
     #[napi(factory, js_name = "_fromArrowTableIpcNative", skip_typescript)]
     pub fn from_arrow_table_ipc_native(
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
+        safe: Option<bool>,
+        nullability: Option<String>,
+        representation: Option<String>,
     ) -> Result<Self> {
-        Self::from_arrow_batches_ipc(&bytes, field)
+        Self::from_arrow_batch_ipc_native(bytes, field, safe, nullability, representation)
     }
 
     /// Encode this value as a one-row, one-column Arrow IPC scalar.
@@ -784,35 +790,6 @@ impl JsScalar {
 }
 
 impl JsScalar {
-    fn from_arrow_batches_ipc(
-        bytes: &[u8],
-        field: Option<ClassInstance<'_, JsField>>,
-    ) -> Result<Self> {
-        let (schema, batches) = arrow_batches(bytes)?;
-        let inferred = CoreField::from_arrow_schema("row", schema.as_ref()).map_err(napi_error)?;
-        let field = field
-            .as_ref()
-            .map_or_else(|| inferred.clone(), |field| field.inner.clone());
-        field.validate_struct_root().map_err(napi_error)?;
-        let mut rows = Vec::new();
-        for batch in batches {
-            let batch = if field == inferred {
-                batch
-            } else {
-                field
-                    .cast_arrow_batch(batch, ArrowCastOptions::new())
-                    .map_err(napi_error)?
-            };
-            let decoded = yggdryl::arrow::batch_to_value(&batch).map_err(napi_error)?;
-            rows.extend_from_slice(
-                decoded
-                    .as_sequence()
-                    .ok_or_else(|| napi_error("native Arrow batch decode did not return rows"))?,
-            );
-        }
-        Ok(Self::from_core(Scalar::from_sequence(rows)))
-    }
-
     fn arrow_batches_ipc(&self, field: Option<ClassInstance<'_, JsField>>) -> Result<Buffer> {
         let field = field
             .as_ref()
@@ -1644,7 +1621,7 @@ fn create_path(path: &str) -> Result<BufWriter<File>> {
         .map_err(napi_error)
 }
 
-fn checked_depth(max_depth: Option<u32>) -> Result<usize> {
+pub(crate) fn checked_depth(max_depth: Option<u32>) -> Result<usize> {
     let max_depth = max_depth.map_or(DEFAULT_JS_DEPTH, |value| value as usize);
     if !(1..=MAX_JS_DEPTH).contains(&max_depth) {
         return Err(napi_error(format!(
@@ -2328,7 +2305,11 @@ fn truncated(digits: &str) -> String {
 }
 
 #[allow(clippy::too_many_lines)] // One exhaustive family match keeps the boundary auditable.
-fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<JsonValue> {
+pub(crate) fn value_to_transport(
+    value: &Scalar,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
     if depth > max_depth {
         return Err(napi_error(format!(
             "decoded value exceeds maxDepth {max_depth}"
@@ -2385,10 +2366,13 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
-        Scalar::Sequence(values) => values
-            .as_slice()
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => values
             .iter()
-            .map(|value| value_to_transport(value, depth + 1, max_depth))
+            .map(|value| value_to_transport(&value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
             .map(JsonValue::Array),
         // A count is carried as text because a nanosecond instant needs more
@@ -2418,7 +2402,9 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::DateTime64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Duration32(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Duration64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
-        Scalar::Mapping(entries) => mapping_transport(entries.as_slice(), depth, max_depth),
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
+            mapping_transport(entries.as_slice(), depth, max_depth)
+        }
         Scalar::Struct(entries) => record_transport(entries.as_map(), depth, max_depth),
         // A variant crosses as the value it holds, which is what a caller
         // asked a variant column for; the bytes stay on the Rust side.
@@ -2446,8 +2432,14 @@ fn struct_transport_with_field(
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Scalar::Sequence(values) if values.as_slice().len() == fields.len() => {
-            fields.iter().zip(values.as_slice()).collect::<Vec<_>>()
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if values.len() == fields.len() =>
+        {
+            fields.iter().zip(values.iter()).collect::<Vec<_>>()
         }
         Scalar::Struct(values) => fields
             .iter()
@@ -2455,7 +2447,7 @@ fn struct_transport_with_field(
                 values
                     .as_map()
                     .get(field.name())
-                    .map(|value| (field, value))
+                    .map(|value| (field, Cow::Borrowed(value)))
                     .ok_or_else(|| {
                         napi_error(format!("typed record is missing field {:?}", field.name()))
                     })
@@ -2474,7 +2466,7 @@ fn struct_transport_with_field(
         .map(|(field, value)| {
             Ok((
                 field.name(),
-                value_to_transport_with_field(value, field, depth + 1, max_depth)?,
+                value_to_transport_with_field(&value, field, depth + 1, max_depth)?,
             ))
         })
         .collect::<Result<Vec<_>>>()?;
@@ -2537,20 +2529,33 @@ pub(crate) fn value_to_transport_with_field(
         CoreDataType::Struct(structure) => {
             struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
-        CoreDataType::Sequence(sequence) => value
-            .as_sequence()
-            .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
-            .iter()
-            .map(|value| {
-                value_to_transport_with_field(value, sequence.item(), depth + 1, max_depth)
-            })
-            .collect::<Result<Vec<_>>>()
-            .map(JsonValue::Array),
-        CoreDataType::Mapping(mapping) => {
+        sequence_dtype @ (CoreDataType::List(_)
+        | CoreDataType::ListView(_)
+        | CoreDataType::FixedSizeList(..)
+        | CoreDataType::LargeList(_)
+        | CoreDataType::LargeListView(_)) => {
+            let sequence = &sequence_dtype
+                .as_serie_type()
+                .expect("the variant was just matched");
+            value
+                .as_serie()
+                .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
+                .iter()
+                .map(|value| {
+                    value_to_transport_with_field(&value, sequence.item(), depth + 1, max_depth)
+                })
+                .collect::<Result<Vec<_>>>()
+                .map(JsonValue::Array)
+        }
+        mapping_dtype @ (CoreDataType::Map(_) | CoreDataType::SortedMap(_)) => {
+            let mapping = &mapping_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             map_transport_with_field(value, mapping.parameters(), depth, max_depth)
         }
         CoreDataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let rows = value.sequence_rows();
+            let Some([type_id, payload]) = rows.as_deref() else {
                 return Err(napi_error(
                     "typed union value must contain its type id and payload",
                 ));
@@ -2565,16 +2570,21 @@ pub(crate) fn value_to_transport_with_field(
                 .ok_or_else(|| napi_error("typed union id is not declared"))?;
             value_to_transport_with_field(payload, branch, depth, max_depth)
         }
-        CoreDataType::Enum(dictionary) => value_to_transport_with_field(
-            value,
-            &CoreField::new(
-                field.name(),
-                dictionary.value().clone(),
-                field.is_nullable(),
-            ),
-            depth,
-            max_depth,
-        ),
+        dictionary_dtype @ CoreDataType::Dictionary(_) => {
+            let dictionary = &dictionary_dtype
+                .enum_type()
+                .expect("the variant was just matched");
+            value_to_transport_with_field(
+                value,
+                &CoreField::new(
+                    field.name(),
+                    dictionary.value().clone(),
+                    field.is_nullable(),
+                ),
+                depth,
+                max_depth,
+            )
+        }
         CoreDataType::RunEndEncoded(encoded) => {
             value_to_transport_with_field(value, encoded.values(), depth, max_depth)
         }

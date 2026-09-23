@@ -5,7 +5,12 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 const binding = require('yggdryl')
-const { DataType, Field, Version, fields } = binding
+const { DataType, Field, Serie, Version, fields } = binding
+
+// A field casts nothing itself: a vector lands as the column of a field, and
+// that column is the vector these assertions read.
+const castArray = (field, vector, options) =>
+  Serie.fromArrowArray(vector, field, options).intoArrowArray()
 
 test('internal typed-factory bridges stay outside the public package surface', () => {
   for (const name of [
@@ -27,7 +32,6 @@ test('internal typed-factory bridges stay outside the public package surface', (
   }
   assert.equal(Object.hasOwn(Field, 'fromArrowString'), false)
   assert.equal(Object.hasOwn(Field.prototype, '_showDiffs'), false)
-  assert.equal(Object.hasOwn(Field.prototype, '_castArrowArrayIpcNative'), false)
   assert.equal(Object.hasOwn(DataType.prototype, '_showDiffs'), false)
   for (const name of ['DifferenceIterator', 'JsDifferenceIterator']) {
     assert.equal(Object.hasOwn(binding, name), false, name)
@@ -43,11 +47,11 @@ test('the bits reading crosses every same-width pair', () => {
     [0, 2 ** 31 - 1, 2 ** 31, 2 ** 32 - 1, null],
     new arrow.Uint32(),
   )
-  const signed32 = fields.int32('digest').castArrowArray(unsigned32, bits)
+  const signed32 = castArray(fields.int32('digest'), unsigned32, bits)
   assert.equal(signed32.type.toString(), 'Int32')
   assert.deepEqual(Array.from(signed32), [0, 2 ** 31 - 1, -(2 ** 31), -1, null])
   assert.deepEqual(
-    Array.from(fields.uint32('digest').castArrowArray(signed32, bits)),
+    Array.from(castArray(fields.uint32('digest'), signed32, bits)),
     Array.from(unsigned32),
   )
 
@@ -55,48 +59,51 @@ test('the bits reading crosses every same-width pair', () => {
     [0n, 2n ** 63n - 1n, 2n ** 63n, 2n ** 64n - 1n, null],
     new arrow.Uint64(),
   )
-  const signed64 = fields.int64('digest').castArrowArray(unsigned64, bits)
+  const signed64 = castArray(fields.int64('digest'), unsigned64, bits)
   assert.equal(signed64.type.toString(), 'Int64')
   assert.deepEqual(Array.from(signed64), [0n, 2n ** 63n - 1n, -(2n ** 63n), -1n, null])
   assert.deepEqual(
-    Array.from(fields.uint64('digest').castArrowArray(signed64, bits)),
+    Array.from(castArray(fields.uint64('digest'), signed64, bits)),
     Array.from(unsigned64),
   )
 
   // Eight bytes are eight bytes: the integer, its opposite sign and the raw
   // payload are one buffer under three readings, and the chain round-trips.
-  const stored = fields.fixedSizeBinary('digest', 8).castArrowArray(unsigned64, bits)
+  const stored = castArray(fields.fixedSizeBinary('digest', 8), unsigned64, bits)
   assert.deepEqual(Array.from(stored.get(3)), new Array(8).fill(255))
   assert.deepEqual(
-    Array.from(fields.uint64('digest').castArrowArray(stored, bits)),
+    Array.from(castArray(fields.uint64('digest'), stored, bits)),
     Array.from(unsigned64),
   )
 
-  const empty = fields
-    .int64('digest')
-    .castArrowArray(arrow.vectorFromArray([], new arrow.Uint64()), bits)
+  const empty = castArray(
+    fields.int64('digest'),
+    arrow.vectorFromArray([], new arrow.Uint64()),
+    bits,
+  )
   assert.equal(empty.type.toString(), 'Int64')
   assert.equal(empty.length, 0)
 
   // The reading says what the bytes mean; nullability still says what an
   // absent value means.
-  const required = fields
-    .int64('digest', { nullable: false })
-    .castArrowArray(arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()), bits)
+  const required = castArray(
+    fields.int64('digest', { nullable: false }),
+    arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+    bits,
+  )
   assert.deepEqual(Array.from(required), [0n, -1n])
   assert.throws(
     () =>
-      fields
-        .int64('digest', { nullable: false })
-        .castArrowArray(arrow.vectorFromArray([null], new arrow.Uint64()), {
-          ...bits,
-          nullability: 'strict',
-        }),
+      castArray(
+        fields.int64('digest', { nullable: false }),
+        arrow.vectorFromArray([null], new arrow.Uint64()),
+        { ...bits, nullability: 'strict' },
+      ),
     /required Arrow field \$\.digest holds 1 null values/,
   )
 
   // Four bytes are not eight, so this stays the ordinary numeric widening.
-  assert.deepEqual(Array.from(fields.int64('digest').castArrowArray(unsigned32, bits)), [
+  assert.deepEqual(Array.from(castArray(fields.int64('digest'), unsigned32, bits)), [
     0n,
     2n ** 31n - 1n,
     2n ** 31n,
@@ -104,7 +111,7 @@ test('the bits reading crosses every same-width pair', () => {
     null,
   ])
 
-  assert.throws(() => fields.int32('digest').castArrowArray([0]), /must be an Apache Arrow Vector/)
+  assert.throws(() => castArray(fields.int32('digest'), [0]), /must be an Apache Arrow Vector/)
 })
 
 test('DataType.fromFields is the iterable-aware native Struct builder', () => {
@@ -459,7 +466,8 @@ test('the url factory builds a validated, canonical location column', () => {
   // spelling, and a bare path is the file URL it names.
   assert.deepEqual(
     Array.from(
-      declared.castArrowArray(
+      castArray(
+        declared,
         arrow.vectorFromArray(['HTTPS://example.com/a%2fb', '/lake/part.txt'], new arrow.Utf8()),
       ),
     ),
@@ -470,7 +478,7 @@ test('the url factory builds a validated, canonical location column', () => {
   // itself.
   for (const relative of ['./rel', 'example.com/x']) {
     assert.throws(
-      () => declared.castArrowArray(arrow.vectorFromArray([relative], new arrow.Utf8())),
+      () => castArray(declared, arrow.vectorFromArray([relative], new arrow.Utf8())),
       /does not read as url/,
       relative,
     )
@@ -480,19 +488,20 @@ test('the url factory builds a validated, canonical location column', () => {
   // repairs with its default, or refuses by path when strict; the nullable
   // column keeps the null.
   const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
-  assert.deepEqual(Array.from(declared.castArrowArray(empty())), ['file:///'])
+  assert.deepEqual(Array.from(castArray(declared, empty())), ['file:///'])
   assert.throws(
-    () => declared.castArrowArray(empty(), { nullability: 'strict' }),
+    () => castArray(declared, empty(), { nullability: 'strict' }),
     /required Arrow field \$\.location holds 1 null values/,
   )
-  assert.deepEqual(Array.from(location.castArrowArray(empty())), [null])
+  assert.deepEqual(Array.from(castArray(location, empty())), [null])
   assert.equal(location.scalar('').kind, 'null')
 
   // Absence is still absence: a nullable location column holds nulls, which
   // is what an unlocated handle writes instead of an empty string.
   assert.deepEqual(
     Array.from(
-      location.castArrowArray(
+      castArray(
+        location,
         arrow.vectorFromArray([null, 'https://example.com/'], new arrow.Utf8()),
       ),
     ),
@@ -535,27 +544,27 @@ test('the registered codes build their own datatype at their own width', () => {
   const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
   const strict = { safe: false }
   assert.deepEqual(
-    [...fields.cusip('sid').castArrowArray(utf8(['037833100', '037833101', '38259p508']))],
+    [...castArray(fields.cusip('sid'), utf8(['037833100', '037833101', '38259p508']))],
     ['037833100', null, null],
   )
   assert.deepEqual(
-    [...fields.sedol('sid').castArrowArray(utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']))],
+    [...castArray(fields.sedol('sid'), utf8(['B0YBKJ7', 'B0YBKJ8', 'b0ybkj7']))],
     ['B0YBKJ7', null, null],
   )
   assert.deepEqual(
-    [...fields.figi('sid').castArrowArray(utf8(['BBG000BLNQ16', 'BBG000BLNQ17', 'bbg000blnq16']))],
+    [...castArray(fields.figi('sid'), utf8(['BBG000BLNQ16', 'BBG000BLNQ17', 'bbg000blnq16']))],
     ['BBG000BLNQ16', null, null],
   )
   assert.throws(
-    () => fields.cusip('sid').castArrowArray(utf8(['037833101']), strict),
+    () => castArray(fields.cusip('sid'), utf8(['037833101']), strict),
     /canonical spelling/,
   )
   assert.throws(
-    () => fields.sedol('sid').castArrowArray(utf8(['b0ybkj7']), strict),
+    () => castArray(fields.sedol('sid'), utf8(['b0ybkj7']), strict),
     /canonical spelling/,
   )
   assert.throws(
-    () => fields.figi('sid').castArrowArray(utf8(['BBG000BLNQ17']), strict),
+    () => castArray(fields.figi('sid'), utf8(['BBG000BLNQ17']), strict),
     /canonical spelling/,
   )
   assert.equal(declared.get('country')[0].name, 'venue_country')
@@ -731,26 +740,26 @@ test('an empty text cell is null before safe is asked', () => {
   // value: it is null before any spelling is read, so `safe` never sees it
   // and both policies answer the same null.
   const nullable = fields.int32('quantity')
-  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: false })], [null])
-  assert.deepEqual([...nullable.castArrowArray(empty(), { safe: true })], [null])
+  assert.deepEqual([...castArray(nullable, empty(), { safe: false })], [null])
+  assert.deepEqual([...castArray(nullable, empty(), { safe: true })], [null])
 
   // A required column then answers its nullability, exactly as it does for a
   // null the source carried: the default repairs it, strictness refuses it
   // naming the path and the count.
   const required = fields.int32('quantity', { nullable: false })
-  assert.deepEqual([...required.castArrowArray(empty())], [0])
+  assert.deepEqual([...castArray(required, empty())], [0])
   assert.throws(
-    () => required.castArrowArray(empty(), { nullability: 'strict' }),
+    () => castArray(required, empty(), { nullability: 'strict' }),
     /required Arrow field \$\.quantity holds 1 null values/,
   )
 
   // Text is text: into a string column the empty cell is the value it is.
-  assert.deepEqual([...fields.utf8('symbol').castArrowArray(empty())], [''])
+  assert.deepEqual([...castArray(fields.utf8('symbol'), empty())], [''])
   assert.deepEqual(
     [
-      ...fields
-        .utf8('symbol', { nullable: false })
-        .castArrowArray(empty(), { nullability: 'strict' }),
+      ...castArray(fields.utf8('symbol', { nullable: false }), empty(), {
+        nullability: 'strict',
+      }),
     ],
     [''],
   )

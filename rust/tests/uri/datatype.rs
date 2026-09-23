@@ -12,7 +12,7 @@ use yggdryl::FieldValue as _;
 use yggdryl::arrow::{scalar_array, scalar_value};
 use yggdryl::{
     ArrowCastOptions, DataTypeId, DataTypeKind, DataTypeValue as _, Field, FieldScalar, Scalar,
-    StructType, Uri, UriField, UriType, Urn,
+    Serie, StructType, Uri, UriField, UriType, Urn,
 };
 
 fn urn(text: &str) -> Scalar {
@@ -36,8 +36,8 @@ fn text_of(value: &Scalar) -> String {
 #[test]
 fn the_family_holds_two_leaves_and_names_them() {
     assert_eq!(UriType::ALL, [UriType::Url, UriType::Urn]);
-    assert_eq!(DataType::url(), DataType::Uri(UriType::Url));
-    assert_eq!(DataType::urn(), DataType::Uri(UriType::Urn));
+    assert_eq!(DataType::url(), DataType::Url);
+    assert_eq!(DataType::urn(), DataType::Urn);
     assert_eq!(DataType::url().uri_type(), Some(UriType::Url));
     assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
     assert_eq!(DataType::utf8().uri_type(), None);
@@ -46,8 +46,8 @@ fn the_family_holds_two_leaves_and_names_them() {
         assert_eq!(leaf.kind(), DataTypeKind::Text);
         assert_eq!(UriType::from_id(leaf.id()), Some(leaf));
         assert_eq!(leaf.to_string(), leaf.id().as_str());
-        assert_eq!(DataType::from(leaf), DataType::Uri(leaf));
-        assert_eq!(UriType::from_dtype(&DataType::Uri(leaf)), Some(leaf));
+        assert_eq!(DataType::from(leaf), DataType::from(leaf));
+        assert_eq!(UriType::from_dtype(&DataType::from(leaf)), Some(leaf));
         leaf.validate().unwrap();
     }
     assert_eq!(UriType::from_id(DataTypeId::Utf8String), None);
@@ -214,9 +214,14 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         ]))],
     )
     .unwrap();
-    let cast = target
-        .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-        .unwrap();
+    let cast = Serie::from_arrow_batch(
+        Some(&target),
+        &batch,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap()
+    .into_arrow_batch()
+    .unwrap();
     let column = cast
         .column(0)
         .as_any()
@@ -235,10 +240,13 @@ fn a_text_column_is_ingested_and_canonicalized_and_a_bad_row_names_itself() {
         )]))],
     )
     .unwrap();
-    let error = target
-        .cast_arrow_batch(bad, ArrowCastOptions::new().with_safe(false))
-        .unwrap_err()
-        .to_string();
+    let error = Serie::from_arrow_batch(
+        Some(&target),
+        &bad,
+        ArrowCastOptions::new().with_safe(false),
+    )
+    .unwrap_err()
+    .to_string();
     assert!(error.contains("row 0"), "{error}");
     assert!(error.contains("does not read as urn"), "{error}");
 }

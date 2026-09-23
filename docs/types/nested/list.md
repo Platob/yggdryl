@@ -6,13 +6,13 @@ Many of one thing, in all five layouts Arrow gives it: one item field, and a lea
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Sequence(SequenceType)` with its five leaves, the `SequenceField` marker, and the `Sequence` value |
+| Owns | `DataType::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` - its five leaves, each a `DataType` variant of its own - `SerieType` the family's view over them, the `SerieField` marker, and the `Run` value: the schema-free run a row canonicalizes to, one leaf of [`Serie`](../serie.md), held by whichever of `Scalar::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` matches the leaf |
 | Validates | At construction: a fixed length is non-negative, and the item field validates |
 | Lazy | Nothing - a leaf holds one shared item field and, on the fixed leaf, one `i32` |
 | Cached | The item field behind one `Arc<Field>`, so a leaf clone shares it; the Arrow projection on the [`Field`](../field.md) |
 | Refuses | A negative fixed length, a second child, and a value that is not a sequence of the item's datatype |
 | Kinds | `DataTypeKind::Nested`, ids `0x91`-`0x95`; `is_nested()` is `true` |
-| Bindings | `SequenceType` and `Sequence` are Rust only: Python and JavaScript build a leaf through its own factory and read a stored run back as a [`Scalar`](../scalar.md) |
+| Bindings | `SerieType`, `Run` and `Serie` are Rust only: Python and JavaScript build a leaf through its own factory and read a stored run back as a [`Scalar`](../scalar.md) |
 
 ## DataType
 
@@ -32,7 +32,7 @@ spell.
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, SequenceType};
+    use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, SerieType};
 
     let levels = DataType::list(DataType::Float64.nullable_field("item"));
     assert_eq!(levels.to_string(), r#"list(field("item",float64,nullable=true,metadata={}))"#);
@@ -44,13 +44,13 @@ spell.
 
     // The payload reads back the leaf: its item, its length, its layout.
     let fixed = DataType::fixed_size_list(DataType::Int32.nullable_field("item"), 3)?;
-    let leaf = fixed.as_sequence_type().expect("a sequence");
+    let leaf = fixed.as_serie_type().expect("a sequence");
     assert_eq!(leaf.fixed_length(), Some(3));
     assert_eq!(leaf.item().name(), "item");
     assert!(!leaf.is_view() && !leaf.is_large());
 
     let viewed = DataType::large_list_view(DataType::Int32.nullable_field("item"));
-    let viewed_leaf = viewed.as_sequence_type().expect("a sequence");
+    let viewed_leaf = viewed.as_serie_type().expect("a sequence");
     assert!(viewed_leaf.is_view() && viewed_leaf.is_large());
     assert_eq!(viewed_leaf.fixed_length(), None);
     assert_eq!(
@@ -60,7 +60,7 @@ spell.
 
     assert_eq!(DataType::from_str("array<int64>")?, DataType::list(DataType::Int64.nullable_field("item")));
     assert!(DataType::fixed_size_list(DataType::Int32.nullable_field("item"), -1).is_err());
-    assert_eq!(DataType::Int64.as_sequence_type(), None);
+    assert_eq!(DataType::Int64.as_serie_type(), None);
     ```
 
 === "Python"
@@ -118,7 +118,7 @@ spell.
 
 ## Field
 
-`SequenceField` is the typed marker: one field carrying `SequenceType`, so the
+`SerieField` is the typed marker: one field carrying `SerieType`, so the
 leaf and its item are read off the payload rather than matched out of a root
 datatype. The bindings have one factory per leaf, each taking the item field it
 repeats; the column is nullable unless the call says otherwise, and the item's
@@ -128,11 +128,11 @@ own nullability is the item field's.
 
     ```rust
     use yggdryl::FieldValue as _;
-    use yggdryl::{DataType, DataTypeId, Field, SequenceField, SequenceType};
+    use yggdryl::{DataType, DataTypeId, Field, SerieField, SerieType};
 
-    let levels = SequenceField::new(
+    let levels = SerieField::new(
         "levels",
-        SequenceType::List(std::sync::Arc::new(DataType::Float64.nullable_field("item"))),
+        SerieType::List(std::sync::Arc::new(DataType::Float64.nullable_field("item"))),
         true,
     );
     assert_eq!(levels.name(), "levels");
@@ -143,10 +143,10 @@ own nullability is the item field's.
     // Widened, it is the same column the root constructor builds.
     let root: Field = levels.into_field();
     assert_eq!(root, Field::new("levels", DataType::list(DataType::Float64.nullable_field("item")), true));
-    assert!(SequenceField::from_field(&root).is_some());
+    assert!(SerieField::from_field(&root).is_some());
 
     // A datatype from another family is refused by name.
-    let refused = SequenceField::try_new("levels", DataType::utf8(), true).unwrap_err().to_string();
+    let refused = SerieField::try_new("levels", DataType::utf8(), true).unwrap_err().to_string();
     assert!(refused.contains("sequence"), "{refused}");
 
     // The item is a whole field, so it carries its own name and nullability.
@@ -202,28 +202,34 @@ own nullability is the item field's.
 
 ## Scalar
 
-`Scalar::Sequence(Sequence)` is the run: the values in order, in one shared
-slice. The leaf is the column's decision and never the value's, so a cell read
-out of any of the five layouts is the same sequence, and its datatype is the
-`list` of its items.
+`Scalar::List(Serie)` - or `ListView`, `LargeList`, `LargeListView`,
+`FixedSizeList`, one per leaf - holds many values, and `Serie::Run` is the
+run: the values in order, in one shared slice, declaring no field. The leaf is
+the column's decision and never the value's, so a cell read out of any of the
+five layouts is the same run, and its datatype is the `list` of its items. The
+column itself - the Arrow buffers under the item field, read and written in
+place - is the other leaf of [`Serie`](../serie.md).
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, FamilyValue, Nested, NestedValue, Scalar, Sequence};
+    use yggdryl::{DataType, FamilyValue, Nested, NestedValue, Run, Scalar, Serie};
 
     let levels = DataType::list(DataType::Float64.nullable_field("item"));
     let value = levels.scalar(vec![Scalar::from(1.5_f64), Scalar::Null])?;
     assert_eq!(value.len(), 2);
     assert_eq!(value.dtype()?, levels);
 
-    // `Sequence` is the holder every sequence API answers with.
-    let held = Sequence::new(vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
+    // `Run` is the schema-free leaf of `Serie`, and what a row canonicalizes to.
+    let held = Run::new(vec![Scalar::from(1_i64), Scalar::from(2_i64)]);
     assert_eq!(held.len(), 2);
     assert_eq!(held.as_slice()[1], Scalar::from(2_i64));
     assert_eq!(held.children().count(), 2);
-    assert_eq!(Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]), Scalar::Sequence(held.clone()));
-    assert!(matches!(Scalar::Sequence(held).as_nested(), Some(Nested::Sequence(_))));
+    assert_eq!(
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]),
+        Scalar::List(Serie::Run(held.clone()))
+    );
+    assert!(matches!(Scalar::List(Serie::from(held)).as_nested(), Some(Nested::List(_))));
 
     // A run of the wrong item datatype is refused, with the path that failed.
     let refused = levels.scalar(vec![Scalar::from("text")]).unwrap_err().to_string();
@@ -336,21 +342,17 @@ datatype is built rather than where a batch is written.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
-    // A cast through a struct root answers the Arrow field a column is written as.
-    const row = fields.struct('row', [fields.list('levels', fields.float64('item'))], {
-      nullable: false,
-    })
-    const table = row.castArrow(
-      new arrow.Table({
-        levels: arrow.vectorFromArray([[1.5, 2.5]], new arrow.List(
-          new arrow.Field('item', new arrow.Float64(), true),
-        )),
-      }),
+    // A column crossing out as a table answers the Arrow field it is written as.
+    const levels = Serie.fromArrowArray(
+      arrow.vectorFromArray([[1.5, 2.5]], new arrow.List(
+        new arrow.Field('item', new arrow.Float64(), true),
+      )),
+      fields.list('levels', fields.float64('item')),
     )
 
-    const projected = table.schema.fields[0]
+    const projected = levels.intoArrowBatch().schema.fields[0]
     assert.equal(projected.name, 'levels')
     assert.equal(projected.type.children[0].name, 'item')
     assert.equal(projected.metadata.get('ARROW:extension:name'), undefined)
@@ -427,9 +429,9 @@ own name - which is what keeps a list from ever growing a second child.
 - A list holds exactly one child: `set_field_at(0, ..)` replaces it, an unknown name is refused rather than appended, and `remove_field_at(0)` is refused rather than leaving a list with none.
 - `unnest_fields` treats a list as one leaf, because a list is one column; `explode_fields` is what reaches inside it and answers the item's datatype, nullable when the column or its item is.
 - The item's name is the item's: a leaf built by a parser is named `item`, and a leaf built by hand keeps whatever it was given.
-- A value carries no layout: a cell read out of `fixed_size_list(item,3)`, `large_list` or a view is a `Sequence`, and its datatype is the `list` of its items.
+- A value carries no layout: a cell read out of `fixed_size_list(item,3)`, `large_list` or a view is a `Run`, and its datatype is the `list` of its items; the column those cells are cut from is a [`Serie`](../serie.md) leaf of that layout.
 - A merge reaches the item: two lists of the same leaf meet at the list of the item that holds both, and two different leaves do not meet - see [Field](../field.md#merging-two-schemas).
-- `list_view` and `large_list_view` have no default Arrow JS materialization, so `defaultArrowScalar` refuses them in JavaScript while every other leaf answers.
+- `list_view` and `large_list_view` have no Arrow JS materialization, so `Serie#intoArrowScalar`, `intoArrowArray` and `intoArrowBatch` refuse them in JavaScript while every other leaf answers.
 
 ## Commands
 

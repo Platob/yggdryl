@@ -119,12 +119,14 @@ impl DataTypeValue for EnumType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Enum(self)
+        match self {
+            Self::Dictionary(dictionary) => DataType::Dictionary(dictionary),
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
         match dtype {
-            DataType::Enum(family) => Some(family.clone()),
+            DataType::Dictionary(dictionary) => Some(Self::Dictionary(Arc::clone(dictionary))),
             _ => None,
         }
     }
@@ -138,18 +140,25 @@ impl fmt::Display for EnumType {
 
 impl From<EnumType> for DataType {
     fn from(value: EnumType) -> Self {
-        Self::Enum(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
 impl DataType {
+    /// The enum family's view of a dictionary datatype, `None` for every
+    /// other: a shared-pointer clone.
+    #[must_use]
+    pub fn enum_type(&self) -> Option<EnumType> {
+        match self {
+            Self::Dictionary(dictionary) => Some(EnumType::Dictionary(Arc::clone(dictionary))),
+            _ => None,
+        }
+    }
+
     /// Creates a dictionary and validates its integer key type.
     pub fn dictionary(key: Self, value: Self) -> Result<Self> {
         validate_dictionary_key(&key)?;
-        Ok(Self::Enum(EnumType::Dictionary(Arc::new(DictionaryType {
-            key,
-            value,
-        }))))
+        Ok(Self::Dictionary(Arc::new(DictionaryType { key, value })))
     }
 }
 

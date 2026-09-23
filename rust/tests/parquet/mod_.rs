@@ -29,7 +29,6 @@ mod internal {
     use parquet::basic::{EdgeInterpolationAlgorithm, LogicalType};
 
     use yggdryl::ArrowCastOptions;
-    use yggdryl::FieldValue as _;
     use yggdryl::internals::parquet::open_builder;
     use yggdryl::internals::parquet_geospatial::{extension_schema, variant_schema};
     use yggdryl::parquet::Parquet;
@@ -705,13 +704,19 @@ mod internal {
             .next()
             .unwrap()
             .unwrap();
-        let text =
+        let root =
             yggdryl::StructType::from_fields([yggdryl::DataType::utf8().nullable_field("ccy")])
                 .map(yggdryl::DataType::from)
                 .unwrap()
-                .required_field("row")
-                .cast_arrow_batch(stored, ArrowCastOptions::new().with_safe(false))
-                .unwrap();
+                .required_field("row");
+        let text = yggdryl::Serie::from_arrow_batch(
+            Some(&root),
+            &stored,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
         let ccy = text.column(0).as_string::<i32>();
         assert_eq!(ccy.value(0), "USD");
         assert!(ccy.is_null(1));
@@ -1428,6 +1433,75 @@ mod records {
             .to_string();
         assert!(message.contains("index 1"), "{message}");
         assert!(media.handle().is_empty());
+    }
+
+    #[test]
+    fn batches_changing_layout_mid_stream_each_reconcile_to_the_written_root() {
+        use arrow_array::cast::AsArray;
+
+        let field = root();
+        let layout = |nullable: bool| {
+            Arc::new(arrow_schema::Schema::new(vec![
+                arrow_schema::Field::new("id", arrow_schema::DataType::Int64, nullable),
+                arrow_schema::Field::new("symbol", arrow_schema::DataType::Utf8, true),
+            ]))
+        };
+        let rows = |schema: &arrow_schema::SchemaRef, ids: Vec<Option<i64>>| {
+            let symbols = vec![Some("AAPL"); ids.len()];
+            RecordBatch::try_new(
+                Arc::clone(schema),
+                vec![
+                    Arc::new(Int64Array::from(ids)),
+                    Arc::new(StringArray::from(symbols)),
+                ],
+            )
+            .unwrap()
+        };
+        let (bare, loose) = (layout(false), layout(true));
+        let mut written = handle("layouts.parquet");
+        yggdryl::parquet::overwrite_arrow_reader(
+            &mut written,
+            reader(
+                &field,
+                [
+                    batch(&field, vec![1], vec![Some("AAPL")]),
+                    rows(&bare, vec![Some(2)]),
+                    rows(&loose, vec![Some(3), Some(4)]),
+                    rows(&bare, vec![Some(5)]),
+                ],
+            ),
+            &ParquetOptions::new(),
+        )
+        .unwrap();
+        let ids: Vec<i64> =
+            yggdryl::parquet::read_batch_reader(&written, None, &ParquetOptions::new())
+                .unwrap()
+                .map(std::result::Result::unwrap)
+                .flat_map(|batch| {
+                    batch
+                        .column(0)
+                        .as_primitive::<arrow_array::types::Int64Type>()
+                        .values()
+                        .to_vec()
+                })
+                .collect();
+        assert_eq!(ids, [1, 2, 3, 4, 5]);
+
+        // A layout already planned still refuses an absent required value,
+        // naming the batch that carried it.
+        let mut refused = handle("refused.parquet");
+        let message = yggdryl::parquet::overwrite_arrow_reader(
+            &mut refused,
+            reader(
+                &field,
+                [rows(&loose, vec![Some(1)]), rows(&loose, vec![None])],
+            ),
+            &ParquetOptions::new(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(message.contains("index 1"), "{message}");
+        assert!(refused.is_empty());
     }
 
     #[test]

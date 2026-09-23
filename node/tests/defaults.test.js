@@ -5,7 +5,11 @@ const { spawnSync } = require('node:child_process')
 const { join } = require('node:path')
 const test = require('node:test')
 
-const { DataType, Field, fields } = require('yggdryl')
+const { DataType, Field, Serie, fields } = require('yggdryl')
+
+// A default as Apache Arrow JS is a column's: one row of the field's default,
+// materialized as the value Arrow JS reads.
+const arrowDefault = (field) => Serie.fromDefault(field).intoArrowScalar()
 
 // Keyed by DataTypeId: the parameter-free identity of one datatype variant.
 function datatypeFixtures() {
@@ -332,7 +336,7 @@ test('nullable Struct Arrow defaults mask uninhabited hidden children', () => {
   )
 
   assert.equal(outer.defaultJSValue(), null)
-  assert.equal(outer.defaultArrowScalar(), null)
+  assert.equal(arrowDefault(outer), null)
 })
 
 test('deep Struct defaults remain bounded nested positional sequences', () => {
@@ -517,16 +521,16 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
   // Every field below is declared non-null, because a nullable field has the
   // logical null as its Arrow default and would never reach materialization.
   const required = { nullable: false }
-  assert.equal(fields.int32('id').dtype.defaultArrowScalar(), 0)
-  assert.equal(fields.utf8('note', { nullable: true }).defaultArrowScalar(), null)
+  assert.equal(arrowDefault(fields.int32('id', required)), 0)
+  assert.equal(arrowDefault(fields.utf8('note', { nullable: true })), null)
   assert.deepEqual(
-    fields.binaryView('binary_view', required).defaultArrowScalar(),
+    arrowDefault(fields.binaryView('binary_view', required)),
     new Uint8Array(),
   )
-  assert.equal(fields.utf8View('utf8_view', required).defaultArrowScalar(), '')
+  assert.equal(arrowDefault(fields.utf8View('utf8_view', required)), '')
   assert.equal(
-    fields.largeList('large_list', fields.int32('item'), required)
-      .defaultArrowScalar().length,
+    arrowDefault(fields.largeList('large_list', fields.int32('item'), required))
+      .length,
     0,
   )
 
@@ -535,31 +539,31 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
     [fields.int32('id', required)],
     required,
   )
-  assert.equal(payload.defaultArrowScalar().id, 0)
+  assert.equal(arrowDefault(payload).id, 0)
   assert.equal(
-    fields.dictionary('category', 'int8', 'utf8', required).defaultArrowScalar(),
+    arrowDefault(fields.dictionary('category', 'int8', 'utf8', required)),
     '',
   )
   assert.equal(
-    fields.union('choice', [[3, fields.int32('member', required)]], 'dense', required)
-      .defaultArrowScalar(),
+    arrowDefault(
+      fields.union('choice', [[3, fields.int32('member', required)]], 'dense', required),
+    ),
     0,
   )
   assert.equal(
-    fields.list('items', fields.int32('item'), required).defaultArrowScalar().length,
+    arrowDefault(fields.list('items', fields.int32('item'), required)).length,
     0,
   )
-  assert.notEqual(fields.decimal256('wide', 76, required).defaultArrowScalar(), null)
-  assert.notEqual(fields.struct('empty', [], required).defaultArrowScalar(), null)
+  assert.notEqual(arrowDefault(fields.decimal256('wide', 76, required)), null)
+  assert.notEqual(arrowDefault(fields.struct('empty', [], required)), null)
   assert.equal(
-    fields.fixedSizeList('empty', fields.int32('item'), 0, required)
-      .defaultArrowScalar().length,
+    arrowDefault(fields.fixedSizeList('empty', fields.int32('item'), 0, required))
+      .length,
     0,
   )
-  assert.equal(fields.null('nothing', { nullable: true }).defaultArrowScalar(), null)
-  assert.equal(fields.null('nothing').dtype.defaultArrowScalar(), null)
+  assert.equal(arrowDefault(fields.null('nothing', { nullable: true })), null)
   assert.throws(
-    () => fields.null('nothing', required).defaultArrowScalar(),
+    () => arrowDefault(fields.null('nothing', required)),
     /non-nullable field has only a logical-null default/,
   )
 
@@ -574,7 +578,7 @@ test('default Arrow scalar materialization is typed and rejects Arrow-JS gaps', 
   ]
   for (const field of unsupported) {
     assert.throws(
-      () => field.defaultArrowScalar(),
+      () => arrowDefault(field),
       /Apache Arrow JS cannot materialize .* unsupported/,
       field.name,
     )
@@ -640,6 +644,5 @@ test('public defaults expose no private native bridge names', () => {
   for (const prototype of [DataType.prototype, Field.prototype]) {
     assert.equal('_defaultJSValueNative' in prototype, false)
     assert.equal('_defaultJSHintNative' in prototype, false)
-    assert.equal('_defaultArrowScalarIpcNative' in prototype, false)
   }
 })

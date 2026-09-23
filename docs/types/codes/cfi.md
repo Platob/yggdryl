@@ -179,10 +179,11 @@ The value is the six characters, under the classification's identity.
     ```javascript
     const assert = require('node:assert/strict')
     const arrow = require('apache-arrow')
-    const { fields } = require('yggdryl')
+    const { Serie, fields } = require('yggdryl')
 
     const utf8 = (values) => arrow.vectorFromArray(values, new arrow.Utf8())
-    assert.deepEqual([...fields.cfi('cfi').castArrowArray(utf8(['ESVUFR']))], ['ESVUFR'])
+    const stored = Serie.fromArrowArray(utf8(['ESVUFR']), fields.cfi('cfi'))
+    assert.deepEqual([...stored.intoArrowArray()], ['ESVUFR'])
     ```
 
 ## The category grid

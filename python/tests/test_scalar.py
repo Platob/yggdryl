@@ -58,7 +58,7 @@ def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
     assert Scalar.from_(Point(2, 1)).kind == "struct"
     assert Scalar.from_(SlottedPoint(2, 1)).kind == "struct"
     assert Scalar.from_(MixedPoint(2, 1)).kind == "struct"
-    assert Scalar.from_({"symbol": "AAPL"}).kind == "mapping"
+    assert Scalar.from_({"symbol": "AAPL"}).kind == "map"
     assert Scalar.from_(Quote("AAPL", 12.5)).as_py() == {
         "price": 12.5,
         "symbol": "AAPL",
@@ -72,9 +72,9 @@ def test_native_field_and_datatype_wrappers_cross_structurally() -> None:
     dtype = Scalar.from_(field.dtype)
     field_value = Scalar.from_(field)
 
-    assert dtype.kind == "mapping"
+    assert dtype.kind == "map"
     assert dtype.as_py()["type"] == "list"  # type: ignore[index]
-    assert field_value.kind == "mapping"
+    assert field_value.kind == "map"
     assert field_value.as_py()["name"] == "items"  # type: ignore[index]
 
 
@@ -321,7 +321,7 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
     sequence = tree["legs"]
     assert sequence.at(-1) is not None and sequence.at(-1).kind == "null"
     assert sequence[-2].path("price") is not None
-    assert [child.kind for child in sequence] == ["mapping", "null"]
+    assert [child.kind for child in sequence] == ["map", "null"]
     with pytest.raises(IndexError):
         _ = sequence[9]
 
@@ -447,10 +447,10 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ),
     )
     mapping_state = (
-        "mapping",
+        "map",
         (
             (("string", "row"), record_state),
-            (("i16", 7), ("sequence", (("f32", 0x3FC0_0000), ("null",)))),
+            (("i16", 7), ("list", (("f32", 0x3FC0_0000), ("null",)))),
         ),
     )
     states = [*scalar_states, *code_states, record_state, mapping_state]
@@ -466,7 +466,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         assert copy.deepcopy(value) == value
 
     assert Scalar._from_pickle(record_state).kind == "struct"
-    assert Scalar._from_pickle(mapping_state).kind == "mapping"
+    assert Scalar._from_pickle(mapping_state).kind == "map"
     with pytest.raises(ValueError, match="unknown"):
         Scalar._from_pickle(("future", None))
 
@@ -824,7 +824,7 @@ def test_a_record_says_that_its_names_are_field_names() -> None:
     assert record.as_py() == {"a": 1, "b": 2}
 
     # A Python mapping is a mapping; a record is what a struct row resolves to.
-    assert Scalar.from_({"a": 1}).kind == "mapping"
+    assert Scalar.from_({"a": 1}).kind == "map"
     assert Scalar.from_struct([("a", 1), ("b", 2)]).kind == "struct"
 
     with pytest.raises(ValueError):

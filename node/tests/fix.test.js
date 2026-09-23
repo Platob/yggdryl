@@ -1312,7 +1312,7 @@
     assert.equal(message.field.equals(root), false)
     assert.deepEqual([...message.field.dtype.keys()], CONTENT)
     assert.equal(message.size, CONTENT.length)
-    assert.equal(message.value.kind, 'sequence')
+    assert.equal(message.value.kind, 'list')
     assert.equal(message.value.length, CONTENT.length)
     // The header states what the root stated: no version, the type, the
     // clock, and none of the trailer the frame never carried.

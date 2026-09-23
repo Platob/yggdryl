@@ -6,7 +6,7 @@ An instant or a wall-clock reading: one leaf, `datetime64`, carrying its resolut
 
 | | |
 | --- | --- |
-| Owned | `DateTimeType` with its single `DateTime64 { unit, timezone }` leaf, `DataType::DateTime(DateTimeType)`, the `DateTimeField` marker, and the `DateTime64` value |
+| Owned | `DateTimeType` with its single `DateTime64 { unit, timezone }` leaf, `DataType::DateTime64 { unit, timezone }` the datatype it views, the `DateTimeField` marker, and the `DateTime64` value |
 | Validated | once, at construction: the unit must be a clock resolution - seconds, milliseconds, microseconds or nanoseconds - and the zone is canonicalized on arrival. `with_unit` restates the resolution under the same rule; `with_timezone` cannot fail, because every zone is valid at every resolution |
 | Lazy | nothing; the leaf is `Copy` and the value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -73,10 +73,10 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     // A day is no resolution of a clock, wherever the rule is checked.
     assert!(leaf.with_unit(TimeUnit::Day).is_err());
     assert!(DataType::datetime64(TimeUnit::YearMonth, Timezone::UTC).is_err());
-    assert!(DataType::DateTime(DateTimeType::DateTime64 {
+    assert!(DataType::DateTime64 {
         unit: TimeUnit::Day,
         timezone: Timezone::NAIVE,
-    })
+    }
     .validate()
     .is_err());
     ```

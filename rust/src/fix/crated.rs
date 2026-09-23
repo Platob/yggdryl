@@ -513,7 +513,7 @@ impl Crated {
         // A crate Map is a group whose occurrence is its own entries Struct,
         // so the tag counting it is the tag it is: there is no second tag to
         // state, and no row that could state a different one.
-        let counts_itself = matches!(dtype, DataType::Mapping(_));
+        let counts_itself = matches!(dtype, DataType::Map(_) | DataType::SortedMap(_));
         let mut field = Field::new(name, dtype, !ALWAYS_STATED.contains(&tag));
         field.as_fix_mut().set_tag(tag)?;
         field.set_display(display)?;

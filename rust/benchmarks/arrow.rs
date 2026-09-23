@@ -20,14 +20,12 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use yggdryl::DateTimeType;
-use yggdryl::FieldValue as _;
-use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
+use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
     ArrowCastOptions, ArrowScalar, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
-    Scalar, StructType, TimeUnit, Timezone, Url,
+    Scalar, Serie, SerieReader, StructType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -64,10 +62,10 @@ fn root() -> Field {
             .expect("the price width is valid")
             .required_field("price"),
         DataType::Int64.required_field("size"),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        })
+        }
         .required_field("timestamp"),
     ])
     .map(DataType::from)
@@ -368,10 +366,10 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
     StructType::from_fields([
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        })
+        }
         .required_field("timestamp"),
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(18, 6)
@@ -386,9 +384,10 @@ fn cast_target() -> Field {
 
 /// Casting, against the bare call the family wraps.
 ///
-/// A batch cast is `FieldValue::cast_arrow_batch` plus one Field clone; a
-/// stream cast is `arrow::cast_reader`, which compiles one plan for the whole
-/// stream and applies it per batch. Each family arm sits next to the bare call
+/// A batch cast is `Serie::from_arrow_batch` into the target and back out
+/// through `into_arrow_batch`, plus one Field clone; a stream cast is
+/// `SerieReader::from_arrow_reader` handed back through `into_arrow_reader`,
+/// which compiles one plan for the whole stream and applies it per batch. Each family arm sits next to the bare call
 /// over the same rows, so the wrapper's own overhead is what separates them.
 /// The stream arms drain, because a stream cast plans eagerly and converts
 /// lazily - timing the call alone would measure the plan and nothing else.
@@ -409,17 +408,18 @@ fn cast_benchmarks(criterion: &mut Criterion) {
         // Both paths answer the same rows, which is what makes the pair a
         // comparison rather than two numbers.
         let streamed_rows = drain_reader(
-            cast_reader(
+            SerieReader::from_arrow_reader(
+                Some(&target),
                 batch_reader(Arc::clone(&schema), parts.clone()),
-                &target,
                 options,
             )
-            .expect("the stream is plannable"),
+            .expect("the stream is plannable")
+            .into_arrow_reader(),
         );
         assert_eq!(
             streamed_rows,
-            target
-                .cast_arrow_batch(batch.clone(), options)
+            Serie::from_arrow_batch(Some(&target), &batch, options)
+                .and_then(|serie| serie.into_arrow_batch())
                 .expect("the batch is castable")
                 .num_rows(),
             "the two cast paths must answer the same rows"
@@ -437,8 +437,8 @@ fn cast_benchmarks(criterion: &mut Criterion) {
             bencher.iter_batched(
                 || batch.clone(),
                 |batch| {
-                    target
-                        .cast_arrow_batch(batch, options)
+                    Serie::from_arrow_batch(Some(&target), &batch, options)
+                        .and_then(|serie| serie.into_arrow_batch())
                         .expect("the batch casts")
                 },
                 BatchSize::LargeInput,
@@ -464,7 +464,9 @@ fn cast_benchmarks(criterion: &mut Criterion) {
                 || batch_reader(Arc::clone(&schema), parts.clone()),
                 |reader| {
                     drain_reader(
-                        cast_reader(reader, &target, options).expect("the stream is plannable"),
+                        SerieReader::from_arrow_reader(Some(&target), reader, options)
+                            .expect("the stream is plannable")
+                            .into_arrow_reader(),
                     )
                 },
                 BatchSize::SmallInput,

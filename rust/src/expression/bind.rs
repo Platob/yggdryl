@@ -23,8 +23,11 @@
 //! which is the mechanism - not the intention - behind scalar and vectorized
 //! agreeing.
 
+use std::sync::Arc;
+
 use smol_str::{SmolStr, format_smolstr};
 
+use super::arrow::ColumnCast;
 use super::eval::{Row, convert};
 use super::path::FieldSegment;
 use super::typing::{column_index, common_type};
@@ -88,8 +91,9 @@ pub(crate) enum Kind {
     Negate(Box<Node>),
     /// A call into the closed function set.
     Function(Function, Vec<Node>),
-    /// A conversion into this node's declared datatype.
-    Cast(Box<Node>, Safety),
+    /// A conversion into this node's declared datatype, and the column cast
+    /// the vectorized tier holds for it.
+    Cast(Box<Node>, Safety, Arc<ColumnCast>),
     /// A searched conditional.
     Case {
         /// The `when`/`then` pairs, in order.
@@ -189,7 +193,7 @@ impl Node {
             | Kind::IsNull(inner)
             | Kind::IsNotNull(inner)
             | Kind::Negate(inner)
-            | Kind::Cast(inner, _)
+            | Kind::Cast(inner, ..)
             | Kind::Glob(inner, _)
             | Kind::Like { value: inner, .. } => visit(inner),
             Kind::Compare(left, _, right) | Kind::Arithmetic(left, _, right) => {
@@ -335,7 +339,7 @@ impl Bound {
 
     /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::sequence::Sequence`] of column values in
+    /// The row is a [`crate::serie::Run`] of column values in
     /// schema order.
     ///
     /// # Errors
@@ -345,7 +349,7 @@ impl Bound {
     /// or cannot represent an exact decimal result.
     pub fn eval(&self, row: &Scalar) -> Result<Scalar> {
         let values = row_values(row, &self.schema)?;
-        self.node.eval(&Row::new(Some(values)))
+        self.node.eval(&Row::new(Some(&values)))
     }
 
     /// Evaluate this term over a row held as its column values.
@@ -378,9 +382,12 @@ impl Bound {
     }
 }
 
-/// Borrow one row's column values.
-pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'row [Scalar]> {
-    let values = row.as_sequence().ok_or_else(|| Error::InvalidRecord {
+/// One row's column values: lent by a run, built once by a column.
+pub(crate) fn row_values<'row>(
+    row: &'row Scalar,
+    schema: &Field,
+) -> Result<std::borrow::Cow<'row, [Scalar]>> {
+    let values = row.sequence_rows().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(schema.name()),
         reason: format_smolstr!(
             "expected an ordered sequence of {} column values, got {}",
@@ -388,7 +395,8 @@ pub(crate) fn row_values<'row>(row: &'row Scalar, schema: &Field) -> Result<&'ro
             row.kind()
         ),
     })?;
-    sized(values, schema)
+    sized(&values, schema)?;
+    Ok(values)
 }
 
 /// The values, proven one per column of the schema.
@@ -745,7 +753,7 @@ impl Binder<'_> {
                 let cost = inner.cost + 1;
                 Node {
                     field: named(term, dtype.clone(), nullable),
-                    kind: Kind::Cast(Box::new(inner), *safety),
+                    kind: Kind::Cast(Box::new(inner), *safety, Arc::default()),
                     cost,
                 }
             }
@@ -865,7 +873,7 @@ impl Binder<'_> {
             .with_nullable(nullable);
         Ok(Node {
             field,
-            kind: Kind::Cast(Box::new(node), Safety::Strict),
+            kind: Kind::Cast(Box::new(node), Safety::Strict, Arc::default()),
             cost,
         })
     }
@@ -1032,10 +1040,15 @@ fn list_item_type(field: &Field) -> Option<DataType> {
 /// The declared key and value types of a map field.
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
     match field.dtype() {
-        DataType::Mapping(map) => (
-            map.entries().get_field(0).map(|held| held.dtype().clone()),
-            map.entries().get_field(1).map(|held| held.dtype().clone()),
-        ),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            (
+                map.entries().get_field(0).map(|held| held.dtype().clone()),
+                map.entries().get_field(1).map(|held| held.dtype().clone()),
+            )
+        }
         _ => (None, None),
     }
 }
@@ -1136,7 +1149,7 @@ pub(crate) fn rebuild(node: &Node) -> Term {
         Kind::Function(function, arguments) => {
             Term::Function(function.clone(), arguments.iter().map(rebuild).collect())
         }
-        Kind::Cast(inner, safety) => Term::Cast(
+        Kind::Cast(inner, safety, _) => Term::Cast(
             Box::new(rebuild(inner)),
             node.field.dtype().clone(),
             *safety,

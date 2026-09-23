@@ -27,19 +27,14 @@ use crate::bytes::casts::{
 };
 use crate::cast::columns::{dictionary_values_ref, offset_pair};
 use crate::cast::downcast;
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::{DataType, Field, UnionMode};
 use crate::{bytes, string};
 
 /// Bounded Arrow materialization accounting.
 mod limits {
-    use crate::enums::EnumType;
-    use crate::sequence::SequenceType;
 
     use crate::arrow::{Error, Result};
     use crate::{DataType, Field, Scalar, TimeUnit, UnionMode};
-    use crate::{DateType, DecimalType, IntervalType, TimeType};
 
     // Composite Arrow layouts can turn one logical null or inactive union member
     // into a large number of mandatory physical child slots. Keep the same
@@ -101,7 +96,7 @@ mod limits {
                 return Ok(());
             }
             match dtype {
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     self.add_array_layout(dtype, rows)?;
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -139,7 +134,7 @@ mod limits {
                     }
                     Ok(())
                 }
-                DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                DataType::Dictionary(dictionary) => {
                     self.add_array_layout(dtype, rows)?;
                     if !include_dictionary_values
                         || dictionary.value().is_default_value(&Scalar::Null)?
@@ -176,7 +171,7 @@ mod limits {
         /// still charged because a deeply nested scalar can itself reach a cap.
         pub(crate) fn add_default_scalar_scratch(&mut self, dtype: &DataType) -> Result<()> {
             match dtype {
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
@@ -204,7 +199,7 @@ mod limits {
                     }
                     Ok(())
                 }
-                DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                DataType::Dictionary(dictionary) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     if dictionary.value().is_default_value(&Scalar::Null)? {
                         Ok(())
@@ -239,7 +234,7 @@ mod limits {
             }
             self.add_array_layout_impl(dtype, rows, count_root_slots)?;
             match dtype {
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                     let child_rows = checked_physical_mul(
@@ -272,7 +267,7 @@ mod limits {
                         self.add_array(field.dtype(), rows)?;
                     }
                 }
-                DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                DataType::Dictionary(dictionary) => {
                     // There can be at most one distinct dictionary value per row.
                     self.add_array(dictionary.value(), rows)?;
                 }
@@ -327,10 +322,10 @@ mod limits {
                 DataType::Int32
                 | DataType::UInt32
                 | DataType::Float32
-                | DataType::Date(DateType::Date32)
-                | DataType::Time(TimeType::Time32(_))
-                | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth))
-                | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
+                | DataType::Date32
+                | DataType::Time32(_)
+                | DataType::Interval(TimeUnit::YearMonth)
+                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -355,30 +350,30 @@ mod limits {
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64
-                | DataType::DateTime(_)
-                | DataType::Date(DateType::Date64)
-                | DataType::Time(TimeType::Time64(_))
-                | DataType::Duration(_)
-                | DataType::Interval(IntervalType::Interval(TimeUnit::DayTime))
-                | DataType::Decimal(DecimalType::Decimal64 { .. })
-                | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
-                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
-                | DataType::Decimal(DecimalType::Decimal128 { .. })
+                | DataType::DateTime64 { .. }
+                | DataType::Date64
+                | DataType::Time64(_)
+                | DataType::Duration32(_) | DataType::Duration64(_)
+                | DataType::Interval(TimeUnit::DayTime)
+                | DataType::Decimal64 { .. }
+                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                DataType::Interval(TimeUnit::MonthDayNano)
+                | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::Sequence(SequenceType::LargeListView(_)) => {
+                | DataType::LargeListView(_) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
-                DataType::Decimal(DecimalType::Decimal256 { .. }) => self.add_fixed_rows(rows, 32)?,
+                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
                 DataType::Version
-                | DataType::Uri(_)
+                | DataType::Url | DataType::Urn
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::Sequence(SequenceType::List(_))
-                | DataType::Mapping(_)
+                | DataType::List(_)
+                | DataType::Map(_) | DataType::SortedMap(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
                 | DataType::Geography(_) => {
@@ -390,18 +385,18 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::Sequence(SequenceType::LargeList(_)) => self.add_offsets(rows, 8)?,
+                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
                 DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
                 DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
                 DataType::Null
-                | DataType::Sequence(SequenceType::FixedSizeList(..))
+                | DataType::FixedSizeList(..)
                 | DataType::Struct(_)
                 | DataType::RunEndEncoded(_) => {}
                 DataType::Union(_, mode) => self.add_union_buffers(rows, *mode)?,
-                DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                DataType::Dictionary(dictionary) => {
                     self.add_fixed_rows(rows, integer_width(dictionary.key())?)?;
                 }
             }
@@ -443,10 +438,10 @@ mod limits {
                 DataType::Int32
                 | DataType::UInt32
                 | DataType::Float32
-                | DataType::Date(DateType::Date32)
-                | DataType::Time(TimeType::Time32(_))
-                | DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth))
-                | DataType::Decimal(DecimalType::Decimal32 { .. }) => self.add_fixed_rows(rows, 4)?,
+                | DataType::Date32
+                | DataType::Time32(_)
+                | DataType::Interval(TimeUnit::YearMonth)
+                | DataType::Decimal32 { .. } => self.add_fixed_rows(rows, 4)?,
                 // A registered code is US-ASCII text bounded at the width its
                 // standard fixes, so it charges one 32-bit offset a row and at
                 // most that many payload bytes. The variants stay spelled out so
@@ -471,28 +466,28 @@ mod limits {
                 DataType::Int64
                 | DataType::UInt64
                 | DataType::Float64
-                | DataType::DateTime(_)
-                | DataType::Date(DateType::Date64)
-                | DataType::Time(TimeType::Time64(_))
-                | DataType::Duration(_)
-                | DataType::Interval(IntervalType::Interval(TimeUnit::DayTime))
-                | DataType::Decimal(DecimalType::Decimal64 { .. })
-                | DataType::Sequence(SequenceType::ListView(_)) => self.add_fixed_rows(rows, 8)?,
-                DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano))
-                | DataType::Decimal(DecimalType::Decimal128 { .. })
+                | DataType::DateTime64 { .. }
+                | DataType::Date64
+                | DataType::Time64(_)
+                | DataType::Duration32(_) | DataType::Duration64(_)
+                | DataType::Interval(TimeUnit::DayTime)
+                | DataType::Decimal64 { .. }
+                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                DataType::Interval(TimeUnit::MonthDayNano)
+                | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::Sequence(SequenceType::LargeListView(_)) => self.add_fixed_rows(rows, 16)?,
-                DataType::Decimal(DecimalType::Decimal256 { .. }) => self.add_fixed_rows(rows, 32)?,
+                | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
+                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
                 DataType::Version
-                | DataType::Uri(_)
+                | DataType::Url | DataType::Urn
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::Sequence(SequenceType::List(_))
-                | DataType::Mapping(_)
+                | DataType::List(_)
+                | DataType::Map(_) | DataType::SortedMap(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
                 | DataType::Geography(_) => {
@@ -504,13 +499,13 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::Sequence(SequenceType::LargeList(_)) => self.add_offsets(rows, 8)?,
+                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
                 DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
                 DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     let size = usize::try_from(*size)
                         .map_err(|_| invalid_value("a fixed list size within usize", size))?;
                     let child_rows =
@@ -536,7 +531,7 @@ mod limits {
                         }
                     }
                 }
-                DataType::Enum(EnumType::Dictionary(dictionary)) => {
+                DataType::Dictionary(dictionary) => {
                     self.add_fixed_rows(rows, integer_width(dictionary.key())?)?;
                 }
                 DataType::RunEndEncoded(encoded) => {
@@ -1029,7 +1024,7 @@ fn reserve_source_children_and_payload(
             selection,
             budget,
         )?,
-        DataType::Sequence(SequenceType::List(child)) => {
+        DataType::List(child) => {
             let array = downcast::<ListArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1047,7 +1042,7 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
         }
-        DataType::Sequence(SequenceType::LargeList(child)) => {
+        DataType::LargeList(child) => {
             let array = downcast::<LargeListArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1065,7 +1060,7 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
         }
-        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+        DataType::FixedSizeList(child, size) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             let size = usize::try_from(*size).map_err(|_| {
                 Error::IncompatibleSchema(
@@ -1113,7 +1108,10 @@ fn reserve_source_children_and_payload(
                 reserve_source_selection(child.as_ref(), field.dtype(), selection, budget)?;
             }
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let array = downcast::<MapArray>(array)?;
             let offsets = array.value_offsets();
             let ranges = selected_child_ranges(
@@ -1329,13 +1327,14 @@ pub(crate) fn reserve_cast_output_payload(
             }
             _ => Ok(()),
         },
-        DataType::Sequence(SequenceType::List(_))
-        | DataType::Sequence(SequenceType::LargeList(_))
-        | DataType::Sequence(SequenceType::FixedSizeList(..))
+        DataType::List(_)
+        | DataType::LargeList(_)
+        | DataType::FixedSizeList(..)
         | DataType::Struct(_)
-        | DataType::Mapping(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_)
         | DataType::Union(..)
-        | DataType::Enum(EnumType::Dictionary(_))
+        | DataType::Dictionary(_)
         | DataType::RunEndEncoded(_) => {
             reserve_source_children_and_payload(array, source_type, selection, budget)
         }
@@ -1373,8 +1372,8 @@ pub(crate) fn reserve_concat_copy(
         }
         // Dictionary inputs are vocabulary-aligned before concat, so Arrow
         // allocates only the concatenated key array and retains one vocab Arc.
-        DataType::Enum(EnumType::Dictionary(_)) => budget.add_array_layout(dtype, array.len())?,
-        DataType::Sequence(SequenceType::List(child)) => {
+        DataType::Dictionary(_) => budget.add_array_layout(dtype, array.len())?,
+        DataType::List(child) => {
             let array = downcast::<ListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1382,7 +1381,7 @@ pub(crate) fn reserve_concat_copy(
             let values = array.values().slice(start, end - start);
             reserve_concat_copy(values.as_ref(), child.dtype(), budget)?;
         }
-        DataType::Sequence(SequenceType::LargeList(child)) => {
+        DataType::LargeList(child) => {
             let array = downcast::<LargeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1392,17 +1391,17 @@ pub(crate) fn reserve_concat_copy(
         }
         // Arrow concat preserves every ListView backing child, including
         // ranges not referenced by a logical view.
-        DataType::Sequence(SequenceType::ListView(child)) => {
+        DataType::ListView(child) => {
             let array = downcast::<ListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::Sequence(SequenceType::LargeListView(child)) => {
+        DataType::LargeListView(child) => {
             let array = downcast::<LargeListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
+        DataType::FixedSizeList(child, _) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
@@ -1414,7 +1413,10 @@ pub(crate) fn reserve_concat_copy(
                 reserve_concat_copy(child.as_ref(), field.dtype(), budget)?;
             }
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let array = downcast::<MapArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1494,31 +1496,25 @@ fn reserve_new_materialized_array_without_dictionary_values(
             // A fixed width was charged by the layout.
             _ => {}
         },
-        DataType::Sequence(SequenceType::List(child)) => {
-            reserve_new_materialized_array_without_dictionary_values(
-                downcast::<ListArray>(output.as_ref())?.values(),
-                downcast::<ListArray>(source.as_ref())?.values(),
-                child.dtype(),
-                budget,
-            )?
-        }
-        DataType::Sequence(SequenceType::LargeList(child)) => {
-            reserve_new_materialized_array_without_dictionary_values(
-                downcast::<LargeListArray>(output.as_ref())?.values(),
-                downcast::<LargeListArray>(source.as_ref())?.values(),
-                child.dtype(),
-                budget,
-            )?
-        }
-        DataType::Sequence(SequenceType::ListView(child)) => {
-            reserve_new_materialized_array_without_dictionary_values(
-                downcast::<ListViewArray>(output.as_ref())?.values(),
-                downcast::<ListViewArray>(source.as_ref())?.values(),
-                child.dtype(),
-                budget,
-            )?
-        }
-        DataType::Sequence(SequenceType::LargeListView(child)) => {
+        DataType::List(child) => reserve_new_materialized_array_without_dictionary_values(
+            downcast::<ListArray>(output.as_ref())?.values(),
+            downcast::<ListArray>(source.as_ref())?.values(),
+            child.dtype(),
+            budget,
+        )?,
+        DataType::LargeList(child) => reserve_new_materialized_array_without_dictionary_values(
+            downcast::<LargeListArray>(output.as_ref())?.values(),
+            downcast::<LargeListArray>(source.as_ref())?.values(),
+            child.dtype(),
+            budget,
+        )?,
+        DataType::ListView(child) => reserve_new_materialized_array_without_dictionary_values(
+            downcast::<ListViewArray>(output.as_ref())?.values(),
+            downcast::<ListViewArray>(source.as_ref())?.values(),
+            child.dtype(),
+            budget,
+        )?,
+        DataType::LargeListView(child) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<LargeListViewArray>(output.as_ref())?.values(),
                 downcast::<LargeListViewArray>(source.as_ref())?.values(),
@@ -1526,7 +1522,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 budget,
             )?;
         }
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
+        DataType::FixedSizeList(child, _) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<FixedSizeListArray>(output.as_ref())?.values(),
                 downcast::<FixedSizeListArray>(source.as_ref())?.values(),
@@ -1548,7 +1544,10 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 )?;
             }
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let output: ArrayRef =
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());
             let source: ArrayRef =
@@ -1682,7 +1681,7 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
+        DataType::Dictionary(dictionary) => {
             let output_values = dictionary_values_ref(output.as_ref(), dictionary)?;
             let source_values = dictionary_values_ref(source.as_ref(), dictionary)?;
             let shared = if Arc::ptr_eq(output_values, source_values)
@@ -1724,41 +1723,40 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
                 reserve_new_dictionary_vocabularies(output, source, field.dtype(), budget)?;
             }
         }
-        DataType::Sequence(SequenceType::List(child)) => reserve_new_dictionary_vocabularies(
+        DataType::List(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::Sequence(SequenceType::LargeList(child)) => reserve_new_dictionary_vocabularies(
+        DataType::LargeList(child) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::Sequence(SequenceType::ListView(child)) => reserve_new_dictionary_vocabularies(
+        DataType::ListView(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::Sequence(SequenceType::LargeListView(child)) => {
-            reserve_new_dictionary_vocabularies(
-                downcast::<LargeListViewArray>(output.as_ref())?.values(),
-                downcast::<LargeListViewArray>(source.as_ref())?.values(),
-                child.dtype(),
-                budget,
-            )?
-        }
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => {
-            reserve_new_dictionary_vocabularies(
-                downcast::<FixedSizeListArray>(output.as_ref())?.values(),
-                downcast::<FixedSizeListArray>(source.as_ref())?.values(),
-                child.dtype(),
-                budget,
-            )?
-        }
-        DataType::Mapping(map) => {
+        DataType::LargeListView(child) => reserve_new_dictionary_vocabularies(
+            downcast::<LargeListViewArray>(output.as_ref())?.values(),
+            downcast::<LargeListViewArray>(source.as_ref())?.values(),
+            child.dtype(),
+            budget,
+        )?,
+        DataType::FixedSizeList(child, _) => reserve_new_dictionary_vocabularies(
+            downcast::<FixedSizeListArray>(output.as_ref())?.values(),
+            downcast::<FixedSizeListArray>(source.as_ref())?.values(),
+            child.dtype(),
+            budget,
+        )?,
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let output: ArrayRef =
                 Arc::new(downcast::<MapArray>(output.as_ref())?.entries().clone());
             let source: ArrayRef =

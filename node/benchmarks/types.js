@@ -9,6 +9,7 @@ const {
   MediaType,
   MimeType,
   Scalar,
+  Serie,
   Plan,
   Term,
   StringEnum,
@@ -113,8 +114,8 @@ benchmark('figi/field_into_scalar', () => Scalar.from('BBG000BLNQ16', { field: f
 benchmark('figi/scalar_as_js', () => figiScalar.asJs())
 
 benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
-benchmark('schema/cast_arrow_array_bits', () =>
-  digestBits.castArrowArray(unsignedDigest, { representation: 'bits' }),
+benchmark('serie/from_arrow_array_bits', () =>
+  Serie.fromArrowArray(unsignedDigest, digestBits, { representation: 'bits' }),
 )
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))

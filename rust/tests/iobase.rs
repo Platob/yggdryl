@@ -10,3 +10,5 @@ mod counting;
 mod bytes;
 #[path = "iobase/lifecycle.rs"]
 mod lifecycle;
+#[path = "iobase/transfer.rs"]
+mod transfer;

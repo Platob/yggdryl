@@ -1,8 +1,8 @@
+use std::borrow::Cow;
+
 use base64::Engine as _;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar};
 
 /// Interpret a natural text value under one field, then validate it.
@@ -26,15 +26,16 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
     }
     match field.dtype() {
         DataType::Struct(fields) => named(value, fields, field),
-        DataType::Sequence(SequenceType::List(child))
-        | DataType::Sequence(SequenceType::ListView(child))
-        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
-        | DataType::Sequence(SequenceType::LargeList(child))
-        | DataType::Sequence(SequenceType::LargeListView(child)) => {
+        DataType::List(child)
+        | DataType::ListView(child)
+        | DataType::FixedSizeList(child, _)
+        | DataType::LargeList(child)
+        | DataType::LargeListView(child) => {
             sequence(value, |value| into_natural(value, child), field)
         }
         DataType::Union(fields, _) => {
-            let Some([type_id, payload]) = value.as_sequence() else {
+            let pair = value.sequence_rows();
+            let Some([type_id, payload]) = pair.as_deref() else {
                 return Err(invalid(field, "expected [type_id, value] for a union"));
             };
             let id = type_id
@@ -50,7 +51,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
                 into_natural(payload.clone(), branch)?,
             ]))
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => into_natural(
+        DataType::Dictionary(dictionary) => into_natural(
             value,
             &Field::new(
                 field.name(),
@@ -59,7 +60,10 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
             ),
         ),
         DataType::RunEndEncoded(encoded) => into_natural(value, encoded.values()),
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let fields = map.entries().fields();
             let [_, value_field] = fields else {
                 return Err(invalid(
@@ -83,7 +87,7 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
 
 /// Re-key one canonical struct row by the names its Field declares.
 fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.as_serie() else {
         // A record already carries its names; anything else is not a struct
         // row and the format writer refuses it under its own rules.
         return Ok(value);
@@ -105,7 +109,7 @@ fn named(value: Scalar, fields: &crate::StructType, field: &Field) -> Result<Sca
             .map(|(value, child)| {
                 Ok((
                     SmolStr::new(child.name()),
-                    into_natural(value.clone(), child)?,
+                    into_natural(value.into_owned(), child)?,
                 ))
             })
             .collect::<Result<Vec<_>>>()?,
@@ -129,19 +133,20 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => {
             base64_payload(value, field)
         }
-        DataType::Sequence(SequenceType::List(child))
-        | DataType::Sequence(SequenceType::ListView(child))
-        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
-        | DataType::Sequence(SequenceType::LargeList(child))
-        | DataType::Sequence(SequenceType::LargeListView(child)) => {
-            sequence(value, |value| prepare(value, child), field)
-        }
+        DataType::List(child)
+        | DataType::ListView(child)
+        | DataType::FixedSizeList(child, _)
+        | DataType::LargeList(child)
+        | DataType::LargeListView(child) => sequence(value, |value| prepare(value, child), field),
         DataType::Struct(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
-            prepare_for_type(value, dictionary.value(), field)
+        DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            mapping(value, map, field)
         }
-        DataType::Mapping(map) => mapping(value, map, field),
         DataType::RunEndEncoded(encoded) => prepare(value, encoded.values()),
         _ => Ok(value),
     }
@@ -160,12 +165,12 @@ fn sequence(
     mut prepare_value: impl FnMut(Scalar) -> Result<Scalar>,
     field: &Field,
 ) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
+    let Some(values) = value.as_serie() else {
         return Err(invalid(field, "expected an array"));
     };
     values
         .iter()
-        .cloned()
+        .map(Cow::into_owned)
         .map(&mut prepare_value)
         .collect::<Result<Vec<_>>>()
         .map(Scalar::from_sequence)
@@ -187,14 +192,17 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
                 .collect::<Result<Vec<_>>>()?;
             Scalar::from_struct(prepared)
         }
-        Scalar::Sequence(values) => {
-            if values.as_slice().len() != fields.len() {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => {
+            if values.len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
             values
-                .as_slice()
                 .iter()
-                .cloned()
+                .map(Cow::into_owned)
                 .zip(fields.iter())
                 .map(|(value, child)| prepare(value, child))
                 .collect::<Result<Vec<_>>>()
@@ -206,10 +214,8 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
 
 /// Descend the branch a union's type ID selects.
 fn union(value: Scalar, fields: &crate::UnionFields, field: &Field) -> Result<Scalar> {
-    let Some(values) = value.as_sequence() else {
-        return Err(invalid(field, "expected [type_id, value] for a union"));
-    };
-    let [type_id, payload] = values else {
+    let pair = value.sequence_rows();
+    let Some([type_id, payload]) = pair.as_deref() else {
         return Err(invalid(field, "expected [type_id, value] for a union"));
     };
     let id = type_id
@@ -236,7 +242,7 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
         ));
     };
     let entries = match value {
-        Scalar::Mapping(entries) => entries.as_slice().to_vec(),
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => entries.as_slice().to_vec(),
         // A record is a map keyed by name, which the value contract reads too;
         // the entries are shaped here so the walk reaches their byte leaves.
         Scalar::Struct(entries) => entries
@@ -258,18 +264,23 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
 fn holds_byte_leaf(dtype: &DataType) -> bool {
     match dtype {
         DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => true,
-        DataType::Sequence(SequenceType::List(child))
-        | DataType::Sequence(SequenceType::ListView(child))
-        | DataType::Sequence(SequenceType::FixedSizeList(child, _))
-        | DataType::Sequence(SequenceType::LargeList(child))
-        | DataType::Sequence(SequenceType::LargeListView(child)) => holds_byte_leaf(child.dtype()),
+        DataType::List(child)
+        | DataType::ListView(child)
+        | DataType::FixedSizeList(child, _)
+        | DataType::LargeList(child)
+        | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
         DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
         DataType::Union(fields, _) => fields
             .iter()
             .any(|(_, field)| holds_byte_leaf(field.dtype())),
-        DataType::Enum(EnumType::Dictionary(dictionary)) => holds_byte_leaf(dictionary.value()),
-        DataType::Mapping(map) => holds_byte_leaf(map.entries().dtype()),
+        DataType::Dictionary(dictionary) => holds_byte_leaf(dictionary.value()),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            holds_byte_leaf(map.entries().dtype())
+        }
         _ => false,
     }
 }

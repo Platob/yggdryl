@@ -9,7 +9,7 @@ of those native values; neither maintains a parallel schema or codec model.
 
 A struct `Field` is the schema. There is no separate record or schema type: a
 non-null `Struct` field describes rows, and a row is one ordered
-`Scalar::Sequence` with one value per child field.
+`Scalar::List` with one value per child field.
 
 Query execution, network clients, and transport protocols are outside the
 project's scope.

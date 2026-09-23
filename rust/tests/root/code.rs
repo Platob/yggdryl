@@ -12,7 +12,7 @@ mod datatypes {
     use yggdryl::FieldValue as _;
     use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar,
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie,
         StringEnum, StructType,
     };
     use yggdryl::{
@@ -256,21 +256,28 @@ mod datatypes {
     #[test]
     fn a_cast_into_a_code_stores_the_text_and_reading_it_back_keeps_it() {
         let venue = Field::new("venue", DataType::MicCode, false);
-        let stored = venue
-            .cast_arrow_array(
-                text(&["XPAR", "XLON"]),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
+        let stored = Serie::from_arrow_array(
+            Some(&venue),
+            text(&["XPAR", "XLON"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
         assert_eq!(cells.value(0), "XPAR");
         assert_eq!(cells.value(1), "XLON");
 
         // A value shorter than the width stores as itself: there is no slot to
         // fill, so nothing is padded and nothing has to be trimmed back.
-        let short = venue
-            .cast_arrow_array(text(&["BX"]), ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let short = Serie::from_arrow_array(
+            Some(&venue),
+            text(&["BX"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         let short = short.as_any().downcast_ref::<StringArray>().unwrap();
         assert_eq!(short.value(0), "BX");
         assert_eq!(short.value_length(0), 2);
@@ -280,9 +287,14 @@ mod datatypes {
         let slots: ArrayRef = Arc::new(
             FixedSizeBinaryArray::try_from_iter([b"BX\0\0".to_vec()].into_iter()).unwrap(),
         );
-        let trimmed = venue
-            .cast_arrow_array(slots, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let trimmed = Serie::from_arrow_array(
+            Some(&venue),
+            slots,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
         assert_eq!(
             trimmed
                 .as_any()
@@ -295,9 +307,14 @@ mod datatypes {
         let row = root([venue.clone()]);
         let batch = RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![stored]).unwrap();
         let as_text = root([DataType::utf8().required_field("venue")]);
-        let trimmed = as_text
-            .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-            .unwrap();
+        let trimmed = Serie::from_arrow_batch(
+            Some(&as_text),
+            &batch,
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_batch()
+        .unwrap();
         let trimmed = trimmed
             .column(0)
             .as_any()
@@ -307,10 +324,13 @@ mod datatypes {
         assert_eq!(trimmed.value(1), "XLON");
 
         // The refusal names the code's own width, not the next ASCII one up.
-        let refused = venue
-            .cast_arrow_array(text(&["XPARIS"]), ArrowCastOptions::new().with_safe(false))
-            .unwrap_err()
-            .to_string();
+        let refused = Serie::from_arrow_array(
+            Some(&venue),
+            text(&["XPARIS"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap_err()
+        .to_string();
         assert!(refused.contains("at most 4 bytes"), "{refused}");
     }
 
@@ -467,33 +487,39 @@ mod datatypes {
                 value,
                 "{name}"
             );
-            let cast = field
-                .cast_arrow_array(text(&[sample]), ArrowCastOptions::new().with_safe(false))
-                .unwrap();
+            let cast = Serie::from_arrow_array(
+                Some(&field),
+                text(&[sample]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
             assert_eq!(cast.as_ref(), stored.as_ref(), "{name}");
 
             // And the column's own storage ingests without rewriting or
             // refusing: the plan asks `is_code`, so a code added to the listing
             // is planned without being named again.
-            let again = field
-                .cast_arrow_array(
-                    Arc::clone(&stored),
-                    ArrowCastOptions::new().with_safe(false),
-                )
-                .unwrap_or_else(|error| panic!("{name} did not ingest its own bytes: {error}"));
+            let again = Serie::from_arrow_array(
+                Some(&field),
+                Arc::clone(&stored),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .and_then(|serie| Ok(serie.require_arrow_array()?))
+            .unwrap_or_else(|error| panic!("{name} did not ingest its own bytes: {error}"));
             assert_eq!(again.as_ref(), stored.as_ref(), "{name}");
 
             // A value past the width is refused at the code's own width, naming
             // the row it was in: the width is a bound the value rule keeps even
             // though no layout enforces it any more.
             let over = "X".repeat(*width + 1);
-            let refused = field
-                .cast_arrow_array(
-                    text(&[over.as_str()]),
-                    ArrowCastOptions::new().with_safe(false),
-                )
-                .unwrap_err()
-                .to_string();
+            let refused = Serie::from_arrow_array(
+                Some(&field),
+                text(&[over.as_str()]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap_err()
+            .to_string();
             assert!(
                 refused.contains(&format!("at most {width} bytes, got {} bytes", over.len())),
                 "{name}: {refused}"
@@ -574,21 +600,34 @@ mod datatypes {
         assert!(CurrencyField::try_from_field(plain).is_err());
         assert!(FieldScalar::new(&venue_field, "XPARIS").is_err());
 
-        // A typed field hands back the exact array its code stores as, which is
-        // text: the marker names the array type at compile time, so a storage
-        // change that the marker did not follow is a downcast failure here.
-        let cells = ccy
-            .cast_arrow_array(
-                text(&["USD", "EUR"]),
-                ArrowCastOptions::new().with_safe(false),
-            )
-            .unwrap();
-        assert_eq!(cells.value(0), "USD");
-        assert_eq!(cells.value(1), "EUR");
-        let one = venue
-            .cast_arrow_scalar(text(&["XPAR"]), ArrowCastOptions::new().with_safe(false))
-            .unwrap();
-        assert_eq!(one.into_inner().value(0), "XPAR");
+        // A typed field's column is the text leaf its code stores as: the typed
+        // read is a narrowing of the column that comes out, so a storage
+        // change that the column did not follow is a narrowing failure here.
+        let cells = Serie::from_arrow_array(
+            Some(&ccy.clone().into_field()),
+            text(&["USD", "EUR"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap();
+        let cells = cells.as_utf8().expect("a code column is UTF-8 text");
+        assert_eq!(cells.value(0), Some("USD"));
+        assert_eq!(cells.value(1), Some("EUR"));
+        let one = Serie::from_arrow_array(
+            Some(&venue.clone().into_field()),
+            text(&["XPAR"]),
+            ArrowCastOptions::new().with_safe(false),
+        )
+        .unwrap()
+        .into_arrow_scalar()
+        .unwrap();
+        assert_eq!(
+            one.into_inner()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .value(0),
+            "XPAR"
+        );
     }
 
     #[test]
@@ -642,7 +681,10 @@ mod datatypes {
     fn a_code_column_reads_into_every_string_and_byte_datatype() {
         let strict = || ArrowCastOptions::new().with_safe(false);
         let ccy = Field::new("v", DataType::Currency, false);
-        let stored = ccy.cast_arrow_array(text(&["USD"]), strict()).unwrap();
+        let stored = Serie::from_arrow_array(Some(&ccy), text(&["USD"]), strict())
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         // The column carries `yggdryl.currency`, which is what a reading reads it
         // under.
         let batch = RecordBatch::try_new(
@@ -652,10 +694,15 @@ mod datatypes {
         .unwrap();
         let into = |target: DataType| -> ArrayRef {
             Arc::clone(
-                root([Field::new("v", target, false)])
-                    .cast_arrow_batch(batch.clone(), strict())
-                    .unwrap()
-                    .column(0),
+                Serie::from_arrow_batch(
+                    Some(&root([Field::new("v", target, false)])),
+                    &batch,
+                    strict(),
+                )
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap()
+                .column(0),
             )
         };
 
@@ -675,8 +722,8 @@ mod datatypes {
             "binary(3)",
         ] {
             let read = into(DataType::from_str(spelling).unwrap());
-            let back = ccy
-                .cast_arrow_array(read, strict())
+            let back = Serie::from_arrow_array(Some(&ccy), read, strict())
+                .and_then(|serie| Ok(serie.require_arrow_array()?))
                 .unwrap_or_else(|error| panic!("{spelling} does not read back: {error}"));
             assert_eq!(back.as_ref(), stored.as_ref(), "{spelling}");
         }
@@ -689,12 +736,15 @@ mod datatypes {
             ("binary(2)", "at most 2 bytes"),
             ("utf8(2)", "at most 2"),
         ] {
-            let refused = root([Field::new(
-                "v",
-                DataType::from_str(spelling).unwrap(),
-                false,
-            )])
-            .cast_arrow_batch(batch.clone(), strict())
+            let refused = Serie::from_arrow_batch(
+                Some(&root([Field::new(
+                    "v",
+                    DataType::from_str(spelling).unwrap(),
+                    false,
+                )])),
+                &batch,
+                strict(),
+            )
             .unwrap_err()
             .to_string();
             assert!(refused.contains(expected), "{spelling}: {refused}");
@@ -848,9 +898,9 @@ mod securities {
     use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray, RecordBatch, StringArray};
     use arrow_schema::DataType as ArrowDataType;
     use std::sync::Arc;
-    use yggdryl::FieldValue as _;
     use yggdryl::{
-        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, StructType, Term,
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, Field, Scalar, Serie, StructType,
+        Term,
     };
     use yggdryl::{CusipCodeField, FIGICodeField, SedolCodeField};
 
@@ -1000,33 +1050,40 @@ mod securities {
             let field = Field::new("sid", dtype.clone(), true);
             // A column already holding the canonical spelling is the storage
             // itself, and reading it back is the identifier.
-            let stored = field
-                .cast_arrow_array(text(&[sample]), ArrowCastOptions::new().with_safe(false))
-                .unwrap();
+            let stored = Serie::from_arrow_array(
+                Some(&field),
+                text(&[sample]),
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
             assert_eq!(cells(&stored), vec![Some(*sample)], "{name}");
 
             // Strict: a typo and a lower-case spelling are refused, naming the
             // row, the column and the rule. A column's bytes are what every
             // reader digests, so the cast lets in the canonical spelling only.
             for refused in [typo, lower] {
-                let message = field
-                    .cast_arrow_array(
-                        text(&[sample, refused]),
-                        ArrowCastOptions::new().with_safe(false),
-                    )
-                    .unwrap_err()
-                    .to_string();
+                let message = Serie::from_arrow_array(
+                    Some(&field),
+                    text(&[sample, refused]),
+                    ArrowCastOptions::new().with_safe(false),
+                )
+                .unwrap_err()
+                .to_string();
                 assert!(message.contains("canonical spelling"), "{name}: {message}");
                 assert!(message.contains("row 1 of column sid"), "{name}: {message}");
             }
 
             // Safe: the refused cell is null and the rest of the column stands.
-            let safe = field
-                .cast_arrow_array(
-                    text(&[sample, typo, lower]),
-                    ArrowCastOptions::new().with_safe(true),
-                )
-                .unwrap();
+            let safe = Serie::from_arrow_array(
+                Some(&field),
+                text(&[sample, typo, lower]),
+                ArrowCastOptions::new().with_safe(true),
+            )
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
             assert_eq!(cells(&safe), vec![Some(*sample), None, None], "{name}");
 
             // A fixed-width slot is still a spelling the cast reads, with the
@@ -1040,9 +1097,14 @@ mod securities {
                 )
                 .unwrap(),
             );
-            let trimmed = field
-                .cast_arrow_array(slots, ArrowCastOptions::new().with_safe(false))
-                .unwrap();
+            let trimmed = Serie::from_arrow_array(
+                Some(&field),
+                slots,
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
             assert_eq!(cells(&trimmed), vec![Some(*sample)]);
 
             // And back out to text, which is what the column already holds.
@@ -1050,9 +1112,14 @@ mod securities {
             let batch =
                 RecordBatch::try_new(row.into_arrow_schema().unwrap(), vec![stored]).unwrap();
             let as_text = root([DataType::utf8().required_field("sid")]);
-            let read = as_text
-                .cast_arrow_batch(batch, ArrowCastOptions::new().with_safe(false))
-                .unwrap();
+            let read = Serie::from_arrow_batch(
+                Some(&as_text),
+                &batch,
+                ArrowCastOptions::new().with_safe(false),
+            )
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
             assert_eq!(cells(read.column(0)), vec![Some(*sample)], "{name}");
         }
     }

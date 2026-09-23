@@ -93,7 +93,6 @@ use parquet::file::metadata::{ParquetMetaData, ParquetMetaDataReader};
 use parquet::file::properties::WriterProperties;
 use parquet::file::writer::SerializedFileWriter;
 
-use crate::FieldValue as _;
 use crate::IOBase;
 use crate::arrow::arrow_schema_from_field;
 use crate::arrow::{
@@ -550,8 +549,13 @@ where
     // all of which are the same rows. A batch naming the same columns is
     // reconciled instead, strictly; one naming different columns is different
     // data and is still refused, because a cast would invent the columns it is
-    // missing. The plan is built once, and an exact batch never reaches it.
+    // missing. The plan is built once per layout the batches carry, and an
+    // exact batch never reaches it.
     let root = crate::arrow::field_from_arrow_schema("row", schema.as_ref())?;
+    let options = crate::ArrowCastOptions::new()
+        .with_safe(false)
+        .with_nullability(crate::Nullability::Strict);
+    let mut plans = crate::cast::PlanCache::new();
     for (index, batch) in batches.enumerate() {
         let batch = batch.map_err(from_reader_error)?;
         let stored = batch.schema();
@@ -567,13 +571,17 @@ where
         let batch = if Arc::ptr_eq(&stored, &schema) {
             batch
         } else if crate::arrow::same_columns(&schema, &stored) {
-            root.cast_arrow_batch(
-                batch,
-                crate::ArrowCastOptions::new()
-                    .with_safe(false)
-                    .with_nullability(crate::Nullability::Strict),
-            )
-            .map_err(|error| mismatch(&error))?
+            plans
+                .get_or_compile(stored.fields(), || {
+                    crate::cast::ArrowCastPlan::compile_schema(
+                        &stored,
+                        &root,
+                        options,
+                        crate::cast::Deferred::default(),
+                    )
+                })
+                .and_then(|plan| plan.reconcile_batch(batch))
+                .map_err(|error| mismatch(&error))?
         } else {
             return Err(mismatch(&"names different columns than the written root"));
         };

@@ -33,7 +33,6 @@ use super::typing::{decimal_parts, is_binary, is_text, temporal_parts, unwrap_di
 use super::{Comparison, Function, Literal, Operator, Safety};
 use crate::cast::text::is_blank_text;
 use crate::{DataType, Error, Field, Result, Scalar, TimeUnit, Timezone, i256};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 
 /// One row's worth of context: its column values.
 ///
@@ -260,7 +259,7 @@ impl Node {
                 }
                 call(function, arguments, &values, self.field.dtype())
             }
-            Kind::Cast(inner, safety) => {
+            Kind::Cast(inner, safety, _) => {
                 let held = inner.eval_ref(row)?;
                 match convert(self.field.dtype(), &held, *safety) {
                     Ok(value) => Ok(value),
@@ -323,19 +322,20 @@ impl Node {
 /// Returns an error when the predicate refuses an element - a strict cast or
 /// checked arithmetic.
 pub(crate) fn keep_elements(element: &Field, predicate: &Node, list: &Scalar) -> Result<Scalar> {
-    let Some(items) = list.as_sequence() else {
+    let Some(items) = list.as_serie() else {
         return Ok(Scalar::Null);
     };
     let mut kept = Vec::new();
-    for item in items {
+    for item in items.iter() {
         if item.is_null() {
             continue;
         }
-        let Some(values) = struct_values(element, item) else {
-            continue;
+        let keep = match struct_values(element, &item) {
+            Some(values) => predicate.eval(&Row::new(Some(&values)))?.as_bool() == Some(true),
+            None => false,
         };
-        if predicate.eval(&Row::new(Some(&values)))?.as_bool() == Some(true) {
-            kept.push(item.clone());
+        if keep {
+            kept.push(item.into_owned());
         }
     }
     Ok(Scalar::from_sequence(kept))
@@ -464,13 +464,13 @@ pub(crate) fn temporal_at(value: &Scalar, family: u8, unit: TimeUnit) -> Option<
 /// Put a temporal count back into the exact width, unit, and zone its type declares.
 fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar> {
     match dtype {
-        DataType::Date(DateType::Date32) => Scalar::date32_in(
+        DataType::Date32 => Scalar::date32_in(
             i32::try_from(count).map_err(|_| missing("a date32 count"))?,
             unit,
             Timezone::NAIVE,
         ),
-        DataType::Date(DateType::Date64) => Scalar::date64_in(count, unit, Timezone::NAIVE),
-        DataType::Time(TimeType::Time32(expected)) => {
+        DataType::Date64 => Scalar::date64_in(count, unit, Timezone::NAIVE),
+        DataType::Time32(expected) => {
             if *expected != unit {
                 return Err(missing("a time32 count in its declared unit"));
             }
@@ -480,22 +480,22 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
                 Timezone::NAIVE,
             )
         }
-        DataType::Time(TimeType::Time64(expected)) => {
+        DataType::Time64(expected) => {
             if *expected != unit {
                 return Err(missing("a time64 count in its declared unit"));
             }
             Scalar::time64(count, unit, Timezone::NAIVE)
         }
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: expected,
             timezone,
-        }) => {
+        } => {
             if *expected != unit {
                 return Err(missing("a datetime64 count in its declared unit"));
             }
             Scalar::datetime64(count, unit, *timezone)
         }
-        DataType::Duration(DurationType::Duration32(expected)) => {
+        DataType::Duration32(expected) => {
             if *expected != unit {
                 return Err(missing("a duration32 count in its declared unit"));
             }
@@ -504,7 +504,7 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
                 unit,
             )
         }
-        DataType::Duration(DurationType::Duration64(expected)) => {
+        DataType::Duration64(expected) => {
             if *expected != unit {
                 return Err(missing("a duration64 count in its declared unit"));
             }
@@ -732,7 +732,7 @@ fn call(
         }
         Function::User(_) => unreachable!("a user function returned above"),
         Function::Slice => {
-            let Some(items) = first.as_sequence() else {
+            let Some(items) = first.as_serie() else {
                 return Ok(Scalar::Null);
             };
             let bound = |value: Option<&Scalar>| -> Result<Option<i64>> {
@@ -747,7 +747,7 @@ fn call(
             };
             let (from, until) =
                 resolve_range(bound(values.get(1))?, bound(values.get(2))?, items.len());
-            Scalar::from_sequence(items[from..until].iter().cloned())
+            Scalar::from(items.slice(from, until - from)?)
         }
     })
 }
@@ -953,9 +953,7 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal(DecimalType::Decimal256 { .. }) => {
-                Scalar::d256(i256::from_i128(unscaled), scale)
-            }
+            DataType::Decimal256 { .. } => Scalar::d256(i256::from_i128(unscaled), scale),
             _ => Scalar::d128(unscaled, scale),
         };
         return canonical(candidate);

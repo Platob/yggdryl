@@ -902,7 +902,9 @@ fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
     let container = yggdryl::avro::read_container(&handle).unwrap();
     assert!(contains_fixed_uuid(&container.schema.into_json()));
     assert_eq!(
-        container.rows[0].path("data_file.partition.token"),
+        container.rows[0]
+            .path("data_file.partition.token")
+            .as_deref(),
         Some(&expected)
     );
     let read = read_manifest(&handle).unwrap();

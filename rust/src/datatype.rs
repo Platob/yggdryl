@@ -5,19 +5,14 @@ use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::date::DateType;
-use crate::datetime::DateTimeType;
-use crate::decimal::DecimalType;
-use crate::duration::DurationType;
-use crate::enums::EnumType;
-use crate::interval::IntervalType;
-use crate::mapping::MappingType;
+use crate::enums::DictionaryType;
+use crate::mapping::MapType;
 use crate::runend::RunEndEncodedType;
-use crate::sequence::SequenceType;
 use crate::structure::StructType;
-use crate::time::TimeType;
 use crate::union::UnionFields;
-use crate::{DataTypeId, DataTypeKind, Error, Field, Result, Scalar, UnionMode, UriType};
+use crate::{
+    DataTypeId, DataTypeKind, Error, Field, Result, Scalar, TimeUnit, Timezone, UnionMode,
+};
 
 use crate::decimal::validate_decimal;
 use crate::enums::validate_dictionary_key;
@@ -69,36 +64,39 @@ pub enum DataType {
     Float32,
     /// IEEE 64-bit floating point.
     Float64,
-    /// An instant or a wall-clock reading: the whole datetime family.
+    /// An instant or a wall-clock reading: a 64-bit count at `unit`, in
+    /// `timezone` (`TimeZone::Naive` for a wall clock).
     ///
-    /// The leaf - a 64-bit count today - is [`DateTimeType`]'s business,
-    /// not this enum's. Every leaf carries one resolution and one zone, so
-    /// a reader asks [`DateTimeType::unit`] and [`DateTimeType::timezone`]
-    /// and never branches on the width.
-    DateTime(DateTimeType),
-    /// A calendar day: the whole date family.
+    /// [`DateTimeType`](crate::DateTimeType) is the family's view: [`Self::datetime_type`].
+    DateTime64 {
+        /// The resolution the count is in.
+        unit: TimeUnit,
+        /// The zone the instant is read in.
+        timezone: Timezone,
+    },
+    /// A calendar day as a 32-bit count of days.
     ///
-    /// The leaf - a day count or the milliseconds of a midnight - is
-    /// [`DateType`]'s business, not this enum's. The unit is what the width
-    /// means, so a reader asks [`DateType::unit`].
-    Date(DateType),
-    /// A time of day: the whole time family.
+    /// [`DateType`](crate::DateType) is the family's view: [`Self::date_type`].
+    Date32,
+    /// A calendar day as the 64-bit milliseconds of its midnight.
+    Date64,
+    /// A time of day as a 32-bit count at `unit`: seconds or milliseconds.
     ///
-    /// The leaf - which width holds the count - is [`TimeType`]'s business,
-    /// not this enum's. Every leaf carries one resolution, so a reader asks
-    /// [`TimeType::unit`] and never branches on the width.
-    Time(TimeType),
-    /// An elapsed count: the whole duration family.
+    /// [`TimeType`](crate::TimeType) is the family's view: [`Self::time_type`].
+    Time32(TimeUnit),
+    /// A time of day as a 64-bit count at `unit`: micro- or nanoseconds.
+    Time64(TimeUnit),
+    /// An elapsed 32-bit count at `unit`.
     ///
-    /// The leaf - which width holds the count - is [`DurationType`]'s
-    /// business, not this enum's. Every leaf carries one resolution, so a
-    /// reader asks [`DurationType::unit`] and never branches on the width.
-    Duration(DurationType),
-    /// A calendar span: the whole interval family.
+    /// [`DurationType`](crate::DurationType) is the family's view: [`Self::duration_type`].
+    Duration32(TimeUnit),
+    /// An elapsed 64-bit count at `unit`.
+    Duration64(TimeUnit),
+    /// A calendar span in one of Arrow's three interval layouts, named by
+    /// its unit.
     ///
-    /// The leaf - one today, carrying which of Arrow's three layouts the
-    /// column stores - is [`IntervalType`]'s business, not this enum's.
-    Interval(IntervalType),
+    /// [`IntervalType`](crate::IntervalType) is the family's view: [`Self::interval_type`].
+    Interval(TimeUnit),
     /// Bytes: one layout, one optional byte bound.
     ///
     /// Every byte column the crate has, `binary`, `varbinary(16)` and
@@ -144,41 +142,72 @@ pub enum DataType {
     Uuid,
     /// A canonical, numerically ordered software or protocol version.
     Version,
-    /// A validated, canonical resource identifier, stored as its canonical
-    /// text: one variant for the whole uri family, the leaf - a location or
-    /// a name - being [`UriType`]'s business.
-    Uri(UriType),
-    /// Many of one thing: one variant for the whole sequence family.
+    /// A location - hierarchical, with a host unless `file:` - stored as its
+    /// canonical text.
     ///
-    /// The leaf - which offset width, whether it is a view, whether the
-    /// length is fixed - is [`SequenceType`]'s business, not this enum's.
-    /// Every leaf holds one item field, so a reader walking children asks
-    /// [`SequenceType::item`] and never branches on the layout.
-    Sequence(SequenceType),
+    /// [`UriType`](crate::UriType) is the family's view: [`Self::uri_type`].
+    Url,
+    /// A name - `urn:<namespace>:<specific>` - stored as its canonical text.
+    Urn,
+    /// Many of one item field under 32-bit offsets.
+    ///
+    /// [`SerieType`](crate::SerieType) is the family's view: [`Self::as_serie_type`], and
+    /// [`Self::list_item`] reads the item of any of the five layouts.
+    List(Arc<Field>),
+    /// Many of one item field under 32-bit offsets and sizes.
+    ListView(Arc<Field>),
+    /// Exactly `size` of one item field per row.
+    FixedSizeList(Arc<Field>, i32),
+    /// Many of one item field under 64-bit offsets.
+    LargeList(Arc<Field>),
+    /// Many of one item field under 64-bit offsets and sizes.
+    LargeListView(Arc<Field>),
     /// Named children in declaration order: a row, a group occurrence, a
     /// mapping's key and value.
     Struct(StructType),
     /// Tagged union fields and layout mode.
     Union(UnionFields, UnionMode),
-    /// A value stored as a code that stands for it: the whole enum family.
+    /// A value stored as a key into a vocabulary of values.
     ///
-    /// The leaf - dictionary encoding today - is [`EnumType`]'s business,
-    /// not this enum's.
-    Enum(EnumType),
-    /// An exact number at a fixed scale: the whole decimal family.
+    /// [`EnumType`](crate::EnumType) is the family's view: [`Self::enum_type`].
+    Dictionary(Arc<DictionaryType>),
+    /// An exact number whose coefficient is a 32-bit integer.
     ///
-    /// The leaf - which backing integer holds the coefficient - is
-    /// [`DecimalType`]'s business, not this enum's. Every leaf carries one
-    /// precision and one scale, so a reader asks
-    /// [`DecimalType::precision`] and [`DecimalType::scale`] and never
-    /// branches on the width.
-    Decimal(DecimalType),
-    /// Keys to values: one variant for the whole mapping family.
+    /// [`DecimalType`](crate::DecimalType) is the family's view: [`Self::decimal_type`].
+    Decimal32 {
+        /// The digits the coefficient holds.
+        precision: u8,
+        /// The digits after the point.
+        scale: i8,
+    },
+    /// An exact number whose coefficient is a 64-bit integer.
+    Decimal64 {
+        /// The digits the coefficient holds.
+        precision: u8,
+        /// The digits after the point.
+        scale: i8,
+    },
+    /// An exact number whose coefficient is a 128-bit integer.
+    Decimal128 {
+        /// The digits the coefficient holds.
+        precision: u8,
+        /// The digits after the point.
+        scale: i8,
+    },
+    /// An exact number whose coefficient is a 256-bit integer.
+    Decimal256 {
+        /// The digits the coefficient holds.
+        precision: u8,
+        /// The digits after the point.
+        scale: i8,
+    },
+    /// Keys to values: a list of non-null key-value entry records.
     ///
-    /// The leaf - Arrow's map today - is [`MappingType`]'s business, not this
-    /// enum's. A second key-to-value layout joins the family there and no
-    /// call site here learns a new variant.
-    Mapping(MappingType),
+    /// [`MappingType`](crate::MappingType) is the view both map variants
+    /// answer: [`Self::as_mapping`].
+    Map(Arc<MapType>),
+    /// Keys to values whose keys every row holds sorted.
+    SortedMap(Arc<MapType>),
     /// Run-end encoding child fields.
     RunEndEncoded(Arc<RunEndEncodedType>),
     /// Self-describing semi-structured values.
@@ -286,11 +315,14 @@ impl DataType {
             Self::Float16 => DataTypeId::Float16,
             Self::Float32 => DataTypeId::Float32,
             Self::Float64 => DataTypeId::Float64,
-            Self::DateTime(leaf) => leaf.id(),
-            Self::Date(leaf) => leaf.id(),
-            Self::Time(leaf) => leaf.id(),
-            Self::Duration(leaf) => leaf.id(),
-            Self::Interval(leaf) => leaf.id(),
+            Self::DateTime64 { .. } => DataTypeId::DateTime64,
+            Self::Date32 => DataTypeId::Date32,
+            Self::Date64 => DataTypeId::Date64,
+            Self::Time32(_) => DataTypeId::Time32,
+            Self::Time64(_) => DataTypeId::Time64,
+            Self::Duration32(_) => DataTypeId::Duration32,
+            Self::Duration64(_) => DataTypeId::Duration64,
+            Self::Interval(_) => DataTypeId::Interval,
             Self::Bytes(parameters) => parameters.id(),
             Self::String(parameters) => parameters.id(),
             Self::Country => DataTypeId::Country,
@@ -307,24 +339,25 @@ impl DataType {
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
-            Self::Uri(leaf) => leaf.id(),
+            Self::Url => DataTypeId::Url,
+            Self::Urn => DataTypeId::Urn,
             Self::Timezone => DataTypeId::Timezone,
             Self::MimeType => DataTypeId::MimeType,
             Self::MediaType => DataTypeId::MediaType,
-            Self::Sequence(SequenceType::List(_)) => DataTypeId::List,
-            Self::Sequence(SequenceType::ListView(_)) => DataTypeId::ListView,
-            Self::Sequence(SequenceType::FixedSizeList(..)) => DataTypeId::FixedSizeList,
-            Self::Sequence(SequenceType::LargeList(_)) => DataTypeId::LargeList,
-            Self::Sequence(SequenceType::LargeListView(_)) => DataTypeId::LargeListView,
+            Self::List(_) => DataTypeId::List,
+            Self::ListView(_) => DataTypeId::ListView,
+            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
+            Self::LargeList(_) => DataTypeId::LargeList,
+            Self::LargeListView(_) => DataTypeId::LargeListView,
             Self::Struct(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
-            Self::Enum(EnumType::Dictionary(_)) => DataTypeId::Dictionary,
-            Self::Decimal(DecimalType::Decimal32 { .. }) => DataTypeId::Decimal32,
-            Self::Decimal(DecimalType::Decimal64 { .. }) => DataTypeId::Decimal64,
-            Self::Decimal(DecimalType::Decimal128 { .. }) => DataTypeId::Decimal128,
-            Self::Decimal(DecimalType::Decimal256 { .. }) => DataTypeId::Decimal256,
-            Self::Mapping(MappingType::Map(_)) => DataTypeId::Map,
-            Self::Mapping(MappingType::SortedMap(_)) => DataTypeId::SortedMap,
+            Self::Dictionary(_) => DataTypeId::Dictionary,
+            Self::Decimal32 { .. } => DataTypeId::Decimal32,
+            Self::Decimal64 { .. } => DataTypeId::Decimal64,
+            Self::Decimal128 { .. } => DataTypeId::Decimal128,
+            Self::Decimal256 { .. } => DataTypeId::Decimal256,
+            Self::Map(_) => DataTypeId::Map,
+            Self::SortedMap(_) => DataTypeId::SortedMap,
             Self::RunEndEncoded(_) => DataTypeId::RunEndEncoded,
             Self::Variant => DataTypeId::Variant,
             Self::Geometry(_) => DataTypeId::Geometry,
@@ -349,7 +382,7 @@ impl DataType {
     /// encodes is nested.
     pub fn is_nested(&self) -> bool {
         match self {
-            Self::Enum(EnumType::Dictionary(dictionary)) => dictionary.value.is_nested(),
+            Self::Dictionary(dictionary) => dictionary.value.is_nested(),
             Self::RunEndEncoded(run_end) => run_end.values.dtype().is_nested(),
             other => other.id().is_nested(),
         }
@@ -436,11 +469,14 @@ impl DataType {
             // beside it, so a width can carry a resolution it does not hold
             // until it is checked here or at a boundary; a date has no
             // parameter to refuse and answers `Ok`.
-            Self::DateTime(leaf) => leaf.validate(),
-            Self::Date(leaf) => leaf.validate(),
-            Self::Time(leaf) => leaf.validate(),
-            Self::Duration(leaf) => leaf.validate(),
-            Self::Interval(leaf) => leaf.validate(),
+            Self::DateTime64 { .. } => self.datetime_type().map_or(Ok(()), |leaf| leaf.validate()),
+            Self::Time32(_) | Self::Time64(_) => {
+                self.time_type().map_or(Ok(()), |leaf| leaf.validate())
+            }
+            Self::Duration32(_) | Self::Duration64(_) => {
+                self.duration_type().map_or(Ok(()), |leaf| leaf.validate())
+            }
+            Self::Interval(_) => self.interval_type().map_or(Ok(()), |leaf| leaf.validate()),
             // The variant is public, so a caller can build a fixed layout
             // without the width that makes it fixed. This is where it stops.
             Self::Bytes(parameters) => parameters.validate(),
@@ -448,36 +484,36 @@ impl DataType {
             // the constructor would have refused for want of a width. This
             // is where it stops, before it reaches a boundary.
             Self::String(parameters) => parameters.validate(),
-            Self::Sequence(SequenceType::List(field))
-            | Self::Sequence(SequenceType::ListView(field))
-            | Self::Sequence(SequenceType::LargeList(field))
-            | Self::Sequence(SequenceType::LargeListView(field)) => field.validate(),
-            Self::Sequence(SequenceType::FixedSizeList(field, length)) => {
+            Self::List(field)
+            | Self::ListView(field)
+            | Self::LargeList(field)
+            | Self::LargeListView(field) => field.validate(),
+            Self::FixedSizeList(field, length) => {
                 validate_non_negative("FixedSizeList", "length", *length)?;
                 field.validate()
             }
             Self::Struct(fields) => validate_fields(fields.as_fields(), "Struct"),
             Self::Union(fields, _) => validate_union_fields(fields),
-            Self::Enum(EnumType::Dictionary(dictionary)) => {
+            Self::Dictionary(dictionary) => {
                 validate_dictionary_key(&dictionary.key)?;
                 dictionary.key.validate()?;
                 dictionary.value.validate()
             }
-            Self::Decimal(DecimalType::Decimal32 { precision, scale }) => {
+            Self::Decimal32 { precision, scale } => {
                 validate_decimal("Decimal32", *precision, *scale, 9)
             }
-            Self::Decimal(DecimalType::Decimal64 { precision, scale }) => {
+            Self::Decimal64 { precision, scale } => {
                 validate_decimal("Decimal64", *precision, *scale, 18)
             }
-            Self::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+            Self::Decimal128 { precision, scale } => {
                 validate_decimal("Decimal128", *precision, *scale, 38)
             }
-            Self::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            Self::Decimal256 { precision, scale } => {
                 validate_decimal("Decimal256", *precision, *scale, 76)
             }
-            Self::Mapping(mapping) => {
-                validate_map_entries(mapping.entries())?;
-                mapping.entries().validate()
+            Self::Map(map) | Self::SortedMap(map) => {
+                validate_map_entries(&map.entries)?;
+                map.entries.validate()
             }
             Self::RunEndEncoded(encoded) => {
                 validate_run_ends(&encoded.run_ends)?;
@@ -501,78 +537,79 @@ impl Ord for DataType {
             // A temporal payload derives its order with the leaves in
             // identifier order and the parameters after, which is the order
             // the eight variants they replaced held.
-            (D::DateTime(left), D::DateTime(right)) => left.cmp(right),
-            (D::Date(left), D::Date(right)) => left.cmp(right),
-            (D::Time(left), D::Time(right)) => left.cmp(right),
-            (D::Duration(left), D::Duration(right)) => left.cmp(right),
-            (D::Interval(left), D::Interval(right)) => left.cmp(right),
-            (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
-            (D::Sequence(SequenceType::List(left)), D::Sequence(SequenceType::List(right)))
-            | (
-                D::Sequence(SequenceType::ListView(left)),
-                D::Sequence(SequenceType::ListView(right)),
-            )
-            | (
-                D::Sequence(SequenceType::LargeList(left)),
-                D::Sequence(SequenceType::LargeList(right)),
-            )
-            | (
-                D::Sequence(SequenceType::LargeListView(left)),
-                D::Sequence(SequenceType::LargeListView(right)),
-            ) => cmp_fields(left, right),
             (
-                D::Sequence(SequenceType::FixedSizeList(left_field, left_size)),
-                D::Sequence(SequenceType::FixedSizeList(right_field, right_size)),
+                D::DateTime64 {
+                    unit: left_unit,
+                    timezone: left_zone,
+                },
+                D::DateTime64 {
+                    unit: right_unit,
+                    timezone: right_zone,
+                },
+            ) => (left_unit, left_zone).cmp(&(right_unit, right_zone)),
+            (D::Time32(left), D::Time32(right))
+            | (D::Time64(left), D::Time64(right))
+            | (D::Duration32(left), D::Duration32(right))
+            | (D::Duration64(left), D::Duration64(right))
+            | (D::Interval(left), D::Interval(right)) => left.cmp(right),
+            (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
+            (D::List(left), D::List(right))
+            | (D::ListView(left), D::ListView(right))
+            | (D::LargeList(left), D::LargeList(right))
+            | (D::LargeListView(left), D::LargeListView(right)) => cmp_fields(left, right),
+            (
+                D::FixedSizeList(left_field, left_size),
+                D::FixedSizeList(right_field, right_size),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
             (D::Struct(left), D::Struct(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
                 .cmp(right_mode)
                 .then_with(|| left_fields.cmp(right_fields)),
-            (D::Enum(EnumType::Dictionary(left)), D::Enum(EnumType::Dictionary(right))) => {
-                left.cmp(right)
-            }
+            (D::Dictionary(left), D::Dictionary(right)) => left.cmp(right),
             (
-                D::Decimal(DecimalType::Decimal32 {
+                D::Decimal32 {
                     precision: left_precision,
                     scale: left_scale,
-                }),
-                D::Decimal(DecimalType::Decimal32 {
+                },
+                D::Decimal32 {
                     precision: right_precision,
                     scale: right_scale,
-                }),
+                },
             )
             | (
-                D::Decimal(DecimalType::Decimal64 {
+                D::Decimal64 {
                     precision: left_precision,
                     scale: left_scale,
-                }),
-                D::Decimal(DecimalType::Decimal64 {
+                },
+                D::Decimal64 {
                     precision: right_precision,
                     scale: right_scale,
-                }),
+                },
             )
             | (
-                D::Decimal(DecimalType::Decimal128 {
+                D::Decimal128 {
                     precision: left_precision,
                     scale: left_scale,
-                }),
-                D::Decimal(DecimalType::Decimal128 {
+                },
+                D::Decimal128 {
                     precision: right_precision,
                     scale: right_scale,
-                }),
+                },
             )
             | (
-                D::Decimal(DecimalType::Decimal256 {
+                D::Decimal256 {
                     precision: left_precision,
                     scale: left_scale,
-                }),
-                D::Decimal(DecimalType::Decimal256 {
+                },
+                D::Decimal256 {
                     precision: right_precision,
                     scale: right_scale,
-                }),
+                },
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
             (D::String(left), D::String(right)) => left.cmp(right),
-            (D::Mapping(left), D::Mapping(right)) => left.cmp(right),
+            (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
+                left.cmp(right)
+            }
             (D::RunEndEncoded(left), D::RunEndEncoded(right)) => left.cmp(right),
             (D::Geometry(left), D::Geometry(right)) | (D::Geography(left), D::Geography(right)) => {
                 left.cmp(right)
@@ -606,10 +643,13 @@ fn dtype_rank(value: &DataType) -> u8 {
         // Each temporal family takes the first of the ranks its widths held,
         // and the payload's own order separates the widths, so nothing after
         // them moves.
-        DataType::DateTime(_) => 13,
-        DataType::Date(_) => 14,
-        DataType::Time(_) => 16,
-        DataType::Duration(_) => 18,
+        DataType::DateTime64 { .. } => 13,
+        DataType::Date32 => 14,
+        DataType::Date64 => 15,
+        DataType::Time32(_) => 16,
+        DataType::Time64(_) => 17,
+        DataType::Duration32(_) => 18,
+        DataType::Duration64(_) => 19,
         DataType::Interval(_) => 20,
         // The one byte variant takes the first of the four ranks the binary
         // variants it replaced held, so nothing after it moves.
@@ -623,19 +663,20 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::CfiCode => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
-        DataType::Sequence(SequenceType::List(_)) => 36,
-        DataType::Sequence(SequenceType::ListView(_)) => 37,
-        DataType::Sequence(SequenceType::FixedSizeList(..)) => 38,
-        DataType::Sequence(SequenceType::LargeList(_)) => 39,
-        DataType::Sequence(SequenceType::LargeListView(_)) => 40,
+        DataType::List(_) => 36,
+        DataType::ListView(_) => 37,
+        DataType::FixedSizeList(..) => 38,
+        DataType::LargeList(_) => 39,
+        DataType::LargeListView(_) => 40,
         DataType::Struct(_) => 41,
         DataType::Union(..) => 42,
-        DataType::Enum(EnumType::Dictionary(_)) => 43,
-        DataType::Decimal(DecimalType::Decimal32 { .. }) => 44,
-        DataType::Decimal(DecimalType::Decimal64 { .. }) => 45,
-        DataType::Decimal(DecimalType::Decimal128 { .. }) => 46,
-        DataType::Decimal(DecimalType::Decimal256 { .. }) => 47,
-        DataType::Mapping(_) => 48,
+        DataType::Dictionary(_) => 43,
+        DataType::Decimal32 { .. } => 44,
+        DataType::Decimal64 { .. } => 45,
+        DataType::Decimal128 { .. } => 46,
+        DataType::Decimal256 { .. } => 47,
+        DataType::Map(_) => 48,
+        DataType::SortedMap(_) => 67,
         DataType::RunEndEncoded(_) => 49,
         DataType::Variant => 50,
         DataType::Geometry(_) => 51,
@@ -648,7 +689,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         // unused so no other pair moves.
         DataType::State => 55,
         DataType::TimeInForce => 56,
-        DataType::Uri(UriType::Url) => 57,
+        DataType::Url => 57,
         DataType::IsinCode => 58,
         DataType::Timezone => 59,
         DataType::MimeType => 60,
@@ -656,8 +697,80 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::CusipCode => 62,
         DataType::SedolCode => 63,
         DataType::BloombergCode => 64,
-        DataType::Uri(UriType::Urn) => 65,
+        DataType::Urn => 65,
         DataType::FIGICode => 66,
+    }
+}
+
+impl DataType {
+    /// Whether every value this datatype's Arrow layout can hold is one the
+    /// datatype accepts, so a column of it is proven by its layout alone.
+    ///
+    /// True for the layouts whose storage is the whole domain - null,
+    /// boolean, every integer and float width, `Date32`, every datetime,
+    /// duration and interval, the plain unbounded UTF-8 leaves (Arrow's own
+    /// string array enforces their one rule), the plain byte leaves and a
+    /// UUID - and recursively for a nesting or an encoding of them. False
+    /// for everything narrower than its storage: a code, a sized, fixed or
+    /// non-UTF-8 string, a decimal, `Date64`, a time of day, a geospatial
+    /// reading, a version, a URI, a time zone, a MIME or media type, a
+    /// variant, and any datatype not named here.
+    pub(crate) fn layout_is_contract(&self) -> bool {
+        match self {
+            Self::Null
+            | Self::Boolean
+            | Self::Int8
+            | Self::Int16
+            | Self::Int32
+            | Self::Int64
+            | Self::UInt8
+            | Self::UInt16
+            | Self::UInt32
+            | Self::UInt64
+            | Self::Float16
+            | Self::Float32
+            | Self::Float64
+            | Self::DateTime64 { .. }
+            | Self::Duration32(_)
+            | Self::Duration64(_)
+            | Self::Interval(_)
+            | Self::Date32
+            | Self::Uuid => true,
+            Self::String(string) => matches!(
+                string,
+                crate::string::StringType::Utf8String
+                    | crate::string::StringType::LargeUtf8String
+                    | crate::string::StringType::Utf8StringView
+            ),
+            Self::Bytes(bytes) => matches!(
+                bytes,
+                crate::bytes::BytesType::Binary
+                    | crate::bytes::BytesType::LargeBinary
+                    | crate::bytes::BytesType::BinaryView
+                    | crate::bytes::BytesType::FixedBinary(_)
+            ),
+            Self::Struct(fields) => fields
+                .as_fields()
+                .iter()
+                .all(|field| field.dtype().layout_is_contract()),
+            Self::List(item)
+            | Self::ListView(item)
+            | Self::FixedSizeList(item, _)
+            | Self::LargeList(item)
+            | Self::LargeListView(item) => item.dtype().layout_is_contract(),
+            Self::Map(map) | Self::SortedMap(map) => map.entries.dtype().layout_is_contract(),
+            Self::Union(members, _) => members
+                .iter()
+                .all(|(_, field)| field.dtype().layout_is_contract()),
+            Self::Dictionary(encoding) => {
+                encoding.key.layout_is_contract() && encoding.value.layout_is_contract()
+            }
+            Self::RunEndEncoded(encoding) => {
+                encoding.run_ends().dtype().layout_is_contract()
+                    && encoding.values().dtype().layout_is_contract()
+            }
+            _ => false,
+        }
     }
 }
 
@@ -775,7 +888,7 @@ mod arrow {
     use smol_str::format_smolstr;
 
     use super::{DataType, VariantType, invalid};
-    use crate::DecimalType;
+
     use crate::boolean::{BooleanType, NullType};
     use crate::enums::EnumType;
     use crate::geospatial::geospatial_arrow_storage;
@@ -783,7 +896,7 @@ mod arrow {
     use crate::media_type::MediaTypeType;
     use crate::mime_type::MimeTypeType;
     use crate::runend::RunEndEncodedType;
-    use crate::sequence::SequenceType;
+    use crate::serie::SerieType;
     use crate::structure::StructType;
     use crate::timezone::TimezoneType;
     use crate::union::UnionFields;
@@ -826,10 +939,10 @@ mod arrow {
                 | R::UInt32
                 | R::UInt64 => integer::arrow_storage(self)?,
                 R::Float16 | R::Float32 | R::Float64 => floating::arrow_storage(self)?,
-                R::DateTime(_) => datetime::arrow_storage(self)?,
-                R::Date(_) => date::arrow_storage(self)?,
-                R::Time(_) => time::arrow_storage(self)?,
-                R::Duration(_) => duration::arrow_storage(self)?,
+                R::DateTime64 { .. } => datetime::arrow_storage(self)?,
+                R::Date32 | R::Date64 => date::arrow_storage(self)?,
+                R::Time32(_) | R::Time64(_) => time::arrow_storage(self)?,
+                R::Duration32(_) | R::Duration64(_) => duration::arrow_storage(self)?,
                 R::Interval(_) => interval::arrow_storage(self)?,
                 R::Bytes(parameters) => bytes::arrow_storage(*parameters)?,
                 R::String(parameters) => string::arrow_storage(*parameters)?,
@@ -846,20 +959,39 @@ mod arrow {
                 | R::State
                 | R::TimeInForce => code::code_arrow_storage(self)?,
                 R::Version => VersionType::arrow_storage(),
-                R::Uri(_) => UriType::arrow_storage(),
+                R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),
                 R::MimeType => MimeTypeType::arrow_storage(),
                 R::MediaType => MediaTypeType::arrow_storage(),
                 R::Uuid => UuidType::arrow_storage(),
-                R::Decimal(DecimalType::Decimal32 { .. })
-                | R::Decimal(DecimalType::Decimal64 { .. })
-                | R::Decimal(DecimalType::Decimal128 { .. })
-                | R::Decimal(DecimalType::Decimal256 { .. }) => decimal::arrow_storage(self)?,
-                R::Sequence(sequence) => sequence.arrow_storage()?,
+                R::Decimal32 { .. }
+                | R::Decimal64 { .. }
+                | R::Decimal128 { .. }
+                | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
+                sequence_dtype @ (R::List(_)
+                | R::ListView(_)
+                | R::FixedSizeList(..)
+                | R::LargeList(_)
+                | R::LargeListView(_)) => {
+                    let sequence = &sequence_dtype
+                        .as_serie_type()
+                        .expect("the variant was just matched");
+                    sequence.arrow_storage()?
+                }
                 R::Struct(structure) => structure.arrow_storage()?,
                 R::Union(fields, mode) => fields.arrow_storage(*mode)?,
-                R::Enum(enumeration) => enumeration.arrow_storage()?,
-                R::Mapping(mapping) => mapping.arrow_storage()?,
+                enumeration_dtype @ R::Dictionary(_) => {
+                    let enumeration = &enumeration_dtype
+                        .enum_type()
+                        .expect("the variant was just matched");
+                    enumeration.arrow_storage()?
+                }
+                mapping_dtype @ (R::Map(_) | R::SortedMap(_)) => {
+                    let mapping = &mapping_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    mapping.arrow_storage()?
+                }
                 R::RunEndEncoded(encoded) => encoded.arrow_storage()?,
                 R::Variant => VariantType::arrow_storage(),
                 R::Geometry(_) | R::Geography(_) => geospatial_arrow_storage(),
@@ -878,12 +1010,31 @@ mod arrow {
         pub fn into_arrow_datatype(self) -> Result<ArrowDataType> {
             use DataType as R;
             match self {
-                R::DateTime(_) => datetime::into_arrow_storage(self),
-                R::Sequence(sequence) => sequence.into_arrow_storage(),
+                R::DateTime64 { .. } => datetime::into_arrow_storage(self),
+                sequence_dtype @ (R::List(_)
+                | R::ListView(_)
+                | R::FixedSizeList(..)
+                | R::LargeList(_)
+                | R::LargeListView(_)) => {
+                    let sequence = sequence_dtype
+                        .as_serie_type()
+                        .expect("the variant was just matched");
+                    sequence.into_arrow_storage()
+                }
                 R::Struct(structure) => structure.into_arrow_storage(),
                 R::Union(fields, mode) => fields.into_arrow_storage(mode),
-                R::Enum(enumeration) => enumeration.into_arrow_storage(),
-                R::Mapping(mapping) => mapping.into_arrow_storage(),
+                enumeration_dtype @ R::Dictionary(_) => {
+                    let enumeration = enumeration_dtype
+                        .enum_type()
+                        .expect("the variant was just matched");
+                    enumeration.into_arrow_storage()
+                }
+                mapping_dtype @ (R::Map(_) | R::SortedMap(_)) => {
+                    let mapping = mapping_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    mapping.into_arrow_storage()
+                }
                 R::RunEndEncoded(encoded) => RunEndEncodedType::into_arrow_storage(encoded),
                 ref other => other.to_arrow_datatype(),
             }
@@ -949,7 +1100,7 @@ mod arrow {
                 | A::ListView(_)
                 | A::FixedSizeList(..)
                 | A::LargeList(_)
-                | A::LargeListView(_) => SequenceType::from_arrow_storage_at_depth(value, children),
+                | A::LargeListView(_) => SerieType::from_arrow_storage_at_depth(value, children),
                 A::Struct(fields) => StructType::from_arrow_storage_at_depth(fields, children),
                 A::Union(fields, mode) => {
                     UnionFields::from_arrow_storage_at_depth(fields, *mode, children)
@@ -988,7 +1139,7 @@ mod arrow {
                 | A::FixedSizeList(..)
                 | A::LargeList(_)
                 | A::LargeListView(_) => {
-                    SequenceType::from_arrow_storage_owned_at_depth(value, children)
+                    SerieType::from_arrow_storage_owned_at_depth(value, children)
                 }
                 A::Union(fields, mode) => {
                     UnionFields::from_arrow_storage_at_depth(&fields, mode, children)
@@ -1025,11 +1176,30 @@ mod arrow {
         pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema> {
             use DataType as R;
             let parts = match &self {
-                R::Sequence(sequence) => sequence.arrow_ffi_parts()?,
+                sequence_dtype @ (R::List(_)
+                | R::ListView(_)
+                | R::FixedSizeList(..)
+                | R::LargeList(_)
+                | R::LargeListView(_)) => {
+                    let sequence = &sequence_dtype
+                        .as_serie_type()
+                        .expect("the variant was just matched");
+                    sequence.arrow_ffi_parts()?
+                }
                 R::Struct(structure) => structure.arrow_ffi_parts()?,
                 R::Union(fields, mode) => fields.arrow_ffi_parts(*mode)?,
-                R::Enum(enumeration) => enumeration.arrow_ffi_parts()?,
-                R::Mapping(mapping) => mapping.arrow_ffi_parts()?,
+                enumeration_dtype @ R::Dictionary(_) => {
+                    let enumeration = &enumeration_dtype
+                        .enum_type()
+                        .expect("the variant was just matched");
+                    enumeration.arrow_ffi_parts()?
+                }
+                mapping_dtype @ (R::Map(_) | R::SortedMap(_)) => {
+                    let mapping = &mapping_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    mapping.arrow_ffi_parts()?
+                }
                 R::RunEndEncoded(encoded) => encoded.arrow_ffi_parts()?,
                 // The extension identity of an extension-typed variant is
                 // metadata, and a C schema is a field, so the storage
@@ -1073,9 +1243,7 @@ mod arrow {
         #[must_use]
         pub fn arrow_extension(&self) -> Option<(&'static str, String)> {
             match self {
-                Self::Enum(EnumType::Dictionary(dictionary)) => {
-                    dictionary.value().arrow_extension()
-                }
+                Self::Dictionary(dictionary) => dictionary.value().arrow_extension(),
                 Self::Variant => Some((crate::VARIANT_EXTENSION_NAME, String::new())),
                 Self::Geometry(geospatial) | Self::Geography(geospatial) => Some((
                     crate::GEOARROW_WKB_EXTENSION_NAME,
@@ -1097,7 +1265,8 @@ mod arrow {
                 // Every identifier is Arrow's own sixteen bytes.
                 Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
                 Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),
-                Self::Uri(leaf) => Some((leaf.extension_name(), String::new())),
+                Self::Url => Some((UriType::Url.extension_name(), String::new())),
+                Self::Urn => Some((UriType::Urn.extension_name(), String::new())),
                 Self::Timezone => Some((crate::TIMEZONE_EXTENSION_NAME, String::new())),
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
@@ -1119,21 +1288,6 @@ mod arrow {
             Field::new("row", self, false).into_arrow_schema()
         }
 
-        /// Materializes [`DataType::default_value`] as an exact one-row array.
-        ///
-        /// The bounded core default planner selects the value, so
-        /// [`DataType::Null`] and transparent logical wrappers with a null-only
-        /// canonical default materialize as logical null; every other datatype
-        /// materializes its present zero/empty default.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when no physically valid default exists or Arrow
-        /// cannot materialize the datatype.
-        pub fn default_arrow_array(&self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-            crate::arrow::default_dtype_scalar_array(self)
-        }
-
         /// Reports whether an imported datatype can reuse its enclosing Arrow
         /// field.
         ///
@@ -1144,18 +1298,24 @@ mod arrow {
         /// allocating an Arrow copy.
         pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
             match self {
-                Self::Sequence(sequence) => sequence.item().arrow_import_is_projection_equivalent(),
+                Self::List(item)
+                | Self::ListView(item)
+                | Self::FixedSizeList(item, _)
+                | Self::LargeList(item)
+                | Self::LargeListView(item) => item.arrow_import_is_projection_equivalent(),
                 Self::Struct(fields) => fields
                     .iter()
                     .all(Field::arrow_import_is_projection_equivalent),
                 Self::Union(fields, _) => fields
                     .iter()
                     .all(|(_, field)| field.arrow_import_is_projection_equivalent()),
-                Self::Enum(EnumType::Dictionary(dictionary)) => {
+                Self::Dictionary(dictionary) => {
                     dictionary.key().arrow_import_is_projection_equivalent()
                         && dictionary.value().arrow_import_is_projection_equivalent()
                 }
-                Self::Mapping(mapping) => mapping.entries().arrow_import_is_projection_equivalent(),
+                Self::Map(map) | Self::SortedMap(map) => {
+                    map.entries.arrow_import_is_projection_equivalent()
+                }
                 Self::RunEndEncoded(encoded) => {
                     encoded.run_ends().arrow_import_is_projection_equivalent()
                         && encoded.values().arrow_import_is_projection_equivalent()

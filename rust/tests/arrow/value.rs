@@ -304,7 +304,6 @@ mod bulk {
 mod restating {
     use super::{DataType, Field, Scalar, TimeUnit, round_trip, scalar_array};
     use yggdryl::Timezone;
-    use yggdryl::{DateTimeType, DurationType};
 
     #[test]
     fn a_decimal_is_written_at_the_scale_its_column_declares() {
@@ -329,10 +328,10 @@ mod restating {
 
     #[test]
     fn a_temporal_is_written_at_the_unit_its_column_declares() {
-        let micros = DataType::DateTime(DateTimeType::DateTime64 {
+        let micros = DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::NAIVE,
-        });
+        };
         let at =
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, yggdryl::Timezone::NAIVE).unwrap();
 
@@ -356,7 +355,7 @@ mod restating {
         );
         assert_eq!(
             round_trip(
-                DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+                DataType::Duration64(TimeUnit::Millisecond),
                 Scalar::duration64(90, TimeUnit::Second).unwrap()
             ),
             Scalar::duration64(90_000, TimeUnit::Millisecond).unwrap()
@@ -377,10 +376,10 @@ mod restating {
         // Coarsening that would drop a digit is refused, naming the kind.
         let seconds = Field::new(
             "at",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             true,
         );
         let error = scalar_array(
@@ -394,11 +393,7 @@ mod restating {
 
     #[test]
     fn duration32_checks_its_logical_width_on_both_arrow_directions() {
-        let field = Field::new(
-            "elapsed",
-            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
-            false,
-        );
+        let field = Field::new("elapsed", DataType::Duration32(TimeUnit::Second), false);
         let maximum = Scalar::duration32(i32::MAX, TimeUnit::Second).unwrap();
         assert_eq!(round_trip(field.dtype().clone(), maximum.clone()), maximum);
 

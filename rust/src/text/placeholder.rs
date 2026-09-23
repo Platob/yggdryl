@@ -278,9 +278,13 @@ pub(crate) fn substitute(value: Scalar, placeholders: &Placeholders) -> Result<S
 fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result<Scalar> {
     match value {
         Scalar::String(text) => scalar(text.as_str(), placeholders, path),
-        Scalar::Sequence(values) => {
-            let mut replaced = Vec::with_capacity(values.as_slice().len());
-            for (index, held) in values.as_slice().iter().enumerate() {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => {
+            let mut replaced = Vec::with_capacity(values.len());
+            for (index, held) in values.rows().iter().enumerate() {
                 let mark = path.len();
                 path.push_str(&format!("[{index}]"));
                 replaced.push(walk(held.clone(), placeholders, path)?);
@@ -288,7 +292,7 @@ fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result
             }
             Ok(Scalar::from_sequence(replaced))
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             let mut replaced = Vec::with_capacity(entries.as_slice().len());
             for (key, held) in entries.as_slice() {
                 let mark = path.len();

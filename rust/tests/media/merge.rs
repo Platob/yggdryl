@@ -701,3 +701,63 @@ fn incoming_payload_batches_are_released_before_the_next_is_pulled() {
     let rows: usize = merged.map(|batch| batch.unwrap().num_rows()).sum();
     assert_eq!(rows, 2);
 }
+
+#[cfg(feature = "internals")]
+#[test]
+fn incoming_batches_of_changing_layouts_are_each_cast_to_the_field() {
+    use arrow_array::Int32Array;
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
+
+    let narrow = Arc::new(Schema::new(vec![
+        ArrowField::new("id", ArrowDataType::Int32, false),
+        ArrowField::new("symbol", ArrowDataType::Utf8, true),
+    ]));
+    let narrow_rows = |id: i32, symbol: &str| {
+        RecordBatch::try_new(
+            Arc::clone(&narrow),
+            vec![
+                Arc::new(Int32Array::from(vec![id])) as ArrayRef,
+                Arc::new(StringArray::from(vec![symbol])),
+            ],
+        )
+        .unwrap()
+    };
+    // Each batch is cast by the layout it carries, so a layout that returns
+    // after another casts as it did the first time.
+    let incoming: BatchReader = Box::new(arrow_array::RecordBatchIterator::new(
+        [
+            Ok(narrow_rows(1, "AAPL")),
+            Ok(rows(vec![2], vec![Some("MSFT")])),
+            Ok(narrow_rows(1, "IBM")),
+        ],
+        Arc::clone(&narrow),
+    ));
+
+    let merged = yggdryl::internals::media_merge::merged(
+        reader(vec![rows(vec![1], vec![Some("OLD")])]),
+        incoming,
+        &schema(),
+        &yggdryl::Selector::from_columns(["id"]),
+        true,
+    )
+    .unwrap();
+
+    let mut found = Vec::new();
+    for batch in merged {
+        let batch = batch.unwrap();
+        let ids = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .expect("the declared Int64 key");
+        let symbols = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .expect("the declared Utf8 payload");
+        for row in 0..batch.num_rows() {
+            found.push((ids.value(row), symbols.value(row).to_owned()));
+        }
+    }
+    assert_eq!(found, vec![(1, "IBM".to_owned()), (2, "MSFT".to_owned())]);
+}
