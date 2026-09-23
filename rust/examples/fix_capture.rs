@@ -89,11 +89,11 @@ fn main() -> yggdryl::Result<()> {
 fn describe(message: &FixMsg) -> String {
     let header = message.header();
     format!(
-        "{} {} px={} qty={} {} | currunix={} state={} | curruuid={} chain={:?} seqnum={} prev={:?} | {}",
+        "{} {} price={} quantity={} {} | currunix={} state={} | curruuid={} chain={:?} seqnum={} prev={:?} | {}",
         header.msgtype(),
         message.get_side().as_str(),
-        message.get_px(),
-        message.get_qty(),
+        message.get_price(),
+        message.get_quantity(),
         message.get_currency().as_str(),
         message.get_currunix(),
         message.get_state().as_str(),

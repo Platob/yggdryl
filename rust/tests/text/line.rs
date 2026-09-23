@@ -682,9 +682,12 @@ mod charsets {
 
 mod text {
     use arrow_array::{Array as _, StringArray};
+    use std::sync::Arc;
+    use yggdryl::graph::Element;
     use yggdryl::holder::Buffer;
 
-    use yggdryl::text::{TextLine, TextOptions, read_text_lines};
+    use yggdryl::Uuid;
+    use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 
     fn named(name: &str, bytes: &[u8]) -> Buffer {
         Buffer::from_bytes(bytes.to_vec()).with_media_type(
@@ -700,6 +703,28 @@ mod text {
 
     fn framed(rowheader: &str) -> TextOptions {
         options(rowheader).with_framing(true)
+    }
+
+    #[test]
+    fn line_uuid_lists_are_sorted_unique_when_stated() {
+        let mut line = TextLine::from_bytes(
+            0,
+            TextBytes::from_bytes(b"body").unwrap(),
+            Arc::new(TextOptions::new()),
+        )
+        .unwrap();
+        line.set_parentuuids(vec![
+            Uuid::from_v8(3),
+            Uuid::from_v8(1),
+            Uuid::from_v8(3),
+            Uuid::from_v8(2),
+        ]);
+        line.set_srcuuids(vec![Uuid::from_v8(2), Uuid::from_v8(1), Uuid::from_v8(2)]);
+        assert_eq!(
+            line.get_parentuuids(),
+            [Uuid::from_v8(1), Uuid::from_v8(2), Uuid::from_v8(3)]
+        );
+        assert_eq!(line.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
     }
 
     /// The nineteen event columns every line batch opens with, in front of the
@@ -1264,10 +1289,12 @@ mod text {
             line.set_crosshashcode(0xCD);
             state_generic_identities(&mut line);
 
+            let before = line.time_uuid().expect("an identity");
             line.set_crosscode("stated-chain".to_owned());
             let crosshashcode = yggdryl::xxhash::xxh3(b"stated-chain");
             assert_eq!(line.get_crosshashcode(), crosshashcode);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before);
             assert_ne!(line.get_curruuid(), Uuid::from_v8(1));
             assert_eq!(
                 line.get_crossuuid(),
@@ -1275,26 +1302,45 @@ mod text {
             );
 
             state_generic_identities(&mut line);
+            let before = line.time_uuid().expect("an identity");
             line.set_crosshashcode(0xEF);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before, "the cross hash is the seed");
 
             state_generic_identities(&mut line);
+            let before = line.time_uuid().expect("an identity");
             line.set_currhashcode(0xAB);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before, "the content moved");
 
             state_generic_identities(&mut line);
+            let before = line.time_uuid().expect("an identity");
             line.set_currunix(1_000_000);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before, "the millisecond moved");
 
             state_generic_identities(&mut line);
+            let before = line.time_uuid().expect("an identity");
             line.set_seqnum(17);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before, "the sequence moved");
+            assert_eq!((line.get_curruuid().get() >> 64) & 0xfff, 17);
 
             state_generic_identities(&mut line);
+            let before = line.time_uuid().expect("an identity");
             line.set_crosscode(String::new());
             assert_eq!(line.get_crosshashcode(), 0);
             assert_derived_identities(&line);
+            assert_ne!(line.get_curruuid(), before);
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
+
+            line.set_seqnum(4_096);
+            let overflow = line.get_curruuid();
+            line.set_seqnum(8_192);
+            let farther = line.get_curruuid();
+            assert_eq!((overflow.get() >> 64) & 0xfff, 4_095);
+            assert_eq!((farther.get() >> 64) & 0xfff, 4_095);
+            assert_ne!(overflow, farther, "the whole sequence reaches rand_b");
         }
 
         #[test]
@@ -1436,19 +1482,21 @@ mod text {
         }
 
         #[test]
-        fn the_identity_reads_the_cross_code_but_not_a_stated_cross_element_or_source() {
+        fn the_identity_reads_the_cross_seed_but_not_a_stated_cross_element_or_source() {
             let options = options();
             let body = format!("2026-01-02T10:15:30Z [New] 1 {PREVIOUS} O-100 k=v");
             let stated = line(&body, &options);
-            // A cross hash, a cross element and sources are each derived or
-            // provenance, and the code digests none of them, so none of them
-            // reaches the identity the code and the instant derive.
+            // The content code digests none of the derived cross facts or
+            // provenance. The cross hash nevertheless seeds the UUID payload;
+            // the cross element and sources do not enter it.
             let mut crossed = line(&body, &options);
             crossed.set_crosshashcode(0xCD);
+            let seeded = crossed.get_curruuid();
+            assert_ne!(seeded, stated.get_curruuid());
             crossed.set_crossuuid(Uuid::from_v8(77));
             crossed.set_srcuuids(vec![Uuid::from_v8(70)]);
             assert_eq!(crossed.get_currhashcode(), stated.get_currhashcode());
-            assert_eq!(crossed.get_curruuid(), stated.get_curruuid());
+            assert_eq!(crossed.get_curruuid(), seeded);
             assert_eq!(
                 crossed.get_crossuuid(),
                 Uuid::from_v8(77),

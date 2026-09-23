@@ -3103,8 +3103,11 @@ mod internal {
         assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
         assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
         // And what the message is *about* is what the trait reads off them.
-        assert_eq!(held.get_px(), yggdryl::Decimal18::parse("82.5").unwrap());
-        assert_eq!(held.get_qty(), yggdryl::Decimal18::parse("300").unwrap());
+        assert_eq!(held.get_price(), yggdryl::Decimal18::parse("82.5").unwrap());
+        assert_eq!(
+            held.get_quantity(),
+            yggdryl::Decimal18::parse("300").unwrap()
+        );
         // `Quantity(53)` is the newer spelling and its own slot: a line that
         // said `53=` holds it there, and `OrderQty` stays empty.
         assert!(held.get_by_tag(53).is_none());
@@ -3114,7 +3117,7 @@ mod internal {
         assert_eq!(spelled.by_tag(53).unwrap(), decimal("300"));
         assert!(spelled.get_by_tag(38).is_none());
         assert_eq!(
-            spelled.get_qty(),
+            spelled.get_quantity(),
             yggdryl::Decimal18::parse("300").unwrap(),
             "and the quantity the message is about reads either spelling"
         );

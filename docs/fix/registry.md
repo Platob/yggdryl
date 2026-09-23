@@ -618,6 +618,8 @@ A vocabulary belongs to the dictionary rather than to one field. The specificati
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
+`msgcatcodeset` is intrinsic rather than an ordinary mutable vocabulary: its symbolic category to stable `int32` market-operation ID mapping is fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in that set.
+
 === "Rust"
 
     ```rust
@@ -704,7 +706,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
 `FixCodeSet` is that set borrowed from the dictionary: `name()`, `document()` - the canonical text a store writes - and `codes()`, `code(value)`, `code_by_name(name)`, `code_value(text)` and `code_name(value)`, each read a slice of the stored document rather than a copy of it. `get_codeset` answers nothing where the dictionary holds no such set and `codeset` raises `Error::Absent` over `codesets`; `codeset_of` is the one door between a field and its members, answering nothing for a field that reads by no set; `codesets()` walks every set held, in name order. Where the specification names no set - a dialect's own file, a dictionary built in memory - `FixRegistry::derived_codeset_name(field)` is the name one takes: the folded field name and `codeset`, so `Side` states `sidecodeset`.
 
-`code_value` first accepts an exact wire value, then a folded symbolic name or alias, then an abbreviation from the leading description phrase. Ambiguous spellings answer no value; a malformed document reports a located error through `codes()` and answers no value through the optional lookups. `set_codeset` validates and writes canonical JSON under the folded name; an empty list removes the set.
+`code_value` first accepts an exact wire value, then a folded symbolic name or alias, then an abbreviation from the leading description phrase. Ambiguous spellings answer no value; a malformed document reports a located error through `codes()` and answers no value through the optional lookups. `set_codeset` validates and writes canonical JSON under the folded name; an empty list removes an ordinary set. The intrinsic `msgcatcodeset` exception above refuses removal or change.
 
 | Code key | Meaning |
 | --- | --- |
@@ -717,7 +719,7 @@ is no key beside the order that states one.
 
 `code`, `code_by_name`, `code_name`, and `code_value` borrow the selected code's data. An unknown spelling returns no match so the codec can retain the wire text. Duplicate names, empty names/values, malformed documents, and a name no store could file are refused by the writer. Description abbreviations ignore numeric tag cross-references and later parenthesizations; two distinct wire values sharing one folded spelling remain ambiguous.
 
-`set_codeset` replaces what the name held; `merge_codeset` folds into it, keyed by wire value: the reading the dictionary already holds wins a shared value, a placeholder name - a code named after its own wire value, which is what a source that knows the value but not what anyone calls it writes - yields to a real one, and every surviving spelling stays as an alias. So a second source widens a vocabulary and never narrows one, which is the same fold [`merge_with`](#one-merge-with-a-rule-per-key) runs over the other dictionary's sets before it folds a single field.
+`set_codeset` replaces what an ordinary name held; `merge_codeset` folds into it, keyed by wire value: the reading the dictionary already holds wins a shared value, a placeholder name - a code named after its own wire value, which is what a source that knows the value but not what anyone calls it writes - yields to a real one, and every surviving spelling stays as an alias. So a second source widens a vocabulary and never narrows one, which is the same fold [`merge_with`](#one-merge-with-a-rule-per-key) runs over the other dictionary's sets before it folds a single field. `msgcatcodeset` accepts neither replacement nor widening.
 
 === "Rust"
 

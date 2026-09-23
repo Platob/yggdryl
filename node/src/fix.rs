@@ -736,7 +736,8 @@ impl JsFixRegistry {
     /// The set is filed under the folded name, which is the stem a store
     /// writes it as. An empty array removes the set, and one a held field
     /// still reads by is refused: a field may not be left naming a
-    /// vocabulary nothing states.
+    /// vocabulary nothing states. `msgcatcodeset` is intrinsic: its stable
+    /// integer market operation IDs cannot be replaced or removed.
     #[napi]
     pub fn set_codeset(&mut self, name: String, codes: Vec<FixCode>) -> Result<()> {
         let codes: Vec<CoreFixCode> = codes.into_iter().map(FixCode::into_core).collect();
@@ -750,7 +751,9 @@ impl JsFixRegistry {
     /// Keyed by wire value: a placeholder name yields to a real one, every
     /// surviving spelling is kept as an alias, and a set the dictionary did
     /// not hold arrives whole. So a venue's statement of a vocabulary
-    /// enriches the one held rather than replacing it.
+    /// enriches the one held rather than replacing it. `msgcatcodeset` is
+    /// intrinsic and refuses any merge that would change its stable integer
+    /// IDs.
     #[napi]
     pub fn merge_codeset(&mut self, name: String, codes: Vec<FixCode>) -> Result<()> {
         let codes: Vec<CoreFixCode> = codes.into_iter().map(FixCode::into_core).collect();
@@ -763,7 +766,7 @@ impl JsFixRegistry {
     ///
     /// A set no field reads by leaves; one a held field still names is
     /// refused, naming the field. A name nothing is filed under answers
-    /// `null`.
+    /// `null`. `msgcatcodeset` is intrinsic and cannot be removed.
     #[napi]
     pub fn remove_codeset(&mut self, name: String) -> Result<Option<Vec<FixCode>>> {
         Ok(self
@@ -983,8 +986,8 @@ fn entry_view(entry: &FixEntry) -> FixEntryView {
 /// cross code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`.
 #[napi(object, object_from_js = false)]
 pub struct FixEventView {
-    /// This message's own identity: a time UUID over its instant and its
-    /// `currhashcode`.
+    /// This message's own `UUIDv7` identity, ordered by millisecond and sequence
+    /// with a content payload seeded by its cross hash.
     pub curruuid: String,
     /// The identity of the chain the message belongs to: a version-8 UUID
     /// over the `crosshashcode`, or `curruuid` when no cross code names a
@@ -1003,11 +1006,10 @@ pub struct FixEventView {
     /// The identifiers the message is known by, scheme to value, sorted.
     #[napi(ts_type = "Record<string, string>")]
     pub identifiers: BTreeMap<String, String>,
-    /// The UUIDs of the messages this one descends from: the whole chain
-    /// before it, oldest first.
+    /// The sorted unique UUIDs of the messages this one descends from.
     pub parentuuids: Vec<String>,
-    /// The UUIDs of the elements this one was read from: the text line it
-    /// was parsed out of, and none for one parsed from bytes.
+    /// The sorted unique UUIDs of the elements this one was read from: the
+    /// text line it was parsed out of, and none for one parsed from bytes.
     pub srcuuids: Vec<String>,
     /// When the event happened: the message's sending time, the one clock
     /// every message carries.
@@ -1019,6 +1021,15 @@ pub struct FixEventView {
     /// When the chain was created, where stated.
     #[napi(ts_type = "bigint | null")]
     pub creaunix: Either<BigInt, Null>,
+    /// The precise execution instant, where stated or derived.
+    #[napi(ts_type = "bigint | null")]
+    pub execunix: Either<BigInt, Null>,
+    /// The precise recording instant, where stated by the capture.
+    #[napi(ts_type = "bigint | null")]
+    pub recdunix: Either<BigInt, Null>,
+    /// The recording instant that selected the merge reference, where known.
+    #[napi(ts_type = "bigint | null")]
+    pub refrecdunix: Either<BigInt, Null>,
     /// When the chain expires, where stated.
     #[napi(ts_type = "bigint | null")]
     pub exprtime: Either<BigInt, Null>,
@@ -1033,10 +1044,43 @@ pub struct FixEventView {
     /// The instant a snapshot was taken at, where one was.
     #[napi(ts_type = "bigint | null")]
     pub snapunix: Either<BigInt, Null>,
+    /// The stable integer category of the market operation, where known.
+    #[napi(ts_type = "number | null")]
+    pub marketoperationid: Either<i32, Null>,
     /// The price, as decimal text.
-    pub px: String,
+    pub price: String,
     /// The quantity, as decimal text.
-    pub qty: String,
+    pub quantity: String,
+    /// The last traded price, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub lastpx: Either<String, Null>,
+    /// The last traded quantity, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub lastqty: Either<String, Null>,
+    /// The average traded price, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub avgpx: Either<String, Null>,
+    /// The cumulative traded quantity, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub cumqty: Either<String, Null>,
+    /// The remaining quantity, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub leavesqty: Either<String, Null>,
+    /// The preceding price, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub prevpx: Either<String, Null>,
+    /// The preceding quantity, as decimal text, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub prevqty: Either<String, Null>,
+    /// The time-in-force spelling, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub tif: Either<String, Null>,
+    /// Whether the instrument was tradable, or `null` where unstated.
+    #[napi(ts_type = "boolean | null")]
+    pub tradable: Either<bool, Null>,
+    /// The instrument ticker, or `null`.
+    #[napi(ts_type = "string | null")]
+    pub symbolticker: Either<String, Null>,
     /// The currency, `XXX` where none is stated.
     pub currency: String,
     /// The unit the quantity is counted in, empty where none is stated.
@@ -1120,12 +1164,26 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         state: event.get_state().as_str().to_owned(),
         seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
         creaunix: or_null(event.get_creaunix().map(instant)),
+        execunix: or_null(event.get_execunix().map(instant)),
+        recdunix: or_null(event.get_recdunix().map(instant)),
+        refrecdunix: or_null(event.get_refrecdunix().map(instant)),
         exprtime: or_null(event.get_exprtime().map(instant)),
         prevunix: or_null(event.get_prevunix().map(instant)),
         prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
         snapunix: or_null(event.get_snapunix().map(instant)),
-        px: event.get_px().to_string(),
-        qty: event.get_qty().to_string(),
+        marketoperationid: or_null(event.get_marketoperationid()),
+        price: event.get_price().to_string(),
+        quantity: event.get_quantity().to_string(),
+        lastpx: decimal(event.get_lastpx()),
+        lastqty: decimal(event.get_lastqty()),
+        avgpx: decimal(event.get_avgpx()),
+        cumqty: decimal(event.get_cumqty()),
+        leavesqty: decimal(event.get_leavesqty()),
+        prevpx: decimal(event.get_prevpx()),
+        prevqty: decimal(event.get_prevqty()),
+        tif: text(event.get_tif()),
+        tradable: or_null(event.get_tradable()),
+        symbolticker: text(event.get_symbolticker()),
         currency: event.get_currency().as_str().to_owned(),
         unit: event.get_unit().to_owned(),
         side: event.get_side().as_str().to_owned(),
@@ -1297,8 +1355,9 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// bridge's `msgsessionid:msgctxid` where the row header stated both, else
 /// the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
 /// over it, the `currhashcode` over everything the message says but the
-/// standard header and trailer, the `curruuid` from its microsecond instant
-/// and its whole `currhashcode`, and the `crossuuid` over the cross hash - or
+/// standard header and trailer, the `curruuid` ordered by millisecond and
+/// sequence with a content payload seeded by the cross hash, and the
+/// `crossuuid` over the cross hash - or
 /// the `curruuid` itself when no cross code names a chain. Every write settles
 /// it again.
 #[napi(js_name = "FixMsg")]
@@ -1443,14 +1502,15 @@ impl JsFixMsg {
             .collect()
     }
 
-    /// The fixed four-byte business category lifted from this message type.
+    /// The stable integer business-category code lifted from the message type.
     #[napi(getter)]
-    pub fn msgcat(&self) -> Option<String> {
-        self.inner.lifted().msgcat().map(ToOwned::to_owned)
+    pub fn msgcat(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
     }
 
-    /// This message's own `UUIDv7` identity, from its microsecond instant and
-    /// its whole `currhashcode`, as hyphenated text.
+    /// This message's own `UUIDv7` identity, ordered by millisecond and
+    /// sequence with a content payload seeded by its cross hash, as
+    /// hyphenated text.
     #[napi(getter)]
     pub fn curruuid(&self) -> String {
         self.inner.get_curruuid().to_string()
@@ -1506,15 +1566,14 @@ impl JsFixMsg {
         self.inner.get_prevuuid().map(|uuid| uuid.to_string())
     }
 
-    /// The identities of the messages this one descends from: the whole
-    /// chain before it, oldest first.
+    /// The sorted unique identities of the messages this one descends from.
     #[napi(getter)]
     pub fn parentuuids(&self) -> Vec<String> {
         parents_view(self.inner.event())
     }
 
-    /// The identities of the elements this one was read from: the text line
-    /// it was parsed out of, and none for one parsed from bytes. Provenance,
+    /// The sorted unique identities of the elements this one was read from:
+    /// the text line it was parsed out of, and none for one parsed from bytes. Provenance,
     /// never lineage: no walk moves it.
     #[napi(getter)]
     pub fn srcuuids(&self) -> Vec<String> {
@@ -1542,16 +1601,22 @@ impl JsFixMsg {
         identifiers_view(self.inner.event())
     }
 
+    /// The stable integer category of the market operation, or `null`.
+    #[napi(getter)]
+    pub fn marketoperationid(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
+    }
+
     /// The price, as decimal text; `0` where none is stated.
     #[napi(getter)]
-    pub fn px(&self) -> String {
-        self.inner.get_px().to_string()
+    pub fn price(&self) -> String {
+        self.inner.get_price().to_string()
     }
 
     /// The quantity, as decimal text; `0` where none is stated.
     #[napi(getter)]
-    pub fn qty(&self) -> String {
-        self.inner.get_qty().to_string()
+    pub fn quantity(&self) -> String {
+        self.inner.get_quantity().to_string()
     }
 
     /// The side: `BUY`, `SELL`, or `UNKNOWN`.
@@ -2636,6 +2701,41 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(reader, schema.inner.name()))
     }
 
+    /// Streams sorted FIX messages through native market operations and the
+    /// stateful book iterator into nested Arrow batches.
+    ///
+    /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
+    /// are ignored. Source errors and invalid admitted messages still fail,
+    /// including unsupported AE corrections, cancellations and status reports.
+    ///
+    /// The loader supplies the iterable pull. `snapshotMillis` enables an
+    /// epoch-aligned snapshot grid and `global` consolidates symbols into one
+    /// `GLOBAL` book. Lifecycle enrichment remains an explicit composition.
+    #[napi(js_name = "_bookArrowReaderNative", skip_typescript)]
+    pub fn book_arrow_reader_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+        snapshot_millis: f64,
+        global: bool,
+    ) -> Result<JsBatchReader> {
+        let snapshot_millis = exact_i64(snapshot_millis, "snapshotMillis")?;
+        let snapshot_millis = u64::try_from(snapshot_millis)
+            .map_err(|_| napi_error("snapshotMillis must not be negative"))?;
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled
+            .map(|message| Ok(message.inner.clone()))
+            .chain(std::iter::from_fn(move || {
+                failed.take().map(|error| Err(javascript_failure(error)))
+            }));
+        let reader = self
+            .inner
+            .book_arrow_reader(messages, snapshot_millis, global)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, "book"))
+    }
+
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by: `parse*` turns a
@@ -2904,19 +3004,18 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// The definitions this crate owns, in tag order, above every tag FIX or a
 /// venue publishes.
 ///
-/// The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
-/// `snapunix` and `exprtime`; the identities `currhashcode`,
+/// The event's instant `currunix` and the chain's `creaunix`, `execunix`,
+/// `recdunix`, `refrecdunix`, `prevunix`, `snapunix` and `exprtime`; the identities `currhashcode`,
 /// `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
 /// `parentuuids` list; the `srcuuids` list of the lines it was read from;
 /// the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
 /// and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
 /// `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
-/// which whoever read the line states on the row and no message holds; and
-/// the `nofixentries` that counts the content record. Twenty-two in all.
-/// Nothing about the market is here: every market fact is FIX's own field,
-/// and the graph traits answer it off those; the state and the expiry are
-/// the event's own, the two facts a lifecycle walk folds forward, each at
-/// the datatype its graph event column names.
+/// which whoever read the line states on the row and no message holds; the
+/// `nofixentries` that counts the content record; and the generic
+/// `marketoperationid` shared with market operations. Thirty-two in all,
+/// each a fact no FIX dictionary publishes, at the datatype its graph column
+/// names.
 ///
 /// `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
 /// `crossuuid` are non-null; `state` is written on every row a message

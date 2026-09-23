@@ -29,8 +29,8 @@ use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
 use yggdryl::graph::{
-    Book, Element, Event, EventColumn, MarketElement, MarketEventData, MarketOperation, Order,
-    Quote,
+    Book, BookIterator, Element, Event, EventColumn, Execution, MarketElement, MarketEventData,
+    MarketOperation, Order, Quote, Trade,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -370,6 +370,27 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
             },
         );
     }
+}
+
+#[test]
+fn market_following_clones_only_an_inherited_symbolticker() {
+    let mut previous = MarketEventData::at(1);
+    previous.finalize();
+    let next = MarketEventData::at(2);
+    let (baseline, _) = counted(|| next.with_previous(&previous).unwrap());
+
+    previous.set_symbolticker(Some("AAPL".to_owned()));
+    previous.finalize();
+    let next = MarketEventData::at(2);
+    let (inherited, next) = counted(|| next.with_previous(&previous).unwrap());
+    assert_eq!(next.get_symbolticker(), Some("AAPL"));
+    assert_eq!(inherited, baseline + 1, "one owned inherited ticker");
+
+    let mut next = MarketEventData::at(2);
+    next.set_symbolticker(Some("MSFT".to_owned()));
+    let (stated, next) = counted(|| next.with_previous(&previous).unwrap());
+    assert_eq!(next.get_symbolticker(), Some("MSFT"));
+    assert_eq!(stated, baseline, "a stated ticker needs no clone");
 }
 
 #[test]
@@ -776,6 +797,20 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
 }
 
 #[test]
+fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
+    let codec = FixCodec::new(Arc::new(fix_registry(0)));
+    for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
+        let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
+        let (allocations, operation) = counted(|| MarketOperation::try_from(message).unwrap());
+        assert_eq!(operation.get_symbolticker(), Some("AAPL"));
+        assert_eq!(
+            allocations, 0,
+            "a direct operation moves its existing holder"
+        );
+    }
+}
+
+#[test]
 fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     let mut event = MarketEventData::at(1);
     event.set_crosscode("ORDER-1".to_owned());
@@ -796,6 +831,45 @@ fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     black_box(operation);
 }
 
+fn allocation_trade_parts(executions: usize) -> (MarketEventData, Vec<Execution>) {
+    let mut root = MarketEventData::at(1);
+    root.set_crosscode("ALLOC-TRADE".to_owned());
+    root.set_symbolticker(Some("ALLOC".to_owned()));
+    root.set_state(State::read("Filled").expect("the shipped filled state"));
+    root.finalize();
+    let executions = (0..executions)
+        .rev()
+        .map(|index| {
+            let mut event = MarketEventData::at(1);
+            event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
+            event.set_symbolticker(Some("ALLOC".to_owned()));
+            event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
+            event.set_state(State::read("Filled").expect("the shipped filled state"));
+            event.finalize();
+            Execution::from(event)
+        })
+        .collect();
+    (root, executions)
+}
+
+#[test]
+fn trade_construction_does_not_allocate_per_execution() {
+    let (root, executions) = allocation_trade_parts(1);
+    let (shallow_allocations, shallow) = counted(|| Trade::from_parts(root, executions));
+    let shallow = shallow.expect("the shallow trade");
+
+    let (root, executions) = allocation_trade_parts(128);
+    let (deep_allocations, deep) = counted(|| Trade::from_parts(root, executions));
+    let deep = deep.expect("the deep trade");
+    assert_eq!(shallow.executions().len(), 1);
+    assert_eq!(deep.executions().len(), 128);
+    assert!(
+        deep_allocations <= shallow_allocations + 4,
+        "constructing 128 executions allocated {deep_allocations} times but one execution allocated {shallow_allocations} times"
+    );
+    black_box((shallow, deep));
+}
+
 fn allocation_book_operation(
     code: impl Into<String>,
     unix: i64,
@@ -806,8 +880,8 @@ fn allocation_book_operation(
     event.set_crosscode(code.into());
     event.set_symbolticker(Some("ALLOC".to_owned()));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_px(Decimal18::from_int(100));
-    event.set_qty(Decimal18::from_int(quantity));
+    event.set_price(Decimal18::from_int(100));
+    event.set_quantity(Decimal18::from_int(quantity));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
     Quote::from(event).into()
@@ -820,6 +894,32 @@ fn allocation_book(entries: usize) -> Book {
     )
     .expect("the initial depth");
     book
+}
+
+#[test]
+fn one_book_iterator_update_clones_depth_only_for_its_output() {
+    let overhead = |entries| {
+        let initial = (0..entries)
+            .map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New"))
+            .collect::<Vec<_>>();
+        let update = allocation_book_operation("ALLOC-0", 2, 2, "Replaced");
+        let mut books = BookIterator::new(initial.into_iter().chain([update]), 0, false).unwrap();
+        assert_eq!(books.next().unwrap().unwrap().bid().len(), entries);
+        let (allocations, book) = counted(|| books.next().unwrap().unwrap());
+        assert_eq!(book.bid().len(), entries);
+        let (output, _) = counted(|| book.clone());
+        allocations
+            .checked_sub(output)
+            .expect("one owned output book")
+    };
+    let shallow = overhead(1);
+    let deep = overhead(128);
+    // Output owns its depth. Transactional work has the same small fixed
+    // allowance as direct Book::add_operations, regardless of resting entries.
+    assert!(
+        deep <= shallow + 4,
+        "iterator overhead allocated {deep} times at depth 128 but {shallow} times at depth 1"
+    );
 }
 
 #[test]

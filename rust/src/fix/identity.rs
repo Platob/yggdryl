@@ -345,7 +345,6 @@ pub(super) const TIMEINFORCE_TAG: i32 = 59;
 /// needs, because nothing writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
-    msgcat: Option<SmolStr>,
     price: Option<Decimal18>,
     orderqty: Option<Decimal18>,
     quantity: Option<Decimal18>,
@@ -366,16 +365,6 @@ pub struct FixLifted {
 }
 
 impl FixLifted {
-    /// The message type's fixed business category.
-    #[must_use]
-    pub fn msgcat(&self) -> Option<&str> {
-        self.msgcat.as_deref()
-    }
-
-    pub(super) fn set_msgcat(&mut self, value: Option<&str>) {
-        self.msgcat = value.map(SmolStr::new);
-    }
-
     /// `Price(44)`, where the message stated one.
     #[must_use]
     pub const fn price(&self) -> Option<Decimal18> {
@@ -485,7 +474,6 @@ impl FixLifted {
     pub(super) fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         match tag {
-            tag if tag == super::MSGCAT_TAG_NAME.0 => text(&self.msgcat),
             PRICE_TAG => self.price.map(Scalar::from),
             ORDERQTY_TAG => self.orderqty.map(Scalar::from),
             QUANTITY_TAG => self.quantity.map(Scalar::from),
@@ -518,7 +506,6 @@ impl FixLifted {
                 .filter(|held| !held.is_empty())
         };
         match tag {
-            tag if tag == super::MSGCAT_TAG_NAME.0 => self.msgcat = text(),
             PRICE_TAG => self.price = number(),
             ORDERQTY_TAG => self.orderqty = number(),
             QUANTITY_TAG => self.quantity = number(),
@@ -734,13 +721,17 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
                 .cloned()
                 .or_else(|| value.as_str().and_then(|value| MicCode::new(value).ok())),
         ),
-        _ => match super::crated::event_column_of(tag) {
-            Some(column) => {
+        _ => {
+            if let Some(column) = super::crated::event_column_of(tag) {
                 column.record(event, value);
                 return true;
             }
-            None => return false,
-        },
+            if let Some(column) = super::crated::market_column_of(tag) {
+                column.record(event, value);
+                return true;
+            }
+            return false;
+        }
     }
     true
 }
@@ -749,30 +740,33 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
 /// column's field types, or nothing where it states no fact: an empty name,
 /// an absent instant, identity or code.
 pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
-    match super::crated::event_column_of(tag) {
-        Some(column) => column.fact(event),
-        None => match tag {
-            tag if tag == super::ISINCODE_TAG_NAME.0 => {
-                event.get_isincode().cloned().map(Scalar::IsinCode)
-            }
-            tag if tag == super::CUSIPCODE_TAG_NAME.0 => {
-                event.get_cusipcode().cloned().map(Scalar::CusipCode)
-            }
-            tag if tag == super::SEDOLCODE_TAG_NAME.0 => {
-                event.get_sedolcode().cloned().map(Scalar::SedolCode)
-            }
-            tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
-                .get_bloombergcode()
-                .cloned()
-                .map(Scalar::BloombergCode),
-            tag if tag == super::FIGICODE_TAG_NAME.0 => {
-                event.get_figicode().cloned().map(Scalar::FIGICode)
-            }
-            tag if tag == super::MICCODE_TAG_NAME.0 => {
-                event.get_miccode().cloned().map(Scalar::MicCode)
-            }
-            _ => None,
-        },
+    if let Some(column) = super::crated::event_column_of(tag) {
+        return column.fact(event);
+    }
+    if let Some(column) = super::crated::market_column_of(tag) {
+        return column.fact(event);
+    }
+    match tag {
+        tag if tag == super::ISINCODE_TAG_NAME.0 => {
+            event.get_isincode().cloned().map(Scalar::IsinCode)
+        }
+        tag if tag == super::CUSIPCODE_TAG_NAME.0 => {
+            event.get_cusipcode().cloned().map(Scalar::CusipCode)
+        }
+        tag if tag == super::SEDOLCODE_TAG_NAME.0 => {
+            event.get_sedolcode().cloned().map(Scalar::SedolCode)
+        }
+        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
+            .get_bloombergcode()
+            .cloned()
+            .map(Scalar::BloombergCode),
+        tag if tag == super::FIGICODE_TAG_NAME.0 => {
+            event.get_figicode().cloned().map(Scalar::FIGICode)
+        }
+        tag if tag == super::MICCODE_TAG_NAME.0 => {
+            event.get_miccode().cloned().map(Scalar::MicCode)
+        }
+        _ => None,
     }
 }
 

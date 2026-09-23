@@ -20,6 +20,11 @@
 //! for every field that reads it, and two fields cannot drift apart while
 //! claiming one set.
 //!
+//! `msgcatcodeset` is the deliberate exception: it renders the crate-owned
+//! integer identifiers that cross into generic graph operations. A registry
+//! may assign one of its symbolic categories to a custom message type, but it
+//! may not replace, widen or remove that intrinsic category-to-ID mapping.
+//!
 //! [`FixCodeSet`] is that set, borrowed from the dictionary: one [canonical
 //! document](super::document) ordered by wire value, read without parsing
 //! ahead or allocating. It is a second key beside
@@ -69,6 +74,51 @@ use crate::{Error, Field, Result, Scalar};
 
 /// What the document is called for every refusal it raises.
 const TARGET: &str = "fix codes";
+
+/// Leaves ordinary dictionary vocabularies mutable while pinning the one
+/// code set whose values are generic graph identifiers.
+fn validate_intrinsic_codeset(key: &str, document: Option<&str>) -> Result<()> {
+    if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME) {
+        return Ok(());
+    }
+    let canonical = super::crated::msgcat_codeset()
+        .ok_or_else(|| Error::absent("the intrinsic MsgCat code set", key))?;
+    if document == Some(canonical.as_ref()) {
+        return Ok(());
+    }
+    Err(Error::conflict(
+        "the fixed MsgCat operation identifiers",
+        "a changed or removed MsgCat code set",
+        key,
+    ))
+}
+
+/// Refuses an intrinsic merge whose input attempts to remap or widen one
+/// category even when the ordinary vocabulary merge would discard that
+/// conflicting spelling and leave the stored document unchanged.
+fn validate_intrinsic_merge(key: &str, codes: &[FixCode]) -> Result<()> {
+    if !folds_equal(key, super::crated::MSGCAT_CODESET_NAME)
+        || codes.iter().all(|code| {
+            super::constants::MSGCATEGORY_CODES
+                .iter()
+                .any(|(name, _, canonical)| {
+                    let is_same_spelling = |spelling: &str| folds_equal(name, spelling);
+                    code.value() == *canonical
+                        && is_same_spelling(code.name())
+                        && code.aliases().iter().all(|alias| is_same_spelling(alias))
+                        && code.description().is_none()
+                        && code.group().is_none()
+                })
+        })
+    {
+        return Ok(());
+    }
+    Err(Error::conflict(
+        "the fixed MsgCat operation identifiers",
+        "a changed or removed MsgCat code set",
+        key,
+    ))
+}
 
 /// The wire value, and the key every lookup keys on.
 const VALUE: &str = "value";
@@ -961,17 +1011,20 @@ impl FixRegistry {
     /// Returns [`Error::InvalidRecord`] when the name is not one a store can
     /// file, [`Error::Parse`] when two codes share a name or one states an
     /// empty value or name, and [`Error::Conflict`] when an empty slice would
-    /// take away a set a held field names. Any of them leaves this dictionary
-    /// exactly as it was.
+    /// take away a set a held field names or any value would change the
+    /// intrinsic MsgCat operation identifiers. Any of them leaves this
+    /// dictionary exactly as it was.
     pub fn set_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
         let key = self.codeset_key(name)?;
         if codes.is_empty() {
+            validate_intrinsic_codeset(&key, None)?;
             self.refuse_while_named(&key)?;
             if self.codesets.remove(&key).is_none() {
                 return Ok(());
             }
         } else {
             let document = FixCodes::render(codes)?;
+            validate_intrinsic_codeset(&key, Some(&document))?;
             if self
                 .codesets
                 .get(&key)
@@ -1022,14 +1075,17 @@ impl FixRegistry {
     /// # Errors
     ///
     /// Returns what [`Self::set_codeset`] returns for the name and the
-    /// render, leaving this dictionary exactly as it was.
+    /// render, including refusal to widen the intrinsic MsgCat operation
+    /// identifiers, leaving this dictionary exactly as it was.
     pub fn merge_codeset(&mut self, name: &str, codes: &[FixCode]) -> Result<()> {
         let key = self.codeset_key(name)?;
+        validate_intrinsic_merge(&key, codes)?;
         let incoming = FixCodes::render(codes)?;
         let held = self.codesets.get(&key).map(Arc::clone);
         let Some(merged) = FixCodes::merge(held.as_deref(), Some(incoming.as_str()))? else {
             return Ok(());
         };
+        validate_intrinsic_codeset(&key, Some(&merged))?;
         self.codesets.insert(key, Arc::from(merged.as_str()));
         self.forget_codesets();
         Ok(())
@@ -1046,6 +1102,7 @@ impl FixRegistry {
     /// asked to take away.
     pub fn remove_codeset(&mut self, name: &str) -> Result<Option<Vec<FixCode>>> {
         let key = self.codeset_key(name)?;
+        validate_intrinsic_codeset(&key, None)?;
         self.refuse_while_named(&key)?;
         let Some(document) = self.codesets.remove(&key) else {
             return Ok(None);
@@ -1087,6 +1144,7 @@ impl FixRegistry {
                     if let Some(merged) =
                         FixCodes::merge(Some(slot.get()), Some(incoming.as_ref()))?
                     {
+                        validate_intrinsic_codeset(name, Some(&merged))?;
                         slot.insert(Arc::from(merged.as_str()));
                     }
                 }
@@ -1131,6 +1189,7 @@ impl FixRegistry {
             return Ok(());
         };
         let key = self.codeset_key(stored)?;
+        validate_intrinsic_codeset(&key, Some(&merged))?;
         self.codesets.insert(key, Arc::from(merged.as_str()));
         self.forget_codesets();
         Ok(())
@@ -1149,6 +1208,7 @@ impl FixRegistry {
     /// different document. Re-reading the same canonical set is idempotent.
     pub(super) fn create_codeset(&mut self, name: &str, document: String) -> Result<()> {
         let key = self.codeset_key(name)?;
+        validate_intrinsic_codeset(&key, Some(&document))?;
         match self.codesets.entry(key) {
             Entry::Vacant(slot) => {
                 slot.insert(Arc::from(document.as_str()));

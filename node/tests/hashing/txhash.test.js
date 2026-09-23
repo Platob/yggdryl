@@ -34,6 +34,20 @@ const projectedUuid = (unixMicros, digest) => {
   return uuidText(packed)
 }
 
+const sequencedUuid = (unixMillis, digest, sequence, seed) => {
+  const feed = Buffer.alloc(16)
+  feed.writeBigUInt64LE(digestPayload(digest), 0)
+  feed.writeBigUInt64LE(sequence, 8)
+  const payload = xxhash.xxh3(feed, { seed }) & V7_PAYLOAD_LOW_MASK
+  return uuidText(
+    (unixMillis << 80n) |
+    (7n << 76n) |
+    ((sequence < 0xfffn ? sequence : 0xfffn) << 64n) |
+    (0b10n << 62n) |
+    payload,
+  )
+}
+
 // The inverse: both facts read back out of the 128 bits, which is what makes
 // the projection lossless rather than a fingerprint of its inputs.
 const decodedUuid = (text) => {
@@ -244,6 +258,41 @@ test('intoUuid refuses non-64-bit digests without narrowing', () => {
       })
     }
   }
+})
+
+test('intoSequencedUuid orders and validates the full unsigned 64-bit inputs', () => {
+  const digest = Digest.from('xxh64:0123456789abcdef')
+  const value = TxHash.fromParts(1_234_567n, digest, 'ns')
+  const projected = value.intoSequencedUuid(7n, 11n)
+  assert.ok(projected instanceof Scalar)
+  assert.equal(projected.dtype.id, 'uuid')
+  assert.equal(projected.asJs(), sequencedUuid(1n, digest, 7n, 11n))
+
+  const sameMillisecond = TxHash.fromParts(1_999_999n, digest, 'ns')
+  assert.ok(sameMillisecond.intoSequencedUuid(7n, 11n).equals(projected))
+  assert.ok(projected.asJs() < value.intoSequencedUuid(8n, 0n).asJs())
+  assert.ok(!value.intoSequencedUuid(7n, 12n).equals(projected))
+
+  const overflow = value.intoSequencedUuid(4_096n, 11n)
+  const farther = value.intoSequencedUuid(8_192n, 11n)
+  assert.equal(overflow.asJs(), sequencedUuid(1n, digest, 4_096n, 11n))
+  const overflowBits = BigInt(`0x${overflow.asJs().replaceAll('-', '')}`)
+  assert.equal((overflowBits >> 64n) & 0xfffn, 0xfffn)
+  assert.ok(!overflow.equals(farther), 'the full sequence reaches the payload')
+
+  const maximum = (1n << 64n) - 1n
+  assert.equal(
+    value.intoSequencedUuid(maximum, maximum).asJs(),
+    sequencedUuid(1n, digest, maximum, maximum),
+  )
+  for (const invalid of [-1n, 1n << 64n]) {
+    assert.throws(() => value.intoSequencedUuid(invalid, 0n), /sequence must be an unsigned 64-bit integer/)
+    assert.throws(() => value.intoSequencedUuid(0n, invalid), /seed must be an unsigned 64-bit integer/)
+  }
+  assert.throws(() => value.intoSequencedUuid(1, 0n))
+
+  const narrow = TxHash.fromParts(0n, Digest.from('xxh32:00000007'), 'ns')
+  assert.throws(() => narrow.intoSequencedUuid(0n, 0n), /64-bit digest/)
 })
 
 test('every instant spelling reads the same way', () => {

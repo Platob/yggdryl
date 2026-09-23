@@ -2,16 +2,20 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{FixEntry, FixMsg};
+use super::{FixCodec, FixEntry, FixMsg};
+use crate::arrow::BatchReader;
 use crate::graph::{
-    Element, Event, Execution, MarketElement, MarketEventData, MarketOperation, Order, Quote,
+    Book, BookIterator, Element, Event, Execution, MarketElement, MarketEventData, MarketOperation,
+    Order, Quote, Trade,
 };
-use crate::{DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
+use crate::{Currency, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
 
 const MD_ENTRIES: i32 = 268;
+const TRADE_SIDES: i32 = 552;
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
 
 #[derive(Clone, Default)]
@@ -164,15 +168,20 @@ struct BookEntry {
 impl FixMsg {
     /// Reads this message as graph market operations.
     ///
-    /// Order, quote, execution and trade messages are one operation. A FIX
-    /// `W` or `X` book message is expanded in `NoMDEntries(268)` source order;
-    /// an empty `W` is one scoped snapshot control. The structured entry tree
-    /// is derived at most once and then walked once.
+    /// Order, quote, execution and initial `AE` trade reports are one
+    /// operation. A FIX
+    /// `W` or `X` book message is expanded in nondecreasing effective time,
+    /// stably retaining `NoMDEntries(268)` source order for equal instants; an
+    /// empty `W` is one scoped snapshot control. The structured entry tree is
+    /// derived at most once and then walked once.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] naming the FIX tag and occurrence for
-    /// an unsupported message, update action or market-data entry type.
+    /// an unsupported message, update action or market-data entry type; a
+    /// missing, repeated or count-mismatched `NoSides(552)` group; a missing
+    /// or non-bid/ask `Side(54)`; an invalid side decimal or currency; or a
+    /// sided execution that violates the composite trade invariants.
     pub fn market_operations(&self) -> Result<Vec<MarketOperation>> {
         operations(self, self.event().clone())
     }
@@ -189,25 +198,234 @@ impl FixMsg {
     ///
     /// Returns the same typed refusals as [`Self::market_operations`].
     pub fn into_market_operations(self) -> Result<Vec<MarketOperation>> {
-        let category = category(&self)?;
-        if let Some(kind) = direct_kind(category, self.is_execution()) {
-            return Ok(vec![operation(kind, MarketEventData::from(self))]);
-        }
-        let msgtype = self.header().msgtype();
-        if category != "BOOK" || !matches!(msgtype, "W" | "X") {
-            return Err(unsupported_message(&self));
-        }
-        let msgtype = SmolStr::new(msgtype);
-        let entries = book_entries(&self)?;
-        build_book_operations(MarketEventData::from(self), &msgtype, &entries)
+        Ok(expand_message(self)?.into_vec())
     }
+}
+
+/// A lazy, fallible projection of sorted FIX messages into graph market
+/// operations. Direct messages occupy no intermediate vector; one book
+/// message retains only its own expanded entries. The first source,
+/// conversion, or ordering error is yielded once and fuses the iterator.
+pub struct FixMarketIterator<I>
+where
+    I: Iterator,
+    I::Item: Into<Result<FixMsg>>,
+{
+    source: I,
+    current: Option<MessageOperations>,
+    last_unix: Option<i64>,
+    done: bool,
+}
+
+impl<I> FixMarketIterator<I>
+where
+    I: Iterator,
+    I::Item: Into<Result<FixMsg>>,
+{
+    /// Opens a projection over messages already sorted by event time.
+    #[must_use]
+    pub fn new(source: I) -> Self {
+        Self {
+            source,
+            current: None,
+            last_unix: None,
+            done: false,
+        }
+    }
+}
+
+impl<I> Iterator for FixMarketIterator<I>
+where
+    I: Iterator,
+    I::Item: Into<Result<FixMsg>>,
+{
+    type Item = Result<MarketOperation>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        loop {
+            if let Some(operation) = self.current.as_mut().and_then(Iterator::next) {
+                let unix = effective_unix(&operation);
+                if self.last_unix.is_some_and(|previous| unix < previous) {
+                    self.done = true;
+                    self.current = None;
+                    return Some(Err(invalid(
+                        "$.operations",
+                        format_smolstr!(
+                            "expected nondecreasing effective timestamps, got {unix} after {}",
+                            self.last_unix.expect("the prior timestamp was checked")
+                        ),
+                    )));
+                }
+                self.last_unix = Some(unix);
+                return Some(Ok(operation));
+            }
+            self.current = None;
+            let message = match self.source.next() {
+                Some(message) => match message.into() {
+                    Ok(message) => message,
+                    Err(error) => {
+                        self.done = true;
+                        return Some(Err(error));
+                    }
+                },
+                None => {
+                    self.done = true;
+                    return None;
+                }
+            };
+            match expand_message(message) {
+                Ok(operations) => self.current = Some(operations),
+                Err(error) => {
+                    self.done = true;
+                    return Some(Err(error));
+                }
+            }
+        }
+    }
+}
+
+impl<I> FusedIterator for FixMarketIterator<I>
+where
+    I: Iterator,
+    I::Item: Into<Result<FixMsg>>,
+{
+}
+
+fn contributes_to_book(message: &FixMsg) -> bool {
+    match message
+        .get_marketoperationid()
+        .and_then(super::constants::msgcat_name)
+    {
+        Some("ORDR" | "QUOT") => true,
+        Some("EXEC") => message.is_execution(),
+        Some("BOOK") => matches!(message.header().msgtype(), "W" | "X"),
+        Some("TRAD") => message.header().msgtype() == "AE",
+        _ => false,
+    }
+}
+
+impl FixCodec {
+    /// Streams sorted FIX messages through their graph market operations and
+    /// the stateful book iterator into bounded nested Arrow batches.
+    ///
+    /// Records outside order/quote categories, actual executions, `W`/`X`
+    /// book messages and `AE` trade reports are ignored. Every `AE` reaches
+    /// the strict market projection, so unsupported corrections, cancels
+    /// and status reports retain their named refusals. Source errors and
+    /// invalid admitted messages are never skipped. [`FixMarketIterator`]
+    /// and standalone operation conversions remain strict for every input.
+    ///
+    /// This method does not run a lifecycle implicitly: callers that need
+    /// lifecycle enrichment pass [`Self::lifecycle`] as the source. Input is
+    /// pulled lazily; conversion and ordering errors follow the completed
+    /// book prefix and fuse the returned reader.
+    pub fn book_arrow_reader<I>(
+        &self,
+        messages: I,
+        snapshot_millis: u64,
+        global: bool,
+    ) -> Result<BatchReader>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+        I::IntoIter: Send + 'static,
+    {
+        let admitted = messages
+            .into_iter()
+            .filter_map(|message| match message.into() {
+                Ok(message) => contributes_to_book(&message).then_some(Ok(message)),
+                Err(error) => Some(Err(error)),
+            });
+        let operations = FixMarketIterator::new(admitted);
+        let books = BookIterator::new(operations, snapshot_millis, global)?;
+        Book::arrow_reader(
+            books,
+            Some(self.batch_row_size()),
+            Some(self.batch_byte_size()),
+        )
+    }
+}
+
+// The direct-message hot path stays inline so one order, quote, execution or
+// trade does not pay a heap allocation merely to satisfy the iterator shape.
+#[allow(clippy::large_enum_variant)]
+enum MessageOperations {
+    One(Option<MarketOperation>),
+    Many(std::vec::IntoIter<MarketOperation>),
+}
+
+impl MessageOperations {
+    /// Recovers the expanded allocation instead of collecting it through the
+    /// type-erased iterator path.
+    fn into_vec(self) -> Vec<MarketOperation> {
+        match self {
+            Self::One(operation) => operation.into_iter().collect(),
+            Self::Many(operations) => operations.collect(),
+        }
+    }
+}
+
+impl Iterator for MessageOperations {
+    type Item = MarketOperation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::One(operation) => operation.take(),
+            Self::Many(operations) => operations.next(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::One(operation) => {
+                let len = usize::from(operation.is_some());
+                (len, Some(len))
+            }
+            Self::Many(operations) => operations.size_hint(),
+        }
+    }
+}
+
+impl ExactSizeIterator for MessageOperations {}
+impl FusedIterator for MessageOperations {}
+
+fn expand_message(message: FixMsg) -> Result<MessageOperations> {
+    let category = category(&message)?;
+    if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
+        let executions = trade_executions(&message, message.event())?;
+        let trade = Trade::from_parts(MarketEventData::from(message), executions)?;
+        return Ok(MessageOperations::One(Some(trade.into())));
+    }
+    if let Some(kind) = direct_kind(category, message.is_execution()) {
+        return Ok(MessageOperations::One(Some(operation(
+            kind,
+            MarketEventData::from(message),
+        ))));
+    }
+    let msgtype = message.header().msgtype();
+    if category != "BOOK" || !matches!(msgtype, "W" | "X") {
+        return Err(unsupported_message(&message));
+    }
+    let msgtype = SmolStr::new(msgtype);
+    let entries = book_entries(&message)?;
+    let operations = build_book_operations(MarketEventData::from(message), &msgtype, &entries)?;
+    Ok(MessageOperations::Many(operations.into_iter()))
+}
+
+fn effective_unix(operation: &MarketOperation) -> i64 {
+    operation
+        .get_snapunix()
+        .unwrap_or_else(|| operation.get_currunix())
 }
 
 impl TryFrom<FixMsg> for MarketOperation {
     type Error = Error;
 
     fn try_from(message: FixMsg) -> Result<Self> {
-        let operations = message.into_market_operations()?;
+        let mut operations = expand_message(message)?;
         if operations.len() != 1 {
             return Err(invalid(
                 "$.NoMDEntries(268)",
@@ -217,12 +435,16 @@ impl TryFrom<FixMsg> for MarketOperation {
                 ),
             ));
         }
-        Ok(operations.into_iter().next().expect("one operation"))
+        Ok(operations.next().expect("one operation"))
     }
 }
 
 fn operations(message: &FixMsg, base: MarketEventData) -> Result<Vec<MarketOperation>> {
     let category = category(message)?;
+    if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
+        let executions = trade_executions(message, &base)?;
+        return Trade::from_parts(base, executions).map(|trade| vec![trade.into()]);
+    }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
         return Ok(vec![operation(kind, base)]);
     }
@@ -235,22 +457,25 @@ fn operations(message: &FixMsg, base: MarketEventData) -> Result<Vec<MarketOpera
 }
 
 fn category(message: &FixMsg) -> Result<&str> {
-    message.lifted().msgcat().ok_or_else(|| {
-        invalid(
-            "$.MsgType(35)",
-            format_smolstr!(
-                "expected a market message category, got {:?}",
-                message.header().msgtype()
-            ),
-        )
-    })
+    message
+        .get_marketoperationid()
+        .and_then(super::constants::msgcat_name)
+        .ok_or_else(|| {
+            invalid(
+                "$.MsgType(35)",
+                format_smolstr!(
+                    "expected a market message category, got {:?}",
+                    message.header().msgtype()
+                ),
+            )
+        })
 }
 
 fn direct_kind(category: &str, is_execution: bool) -> Option<Kind> {
     match category {
         "ORDR" => Some(Kind::Order),
         "QUOT" => Some(Kind::Quote),
-        "EXEC" | "TRAD" if is_execution => Some(Kind::Execution),
+        "EXEC" if is_execution => Some(Kind::Execution),
         _ => None,
     }
 }
@@ -261,7 +486,10 @@ fn unsupported_message(message: &FixMsg) -> Error {
         format_smolstr!(
             "expected ORDR, QUOT, an actual EXEC/TRAD, W or X, got {:?} ({})",
             message.header().msgtype(),
-            message.lifted().msgcat().unwrap_or("UNKN")
+            message
+                .get_marketoperationid()
+                .and_then(super::constants::msgcat_name)
+                .unwrap_or("UNKN")
         ),
     )
 }
@@ -273,6 +501,155 @@ fn operation(kind: Kind, mut event: MarketEventData) -> MarketOperation {
         Kind::Quote => MarketOperation::Quote(Quote::from(event)),
         Kind::Execution => MarketOperation::Execution(Execution::from(event)),
     }
+}
+
+fn trade_executions(message: &FixMsg, base: &MarketEventData) -> Result<Vec<Execution>> {
+    let mut groups = message
+        .entries()
+        .iter()
+        .filter(|entry| entry.tag() == TRADE_SIDES);
+    let group = groups.next().ok_or_else(|| {
+        invalid(
+            "$.NoSides(552)",
+            "expected an actual trade to state its sided executions",
+        )
+    })?;
+    if groups.next().is_some() {
+        return Err(invalid(
+            "$.NoSides(552)",
+            "expected one repeating group, got multiple",
+        ));
+    }
+    let stated = group
+        .value()
+        .and_then(|value| value.parse::<usize>().ok())
+        .ok_or_else(|| invalid("$.NoSides(552)", "expected a non-negative group count"))?;
+    if stated != group.entries().len() {
+        return Err(invalid(
+            "$.NoSides(552)",
+            format_smolstr!(
+                "expected {stated} occurrences, got {}",
+                group.entries().len()
+            ),
+        ));
+    }
+    if stated == 0 {
+        return Err(invalid(
+            "$.NoSides(552)",
+            "expected at least one sided execution, got none",
+        ));
+    }
+
+    group
+        .entries()
+        .iter()
+        .enumerate()
+        .map(|(index, occurrence)| trade_execution(base, occurrence, index))
+        .collect()
+}
+
+fn trade_execution(
+    base: &MarketEventData,
+    occurrence: &FixEntry,
+    index: usize,
+) -> Result<Execution> {
+    let path = |tag: i32, name: &str| format_smolstr!("$.NoSides(552)[{index}].{name}({tag})");
+    let raw_side = entry_value(occurrence, 54)
+        .ok_or_else(|| invalid(path(54, "Side"), "expected a bid or ask side, got no value"))?;
+    let side = Side::read(raw_side).map_err(|_| {
+        invalid(
+            path(54, "Side"),
+            format_smolstr!("expected a bid or ask side, got {raw_side:?}"),
+        )
+    })?;
+    if !side.is_bid() && !side.is_ask() {
+        return Err(invalid(
+            path(54, "Side"),
+            format_smolstr!("expected a bid or ask side, got {:?}", side.as_str()),
+        ));
+    }
+
+    let mut event = base.clone();
+    event.set_side(side.clone());
+    if let Some(value) = entry_decimal(occurrence, 1009, path(1009, "SideLastQty"))? {
+        event.set_lastqty(Some(value));
+        event.set_quantity(value);
+    } else if let Some(value) = base.get_lastqty() {
+        event.set_quantity(value);
+    }
+    if let Some(value) = entry_decimal(occurrence, 1852, path(1852, "SideAvgPx"))? {
+        event.set_avgpx(Some(value));
+        if base.get_lastpx().is_none() {
+            event.set_price(value);
+        }
+    }
+    if let Some(value) = entry_value(occurrence, 1154) {
+        event.set_currency(Currency::new(value).map_err(|_| {
+            invalid(
+                path(1154, "SideCurrency"),
+                format_smolstr!("expected a currency code, got {value:?}"),
+            )
+        })?);
+    }
+
+    let mut identifiers = event.get_identifiers().clone();
+    identifiers.insert("Side".to_owned(), side.as_str().to_owned());
+    for (tag, name) in [
+        (1427, "SideExecID"),
+        (1005, "SideTradeReportID"),
+        (1506, "SideTradeID"),
+        (1507, "SideOrigTradeID"),
+        (37, "OrderID"),
+        (198, "SecondaryOrderID"),
+        (11, "ClOrdID"),
+        (526, "SecondaryClOrdID"),
+        (41, "OrigClOrdID"),
+    ] {
+        insert(&mut identifiers, name, entry_value(occurrence, tag));
+    }
+    event.set_identifiers(identifiers);
+
+    let stable = [1427, 1506, 1005, 37, 11]
+        .into_iter()
+        .find_map(|tag| entry_value(occurrence, tag).map(|value| (tag, value)))
+        .map(|(tag, value)| format_smolstr!("{tag}:{}:{value}", value.len()))
+        .unwrap_or_else(|| {
+            let digest = super::digest::digest_of(&[std::slice::from_ref(occurrence)]);
+            format_smolstr!("content:{digest:032x}")
+        });
+    let chain = [37, 11, 41]
+        .into_iter()
+        .find_map(|tag| entry_value(occurrence, tag))
+        .unwrap_or_else(|| base.get_crosscode());
+    event.set_crosscode(format!(
+        "{}:{chain}|TradeSide={}|{stable}",
+        chain.len(),
+        side.as_str(),
+    ));
+    Ok(Execution::from(event))
+}
+
+fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
+    if entry.tag() == tag {
+        return entry.value().filter(|value| !value.is_empty());
+    }
+    entry
+        .entries()
+        .iter()
+        .find_map(|child| entry_value(child, tag))
+}
+
+fn entry_decimal(entry: &FixEntry, tag: i32, path: SmolStr) -> Result<Option<Decimal18>> {
+    entry_value(entry, tag)
+        .map(|value| {
+            value.parse::<Decimal18>().map_err(|_| {
+                invalid(
+                    path,
+                    format_smolstr!("expected an exact decimal, got {value:?}"),
+                )
+            })
+        })
+        .transpose()
 }
 
 fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
@@ -495,6 +872,7 @@ fn build_book_operations(
         };
         answer.push(build_book_operation(event, msgtype, entry)?);
     }
+    answer.sort_by_key(effective_unix);
     Ok(answer)
 }
 
@@ -604,8 +982,8 @@ fn build_book_operation(
         fallback_crosscode(&scope, entry_type, action, &entry.facts, &path)?
     };
 
-    event.set_px(entry.price.unwrap_or(Decimal18::ZERO));
-    event.set_qty(entry.size.unwrap_or(Decimal18::ZERO));
+    event.set_price(entry.price.unwrap_or(Decimal18::ZERO));
+    event.set_quantity(entry.size.unwrap_or(Decimal18::ZERO));
     event.set_side(side);
     event.set_state(state);
     event.set_symbolticker(

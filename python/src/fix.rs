@@ -636,8 +636,9 @@ impl PyFixRegistry {
     /// An empty list removes the set, exactly as an empty tag or alias list
     /// removes its own property; removing one a held field still reads by is
     /// a `ValueError`, because a field may not be left naming a vocabulary
-    /// nothing states. One mutation: a refusal leaves the dictionary exactly
-    /// as it was.
+    /// nothing states. `msgcatcodeset` is intrinsic: its stable integer market
+    /// operation IDs cannot be replaced or removed. One mutation: a refusal
+    /// leaves the dictionary exactly as it was.
     fn set_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
         let codes = codes_from_py(codes)?;
         self.inner_mut()?
@@ -651,7 +652,8 @@ impl PyFixRegistry {
     /// every surviving spelling is kept as an alias, and a description or a
     /// group either side stated stays. So a venue's statement of a set
     /// enriches the one the dictionary holds rather than replacing it, and a
-    /// set no dictionary held yet arrives whole.
+    /// set no dictionary held yet arrives whole. `msgcatcodeset` is intrinsic
+    /// and refuses any merge that would change its stable integer IDs.
     fn merge_codeset(&mut self, name: &str, codes: &Bound<'_, PyAny>) -> PyResult<()> {
         let codes = codes_from_py(codes)?;
         self.inner_mut()?
@@ -663,7 +665,8 @@ impl PyFixRegistry {
     ///
     /// A set nothing holds answers `None`. A set a held field still reads by
     /// is a `ValueError` naming that field: the field is moved to another set
-    /// first, or removed with it.
+    /// first, or removed with it. `msgcatcodeset` is intrinsic and cannot be
+    /// removed.
     fn remove_codeset<'py>(
         &mut self,
         py: Python<'py>,
@@ -1070,7 +1073,7 @@ impl PyMsgType {
         self.inner().as_str()
     }
 
-    /// The definition's fixed four-byte business category, or `None`.
+    /// The definition's symbolic business-category name, or `None`.
     #[getter]
     fn msgcat(&self) -> Option<&str> {
         self.inner().msgcat()
@@ -1887,10 +1890,10 @@ impl PyFixMsg {
         }
     }
 
-    /// The fixed four-byte business category lifted from the message type.
+    /// The stable integer business-category code lifted from the message type.
     #[getter]
-    fn msgcat(&self) -> Option<&str> {
-        self.inner.lifted().msgcat()
+    fn msgcat(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
     }
 
     /// What the line said about the capture it was written for, typed and
@@ -1923,12 +1926,9 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The message's `UUIDv7` identity: its microsecond instant in front and
-    /// the whole 64-bit `currhashcode` stored behind, which already carries
-    /// the names the message goes by, its parents, its state, its `seqnum`
-    /// and its predecessor - so nothing of them is hashed into the identifier
-    /// again. The chain is not among them, because a cross code stays outside
-    /// a message's content digest: `crossuuid` is what carries it.
+    /// The message's `UUIDv7` identity: its millisecond and sequence lead an
+    /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
+    /// `crosshashcode`.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())
@@ -2038,18 +2038,24 @@ impl PyFixMsg {
         self.inner.get_identifiers().clone()
     }
 
+    /// The stable integer category of the market operation, or `None`.
+    #[getter]
+    fn marketoperationid(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
+    }
+
     /// The price the message states, as a decimal; zero where it states
     /// none.
     #[getter]
-    fn px(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_px()))
+    fn price(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
     }
 
     /// The quantity the message states, as a decimal; zero where it states
     /// none.
     #[getter]
-    fn qty(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_qty()))
+    fn quantity(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
     }
 
     /// The side, as the `side` code it is; `UNKNOWN` where none is stated.
@@ -2731,6 +2737,36 @@ impl PyFixCodec {
         Self::reader_to_pyarrow(py, self.inner.arrow_reader(schema, messages))
     }
 
+    /// Streams sorted FIX messages through native market operations and the
+    /// stateful book iterator into a nested `pyarrow.RecordBatchReader`.
+    ///
+    /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
+    /// are ignored. Source errors and invalid admitted messages still fail,
+    /// including unsupported AE corrections, cancellations and status reports.
+    ///
+    /// `snapshot_millis` enables epoch-aligned book snapshots; `global_`
+    /// consolidates symbols into the `GLOBAL` book. Lifecycle enrichment is
+    /// explicit: pass `codec.lifecycle(messages)` when it is wanted.
+    #[pyo3(signature = (messages, snapshot_millis=0, global_=false))]
+    fn book_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        messages: &Bound<'py, PyAny>,
+        snapshot_millis: u64,
+        global_: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        Self::reader_to_pyarrow(
+            py,
+            self.inner
+                .book_arrow_reader(messages, snapshot_millis, global_),
+        )
+    }
+
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by: `parse_*` turns a
@@ -2938,18 +2974,17 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 
 /// The definitions this crate lists, in tag order from 65003.
 ///
-/// The event's clocks - `currunix`, `creaunix`, `prevunix`, `snapunix`,
-/// `exprtime` - its identities - `currhashcode`, `crosshashcode`,
+/// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
+/// `refrecdunix`, `prevunix`, `snapunix`, `exprtime` - its identities - `currhashcode`, `crosshashcode`,
 /// `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
 /// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl`
 /// a line was read from, the `nofixentries` that counts its content, and the
-/// two Map groups `identifiers` and `metadata`. Twenty-two in all, and every
-/// one a fact no dictionary publishes: what a message says about its
-/// *market* is FIX's own field, and the graph traits answer it off those;
-/// the state and the expiry are the event's own, the two facts a lifecycle
-/// walk folds forward, each at the datatype its graph event column names.
+/// two Map groups `identifiers` and `metadata`, plus the generic
+/// `marketoperationid` shared with market operations. Thirty-two in all,
+/// each a fact no FIX dictionary publishes, at the datatype its graph column
+/// names.
 #[pyfunction]
 #[pyo3(name = "fix_crate_fields")]
 pub(crate) fn fix_crate_fields() -> PyResult<Vec<PyField>> {
@@ -3269,12 +3304,9 @@ pub(crate) struct PyMarketEventData {
 
 #[pymethods]
 impl PyMarketEventData {
-    /// The event's `UUIDv7` identity: its microsecond instant in front and
-    /// the whole 64-bit `currhashcode` stored behind, which already carries
-    /// the names the event goes by, its parents, its state, its `seqnum` and
-    /// its predecessor - so nothing of them is hashed into the identifier
-    /// again. The chain is not among them, because a cross code stays outside
-    /// the message's content digest: `crossuuid` is what carries it.
+    /// The event's `UUIDv7` identity: its millisecond and sequence lead an
+    /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
+    /// `crosshashcode`.
     #[getter]
     fn curruuid(&self) -> PyScalar {
         uuid_scalar(self.inner.get_curruuid())
@@ -3360,6 +3392,24 @@ impl PyMarketEventData {
         self.inner.get_creaunix()
     }
 
+    /// The precise execution instant, or `None`.
+    #[getter]
+    fn execunix(&self) -> Option<i64> {
+        self.inner.get_execunix()
+    }
+
+    /// The precise recording instant, or `None`.
+    #[getter]
+    fn recdunix(&self) -> Option<i64> {
+        self.inner.get_recdunix()
+    }
+
+    /// The recording instant selected as merge reference, or `None`.
+    #[getter]
+    fn refrecdunix(&self) -> Option<i64> {
+        self.inner.get_refrecdunix()
+    }
+
     /// When the event stops being good, or `None`.
     #[getter]
     fn exprtime(&self) -> Option<i64> {
@@ -3385,16 +3435,82 @@ impl PyMarketEventData {
         self.inner.get_snapunix()
     }
 
+    /// The stable integer category of the market operation, or `None`.
+    #[getter]
+    fn marketoperationid(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
+    }
+
     /// The price, as a decimal; zero where none is stated.
     #[getter]
-    fn px(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_px()))
+    fn price(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
     }
 
     /// The quantity, as a decimal; zero where none is stated.
     #[getter]
-    fn qty(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_qty()))
+    fn quantity(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    }
+
+    /// The last traded price, or `None`.
+    #[getter]
+    fn lastpx(&self) -> Option<PyScalar> {
+        self.inner.get_lastpx().map(decimal_scalar)
+    }
+
+    /// The last traded quantity, or `None`.
+    #[getter]
+    fn lastqty(&self) -> Option<PyScalar> {
+        self.inner.get_lastqty().map(decimal_scalar)
+    }
+
+    /// The average traded price, or `None`.
+    #[getter]
+    fn avgpx(&self) -> Option<PyScalar> {
+        self.inner.get_avgpx().map(decimal_scalar)
+    }
+
+    /// The cumulative quantity, or `None`.
+    #[getter]
+    fn cumqty(&self) -> Option<PyScalar> {
+        self.inner.get_cumqty().map(decimal_scalar)
+    }
+
+    /// The remaining quantity, or `None`.
+    #[getter]
+    fn leavesqty(&self) -> Option<PyScalar> {
+        self.inner.get_leavesqty().map(decimal_scalar)
+    }
+
+    /// The price before this event, or `None`.
+    #[getter]
+    fn prevpx(&self) -> Option<PyScalar> {
+        self.inner.get_prevpx().map(decimal_scalar)
+    }
+
+    /// The quantity before this event, or `None`.
+    #[getter]
+    fn prevqty(&self) -> Option<PyScalar> {
+        self.inner.get_prevqty().map(decimal_scalar)
+    }
+
+    /// The time-in-force spelling, or `None`.
+    #[getter]
+    fn tif(&self) -> Option<&str> {
+        self.inner.get_tif()
+    }
+
+    /// Whether the instrument was tradable, or `None`.
+    #[getter]
+    fn tradable(&self) -> Option<bool> {
+        self.inner.get_tradable()
+    }
+
+    /// The instrument ticker, or `None`.
+    #[getter]
+    fn symbolticker(&self) -> Option<&str> {
+        self.inner.get_symbolticker()
     }
 
     /// The currency, as the `currency` code it is; `XXX` where none is

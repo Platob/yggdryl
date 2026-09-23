@@ -368,6 +368,16 @@ impl Uri {
     /// fragment are this identifier's own and are carried across, because the
     /// directory contributes neither.
     fn rooted(&self) -> Result<Url> {
+        // `C:name` is relative to drive C's working directory on Windows, not
+        // a name below this process's working directory.  Once represented as
+        // URI text there is no faithful base to resolve it against, so retain
+        // the strict URL refusal instead of silently changing what it names.
+        if matches!(
+            Path::new(self.path.as_str()).components().next(),
+            Some(std::path::Component::Prefix(_))
+        ) {
+            return Url::from_uri(self.clone());
+        }
         let base = Self::from_path(std::env::current_dir()?)?;
         let path = base.path.joinpath(self.path.as_str())?;
         Self::from_parts_with_authority(

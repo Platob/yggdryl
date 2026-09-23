@@ -18,6 +18,7 @@ use yggdryl::text::{
 };
 use yggdryl::{FieldPath as CoreFieldPath, FieldSegment};
 
+use crate::hashing::xxhash::u64_from_bigint;
 use crate::napi_error;
 use crate::text::options::JsTextOptions;
 
@@ -327,19 +328,19 @@ impl JsTextLine {
     /// read's `body` column hold no null and no empty cell.
     #[napi(
         constructor,
-        ts_args_type = "index: number, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions"
+        ts_args_type = "index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions"
     )]
     pub fn new(
-        index: i64,
+        index: BigInt,
         body: Either<Buffer, String>,
         captures: Option<Vec<Option<String>>>,
         options: Option<&JsTextOptions>,
     ) -> Result<Self> {
+        let index = u64_from_bigint(&index, "index")?;
         let page = bytes_from_input(body)?;
         let options =
             Arc::new(options.map_or_else(CoreTextOptions::new, |held| held.inner.clone()));
-        let mut line =
-            CoreTextLine::from_bytes(index.unsigned_abs(), page, options).map_err(napi_error)?;
+        let mut line = CoreTextLine::from_bytes(index, page, options).map_err(napi_error)?;
         if let Some(held) = captures {
             let mut read = Vec::with_capacity(held.len());
             for capture in held {
@@ -358,8 +359,8 @@ impl JsTextLine {
     /// A `bigint`: a line count is 64 bits wide in the core and a JavaScript
     /// number cannot hold one without silently losing the top of it.
     #[napi(getter)]
-    pub fn index(&self) -> i64 {
-        i64::try_from(self.inner.index()).unwrap_or(i64::MAX)
+    pub fn index(&self) -> BigInt {
+        BigInt::from(self.inner.index())
     }
 
     /// The identifier this line was read under, as its canonical text.
@@ -423,8 +424,8 @@ impl JsTextLine {
             .and_then(|held| i64::try_from(held).ok())
     }
 
-    /// The line's identity, as its hyphenated text: `UUIDv7` over its
-    /// microsecond instant and the whole code of its source, row and body. A
+    /// The line's identity, as its hyphenated text: `UUIDv7` ordered by its
+    /// millisecond and row number, with a seeded payload over its content. A
     /// line is an event of the
     /// graph, and a message parsed out of it states this among its `srcuuids`.
     #[napi(getter)]
@@ -463,6 +464,13 @@ impl JsTextLine {
     #[napi(getter)]
     pub fn currunix(&self) -> BigInt {
         BigInt::from(self.inner.get_currunix())
+    }
+
+    /// Where the line stands in its source: the row number under
+    /// `startRownum`, else its zero-based physical `index`.
+    #[napi(getter)]
+    pub fn seqnum(&self) -> Result<BigInt> {
+        self.inner.seqnum().map(BigInt::from).map_err(napi_error)
     }
 
     /// The row header's named captures, in the order the expression declares

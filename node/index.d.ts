@@ -1696,8 +1696,9 @@ export type JsFixMessages = FixMessages
  * bridge's `msgsessionid:msgctxid` where the row header stated both, else
  * the first stated of tags 37, 11, 41, 117, 131 and 262, the `crosshashcode`
  * over it, the `currhashcode` over everything the message says but the
- * standard header and trailer, the `curruuid` from its microsecond instant
- * and its whole `currhashcode`, and the `crossuuid` over the cross hash - or
+ * standard header and trailer, the `curruuid` ordered by millisecond and
+ * sequence with a content payload seeded by the cross hash, and the
+ * `crossuuid` over the cross hash - or
  * the `curruuid` itself when no cross code names a chain. Every write settles
  * it again.
  */
@@ -1776,11 +1777,12 @@ export declare class FixMsg {
    * in sorted order; empty where it stated none.
    */
   get metadata(): Record<string, string>
-  /** The fixed four-byte business category lifted from this message type. */
-  get msgcat(): string | null
+  /** The stable integer business-category code lifted from the message type. */
+  get msgcat(): number | null
   /**
-   * This message's own `UUIDv7` identity, from its microsecond instant and
-   * its whole `currhashcode`, as hyphenated text.
+   * This message's own `UUIDv7` identity, ordered by millisecond and
+   * sequence with a content payload seeded by its cross hash, as
+   * hyphenated text.
    */
   get curruuid(): string
   /**
@@ -1805,14 +1807,11 @@ export declare class FixMsg {
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
   get prevuuid(): string | null
-  /**
-   * The identities of the messages this one descends from: the whole
-   * chain before it, oldest first.
-   */
+  /** The sorted unique identities of the messages this one descends from. */
   get parentuuids(): Array<string>
   /**
-   * The identities of the elements this one was read from: the text line
-   * it was parsed out of, and none for one parsed from bytes. Provenance,
+   * The sorted unique identities of the elements this one was read from:
+   * the text line it was parsed out of, and none for one parsed from bytes. Provenance,
    * never lineage: no walk moves it.
    */
   get srcuuids(): Array<string>
@@ -1827,10 +1826,12 @@ export declare class FixMsg {
   get carried(): Record<string, Scalar>
   /** The identifiers the message is known by, scheme to value, sorted. */
   get identifiers(): Record<string, string>
+  /** The stable integer category of the market operation, or `null`. */
+  get marketoperationid(): number | null
   /** The price, as decimal text; `0` where none is stated. */
-  get px(): string
+  get price(): string
   /** The quantity, as decimal text; `0` where none is stated. */
-  get qty(): string
+  get quantity(): string
   /** The side: `BUY`, `SELL`, or `UNKNOWN`. */
   get side(): string
   /** The currency; `XXX` where none is stated. */
@@ -2322,7 +2323,8 @@ export declare class FixRegistry {
    * The set is filed under the folded name, which is the stem a store
    * writes it as. An empty array removes the set, and one a held field
    * still reads by is refused: a field may not be left naming a
-   * vocabulary nothing states.
+   * vocabulary nothing states. `msgcatcodeset` is intrinsic: its stable
+   * integer market operation IDs cannot be replaced or removed.
    */
   setCodeset(name: string, codes: Array<FixCode>): void
   /**
@@ -2331,7 +2333,9 @@ export declare class FixRegistry {
    * Keyed by wire value: a placeholder name yields to a real one, every
    * surviving spelling is kept as an alias, and a set the dictionary did
    * not hold arrives whole. So a venue's statement of a vocabulary
-   * enriches the one held rather than replacing it.
+   * enriches the one held rather than replacing it. `msgcatcodeset` is
+   * intrinsic and refuses any merge that would change its stable integer
+   * IDs.
    */
   mergeCodeset(name: string, codes: Array<FixCode>): void
   /**
@@ -2339,7 +2343,7 @@ export declare class FixRegistry {
    *
    * A set no field reads by leaves; one a held field still names is
    * refused, naming the field. A name nothing is filed under answers
-   * `null`.
+   * `null`. `msgcatcodeset` is intrinsic and cannot be removed.
    */
   removeCodeset(name: string): Array<FixCode> | null
   /**
@@ -3291,7 +3295,7 @@ export type JsMimeType = MimeType
  */
 export declare class MsgType {
   /**
-   * The fixed four-byte business category, or `null` for an unclassified
+   * The symbolic business-category name, or `null` for an unclassified
    * custom definition.
    */
   get msgcat(): string | null
@@ -3719,7 +3723,7 @@ export declare class ProtocolField {
   get msgtype(): string | null
   /** Set this occurrence's complete wire message code. */
   set msgtype(value: string)
-  /** The fixed four-byte business category this FIX field declares. */
+  /** The symbolic business-category name this FIX field declares. */
   get msgcat(): string | null
   /** Set the FIX business category, or clear it with `null`. */
   set msgcat(value: string | undefined | null)
@@ -5080,14 +5084,14 @@ export declare class TextLine {
    * nothing throws: a line is the line it holds, which is what lets a
    * read's `body` column hold no null and no empty cell.
    */
-  constructor(index: number, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions)
+  constructor(index: bigint, body: string | Buffer, captures?: Array<string | null> | null, options?: TextOptions)
   /**
    * The physical line number within the object, from zero.
    *
    * A `bigint`: a line count is 64 bits wide in the core and a JavaScript
    * number cannot hold one without silently losing the top of it.
    */
-  get index(): number
+  get index(): bigint
   /**
    * The identifier this line was read under, as its canonical text.
    *
@@ -5129,8 +5133,8 @@ export declare class TextLine {
   /** How many bytes of this record went over the retained limit. */
   get droppedByteSize(): number | null
   /**
-   * The line's identity, as its hyphenated text: `UUIDv7` over its
-   * microsecond instant and the whole code of its source, row and body. A
+   * The line's identity, as its hyphenated text: `UUIDv7` ordered by its
+   * millisecond and row number, with a seeded payload over its content. A
    * line is an event of the
    * graph, and a message parsed out of it states this among its `srcuuids`.
    */
@@ -5154,6 +5158,11 @@ export declare class TextLine {
    * stated instant, else `mtime`, else `0n`.
    */
   get currunix(): bigint
+  /**
+   * Where the line stands in its source: the row number under
+   * `startRownum`, else its zero-based physical `index`.
+   */
+  get seqnum(): bigint
   /**
    * The row header's named captures, in the order the expression declares
    * them; resolved on the first ask where none were stated.
@@ -5491,6 +5500,16 @@ export declare class TxHash {
    * `UUIDv7` range.
    */
   intoUuid(): JsScalar
+  /**
+   * Project this value to a sequence-ordered RFC 9562 `UUIDv7` scalar.
+   *
+   * The instant is floored to Unix milliseconds, `sequence` occupies the
+   * twelve-bit ordering lane (saturating at `4095`), and the UUID payload
+   * is XXH3 over the digest and the full unsigned 64-bit sequence, seeded
+   * by the unsigned 64-bit `seed`. Throws where either `bigint` is negative
+   * or wider than `u64`, or where the digest or instant cannot be projected.
+   */
+  intoSequencedUuid(sequence: bigint, seed: bigint): JsScalar
   /** Exact equality: another unit or algorithm is another value. */
   equals(other: TxHash): boolean
   /** Total native ordering: `-1`, `0`, or `1`. */
@@ -6383,19 +6402,18 @@ export interface FixCommitReport {
  * The definitions this crate owns, in tag order, above every tag FIX or a
  * venue publishes.
  *
- * The event's instant `currunix` and the chain's `creaunix`, `prevunix`,
- * `snapunix` and `exprtime`; the identities `currhashcode`,
+ * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
+ * `recdunix`, `refrecdunix`, `prevunix`, `snapunix` and `exprtime`; the identities `currhashcode`,
  * `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
  * `parentuuids` list; the `srcuuids` list of the lines it was read from;
  * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
  * and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
  * `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
- * which whoever read the line states on the row and no message holds; and
- * the `nofixentries` that counts the content record. Twenty-two in all.
- * Nothing about the market is here: every market fact is FIX's own field,
- * and the graph traits answer it off those; the state and the expiry are
- * the event's own, the two facts a lifecycle walk folds forward, each at
- * the datatype its graph event column names.
+ * which whoever read the line states on the row and no message holds; the
+ * `nofixentries` that counts the content record; and the generic
+ * `marketoperationid` shared with market operations. Thirty-two in all,
+ * each a fact no FIX dictionary publishes, at the datatype its graph column
+ * names.
  *
  * `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid` and
  * `crossuuid` are non-null; `state` is written on every row a message
@@ -6451,8 +6469,8 @@ export interface FixEntryView {
  */
 export interface FixEventView {
   /**
-   * This message's own identity: a time UUID over its instant and its
-   * `currhashcode`.
+   * This message's own `UUIDv7` identity, ordered by millisecond and sequence
+   * with a content payload seeded by its cross hash.
    */
   curruuid: string
   /**
@@ -6477,14 +6495,11 @@ export interface FixEventView {
   crosshashcode: bigint
   /** The identifiers the message is known by, scheme to value, sorted. */
   identifiers: Record<string, string>
-  /**
-   * The UUIDs of the messages this one descends from: the whole chain
-   * before it, oldest first.
-   */
+  /** The sorted unique UUIDs of the messages this one descends from. */
   parentuuids: Array<string>
   /**
-   * The UUIDs of the elements this one was read from: the text line it
-   * was parsed out of, and none for one parsed from bytes.
+   * The sorted unique UUIDs of the elements this one was read from: the
+   * text line it was parsed out of, and none for one parsed from bytes.
    */
   srcuuids: Array<string>
   /**
@@ -6498,6 +6513,12 @@ export interface FixEventView {
   seqnum: number
   /** When the chain was created, where stated. */
   creaunix: bigint | null
+  /** The precise execution instant, where stated or derived. */
+  execunix: bigint | null
+  /** The precise recording instant, where stated by the capture. */
+  recdunix: bigint | null
+  /** The recording instant that selected the merge reference, where known. */
+  refrecdunix: bigint | null
   /** When the chain expires, where stated. */
   exprtime: bigint | null
   /**
@@ -6512,10 +6533,32 @@ export interface FixEventView {
   prevuuid: string | null
   /** The instant a snapshot was taken at, where one was. */
   snapunix: bigint | null
+  /** The stable integer category of the market operation, where known. */
+  marketoperationid: number | null
   /** The price, as decimal text. */
-  px: string
+  price: string
   /** The quantity, as decimal text. */
-  qty: string
+  quantity: string
+  /** The last traded price, as decimal text, or `null`. */
+  lastpx: string | null
+  /** The last traded quantity, as decimal text, or `null`. */
+  lastqty: string | null
+  /** The average traded price, as decimal text, or `null`. */
+  avgpx: string | null
+  /** The cumulative traded quantity, as decimal text, or `null`. */
+  cumqty: string | null
+  /** The remaining quantity, as decimal text, or `null`. */
+  leavesqty: string | null
+  /** The preceding price, as decimal text, or `null`. */
+  prevpx: string | null
+  /** The preceding quantity, as decimal text, or `null`. */
+  prevqty: string | null
+  /** The time-in-force spelling, or `null`. */
+  tif: string | null
+  /** Whether the instrument was tradable, or `null` where unstated. */
+  tradable: boolean | null
+  /** The instrument ticker, or `null`. */
+  symbolticker: string | null
   /** The currency, `XXX` where none is stated. */
   currency: string
   /** The unit the quantity is counted in, empty where none is stated. */

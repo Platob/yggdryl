@@ -129,9 +129,10 @@ handle.mergeArrowBatch(arrowBatch, merging)
 // The text row's line and its entries answer text; the ranges stand beside them.
 import { TextLine, TextOptions } from '..'
 
-const textLine: TextLine = new TextLine(0, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
-const lineFromBytes: TextLine = new TextLine(1, Buffer.from('58=caf\u00e9|10=0|'))
-const lineUnderOptions: TextLine = new TextLine(2, '58=caf\u00e9|10=0|', null, new TextOptions())
+const textLine: TextLine = new TextLine(0n, '58=caf\u00e9|10=0|', ['FIX.4.4', null])
+const lineFromBytes: TextLine = new TextLine(1n, Buffer.from('58=caf\u00e9|10=0|'))
+const lineUnderOptions: TextLine = new TextLine(2n, '58=caf\u00e9|10=0|', null, new TextOptions())
+const lineIndex: bigint = textLine.index
 const lineBody: string = textLine.body
 const lineCaptures: Array<string | null> = lineFromBytes.captures
 const decoded: number = textLine.decodedByteSize
@@ -143,7 +144,8 @@ const lineCrosscode: string = textLine.crosscode
 const lineHashcode: bigint = textLine.currhashcode
 const lineCrosshash: bigint = textLine.crosshashcode
 const lineUnix: bigint = textLine.currunix
-void [lineMtime, lineBodytype, lineIdentity, lineCross, lineCrosscode, lineHashcode, lineCrosshash, lineUnix]
+const lineSeqnum: bigint = textLine.seqnum
+void [lineIndex, lineMtime, lineBodytype, lineIdentity, lineCross, lineCrosscode, lineHashcode, lineCrosshash, lineUnix, lineSeqnum]
 // A located read answers one identifier at both; a read under a name answers
 // it at `sourceuri` alone.
 const lineSourceuri: string | null = textLine.sourceuri
@@ -157,8 +159,10 @@ if (entry !== null) {
   const valueBytes: Buffer = entry.valueBytes
   void [key, value, keyBytes, valueBytes]
 }
+// @ts-expect-error a physical line index is an unsigned bigint, never a number
+new TextLine(2, '58=caf\u00e9|10=0|')
 // @ts-expect-error a body is text or bytes, never a number
-new TextLine(2, 5)
+new TextLine(2n, 5)
 // @ts-expect-error the body is a string, not a Buffer
 const bodyBytes: Buffer = textLine.body
 void [lineBody, lineCaptures, decoded, bodyBytes]
