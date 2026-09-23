@@ -184,11 +184,11 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
     // values joined as stated.
     assert_eq!(
         quote.capture().msgsesseventid(),
-        Some("S|e7254b17|9f02625007|86416")
+        Some("S:e7254b17:9f02625007:86416")
     );
     assert_eq!(
         parsed[0].capture().msgsesseventid(),
-        Some("b|e7254b17|9f02625007|86416")
+        Some("b:e7254b17:9f02625007:86416")
     );
 
     let walked = reader

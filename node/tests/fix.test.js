@@ -1571,8 +1571,8 @@
     // stated, on the capture: delivery provenance, never a name the message
     // goes by.
     assert.equal(message.crosscode, 'ORDER-1')
-    assert.equal(message.capture().msgsesseventid, '8|SESSION-1|CONTEXT-1|7')
-    assert.equal(message.byTag(65065).asJs(), '8|SESSION-1|CONTEXT-1|7')
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
+    assert.equal(message.byTag(65065).asJs(), '8:SESSION-1:CONTEXT-1:7')
     assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
@@ -1582,7 +1582,7 @@
     // Every write settles it again, and none of it is content.
     message.set('msgsessionid', 'SESSION-2')
     assert.equal(message.capture().msgsessionid, 'SESSION-2')
-    assert.equal(message.capture().msgsesseventid, '8|SESSION-2|CONTEXT-1|7')
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-1:7')
     assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
     assert.equal(message.currhashcode, contentHash)
     assert.equal(message.curruuid, contentUuid)
@@ -1595,7 +1595,7 @@
     assert.equal(message.currhashcode, contentHash)
 
     message.set('msgctxid', 'CONTEXT-2')
-    assert.equal(message.capture().msgsesseventid, '8|SESSION-2|CONTEXT-2|7')
+    assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
     assert.equal(message.currhashcode, contentHash)
 
     // It is a column of the fixed row, closing the session band it is joined
@@ -1607,7 +1607,7 @@
     assert.equal(schema.fieldAt(at).fix.tag, 65065)
     assert.equal(schema.indexOf('refrecdunix'), null)
     const row = message.intoRow(schema)
-    assert.equal(row.asJs()[at], '8|SESSION-2|CONTEXT-2|7')
+    assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
     const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
     assert.equal(rebuilt.crosscode, message.crosscode)
     assert.deepEqual(rebuilt.identifiers, message.identifiers)
@@ -1626,7 +1626,7 @@
     legacy[at] = null
     const upgraded = fix.FixMsg.fromRow(schema, legacy, registry)
     assert.deepEqual(upgraded.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
-    assert.equal(upgraded.capture().msgsesseventid, '8|SESSION-2|CONTEXT-2|7')
+    assert.equal(upgraded.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
     assert.equal(upgraded.currhashcode, message.currhashcode)
   })
 
@@ -1639,10 +1639,10 @@
     const capture = message.capture()
     assert.equal(capture.msgsessionid, 'e7256476')
     assert.equal(capture.msgctxid, '9effef3e6a')
-    // Joined by `|` with nothing in front of a part, and held by the capture
+    // Joined by `:` with nothing in front of a part, and held by the capture
     // rather than among the names the message goes by.
-    assert.equal(capture.msgsesseventid, '8|e7256476|9effef3e6a|1094')
-    assert.equal(message.byTag(65065).asJs(), '8|e7256476|9effef3e6a|1094')
+    assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
+    assert.equal(message.byTag(65065).asJs(), '8:e7256476:9effef3e6a:1094')
     assert.equal('msgsesseventid' in message.identifiers, false)
 
     // A part missing is no session event at all.

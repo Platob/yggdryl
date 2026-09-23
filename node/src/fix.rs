@@ -1294,7 +1294,7 @@ fn header_view(header: &FixHeader) -> Result<FixHeaderView> {
 /// of it is an entry or on the wire, and none of it reaches the code the
 /// content digests to. Where the message type, the session instance, the
 /// message context and `MsgSeqNum` are all stated, their values joined by
-/// `|` are `msgsesseventid`, the session event the message was delivered
+/// `:` are `msgsesseventid`, the session event the message was delivered
 /// as: derived whenever the message settles, delivery provenance rather
 /// than the message's content identity or its chain code, and the key two
 /// observations of one delivery merge on.
@@ -1316,8 +1316,8 @@ pub struct FixCaptureView {
     #[napi(ts_type = "string | null")]
     pub msgsessionid: Either<String, Null>,
     /// The session event the message was delivered as - `MsgType`,
-    /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `|`, as
-    /// `8|e7256476|9effef3e6a|1094` - where all four are stated; also
+    /// `msgsessionid`, `msgctxid` and `MsgSeqNum` joined by `:`, as
+    /// `8:e7256476:9effef3e6a:1094` - where all four are stated; also
     /// `byTag(65065)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,

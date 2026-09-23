@@ -3016,17 +3016,20 @@ mod committed {
     /// It moved when `parentuuids` left the crate: a message names its
     /// predecessor by `prevuuid` alone, so the crate field at 65041 and its
     /// member of the fixed row are gone and nothing else moved.
-    /// It last moved when `refrecdunix` left the crate and `msgsesseventid`
+    /// It moved when `refrecdunix` left the crate and `msgsesseventid`
     /// took a field of its own: the definition at 65064 and its member of
     /// the fixed row are gone, one at 65065 and its member beside
     /// `msgsessionid` stand in their place - so the count holds - the
     /// identifiers group stopped describing a key it no longer carries, and
     /// `execunix` says an execution report stating no clock executed at its
     /// `currunix`.
+    /// It last moved when `msgsesseventid` joined its four parts by `:`, the
+    /// way a bridge's row header brackets them: that one description is the
+    /// only document that changed.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 8_266_979_291_867_402_847);
+        assert_eq!(registry.stable_hash(), 9_221_405_344_434_563_289);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

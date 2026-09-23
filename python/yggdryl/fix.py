@@ -53,7 +53,7 @@ four-byte ``MsgType.msgcat``);
 :meth:`FixMsg.capture`, what the line's own bridge row header said about
 the capture it was written for (``msgpluginid``, ``msgctxid``,
 ``msgsessionid``, and the ``msgsesseventid`` the message type, session,
-context and ``MsgSeqNum`` join to by ``|``) - never what a *reader* said
+context and ``MsgSeqNum`` join to by ``:``) - never what a *reader* said
 about the line, which is held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the

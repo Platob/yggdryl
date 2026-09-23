@@ -2360,8 +2360,8 @@ def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content
     # stated, on the capture: delivery provenance, never a name the message
     # goes by.
     assert message.crosscode == "ORDER-1"
-    assert message.capture().msgsesseventid == "8|SESSION-1|CONTEXT-1|7"
-    assert message.get_by_tag(65065).as_py() == "8|SESSION-1|CONTEXT-1|7"
+    assert message.capture().msgsesseventid == "8:SESSION-1:CONTEXT-1:7"
+    assert message.get_by_tag(65065).as_py() == "8:SESSION-1:CONTEXT-1:7"
     assert message.identifiers == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
     assert message.get_by_tag(55) is None
     assert message.get_by_name("venueownthing") is None
@@ -2371,7 +2371,7 @@ def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content
     # Every write settles it again, and none of it is content.
     message.set("msgsessionid", "SESSION-2")
     assert message.capture().msgsessionid == "SESSION-2"
-    assert message.capture().msgsesseventid == "8|SESSION-2|CONTEXT-1|7"
+    assert message.capture().msgsesseventid == "8:SESSION-2:CONTEXT-1:7"
     assert message.identifiers == {"clordid": "CLIENT-1", "orderid": "ORDER-1"}
     assert message.currhashcode == content_hash
     assert message.curruuid == content_uuid
@@ -2383,13 +2383,13 @@ def test_the_bridge_session_event_is_captured_but_never_the_crosscode_or_content
     assert message.currhashcode == content_hash
 
     message.set("msgctxid", "CONTEXT-2")
-    assert message.capture().msgsesseventid == "8|SESSION-2|CONTEXT-2|7"
+    assert message.capture().msgsesseventid == "8:SESSION-2:CONTEXT-2:7"
     assert message.currhashcode == content_hash
 
     # It is a column of the fixed row, and a row read back states it again.
     schema = fix_schema(seed)
     row = message.into_row(schema)
-    assert row.as_py()[schema.index_of("msgsesseventid")] == "8|SESSION-2|CONTEXT-2|7"
+    assert row.as_py()[schema.index_of("msgsesseventid")] == "8:SESSION-2:CONTEXT-2:7"
     rebuilt = FixMsg.from_row(schema, row, seed)
     assert rebuilt.crosscode == message.crosscode
     assert rebuilt.identifiers == message.identifiers
@@ -2406,10 +2406,10 @@ def test_a_lines_session_event_joins_its_four_values_as_stated(seed: FixRegistry
     capture = message.capture()
     assert capture.msgsessionid == "e7256476"
     assert capture.msgctxid == "9effef3e6a"
-    # Joined by `|` with nothing in front of a part, and held by the capture
+    # Joined by `:` with nothing in front of a part, and held by the capture
     # rather than among the names the message goes by.
-    assert capture.msgsesseventid == "8|e7256476|9effef3e6a|1094"
-    assert message.by_tag(65065).as_py() == "8|e7256476|9effef3e6a|1094"
+    assert capture.msgsesseventid == "8:e7256476:9effef3e6a:1094"
+    assert message.by_tag(65065).as_py() == "8:e7256476:9effef3e6a:1094"
     assert "msgsesseventid" not in message.identifiers
 
     # A part missing is no session event at all.

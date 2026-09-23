@@ -247,7 +247,7 @@ pub struct FixMsg {
 /// and the column is now its one owner.
 const MSGSESSEVENTID_IDENTIFIER: &str = super::MSGSESSEVENTID_TAG_NAME.1;
 
-/// Whether `held` is the four parts of a session event joined by `|`,
+/// Whether `held` is the four parts of a session event joined by `:`,
 /// compared in place rather than joined again.
 fn is_session_event(
     held: &str,
@@ -260,7 +260,7 @@ fn is_session_event(
     for part in [msgtype, session, context] {
         let Some(after) = rest
             .strip_prefix(part)
-            .and_then(|after| after.strip_prefix('|'))
+            .and_then(|after| after.strip_prefix(':'))
         else {
             return false;
         };
@@ -1053,10 +1053,12 @@ impl FixMsg {
     }
 
     /// Derives the complete FIX session event onto the capture: the four
-    /// values joined by `|`, exactly as stated, and nothing where one is
+    /// values joined by `:`, exactly as stated, and nothing where one is
     /// missing - a stale key never outlives the parts it was joined from.
-    /// Values holding a `|` of their own can join to one key from two
-    /// splits; a bridge names none of its sessions or contexts that way.
+    /// `:` is how a bridge's own row header brackets a session, its context
+    /// and its sequence, so the key reads as the header does; values holding
+    /// a `:` of their own can join to one key from two splits, and a bridge
+    /// names none of its sessions or contexts that way.
     fn sync_session_event_identifier(&mut self) {
         let identity = match (
             self.header.msgtype(),
@@ -1092,7 +1094,7 @@ impl FixMsg {
             }
             let mut joined =
                 String::with_capacity(msgtype.len() + session.len() + context.len() + 3 + 20);
-            write!(joined, "{msgtype}|{session}|{context}|{sequence}")
+            write!(joined, "{msgtype}:{session}:{context}:{sequence}")
                 .expect("writing into a String cannot fail");
             Some(SmolStr::from(joined))
         });

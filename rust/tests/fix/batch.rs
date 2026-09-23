@@ -922,7 +922,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     // The four parts joined as stated, on the capture and no identifier.
     assert_eq!(
         older.capture().msgsesseventid(),
-        Some("D|SESSION-A|CONTEXT-A|7")
+        Some("D:SESSION-A:CONTEXT-A:7")
     );
     assert!(!older.get_identifiers().contains_key("msgsesseventid"));
 
@@ -1174,7 +1174,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert_eq!(expired.get_state().as_str(), "95EXPIRED");
     assert_eq!(
         live.capture().msgsesseventid(),
-        Some("D|SESSION-A|CONTEXT-C|7")
+        Some("D:SESSION-A:CONTEXT-C:7")
     );
     assert_eq!(
         expired.capture().msgsesseventid(),
@@ -1272,7 +1272,7 @@ fn lifecycle_merges_overlapping_bridge_groups_by_sorted_occurrence_index() {
     assert_eq!(message.get_recdunix(), Some(100));
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("D|FIDESSA-X1|HOCHE-BAINS-XPAR|42")
+        Some("D:FIDESSA-X1:HOCHE-BAINS-XPAR:42")
     );
 }
 

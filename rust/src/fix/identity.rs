@@ -215,7 +215,7 @@ impl FixHeader {
 /// FIX and none of it is content, so none of it is an entry or a byte on
 /// the wire, and none of it reaches the code the message's content digests
 /// to. Where message type, session instance, message context and sequence are
-/// all present, their `|`-joined values are the session event the message
+/// all present, their `:`-joined values are the session event the message
 /// was delivered as, [`Self::msgsesseventid`], a column of the fixed row of
 /// its own; it remains delivery provenance and is neither the message's
 /// content identity nor its chain code.
@@ -256,7 +256,7 @@ impl FixCapture {
 
     /// The session event the message was delivered as: its `MsgType(35)`,
     /// [`Self::msgsessionid`], [`Self::msgctxid`] and `MsgSeqNum(34)`
-    /// joined by `|` - `8|e7256476|9effef3e6a|1094` - where all four are
+    /// joined by `:` - `8:e7256476:9effef3e6a:1094` - where all four are
     /// stated, and nothing where one is missing. Derived by the message
     /// from those four whenever it settles, never read off a row.
     #[must_use]

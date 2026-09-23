@@ -5107,9 +5107,9 @@ class FixCapture:
     FIX and none is content, so none of it is an entry or on the wire, and
     none of it reaches the code the content digests to. Where the message
     type, the session instance, the message context and ``MsgSeqNum`` are
-    all stated, their values joined by ``|`` are ``msgsesseventid``, the
+    all stated, their values joined by ``:`` are ``msgsesseventid``, the
     session event the message was delivered as -
-    ``8|e7256476|9effef3e6a|1094`` - derived whenever the message settles,
+    ``8:e7256476:9effef3e6a:1094`` - derived whenever the message settles,
     delivery provenance rather than the message's content identity or its
     chain code, and the key two observations of one delivery merge on.
 

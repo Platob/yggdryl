@@ -79718,7 +79718,7 @@
         "metadata": {
           "FIX:tag": "65065",
           "FIX:transient": "false",
-          "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `|`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
+          "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
           "display": "MsgSessEventId"
         },
         "name": "msgsesseventid",
@@ -291554,7 +291554,7 @@
         "t": 65065,
         "n": "MsgSessEventId",
         "y": "utf8",
-        "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `|`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
+        "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
       },
       {
         "c": "symbol",

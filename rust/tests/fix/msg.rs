@@ -131,14 +131,14 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     );
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
     assert_eq!(
         message
             .by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0)
             .unwrap()
             .as_str(),
-        Some("8|SESSION-1|CONTEXT-1|7"),
+        Some("8:SESSION-1:CONTEXT-1:7"),
         "answered by its tag like any capture fact"
     );
 
@@ -159,7 +159,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     );
     assert_eq!(
         capture_only.capture().msgsesseventid(),
-        Some("ZZ|SESSION-1|CONTEXT-1|7")
+        Some("ZZ:SESSION-1:CONTEXT-1:7")
     );
     assert!(capture_only.get_identifiers().is_empty());
 
@@ -186,7 +186,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     assert_eq!(message.get_identifiers(), other_capture.get_identifiers());
     assert_eq!(
         other_capture.capture().msgsesseventid(),
-        Some("8|SESSION-2|CONTEXT-2|7")
+        Some("8:SESSION-2:CONTEXT-2:7")
     );
     assert_eq!(
         message.get_currhashcode(),
@@ -203,14 +203,14 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         .expect("a msgsesseventid column");
     assert_eq!(
         row.as_sequence().expect("a row")[at].as_str(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
     let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(rebuilt.get_crosscode(), "ORDER-1");
     assert_eq!(rebuilt.get_identifiers(), message.get_identifiers());
     assert_eq!(
         rebuilt.capture().msgsesseventid(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
     assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
 }
@@ -229,7 +229,7 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         .unwrap();
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("8|SESSION-2|CONTEXT-1|7")
+        Some("8:SESSION-2:CONTEXT-1:7")
     );
     assert_eq!(
         message.get_identifiers().get("clordid").map(String::as_str),
@@ -255,14 +255,14 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         .unwrap();
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("8|SESSION-2|CONTEXT-2|7")
+        Some("8:SESSION-2:CONTEXT-2:7")
     );
 
     message.set(34, Scalar::from(8_u64)).unwrap();
     message.set(35, Scalar::from("F")).unwrap();
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("F|SESSION-2|CONTEXT-2|8"),
+        Some("F:SESSION-2:CONTEXT-2:8"),
         "header mutations resettle the complete delivery key"
     );
 
@@ -287,14 +287,14 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
     assert_eq!(message.get_crosscode(), "EXPLICIT");
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("F|SESSION-3|CONTEXT-2|8")
+        Some("F:SESSION-3:CONTEXT-2:8")
     );
     assert!(!message.get_identifiers().contains_key("msgsesseventid"));
 }
 
-/// The key is the four values joined by `|` and nothing else: no length
+/// The key is the four values joined by `:` and nothing else: no length
 /// prefixes, each value exactly as stated. What that gives up is said here
-/// too - a value holding a `|` of its own joins to the key of another
+/// too - a value holding a `:` of its own joins to the key of another
 /// split - because a bridge names none of its sessions or contexts that way.
 #[test]
 fn session_event_identifier_is_the_plain_join_of_its_four_values() {
@@ -315,15 +315,15 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         message
     };
 
-    // A `:` is an ordinary byte of a value now: no part is length-prefixed.
-    let left = with("A:B", "C|D");
-    let right = with("A", "B:C|D");
-    assert_eq!(left.capture().msgsesseventid(), Some("8|A:B|C|D|7"));
-    assert_eq!(right.capture().msgsesseventid(), Some("8|A|B:C|D|7"));
-    // The documented ambiguity: two splits of a `|` join to one key.
-    let first = with("A|B", "C");
-    let second = with("A", "B|C");
-    assert_eq!(first.capture().msgsesseventid(), Some("8|A|B|C|7"));
+    // A `|` is an ordinary byte of a value: no part is length-prefixed.
+    let left = with("A|B", "C");
+    let right = with("A", "B|C");
+    assert_eq!(left.capture().msgsesseventid(), Some("8:A|B:C:7"));
+    assert_eq!(right.capture().msgsesseventid(), Some("8:A:B|C:7"));
+    // The documented ambiguity: two splits of a `:` join to one key.
+    let first = with("A:B", "C");
+    let second = with("A", "B:C");
+    assert_eq!(first.capture().msgsesseventid(), Some("8:A:B:C:7"));
     assert_eq!(
         first.capture().msgsesseventid(),
         second.capture().msgsesseventid()
@@ -336,7 +336,7 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         .unwrap();
     assert_eq!(
         padded.capture().msgsesseventid(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
 
     // A value stated for the key itself is never the message's word: it is
@@ -350,7 +350,7 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         .unwrap();
     assert_eq!(
         stated.capture().msgsesseventid(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
 
     // A row written while the key was an identifier still states it there:
@@ -369,7 +369,7 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
     assert_eq!(legacy.get_identifiers(), base.get_identifiers());
     assert_eq!(
         legacy.capture().msgsesseventid(),
-        Some("8|SESSION-1|CONTEXT-1|7")
+        Some("8:SESSION-1:CONTEXT-1:7")
     );
     assert_eq!(legacy.get_currhashcode(), code);
 
@@ -380,7 +380,7 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         .index_of(yggdryl::MSGSESSEVENTID_TAG_NAME.1)
         .expect("a msgsesseventid column");
     let row = base.into_row(&schema).unwrap();
-    for cell in [Scalar::from("8|SESSION-9|CONTEXT-1|7"), Scalar::Null] {
+    for cell in [Scalar::from("8:SESSION-9:CONTEXT-1:7"), Scalar::Null] {
         let mut columns = row.as_sequence().expect("a row").to_vec();
         columns[at] = cell;
         let read = FixMsg::from_row(
@@ -391,7 +391,7 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         .unwrap();
         assert_eq!(
             read.capture().msgsesseventid(),
-            Some("8|SESSION-1|CONTEXT-1|7")
+            Some("8:SESSION-1:CONTEXT-1:7")
         );
         assert_eq!(read.into_row(&schema).unwrap(), row);
     }
@@ -456,14 +456,14 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
     assert_eq!(message.capture().msgctxid(), Some("9effef3e6a"));
     assert_eq!(
         message.capture().msgsesseventid(),
-        Some("8|e7256476|9effef3e6a|1094")
+        Some("8:e7256476:9effef3e6a:1094")
     );
     assert_eq!(
         message
             .by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0)
             .unwrap()
             .as_str(),
-        Some("8|e7256476|9effef3e6a|1094")
+        Some("8:e7256476:9effef3e6a:1094")
     );
     assert!(!message.get_identifiers().contains_key("msgsesseventid"));
     // Delivery provenance, never content: the key is no byte of the wire.
@@ -482,7 +482,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
     let row = message.into_row(&schema).unwrap();
     assert_eq!(
         row.as_sequence().expect("a row")[at].as_str(),
-        Some("8|e7256476|9effef3e6a|1094")
+        Some("8:e7256476:9effef3e6a:1094")
     );
     let held = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(
@@ -505,7 +505,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
     .unwrap();
     assert_eq!(
         sole(&headed_line).capture().msgsesseventid(),
-        Some("8|e7256476|9effef3e6a|1094"),
+        Some("8:e7256476:9effef3e6a:1094"),
         "the line door reads a row header's captures alike"
     );
     let batch = yggdryl::text::into_arrow_batch(vec![headed_line], &headed).unwrap();
@@ -523,7 +523,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
         .as_sequence()
         .expect("columns")[super::tag_index(&parsed, yggdryl::MSGSESSEVENTID_TAG_NAME.0)]
     .clone();
-    assert_eq!(cell.as_str(), Some("8|e7256476|9effef3e6a|1094"));
+    assert_eq!(cell.as_str(), Some("8:e7256476:9effef3e6a:1094"));
 
     // A missing part states no key: no session, no context, or no sequence.
     for partial in [

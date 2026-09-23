@@ -282,7 +282,7 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 
 /// The tag and name carrying the session event a bridge delivered the
 /// message as: its `MsgType(35)`, session instance, message context and
-/// `MsgSeqNum(34)` joined by `|`, where all four are stated.
+/// `MsgSeqNum(34)` joined by `:`, where all four are stated.
 pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_065, "msgsesseventid");
 
 /// The graph event column one crate tag is, for the seventeen that are one.
@@ -687,7 +687,7 @@ const CRATED: [Crated; 31] = [
         || Ok(DataType::utf8()),
         "MsgSessEventId",
         "The session event a bridge delivered the message as: MsgType, the \
-         session instance, the message context and MsgSeqNum joined by `|`, \
+         session instance, the message context and MsgSeqNum joined by `:`, \
          where all four are stated. Derived and never content: the key two \
          observations of one delivery merge on.",
     ),
