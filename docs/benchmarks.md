@@ -7,9 +7,6 @@ Results live beside the method they measure. Each page's Performance section nam
 | Tab | Page | Measures |
 | --- | --- | --- |
 | Arrow | [Schema](arrow/schema.md) | The `types` Criterion target times only the three Struct-root methods over one nested fixture built outside... |
-| Coding | [gzip](coding/gzip.md) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
-| Coding | [zlib](coding/zlib.md) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
-| Coding | [zstd](coding/zstd.md) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
 | FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec, including `fix/ulbridge/step/set_bloombergcode` for synchronizing a normalized Bloomberg identifier into `secaltids` |
 | FIX | [Arrow](fix/arrow.md) | Historical `fix/pipeline` release estimates and a current debug counting-allocator ULBridge profile for row and Arrow-batch requests; the latter makes no CPU or throughput claim |
@@ -17,20 +14,24 @@ Results live beside the method they measure. Each page's Performance section nam
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
-| Holder | [Buffered](holder/backends/buffered.md) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
-| Holder | [Filesystems](holder/backends/filesystems.md) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
-| Holder | [Object stores](holder/backends/s3.md) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
-| Holder | [Bytes](holder/iobase/bytes.md) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
-| Holder | [Records](holder/iobase/records.md) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
-| Holder | [Values](holder/iobase/values.md) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
-| Media | [Apache Avro](media/avro/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Apache Parquet](media/parquet/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
-| Media | [Arrow IPC](media/ipc/index.md) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026... |
-| Media | [Iceberg](media/iceberg/index.md) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
-| Media | [Media](media/index.md) | `io_write_stateful/media_ipc` drives the enum over its IPC variant with a 4,096-row, four-column fixture |
-| Media | [Parquet footer](media/parquet/footer.md) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
-| Media | [Placeholders](media/placeholders.md) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
-| Media | [Structured documents](media/structured.md) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format |
+| Holder | [Buffered](holder/index.md#buffered-performance) | `io_buffered` runs three workloads over one 16 MiB fixture and every shipped handle: one containerized x86_... |
+| Holder | [Filesystems](holder/index.md#filesystems-performance) | The benchmark times the wrapper against direct PyArrow, local, or native local operations; gates rather than published medians |
+| Holder | [Object stores](holder/index.md#object-stores-performance) | Both clients against one in-process store over a real socket: reads, writes under either payload policy, and listings, beside `object_store` 0.13.2 |
+| Holder | [Bytes](holder/index.md#bytes-performance) | Criterion measured medians on one 8 MiB decoded fixture: Windows 11 x86_64, AMD Ryzen 5 150 (6 cores/12 thr... |
+| Holder | [Records](holder/index.md#records-performance) | Write-mode dispatch, 4,096 rows, one local Windows x86_64 release run (Criterion point estimates; regenerat... |
+| Holder | [Values](holder/index.md#values-performance) | Criterion measured one 16,384-record JSON value through `IOBase`; each compressed case includes coding and... |
+| Holder | [Call counts](holder/index.md#call-counts-performance) | One run of each operation over a 4 MiB in-memory value, wall clock beside the `IOBase` calls it makes |
+| Holder | [ZIP](holder/index.md#zip-performance) | `io_zip`: positional, whole and streamed member reads and writes, restart strides and a 2,000-member archive; one containerized x86_64 Linux release run |
+| Media | [gzip](media/index.md#gzip-performance) | One containerized x86_64 Linux run of the Python binding against the standard library's `gzip`, over 1,080,... |
+| Media | [zlib](media/index.md#zlib-performance) | `python/benchmarks/coding.py` times `zlib-rs` beside the standard library's zlib over 1,080,000 bytes of JS... |
+| Media | [zstd](media/index.md#zstd-performance) | One containerized x86_64 Linux run of the Python binding (CPython 3.11) over 1,080,000 bytes of JSON lines |
+| Media | [Arrow IPC](media/index.md#arrow-ipc-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150, rustc 1.96.1 (2026..., and the `Media` enum over its IPC variant |
+| Media | [Parquet](media/index.md#parquet-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Parquet footer statistics](media/index.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
+| Media | [Avro](media/index.md#avro-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [JSON](media/index.md#json-performance), [YAML](media/index.md#yaml-performance), [TOML](media/index.md#toml-performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format |
+| Media | [YAML placeholders](media/index.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
+| Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
 | Types | [Cast](types/cast.md) | One compiled `ArrowCastPlan` against planning per batch, over 1, 10 and 1,000 batches of 64 rows; one con... |
 | Types | [Field](types/field.md) | Rust times both consuming typed accessors, construction outside the timer; the bindings hold the cached val... |
 | Types | [Scalar](types/scalar.md) | The value model's own boundaries - enum, inference, and the `Scalar`/Arrow crossings - in release builds, Windows x86_64, AMD Ryzen 5 150, rustc 1.96.1, CPython 3.12.13, Node 24.18... |

@@ -22,7 +22,7 @@ The packed integer is the identifier rather than a code for it: it is the
 sixteen storage bytes read big-endian, so it is the same integer in every
 process, orders exactly as the bytes do, and is what a stable hash hashes. It
 is unsigned because all sixteen bytes carry identity. Iceberg's
-[`uuid`](../media/iceberg/schema.md) maps onto this datatype.
+[`uuid`](../media/index.md#iceberg) maps onto this datatype.
 
 === "Rust"
 

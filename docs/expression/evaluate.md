@@ -206,7 +206,7 @@ assert_eq!(kept, 1);
 
 ## Iceberg: one predicate, every level of the metadata
 
-The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list, a null test or a holder attribute prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. Pushdown and time travel are on [Reading](../media/iceberg/read.md).
+The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list, a null test or a holder attribute prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. Pushdown and time travel are on [Reading](../media/index.md#iceberg).
 
 === "Rust"
 

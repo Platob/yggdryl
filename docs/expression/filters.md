@@ -120,7 +120,7 @@ A conjunct is the unit of pushdown, and each level answers only what it can prov
 | a media's partition columns | `partition_pairs`: the equalities `column = 'value'` and `column is null` pin, spelled as paths spell them | ranges and `in` lists, answered row by row |
 | the rows | everything | nothing |
 
-`Bound::partition_split` separates the conjuncts a partition layout answers from the residual; dropping a conjunct only widens what is kept, so a file is never wrongly discarded. [Holder attributes](holder.md) shows the listing and statistics levels; the [record options](../media/options.md) show the media level.
+`Bound::partition_split` separates the conjuncts a partition layout answers from the residual; dropping a conjunct only widens what is kept, so a file is never wrongly discarded. [Holder attributes](holder.md) shows the listing and statistics levels; the [record options](../media/index.md#options) show the media level.
 
 ## Edges
 

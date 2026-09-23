@@ -484,7 +484,7 @@ JavaScript has no listing of the five names; Rust reads them off
 - A GeoArrow document with no `"edges"` key -> a geometry; the key, not the name, is what separates the two on the wire.
 - `{"edges":7}` or an unknown algorithm in a document -> refused naming `ARROW:extension:metadata`.
 - The default value is `POINT EMPTY`, the same twenty-one bytes a geometry defaults to ([the family](index.md#the-default-value)).
-- On a [Parquet](../../media/parquet/footer.md) path the column is `GEOGRAPHY` over `BYTE_ARRAY` WKB, and the defaults write as absent.
+- On a [Parquet](../../media/index.md#parquet) path the column is `GEOGRAPHY` over `BYTE_ARRAY` WKB, and the defaults write as absent.
 
 ## Commands
 

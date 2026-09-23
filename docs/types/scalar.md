@@ -389,7 +389,7 @@ Without a schema, `Scalar` exposes the inferred `Field`: `value`, `item`, or `ro
     assert.equal(Scalar.from([{ id: 1 }]).intoStructField().name, 'row')
     ```
 
-See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured documents](../media/structured.md).
+See [Field](field.md), [Arrow scalars](../arrow/scalars.md), and [Structured documents](../media/index.md#json).
 
 ## Edges
 

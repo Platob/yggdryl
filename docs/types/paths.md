@@ -131,7 +131,7 @@ paths already resolved. Applying a resolved path allocates nothing.
 
 - The [expression grammar](../expression/index.md) writes the same steps and
   shares the one segment type, which is why the path value lives beside it.
-- [Text lines](../media/text/lines.md#entries-and-paths) address one entry of a
+- [Text lines](../media/index.md#plain-text) address one entry of a
   decoded line, each path taking its alias where it writes one.
 
 ## What it is not

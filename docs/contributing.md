@@ -44,10 +44,10 @@ test file at the matching path.
 | --- | --- |
 | `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the twelve codes including `figi_code.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
-| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Coding](coding/index.md) |
-| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Charset](charset/index.md) |
+| `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/index.md#compression) |
+| `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/index.md#charsets) |
 | `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` | [Media](media/index.md) |
-| `rust/src/json/`, `toml/`, `yaml/` over the codec machinery in `rust/src/text/` | [Structured documents](media/structured.md) |
+| `rust/src/json/`, `toml/`, `yaml/` over the codec machinery in `rust/src/text/` | [Structured documents](media/index.md#json) |
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
@@ -72,7 +72,7 @@ Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each 
 
 - One page per family, one H1, one sentence, then the [page skeleton](architecture.md): Contract, Use, feature sections, Edges, Commands, Performance.
 - One page per type under its family's folder, in the order its core file is written: Contract, DataType, Field, Scalar, Arrow storage, features, Edges, Commands.
-- One folder per media scheme: `index.md`, `read.md`, `write.md`, then a page per feature. A read or a write page shows native scalars first and Arrow batches second.
+- Media is one page, `docs/media/index.md`: a Read and write overview, then one short section per media type, codec and charset, each led by its example rather than prose and closed by its own `<section> performance` subsection.
 - Every example appears in Rust, Python, and JavaScript unless it carries the "Rust only" line, and every block runs under `python scripts/check_docs_examples.py`.
 - A benchmark table lives on the page that owns the measured method, names host and toolchain, and ends with its regenerate command.
 - Adding or renaming a page updates `mkdocs.yml` and every link to it in the same change; `mkdocs build --strict` fails otherwise.

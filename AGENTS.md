@@ -140,10 +140,10 @@ step is run, never which step is skipped.
 | --- | --- |
 | datatype variant | `<type>.rs` at the root, `DataTypeId`/`DataTypeKind`, parser, serde, comparison, Arrow, cast, `scalar` -> tests -> bindings -> `docs/types/` |
 | logical name | `DataType::LOGICAL_NAMES` only; resolves to an existing datatype, adds no variant |
-| codec | `<name>.rs` at the root (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> `docs/coding/` |
+| codec | `<name>.rs` at the root (`load`, `dump`, `reader`, `writer`, `IOBase` wrapper) + a `Codec` variant -> bench -> bindings -> the Compression section of `docs/media/index.md` |
 | string leaf | a `StringType` variant + `DataTypeId` appended + `string.rs` (spellings, the number rule, Arrow storage, grammar, value) + the charset's own root file - `utf8.rs`, `ascii.rs` or `cp1252.rs` - for the leaf's constructor, validation and reading -> tests -> bindings -> `docs/types/` |
 | byte leaf | a `BytesType` variant + `DataTypeId` appended + `bytes.rs` (spellings, the number rule, Arrow storage, grammar, value) -> tests -> bindings -> `docs/types/` |
-| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> `docs/charset/` |
+| charset | a row in `scripts/generate_charset_tables.py` + a regenerated `charset/tables.rs` + a `Charset` variant; a charset that gets string leaves is a root file of its own beside `utf8.rs`, `ascii.rs` and `cp1252.rs`, holding its codec and those leaves -> interop both directions -> bench -> bindings -> the Charsets section of `docs/media/index.md` |
 | storage backend | `<name>/` at the root with a location/container/leaf trio over the root traits - `<Name>Path`, `<Name>Folder`, `<Name>File` over a host tree; `<Name>Path`, `<Name>Node`, `<Name>Leaf` where the store has no tree to promise (`zip/`); state and assert its call/request counts -> interop script -> docs |
 | media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
@@ -870,7 +870,7 @@ under the names its own index has: `ZipNode` is a prefix of that index,
   reserves the sizes a stream does not know yet, and the index learns about a
   member only once its bytes are in the handle.
 - `ZipArchive::handle_reads`/`handle_writes` count what the backend asked of the
-  handle beneath it; the cost model in `docs/holder/backends/zip.md` is stated
+  handle beneath it; the cost model in the ZIP section of `docs/holder/index.md` is stated
   and asserted in those terms.
 
 ### Object stores (`s3/`, non-default `s3` feature)
@@ -1035,7 +1035,7 @@ signing is AWS's alone: signed over plain HTTP, unsigned over HTTPS.
 
 ### Iceberg
 
-`docs/media/iceberg/` documents the format surface and its edges; these bind a
+The Iceberg section of `docs/media/index.md` documents the format surface; these bind a
 change to `iceberg/`.
 
 - A table is a folder reached only through `IOBase`: metadata = core JSON,
@@ -1059,7 +1059,7 @@ change to `iceberg/`.
 
 ## Charsets
 
-`docs/charset/` documents the surface; these bind a change to `charset.rs`,
+The Charsets section of `docs/media/index.md` documents the surface; these bind a change to `charset.rs`,
 `charset/`, the three charset files `utf8.rs`, `ascii.rs` and `cp1252.rs`, and
 every byte that becomes text anywhere else.
 
@@ -1300,7 +1300,7 @@ declares.
 
 ## Structured codecs
 
-`docs/media/structured.md` and the JSON, YAML, and TOML scheme pages document the
+The JSON, YAML, and TOML sections of `docs/media/index.md` document the
 surface; these bind a change to `json/`, `toml/`, `yaml/` and the codec
 machinery they share in `text/`.
 
@@ -1603,8 +1603,9 @@ Write for lookup - the readers are human scanners and LLM retrieval. Contract,
 then the smallest runnable example, then non-obvious edges, then measured
 performance. Canonical symbol names, stable headings, short paragraphs, tables
 only for exact mappings, exact commands and results preserved. One fact in one
-place: link instead of paraphrasing, and never narrate signatures, repeat
-examples in prose, add marketing text, or create benchmark-only pages.
+place: link instead of paraphrasing, and never narrate signatures in prose (a
+signature block is code, see below), repeat examples in prose, add marketing
+text, or create benchmark-only pages.
 
 The layer tabs, the page skeleton, and the per-change docs rules are spelled out
 in `docs/architecture.md` and `docs/contributing.md`; those pages and this
@@ -1617,15 +1618,21 @@ section change together. What binds every page:
   binding fact is documented on the page owning the vocabulary it belongs to,
   in that page's Python or JavaScript tab, so one operation is described once
   and every language spelling of it sits beside the others.
-  `docs/media/<scheme>/` is one folder per media type - IPC, Parquet,
-  Avro, plain text, JSON, YAML, TOML, Iceberg - each holding `index.md` for the
-  scheme, `read.md` and `write.md` for the two directions, and one page per
-  feature that scheme alone has. A read page and a write page each show native
-  scalars first and Arrow batches second, in Rust, Python and JavaScript tabs,
-  so a reader picks a direction rather than a surface; `json/`, `yaml/` and
-  `toml/` document there too, as three of those schemes, and `text/` as the
-  plain-text one.
-  `docs/types/` is the same shape one level down: the Core pages - `datatype.md`,
+  `docs/media/index.md` is the one page for every media type, content coding
+  and charset: a Read and write overview (native rows, then Arrow batches, then
+  `RecordOptions`), then one short section per media type - IPC, Parquet, Avro,
+  plain text, JSON, YAML, TOML, Iceberg - then Compression (gzip, zlib, zstd)
+  and Charsets. Each section is a sentence or two and a tabbed example; the
+  example carries the detail, not the prose. A section's benchmarks sit in its
+  own `<section> performance` subsection, never in a shared one.
+  `docs/holder/index.md` is the same kind of page for storage: Handles
+  (`Holder`, roles, delegation), then the `IOBase` surfaces - Bytes, Values,
+  Records, Partitions, Call counts - then one section per backend: Buffer,
+  Local, Filesystems, Object stores, Buffered, ZIP. A section may open with a
+  `text` block of the few public signatures a caller implements or reaches for
+  first, each with a one-line comment on what it promises; it is never the
+  whole surface, which rustdoc owns.
+  `docs/types/` is a theme of the same kind: the Core pages - `datatype.md`,
   `field.md`, `scalar.md`, `cast.md`, `paths.md`, `protocol.md` - then one
   subsection per family (`numeric/`, `temporal/`, `text/`, `codes/`, `nested/`,
   `geospatial/`), each an `index.md` for what the family shares and one page per

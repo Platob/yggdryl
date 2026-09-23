@@ -155,7 +155,7 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 | `price decimal(9,2) not null` | the same cast, a null or a value that does not fit refused naming `price` |
 | `id int64 with (comment = 'key')` | the column with that metadata on its field |
 
-`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `TRANSFORM:function` over its `TRANSFORM:sources` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) and a partition spec share - or a `TRANSFORM:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation, beside the [partition](../holder/iobase/partitions.md#derived-partition-columns) declaration that is a transform of one source.
+`Selector::from_field` spells every child as `name dtype null|not null`, its metadata as `with (...)`, and its derivation as the term: a `TRANSFORM:function` over its `TRANSFORM:sources` - `year(event)`, `py.double(size)`, the shape a [user function's signature](functions.md) and a partition spec share - or a `TRANSFORM:expression` for any other term. `declared_field` and a plan's `create` section read the declaration back into a `Field`. The [transform protocol](../types/protocol.md) is where a stored field carries the derivation, beside the [partition](../holder/index.md#derived-partition-columns) declaration that is a transform of one source.
 
 ## Edges
 
