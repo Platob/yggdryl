@@ -822,6 +822,32 @@ A container carries its writer schema; a reader schema resolves renames, promoti
 
 ### Avro performance
 
+#### Against polars and fastavro
+
+One run of `python/benchmarks/media/avro.py --repeat 5` on a containerized four-core x86_64 Linux host, release wheel: CPython 3.11.15, PyArrow 25.0.1, polars 1.44.2, fastavro 1.12.2. Every read case is one container fastavro wrote in blocks of about 64,000 bytes, the Java writer's default, read three ways: `polars.read_avro`, `fastavro.reader` drained row by row, and `read_arrow_reader(...).read_all()`. The key and price columns polars reads are checked against this crate's, value for value, before anything is timed. Every write case is one table written by `DataFrame.write_avro`, `fastavro.writer` and `overwrite_arrow_table` with the same block codec. The ratios are the other library's best time over this crate's, so above one is in this crate's favor. polars cannot read Zstandard blocks - it refuses them or misreads them - so that row has no polars column.
+
+| read | polars | fastavro | yggdryl | x polars | x fastavro |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1M trade rows, null | 155.26 ms | 2,227.8 ms | 26.00 ms | 5.97 | 85.68 |
+| 1M trade rows, deflate | 339.18 ms | 2,769.6 ms | 49.59 ms | 6.84 | 55.85 |
+| 1M trade rows, snappy | 285.87 ms | 2,475.5 ms | 37.66 ms | 7.59 | 65.73 |
+| 1M trade rows, zstandard | - | 2,599.0 ms | 42.81 ms | - | 60.71 |
+| 1M trade rows, 2 of 6 columns, snappy | 188.72 ms | 2,526.4 ms | 27.85 ms | 6.78 | 90.70 |
+| 64K trade rows, deflate | 23.17 ms | 165.0 ms | 4.76 ms | 4.87 | 34.64 |
+
+| write | polars | fastavro | yggdryl | x polars | x fastavro |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1M trade rows, null | 102.61 ms | 2,099.2 ms | 74.15 ms | 1.38 | 28.31 |
+| 1M trade rows, deflate | 2,720.24 ms | 3,206.0 ms | 312.84 ms | 8.70 | 10.25 |
+| 1M trade rows, snappy | 284.06 ms | 2,123.2 ms | 67.18 ms | 4.23 | 31.60 |
+| 64K trade rows, deflate | 103.44 ms | 204.9 ms | 28.26 ms | 3.66 | 7.25 |
+
+What the reader does with the time: a container's blocks are independent once their headers are walked - a length read and jumped per block - so runs of whole blocks decompress and decode on every thread, batches returned in file order; an uncompressed block is decoded where the memory map holds it; a varint whose ten bytes are in the buffer is read without a bounds check per byte; and a string column validates its UTF-8 once per batch rather than once per value. On one thread - a read under a row limit stays on one - the 1M-row null container decodes in 88 ms against polars' 160 ms. The writer cuts rows into blocks of about a megabyte, resolves each column's Arrow values once per block rather than per cell, and encodes and compresses the blocks on every thread.
+
+```bash
+python/.venv/bin/python python/benchmarks/media/avro.py --repeat 5
+```
+
 #### Record surface
 
 Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (2026-08-23). The read fixture holds 65,536 rows and four columns; the write fixture holds 4,096 rows, its append and merge base prepared outside the timer.

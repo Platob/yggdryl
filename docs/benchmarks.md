@@ -28,6 +28,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | Media | [Parquet against PyArrow](media/index.md#streaming-against-pyarrow) | `python/benchmarks/media/parquet.py`: files PyArrow wrote, read whole and streamed both ways, and tables written both ways, from 64K to 4M rows; one containerized x86_64 Linux run |
 | Media | [Parquet footer statistics](media/index.md#footer-statistics) | Local release-build spot-check of the Python and JavaScript binding boundary; fixtures differ, so rows are... |
 | Media | [Avro](media/index.md#avro-performance) | Criterion point estimates from a Windows x86_64 release smoke run on an AMD Ryzen 5 150 with rustc 1.96.1 (... |
+| Media | [Avro against polars and fastavro](media/index.md#against-polars-and-fastavro) | `python/benchmarks/media/avro.py`: containers fastavro wrote in Java-default blocks, read three ways under every codec, and tables written three ways; one containerized x86_64 Linux run |
 | Media | [JSON](media/index.md#json-performance), [YAML](media/index.md#yaml-performance), [TOML](media/index.md#toml-performance) | One Windows x86_64 release run of `python/benchmarks/text.py` and `node/benchmarks/text.js`: the natural-codec boundary per format |
 | Media | [YAML placeholders](media/index.md#placeholders) | 256-entry YAML documents, feature off and on; containerized x86_64 Linux, Criterion medians with 95% intervals |
 | Media | [Iceberg](media/index.md#iceberg-performance) | Release Criterion, Windows 11 Pro 10.0.26200, Ryzen 5 150, rustc 1.96.1 |
@@ -67,6 +68,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/media.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.05 --repeat 3
     python/.venv/bin/python python/benchmarks/media/parquet.py --repeat 7
+    python/.venv/bin/python python/benchmarks/media/avro.py --repeat 5
     python/.venv/bin/python python/benchmarks/media/iceberg.py --min-time 0.2 --repeat 5
     YGGDRYL_S3TABLES_ARN=arn:aws:s3tables:<region>:<account>:bucket/<name> python/.venv/bin/python python/benchmarks/media/s3tables.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/text.py --iterations 10000
