@@ -10,7 +10,6 @@
 mod grammar {
     use std::cell::Cell;
 
-    use yggdryl::DateTimeType;
     use yggdryl::expression::{Attribute, Cost, Term};
     use yggdryl::{
         DataType, Field, MediaType, Result, Scalar, StructType, TimeUnit, Timezone, Url,
@@ -32,10 +31,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),

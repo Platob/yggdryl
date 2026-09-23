@@ -13,11 +13,15 @@ mod arrow;
 mod boolean;
 #[path = "serie/bytes.rs"]
 mod bytes;
+#[path = "serie/datatype.rs"]
+mod datatype;
 #[path = "serie/enums.rs"]
 mod enums;
 #[cfg(feature = "internals")]
 #[path = "serie/layout.rs"]
 mod layout;
+#[path = "serie/list.rs"]
+mod list;
 #[path = "serie/mapping.rs"]
 mod mapping;
 #[path = "serie/null.rs"]
@@ -26,8 +30,6 @@ mod null;
 mod primitive;
 #[path = "serie/runend.rs"]
 mod runend;
-#[path = "serie/sequence.rs"]
-mod sequence;
 #[path = "serie/string.rs"]
 mod string;
 #[path = "serie/structure.rs"]

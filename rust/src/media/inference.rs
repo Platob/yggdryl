@@ -16,7 +16,7 @@
 //! Physical identity is part of an exact scalar: `large_utf8`, `binary_view`,
 //! `Date64`, and every other leaf name themselves rather than collapsing to a
 //! related layout. Only a newly inferred nested collection needs a layout
-//! choice: a [`Scalar::Sequence`] names the ordinary `List`
+//! choice: a run names the ordinary `List`
 //! layout because the values carry no offset width, and an enum names `utf8`
 //! because its generic identity is not an Arrow datatype.
 //!
@@ -223,11 +223,36 @@ impl Scalar {
             Self::Interval(value) => DataType::interval(value.unit()),
             // A column carries its field and is read; a run has its item
             // agreed back out of its rows.
-            Self::Sequence(values) if values.is_column() => values.dtype(),
-            Self::Sequence(values) => {
-                let rows = values.rows();
-                let (dtype, nullable) = agreed(rows.iter(), "sequence item", depth)?;
-                Ok(DataType::list(Field::new("item", dtype, nullable)))
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => {
+                let item = match values.field() {
+                    Some(field) => field.clone().with_name("item"),
+                    None => {
+                        let rows = values.rows();
+                        let (dtype, nullable) = agreed(rows.iter(), "sequence item", depth)?;
+                        Field::new("item", dtype, nullable)
+                    }
+                };
+                // The variant is the layout the value declares.
+                match self {
+                    Self::ListView(_) => Ok(DataType::list_view(item)),
+                    Self::LargeList(_) => Ok(DataType::large_list(item)),
+                    Self::LargeListView(_) => Ok(DataType::large_list_view(item)),
+                    Self::FixedSizeList(_) => DataType::fixed_size_list(
+                        item,
+                        i32::try_from(values.len()).map_err(|_| Error::InvalidDataType {
+                            kind: "FixedSizeList",
+                            reason: smol_str::format_smolstr!(
+                                "{} items are past a fixed size list's i32 width",
+                                values.len()
+                            ),
+                        })?,
+                    ),
+                    _ => Ok(DataType::list(item)),
+                }
             }
             // An Arrow payload already carries its exact field: one pinned
             // row is that field's datatype, and every wider shape is a list
@@ -246,7 +271,7 @@ impl Scalar {
             // A mapping's keys are values, not names, so its datatype is a map
             // and not a struct; a struct in this project is described by a
             // sequence, one value per declared field.
-            Self::Mapping(entries) => {
+            Self::Map(entries) | Self::SortedMap(entries) => {
                 let keys = entries.as_slice().iter().map(|(key, _)| key);
                 let (key, _) = agreed(keys, "mapping key", depth)?;
                 // Arrow fixes the entry nullability itself - a key is required

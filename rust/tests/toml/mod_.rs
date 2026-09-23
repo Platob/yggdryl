@@ -4,7 +4,6 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
-use yggdryl::DateTimeType;
 use yggdryl::toml as ytoml;
 use yggdryl::{
     DataType, DataTypeId, Error, Field, Limits, Scalar, StructType, TimeUnit, Timezone,
@@ -97,10 +96,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                }),
+                },
                 false,
             ),
             Field::new(

@@ -412,7 +412,11 @@ pub fn into_bytes_with_formatting(
     match format {
         Format::Json => crate::json::into_bytes_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
                 crate::json::into_bytes_all_with_formatting(&values.rows(), formatting)
             }
             value => {
@@ -438,7 +442,11 @@ pub fn into_utf8_with_formatting(
     match format {
         Format::Json => crate::json::into_utf8_with_formatting(value, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => {
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
                 crate::json::into_utf8_all_with_formatting(&values.rows(), formatting)
             }
             value => {
@@ -465,7 +473,11 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => crate::json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::Sequence(values) => crate::json::into_writer_all_with_formatting(
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => crate::json::into_writer_all_with_formatting(
                 values.rows().iter(),
                 writer,
                 formatting,
@@ -673,12 +685,16 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::Sequence(values) => {
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
                 for value in values.rows().iter() {
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            Scalar::Mapping(entries) => {
+            Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                 for (key, value) in entries.as_slice() {
                     visit(key, child_depth, maximum, format)?;
                     visit(value, child_depth, maximum, format)?;

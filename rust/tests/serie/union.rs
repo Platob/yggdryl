@@ -1,6 +1,6 @@
 //! `rust/src/serie/union.rs`: the union leaf - type ids, dense offsets and
-//! one child column per member, read through the type id and rebuilt on a
-//! write.
+//! one child column per member, read through the type id; written in place
+//! when sparse or when a dense column is appended to, rebuilt otherwise.
 
 use std::sync::Arc;
 
@@ -212,7 +212,7 @@ fn a_window_slices_the_type_ids_and_what_each_layout_reaches() {
 }
 
 #[test]
-fn the_writes_rebuild_the_layout_and_the_rows_round_trip() {
+fn the_writes_keep_the_layout_and_the_rows_round_trip() {
     for (mode, mut column) in [UnionMode::Dense, UnionMode::Sparse]
         .into_iter()
         .zip(quotes())
@@ -264,5 +264,127 @@ fn the_writes_rebuild_the_layout_and_the_rows_round_trip() {
         pushed.clear().expect("cleared");
         assert!(pushed.is_empty());
         assert!(pushed.children().iter().all(Serie::is_empty));
+    }
+}
+
+#[test]
+fn a_sparse_write_splices_every_member_and_a_dense_push_lands_on_its_member() {
+    let [dense, sparse] = quotes();
+
+    // Sparse: every member is spliced over the rows written, its payload
+    // where the row is its own and a placeholder elsewhere.
+    let mut sparse = sparse;
+    sparse
+        .set(1, quote(0, Scalar::from(7_i64)))
+        .expect("one slot");
+    sparse.push(quote(1, Scalar::from("IBM"))).expect("a row");
+    let leaf = sparse.as_union().expect("a union column");
+    assert_eq!(leaf.type_ids(), &[0, 0, 1, 0, 1]);
+    assert_eq!(leaf.offsets(), None);
+    assert!(leaf.children().iter().all(|child| child.len() == 5));
+    assert_eq!(
+        leaf.child_of(0).expect("the id member").scalar(1).unwrap(),
+        Scalar::from(7_i64)
+    );
+    assert_eq!(
+        leaf.child_of(1)
+            .expect("the symbol member")
+            .scalar(4)
+            .unwrap(),
+        Scalar::from("IBM")
+    );
+
+    // Dense: a push lands at the end of its own member, and the offset
+    // records where.
+    let mut dense = dense;
+    dense.push(quote(1, Scalar::from("IBM"))).expect("a row");
+    dense.push(quote(0, Scalar::from(3_i64))).expect("a row");
+    let leaf = dense.as_union().expect("a union column");
+    assert_eq!(leaf.type_ids(), &[0, 1, 1, 0, 1, 0]);
+    assert_eq!(leaf.offsets(), Some(&[0, 0, 1, 1, 2, 2][..]));
+    assert_eq!(leaf.child_of(0).map(Serie::len), Some(3));
+    assert_eq!(leaf.child_of(1).map(Serie::len), Some(3));
+
+    // Any other dense write rebuilds, and the rebuild keeps only the member
+    // slots a row still reaches.
+    dense.remove(1).expect("a row");
+    dense
+        .set(0, quote(1, Scalar::from("MSFT")))
+        .expect("one slot");
+    let leaf = dense.as_union().expect("a union column");
+    assert_eq!(leaf.type_ids(), &[1, 1, 0, 1, 0]);
+    assert_eq!(leaf.child_of(0).map(Serie::len), Some(2));
+    assert_eq!(leaf.child_of(1).map(Serie::len), Some(3));
+    assert_eq!(
+        dense.rows().into_owned(),
+        vec![
+            quote(1, Scalar::from("MSFT")),
+            quote(1, Scalar::Null),
+            quote(0, Scalar::from(2_i64)),
+            quote(1, Scalar::from("IBM")),
+            quote(0, Scalar::from(3_i64)),
+        ]
+    );
+}
+
+#[test]
+fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
+    let vocabulary = [
+        quote(0, Scalar::from(1_i64)),
+        quote(0, Scalar::from(2_i64)),
+        quote(1, Scalar::from("AAPL")),
+        quote(1, Scalar::Null),
+    ];
+    for mode in [UnionMode::Dense, UnionMode::Sparse] {
+        let field = quote_field(mode, true);
+        let mut column = Serie::empty(field.clone()).expect("an empty column");
+        let mut expected: Vec<Scalar> = Vec::new();
+        // A fixed linear congruential walk, weighted towards appends so a
+        // dense column exercises both of its paths.
+        let mut state: u64 = 0xd1ce;
+        let mut next = |bound: usize| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            usize::try_from(state >> 33).unwrap() % bound
+        };
+        for _ in 0..400 {
+            let len = expected.len();
+            let start = if next(2) == 0 { len } else { next(len + 1) };
+            let end = start + next(len - start + 1).min(2);
+            let rows: Vec<Scalar> = (0..next(4))
+                .map(|_| vocabulary[next(vocabulary.len())].clone())
+                .collect();
+            column
+                .splice(start..end, rows.clone())
+                .expect("rows the field accepts");
+            expected.splice(start..end, rows);
+
+            assert_eq!(column.rows().into_owned(), expected, "{mode:?}");
+            let leaf = column.as_union().expect("a union column");
+            match leaf.offsets() {
+                None => assert!(
+                    leaf.children()
+                        .iter()
+                        .all(|child| child.len() == expected.len())
+                ),
+                Some(offsets) => {
+                    for (type_id, offset) in leaf.type_ids().iter().zip(offsets) {
+                        let child = leaf.child_of(*type_id).expect("a declared member");
+                        assert!(usize::try_from(*offset).unwrap() < child.len());
+                    }
+                }
+            }
+        }
+        let crossed = Serie::from_arrow_array(field, column.require_arrow_array().unwrap())
+            .expect("the column crosses back in");
+        assert_eq!(crossed, column, "{mode:?}");
+        assert_eq!(
+            column.null_count(),
+            expected
+                .iter()
+                .filter(|row| **row == quote(1, Scalar::Null))
+                .count()
+        );
     }
 }

@@ -6,10 +6,17 @@
 //! is the `[type id, payload]` pair the field's contract spells; a union
 //! spells absence inside the member, so a null row is a pair whose payload
 //! is absent, and the column's null count is the members' where they are
-//! reached. A write rebuilds: the replacement is laid out at the crate's
-//! one scalar-array boundary, joined to the rows around it with Arrow's
-//! concatenation, and re-imported through the door with its rows already
-//! proven.
+//! reached.
+//!
+//! A sparse union's members are row-aligned with it, so every write is in
+//! place: the type ids spliced, and each member spliced over the same rows
+//! with its payload where the row is its own and its placeholder elsewhere.
+//! A dense union appends in place - each payload pushed onto its member and
+//! the offset it lands at recorded - while any other write rebuilds: the
+//! replacement laid out at the crate's one scalar-array boundary, joined to
+//! the rows around it with Arrow's concatenation, which copies only the
+//! member slots the rows still reach, and re-imported through the door with
+//! its rows already proven.
 
 use std::fmt;
 use std::ops::Range;
@@ -19,6 +26,7 @@ use arrow_array::{Array, ArrayRef, UnionArray, new_empty_array};
 use arrow_buffer::{BooleanBuffer, BooleanBufferBuilder, NullBuffer, ScalarBuffer};
 use arrow_schema::{ArrowError, DataType as ArrowDataType};
 
+use super::layout::splice_scalars;
 use super::{Serie, require_range, require_row, require_window};
 use crate::budget::MaterializationBudget;
 use crate::value::SerieValue;
@@ -163,6 +171,20 @@ impl UnionSerie {
         matches!(self.mode(), UnionMode::Sparse) || i32::try_from(total).is_ok()
     }
 
+    /// Whether a write over `range` appends to a dense union, which is the
+    /// one dense write made in place.
+    fn appends_dense(&self, range: &Range<usize>) -> bool {
+        self.offsets.is_some() && range.is_empty() && range.start == self.type_ids.len()
+    }
+
+    /// The position in the declared members of the member `type_id` names.
+    fn position_of(&self, type_id: i8) -> usize {
+        self.members()
+            .iter()
+            .position(|(id, _)| id == type_id)
+            .expect(CANONICAL)
+    }
+
     /// Refuse a length the layout cannot reach, naming the column.
     fn require_fit(&self, total: usize) -> Result<()> {
         if self.fits(total) {
@@ -200,9 +222,14 @@ impl UnionSerie {
     /// offsets, a sparse replacement past the crate's materialization
     /// budget - every member at the replacement's length - and, recursively,
     /// whatever each child refuses for the cells it will receive.
+    ///
+    /// A sparse member is checked over the rows it is written over; a dense
+    /// member receives its payloads at its end, and in a dense append the
+    /// last offset it lands at must still be an `i32`.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
         self.require_fit(self.type_ids.len() - range.len() + rows.len())?;
-        if matches!(self.mode(), UnionMode::Sparse) {
+        let sparse = matches!(self.mode(), UnionMode::Sparse);
+        if sparse {
             let mut budget = MaterializationBudget::default();
             for (_, member) in self.members() {
                 budget.add_array(member.dtype(), rows.len())?;
@@ -211,20 +238,71 @@ impl UnionSerie {
         for (position, child) in self.children.iter().enumerate() {
             let cells = self.cells_for(position, rows)?;
             let held = child.len();
-            child.check(&(held..held), &cells)?;
+            if self.appends_dense(range) {
+                self.require_fit(held + cells.len())?;
+            }
+            let over = if sparse { range.clone() } else { held..held };
+            child.check(&over, &cells)?;
         }
         Ok(())
     }
 
-    /// Write canonical `rows` over a checked `range`, rebuilding.
+    /// Write canonical `rows` over a checked `range`: in place for a sparse
+    /// union and a dense append, a rebuild for any other dense write.
     pub(crate) fn write(&mut self, range: Range<usize>, rows: Vec<Scalar>) {
+        let ids: Vec<i8> = rows.iter().map(|row| branch(row).0).collect();
+        if self.offsets.is_none() {
+            for position in 0..self.children.len() {
+                let cells = self.cells_for(position, &rows).expect(CHECKED);
+                self.children[position].write(range.clone(), cells);
+            }
+            self.type_ids = splice_scalars(std::mem::take(&mut self.type_ids), range, &ids);
+            return;
+        }
+        if self.appends_dense(&range) {
+            self.append_dense(&rows, &ids);
+            return;
+        }
+        self.rebuild(range, &rows);
+    }
+
+    /// Append canonical `rows` of type ids `ids` to a dense union: each
+    /// payload pushed onto its member, and the offset it lands at recorded.
+    fn append_dense(&mut self, rows: &[Scalar], ids: &[i8]) {
+        let mut payloads: Vec<Vec<Scalar>> = vec![Vec::new(); self.children.len()];
+        let mut next: Vec<usize> = self.children.iter().map(Serie::len).collect();
+        let offsets: Vec<i32> = rows
+            .iter()
+            .zip(ids)
+            .map(|(row, type_id)| {
+                let position = self.position_of(*type_id);
+                payloads[position].push(branch(row).1.clone());
+                let at = next[position];
+                next[position] += 1;
+                i32::try_from(at).expect(CHECKED)
+            })
+            .collect();
+        for (child, cells) in self.children.iter_mut().zip(payloads) {
+            if !cells.is_empty() {
+                let held = child.len();
+                child.write(held..held, cells);
+            }
+        }
+        let len = self.type_ids.len();
+        self.type_ids = splice_scalars(std::mem::take(&mut self.type_ids), len..len, ids);
+        let held = self.offsets.take().expect(CHECKED);
+        self.offsets = Some(splice_scalars(held, len..len, &offsets));
+    }
+
+    /// Replace rows `range` of a dense union by canonical `rows`, rebuilt.
+    fn rebuild(&mut self, range: Range<usize>, rows: &[Scalar]) {
         let array = self.into_arrow_array();
         let len = self.type_ids.len();
         let joined = joined(
             &self.field,
             vec![
                 array.slice(0, range.start),
-                self.laid_out(&rows),
+                self.laid_out(rows),
                 array.slice(range.end, len - range.end),
             ],
         )
@@ -361,14 +439,11 @@ impl SerieValue for UnionSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Union(Arc::new(self))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Union(column) => Some(column.as_ref()),
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 

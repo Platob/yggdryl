@@ -554,7 +554,6 @@ mod datatypes {
         DataType as ArrowDataType, IntervalUnit as ArrowIntervalUnit, TimeUnit as ArrowTimeUnit,
     };
     use yggdryl::{DataType, Scalar, TimeUnit, Timezone};
-    use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
     #[test]
     fn every_temporal_leaf_projects_to_its_arrow_storage_and_imports_back() {
@@ -635,14 +634,14 @@ mod datatypes {
         // A hand-built leaf its width does not carry stops at the boundary
         // rather than widening silently.
         for dtype in [
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Second)),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::Time32(TimeUnit::Nanosecond),
+            DataType::Time64(TimeUnit::Second),
+            DataType::DateTime64 {
                 unit: TimeUnit::Day,
                 timezone: Timezone::NAIVE,
-            }),
-            DataType::Duration(DurationType::Duration32(TimeUnit::YearMonth)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
+            },
+            DataType::Duration32(TimeUnit::YearMonth),
+            DataType::Interval(TimeUnit::Second),
         ] {
             assert!(dtype.to_arrow_datatype().is_err(), "{dtype}");
             assert!(dtype.into_arrow_datatype().is_err());

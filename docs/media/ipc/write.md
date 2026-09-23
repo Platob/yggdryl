@@ -10,7 +10,7 @@ Rows into a stream - as native scalars, as Arrow batches - with the intent in th
 | Native rows | `overwrite_records`, `append_records`, `merge_records`, `write_records`; a row is anything that converts into a [`Scalar`](../../types/scalar.md) |
 | Batches | `overwrite_arrow_reader`, `append_arrow_reader`, keyed `merge_arrow_reader` from [`IOMedia`](../../holder/iobase/records.md) |
 | Intent | the method name carries it; `merge_by` supplies identity only, never the choice |
-| Row shape | an ordered `Scalar::Sequence` under the root, or a name-sorted `Scalar::Struct` resolved to that order |
+| Row shape | an ordered `Scalar::List` under the root, or a name-sorted `Scalar::Struct` resolved to that order |
 | Schema | `options.field` declares the root; a non-empty mapping or dataclass source infers it, a positional one cannot |
 | Lazy | a batch is encoded as the writer pulls it; only the current one is alive |
 | Batching | rows are grouped into batches bounded by `batch_row_size` and published on the `commit_row_size` cadence |

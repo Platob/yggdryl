@@ -186,7 +186,15 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         Scalar::Boolean(_) => value
             .as_bool()
             .map(|held| SmolStr::new_static(if held { "Y" } else { "N" })),
-        Scalar::Sequence(_) | Scalar::Mapping(_) | Scalar::Struct(_) | Scalar::Null => None,
+        Scalar::List(_)
+        | Scalar::ListView(_)
+        | Scalar::FixedSizeList(_)
+        | Scalar::LargeList(_)
+        | Scalar::LargeListView(_)
+        | Scalar::Map(_)
+        | Scalar::SortedMap(_)
+        | Scalar::Struct(_)
+        | Scalar::Null => None,
         Scalar::Bytes(held) => Some(SmolStr::new(String::from_utf8_lossy(held.as_bytes()))),
         Scalar::Version(held) => Some(smol_str::format_smolstr!("{held}")),
         Scalar::DateTime64(_) => {

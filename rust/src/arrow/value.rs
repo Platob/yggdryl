@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::UriType;
 use crate::budget::{
     MAX_PHYSICAL_SLOTS, MaterializationBudget, checked_physical_mul, invalid_value,
     physical_limit_error, physical_union_branch, unsupported,
@@ -42,9 +41,6 @@ use arrow_schema::DataType as ArrowDataType;
 use half::f16;
 
 use super::{Error, Result};
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
-use crate::{DateTimeType, DateType, DecimalType, DurationType, IntervalType, TimeType};
 
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
@@ -108,7 +104,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             .map(f16::from_f64)),
         DataType::Float32 => primitive!(Float32Array, narrow_f32),
         DataType::Float64 => primitive!(Float64Array, |value: &&Scalar| exact_f64(value)),
-        DataType::DateTime(DateTimeType::DateTime64 { unit, .. }) => match unit {
+        DataType::DateTime64 { unit, .. } => match unit {
             TimeUnit::Second => physical_primitive!(TimestampSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => {
                 physical_primitive!(TimestampMillisecondArray, temporal_i64(*unit))
@@ -121,19 +117,19 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date(DateType::Date32) => primitive!(Date32Array, date_i32),
-        DataType::Date(DateType::Date64) => primitive!(Date64Array, date_i64),
-        DataType::Time(TimeType::Time32(unit)) => match unit {
+        DataType::Date32 => primitive!(Date32Array, date_i32),
+        DataType::Date64 => primitive!(Date64Array, date_i64),
+        DataType::Time32(unit) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, temporal_i32(*unit)),
             TimeUnit::Millisecond => primitive!(Time32MillisecondArray, temporal_i32(*unit)),
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time(TimeType::Time64(unit)) => match unit {
+        DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration(DurationType::Duration32(unit)) => match unit {
+        DataType::Duration32(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
@@ -148,20 +144,20 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
             }),
             _ => return Err(unsupported(dtype, "invalid duration32 unit")),
         },
-        DataType::Duration(DurationType::Duration64(unit)) => match unit {
+        DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
             TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
             TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
             TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
+        DataType::Interval(TimeUnit::YearMonth) => {
             primitive!(IntervalYearMonthArray, interval_year_month)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
+        DataType::Interval(TimeUnit::DayTime) => {
             primitive!(IntervalDayTimeArray, interval_day_time)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
+        DataType::Interval(TimeUnit::MonthDayNano) => {
             primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
@@ -190,7 +186,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Uri(UriType::Url) => Arc::new(StringArray::from(
+        DataType::Url => Arc::new(StringArray::from(
             values
                 .iter()
                 .map(|value| match value {
@@ -200,7 +196,7 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Uri(UriType::Urn) => Arc::new(StringArray::from(
+        DataType::Urn => Arc::new(StringArray::from(
             values
                 .iter()
                 .map(|value| match value {
@@ -242,45 +238,42 @@ pub(crate) fn array_from_values(field: &Field, values: &[&Scalar]) -> Result<Arr
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Sequence(SequenceType::List(child)) => {
-            list_array::<i32>(child, values, ListKind::List)?
-        }
-        DataType::Sequence(SequenceType::ListView(child)) => {
-            list_view_array::<i32>(child, values, ListKind::ListView)?
-        }
-        DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
-            fixed_size_list_array(child, *size, values)?
-        }
-        DataType::Sequence(SequenceType::LargeList(child)) => {
-            list_array::<i64>(child, values, ListKind::LargeList)?
-        }
-        DataType::Sequence(SequenceType::LargeListView(child)) => {
+        DataType::List(child) => list_array::<i32>(child, values, ListKind::List)?,
+        DataType::ListView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
+        DataType::FixedSizeList(child, size) => fixed_size_list_array(child, *size, values)?,
+        DataType::LargeList(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
+        DataType::LargeListView(child) => {
             list_view_array::<i64>(child, values, ListKind::LargeListView)?
         }
         DataType::Struct(fields) => struct_array(fields, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
-        DataType::Enum(EnumType::Dictionary(dictionary)) => dictionary_array(dictionary, values)?,
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
+        DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
+        DataType::Decimal32 { scale, .. } => {
             physical_primitive!(Decimal32Array, |value: &&Scalar| i32::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal32", value.kind())))
         }
-        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
+        DataType::Decimal64 { scale, .. } => {
             physical_primitive!(Decimal64Array, |value: &&Scalar| i64::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal64", value.kind())))
         }
-        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
+        DataType::Decimal128 { scale, .. } => {
             physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
                 value, *scale
             ))
         }
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
+        DataType::Decimal256 { scale, .. } => {
             physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
         }
-        DataType::Mapping(map) => map_array(map, values)?,
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            map_array(map, values)?
+        }
         DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
         // A geospatial value *is* its WKB payload, so the array is the bytes;
         // both the canonical `Geospatial` spelling and plain bytes build it.
@@ -404,7 +397,7 @@ pub(crate) fn value_from_array(
         // Every temporal reads as its typed value: the count alone is not
         // the datum, the unit and zone are, and the typed spelling is what
         // serializes losslessly and compares across resolutions.
-        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => match unit {
+        DataType::DateTime64 { unit, timezone } => match unit {
             TimeUnit::Second => primitive!(TimestampSecondArray, |value| {
                 Scalar::datetime64(value, *unit, *timezone)
             })?,
@@ -419,13 +412,13 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date(DateType::Date32) => {
+        DataType::Date32 => {
             primitive!(Date32Array, |value| { Scalar::date32(value) })
         }
-        DataType::Date(DateType::Date64) => {
+        DataType::Date64 => {
             primitive!(Date64Array, |value| { Scalar::date64(value) })
         }
-        DataType::Time(TimeType::Time32(unit)) => match unit {
+        DataType::Time32(unit) => match unit {
             TimeUnit::Second => primitive!(Time32SecondArray, |value| Scalar::time32(
                 value,
                 *unit,
@@ -438,7 +431,7 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
-        DataType::Time(TimeType::Time64(unit)) => match unit {
+        DataType::Time64(unit) => match unit {
             TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, |value| Scalar::time64(
                 value,
                 *unit,
@@ -451,10 +444,8 @@ pub(crate) fn value_from_array(
             ))?,
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
-        DataType::Duration(DurationType::Duration32(unit)) => {
-            duration32_from_array(array, index, *unit)?
-        }
-        DataType::Duration(DurationType::Duration64(unit)) => match unit {
+        DataType::Duration32(unit) => duration32_from_array(array, index, *unit)?,
+        DataType::Duration64(unit) => match unit {
             TimeUnit::Second => primitive!(DurationSecondArray, |value| {
                 Scalar::duration64(value, *unit)
             })?,
@@ -469,11 +460,11 @@ pub(crate) fn value_from_array(
             })?,
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
-        DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)) => {
+        DataType::Interval(TimeUnit::YearMonth) => {
             let months = downcast::<IntervalYearMonthArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(months, 0, 0, TimeUnit::YearMonth)?)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)) => {
+        DataType::Interval(TimeUnit::DayTime) => {
             let value = downcast::<IntervalDayTimeArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(
                 0,
@@ -482,7 +473,7 @@ pub(crate) fn value_from_array(
                 TimeUnit::DayTime,
             )?)
         }
-        DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)) => {
+        DataType::Interval(TimeUnit::MonthDayNano) => {
             let value = downcast::<IntervalMonthDayNanoArray>(array)?.value(index);
             Scalar::Interval(crate::Interval::new(
                 value.months,
@@ -506,11 +497,11 @@ pub(crate) fn value_from_array(
                 .parse()
                 .map_err(crate::arrow::Error::from)?,
         ),
-        DataType::Uri(UriType::Url) => Scalar::Url(std::sync::Arc::new(
+        DataType::Url => Scalar::Url(std::sync::Arc::new(
             crate::Url::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
-        DataType::Uri(UriType::Urn) => Scalar::Urn(std::sync::Arc::new(
+        DataType::Urn => Scalar::Urn(std::sync::Arc::new(
             crate::Urn::from_str(downcast::<StringArray>(array)?.value(index))
                 .map_err(crate::arrow::Error::from)?,
         )),
@@ -613,22 +604,22 @@ pub(crate) fn value_from_array(
                 text.value(index).as_bytes(),
             )?)?)
         }
-        DataType::Sequence(SequenceType::List(child)) => {
+        DataType::List(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }
-        DataType::Sequence(SequenceType::ListView(child)) => list_value(
+        DataType::ListView(child) => list_value(
             child,
             downcast::<ListViewArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::FixedSizeList(child, _)) => list_value(
+        DataType::FixedSizeList(child, _) => list_value(
             child,
             downcast::<FixedSizeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::LargeList(child)) => list_value(
+        DataType::LargeList(child) => list_value(
             child,
             downcast::<LargeListArray>(array)?.value(index).as_ref(),
         )?,
-        DataType::Sequence(SequenceType::LargeListView(child)) => list_value(
+        DataType::LargeListView(child) => list_value(
             child,
             downcast::<LargeListViewArray>(array)?.value(index).as_ref(),
         )?,
@@ -685,25 +676,26 @@ pub(crate) fn value_from_array(
             )?;
             Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload])
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
-            dictionary_value(dictionary, array, index)?
-        }
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => {
+        DataType::Dictionary(dictionary) => dictionary_value(dictionary, array, index)?,
+        DataType::Decimal32 { scale, .. } => {
             let value = downcast::<Decimal32Array>(array)?.value(index);
             Scalar::Decimal32(crate::Decimal32::new(value, *scale))
         }
-        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => {
+        DataType::Decimal64 { scale, .. } => {
             let value = downcast::<Decimal64Array>(array)?.value(index);
             Scalar::Decimal64(crate::Decimal64::new(value, *scale))
         }
-        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => {
+        DataType::Decimal128 { scale, .. } => {
             Scalar::d128(downcast::<Decimal128Array>(array)?.value(index), *scale)
         }
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => {
+        DataType::Decimal256 { scale, .. } => {
             let value = downcast::<Decimal256Array>(array)?.value(index);
             Scalar::d256(i256::from_le_bytes(value.to_le_bytes()), *scale)
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let entries = downcast::<MapArray>(array)?.value(index);
             let fields = map
                 .entries()
@@ -735,7 +727,7 @@ pub(crate) fn value_from_array(
             Scalar::Variant(crate::Variant::new(metadata, payload)?)
         }
     };
-    Ok(value)
+    Ok(dtype.declared_layout(value))
 }
 
 fn nulls(validity: Vec<bool>) -> Option<NullBuffer> {
@@ -1506,7 +1498,7 @@ fn duration32_from_array(array: &dyn Array, index: usize, unit: TimeUnit) -> Res
         TimeUnit::Nanosecond => downcast::<DurationNanosecondArray>(array)?.value(index),
         _ => {
             return Err(unsupported(
-                &DataType::Duration(DurationType::Duration32(unit)),
+                &DataType::Duration32(unit),
                 "invalid duration32 unit",
             ));
         }

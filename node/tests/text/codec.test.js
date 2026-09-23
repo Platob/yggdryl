@@ -678,8 +678,8 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       assert.deepEqual(format.loads(format.dumps(type)), type.toJSON())
       assert.deepEqual(format.loads(format.dumps(field)), field.toJSON())
     }
-    assert.equal(Scalar.from(type).kind, 'mapping')
-    assert.equal(Scalar.from(field).kind, 'mapping')
+    assert.equal(Scalar.from(type).kind, 'map')
+    assert.equal(Scalar.from(field).kind, 'map')
 
     for (const value of [
       Uri.fromString('https://example.com/value'),
@@ -968,7 +968,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(record.path('legs.9.at'), null)
 
     // Record iteration is deterministic field-name order and yields values.
-    assert.deepEqual([...record].map((value) => value.kind), ['sequence', 'i64'])
+    assert.deepEqual([...record].map((value) => value.kind), ['list', 'i64'])
     // Sequence iteration yields its exact children.
     assert.equal([...legs][0].path('at').count, instant.count)
 
@@ -977,7 +977,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(changed.get('z').kind, 'datetime64')
     assert.deepEqual([...changed].map((value) => value.kind), [
       'i64',
-      'sequence',
+      'list',
       'datetime64',
     ])
     const removed = changed.remove('legs')
@@ -1138,7 +1138,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
   test('Scalar Arrow scalar and array interop uses standard IPC', () => {
     const vector = arrow.vectorFromArray(Int32Array.from([1, 2, 3]))
     const values = Scalar.fromArrowArray(vector)
-    assert.equal(values.kind, 'sequence')
+    assert.equal(values.kind, 'list')
     assert.deepEqual(values.asJs(), [1, 2, 3])
     assert.deepEqual([...values.intoArrowArray()], [1, 2, 3])
 
@@ -1258,9 +1258,9 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
   test('fromJs and asJs are the conversion every codec entry point crosses', () => {
     // The pivot answers what a JavaScript value becomes, losses included.
-    assert.equal(Scalar.from(new Set([1, 2])).kind, 'sequence')
+    assert.equal(Scalar.from(new Set([1, 2])).kind, 'list')
     assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
-    assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'mapping')
+    assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'map')
     assert.deepEqual(Scalar.from(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
     assert.equal(Scalar.from({ id: 1 }).kind, 'struct')
     assert.equal(Scalar.from(undefined).kind, 'null')
@@ -1283,7 +1283,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(Scalar.from(null, { field: new Field('count', 'int8', true) }).kind, 'null')
     const row = new Field('row', 'struct<id: int8 not null, release: version not null>', false)
     const resolved = Scalar.from({ release: '5.0.300', id: 7 }, { field: row })
-    assert.equal(resolved.kind, 'sequence')
+    assert.equal(resolved.kind, 'list')
     assert.equal(resolved.get(0).kind, 'i8')
     assert.ok(resolved.get(1).asJs().equals(new Version(5, 0, 300)))
   })

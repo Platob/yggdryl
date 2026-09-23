@@ -190,10 +190,8 @@ fn every_constructor_answers_the_leaf_it_names() {
     .expect_err("text is not a price");
     assert!(refusal.to_string().contains("price"), "{refusal}");
 
-    // A family widens into the root, and the root into a scalar.
-    let family = laid_out.as_integer().expect("an integer column").clone();
-    assert_eq!(Serie::from(family), laid_out);
-    assert_eq!(Scalar::from(laid_out.clone()), Scalar::Sequence(laid_out));
+    // The root widens into a scalar.
+    assert_eq!(Scalar::from(laid_out.clone()), Scalar::List(laid_out));
 }
 
 #[test]
@@ -307,13 +305,10 @@ fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
     let larger = Serie::new(vec![Scalar::from(126_i64)]);
     assert!(larger > column);
     assert_eq!(
-        Scalar::Sequence(column.clone()),
+        Scalar::List(column.clone()),
         Scalar::from_sequence(run.rows().iter().cloned())
     );
-    assert_eq!(
-        hashed(&Scalar::Sequence(column)),
-        hashed(&Scalar::Sequence(run))
-    );
+    assert_eq!(hashed(&Scalar::List(column)), hashed(&Scalar::List(run)));
 }
 
 #[test]
@@ -755,20 +750,20 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
     assert!(refusal.to_string().contains("`serie`"), "{refusal}");
 
     // Under a scalar, the tag tells the two apart both ways.
-    let run = Scalar::Sequence(run());
+    let run = Scalar::List(run());
     let document = serde_json::to_string(&run).unwrap();
-    assert!(document.contains("\"sequence\""), "{document}");
+    assert!(document.contains("\"list\""), "{document}");
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, run);
     assert!(back.as_serie().is_some_and(|serie| !serie.is_column()));
 
-    let column = Scalar::Sequence(column());
+    let column = Scalar::List(column());
     let document = serde_json::to_string(&column).unwrap();
     assert!(document.contains("\"serie\""), "{document}");
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, column);
     assert!(back.as_serie().is_some_and(Serie::is_column));
-    assert_eq!(back.kind(), "sequence");
+    assert_eq!(back.kind(), "list");
     assert!(serde_json::from_str::<Scalar>(r#"{"serie":[125,126]}"#).is_err());
 
     // The wire carries the field's contract: a row it refuses does not read.
@@ -782,16 +777,16 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
 fn the_root_is_a_value_and_converts_from_and_into_its_neighbours() {
     let serie = column();
     assert_eq!(Value::dtype(&serie).unwrap(), serie.dtype().unwrap());
-    assert_eq!(Scalar::from(serie.clone()), Scalar::Sequence(serie.clone()));
+    assert_eq!(Scalar::from(serie.clone()), Scalar::List(serie.clone()));
     assert_eq!(
-        <Serie as Value>::from_scalar(&Scalar::Sequence(serie.clone())),
+        <Serie as Value>::from_scalar(&Scalar::List(serie.clone())),
         Some(&serie)
     );
     assert_eq!(<Serie as Value>::from_scalar(&Scalar::Null), None);
-    assert_eq!(Scalar::Sequence(serie.clone()).as_serie(), Some(&serie));
-    assert_eq!(Scalar::Sequence(serie.clone()).len(), 3);
+    assert_eq!(Scalar::List(serie.clone()).as_serie(), Some(&serie));
+    assert_eq!(Scalar::List(serie.clone()).len(), 3);
     assert_eq!(
-        Scalar::Sequence(serie.clone()).get(2).as_deref(),
+        Scalar::List(serie.clone()).get(2).as_deref(),
         Some(&Scalar::from(127_i64))
     );
 
@@ -802,10 +797,9 @@ fn the_root_is_a_value_and_converts_from_and_into_its_neighbours() {
         Some(&leaf)
     );
     assert_eq!(yggdryl::SerieValue::into_serie(leaf), serie);
-    assert!(serie.as_integer().is_some());
-    assert!(serie.as_floating().is_none());
+    assert!(serie.as_int32().is_none());
+    assert!(serie.as_float64().is_none());
     assert!(serie.as_utf8().is_none());
     assert!(serie.as_struct().is_none());
-    assert!(run().as_integer().is_none());
-    assert_eq!(Serie::from(serie.as_integer().unwrap().clone()), serie);
+    assert!(run().as_int64().is_none());
 }

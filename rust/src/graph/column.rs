@@ -240,11 +240,9 @@ impl EventColumn {
     /// build, which is a defect in this module rather than anything a
     /// caller did.
     pub fn datatype(self) -> Result<DataType> {
-        let clock = || {
-            DataType::DateTime(crate::DateTimeType::DateTime64 {
-                unit: TimeUnit::Nanosecond,
-                timezone: Timezone::UTC,
-            })
+        let clock = || DataType::DateTime64 {
+            unit: TimeUnit::Nanosecond,
+            timezone: Timezone::UTC,
         };
         Ok(match self {
             Self::CurrUnix

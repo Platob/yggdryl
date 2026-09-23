@@ -79,7 +79,10 @@ pub(crate) mod casts {
     pub(crate) fn holds_decimal(target: &DataType) -> bool {
         matches!(
             crate::cast::text::encoded_value_of(target),
-            DataType::Decimal(_)
+            DataType::Decimal32 { .. }
+                | DataType::Decimal64 { .. }
+                | DataType::Decimal128 { .. }
+                | DataType::Decimal256 { .. }
         )
     }
 }
@@ -201,14 +204,16 @@ impl DataTypeValue for DecimalType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Decimal(self)
+        match self {
+            Self::Decimal32 { precision, scale } => DataType::Decimal32 { precision, scale },
+            Self::Decimal64 { precision, scale } => DataType::Decimal64 { precision, scale },
+            Self::Decimal128 { precision, scale } => DataType::Decimal128 { precision, scale },
+            Self::Decimal256 { precision, scale } => DataType::Decimal256 { precision, scale },
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Decimal(family) => Some(*family),
-            _ => None,
-        }
+        dtype.decimal_type()
     }
 }
 
@@ -226,7 +231,7 @@ impl fmt::Display for DecimalType {
 
 impl From<DecimalType> for DataType {
     fn from(value: DecimalType) -> Self {
-        Self::Decimal(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -234,13 +239,10 @@ impl TryFrom<&DataType> for DecimalType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Decimal(family) => Ok(*family),
-            other => Err(Error::InvalidDataType {
-                kind: "decimal",
-                reason: format_smolstr!("expected a decimal datatype, got {other}"),
-            }),
-        }
+        value.decimal_type().ok_or_else(|| Error::InvalidDataType {
+            kind: "decimal",
+            reason: format_smolstr!("expected a decimal datatype, got {value}"),
+        })
     }
 }
 
@@ -310,7 +312,28 @@ impl DataType {
     /// or when a positive scale exceeds it.
     pub fn decimal_of(family: DecimalType) -> Result<Self> {
         DataTypeValue::validate(&family)?;
-        Ok(Self::Decimal(family))
+        Ok(family.into())
+    }
+
+    /// The decimal family's view of any of the four widths, `None` for
+    /// every other datatype.
+    #[must_use]
+    pub const fn decimal_type(&self) -> Option<DecimalType> {
+        match *self {
+            Self::Decimal32 { precision, scale } => {
+                Some(DecimalType::Decimal32 { precision, scale })
+            }
+            Self::Decimal64 { precision, scale } => {
+                Some(DecimalType::Decimal64 { precision, scale })
+            }
+            Self::Decimal128 { precision, scale } => {
+                Some(DecimalType::Decimal128 { precision, scale })
+            }
+            Self::Decimal256 { precision, scale } => {
+                Some(DecimalType::Decimal256 { precision, scale })
+            }
+            _ => None,
+        }
     }
 }
 
@@ -708,10 +731,10 @@ mod fixed {
     impl DataType {
         /// The decimal a market's numbers are held as: `decimal128(38, 18)`,
         /// what every [`Decimal18`] is.
-        pub const DECIMAL: Self = Self::Decimal(super::DecimalType::Decimal128 {
+        pub const DECIMAL: Self = Self::Decimal128 {
             precision: 38,
             scale: 18,
-        });
+        };
     }
 
     impl fmt::Display for Decimal18 {
@@ -1291,10 +1314,10 @@ pub(crate) fn exact_value_parts(value: &Scalar) -> Option<(i256, i8)> {
 
 pub(crate) fn decimal_target(dtype: &DataType) -> Option<(bool, i8)> {
     match dtype {
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-        | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-        | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => Some((false, *scale)),
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => Some((true, *scale)),
+        DataType::Decimal32 { scale, .. }
+        | DataType::Decimal64 { scale, .. }
+        | DataType::Decimal128 { scale, .. } => Some((false, *scale)),
+        DataType::Decimal256 { scale, .. } => Some((true, *scale)),
         _ => None,
     }
 }
@@ -1657,10 +1680,10 @@ impl Scalar {
     /// hold.
     pub(crate) fn from_decimal_text(dtype: &DataType, text: &str) -> Result<Self> {
         let scale = match dtype {
-            DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-            | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-            | DataType::Decimal(DecimalType::Decimal128 { scale, .. })
-            | DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => *scale,
+            DataType::Decimal32 { scale, .. }
+            | DataType::Decimal64 { scale, .. }
+            | DataType::Decimal128 { scale, .. }
+            | DataType::Decimal256 { scale, .. } => *scale,
             other => {
                 return Err(Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
@@ -1682,7 +1705,7 @@ impl Scalar {
                 }
             }
         })?;
-        if matches!(dtype, DataType::Decimal(DecimalType::Decimal256 { .. })) {
+        if matches!(dtype, DataType::Decimal256 { .. }) {
             return Ok(Self::d256(coefficient, scale));
         }
         coefficient
@@ -1703,7 +1726,7 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::{DecimalType, validate_decimal};
+    use super::validate_decimal;
     use crate::invalid;
     use crate::{DataType, Result};
 
@@ -1718,19 +1741,19 @@ mod arrow {
     /// carries, or when the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
         Ok(match dtype {
-            DataType::Decimal(DecimalType::Decimal32 { precision, scale }) => {
+            DataType::Decimal32 { precision, scale } => {
                 validate_decimal("Decimal32", *precision, *scale, 9)?;
                 ArrowDataType::Decimal32(*precision, *scale)
             }
-            DataType::Decimal(DecimalType::Decimal64 { precision, scale }) => {
+            DataType::Decimal64 { precision, scale } => {
                 validate_decimal("Decimal64", *precision, *scale, 18)?;
                 ArrowDataType::Decimal64(*precision, *scale)
             }
-            DataType::Decimal(DecimalType::Decimal128 { precision, scale }) => {
+            DataType::Decimal128 { precision, scale } => {
                 validate_decimal("Decimal128", *precision, *scale, 38)?;
                 ArrowDataType::Decimal128(*precision, *scale)
             }
-            DataType::Decimal(DecimalType::Decimal256 { precision, scale }) => {
+            DataType::Decimal256 { precision, scale } => {
                 validate_decimal("Decimal256", *precision, *scale, 76)?;
                 ArrowDataType::Decimal256(*precision, *scale)
             }

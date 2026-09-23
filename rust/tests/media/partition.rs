@@ -1345,7 +1345,7 @@ fn a_required_column_still_holding_its_canonical_default_is_filled() {
 
 #[test]
 fn every_temporal_family_survives_the_directory_name_it_spells() {
-    use yggdryl::{DateTimeType, Scalar, TimeUnit, Timezone};
+    use yggdryl::{Scalar, TimeUnit, Timezone};
 
     // A partition name is written by one renderer and read by the field cast,
     // so every temporal family has to make the round trip - a zoned instant
@@ -1363,24 +1363,24 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
             Scalar::time64(1, TimeUnit::Nanosecond, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::NAIVE).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, Timezone::UTC).unwrap(),
         ),
         (
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: paris,
-            }),
+            },
             Scalar::datetime64(1_700_000_000, TimeUnit::Second, paris).unwrap(),
         ),
         (

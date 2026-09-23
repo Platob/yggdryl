@@ -447,7 +447,7 @@ mod families {
 
     use arrow_schema::DataType as ArrowDataType;
     use std::sync::Arc;
-    use yggdryl::{DataType, DateTimeType};
+    use yggdryl::DataType;
 
     #[test]
     fn long_timezones_reuse_process_interned_storage_across_arrow_conversions() {
@@ -458,10 +458,10 @@ mod families {
         );
 
         let borrowed = DataType::from_arrow_datatype(&arrow).unwrap();
-        let DataType::DateTime(DateTimeType::DateTime64 {
+        let DataType::DateTime64 {
             unit: _,
             timezone: borrowed_timezone,
-        }) = &borrowed
+        } = &borrowed
         else {
             panic!("timestamp import changed variant");
         };
@@ -474,10 +474,10 @@ mod families {
         assert_eq!(borrowed_arrow_timezone.as_ref(), timezone.as_ref());
 
         let owned = DataType::try_from(arrow).unwrap();
-        let DataType::DateTime(DateTimeType::DateTime64 {
+        let DataType::DateTime64 {
             unit: _,
             timezone: owned_timezone,
-        }) = &owned
+        } = &owned
         else {
             panic!("timestamp import changed variant");
         };

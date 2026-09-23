@@ -250,14 +250,11 @@ impl SerieValue for VariantSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Variant(Arc::new(self))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Variant(column) => Some(column.as_ref()),
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 

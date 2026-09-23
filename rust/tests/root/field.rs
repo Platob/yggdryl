@@ -8,7 +8,7 @@ mod families {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
     use std::sync::Arc;
     use yggdryl::Field;
-    use yggdryl::{DataType, StructType, TimeType, TimeUnit, UnionFields};
+    use yggdryl::{DataType, StructType, TimeUnit, UnionFields};
 
     #[test]
     fn arrow_import_preserves_nested_field_projection_arcs() {
@@ -47,11 +47,7 @@ mod families {
 
     #[test]
     fn public_field_collections_validate_children_without_clone_helpers() {
-        let invalid = Field::new(
-            "invalid",
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
-            false,
-        );
+        let invalid = Field::new("invalid", DataType::Time32(TimeUnit::Nanosecond), false);
         assert!(StructType::from_fields([invalid.clone()]).is_err());
         assert!(UnionFields::from_fields([(0, invalid)]).is_err());
     }
@@ -66,12 +62,12 @@ mod arrow {
         DataType as ArrowDataType, Field as ArrowField, Schema,
         ffi::{FFI_ArrowSchema, Flags},
     };
+    use yggdryl::BytesType;
     use yggdryl::arrow::IPC_DICTIONARY_IDS_KEY;
     use yggdryl::{
         ArrowCastOptions, DataType, EdgeAlgorithm, Field, Nullability, StructType, TimeUnit,
         Timezone,
     };
-    use yggdryl::{BytesType, DateTimeType};
 
     fn assert_flag(schema: &arrow_schema::ffi::FFI_ArrowSchema, flag: Flags) {
         assert!(schema.flags().unwrap().contains(flag));
@@ -193,10 +189,10 @@ mod arrow {
         assert!(
             Field::new(
                 "bad",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::YearMonth,
                     timezone: Timezone::NAIVE
-                }),
+                },
                 false,
             )
             .into_arrow_field_ffi()
@@ -1224,7 +1220,7 @@ mod generic {
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
     use std::collections::{BTreeSet, HashSet};
     use std::sync::Arc;
-    use yggdryl::TimeType;
+
     use yggdryl::{DataType, Field, StructType, TimeUnit};
 
     fn arrow_field_with_nested_noncanonical_location() -> ArrowField {
@@ -1357,7 +1353,7 @@ mod generic {
         let mut field = Field::new("value", DataType::utf8(), true);
         assert!(
             field
-                .set_dtype(DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)))
+                .set_dtype(DataType::Time32(TimeUnit::Nanosecond))
                 .is_err()
         );
         assert_eq!(field.dtype(), &DataType::utf8());
@@ -1784,11 +1780,11 @@ mod nested {
     #[test]
     fn nested_markers_cover_every_child_layout() {
         let item = || Field::new("item", DataType::utf8(), true);
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::list(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::list_view(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::fixed_size_list(item(), 3).unwrap());
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list(item()));
-        assert_typed_marker::<yggdryl::SequenceType>(DataType::large_list_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::list(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::list_view(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::fixed_size_list(item(), 3).unwrap());
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list(item()));
+        assert_typed_marker::<yggdryl::SerieType>(DataType::large_list_view(item()));
         assert_typed_marker::<yggdryl::StructType>(DataType::from(
             StructType::from_fields([item()]).unwrap(),
         ));

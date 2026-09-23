@@ -1830,3 +1830,29 @@ typed_instant: Scalar = typed_instant_field.scalar(
 typed_instant_dtype: Scalar = typed_instant_field.dtype.scalar(1)
 assert typed_instant.kind == "datetime64"
 assert typed_instant_dtype.kind == "datetime64"
+
+# A serie: a run by construction, a column by its field, and every nested
+# column handed out as the class its leaf is named for.
+serie_run: yggdryl.Serie = yggdryl.Serie([1, "a", None])
+serie_column: yggdryl.Serie = yggdryl.Serie.from_scalars(Field("price", "int64"), [1, 2])
+serie_row: Scalar = serie_column[0]
+serie_window: yggdryl.Serie = serie_column[1:]
+serie_arrow: pa.Array = serie_column.into_arrow_array()
+serie_rows: list[Scalar] = serie_column.rows()
+serie_field: Field | None = serie_column.field
+serie_legs = yggdryl.Serie.from_arrow_array(pa.array([[1, 2], [3]], pa.list_(pa.int64())))
+assert isinstance(serie_legs, yggdryl.ListSerie)
+serie_offsets: list[int] = serie_legs.offsets
+serie_leg: yggdryl.Serie | None = serie_legs.row(0)
+serie_range: tuple[int, int] | None = serie_legs.range(1)
+serie_books = yggdryl.Serie.from_arrow_array(
+    pa.array([[("AAPL", 1)]], pa.map_(pa.utf8(), pa.int64()))
+)
+assert isinstance(serie_books, yggdryl.MapSerie)
+serie_entries: yggdryl.StructSerie = serie_books.entries
+serie_names: list[str] = serie_entries.names
+serie_scalar_serie: yggdryl.Serie | None = Scalar.from_([1]).as_serie()
+assert len(serie_run) == 3 and serie_row is not None and serie_window is not None
+assert serie_arrow is not None and serie_rows and serie_field is not None
+assert serie_offsets and serie_leg is not None and serie_range is not None
+assert serie_names and serie_scalar_serie is not None

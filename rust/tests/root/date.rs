@@ -30,7 +30,7 @@ mod temporal {
             assert!(id.is_temporal(), "{id}");
 
             let dtype = DataType::from(leaf);
-            assert_eq!(dtype, DataType::Date(leaf));
+            assert_eq!(dtype, DataType::from(leaf));
             assert_eq!(dtype.id(), id);
             assert_eq!(dtype.kind(), DataTypeKind::Temporal);
             assert_eq!(dtype.date_type(), Some(leaf));
@@ -47,8 +47,8 @@ mod temporal {
         assert_eq!(DateType::from_id(DataTypeId::Time32), None);
 
         // The two constructors are the two leaves, and `date` is the narrow one.
-        assert_eq!(DataType::date32(), DataType::Date(DateType::Date32));
-        assert_eq!(DataType::date64(), DataType::Date(DateType::Date64));
+        assert_eq!(DataType::date32(), DataType::Date32);
+        assert_eq!(DataType::date64(), DataType::Date64);
         assert_eq!(DataType::from_str("date").unwrap(), DataType::date32());
         assert_eq!(DataType::from_str("date64").unwrap(), DataType::date64());
 

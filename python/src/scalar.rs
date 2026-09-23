@@ -31,7 +31,7 @@ use yggdryl::{
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
-    Scalar, TimeUnit, Timezone, Vocabulary, i256,
+    Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -453,14 +453,18 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             value.nanoseconds(),
             value.unit(),
         ),
-        Scalar::Sequence(values) => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => {
             let values = values
                 .iter()
                 .map(|value| scalar_pickle_state(py, &value))
                 .collect::<PyResult<Vec<_>>>()?;
-            tagged_pickle_state(py, "sequence", Some(pickle_tuple(py, values)?))
+            tagged_pickle_state(py, value.kind(), Some(pickle_tuple(py, values)?))
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             let entries = entries
                 .as_slice()
                 .iter()
@@ -474,7 +478,7 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
                     )
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            tagged_pickle_state(py, "mapping", Some(pickle_tuple(py, entries)?))
+            tagged_pickle_state(py, value.kind(), Some(pickle_tuple(py, entries)?))
         }
         Scalar::Struct(entries) => {
             let entries = entries
@@ -764,18 +768,25 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(Scalar::Interval)
                 .map_err(value_error)
         }
-        "sequence" => {
+        "list" | "list_view" | "fixed_size_list" | "large_list" | "large_list_view" => {
             let payload = payload()?;
             let values = payload
                 .cast::<PyTuple>()
                 .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
-            values
+            let values = values
                 .iter()
                 .map(|value| scalar_from_pickle_state(&value, depth + 1))
-                .collect::<PyResult<Vec<_>>>()
-                .map(Scalar::from_sequence)
+                .collect::<PyResult<Vec<_>>>()?;
+            let serie = Serie::new(values);
+            Ok(match tag.as_str() {
+                "list_view" => Scalar::ListView(serie),
+                "fixed_size_list" => Scalar::FixedSizeList(serie),
+                "large_list" => Scalar::LargeList(serie),
+                "large_list_view" => Scalar::LargeListView(serie),
+                _ => Scalar::List(serie),
+            })
         }
-        "mapping" => {
+        "map" | "sorted_map" => {
             let payload = payload()?;
             let entries = payload
                 .cast::<PyTuple>()
@@ -797,7 +808,11 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                     ))
                 })
                 .collect::<PyResult<Vec<_>>>()?;
-            Scalar::from_mapping(entries).map_err(value_error)
+            let map = Scalar::from_mapping(entries).map_err(value_error)?;
+            Ok(match (tag.as_str(), map) {
+                ("sorted_map", Scalar::Map(entries)) => Scalar::SortedMap(entries),
+                (_, map) => map,
+            })
         }
         "struct" => {
             let payload = payload()?;
@@ -1096,6 +1111,14 @@ impl PyScalar {
             .dtype()
             .map(PyDataType::from_inner)
             .map_err(value_error)
+    }
+
+    /// The serie a sequence holds - a run or a column - or `None`.
+    fn as_serie(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        self.inner
+            .as_serie()
+            .map(|serie| crate::serie::described(py, serie.clone()))
+            .transpose()
     }
 
     fn stable_hash(&self) -> u64 {
@@ -1483,7 +1506,7 @@ pub(crate) struct PyScalarIterator {
 }
 
 impl PyScalarIterator {
-    fn new(values: impl IntoIterator<Item = Scalar>) -> Self {
+    pub(crate) fn new(values: impl IntoIterator<Item = Scalar>) -> Self {
         Self {
             inner: values.into_iter().collect::<Vec<_>>().into_iter(),
         }
@@ -1637,14 +1660,20 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::DateTime64(datetime) => datetime_as_py(py, value, datetime.timezone()),
         Scalar::Duration32(_) | Scalar::Duration64(_) => duration_as_py(py, value),
         Scalar::Interval(interval) => interval_as_py(py, interval),
-        Scalar::Sequence(items) => {
+        Scalar::List(items)
+        | Scalar::ListView(items)
+        | Scalar::FixedSizeList(items)
+        | Scalar::LargeList(items)
+        | Scalar::LargeListView(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py(py, &item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
-        Scalar::Mapping(entries) => mapping_to_python(py, entries.as_slice()),
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
+            mapping_to_python(py, entries.as_slice())
+        }
         Scalar::Struct(entries) => {
             let output = PyDict::new(py);
             for (name, value) in entries.as_map() {
@@ -1657,6 +1686,7 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
 }
 
 /// Convert a typed value while restoring named struct objects at the boundary.
+#[allow(clippy::too_many_lines)] // One exhaustive match over the field's shapes.
 pub(crate) fn as_py_with_field(
     py: Python<'_>,
     value: &Scalar,
@@ -1670,7 +1700,13 @@ pub(crate) fn as_py_with_field(
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
-                Scalar::Sequence(values) if values.len() == fields.len() => {
+                Scalar::List(values)
+                | Scalar::ListView(values)
+                | Scalar::FixedSizeList(values)
+                | Scalar::LargeList(values)
+                | Scalar::LargeListView(values)
+                    if values.len() == fields.len() =>
+                {
                     for (child, value) in fields.iter().zip(values.iter()) {
                         output.set_item(child.name(), as_py_with_field(py, &value, child)?)?;
                     }
@@ -1696,7 +1732,14 @@ pub(crate) fn as_py_with_field(
             }
             Ok(output.into_any().unbind())
         }
-        CoreDataType::Sequence(sequence) => {
+        sequence_dtype @ (CoreDataType::List(_)
+        | CoreDataType::ListView(_)
+        | CoreDataType::FixedSizeList(..)
+        | CoreDataType::LargeList(_)
+        | CoreDataType::LargeListView(_)) => {
+            let sequence = &sequence_dtype
+                .as_serie_type()
+                .expect("the variant was just matched");
             let child = sequence.item();
             let values = value.as_serie().ok_or_else(|| {
                 PyValueError::new_err(format!(
@@ -1710,7 +1753,10 @@ pub(crate) fn as_py_with_field(
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyList::new(py, values)?.into_any().unbind())
         }
-        CoreDataType::Mapping(mapping) => {
+        mapping_dtype @ (CoreDataType::Map(_) | CoreDataType::SortedMap(_)) => {
+            let mapping = &mapping_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let [_key_field, value_field] = mapping.entries().fields() else {
                 return Err(PyValueError::new_err(
                     "typed map entries need key and value fields",
@@ -1751,7 +1797,10 @@ pub(crate) fn as_py_with_field(
                 .ok_or_else(|| PyValueError::new_err("typed union id is not declared"))?;
             as_py_with_field(py, payload, branch)
         }
-        CoreDataType::Enum(dictionary) => {
+        dictionary_dtype @ CoreDataType::Dictionary(_) => {
+            let dictionary = &dictionary_dtype
+                .enum_type()
+                .expect("the variant was just matched");
             let value_field = CoreField::new(
                 field.name(),
                 dictionary.value().clone(),
@@ -1787,14 +1836,18 @@ fn mapping_to_python(py: Python<'_>, entries: &[(Scalar, Scalar)]) -> PyResult<P
 /// reads a tuple of pairs back as a mapping.
 fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        Scalar::Sequence(items) => {
+        Scalar::List(items)
+        | Scalar::ListView(items)
+        | Scalar::FixedSizeList(items)
+        | Scalar::LargeList(items)
+        | Scalar::LargeListView(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py_key(py, &item))
                 .collect::<PyResult<Vec<_>>>()?;
             Ok(PyTuple::new(py, items)?.into_any().unbind())
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             let entries = entries
                 .as_slice()
                 .iter()
@@ -2305,6 +2358,9 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyScalar>>() {
         return Some(value.inner.clone());
+    }
+    if let Ok(value) = value.extract::<PyRef<'_, crate::serie::PySerie>>() {
+        return Some(Scalar::from(value.inner.clone()));
     }
     if let Ok(value) = value.extract::<PyRef<'_, PyDataType>>() {
         return Some(Scalar::from(&value.inner));

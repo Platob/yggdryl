@@ -111,7 +111,6 @@ fn the_buffers_cross_in_and_out_shared_and_a_row_reads_through_its_key() {
         .expect("a dictionary column");
     let leaf = column.as_dictionary().expect("a dictionary column");
 
-    assert!(column.as_enum().is_some());
     assert_eq!(
         <DictionarySerie as SerieValue>::from_serie(&column),
         Some(leaf)

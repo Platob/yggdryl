@@ -4367,6 +4367,78 @@ export declare class Selector {
 }
 export type JsSelector = Selector
 
+/**
+ * Many values: a schema-free run, or the Arrow buffers of one field.
+ *
+ * A column holds no JavaScript value: a row is built when one is asked
+ * for. Writes land in the buffers the column holds, and two series are
+ * equal when their rows are.
+ */
+export declare class Serie {
+  /**
+   * A schema-free run of already-converted rows; `Serie.fromScalars` and
+   * the Arrow doors build a column.
+   */
+  constructor(rows?: Array<Scalar> | undefined | null)
+  /** The field a column carries, or `null` for a run. */
+  get field(): Field | null
+  /** `list(<the field named item>)` for a column; agreed out of a run's rows. */
+  get dtype(): DataType
+  /** Whether this is a column rather than a schema-free run. */
+  get isColumn(): boolean
+  /** The row count. */
+  get length(): number
+  /** The rows that are absent. */
+  nullCount(): number
+  /** Whether the serie holds no row. */
+  isEmpty(): boolean
+  /** Whether row `index` is absent. */
+  isNull(index: number): boolean
+  /** Row `index`, built as one value. */
+  scalar(index: number): Scalar
+  /** Row `index`, or `null` past the end. */
+  at(index: number): Scalar | null
+  /** Every row, each built once and kept by the array alone. */
+  rows(): Array<Scalar>
+  /** This serie as the one value a `Scalar` sequence holds. */
+  intoScalar(): Scalar
+  /** Remove row `index` and answer it. */
+  remove(index: number): Scalar
+  /** Remove the last row and answer it, or `null` when empty. */
+  pop(): Scalar | null
+  /** Drop every row from `length` on. */
+  truncate(length: number): void
+  /** Drop every row and keep the field. */
+  clear(): void
+  /** Append every row of `other`, buffer to buffer where the fields agree. */
+  extendFromSerie(other: Serie): void
+  /** Replace a record column's child of `child`'s name, or add it. */
+  setChild(child: Serie): void
+  /** This record column as a native `BatchReader` of one batch. */
+  intoArrowReader(): BatchReader
+  /** Whether two series hold equal rows, whichever leaf holds them. */
+  equals(other: Serie): boolean
+  /** Order two series by their rows, as the core defines it. */
+  compare(other: Serie): number
+  /** The rows, rendered behind the field's name. */
+  toString(): string
+}
+export type JsSerie = Serie
+
+/**
+ * An owning iterator over a serie's rows, each built once.
+ *
+ * This type implements JavaScript's iterable iterator protocol.
+ * On runtimes with `Iterator` helpers, its prototype also inherits those helpers.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Iterator#iterator_helper_methods
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Iteration_protocols#the_iterator_and_iterable_protocols
+ */
+export declare class SerieIterator {
+
+}
+export type JsSerieIterator = SerieIterator
+
 /** One committed version of a table's contents. */
 export declare class Snapshot {
   /** Identifier of this snapshot, unique within the table. */

@@ -122,14 +122,11 @@ impl SerieValue for NullSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Null(Arc::new(self))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Null(column) => Some(column.as_ref()),
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 

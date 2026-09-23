@@ -11,7 +11,6 @@ use super::path;
 
 use std::sync::Arc;
 
-use yggdryl::SequenceType;
 use yggdryl::fix::{FixCode, FixReplacement};
 use yggdryl::{DataType, Field, FixCodec, FixMsg, FixRegistry, Scalar};
 
@@ -276,7 +275,7 @@ fn occurrences<'msg>(message: &'msg FixMsg, group: &str) -> Vec<Vec<(&'msg str, 
         .index_of(group)
         .unwrap_or_else(|| panic!("a {group} group"));
     let item = match message.as_field().fields()[at].dtype() {
-        DataType::Sequence(SequenceType::List(item)) => item.as_ref(),
+        DataType::List(item) => item.as_ref(),
         other => panic!("a list, got {other}"),
     };
     // A parsed message's row is a run, lent for the borrows the answer keeps.

@@ -231,7 +231,7 @@ mod internal {
     fn a_width_variant_borrows_the_leaf_display_it_holds() {
         use std::sync::Arc;
 
-        use yggdryl::{decimal, integer, sequence};
+        use yggdryl::{decimal, integer, serie};
 
         let decimal = Scalar::Decimal32(decimal::Decimal32::new(1_250, 2));
         assert_eq!(leaf_display(&decimal).unwrap().to_string(), "12.50");
@@ -241,9 +241,9 @@ mod internal {
                 .to_string(),
             "7"
         );
-        let held = sequence::Run::new(Arc::from([Scalar::from(1_i32)]));
+        let held = serie::Run::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
-            leaf_display(&Scalar::Sequence(yggdryl::Serie::Run(held.clone())))
+            leaf_display(&Scalar::List(yggdryl::Serie::Run(held.clone())))
                 .unwrap()
                 .to_string(),
             held.to_string()
@@ -516,7 +516,19 @@ mod values {
 
         let left = Scalar::from_sequence([]);
         let right = Scalar::from_sequence([]);
-        let (Scalar::Sequence(left), Scalar::Sequence(right)) = (&left, &right) else {
+        let (
+            Scalar::List(left)
+            | Scalar::ListView(left)
+            | Scalar::FixedSizeList(left)
+            | Scalar::LargeList(left)
+            | Scalar::LargeListView(left),
+            Scalar::List(right)
+            | Scalar::ListView(right)
+            | Scalar::FixedSizeList(right)
+            | Scalar::LargeList(right)
+            | Scalar::LargeListView(right),
+        ) = (&left, &right)
+        else {
             unreachable!();
         };
         assert!(std::ptr::eq(
@@ -526,7 +538,11 @@ mod values {
 
         let left = Scalar::from_mapping([]).unwrap();
         let right = Scalar::from_mapping([]).unwrap();
-        let (Scalar::Mapping(left), Scalar::Mapping(right)) = (&left, &right) else {
+        let (
+            Scalar::Map(left) | Scalar::SortedMap(left),
+            Scalar::Map(right) | Scalar::SortedMap(right),
+        ) = (&left, &right)
+        else {
             unreachable!();
         };
         assert!(std::ptr::eq(left.as_slice(), right.as_slice()));
@@ -1291,7 +1307,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     use yggdryl::{
         CodeValue, DecimalValue, GeospatialValue, IntegerValue, NestedValue, TemporalValue,
     };
-    use yggdryl::{bytes, decimal, geospatial, integer, sequence, string, time, uuid};
+    use yggdryl::{bytes, decimal, geospatial, integer, serie, string, time, uuid};
 
     let integer = integer::UInt128::new(u128::MAX);
     assert_eq!(IntegerValue::as_i128(&integer), None);
@@ -1335,7 +1351,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     );
     assert_eq!(Value::dtype(&geometry).unwrap().id(), DataTypeId::Geometry);
 
-    let sequence = sequence::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
+    let sequence = serie::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
     assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
@@ -1351,7 +1367,7 @@ fn every_scalar_family_exposes_its_leaf_contract() {
 #[test]
 fn concrete_leaves_preserve_their_physical_identity() {
     use yggdryl::{
-        bytes, date, datetime, decimal, geospatial, integer, mapping, sequence, string, structure,
+        bytes, date, datetime, decimal, geospatial, integer, mapping, serie, string, structure,
         uuid,
     };
 
@@ -1421,12 +1437,9 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert_eq!(geometry.as_bytes(), point);
     assert!(geospatial::Geography::new(vec![0xff]).is_err());
 
-    let values = sequence::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
+    let values = serie::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from("one")]));
     assert_eq!(values.as_slice().len(), 2);
-    let mapping = mapping::Mapping::Map(mapping::Map::new(Arc::from([(
-        Scalar::from("one"),
-        Scalar::from(1_i32),
-    )])));
+    let mapping = mapping::Map::new(Arc::from([(Scalar::from("one"), Scalar::from(1_i32))]));
     assert_eq!(mapping.as_slice().len(), 1);
     let record = structure::Struct::new(Arc::new(std::collections::BTreeMap::from([(
         "one".into(),
@@ -1437,7 +1450,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
 
 #[test]
 fn width_variants_keep_exact_members_and_logical_identity() {
-    use yggdryl::{bytes, datetime, decimal, geospatial, integer, sequence, string};
+    use yggdryl::{bytes, datetime, decimal, geospatial, integer, serie, string};
 
     let signed = Scalar::Int32(integer::Int32::new(7));
     let unsigned = Scalar::UInt8(integer::UInt8::new(7));
@@ -1485,7 +1498,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::Sequence(yggdryl::Serie::Run(sequence::Run::new(Arc::from([
+    let sequence = Scalar::List(yggdryl::Serie::Run(serie::Run::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ]))));
@@ -1563,10 +1576,10 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
-        (Scalar::from_sequence([Scalar::from(1_i32)]), "sequence"),
+        (Scalar::from_sequence([Scalar::from(1_i32)]), "list"),
         (
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))]).unwrap(),
-            "mapping",
+            "map",
         ),
         (
             Scalar::from_struct([("a", Scalar::from(1_i32))]).unwrap(),
@@ -1847,7 +1860,7 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         Some(&Scalar::from(3_i64))
     );
     assert_eq!((&column).into_iter().count(), (&run).into_iter().count());
-    assert_eq!(column.kind(), "sequence");
+    assert_eq!(column.kind(), "list");
     assert_eq!(column.id(), DataTypeId::List);
     assert_eq!(column.dtype().unwrap(), run.dtype().unwrap());
 }
@@ -1931,10 +1944,10 @@ fn a_column_writes_through_every_wire_as_its_run_does() {
     );
 
     // The crate's own serde is the one wire that tells the two apart: a run
-    // under `sequence`, a column with its field under `serie`, and each
+    // under `list`, a column with its field under `serie`, and each
     // reads back as what it was.
     let run_document = serde_json::to_value(&run).unwrap();
-    assert_eq!(run_document["type"], "sequence");
+    assert_eq!(run_document["type"], "list");
     let column_document = serde_json::to_value(&column).unwrap();
     assert_eq!(column_document["type"], "serie");
     assert_eq!(column_document["value"]["field"]["name"], "size");

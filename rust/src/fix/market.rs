@@ -307,12 +307,13 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
             "expected one typed repeating group, got none or multiple",
         )
     })?;
-    let DataType::Sequence(sequence) = message
+    let Some(sequence) = message
         .as_field()
         .fields()
         .get(group_at)
         .ok_or_else(|| invalid("$.NoMDEntries(268)", "typed group field is absent"))?
         .dtype()
+        .as_serie_type()
     else {
         return Err(invalid(
             "$.NoMDEntries(268)",

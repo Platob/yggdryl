@@ -5,7 +5,6 @@ use std::io::{Cursor, Read};
 use std::str::FromStr;
 
 use saphyr_parser::{Event, EventReceiver, Parser};
-use yggdryl::DateTimeType;
 use yggdryl::yaml;
 use yggdryl::{
     DataType, DataTypeId, Field, Limits, Scalar, StructType, TimeUnit, Timezone, from_yaml_scalar,
@@ -89,10 +88,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                }),
+                },
                 false,
             ),
             Field::new(

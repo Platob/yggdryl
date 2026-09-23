@@ -291,7 +291,6 @@ to the outer node and Arrow's values are a bare datatype.
 === "Rust"
 
     ```rust
-    use yggdryl::TimeType;
     use yggdryl::{DataType, TimeUnit};
 
     let value = DataType::from_str("map<string,array<decimal(38,18)>>")?;
@@ -302,7 +301,7 @@ to the outer node and Arrow's values are a bare datatype.
     assert_eq!(DataType::try_from(arrow)?, value);
 
     // Projection re-checks parameters, so a directly built leaf cannot escape.
-    let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+    let broken = DataType::Time32(TimeUnit::Nanosecond);
     assert!(broken.clone().into_arrow_datatype().is_err());
     assert!(broken.into_arrow_datatype_ffi().is_err());
     ```
@@ -610,10 +609,9 @@ On a [Field](field.md) the call keeps name, nullability, and metadata, and rebui
 Building the enum by hand is Rust only; `validate` is in Python too. It catches states the public enum admits but no constructor produces.
 
 ```rust
-use yggdryl::TimeType;
 use yggdryl::{DataType, Field, TimeUnit};
 
-let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+let broken = DataType::Time32(TimeUnit::Nanosecond);
 assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 

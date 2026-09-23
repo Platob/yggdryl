@@ -1422,7 +1422,14 @@ fn named_rows(field: &CoreField, value: Scalar) -> Scalar {
                 .and_then(|named| Scalar::from_struct(named).ok())
                 .unwrap_or(value)
         }
-        CoreDataType::Sequence(sequence) => {
+        sequence_dtype @ (CoreDataType::List(_)
+        | CoreDataType::ListView(_)
+        | CoreDataType::FixedSizeList(..)
+        | CoreDataType::LargeList(_)
+        | CoreDataType::LargeListView(_)) => {
+            let sequence = &sequence_dtype
+                .as_serie_type()
+                .expect("the variant was just matched");
             let item = sequence.item();
             let Some(entries) = value.sequence_rows() else {
                 return value;

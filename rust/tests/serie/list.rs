@@ -1,4 +1,4 @@
-//! `rust/src/serie/sequence.rs`: the list leaves - an item column under a
+//! `rust/src/serie/list.rs`: the list leaves - an item column under a
 //! cut, the cut rebased onto exactly the items it reaches and re-cut by
 //! every write.
 

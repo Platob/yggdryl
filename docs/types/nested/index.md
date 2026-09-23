@@ -6,7 +6,7 @@ The datatypes that hold other datatypes: four layouts that carry child fields, t
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Struct(StructType)`, `Sequence(SequenceType)`, `Mapping(MappingType)`, `Union(UnionFields, UnionMode)`, `Enum(EnumType)` and `RunEndEncoded(RunEndEncodedType)`; the values `Struct`, `Serie` - a schema-free `Run` or the buffers of one field, on its [own page](../serie.md) - and `Map`, and `Nested`, the one family value over them |
+| Owns | `DataType::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` (the five leaves `SerieType` views), `Struct(StructType)`, `Union(UnionFields, UnionMode)`, `Dictionary(Arc<DictionaryType>)` (the leaf `EnumType` views), `Map(Arc<MapType>)` and `SortedMap(Arc<MapType>)` (the two leaves `MappingType` views), and `RunEndEncoded(Arc<RunEndEncodedType>)`; the values `Struct`, `Serie` - a schema-free `Run` or the buffers of one field, on its [own page](../serie.md) - and `Map`, and `Nested`, the one family value over them |
 | Validates | At construction, once: unique child names, non-negative and unique union type ids, a non-negative fixed list length, map entries that are a non-null struct of a key and a value, an integer dictionary key, and non-null `int16`/`int32`/`int64` run ends |
 | Lazy | Nothing - a layout is checked when it is built and never re-derived; the `validate` a hand-built payload meets is the same check |
 | Cached | The children of one layout live in one shared allocation, so a datatype clone shares them rather than walking them; the Arrow projection is cached on the [`Field`](../field.md) |
@@ -19,8 +19,8 @@ The datatypes that hold other datatypes: four layouts that carry child fields, t
 | page | owns |
 | --- | --- |
 | [Struct](struct.md) | `StructType`: named children in declaration order, and the non-null struct field that is the row schema |
-| [List](list.md) | `SequenceType`: the five list layouts over one item field |
-| [Map](map.md) | `MappingType`: the `entries` struct of a key and a value, and the leaf that promises sorted keys |
+| [List](list.md) | `SerieType`: the family view over the five `List`/`ListView`/`LargeList`/`LargeListView`/`FixedSizeList` leaves, each over one item field |
+| [Map](map.md) | `MappingType`: the family view over the `Map`/`SortedMap` leaves, the `entries` struct of a key and a value, and the leaf that promises sorted keys |
 | [Union](union.md) | `UnionFields` and `UnionMode`: one of several member fields per row, and the `variant(...)` sugar |
 | [Dictionary](dictionary.md) | `EnumType`: an integer key column over a value column, with Arrow's dictionary options on the field |
 | [Run-end](runend.md) | `RunEndEncodedType`: a run-ends column beside the values it repeats |
@@ -124,12 +124,13 @@ all - it carries two datatypes, not two fields.
 
 ## The `Nested` value
 
-`Nested` is the one value over the family: a `Sequence`, a `Mapping`, a
-`Struct` or a [`Variant`](../variant.md). It answers the kind every leaf
-shares, the datatype the held leaf's children name, and the `Scalar` it widens
-back to. Each leaf answers `NestedValue`: how many direct children it has and
-an iterator over them - a sequence's values, a mapping's **keys**, and a
-record's values in sorted name order.
+`Nested` is the one value over the family: a `List` (or one of the four other
+sequence leaves), a `Map` (or `SortedMap`), a `Struct` or a
+[`Variant`](../variant.md). It answers the kind every leaf shares, the
+datatype the held leaf's children name, and the `Scalar` it widens back to.
+Each leaf answers `NestedValue`: how many direct children it has and an
+iterator over them - a sequence's values, a map's **keys**, and a record's
+values in sorted name order.
 
 === "Rust"
 
@@ -142,14 +143,14 @@ record's values in sorted name order.
 
     assert_eq!(Nested::KIND, DataTypeKind::Nested);
     let held = Nested::from_scalar(&sequence).expect("a sequence");
-    let Nested::Sequence(leaf) = &held else { panic!("a sequence") };
+    let Nested::List(leaf) = &held else { panic!("a sequence") };
     assert_eq!(leaf.len(), 2);
     assert_eq!(leaf.iter().count(), 2);
     assert_eq!(held.dtype()?, DataType::list(DataType::Int64.required_field("item")));
     assert_eq!(held.into_scalar(), sequence);
 
     // Every leaf narrows the same way, and no other family does.
-    assert!(matches!(mapping.as_nested(), Some(Nested::Mapping(_))));
+    assert!(matches!(mapping.as_nested(), Some(Nested::Map(_))));
     assert!(matches!(record.as_nested(), Some(Nested::Struct(_))));
     assert_eq!(Scalar::from(1_i64).as_nested(), None);
     assert_eq!(

@@ -1,7 +1,7 @@
 //! Lazy row-value widening for the record I/O adapters.
 //!
 //! A row canonicalizes to one ordered
-//! [`Run`](crate::sequence::Run) under a non-null Struct
+//! [`Run`](crate::serie::Run) under a non-null Struct
 //! [`Field`]. A sorted [`Struct`](crate::structure::Struct) is the named
 //! input shape, not a second schema model. Rust structs opt in with
 //! `TryInto<Scalar>`, and the I/O methods widen that iterator into the one Arrow

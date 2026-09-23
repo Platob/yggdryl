@@ -11,9 +11,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::metadata::FIELD_PARTITION_KEY;
 
 use crate::Scalar;
-use crate::enums::EnumType;
 use crate::invalid;
-use crate::sequence::SequenceType;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
@@ -30,7 +28,13 @@ impl DataType {
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
-            Self::Sequence(_) | Self::Mapping(_) => 1,
+            Self::List(_)
+            | Self::ListView(_)
+            | Self::FixedSizeList(..)
+            | Self::LargeList(_)
+            | Self::LargeListView(_)
+            | Self::Map(_)
+            | Self::SortedMap(_) => 1,
             Self::Struct(structure) => structure.len(),
             Self::Union(fields, _) => fields.len(),
             Self::RunEndEncoded(_) => 2,
@@ -41,13 +45,14 @@ impl DataType {
     /// Returns a direct child field by position without allocating.
     pub fn get_field_at(&self, index: usize) -> Option<&Field> {
         match self {
-            Self::Sequence(sequence) => {
-                let field = sequence.item();
-                (index == 0).then_some(field)
-            }
+            Self::List(item)
+            | Self::ListView(item)
+            | Self::FixedSizeList(item, _)
+            | Self::LargeList(item)
+            | Self::LargeListView(item) => (index == 0).then_some(&**item),
             Self::Struct(structure) => structure.get(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
-            Self::Mapping(mapping) => (index == 0).then_some(mapping.entries()),
+            Self::Map(map) | Self::SortedMap(map) => (index == 0).then_some(map.entries()),
             Self::RunEndEncoded(encoded) => match index {
                 0 => Some(&encoded.run_ends),
                 1 => Some(&encoded.values),
@@ -62,17 +67,18 @@ impl DataType {
     /// This is the step every named [`FieldSegment`] takes.
     pub(crate) fn get_field_by_name(&self, name: &str) -> Option<&Field> {
         match self {
-            Self::Sequence(sequence) => {
-                let field = sequence.item();
-                (field.name() == name).then_some(field)
-            }
+            Self::List(item)
+            | Self::ListView(item)
+            | Self::FixedSizeList(item, _)
+            | Self::LargeList(item)
+            | Self::LargeListView(item) => (item.name() == name).then_some(&**item),
             Self::Struct(structure) => structure
                 .as_fields()
                 .iter()
                 .find(|field| field.name() == name),
             Self::Union(fields, _) => fields.get_by_name(name).map(|(_, field)| field),
-            Self::Mapping(mapping) => {
-                (mapping.entries().name() == name).then_some(mapping.entries())
+            Self::Map(map) | Self::SortedMap(map) => {
+                (map.entries().name() == name).then_some(map.entries())
             }
             Self::RunEndEncoded(encoded) => {
                 if encoded.run_ends.name() == name {
@@ -496,7 +502,9 @@ impl DataType {
         if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
             return Err(SchemaPathError::Unsupported(segment));
         }
-        if matches!(self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+        if matches!(self, Self::Map(_) | Self::SortedMap(_))
+            && matches!(segment, FieldSegment::Key(_))
+        {
             return Err(SchemaPathError::Unsupported(segment));
         }
         let child = if let Some(name) = segment.as_name() {
@@ -539,7 +547,9 @@ impl DataType {
         if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
             return Err(schema_segment_refusal(path, segment));
         }
-        if matches!(&*self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+        if matches!(&*self, Self::Map(_) | Self::SortedMap(_))
+            && matches!(segment, FieldSegment::Key(_))
+        {
             return Err(schema_segment_refusal(path, segment));
         }
         if rest.is_empty() {
@@ -583,7 +593,9 @@ impl DataType {
         if matches!(segment, FieldSegment::Range { .. } | FieldSegment::Where(_)) {
             return Err(schema_segment_refusal(path, segment));
         }
-        if matches!(&*self, Self::Mapping(_)) && matches!(segment, FieldSegment::Key(_)) {
+        if matches!(&*self, Self::Map(_) | Self::SortedMap(_))
+            && matches!(segment, FieldSegment::Key(_))
+        {
             return Err(schema_segment_refusal(path, segment));
         }
         if rest.is_empty() {
@@ -694,19 +706,18 @@ impl DataType {
                 .expect("a child of the arity this layout declares")
         };
         Ok(match self {
-            Self::Sequence(SequenceType::List(_)) => Self::list(next()),
-            Self::Sequence(SequenceType::ListView(_)) => Self::list_view(next()),
-            Self::Sequence(SequenceType::FixedSizeList(_, length)) => {
-                Self::fixed_size_list(next(), *length)?
-            }
-            Self::Sequence(SequenceType::LargeList(_)) => Self::large_list(next()),
-            Self::Sequence(SequenceType::LargeListView(_)) => Self::large_list_view(next()),
+            Self::List(_) => Self::list(next()),
+            Self::ListView(_) => Self::list_view(next()),
+            Self::FixedSizeList(_, length) => Self::fixed_size_list(next(), *length)?,
+            Self::LargeList(_) => Self::large_list(next()),
+            Self::LargeListView(_) => Self::large_list_view(next()),
             Self::Struct(_) => Self::from(StructType::from_fields(children)?),
             Self::Union(members, mode) => {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();
                 Self::union(ids.into_iter().zip(children), *mode)?
             }
-            Self::Mapping(mapping) => Self::map(next(), mapping.keys_sorted())?,
+            Self::Map(_) => Self::map(next(), false)?,
+            Self::SortedMap(_) => Self::map(next(), true)?,
             Self::RunEndEncoded(_) => {
                 let run_ends = next();
                 Self::run_end_encoded(run_ends, next())?
@@ -1624,23 +1635,22 @@ impl<'a> From<&'a String> for FieldKey<'a> {
 
 pub(crate) fn exploded(child: &Field) -> Field {
     let held = match child.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::ListView(item))
-        | DataType::Sequence(SequenceType::FixedSizeList(item, _))
-        | DataType::Sequence(SequenceType::LargeList(item))
-        | DataType::Sequence(SequenceType::LargeListView(item)) => {
-            Some((item.dtype().clone(), item.is_nullable()))
-        }
-        DataType::Mapping(map) => {
+        DataType::List(item)
+        | DataType::ListView(item)
+        | DataType::FixedSizeList(item, _)
+        | DataType::LargeList(item)
+        | DataType::LargeListView(item) => Some((item.dtype().clone(), item.is_nullable())),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             Some((map.entries().dtype().clone(), map.entries().is_nullable()))
         }
         DataType::RunEndEncoded(encoded) => Some((
             encoded.values().dtype().clone(),
             encoded.values().is_nullable(),
         )),
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
-            Some((dictionary.value().clone(), false))
-        }
+        DataType::Dictionary(dictionary) => Some((dictionary.value().clone(), false)),
         _ => None,
     };
     match held {

@@ -71,7 +71,7 @@ mod temporal {
                 assert!(leaf.validate().is_ok());
                 assert_eq!(leaf.to_string(), format!("{}({unit})", id.as_str()));
 
-                assert_eq!(constructed, DataType::Duration(leaf));
+                assert_eq!(constructed, DataType::from(leaf));
                 assert_eq!(DataType::duration_of(leaf).unwrap(), constructed);
                 assert_eq!(DataType::from(leaf), constructed);
                 assert_eq!(constructed.id(), id);
@@ -108,7 +108,7 @@ mod temporal {
         // and stays unknown rather than becoming a width-ambiguous alias.
         assert_eq!(
             DataType::from_str("Duration(us)").unwrap(),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Microsecond))
+            DataType::Duration64(TimeUnit::Microsecond)
         );
         assert!(DataType::from_str("duration").is_err());
 
@@ -128,11 +128,7 @@ mod temporal {
                 "Duration64",
                 reason,
             );
-            assert_refused(
-                DataType::Duration(DurationType::Duration32(unit)).validate(),
-                "Duration32",
-                reason,
-            );
+            assert_refused(DataType::Duration32(unit).validate(), "Duration32", reason);
         }
     }
 }

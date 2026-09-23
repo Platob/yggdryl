@@ -1542,7 +1542,7 @@ fn cloning_a_column_allocates_nothing() {
             }),
         )
         .expect("a record column");
-        let held = Scalar::Sequence(counts.clone());
+        let held = Scalar::List(counts.clone());
 
         free(&format!("cloning {rows} int64 rows"), || {
             black_box(black_box(&counts).clone());

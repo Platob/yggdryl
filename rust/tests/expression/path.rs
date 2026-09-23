@@ -1,6 +1,5 @@
 //! `rust/src/expression/path.rs`: focused edge cases for the one path grammar.
 
-use yggdryl::SequenceType;
 use yggdryl::expression::Term;
 use yggdryl::{DataType, Field, FieldPath, FieldSegment, Scalar, StructType};
 
@@ -414,10 +413,7 @@ fn a_step_types_one_level_and_reads_one_value() {
     .unwrap()
     .required_field("row");
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
-    assert!(matches!(
-        legs.dtype(),
-        DataType::Sequence(SequenceType::List(_))
-    ));
+    assert!(matches!(legs.dtype(), DataType::List(_)));
     let first = FieldSegment::index(0).apply_field(&legs).unwrap();
     assert_eq!(first.dtype(), &DataType::Int64);
     assert!(first.is_nullable(), "a position past the end reads as null");
@@ -707,7 +703,6 @@ fn a_predicate_segment_reads_the_elements_a_row_holds() {
 
 mod grammar {
 
-    use yggdryl::DateTimeType;
     use yggdryl::expression::{Attribute, Term};
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
@@ -727,10 +722,10 @@ mod grammar {
                 Field::new("b", DataType::Boolean, true),
                 Field::new(
                     "t",
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: TimeUnit::Microsecond,
                         timezone: Timezone::UTC,
-                    }),
+                    },
                     true,
                 ),
                 Field::new("n", DataType::Int32, true).with_partition(true),

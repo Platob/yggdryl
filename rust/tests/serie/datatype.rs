@@ -1,4 +1,4 @@
-//! `rust/src/sequence.rs`: the schema-free run a row is, and the sequence
+//! `rust/src/serie/datatype.rs`: the schema-free run a row is, and the serie
 //! family's datatype it sits beside.
 
 use std::borrow::Cow;
@@ -78,7 +78,7 @@ fn a_run_widens_to_a_sequence_scalar_and_narrows_back_only_from_a_run() {
         [Scalar::from(1_i64), Scalar::from(2_i64)],
     )
     .unwrap();
-    let held = Scalar::Sequence(column);
+    let held = Scalar::List(column);
     assert_eq!(Run::from_scalar(&held), None);
     assert_eq!(held.as_sequence(), None);
     assert_eq!(Run::from_scalar(&Scalar::from(1_i64)), None);
@@ -114,7 +114,7 @@ fn a_write_through_the_serie_root_copies_the_run_once_and_the_shared_slice_stays
 fn a_sequence_datatype_holds_one_item_field_in_five_layouts() {
     let item = Field::new("item", DataType::Int32, true);
     let sequence = DataType::list(item.clone())
-        .as_sequence_type()
+        .as_serie_type()
         .expect("a list");
     assert_eq!(sequence.item(), &item);
     assert_eq!(sequence.fixed_length(), None);
@@ -122,14 +122,14 @@ fn a_sequence_datatype_holds_one_item_field_in_five_layouts() {
     assert!(!sequence.is_large());
     assert!(
         DataType::large_list_view(item.clone())
-            .as_sequence_type()
+            .as_serie_type()
             .unwrap()
             .is_view()
     );
     assert_eq!(
         DataType::fixed_size_list(item, 3)
             .unwrap()
-            .as_sequence_type()
+            .as_serie_type()
             .unwrap()
             .fixed_length(),
         Some(3)

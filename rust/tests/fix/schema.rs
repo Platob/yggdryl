@@ -227,7 +227,10 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
-    assert!(matches!(typed(60), DataType::DateTime(_)), "TransactTime");
+    assert!(
+        matches!(typed(60), DataType::DateTime64 { .. }),
+        "TransactTime"
+    );
     // Every price and quantity is FIX's own field, exact at the one width
     // this crate keeps a number at.
     assert_eq!(typed(44), DataType::decimal128(38, 18).unwrap());
@@ -966,7 +969,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     assert_eq!(field.as_fix().tag().unwrap(), Some(497_401));
     assert_eq!(field.as_fix().counter().unwrap(), Some(1907));
     assert!(registry.get_field_by_name("regulatorytradeidgrp").is_none());
-    let DataType::Sequence(yggdryl::SequenceType::List(item)) = field.dtype() else {
+    let DataType::List(item) = field.dtype() else {
         panic!("regulatorytradeids is a List, got {}", field.dtype());
     };
     assert_eq!(item.name(), "regulatorytradeidcomponent");

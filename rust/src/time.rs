@@ -5,7 +5,7 @@
 //! `Time64` at microseconds or nanoseconds, so the width follows from the
 //! resolution and a caller who states only the resolution gets the width it
 //! fits in. [`TimeType`] names the two leaves, each carrying its unit as a
-//! parameter; [`crate::DataType::Time`] is the one time datatype; [`Time32`]
+//! parameter; `DataType::Time32` and `DataType::Time64` are the time datatypes; [`Time32`]
 //! and [`Time64`] are the values.
 //!
 //! ```
@@ -196,14 +196,14 @@ impl DataTypeValue for TimeType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Time(self)
+        match self {
+            Self::Time32(unit) => DataType::Time32(unit),
+            Self::Time64(unit) => DataType::Time64(unit),
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Time(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.time_type()
     }
 }
 
@@ -217,7 +217,7 @@ impl fmt::Display for TimeType {
 
 impl From<TimeType> for DataType {
     fn from(value: TimeType) -> Self {
-        Self::Time(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -225,11 +225,11 @@ impl TryFrom<&DataType> for TimeType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Time(leaf) => Ok(*leaf),
-            other => Err(Error::InvalidDataType {
+        match value.time_type() {
+            Some(leaf) => Ok(leaf),
+            None => Err(Error::InvalidDataType {
                 kind: "time",
-                reason: format_smolstr!("expected a time datatype, got {other}"),
+                reason: format_smolstr!("expected a time datatype, got {value}"),
             }),
         }
     }
@@ -250,7 +250,7 @@ impl DataType {
     ///
     /// Returns [`Error::InvalidDataType`] for a day or an interval layout.
     pub fn time(unit: TimeUnit) -> Result<Self> {
-        Ok(Self::Time(TimeType::for_unit(unit)?))
+        Ok(TimeType::for_unit(unit)?.into())
     }
 
     /// A 32-bit time of day at `unit`.
@@ -281,14 +281,15 @@ impl DataType {
     /// unit.
     pub fn time_of(leaf: TimeType) -> Result<Self> {
         leaf.validate()?;
-        Ok(Self::Time(leaf))
+        Ok(DataTypeValue::into_dtype(leaf))
     }
 
     /// The leaf a time datatype declares, `None` for every other.
     #[must_use]
     pub const fn time_type(&self) -> Option<TimeType> {
         match self {
-            Self::Time(leaf) => Some(*leaf),
+            Self::Time32(unit) => Some(TimeType::Time32(*unit)),
+            Self::Time64(unit) => Some(TimeType::Time64(*unit)),
             _ => None,
         }
     }
@@ -349,7 +350,7 @@ mod arrow {
     /// Returns an error when the unit is not one the width carries, or when
     /// the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        let DataType::Time(leaf) = dtype else {
+        let Some(leaf) = dtype.time_type() else {
             return Err(invalid(
                 "time",
                 format_smolstr!("expected a time datatype, got {dtype}"),

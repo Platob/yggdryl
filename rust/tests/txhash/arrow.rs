@@ -60,7 +60,6 @@ mod columns {
     };
     use arrow_schema::{DataType as ArrowDataType, Schema, TimeUnit as ArrowTimeUnit};
 
-    use yggdryl::DateTimeType;
     use yggdryl::txhash::arrow::{column_txhashes, compose, decompose, row_txhashes, unix_array};
     use yggdryl::txhash::{TxHash, TxHasher};
     use yggdryl::xxhash::Xxh3;
@@ -93,10 +92,10 @@ mod columns {
     fn event_field() -> Field {
         Field::new(
             "event",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: UNIT,
                 timezone: Timezone::UTC,
-            }),
+            },
             false,
         )
     }
@@ -646,10 +645,10 @@ mod columns {
     fn an_instant_that_does_not_fit_the_holder_unit_is_refused_by_cell() {
         let seconds = Field::new(
             "event",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Second,
                 timezone: Timezone::UTC,
-            }),
+            },
             false,
         );
         let mut key = coupled("key", 16, "event");
@@ -705,10 +704,10 @@ mod columns {
     fn a_null_instant_nulls_a_nullable_holder_and_refuses_a_required_one() {
         let event = Field::new(
             "event",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: UNIT,
                 timezone: Timezone::UTC,
-            }),
+            },
             true,
         );
         let sparse: ArrayRef = Arc::new(

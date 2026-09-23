@@ -568,13 +568,19 @@ fn write_node<W: Write>(
         return write_node(writer, &held.scalar()?, columns, position, width);
     }
     match value {
-        Scalar::Sequence(values) if !values.is_empty() => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if !values.is_empty() =>
+        {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
             write_sequence(writer, &values.rows(), columns, skip_first_indent, width)
         }
-        Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) if !entries.as_slice().is_empty() => {
             if position == Position::AfterKey {
                 writer.write_all(b"\n")?;
             }
@@ -902,12 +908,16 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             )?,
             _ => return Err(codec_error(0, "invalid interval layout")),
         },
-        Scalar::Sequence(values) => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
         }
-        Scalar::Mapping(entries) => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
             debug_assert!(entries.as_slice().is_empty());
             writer.write_all(b"{}")?;
         }
@@ -983,7 +993,13 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Sequence(values) if !values.is_empty() => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if !values.is_empty() =>
+        {
             writer.write_all(b"[")?;
             for (index, value) in values.rows().iter().enumerate() {
                 if index != 0 {
@@ -994,7 +1010,7 @@ fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             writer.write_all(b"]")?;
             Ok(())
         }
-        Scalar::Mapping(entries) if !entries.as_slice().is_empty() => {
+        Scalar::Map(entries) | Scalar::SortedMap(entries) if !entries.as_slice().is_empty() => {
             writer.write_all(b"{")?;
             for (index, (key, value)) in entries.as_slice().iter().enumerate() {
                 if index != 0 {

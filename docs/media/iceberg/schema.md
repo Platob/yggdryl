@@ -584,7 +584,6 @@ Rust only.
 
 ```rust
 use yggdryl::iceberg::{schema_from_json, schema_into_json};
-use yggdryl::{DataType};
 use yggdryl::json;
 
 let document = json::from_utf8(
@@ -607,8 +606,8 @@ let schema = schema_from_json("row", &document)?;
 
 // A list becomes a `List` whose item field is named `element` and carries `element-id`.
 let legs = &schema.fields()[0];
-let DataType::Sequence(sequence) = legs.dtype() else { panic!("expected a list") };
-let element = sequence.item();
+let leaf = legs.dtype().as_serie_type().expect("expected a list");
+let element = leaf.item();
 assert_eq!(element.name(), "element");
 assert_eq!(element.parquet_field_id()?, Some(2));
 assert!(!element.is_nullable());
@@ -616,7 +615,7 @@ assert_eq!(element.fields()[0].name(), "price");
 
 // A map becomes a `Map` over a non-null `entries` struct of `key` and `value`.
 let tags = &schema.fields()[1];
-let DataType::Mapping(mapping) = tags.dtype() else { panic!("expected a map") };
+let mapping = tags.dtype().as_mapping().expect("expected a map");
 let map = mapping.parameters();
 assert_eq!(map.entries().name(), "entries");
 assert!(!map.entries().is_nullable());

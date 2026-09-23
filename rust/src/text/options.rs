@@ -6,7 +6,6 @@ use std::hash::{Hash, Hasher};
 use regex::bytes::Regex;
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::DateTimeType;
 use crate::media::IORecordOptions;
 use crate::{DataType, Error, Field, Level, Result, Timezone};
 
@@ -74,10 +73,10 @@ pub const DEFAULT_TEXT_BATCH_BYTE_SIZE: u64 = 64 * 1024 * 1024;
 /// handle's modification time is already counted in it, so the two sources
 /// answer one column rather than two resolutions of it.
 pub(crate) fn mtime_dtype() -> DataType {
-    DataType::DateTime(DateTimeType::DateTime64 {
+    DataType::DateTime64 {
         unit: crate::TimeUnit::Nanosecond,
         timezone: Timezone::UTC,
-    })
+    }
 }
 
 /// A regex whose source, rather than its compiled automaton, is value identity.
@@ -661,8 +660,11 @@ impl TextOptions {
             return DataType::utf8();
         }
         match (capture.dtype(), self.timezone) {
-            (DataType::DateTime(leaf), Some(configured)) if leaf.timezone().is_naive() => {
-                DataType::DateTime(leaf.with_timezone(configured))
+            (DataType::DateTime64 { unit, timezone }, Some(configured)) if timezone.is_naive() => {
+                DataType::DateTime64 {
+                    unit: *unit,
+                    timezone: configured,
+                }
             }
             (dtype, _) => dtype.clone(),
         }

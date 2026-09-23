@@ -136,7 +136,11 @@ impl Serialize for JsonRef<'_> {
                 .serialize(serializer),
                 _ => Err(S::Error::custom("invalid interval layout")),
             },
-            Scalar::Sequence(values) => {
+            Scalar::List(values)
+            | Scalar::ListView(values)
+            | Scalar::FixedSizeList(values)
+            | Scalar::LargeList(values)
+            | Scalar::LargeListView(values) => {
                 let mut sequence = serializer.serialize_seq(Some(values.len()))?;
                 for value in values.rows().iter() {
                     sequence.serialize_element(&JsonRef(value))?;
@@ -150,7 +154,7 @@ impl Serialize for JsonRef<'_> {
                 }
                 mapping.end()
             }
-            Scalar::Mapping(entries) => {
+            Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                 let mut mapping = serializer.serialize_map(Some(entries.as_slice().len()))?;
                 for (key, value) in entries.as_slice() {
                     let Some(key) = key.as_str() else {

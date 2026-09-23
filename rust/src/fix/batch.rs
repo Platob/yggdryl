@@ -69,7 +69,6 @@ use super::build::{Fill, RowExtras};
 use super::codec::{FixCodec, SOH, Spread};
 use super::msg::FixMsg;
 use super::{FIXENTRIES_COLUMN, FixMessages};
-use crate::enums::EnumType;
 
 /// The name the fixed row's root takes: what the schema is asked for, and
 /// what a batch of FIX rows is read back under.
@@ -592,7 +591,7 @@ fn closes(carried: &mut Carried, charge: u64, target: u64, rows: usize) -> bool 
 /// bytes in any layout, a dictionary or run-end encoding of one included.
 fn carries_payload(dtype: &DataType) -> bool {
     match dtype {
-        DataType::Enum(EnumType::Dictionary(held)) => carries_payload(&held.value),
+        DataType::Dictionary(held) => carries_payload(&held.value),
         DataType::RunEndEncoded(held) => carries_payload(held.values.dtype()),
         other => matches!(
             other.kind(),

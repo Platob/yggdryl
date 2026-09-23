@@ -50,11 +50,10 @@ use crate::graph::MarketElement;
 
 use smol_str::SmolStr;
 
+use crate::StructType;
 use crate::{DataType, Field, Result};
-use crate::{DateTimeType, StructType};
 
 use super::FixRegistry;
-use crate::sequence::SequenceType;
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -853,7 +852,7 @@ fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::M
         }
         match field.dtype() {
             DataType::Struct(children) => digest_shape(children.as_fields(), metadata, state),
-            DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
+            DataType::List(item) | DataType::LargeList(item) => {
                 digest_shape(std::slice::from_ref(&**item), metadata, state);
             }
             _ => {}
@@ -1240,7 +1239,7 @@ fn covers_entry(
             entry.value().is_none()
                 && covers_members(registry, field.fields(), value, entry.entries())
         }
-        DataType::Sequence(SequenceType::List(item) | SequenceType::LargeList(item)) => {
+        DataType::List(item) | DataType::LargeList(item) => {
             let Some(occurrences) = value.as_sequence() else {
                 return false;
             };
@@ -1263,7 +1262,11 @@ fn covers_entry(
                     _ => covers_entry(registry, item, value, occurrence),
                 })
         }
-        DataType::Mapping(_) | DataType::Sequence(_) => false,
+        DataType::Map(_)
+        | DataType::SortedMap(_)
+        | DataType::ListView(_)
+        | DataType::FixedSizeList(..)
+        | DataType::LargeListView(_) => false,
         _ => {
             entry.entries().is_empty()
                 && super::entry::wire_text_under(registry, field, value).as_deref() == entry.value()
@@ -1496,8 +1499,13 @@ fn group_from_entry(
     );
     let occurrence = DataType::from(StructType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
-        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(occurrence),
-        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted())?,
+        DataType::LargeList(_) => DataType::large_list(occurrence),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            DataType::map(occurrence, map.keys_sorted())?
+        }
         _ => DataType::list(occurrence),
     };
     // A group the dictionary does not declare stands under the counter's own
@@ -1683,9 +1691,7 @@ fn child_from_entry(
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::Sequence(SequenceType::List(_))
-        | DataType::Sequence(SequenceType::LargeList(_))
-        | DataType::Mapping(_) => {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) | DataType::SortedMap(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -2506,33 +2512,36 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                 .collect();
             held.map(crate::Scalar::from_sequence)
         }),
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item))
-        | DataType::Sequence(SequenceType::ListView(item))
-        | DataType::Sequence(SequenceType::LargeListView(item))
-        | DataType::Sequence(SequenceType::FixedSizeList(item, _)) => {
-            value.as_sequence().map(|stated| {
-                Some(crate::Scalar::from_sequence(
-                    stated
-                        .iter()
-                        .filter_map(|held| refit(item, held.clone()))
-                        .collect::<Vec<_>>(),
-                ))
+        DataType::List(item)
+        | DataType::LargeList(item)
+        | DataType::ListView(item)
+        | DataType::LargeListView(item)
+        | DataType::FixedSizeList(item, _) => value.as_sequence().map(|stated| {
+            Some(crate::Scalar::from_sequence(
+                stated
+                    .iter()
+                    .filter_map(|held| refit(item, held.clone()))
+                    .collect::<Vec<_>>(),
+            ))
+        }),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            value.as_mapping().map(|stated| {
+                // A pair whose key will not read names nothing, so it is left
+                // out; one whose value will not read keeps its name and loses
+                // the value, which is what every other column does.
+                let entries = map.entries().dtype().as_fields()?;
+                let [key, held] = entries else {
+                    return None;
+                };
+                crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
+                    Some((refit(key, name.clone())?, refit(held, value.clone())?))
+                }))
+                .ok()
             })
         }
-        DataType::Mapping(map) => value.as_mapping().map(|stated| {
-            // A pair whose key will not read names nothing, so it is left
-            // out; one whose value will not read keeps its name and loses
-            // the value, which is what every other column does.
-            let entries = map.entries().dtype().as_fields()?;
-            let [key, held] = entries else {
-                return None;
-            };
-            crate::Scalar::from_mapping(stated.iter().filter_map(|(name, value)| {
-                Some((refit(key, name.clone())?, refit(held, value.clone())?))
-            }))
-            .ok()
-        }),
         // A leaf has no members to keep, so it is the value or the null.
         _ => None,
     };
@@ -2546,10 +2555,10 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
 }
 
 /// Exact layout shared by FIX event, creation, grid and previous clocks.
-pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime(DateTimeType::DateTime64 {
+pub(super) const CLOCK_DATATYPE: DataType = DataType::DateTime64 {
     unit: crate::TimeUnit::Nanosecond,
     timezone: crate::Timezone::UTC,
-});
+};
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]

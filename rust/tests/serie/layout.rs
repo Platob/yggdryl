@@ -2,7 +2,9 @@
 //! through `yggdryl::internals::serie_layout`.
 
 use arrow_buffer::{BooleanBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
-use yggdryl::internals::serie_layout::{require_offset, splice_bits, splice_nulls, splice_offsets};
+use yggdryl::internals::serie_layout::{
+    require_offset, splice_bits, splice_nulls, splice_offsets, splice_scalars,
+};
 
 #[test]
 fn a_validity_splice_answers_none_when_no_row_is_absent_afterwards() {
@@ -82,4 +84,35 @@ fn an_item_total_past_the_offset_type_is_refused_naming_the_column() {
         "the refusal names the column: {refusal}"
     );
     assert!(require_offset::<i64>("items", 1 << 40).is_ok());
+}
+
+#[test]
+fn a_typed_splice_appends_and_overwrites_in_the_buffer_it_holds_and_rebuilds_otherwise() {
+    let held = ScalarBuffer::<i8>::from(vec![1, 2, 3]);
+    let appended = splice_scalars(held, 3..3, &[4, 5]);
+    assert_eq!(appended.as_ref(), &[1, 2, 3, 4, 5]);
+
+    let before = appended.as_ptr();
+    let overwritten = splice_scalars(appended, 1..3, &[7, 8]);
+    assert_eq!(overwritten.as_ref(), &[1, 7, 8, 4, 5]);
+    assert_eq!(
+        overwritten.as_ptr(),
+        before,
+        "as many slots as are written are written where they lie"
+    );
+
+    let shared = overwritten.clone();
+    let copied = splice_scalars(overwritten, 5..5, &[6]);
+    assert_eq!(copied.as_ref(), &[1, 7, 8, 4, 5, 6]);
+    assert_eq!(
+        shared.as_ref(),
+        &[1, 7, 8, 4, 5],
+        "a shared buffer is copied, never written"
+    );
+
+    let rebuilt = splice_scalars(shared, 0..2, &[9]);
+    assert_eq!(rebuilt.as_ref(), &[9, 8, 4, 5]);
+
+    let sliced = ScalarBuffer::<i32>::from(vec![1, 2, 3, 4]).slice(1, 2);
+    assert_eq!(splice_scalars(sliced, 2..2, &[9]).as_ref(), &[2, 3, 9]);
 }

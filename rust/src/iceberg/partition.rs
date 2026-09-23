@@ -22,7 +22,6 @@ use iceberg_official::spec::{
 use iceberg_official::transform::{BoxedTransformFunction, create_transform_function};
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::DecimalType;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The identifier Iceberg assigns to the first partition field of a table.
@@ -863,9 +862,9 @@ fn official_primitive_type(dtype: &DataType) -> Result<OfficialPrimitiveType> {
 
 fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
     let primitive = official_primitive_type(dtype)?;
-    let bytes = if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    let bytes = if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         let (unscaled, actual_scale) = value.as_decimal().ok_or_else(|| {
             invalid(format_smolstr!(
@@ -895,9 +894,9 @@ fn official_datum(value: &Scalar, dtype: &DataType) -> Result<OfficialDatum> {
 }
 
 fn scalar_from_official(value: &OfficialDatum, dtype: &DataType) -> Result<Scalar> {
-    if let DataType::Decimal(DecimalType::Decimal32 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal64 { scale, .. })
-    | DataType::Decimal(DecimalType::Decimal128 { scale, .. }) = dtype
+    if let DataType::Decimal32 { scale, .. }
+    | DataType::Decimal64 { scale, .. }
+    | DataType::Decimal128 { scale, .. } = dtype
     {
         return match value.literal() {
             OfficialLiteral::Int128(unscaled) => dtype.scalar(Scalar::d128(*unscaled, *scale)),

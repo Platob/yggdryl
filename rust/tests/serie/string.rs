@@ -89,7 +89,7 @@ fn a_code_column_refuses_an_unregistered_value_at_push_and_keeps_what_it_had() {
         [Scalar::from("USD"), Scalar::from("EUR")],
     )
     .expect("two currencies");
-    assert!(column.as_string().is_some());
+    assert!(column.as_utf8().is_some());
     assert_eq!(
         column.field().map(|field| field.dtype()),
         Some(&DataType::Currency)

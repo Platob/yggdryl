@@ -51,10 +51,7 @@ use super::scalar::{
     write_signed, write_string, write_temporal, write_unsigned,
 };
 use crate::FieldValue as _;
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::txhash::{DIGEST_TIME_KEY, DIGEST_UNIT_KEY};
-use crate::{DateTimeType, DateType, DecimalType, DurationType, TimeType};
 
 /// The state operations shared by the runtime dispatcher and concrete states.
 ///
@@ -423,7 +420,7 @@ fn digest_metadata_error(key: &'static str, holder: &str, reason: impl std::fmt:
 fn reject_unreachable_digests(dtype: &DataType, path: &str, container: &str) -> Result<()> {
     // A dictionary encodes a value type rather than a child column, so what it
     // holds carries no name of its own to extend the path with.
-    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
+    if let DataType::Dictionary(dictionary) = dtype {
         reject_unreachable_digests(dictionary.value(), path, container)?;
     }
     for index in 0..dtype.field_len() {
@@ -1100,22 +1097,22 @@ fn feed_cell(
                 }
             },
         ),
-        DataType::Decimal(DecimalType::Decimal32 { scale, .. }) => write_decimal(
+        DataType::Decimal32 { scale, .. } => write_decimal(
             digester,
             i256::from_i128(i128::from(downcast::<Decimal32Array>(array)?.value(index))),
             *scale,
         ),
-        DataType::Decimal(DecimalType::Decimal64 { scale, .. }) => write_decimal(
+        DataType::Decimal64 { scale, .. } => write_decimal(
             digester,
             i256::from_i128(i128::from(downcast::<Decimal64Array>(array)?.value(index))),
             *scale,
         ),
-        DataType::Decimal(DecimalType::Decimal128 { scale, .. }) => write_decimal(
+        DataType::Decimal128 { scale, .. } => write_decimal(
             digester,
             i256::from_i128(downcast::<Decimal128Array>(array)?.value(index)),
             *scale,
         ),
-        DataType::Decimal(DecimalType::Decimal256 { scale, .. }) => write_decimal(
+        DataType::Decimal256 { scale, .. } => write_decimal(
             digester,
             i256::from_le_bytes(
                 downcast::<Decimal256Array>(array)?
@@ -1124,21 +1121,21 @@ fn feed_cell(
             ),
             *scale,
         ),
-        DataType::Date(DateType::Date32) => temporal(
+        DataType::Date32 => temporal(
             digester,
             TemporalKind::Date,
             i64::from(downcast::<Date32Array>(array)?.value(index)),
             TimeUnit::Day,
             &Timezone::NAIVE,
         ),
-        DataType::Date(DateType::Date64) => temporal(
+        DataType::Date64 => temporal(
             digester,
             TemporalKind::Date,
             downcast::<Date64Array>(array)?.value(index),
             TimeUnit::Millisecond,
             &Timezone::NAIVE,
         ),
-        DataType::Time(TimeType::Time32(unit)) => {
+        DataType::Time32(unit) => {
             let count = match unit {
                 TimeUnit::Second => downcast::<Time32SecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<Time32MillisecondArray>(array)?.value(index),
@@ -1152,7 +1149,7 @@ fn feed_cell(
                 &Timezone::NAIVE,
             );
         }
-        DataType::Time(TimeType::Time64(unit)) => {
+        DataType::Time64(unit) => {
             let count = match unit {
                 TimeUnit::Microsecond => downcast::<Time64MicrosecondArray>(array)?.value(index),
                 TimeUnit::Nanosecond => downcast::<Time64NanosecondArray>(array)?.value(index),
@@ -1160,7 +1157,7 @@ fn feed_cell(
             };
             temporal(digester, TemporalKind::Time, count, *unit, &Timezone::NAIVE);
         }
-        DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+        DataType::DateTime64 { unit, timezone } => {
             let count = match unit {
                 TimeUnit::Second => downcast::<TimestampSecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<TimestampMillisecondArray>(array)?.value(index),
@@ -1170,7 +1167,7 @@ fn feed_cell(
             };
             temporal(digester, TemporalKind::DateTime, count, *unit, timezone);
         }
-        DataType::Duration(DurationType::Duration64(unit)) => {
+        DataType::Duration64(unit) => {
             let count = match unit {
                 TimeUnit::Second => downcast::<DurationSecondArray>(array)?.value(index),
                 TimeUnit::Millisecond => downcast::<DurationMillisecondArray>(array)?.value(index),
@@ -1196,7 +1193,7 @@ fn feed_cell(
         // union, dictionary, and run-end layout composes child values instead
         // of holding one buffer. A variant refuses by name there, because its
         // binary encoding lands with the Iceberg v3 layer.
-        DataType::Duration(DurationType::Duration32(_))
+        DataType::Duration32(_)
         | DataType::Interval(_)
         | DataType::Country
         | DataType::Currency
@@ -1212,19 +1209,21 @@ fn feed_cell(
         | DataType::TimeInForce
         | DataType::Uuid
         | DataType::Version
-        | DataType::Uri(_)
+        | DataType::Url
+        | DataType::Urn
         | DataType::Timezone
         | DataType::MimeType
         | DataType::MediaType
-        | DataType::Sequence(SequenceType::List(_))
-        | DataType::Sequence(SequenceType::ListView(_))
-        | DataType::Sequence(SequenceType::FixedSizeList(..))
-        | DataType::Sequence(SequenceType::LargeList(_))
-        | DataType::Sequence(SequenceType::LargeListView(_))
+        | DataType::List(_)
+        | DataType::ListView(_)
+        | DataType::FixedSizeList(..)
+        | DataType::LargeList(_)
+        | DataType::LargeListView(_)
         | DataType::Struct(_)
         | DataType::Union(..)
-        | DataType::Enum(EnumType::Dictionary(_))
-        | DataType::Mapping(_)
+        | DataType::Dictionary(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_)
         | DataType::RunEndEncoded(_)
         | DataType::Variant
         | DataType::Geometry(_)

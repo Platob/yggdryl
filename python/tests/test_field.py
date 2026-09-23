@@ -2120,7 +2120,7 @@ def test_a_struct_root_canonicalizes_and_validates_one_row() -> None:
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
 
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "sequence"
+    assert row.kind == "list"
     assert row.as_py() == [1, "AAPL"]
     assert root.validate_value(row) is None
 

@@ -274,7 +274,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "sequence"
+    assert row.kind == "list"
     assert row.as_py() == [1, "AAPL"]
     root.validate_value(row)
     with pytest.raises(ValueError):

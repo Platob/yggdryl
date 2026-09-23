@@ -26,7 +26,6 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{DataType, Limits, Result, Scalar, TimeUnit, Timezone};
 
 use super::datum::invalid;
-use crate::{DateTimeType, TimeType};
 
 /// Maximum structural nesting accepted by the recursive schema parser.
 ///
@@ -340,7 +339,11 @@ impl Hash for Schema {
 /// them (`Mapping` or `Record`) while preserving every key and nested value.
 fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
     match value {
-        Scalar::Sequence(values) => Ok(Scalar::from_sequence(
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => Ok(Scalar::from_sequence(
             values
                 .rows()
                 .iter()
@@ -356,7 +359,7 @@ fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        Scalar::Mapping(entries) => Scalar::from_struct(
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => Scalar::from_struct(
             entries
                 .as_slice()
                 .iter()
@@ -401,32 +404,32 @@ impl Node {
             Self::Bytes => DataType::binary(),
             Self::String | Self::Enum(_) => DataType::utf8(),
             Self::Date => DataType::date32(),
-            Self::TimeMillis => DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            Self::TimeMicros => DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            Self::TimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
+            Self::TimeMillis => DataType::Time32(TimeUnit::Millisecond),
+            Self::TimeMicros => DataType::Time64(TimeUnit::Microsecond),
+            Self::TimestampMillis => DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::TimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::TimestampMicros => DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::TimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::TimestampNanos => DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            }),
-            Self::LocalTimestampMillis => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampMillis => DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::NAIVE,
-            }),
-            Self::LocalTimestampMicros => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampMicros => DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::NAIVE,
-            }),
-            Self::LocalTimestampNanos => DataType::DateTime(DateTimeType::DateTime64 {
+            },
+            Self::LocalTimestampNanos => DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             Self::Uuid | Self::UuidFixed(_) => DataType::Uuid,
             Self::Decimal(decimal) => DataType::decimal(
                 u8::try_from(decimal.precision).map_err(|_| {

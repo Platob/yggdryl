@@ -174,10 +174,7 @@ mod datatypes {
 mod families {
 
     use yggdryl::Field;
-    use yggdryl::{
-        BytesType, DataType, DecimalType, DictionaryType, RunEndEncodedType, StringType, TimeType,
-        TimeUnit,
-    };
+    use yggdryl::{BytesType, DataType, DictionaryType, RunEndEncodedType, StringType, TimeUnit};
 
     #[test]
     fn structural_json_rejects_malformed_and_duplicate_values() {
@@ -325,13 +322,13 @@ mod families {
     #[test]
     fn structural_serialization_rejects_public_enum_invalid_states() {
         let invalid = [
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
+            DataType::Time32(TimeUnit::Nanosecond),
             DataType::Bytes(BytesType::FixedBinary(0)),
             DataType::String(StringType::FixedUtf8String(0)),
-            DataType::Decimal(DecimalType::Decimal128 {
+            DataType::Decimal128 {
                 precision: 0,
                 scale: 0,
-            }),
+            },
         ];
 
         for value in invalid {
@@ -376,7 +373,7 @@ mod generic {
 }
 
 mod schemas {
-    use yggdryl::DateTimeType;
+
     use yggdryl::Scalar;
     use yggdryl::{DataType, Field, Metadata, PythonKind, PythonMetadata, StructType, TimeUnit};
 
@@ -455,10 +452,10 @@ mod schemas {
             DataType::decimal128(38, 6)
                 .unwrap()
                 .nullable_field("amount"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: "Europe/Paris".parse().unwrap(),
-            })
+            }
             .nullable_field("at"),
             DataType::run_end_encoded(
                 DataType::Int32.required_field("run_ends"),

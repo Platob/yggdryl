@@ -6,7 +6,7 @@ A time of day: a count since midnight at one resolution, in the width that holds
 
 | | |
 | --- | --- |
-| Owned | `TimeType` with its two leaves, `DataType::Time(TimeType)`, the `TimeField` marker, and the `Time32` and `Time64` values |
+| Owned | `TimeType` with its two leaves, `DataType::Time32(TimeUnit)` and `DataType::Time64(TimeUnit)`, the `TimeField` marker, and the `Time32` and `Time64` values |
 | Validated | once, at construction: `time32` carries seconds or milliseconds and `time64` microseconds or nanoseconds, and `TimeType::for_unit` is the one rule that maps a resolution to a width. A leaf built by hand is caught by `validate` and by the Arrow projection |
 | Lazy | nothing; the leaf is `Copy` and the value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -26,8 +26,8 @@ already built.
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
-| `time32(ms)` | `Time(TimeType::Time32(Millisecond))`; the unit is required | `time(ms)`, `time(3)` |
-| `time64(us)` | `Time(TimeType::Time64(Microsecond))`; the unit is required | `time`, `time(us)`, `time(6)` |
+| `time32(ms)` | `DataType::Time32(Millisecond)`; the unit is required | `time(ms)`, `time(3)` |
+| `time64(us)` | `DataType::Time64(Microsecond)`; the unit is required | `time`, `time(us)`, `time(6)` |
 | `time(unit)` | the width the unit fits | `time(p)`: a precision `0` is seconds, `1..=3` milliseconds, `4..=6` microseconds, `7..=9` nanoseconds |
 
 FIX's `UTCTimeOnly` and `LocalMktTime` are both `time64(ns)`: a time of day
@@ -363,7 +363,7 @@ that stops, under the width's own name.
 ```rust
 use yggdryl::{DataType, TimeType, TimeUnit};
 
-let broken = DataType::Time(TimeType::Time32(TimeUnit::Nanosecond));
+let broken = DataType::Time32(TimeUnit::Nanosecond);
 assert!(broken.validate().is_err());
 assert!(broken.clone().into_arrow_datatype().is_err());
 assert!(broken.to_arrow_datatype().is_err());

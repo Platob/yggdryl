@@ -36,8 +36,8 @@ fn text_of(value: &Scalar) -> String {
 #[test]
 fn the_family_holds_two_leaves_and_names_them() {
     assert_eq!(UriType::ALL, [UriType::Url, UriType::Urn]);
-    assert_eq!(DataType::url(), DataType::Uri(UriType::Url));
-    assert_eq!(DataType::urn(), DataType::Uri(UriType::Urn));
+    assert_eq!(DataType::url(), DataType::Url);
+    assert_eq!(DataType::urn(), DataType::Urn);
     assert_eq!(DataType::url().uri_type(), Some(UriType::Url));
     assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
     assert_eq!(DataType::utf8().uri_type(), None);
@@ -46,8 +46,8 @@ fn the_family_holds_two_leaves_and_names_them() {
         assert_eq!(leaf.kind(), DataTypeKind::Text);
         assert_eq!(UriType::from_id(leaf.id()), Some(leaf));
         assert_eq!(leaf.to_string(), leaf.id().as_str());
-        assert_eq!(DataType::from(leaf), DataType::Uri(leaf));
-        assert_eq!(UriType::from_dtype(&DataType::Uri(leaf)), Some(leaf));
+        assert_eq!(DataType::from(leaf), DataType::from(leaf));
+        assert_eq!(UriType::from_dtype(&DataType::from(leaf)), Some(leaf));
         leaf.validate().unwrap();
     }
     assert_eq!(UriType::from_id(DataTypeId::Utf8String), None);

@@ -23,7 +23,6 @@
 use smol_str::{SmolStr, format_smolstr};
 
 use super::PrimitiveType;
-use crate::SequenceType;
 use crate::{DataType, Error, Field, Result, Scalar, StructType};
 
 /// The Iceberg property naming a schema identifier.
@@ -357,9 +356,7 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
             ("type", Scalar::from("struct")),
             ("fields", Scalar::from_sequence(fields_to_json(field)?)),
         ]),
-        DataType::Sequence(
-            SequenceType::List(item) | SequenceType::LargeList(item) | SequenceType::ListView(item),
-        ) => {
+        DataType::List(item) | DataType::LargeList(item) | DataType::ListView(item) => {
             let mut object = vec![(Scalar::from("type"), Scalar::from("list"))];
             if let Some(id) = item.parquet_field_id()? {
                 object.push((Scalar::from("element-id"), json_integer(i64::from(id))));
@@ -379,7 +376,10 @@ fn type_to_json(field: &Field) -> Result<Scalar> {
                 )
             }))
         }
-        DataType::Mapping(map) => {
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             let entries = map.entries();
             let key = entries.get_field(0).ok_or_else(|| {
                 invalid(format_smolstr!(

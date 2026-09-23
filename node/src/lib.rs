@@ -35,6 +35,7 @@ mod text;
 mod timezone;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
+mod serie;
 #[allow(dead_code)]
 mod uri;
 mod value;
@@ -75,6 +76,7 @@ pub use iceberg::{
 pub use iobase::{JsFsByteReader, JsFsByteWriter, JsFsRandomAccessReader, JsIOBase};
 pub use iomedia::JsBatchReader;
 pub use media::options::JsRecordOptions;
+pub use serie::{JsSerie, JsSerieIterator};
 pub use text::codec::{
     CodecLimitsInput, JsScalar, JsScalarIterator, codec_infer_format, codec_loads_inferred_native,
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,

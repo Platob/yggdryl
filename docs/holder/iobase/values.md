@@ -13,7 +13,7 @@ Whole-value byte conveniences, digests, structured JSON, YAML, and TOML scalars,
 | Structured | `read_scalar`, `write_scalar` | the media type selects JSON, YAML, or TOML and any outer gzip, zlib, or zstd coding |
 | Arrow-shaped | `read_arrow`, `write_arrow` | the same documents as Arrow rows ([Values](../../arrow/values.md)); a record encoding answers its batch stream |
 | Field | optional on both scalar calls | directs native parsing and casting; omitted, it infers the natural value |
-| Struct row | Rust `Scalar::Sequence` | Python and JavaScript restore field names; `cls=Scalar` and `{ scalar: true }` return the core value |
+| Struct row | Rust `Scalar::List` | Python and JavaScript restore field names; `cls=Scalar` and `{ scalar: true }` return the core value |
 | Adapters | `reader_at`, `writer_at` | Rust only; each advances its own offset |
 
 ## Use
@@ -164,7 +164,7 @@ Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. T
     field = "trade: struct<quantity: int32 not null, symbol: utf8 not null> not null"
     assert handle.read_scalar(field) == {"quantity": 2, "symbol": "AAPL"}
     value = handle.read_scalar(field, cls=Scalar)
-    assert value.kind == "sequence"
+    assert value.kind == "list"
     ```
 
 === "JavaScript"
@@ -183,7 +183,7 @@ Reads feed the parser from `pstream_bytes`, so decoded pages are not retained. T
     assert.deepEqual(handle.readScalar(field), { quantity: 2, symbol: 'AAPL' })
     const value = handle.readScalar({ field, scalar: true })
     assert.ok(value instanceof Scalar)
-    assert.equal(value.kind, 'sequence')
+    assert.equal(value.kind, 'list')
     ```
 
 ## Streaming adapters

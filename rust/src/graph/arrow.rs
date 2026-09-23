@@ -16,7 +16,7 @@ use super::{
     MarketEventData, MarketOperation, Order, Quote,
 };
 use crate::arrow::BatchReader;
-use crate::{DataType, Error, Field, Result, Scalar, SequenceType, StructType, Uuid};
+use crate::{DataType, Error, Field, Result, Scalar, StructType, Uuid};
 
 const KIND: &str = "operationkind";
 const OPERATION_ROOT: &str = "marketoperation";
@@ -955,7 +955,7 @@ fn value_from_array_at(
                 .collect::<Result<Vec<_>>>()
                 .map(Scalar::from_sequence)
         }
-        DataType::Sequence(SequenceType::List(item)) => {
+        DataType::List(item) => {
             let array = array.as_any().downcast_ref::<ListArray>().ok_or_else(|| {
                 invalid(
                     path.clone(),

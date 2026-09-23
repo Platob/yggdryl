@@ -45,7 +45,7 @@ mod record {
     /// exact match, so a key the field refuses the row refuses too.
     ///
     /// Building one canonicalizes through the field's row walk, so an ordered
-    /// [`Scalar::Sequence`](Scalar) and a named [`Scalar::Struct`](Scalar) are
+    /// [`Scalar::List`](Scalar) and a named [`Scalar::Struct`](Scalar) are
     /// both accepted, and the cells are exactly what
     /// [`Field::canonicalize_value`] answers. Top-level row construction uses
     /// only the cells' `Vec`; nested canonicalization owns any storage its
@@ -398,7 +398,6 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
-    use crate::DecimalType;
     use crate::{BytesType, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
 
@@ -543,14 +542,16 @@ mod shared {
                     .find(|(plain, _)| plain == parameters)
                     .map(|(_, field)| field)
                     .or_else(|| interned(self)),
-                Self::DateTime(_)
-                | Self::Time(_)
-                | Self::Duration(_)
+                Self::DateTime64 { .. }
+                | Self::Time32(_)
+                | Self::Time64(_)
+                | Self::Duration32(_)
+                | Self::Duration64(_)
                 | Self::Interval(_)
-                | Self::Decimal(DecimalType::Decimal32 { .. })
-                | Self::Decimal(DecimalType::Decimal64 { .. })
-                | Self::Decimal(DecimalType::Decimal128 { .. })
-                | Self::Decimal(DecimalType::Decimal256 { .. }) => interned(self),
+                | Self::Decimal32 { .. }
+                | Self::Decimal64 { .. }
+                | Self::Decimal128 { .. }
+                | Self::Decimal256 { .. } => interned(self),
                 _ => None,
             }
         }

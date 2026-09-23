@@ -10,7 +10,6 @@ use super::registry::name_digest;
 use super::store::{DefinitionKey, compact, reference};
 use super::{FixId, FixRegistry, MsgType};
 use crate::folds_equal;
-use crate::sequence::SequenceType;
 use crate::{DataType, Error, Field, FixCategory, Result, StructType};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -476,8 +475,7 @@ fn is_column_list(field: &Field) -> bool {
         return false;
     }
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item)) => {
+        DataType::List(item) | DataType::LargeList(item) => {
             !item.is_nullable() && !item.dtype().is_nested()
         }
         _ => false,
@@ -495,13 +493,12 @@ fn is_column_list(field: &Field) -> bool {
 /// nothing.
 pub(super) fn definition_category(field: &Field) -> Option<FixCategory> {
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item))
+        DataType::List(item) | DataType::LargeList(item)
             if !item.is_nullable() && matches!(item.dtype(), DataType::Struct(_)) =>
         {
             Some(FixCategory::Groups)
         }
-        DataType::Mapping(_) => Some(FixCategory::Groups),
+        DataType::Map(_) | DataType::SortedMap(_) => Some(FixCategory::Groups),
         DataType::Struct(_) => Some(FixCategory::Components),
         _ => None,
     }
@@ -524,9 +521,8 @@ fn restates_datatype(occurrence: &DataType, target: &DataType) -> bool {
 /// The occurrence a group's list or map holds.
 pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
     match group.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item)) => Some(item),
-        DataType::Mapping(map) => Some(map.entries()),
+        DataType::List(item) | DataType::LargeList(item) => Some(item),
+        DataType::Map(map) | DataType::SortedMap(map) => Some(map.entries()),
         _ => None,
     }
 }
@@ -534,9 +530,14 @@ pub(super) fn occurrence_of(group: &Field) -> Option<&Field> {
 /// Rebuilds only the occurrence, keeping the group's storage contract.
 fn group_dtype(group: &Field, occurrence: Field) -> Result<DataType> {
     match group.dtype() {
-        DataType::Sequence(SequenceType::List(_)) => Ok(DataType::list(occurrence)),
-        DataType::Sequence(SequenceType::LargeList(_)) => Ok(DataType::large_list(occurrence)),
-        DataType::Mapping(map) => DataType::map(occurrence, map.keys_sorted()),
+        DataType::List(_) => Ok(DataType::list(occurrence)),
+        DataType::LargeList(_) => Ok(DataType::large_list(occurrence)),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            DataType::map(occurrence, map.keys_sorted())
+        }
         _ => Err(invalid(
             group,
             "a List of non-null Struct occurrences or a Map",
@@ -688,9 +689,7 @@ fn canonical_occurrences(mut field: Field, root: bool) -> Result<Field> {
                 .map(|child| canonical_occurrences(child, false))
                 .collect::<Result<Vec<_>>>()?,
         )?)),
-        DataType::Sequence(SequenceType::List(_))
-        | DataType::Sequence(SequenceType::LargeList(_))
-        | DataType::Mapping(_) => {
+        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) | DataType::SortedMap(_) => {
             let item = occurrence_of(&field).expect("a group has an occurrence");
             Some(group_dtype(
                 &field,
@@ -1213,7 +1212,7 @@ impl FixRegistry {
         let position = self.catalog.counters.get(&tag).copied().flatten()?;
         match &self.catalog.entries[position].field {
             DefinitionField::Group(field, plan)
-                if !matches!(field.dtype(), DataType::Mapping(_)) =>
+                if !matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_)) =>
             {
                 Some(plan)
             }
@@ -1286,8 +1285,8 @@ impl FixRegistry {
         // where a text the read would walk as nothing is refused.
         field.as_fix().validate_names()?;
         let counter = field.as_fix().counter()?;
-        let map_group =
-            category == FixCategory::Groups && matches!(field.dtype(), DataType::Mapping(_));
+        let map_group = category == FixCategory::Groups
+            && matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_));
         if map_group {
             let tag = field
                 .as_fix()
@@ -1341,7 +1340,7 @@ impl FixRegistry {
         } else if category == FixCategory::Fields {
             if let Some(group) = self
                 .get_definition(FixCategory::Groups, field.name())
-                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Map(_) | DataType::SortedMap(_)))
             {
                 return Err(Error::conflict(
                     "a scalar field name free of canonical Map group names",
@@ -1357,7 +1356,7 @@ impl FixRegistry {
                 .as_fix()
                 .tag()?
                 .and_then(|tag| self.get_group_by_tag(tag))
-                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Map(_) | DataType::SortedMap(_)))
             {
                 return Err(Error::conflict(
                     "a scalar field tag free of Map group counters",

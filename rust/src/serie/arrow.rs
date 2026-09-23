@@ -21,8 +21,7 @@ use arrow_array::{
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 
 use super::{
-    Serie, boolean, bytes, enums, mapping, null, primitive, runend, sequence, structure, union,
-    variant,
+    Serie, boolean, bytes, enums, list, mapping, null, primitive, runend, structure, union, variant,
 };
 use crate::arrow::{
     BatchReader, Error, Result, arrow_schema_from_field, batch_reader, field_from_arrow_schema,
@@ -38,7 +37,7 @@ use crate::{DataType, Field, Scalar};
 /// over the rows; an encoding's absence is logical, and read as such.
 fn absent_rows(dtype: &DataType, array: &dyn Array, parent: Option<&NullBuffer>) -> usize {
     let nulls = match dtype {
-        DataType::Enum(_) | DataType::RunEndEncoded(_) | DataType::Union(..) => {
+        DataType::Dictionary(_) | DataType::RunEndEncoded(_) | DataType::Union(..) => {
             array.logical_nulls()
         }
         _ => array.nulls().cloned(),
@@ -77,7 +76,9 @@ fn require_present(field: &Field, array: &dyn Array, parent: Option<&NullBuffer>
 /// values column. What remains is a leaf whose datatype is narrower than its
 /// storage, and it is read once here.
 fn reads_rows(dtype: &DataType) -> bool {
-    !dtype.layout_is_contract() && dtype.field_len() == 0 && !matches!(dtype, DataType::Enum(_))
+    !dtype.layout_is_contract()
+        && dtype.field_len() == 0
+        && !matches!(dtype, DataType::Dictionary(_))
 }
 
 /// Read every row this level holds once, refusing the first one the field's
@@ -176,7 +177,7 @@ pub(crate) fn column_of(
         bytes::column_of,
         variant::column_of,
         structure::column_of,
-        sequence::column_of,
+        list::column_of,
         mapping::column_of,
         union::column_of,
         enums::column_of,

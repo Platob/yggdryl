@@ -131,7 +131,7 @@ fn merging_map_groups_preserves_layout_sortedness_and_key_nullability() {
     incoming.set_comment("merged").unwrap();
     assert!(!registry.add_field(incoming).unwrap());
     let stored = registry.get_field_by_counter(65_090).unwrap();
-    let DataType::Mapping(map) = stored.dtype() else {
+    let Some(map) = (stored.dtype()).as_mapping() else {
         panic!("merging preserves Map")
     };
     assert_eq!(stored.comment(), Some("merged"));
@@ -154,7 +154,7 @@ fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     assert!(column.is_nullable());
     assert_eq!(column.as_fix().tag().unwrap(), Some(65_020));
     assert_eq!(column.as_fix().counter().unwrap(), Some(65_020));
-    let DataType::Mapping(map) = column.dtype() else {
+    let Some(map) = (column.dtype()).as_mapping() else {
         panic!("identifiers is a Map")
     };
     assert!(map.keys_sorted());
@@ -263,7 +263,7 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     );
     let declared = registry.field_by_path(&root).unwrap();
     assert_eq!(declared, registry.get_field_by_counter(65_020).unwrap());
-    let DataType::Mapping(map) = declared.dtype() else {
+    let Some(map) = (declared.dtype()).as_mapping() else {
         panic!("the canonical Map owns the resolved path")
     };
     assert_eq!(

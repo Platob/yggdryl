@@ -126,7 +126,7 @@ pub(crate) mod casts {
 /// assert_eq!(UriType::Url.id(), DataTypeId::Url);
 /// assert_eq!(UriType::from_id(DataTypeId::Urn), Some(UriType::Urn));
 /// assert_eq!(UriType::from_id(DataTypeId::Utf8String), None);
-/// assert_eq!(DataType::url(), DataType::Uri(UriType::Url));
+/// assert_eq!(DataType::url(), DataType::Url);
 /// assert_eq!(DataType::urn().to_string(), "urn");
 /// assert_eq!(DataType::urn().uri_type(), Some(UriType::Urn));
 /// assert_eq!(UriType::Urn.family(), "uri");
@@ -218,14 +218,14 @@ impl DataTypeValue for UriType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Uri(self)
+        match self {
+            Self::Url => DataType::Url,
+            Self::Urn => DataType::Urn,
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Uri(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.uri_type()
     }
 }
 
@@ -238,7 +238,7 @@ impl fmt::Display for UriType {
 
 impl From<UriType> for DataType {
     fn from(value: UriType) -> Self {
-        Self::Uri(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -246,20 +246,21 @@ impl DataType {
     /// The `url` leaf: a column of locations.
     #[must_use]
     pub const fn url() -> Self {
-        Self::Uri(UriType::Url)
+        Self::Url
     }
 
     /// The `urn` leaf: a column of names.
     #[must_use]
     pub const fn urn() -> Self {
-        Self::Uri(UriType::Urn)
+        Self::Urn
     }
 
     /// The uri leaf this datatype is, or `None` for another family.
     #[must_use]
     pub const fn uri_type(&self) -> Option<UriType> {
         match self {
-            Self::Uri(leaf) => Some(*leaf),
+            Self::Url => Some(UriType::Url),
+            Self::Urn => Some(UriType::Urn),
             _ => None,
         }
     }

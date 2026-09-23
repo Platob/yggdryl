@@ -200,7 +200,7 @@ Default append and merge shape once and delegate to `overwrite_arrow_reader`, th
 
 ### Native rows
 
-`*_records` takes any iterator whose row implements `TryInto<Scalar>`: an ordered `Scalar::Sequence` under `options.field`, or a sorted `Scalar::Struct` resolved to that order.
+`*_records` takes any iterator whose row implements `TryInto<Scalar>`: an ordered `Scalar::List` under `options.field`, or a sorted `Scalar::Struct` resolved to that order.
 
 Rust only.
 

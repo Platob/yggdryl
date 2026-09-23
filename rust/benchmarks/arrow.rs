@@ -20,7 +20,6 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use yggdryl::DateTimeType;
 use yggdryl::FieldValue as _;
 use yggdryl::arrow::{BatchReader, batch_reader, cast_reader};
 use yggdryl::holder::Buffer;
@@ -64,10 +63,10 @@ fn root() -> Field {
             .expect("the price width is valid")
             .required_field("price"),
         DataType::Int64.required_field("size"),
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        })
+        }
         .required_field("timestamp"),
     ])
     .map(DataType::from)
@@ -368,10 +367,10 @@ fn collect_benchmarks(criterion: &mut Criterion) {
 /// a wider scale so the cast is a cast rather than an identity.
 fn cast_target() -> Field {
     StructType::from_fields([
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Microsecond,
             timezone: Timezone::UTC,
-        })
+        }
         .required_field("timestamp"),
         DataType::utf8().required_field("symbol"),
         DataType::decimal128(18, 6)

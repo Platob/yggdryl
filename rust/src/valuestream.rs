@@ -368,7 +368,11 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.push(DataTypeId::Geography.as_u8());
             write_variable(chunk, held.as_bytes());
         }
-        Scalar::Sequence(held) => {
+        Scalar::List(held)
+        | Scalar::ListView(held)
+        | Scalar::FixedSizeList(held)
+        | Scalar::LargeList(held)
+        | Scalar::LargeListView(held) => {
             chunk.push(DataTypeId::List.as_u8());
             write_size(chunk, held.len());
             match held.as_slice() {
@@ -382,7 +386,7 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
                 }
             }
         }
-        Scalar::Mapping(held) => {
+        Scalar::Map(held) | Scalar::SortedMap(held) => {
             chunk.push(DataTypeId::Map.as_u8());
             write_size(chunk, held.as_slice().len());
             for (key, value) in held.as_slice() {

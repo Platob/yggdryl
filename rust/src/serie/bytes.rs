@@ -447,7 +447,7 @@ serie_leaf!(ByteSerie<T: ByteLeaf<K>, K: ByteKind>);
 
 /// Name one byte layout under one marker as a leaf of the root.
 macro_rules! byte_leaf {
-    ($(#[$meta:meta])* $name:ident, $arrow:ty, $marker:ty, $family:ident, $held:ident, $variant:ident) => {
+    ($(#[$meta:meta])* $name:ident, $arrow:ty, $marker:ty) => {
         $(#[$meta])*
         pub type $name = $crate::serie::bytes::ByteSerie<$arrow, $marker>;
 
@@ -455,19 +455,13 @@ macro_rules! byte_leaf {
             const NAME: &'static str = stringify!($name);
 
             fn into_serie(column: $crate::serie::bytes::ByteSerie<Self, $marker>) -> $crate::Serie {
-                $crate::Serie::$family(::std::sync::Arc::new($crate::serie::$held::$variant(column)))
+                $crate::serie::Leaf::root(column)
             }
 
             fn from_serie(
                 serie: &$crate::Serie,
             ) -> Option<&$crate::serie::bytes::ByteSerie<Self, $marker>> {
-                match serie {
-                    $crate::Serie::$family(family) => match family.as_ref() {
-                        $crate::serie::$held::$variant(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                $crate::serie::Leaf::narrow(serie)
             }
         }
     };
@@ -477,11 +471,11 @@ pub(crate) use byte_leaf;
 
 byte_leaf!(
     /// A column of byte runs, 32-bit offsets.
-    BinarySerie, BinaryType, Octets, Bytes, BytesSerie, Binary
+    BinarySerie, BinaryType, Octets
 );
 byte_leaf!(
     /// A column of byte runs, 64-bit offsets.
-    LargeBinarySerie, LargeBinaryType, Octets, Bytes, BytesSerie, LargeBinary
+    LargeBinarySerie, LargeBinaryType, Octets
 );
 
 // ------------------------------------------------------------------------
@@ -653,7 +647,7 @@ serie_leaf!(ByteViewSerie<T: ViewLeaf<K>, K: ByteKind>);
 
 /// Name one view layout under one marker as a leaf of the root.
 macro_rules! view_leaf {
-    ($(#[$meta:meta])* $name:ident, $arrow:ty, $marker:ty, $family:ident, $held:ident, $variant:ident) => {
+    ($(#[$meta:meta])* $name:ident, $arrow:ty, $marker:ty) => {
         $(#[$meta])*
         pub type $name = $crate::serie::bytes::ByteViewSerie<$arrow, $marker>;
 
@@ -663,19 +657,13 @@ macro_rules! view_leaf {
             fn into_serie(
                 column: $crate::serie::bytes::ByteViewSerie<Self, $marker>,
             ) -> $crate::Serie {
-                $crate::Serie::$family(::std::sync::Arc::new($crate::serie::$held::$variant(column)))
+                $crate::serie::Leaf::root(column)
             }
 
             fn from_serie(
                 serie: &$crate::Serie,
             ) -> Option<&$crate::serie::bytes::ByteViewSerie<Self, $marker>> {
-                match serie {
-                    $crate::Serie::$family(family) => match family.as_ref() {
-                        $crate::serie::$held::$variant(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                $crate::serie::Leaf::narrow(serie)
             }
         }
     };
@@ -685,7 +673,7 @@ pub(crate) use view_leaf;
 
 view_leaf!(
     /// A column of byte runs held as views.
-    BinaryViewSerie, BinaryViewType, Octets, Bytes, BytesSerie, BinaryView
+    BinaryViewSerie, BinaryViewType, Octets
 );
 
 // ------------------------------------------------------------------------
@@ -905,7 +893,7 @@ serie_leaf!(FixedSerie<K: ByteKind>);
 
 /// Name the fixed-width layout under one marker as a leaf of the root.
 macro_rules! fixed_leaf {
-    ($(#[$meta:meta])* $name:ident, $marker:ty, $family:ident, $held:ident) => {
+    ($(#[$meta:meta])* $name:ident, $marker:ty) => {
         $(#[$meta])*
         pub type $name = $crate::serie::bytes::FixedSerie<$marker>;
 
@@ -913,17 +901,11 @@ macro_rules! fixed_leaf {
             const NAME: &'static str = stringify!($name);
 
             fn into_serie(column: Self) -> $crate::Serie {
-                $crate::Serie::$family(::std::sync::Arc::new($crate::serie::$held::Fixed(column)))
+                $crate::serie::Leaf::root(column)
             }
 
             fn from_serie(serie: &$crate::Serie) -> Option<&Self> {
-                match serie {
-                    $crate::Serie::$family(family) => match family.as_ref() {
-                        $crate::serie::$held::Fixed(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                $crate::serie::Leaf::narrow(serie)
             }
         }
     };
@@ -933,7 +915,7 @@ pub(crate) use fixed_leaf;
 
 fixed_leaf!(
     /// A column of fixed-width bytes: a UUID, or any identity stored as one.
-    FixedBytesSerie, Octets, Bytes, BytesSerie
+    FixedBytesSerie, Octets
 );
 
 /// Build the column `field` types out of a byte-run array, or answer `None`

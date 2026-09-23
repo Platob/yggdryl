@@ -557,7 +557,11 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
     }
     match value {
         Scalar::Arrow(_) => collect_keys(&value.into_native()?, depth, keys)?,
-        Scalar::Sequence(held) => {
+        Scalar::List(held)
+        | Scalar::ListView(held)
+        | Scalar::FixedSizeList(held)
+        | Scalar::LargeList(held)
+        | Scalar::LargeListView(held) => {
             for item in held.rows().iter() {
                 collect_keys(item, depth + 1, keys)?;
             }
@@ -568,7 +572,7 @@ fn collect_keys(value: &Scalar, depth: usize, keys: &mut BTreeSet<SmolStr>) -> R
                 collect_keys(child, depth + 1, keys)?;
             }
         }
-        Scalar::Mapping(held) => {
+        Scalar::Map(held) | Scalar::SortedMap(held) => {
             for (key, child) in held.as_slice() {
                 keys.insert(SmolStr::new(key_text(key)?));
                 collect_keys(child, depth + 1, keys)?;
@@ -878,7 +882,11 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
         Scalar::Timezone(held) => write_text(out, held.as_str())?,
         Scalar::MimeType(held) => write_text(out, held.as_str())?,
         Scalar::MediaType(held) => write_text(out, &held.to_string())?,
-        Scalar::Sequence(held) => write_array(&held.rows(), keys, depth, out)?,
+        Scalar::List(held)
+        | Scalar::ListView(held)
+        | Scalar::FixedSizeList(held)
+        | Scalar::LargeList(held)
+        | Scalar::LargeListView(held) => write_array(&held.rows(), keys, depth, out)?,
         Scalar::Struct(held) => {
             let entries: Vec<(&str, &Scalar)> = held
                 .as_map()
@@ -887,7 +895,7 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
                 .collect();
             write_object(&entries, keys, depth, out)?;
         }
-        Scalar::Mapping(held) => {
+        Scalar::Map(held) | Scalar::SortedMap(held) => {
             let mut entries = BTreeMap::new();
             for (key, child) in held.as_slice() {
                 let key = key_text(key)?;

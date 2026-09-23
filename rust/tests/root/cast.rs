@@ -21,7 +21,7 @@ mod coverage {
         StringViewArray, StructArray, Time32SecondArray, Time64MicrosecondArray,
         Time64NanosecondArray, TimestampSecondArray,
     };
-    use yggdryl::DateTimeType;
+
     use yggdryl::FieldValue as _;
     use yggdryl::{ArrowCastOptions, DataType, Field, TimeUnit, Timezone};
 
@@ -271,10 +271,10 @@ mod coverage {
         let instants: ArrayRef = Arc::new(StringArray::from(vec![
             "2026-08-17T10:00:00+02:00[Europe/Paris]",
         ]));
-        let paris = DataType::DateTime(DateTimeType::DateTime64 {
+        let paris = DataType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        });
+        };
         let read = cast(&paris.nullable_field("at"), instants).unwrap();
         assert_eq!(
             read.as_any()
@@ -414,10 +414,10 @@ mod coverage {
     fn a_zone_arrow_cannot_name_never_sinks_this_crates_reading() {
         // Arrow parses a target zone once for the whole column and refuses a named
         // one, so its failure must leave the values this crate read standing.
-        let paris = DataType::DateTime(DateTimeType::DateTime64 {
+        let paris = DataType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::from_str("Europe/Paris").unwrap(),
-        });
+        };
         let mixed: ArrayRef = Arc::new(StringArray::from(vec![
             "2026-08-17T10:00:00+02:00",
             "not an instant",
@@ -1028,8 +1028,8 @@ mod typed {
     use yggdryl::FieldValue as _;
     use yggdryl::{DataType, EdgeAlgorithm, Field, Scalar, StructType};
     use yggdryl::{
-        DateTimeField, DateTimeType, GeometryField, Int32Field, Int64Field, StringField,
-        StructField, UInt32Field, UInt64Field, VariantField,
+        DateTimeField, GeometryField, Int32Field, Int64Field, StringField, StructField,
+        UInt32Field, UInt64Field, VariantField,
     };
     use yggdryl::{TimeUnit, Timezone};
 
@@ -1135,10 +1135,10 @@ mod typed {
         // A unit decides the physical width, so the result stays an ArrayRef.
         let field = DateTimeField::try_new(
             "at",
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Millisecond,
                 timezone: Timezone::NAIVE,
-            }),
+            },
             false,
         )
         .unwrap();
@@ -2651,7 +2651,7 @@ mod strict {
     };
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
     use yggdryl::FieldValue as _;
-    use yggdryl::SequenceType;
+
     use yggdryl::arrow::scalar_value;
     use yggdryl::{ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, StructType};
 
@@ -2852,10 +2852,10 @@ mod strict {
         )]);
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
 
-        let target = root([DataType::Sequence(SequenceType::List(Arc::new(
-            DataType::Int32.required_field("item"),
-        )))
-        .nullable_field("counts")]);
+        let target = root([
+            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+                .nullable_field("counts"),
+        ]);
         assert_eq!(
             refusal(&target, batch),
             "required Arrow field $.counts[] holds 1 null values"
@@ -3014,10 +3014,10 @@ mod strict {
             true,
         )]);
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
-        let target = root([DataType::Sequence(SequenceType::List(Arc::new(
-            DataType::Int32.required_field("item"),
-        )))
-        .nullable_field("counts")]);
+        let target = root([
+            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+                .nullable_field("counts"),
+        ]);
         let repaired = target
             .cast_arrow_batch(batch.clone(), ArrowCastOptions::new())
             .unwrap();

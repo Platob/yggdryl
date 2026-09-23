@@ -3,8 +3,9 @@
 //!
 //! Arrow lays a mapping out as a list of non-null key-value entry records,
 //! so the entries are a [`StructSerie`](crate::StructSerie) of the entries
-//! field and [`MappingSerie::keys`] and [`MappingSerie::values`] are its two
-//! children. A row reads as a [`Scalar::Mapping`], pairing the two back;
+//! field and [`MapSerie::keys`] and [`MapSerie::values`] are its two
+//! children. A row reads as a [`Scalar::Map`] or a
+//! [`Scalar::SortedMap`], as the field declares, pairing the two back;
 //! a write turns each pair into a two-cell run for the entries record's own
 //! write, which is no second proof: [`Field::scalar`] on a mapping field
 //! already canonicalized every key and value under the entries record's two
@@ -54,14 +55,14 @@ fn entries_of(rows: &[Scalar]) -> (Vec<usize>, Vec<Scalar>) {
 /// The cut is rebased: its first offset is 0 and its last is the entry
 /// count, so a column that grows knows where its entries end.
 #[derive(Clone)]
-pub struct MappingSerie {
+pub struct MapSerie {
     field: Arc<Field>,
     offsets: OffsetBuffer<i32>,
     entries: Serie,
     nulls: Option<NullBuffer>,
 }
 
-impl MappingSerie {
+impl MapSerie {
     /// Pair a mapping field with its cut and the entries it cuts.
     pub(crate) const fn new(
         field: Arc<Field>,
@@ -104,10 +105,7 @@ impl MappingSerie {
 
     /// Whether every row's keys are sorted, as the field declares.
     pub fn keys_sorted(&self) -> bool {
-        match self.field.dtype() {
-            DataType::Mapping(mapping) => mapping.keys_sorted(),
-            _ => false,
-        }
+        matches!(self.field.dtype(), DataType::SortedMap(_))
     }
 
     /// Return the entry range row `index` occupies: `None` when the row is
@@ -190,7 +188,7 @@ impl MappingSerie {
     }
 }
 
-impl SerieValue for MappingSerie {
+impl SerieValue for MapSerie {
     fn field(&self) -> &Field {
         &self.field
     }
@@ -224,7 +222,10 @@ impl SerieValue for MappingSerie {
         let pairs = range
             .map(|entry| Ok((keys.scalar(entry)?, values.scalar(entry)?)))
             .collect::<Result<Vec<(Scalar, Scalar)>>>()?;
-        Scalar::from_mapping(pairs)
+        Ok(self
+            .field
+            .dtype()
+            .declared_layout(Scalar::from_mapping(pairs)?))
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -284,24 +285,21 @@ impl SerieValue for MappingSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Mapping(Arc::new(self))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Mapping(column) => Some(column.as_ref()),
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 
-impl fmt::Debug for MappingSerie {
+impl fmt::Debug for MapSerie {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        super::debug_column(self, "MappingSerie", formatter)
+        super::debug_column(self, "MapSerie", formatter)
     }
 }
 
-serie_leaf!(MappingSerie);
+serie_leaf!(MapSerie);
 
 /// Build the column `field` types out of a map array, or answer `None` for
 /// a layout that is not one.
@@ -318,7 +316,7 @@ pub(crate) fn column_of(
     use super::arrow::{held, rebased};
 
     let _ = parent;
-    let DataType::Mapping(mapping) = field.dtype() else {
+    let Some(entries_field) = field.dtype().map_entries() else {
         return Ok(None);
     };
     if !matches!(array.data_type(), ArrowDataType::Map(..)) {
@@ -327,9 +325,8 @@ pub(crate) fn column_of(
     let maps = held::<MapArray>(&array)?;
     let entries: ArrayRef = Arc::new(maps.entries().clone());
     let (offsets, values) = rebased(maps.offsets(), &entries);
-    let entries =
-        super::arrow::column_of(Arc::new(mapping.entries().clone()), values, None, proven)?;
+    let entries = super::arrow::column_of(Arc::new(entries_field.clone()), values, None, proven)?;
     Ok(Some(
-        MappingSerie::new(field, offsets, entries, maps.nulls().cloned()).into_serie(),
+        MapSerie::new(field, offsets, entries, maps.nulls().cloned()).into_serie(),
     ))
 }

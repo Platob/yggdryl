@@ -106,9 +106,7 @@ mod avro {
         use yggdryl::avro::AvroOptions;
         use yggdryl::holder::Buffer;
         use yggdryl::media::{IORecordOptions, RecordOptions};
-        use yggdryl::{
-            DataType, DataTypeId, DateTimeType, Field, MediaType, Scalar, TimeUnit, Url,
-        };
+        use yggdryl::{DataType, DataTypeId, Field, MediaType, Scalar, TimeUnit, Url};
         use yggdryl::{IOBase, IOMedia};
 
         /// One canonical batch with a nullable column and a list column.
@@ -1135,10 +1133,10 @@ mod avro {
                 "row",
                 StructType::from_fields([
                     DataType::date32().required_field("day"),
-                    DataType::DateTime(DateTimeType::DateTime64 {
+                    DataType::DateTime64 {
                         unit: yggdryl::TimeUnit::Microsecond,
                         timezone: yggdryl::Timezone::UTC,
-                    })
+                    }
                     .nullable_field("at"),
                     DataType::decimal(10, 2).unwrap().required_field("cost"),
                 ])

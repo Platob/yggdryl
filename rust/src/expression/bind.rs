@@ -343,7 +343,7 @@ impl Bound {
 
     /// Evaluate this term for one row.
     ///
-    /// The row is a [`crate::sequence::Run`] of column values in
+    /// The row is a [`crate::serie::Run`] of column values in
     /// schema order.
     ///
     /// # Errors
@@ -1120,10 +1120,15 @@ fn list_item_type(field: &Field) -> Option<DataType> {
 /// The declared key and value types of a map field.
 fn map_entry_types(field: &Field) -> (Option<DataType>, Option<DataType>) {
     match field.dtype() {
-        DataType::Mapping(map) => (
-            map.entries().get_field(0).map(|held| held.dtype().clone()),
-            map.entries().get_field(1).map(|held| held.dtype().clone()),
-        ),
+        map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
+            (
+                map.entries().get_field(0).map(|held| held.dtype().clone()),
+                map.entries().get_field(1).map(|held| held.dtype().clone()),
+            )
+        }
         _ => (None, None),
     }
 }

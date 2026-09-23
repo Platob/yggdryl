@@ -209,7 +209,7 @@ mod row_values {
     #[test]
     fn rows_are_sequences_and_objects_are_records() {
         let row = trade(7, Some("XNAS"));
-        assert_eq!(row.kind(), "sequence");
+        assert_eq!(row.kind(), "list");
         assert_eq!(
             row.as_sequence(),
             Some([Scalar::from(7), Scalar::from("XNAS")].as_slice())

@@ -27,8 +27,7 @@ use arrow_array::{ArrayRef, DictionaryArray};
 use arrow_buffer::{ArrowNativeType, NullBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
-use super::{IntegerSerie, Serie, require_range, require_row};
-use crate::enums::EnumType;
+use super::{Serie, require_range, require_row};
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -64,16 +63,17 @@ struct Interned {
 
 /// How many values a key of `keys`' width indexes: one past the largest
 /// key, which is what Arrow lets a values array hold.
-fn key_capacity(keys: &IntegerSerie) -> usize {
+fn key_capacity(keys: &Serie) -> usize {
     let bound: u64 = match keys {
-        IntegerSerie::Int8(_) => 1 << 7,
-        IntegerSerie::Int16(_) => 1 << 15,
-        IntegerSerie::Int32(_) => 1 << 31,
-        IntegerSerie::Int64(_) => 1 << 63,
-        IntegerSerie::UInt8(_) => 1 << 8,
-        IntegerSerie::UInt16(_) => 1 << 16,
-        IntegerSerie::UInt32(_) => 1 << 32,
-        IntegerSerie::UInt64(_) => u64::MAX,
+        Serie::Int8(_) => 1 << 7,
+        Serie::Int16(_) => 1 << 15,
+        Serie::Int32(_) => 1 << 31,
+        Serie::Int64(_) => 1 << 63,
+        Serie::UInt8(_) => 1 << 8,
+        Serie::UInt16(_) => 1 << 16,
+        Serie::UInt32(_) => 1 << 32,
+        Serie::UInt64(_) => u64::MAX,
+        _ => unreachable!("{KEYED}"),
     };
     usize::try_from(bound).unwrap_or(usize::MAX)
 }
@@ -109,22 +109,15 @@ impl DictionarySerie {
                     as ArrayRef
             };
         }
-        match self.keys_family() {
-            IntegerSerie::Int8(column) => dictionary!(column),
-            IntegerSerie::Int16(column) => dictionary!(column),
-            IntegerSerie::Int32(column) => dictionary!(column),
-            IntegerSerie::Int64(column) => dictionary!(column),
-            IntegerSerie::UInt8(column) => dictionary!(column),
-            IntegerSerie::UInt16(column) => dictionary!(column),
-            IntegerSerie::UInt32(column) => dictionary!(column),
-            IntegerSerie::UInt64(column) => dictionary!(column),
-        }
-    }
-
-    /// The key column as the integer family it is.
-    fn keys_family(&self) -> &IntegerSerie {
         match &self.keys {
-            Serie::Integer(family) => family,
+            Serie::Int8(column) => dictionary!(column),
+            Serie::Int16(column) => dictionary!(column),
+            Serie::Int32(column) => dictionary!(column),
+            Serie::Int64(column) => dictionary!(column),
+            Serie::UInt8(column) => dictionary!(column),
+            Serie::UInt16(column) => dictionary!(column),
+            Serie::UInt32(column) => dictionary!(column),
+            Serie::UInt64(column) => dictionary!(column),
             _ => unreachable!("{KEYED}"),
         }
     }
@@ -137,15 +130,16 @@ impl DictionarySerie {
                 $column.value(index).map(|key| key.as_usize())
             };
         }
-        match self.keys_family() {
-            IntegerSerie::Int8(column) => key!(column),
-            IntegerSerie::Int16(column) => key!(column),
-            IntegerSerie::Int32(column) => key!(column),
-            IntegerSerie::Int64(column) => key!(column),
-            IntegerSerie::UInt8(column) => key!(column),
-            IntegerSerie::UInt16(column) => key!(column),
-            IntegerSerie::UInt32(column) => key!(column),
-            IntegerSerie::UInt64(column) => key!(column),
+        match &self.keys {
+            Serie::Int8(column) => key!(column),
+            Serie::Int16(column) => key!(column),
+            Serie::Int32(column) => key!(column),
+            Serie::Int64(column) => key!(column),
+            Serie::UInt8(column) => key!(column),
+            Serie::UInt16(column) => key!(column),
+            Serie::UInt32(column) => key!(column),
+            Serie::UInt64(column) => key!(column),
+            _ => unreachable!("{KEYED}"),
         }
     }
 
@@ -186,7 +180,7 @@ impl DictionarySerie {
     fn require_fit(&self, interned: &Interned) -> Result<()> {
         let held = self.values.len();
         let total = held + interned.added.len();
-        let capacity = key_capacity(self.keys_family());
+        let capacity = key_capacity(&self.keys);
         if total > capacity {
             return Err(crate::Error::InvalidRecord {
                 path: smol_str::SmolStr::new(self.field.name()),
@@ -205,9 +199,6 @@ impl DictionarySerie {
     fn apply(&mut self, range: Range<usize>, interned: Interned) {
         let held = self.values.len();
         self.values.write(held..held, interned.added);
-        let Serie::Integer(family) = &mut self.keys else {
-            unreachable!("{KEYED}")
-        };
         macro_rules! keys {
             ($column:expr, $native:ty) => {
                 $column
@@ -222,15 +213,16 @@ impl DictionarySerie {
                     .expect(CHECKED)
             };
         }
-        match Arc::make_mut(family) {
-            IntegerSerie::Int8(column) => keys!(column, i8),
-            IntegerSerie::Int16(column) => keys!(column, i16),
-            IntegerSerie::Int32(column) => keys!(column, i32),
-            IntegerSerie::Int64(column) => keys!(column, i64),
-            IntegerSerie::UInt8(column) => keys!(column, u8),
-            IntegerSerie::UInt16(column) => keys!(column, u16),
-            IntegerSerie::UInt32(column) => keys!(column, u32),
-            IntegerSerie::UInt64(column) => keys!(column, u64),
+        match &mut self.keys {
+            Serie::Int8(column) => keys!(Arc::make_mut(column), i8),
+            Serie::Int16(column) => keys!(Arc::make_mut(column), i16),
+            Serie::Int32(column) => keys!(Arc::make_mut(column), i32),
+            Serie::Int64(column) => keys!(Arc::make_mut(column), i64),
+            Serie::UInt8(column) => keys!(Arc::make_mut(column), u8),
+            Serie::UInt16(column) => keys!(Arc::make_mut(column), u16),
+            Serie::UInt32(column) => keys!(Arc::make_mut(column), u32),
+            Serie::UInt64(column) => keys!(Arc::make_mut(column), u64),
+            _ => unreachable!("{KEYED}"),
         }
     }
 
@@ -337,16 +329,11 @@ impl SerieValue for DictionarySerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Enum(Arc::new(super::EnumSerie::Dictionary(self)))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Enum(family) => match family.as_ref() {
-                super::EnumSerie::Dictionary(column) => Some(column),
-            },
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 
@@ -357,22 +344,6 @@ impl fmt::Debug for DictionarySerie {
 }
 
 serie_leaf!(DictionarySerie);
-
-impl super::EnumSerie {
-    /// Borrow the key column of whichever encoding this leaf is.
-    pub fn keys(&self) -> &Serie {
-        match self {
-            Self::Dictionary(column) => column.keys(),
-        }
-    }
-
-    /// Borrow the values column of whichever encoding this leaf is.
-    pub fn values(&self) -> &Serie {
-        match self {
-            Self::Dictionary(column) => column.values(),
-        }
-    }
-}
 
 /// Build the column `field` types out of a dictionary array, or answer
 /// `None` for a layout that is not one.
@@ -395,7 +366,7 @@ pub(crate) fn column_of(
     let internal = || crate::arrow::Error::Internal {
         site: "serie::enums::column_of",
     };
-    let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() else {
+    let DataType::Dictionary(dictionary) = field.dtype() else {
         return Err(internal());
     };
     macro_rules! parts {

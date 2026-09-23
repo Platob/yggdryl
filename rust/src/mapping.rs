@@ -6,14 +6,14 @@
 //!
 //! | side | root variant | family | leaf |
 //! | --- | --- | --- | --- |
-//! | datatype | `DataType::Mapping` | [`MappingType`] | [`MapType`] |
-//! | field | `Field::Mapping` | [`MappingField`](crate::MappingField) | - |
-//! | value | `Scalar::Mapping` | [`Mapping`] | [`Map`] |
+//! | datatype | `DataType::Map`, `DataType::SortedMap` | [`MappingType`], a view | [`MapType`] |
+//! | field | `Field::Map`, `Field::SortedMap` | [`MappingField`](crate::MappingField) | - |
+//! | value | `Scalar::Map`, `Scalar::SortedMap` | - | [`Map`] |
 //!
-//! Arrow's map is the family's one leaf today: a list of non-null key-value
-//! entry structs, with a flag for whether the keys are ordered. The family
-//! exists around it because a second key-to-value layout is a leaf beside it,
-//! not a new root variant and not a new spelling at every call site.
+//! Arrow's map is a list of non-null key-value entry structs with a flag for
+//! whether the keys are ordered; the flag is the root variant, `Map` or
+//! `SortedMap`, on all three sides, so a map is dispatched like every other
+//! datatype. [`MappingType`] is the borrowed view both variants answer.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -178,14 +178,14 @@ impl DataTypeValue for MappingType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Mapping(self)
+        match self {
+            Self::Map(parameters) => DataType::Map(parameters),
+            Self::SortedMap(parameters) => DataType::SortedMap(parameters),
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Mapping(family) => Some(family.clone()),
-            _ => None,
-        }
+        dtype.as_mapping()
     }
 }
 
@@ -197,11 +197,20 @@ impl fmt::Display for MappingType {
 
 impl From<MappingType> for DataType {
     fn from(value: MappingType) -> Self {
-        Self::Mapping(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
 impl DataType {
+    /// The entries field of a map or sorted map, borrowed.
+    #[must_use]
+    pub fn map_entries(&self) -> Option<&Field> {
+        match self {
+            Self::Map(parameters) | Self::SortedMap(parameters) => Some(&parameters.entries),
+            _ => None,
+        }
+    }
+
     /// Creates a map from a non-null entries field holding a key and a value.
     ///
     /// `keys_sorted` picks the leaf; after this it is the type, not a flag.
@@ -209,10 +218,7 @@ impl DataType {
     /// with, a key and a value, checked here once.
     pub fn map(entries: Field, keys_sorted: bool) -> Result<Self> {
         let entries = pair_entries(entries)?;
-        Ok(Self::Mapping(MappingType::with_keys_sorted(
-            Arc::new(MapType { entries }),
-            keys_sorted,
-        )))
+        Ok(MappingType::with_keys_sorted(Arc::new(MapType { entries }), keys_sorted).into())
     }
 
     /// Creates a map from logical key and value types using Arrow names.
@@ -227,9 +233,15 @@ impl DataType {
         )
     }
 
-    /// Returns the mapping family payload of a mapping datatype.
+    /// The mapping family's view of a map or sorted map, `None` for every
+    /// other datatype: a shared-pointer clone, never a walk of the entries.
+    #[must_use]
     pub fn as_mapping(&self) -> Option<MappingType> {
-        MappingType::from_dtype(self)
+        match self {
+            Self::Map(parameters) => Some(MappingType::Map(Arc::clone(parameters))),
+            Self::SortedMap(parameters) => Some(MappingType::SortedMap(Arc::clone(parameters))),
+            _ => None,
+        }
     }
 }
 
@@ -306,109 +318,18 @@ impl NestedValue for Map {
 
 impl Value for Map {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::Mapping(Mapping::Map(self.clone())).dtype()
+        Scalar::Map(self.clone()).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::Mapping(Mapping::Map(self))
+        Scalar::Map(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::Mapping(Mapping::Map(value)) => Some(value),
+            Scalar::Map(value) | Scalar::SortedMap(value) => Some(value),
             _ => None,
         }
-    }
-}
-
-/// The mapping family's value payload.
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum Mapping {
-    /// An insertion-ordered mapping with arbitrary scalar keys.
-    Map(Map),
-}
-
-impl Mapping {
-    /// Borrow the ordered entries of whichever leaf this is.
-    pub fn as_slice(&self) -> &[(Scalar, Scalar)] {
-        match self {
-            Self::Map(value) => value.as_slice(),
-        }
-    }
-
-    /// Returns the map value when this is that leaf.
-    pub const fn as_map(&self) -> Option<&Map> {
-        match self {
-            Self::Map(value) => Some(value),
-        }
-    }
-}
-
-impl Default for Mapping {
-    fn default() -> Self {
-        Self::Map(Map::default())
-    }
-}
-
-impl fmt::Display for Mapping {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Map(value) => value.fmt(formatter),
-        }
-    }
-}
-
-impl NestedValue for Mapping {
-    fn len(&self) -> usize {
-        self.as_slice().len()
-    }
-
-    fn children(&self) -> Children<'_> {
-        Children::Mapping(self.as_slice().iter())
-    }
-}
-
-impl Value for Mapping {
-    fn dtype(&self) -> Result<DataType> {
-        Scalar::Mapping(self.clone()).dtype()
-    }
-
-    fn into_scalar(self) -> Scalar {
-        Scalar::Mapping(self)
-    }
-
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Mapping(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
-impl From<Map> for Mapping {
-    fn from(value: Map) -> Self {
-        Self::Map(value)
-    }
-}
-
-impl Serialize for Mapping {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            Self::Map(value) => value.serialize(serializer),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Mapping {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Map::deserialize(deserializer).map(Self::Map)
     }
 }
 

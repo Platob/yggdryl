@@ -6,7 +6,6 @@ use super::crated_components;
 use super::path as fpath;
 
 use std::path::PathBuf;
-use yggdryl::SequenceType;
 use yggdryl::fix::FixReplacement;
 use yggdryl::local::LocalFolder;
 use yggdryl::{
@@ -227,7 +226,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
                 .into_owned(),
         )
         .unwrap();
-        let DataType::Mapping(map) = component.fields()[0].dtype() else {
+        let Some(map) = (component.fields()[0].dtype()).as_mapping() else {
             panic!("compacting references preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -251,7 +250,7 @@ fn map_key_and_value_references_round_trip_and_refresh_from_their_owners() {
             registry.update(changed).unwrap();
         }
         let component = registry.field_by_name("lookup").unwrap();
-        let DataType::Mapping(map) = component.fields()[0].dtype() else {
+        let Some(map) = (component.fields()[0].dtype()).as_mapping() else {
             panic!("reference refresh preserves the Map")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -316,7 +315,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         )
         .unwrap();
         assert_eq!(stored.name(), "mappedlookup");
-        let DataType::Mapping(map) = stored.fields()[0].dtype() else {
+        let Some(map) = (stored.fields()[0].dtype()).as_mapping() else {
             panic!("a persisted Map keeps its entries Struct")
         };
         assert_eq!(map.keys_sorted(), sorted);
@@ -373,7 +372,7 @@ fn map_entries_component_references_refresh_without_losing_the_storage_contract(
         registry.update(changed).unwrap();
         let containing = registry.field_by_name("mappedlookup").unwrap();
         let mapping = &containing.fields()[0];
-        let DataType::Mapping(map) = mapping.dtype() else {
+        let Some(map) = (mapping.dtype()).as_mapping() else {
             panic!("reference refresh preserves Map")
         };
         assert!(mapping.is_nullable());
@@ -503,7 +502,7 @@ fn registry_json_snapshots_preserve_the_graph_and_every_membership() {
         assert!(record[category.as_str()].as_sequence().is_some());
     }
     let group = Field::from_value(record["groups"].get(0).unwrap().into_owned()).unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("the native group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -769,7 +768,7 @@ fn categories_round_trip_compact_references_and_counter_fields() {
     assert!(!root.join("messages").exists());
     let document =
         Field::from_json_bytes(&std::fs::read(root.join("groups/Parties.json")).unwrap()).unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = document.dtype() else {
+    let DataType::List(item) = document.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.dtype(), &DataType::Null);
@@ -1318,7 +1317,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     let group = registry.field_by_name("Parties").unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("parties list")
     };
     assert_eq!(item.name(), "party");
@@ -1471,7 +1470,7 @@ fn merging_catalogs_resolves_imported_references_against_the_code_set_union() {
         assert_eq!(set.code_name("C"), Some("Client"), "{path}");
     }
     let group = target.msgtype("I").unwrap().get_group_by_tag(453).unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("the resolved group list")
     };
     assert_eq!(
@@ -1571,7 +1570,7 @@ fn referenced_metadata_updates_cascade_and_occurrence_overrides_fail_without_los
         .set_description("A changed description")
         .unwrap();
     registry.update(component).unwrap();
-    let DataType::Sequence(SequenceType::List(item)) = registry
+    let DataType::List(item) = registry
         .field_by_path(&fpath("NewOrderSingle.Parties"))
         .unwrap()
         .dtype()
@@ -1663,7 +1662,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
         .unwrap();
     assert_eq!(group.name(), "Parties");
     assert_eq!(group.as_fix().description(), Some("Replaced metadata"));
-    let DataType::Sequence(SequenceType::List(item)) = group.dtype() else {
+    let DataType::List(item) = group.dtype() else {
         panic!("a group list")
     };
     assert_eq!(item.name(), "Party");
@@ -2334,11 +2333,10 @@ mod clock_seed_tests {
 mod committed {
     use std::collections::BTreeSet;
 
-    use yggdryl::SequenceType;
     use yggdryl::local::LocalFolder;
     use yggdryl::{
-        DataType, DateTimeType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS,
-        STANDARD_TRAILER_TAGS, Scalar, TimeType, TimeUnit, Timezone,
+        DataType, Field, FixCategory, FixRegistry, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+        Scalar, TimeUnit, Timezone,
     };
 
     fn seed() -> FixRegistry {
@@ -2584,7 +2582,7 @@ mod committed {
         let derived = parties.as_fix().tag().unwrap().expect("a derived tag");
         assert!(yggdryl::FixId::is_definition_tag(derived), "{derived}");
         assert_ne!(derived, 453);
-        let DataType::Sequence(SequenceType::List(item)) = parties.dtype() else {
+        let DataType::List(item) = parties.dtype() else {
             panic!("a list, got {}", parties.dtype());
         };
         assert_eq!(item.name(), "party");
@@ -2702,8 +2700,7 @@ mod committed {
         fn walk(field: &Field, out: &mut Vec<Field>) {
             out.push(field.clone());
             match field.dtype() {
-                DataType::Sequence(SequenceType::List(item))
-                | DataType::Sequence(SequenceType::LargeList(item)) => walk(item, out),
+                DataType::List(item) | DataType::LargeList(item) => walk(item, out),
                 DataType::Struct(fields) => {
                     for held in fields.iter() {
                         walk(held, out);
@@ -2728,16 +2725,16 @@ mod committed {
         // `LocalMktTime` and `UTCTimeOnly` are one type for the same reason.
         for field in every_field(&registry) {
             match field.dtype() {
-                DataType::Date(_) => {
+                DataType::Date32 | DataType::Date64 => {
                     panic!("{} is still a day rather than an instant", field.name())
                 }
-                DataType::Time(TimeType::Time32(_)) => {
+                DataType::Time32(_) => {
                     panic!("{} is still typed to a second", field.name())
                 }
-                DataType::Time(TimeType::Time64(unit)) => {
+                DataType::Time64(unit) => {
                     assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name())
                 }
-                DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+                DataType::DateTime64 { unit, timezone } => {
                     assert_eq!(*unit, TimeUnit::Nanosecond, "{}", field.name());
                     // Two zones, and only two: what the datatype's own name says.
                     // A `UTCTimestamp` is UTC and a `LocalMktDate` states no zone,
@@ -2753,22 +2750,18 @@ mod committed {
         }
 
         // The registry's own entries, where each field is counted once.
-        let clock = DataType::DateTime(DateTimeType::DateTime64 {
+        let clock = DataType::DateTime64 {
             unit: TimeUnit::Nanosecond,
             timezone: Timezone::UTC,
-        });
+        };
         let mut times = 0_usize;
         let mut naive = 0_usize;
         let mut utc = 0_usize;
         for field in registry.iter() {
             match field.dtype() {
-                DataType::Time(TimeType::Time64(_)) => times += 1,
-                DataType::DateTime(DateTimeType::DateTime64 { timezone, .. })
-                    if timezone.is_naive() =>
-                {
-                    naive += 1
-                }
-                DataType::DateTime(_) => utc += 1,
+                DataType::Time64(_) => times += 1,
+                DataType::DateTime64 { timezone, .. } if timezone.is_naive() => naive += 1,
+                DataType::DateTime64 { .. } => utc += 1,
                 _ => {}
             }
         }

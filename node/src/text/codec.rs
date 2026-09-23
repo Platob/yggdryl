@@ -335,6 +335,15 @@ impl JsScalar {
             .map(Self::from_core))
     }
 
+    /// The serie a sequence holds - a run or a column - or `null`.
+    #[napi(js_name = "_asSerieNative", skip_typescript)]
+    pub fn as_serie_native(&self) -> Option<crate::serie::JsSerie> {
+        self.inner
+            .as_serie()
+            .cloned()
+            .map(crate::serie::JsSerie::from_core)
+    }
+
     /// Look up a dotted mapping/record key and sequence-index path.
     #[napi]
     pub fn path(&self, path: String) -> Option<JsScalar> {
@@ -368,7 +377,7 @@ impl JsScalar {
                 .inner
                 .as_str()
                 .and_then(|name| self.inner.get_key_str(name)),
-            Scalar::Mapping(_) => self.inner.get_key(&key.inner),
+            Scalar::Map(_) | Scalar::SortedMap(_) => self.inner.get_key(&key.inner),
             _ => None,
         };
         value.cloned().map(Self::from_core)
@@ -378,7 +387,9 @@ impl JsScalar {
     #[napi(js_name = "_setNative", skip_typescript)]
     pub fn set_native(&self, key: &JsScalar, value: &JsScalar) -> Result<Self> {
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.with_key(key.inner.clone(), value.inner.clone()),
+            Scalar::Map(_) | Scalar::SortedMap(_) => {
+                self.inner.with_key(key.inner.clone(), value.inner.clone())
+            }
             Scalar::Struct(_) => {
                 let name = key
                     .inner
@@ -404,7 +415,7 @@ impl JsScalar {
             .as_str()
             .ok_or_else(|| napi_error("remove requires a string key"))?;
         let rebuilt = match &self.inner {
-            Scalar::Mapping(_) => self.inner.without_key(name),
+            Scalar::Map(_) | Scalar::SortedMap(_) => self.inner.without_key(name),
             Scalar::Struct(_) => self.inner.without_field(name),
             _ => {
                 return Err(napi_error(format!(
@@ -1657,7 +1668,7 @@ fn create_path(path: &str) -> Result<BufWriter<File>> {
         .map_err(napi_error)
 }
 
-fn checked_depth(max_depth: Option<u32>) -> Result<usize> {
+pub(crate) fn checked_depth(max_depth: Option<u32>) -> Result<usize> {
     let max_depth = max_depth.map_or(DEFAULT_JS_DEPTH, |value| value as usize);
     if !(1..=MAX_JS_DEPTH).contains(&max_depth) {
         return Err(napi_error(format!(
@@ -2341,7 +2352,11 @@ fn truncated(digits: &str) -> String {
 }
 
 #[allow(clippy::too_many_lines)] // One exhaustive family match keeps the boundary auditable.
-fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<JsonValue> {
+pub(crate) fn value_to_transport(
+    value: &Scalar,
+    depth: usize,
+    max_depth: usize,
+) -> Result<JsonValue> {
     if depth > max_depth {
         return Err(napi_error(format!(
             "decoded value exceeds maxDepth {max_depth}"
@@ -2398,7 +2413,11 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
             "bytes",
             [("value", JsonValue::String(BASE64.encode(value.as_bytes())))],
         )),
-        Scalar::Sequence(values) => values
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values) => values
             .iter()
             .map(|value| value_to_transport(&value, depth + 1, max_depth))
             .collect::<Result<Vec<_>>>()
@@ -2430,7 +2449,9 @@ fn value_to_transport(value: &Scalar, depth: usize, max_depth: usize) -> Result<
         Scalar::DateTime64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Duration32(leaf) => Ok(fixed_temporal_transport(value, leaf)),
         Scalar::Duration64(leaf) => Ok(fixed_temporal_transport(value, leaf)),
-        Scalar::Mapping(entries) => mapping_transport(entries.as_slice(), depth, max_depth),
+        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
+            mapping_transport(entries.as_slice(), depth, max_depth)
+        }
         Scalar::Struct(entries) => record_transport(entries.as_map(), depth, max_depth),
         // A variant crosses as the value it holds, which is what a caller
         // asked a variant column for; the bytes stay on the Rust side.
@@ -2458,7 +2479,13 @@ fn struct_transport_with_field(
     max_depth: usize,
 ) -> Result<JsonValue> {
     let values = match value {
-        Scalar::Sequence(values) if values.len() == fields.len() => {
+        Scalar::List(values)
+        | Scalar::ListView(values)
+        | Scalar::FixedSizeList(values)
+        | Scalar::LargeList(values)
+        | Scalar::LargeListView(values)
+            if values.len() == fields.len() =>
+        {
             fields.iter().zip(values.iter()).collect::<Vec<_>>()
         }
         Scalar::Struct(values) => fields
@@ -2549,16 +2576,28 @@ pub(crate) fn value_to_transport_with_field(
         CoreDataType::Struct(structure) => {
             struct_transport_with_field(value, structure.as_fields(), depth, max_depth)
         }
-        CoreDataType::Sequence(sequence) => value
-            .as_serie()
-            .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
-            .iter()
-            .map(|value| {
-                value_to_transport_with_field(&value, sequence.item(), depth + 1, max_depth)
-            })
-            .collect::<Result<Vec<_>>>()
-            .map(JsonValue::Array),
-        CoreDataType::Mapping(mapping) => {
+        sequence_dtype @ (CoreDataType::List(_)
+        | CoreDataType::ListView(_)
+        | CoreDataType::FixedSizeList(..)
+        | CoreDataType::LargeList(_)
+        | CoreDataType::LargeListView(_)) => {
+            let sequence = &sequence_dtype
+                .as_serie_type()
+                .expect("the variant was just matched");
+            value
+                .as_serie()
+                .ok_or_else(|| napi_error(format!("expected a typed list, got {}", value.kind())))?
+                .iter()
+                .map(|value| {
+                    value_to_transport_with_field(&value, sequence.item(), depth + 1, max_depth)
+                })
+                .collect::<Result<Vec<_>>>()
+                .map(JsonValue::Array)
+        }
+        mapping_dtype @ (CoreDataType::Map(_) | CoreDataType::SortedMap(_)) => {
+            let mapping = &mapping_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             map_transport_with_field(value, mapping.parameters(), depth, max_depth)
         }
         CoreDataType::Union(fields, _) => {
@@ -2578,16 +2617,21 @@ pub(crate) fn value_to_transport_with_field(
                 .ok_or_else(|| napi_error("typed union id is not declared"))?;
             value_to_transport_with_field(payload, branch, depth, max_depth)
         }
-        CoreDataType::Enum(dictionary) => value_to_transport_with_field(
-            value,
-            &CoreField::new(
-                field.name(),
-                dictionary.value().clone(),
-                field.is_nullable(),
-            ),
-            depth,
-            max_depth,
-        ),
+        dictionary_dtype @ CoreDataType::Dictionary(_) => {
+            let dictionary = &dictionary_dtype
+                .enum_type()
+                .expect("the variant was just matched");
+            value_to_transport_with_field(
+                value,
+                &CoreField::new(
+                    field.name(),
+                    dictionary.value().clone(),
+                    field.is_nullable(),
+                ),
+                depth,
+                max_depth,
+            )
+        }
         CoreDataType::RunEndEncoded(encoded) => {
             value_to_transport_with_field(value, encoded.values(), depth, max_depth)
         }

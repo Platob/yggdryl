@@ -35,7 +35,7 @@
 //! a column. The root is [`Serie`] - one column leaf per family, beside the
 //! schema-free [`Run`] a row canonicalizes to - and [`SerieValue`] is what
 //! each column leaf and each family enum owes it. A serie is a value as well,
-//! because it *is* the sequence family's value, `Scalar::Sequence(Serie)`:
+//! because it *is* the serie family's value, `Scalar::List(Serie)`:
 //! [`Serie`] implements [`Value`] and [`NestedValue`], and nothing about a
 //! column is a second value model. It does not implement [`SerieValue`],
 //! whose every method answers from a field, because the run leaf declares
@@ -73,11 +73,12 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use smol_str::SmolStr;
 
+use crate::mapping::Map;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, Serie, TimeUnit, Timezone,
     i256,
 };
-use crate::{Mapping, Struct, Variant};
+use crate::{Struct, Variant};
 
 /// One concrete scalar representation.
 ///
@@ -166,10 +167,19 @@ macro_rules! family_value {
         $family:ident, $kind:ident, [$($leaf:ident),+ $(,)?]
     ) => {
         family_value!($(#[$meta])* $family, $kind, [$($leaf => $leaf),+]);
+
+        $(
+            impl From<$leaf> for $family {
+                fn from(value: $leaf) -> Self {
+                    Self::$leaf(value)
+                }
+            }
+        )+
     };
     // A family where a variant is spelled as the `Scalar` variant it carries
-    // rather than as the type it holds - the nested family, whose `Sequence`
-    // holds a `Serie`.
+    // rather than as the type it holds - the nested family, whose five list
+    // layouts each hold a `Serie` and whose two maps each hold a `Map`. A held
+    // type may repeat, so the value is typed through the `Scalar` it is.
     (
         $(#[$meta:meta])*
         $family:ident, $kind:ident, [$($leaf:ident => $held:ty),+ $(,)?]
@@ -196,7 +206,7 @@ macro_rules! family_value {
 
             fn dtype(&self) -> $crate::Result<$crate::DataType> {
                 match self {
-                    $(Self::$leaf(value) => $crate::Value::dtype(value),)+
+                    $(Self::$leaf(value) => $crate::Scalar::$leaf(value.clone()).dtype(),)+
                 }
             }
 
@@ -213,14 +223,6 @@ macro_rules! family_value {
                 }
             }
         }
-
-        $(
-            impl From<$held> for $family {
-                fn from(value: $held) -> Self {
-                    Self::$leaf(value)
-                }
-            }
-        )+
 
         impl From<$family> for $crate::Scalar {
             fn from(value: $family) -> Self {
@@ -599,12 +601,24 @@ family_value!(
     ///
     /// let value = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
     /// let held = Nested::from_scalar(&value).expect("a sequence");
-    /// assert!(matches!(held, Nested::Sequence(_)));
+    /// assert!(matches!(held, Nested::List(_)));
     /// assert_eq!(held.dtype().unwrap(), DataType::list(DataType::Int64.required_field("item")));
     /// assert_eq!(held.into_scalar(), value);
     /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
     /// ```
-    Nested, Nested, [Sequence => Serie, Mapping => Mapping, Struct => Struct, Variant => Variant]
+    Nested,
+    Nested,
+    [
+        List => Serie,
+        ListView => Serie,
+        FixedSizeList => Serie,
+        LargeList => Serie,
+        LargeListView => Serie,
+        Map => Map,
+        SortedMap => Map,
+        Struct => Struct,
+        Variant => Variant,
+    ]
 );
 
 /// The per-column facts a field carries that only one datatype has.

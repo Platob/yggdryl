@@ -51,7 +51,6 @@ use super::retired::{self, Fill, Part, Rule, When};
 use super::schema::{item_fields, same_shape, shape_digest, tag_and_counter};
 use super::{FixRegistry, occurrence_name};
 use crate::expression::{Bound, Term};
-use crate::sequence::SequenceType;
 use crate::{DataType, Field, Plan, Result, Scalar, StructType};
 
 /// One level of the row: the root, or one occurrence of a repeating group.
@@ -493,7 +492,7 @@ fn pack_group(list: Field, occurrences: Vec<Option<Level>>) -> Result<(Field, Sc
     });
     let rows = Scalar::from_sequence(rows);
     let dtype = match list.dtype() {
-        DataType::Sequence(SequenceType::LargeList(_)) => DataType::large_list(item),
+        DataType::LargeList(_) => DataType::large_list(item),
         _ => DataType::list(item),
     };
     // The List's own metadata travels as the one it is rather than as a map
@@ -829,10 +828,7 @@ impl<'msg> Restater<'msg> {
                     // The List as `pack_group` would rebuild it: a List and
                     // not a map, its item nullable exactly where an
                     // occurrence is null, and every member nullable.
-                    let DataType::Sequence(
-                        SequenceType::List(item) | SequenceType::LargeList(item),
-                    ) = field.dtype()
-                    else {
+                    let (DataType::List(item) | DataType::LargeList(item)) = field.dtype() else {
                         return false;
                     };
                     if item.is_nullable() != rows.iter().any(Scalar::is_null) {

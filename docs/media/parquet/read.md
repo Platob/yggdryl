@@ -7,7 +7,7 @@ Rows out of a Parquet file: native scalars first, then Arrow batches, and the sc
 | Item | Behaviour |
 | --- | --- |
 | Native rows | Python `read_records`, JavaScript `readRecords`; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
-| Row shape | an ordered `Scalar::Sequence` under the root, or a name-sorted `Scalar::Struct` resolved to that order |
+| Row shape | an ordered `Scalar::List` under the root, or a name-sorted `Scalar::Struct` resolved to that order |
 | Batches | `read_arrow_reader` returns an [`arrow::BatchReader`](../../arrow/readers.md), bounded by `batch_row_size` and `batch_byte_size`, never a collected table |
 | Schema | `read_arrow_field` returns the canonical non-null struct root [`Field`](../../types/field.md); Rust `read_arrow_schema` returns the stored Arrow schema, field metadata included |
 | Declared root | `options.field` is returned as-is, so a declared handle answers without reading a footer |

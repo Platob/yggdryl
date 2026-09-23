@@ -38,7 +38,7 @@ impl Scalar {
     /// it never allocates and never copies a string or a byte payload.
     ///
     /// `None` is the answer for [`Self::Null`], which has no payload, and for
-    /// [`crate::sequence::Run`], [`crate::mapping::Mapping`], and
+    /// [`crate::serie::Run`], [`crate::Map`], and
     /// [`crate::structure::Struct`], whose
     /// bytes exist only under a framing. Use [`Self::write_bytes`] for those.
     ///
@@ -65,8 +65,13 @@ impl Scalar {
         let inline = match self {
             Self::Arrow(_) => return None,
             Self::Null
-            | Self::Sequence(_)
-            | Self::Mapping(_)
+            | Self::List(_)
+            | Self::ListView(_)
+            | Self::FixedSizeList(_)
+            | Self::LargeList(_)
+            | Self::LargeListView(_)
+            | Self::Map(_)
+            | Self::SortedMap(_)
             | Self::Struct(_)
             | Self::Variant(_)
             | Self::Version(_)
@@ -372,14 +377,18 @@ impl Scalar {
             Self::Bytes(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
-            Self::Sequence(values) => {
+            Self::List(values)
+            | Self::ListView(values)
+            | Self::FixedSizeList(values)
+            | Self::LargeList(values)
+            | Self::LargeListView(values) => {
                 let rows = values.rows();
                 write_sequence_header(sink, rows.len());
                 for value in rows.iter() {
                     value.feed(sink, depth + 1);
                 }
             }
-            Self::Mapping(entries) => {
+            Self::Map(entries) | Self::SortedMap(entries) => {
                 write_tag(sink, DataTypeId::Map);
                 write_len(sink, entries.as_slice().len());
                 for (key, value) in entries.as_slice() {

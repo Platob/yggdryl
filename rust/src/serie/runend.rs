@@ -4,23 +4,25 @@
 //! The run ends are rebased onto the rows this column holds - the first run
 //! starts at row 0 and the last ends at the logical length - so a row reads
 //! by one binary search over them, and the values column holds exactly one
-//! row per run. A write rebuilds: the replacement is laid out at the
-//! crate's one scalar-array boundary, joined to the rows around it with
-//! Arrow's concatenation, and re-imported through the door with its rows
-//! already proven.
+//! row per run. A write is a cut over the runs it touches: the replacement
+//! is folded into runs, a neighbour holding an equal value absorbs the rows
+//! beside it rather than starting a run, and only what changed is written -
+//! the values column spliced where runs appear or vanish, the run ends from
+//! the first one that moves. A push of the value the last run holds is one
+//! run-end write, and a push of another value one run appended.
 
 use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
 use arrow_array::types::{Int16Type, Int32Type, Int64Type, RunEndIndexType};
-use arrow_array::{Array, ArrayRef, PrimitiveArray, RunArray, make_array, new_empty_array};
+use arrow_array::{Array, ArrayRef, PrimitiveArray, RunArray, make_array};
 use arrow_buffer::{ArrowNativeType, NullBuffer};
 use arrow_data::ArrayData;
-use arrow_schema::{ArrowError, DataType as ArrowDataType};
+use arrow_schema::DataType as ArrowDataType;
 
-use super::primitive::{PrimitiveLeaf, PrimitiveSerie};
-use super::{IntegerSerie, Serie, require_range, require_row, require_window};
+use super::primitive::{NativeLeaf, PrimitiveLeaf, PrimitiveSerie};
+use super::{Serie, proven_row, require_range, require_row, require_window};
 use crate::value::SerieValue;
 use crate::{DataType, Field, Result, Scalar};
 
@@ -29,12 +31,8 @@ use crate::{DataType, Field, Result, Scalar};
 const ALIGNED: &str = "a run-end column's runs reach its rows: no public path misaligns them";
 
 /// The invariant a write carries in from `check`: the rows fit the run-end
-/// width, so the rebuild cannot refuse them.
+/// width, so no run end it writes can refuse them.
 const CHECKED: &str = "check ran on these rows: the run ends they reach fit the run-end width";
-
-/// The invariant a canonical row carries into a write: it lays out as the
-/// field's own array, because the field's contract already rewrote it.
-const LAID_OUT: &str = "a canonical row lays out as its field's array: the contract rewrote it";
 
 /// The invariant the door keeps: a run-end field's run ends are an integer
 /// column of one of the three widths its datatype admits.
@@ -55,13 +53,163 @@ pub struct RunEndEncodedSerie {
 /// they are, with the width's Arrow type as its parameter.
 macro_rules! over_run_ends {
     ($column:expr, $function:ident($($argument:expr),*)) => {
-        match $column.run_ends_family() {
-            IntegerSerie::Int16(column) => $function::<Int16Type>(column.values() $(, $argument)*),
-            IntegerSerie::Int32(column) => $function::<Int32Type>(column.values() $(, $argument)*),
-            IntegerSerie::Int64(column) => $function::<Int64Type>(column.values() $(, $argument)*),
+        match &$column.run_ends {
+            Serie::Int16(column) => $function::<Int16Type>(column.values() $(, $argument)*),
+            Serie::Int32(column) => $function::<Int32Type>(column.values() $(, $argument)*),
+            Serie::Int64(column) => $function::<Int64Type>(column.values() $(, $argument)*),
             _ => unreachable!("{RUN_ENDS}"),
         }
     };
+}
+
+/// Call one width-generic function over the run ends column itself, held
+/// alone, with the width's Arrow type as its parameter.
+macro_rules! over_run_ends_mut {
+    ($column:expr, $function:ident($($argument:expr),*)) => {
+        match &mut $column.run_ends {
+            Serie::Int16(column) => $function::<Int16Type>(Arc::make_mut(column) $(, $argument)*),
+            Serie::Int32(column) => $function::<Int32Type>(Arc::make_mut(column) $(, $argument)*),
+            Serie::Int64(column) => $function::<Int64Type>(Arc::make_mut(column) $(, $argument)*),
+            _ => unreachable!("{RUN_ENDS}"),
+        }
+    };
+}
+
+/// Where a write over rows `range` cuts the runs.
+///
+/// `runs` are the runs it rewrites: the ones its rows fall in, and the run
+/// on either side of it that keeps rows - the part of the run it starts in
+/// that lies before it, or the whole run before it when it starts on a
+/// boundary, and the part of the run it ends in that lies after it. Holding
+/// the neighbours is what lets a replacement equal to one extend it.
+struct Cut {
+    /// The runs the write rewrites.
+    runs: Range<usize>,
+    /// The row the first of `runs` starts at.
+    base: usize,
+    /// The rows the first of `runs` keeps before the write, if it keeps any.
+    left: Option<usize>,
+    /// The rows the last of `runs` keeps after the write, if it keeps any.
+    right: Option<usize>,
+}
+
+/// Cut `ends`, whose last run ends at `len`, around rows `range`.
+fn cut<R: RunEndIndexType>(ends: &[R::Native], range: &Range<usize>, len: usize) -> Cut {
+    let count = ends.len();
+    let end_of = |run: usize| ends[run].as_usize();
+    let start_of = |run: usize| if run == 0 { 0 } else { end_of(run - 1) };
+    let first = if range.start < len {
+        run_of::<R>(ends, range.start)
+    } else {
+        count
+    };
+    let head = range.start - start_of(first);
+    let (lo, base, left) = if head > 0 {
+        (first, start_of(first), Some(head))
+    } else if first > 0 {
+        let before = first - 1;
+        (
+            before,
+            start_of(before),
+            Some(end_of(before) - start_of(before)),
+        )
+    } else {
+        (0, 0, None)
+    };
+    let last = if range.end < len {
+        run_of::<R>(ends, range.end)
+    } else {
+        count
+    };
+    let (hi, right) = if last < count {
+        (last + 1, Some(end_of(last) - range.end))
+    } else {
+        (count, None)
+    };
+    Cut {
+        runs: lo..hi,
+        base,
+        left,
+        right,
+    }
+}
+
+/// Rewrite run ends `runs` as `region` and move every later one by `shift`,
+/// writing only from the first run end that changes - and, when nothing
+/// after the cut moves, only up to the last.
+fn rewrite_ends<R: RunEndIndexType + NativeLeaf>(
+    column: &mut PrimitiveSerie<R>,
+    runs: Range<usize>,
+    region: &[usize],
+    shift: isize,
+) {
+    let held = column.values();
+    let old = &held[runs.clone()];
+    let same = |(new, old): (&usize, &R::Native)| *new == old.as_usize();
+    let head = region
+        .iter()
+        .zip(old)
+        .take_while(|pair| same(*pair))
+        .count();
+    let (from, to, written): (usize, usize, Vec<usize>) = if shift == 0 {
+        let tail = region[head..]
+            .iter()
+            .rev()
+            .zip(old[head..].iter().rev())
+            .take_while(|pair| same(*pair))
+            .count();
+        (
+            runs.start + head,
+            runs.end - tail,
+            region[head..region.len() - tail].to_vec(),
+        )
+    } else {
+        let moved = held[runs.end..]
+            .iter()
+            .map(|end| end.as_usize().checked_add_signed(shift).expect(ALIGNED));
+        (
+            runs.start + head,
+            held.len(),
+            region[head..].iter().copied().chain(moved).collect(),
+        )
+    };
+    if from == to && written.is_empty() {
+        return;
+    }
+    let written = written
+        .into_iter()
+        .map(|end| Some(R::Native::from_usize(end).expect(CHECKED)))
+        .collect();
+    column.splice_values(from..to, written).expect(RUN_ENDS);
+}
+
+/// Append `ends`, another column's run ends, each moved past `shift` rows.
+fn extend_ends<R: RunEndIndexType + NativeLeaf>(
+    column: &mut PrimitiveSerie<R>,
+    ends: &[usize],
+    shift: usize,
+) {
+    let written = ends
+        .iter()
+        .map(|end| Some(R::Native::from_usize(end + shift).expect(CHECKED)))
+        .collect();
+    column.extend_values(written).expect(RUN_ENDS);
+}
+
+/// The run ends of `ends` as row counts.
+fn ends_of<R: RunEndIndexType>(ends: &[R::Native]) -> Vec<usize> {
+    ends.iter().map(|end| end.as_usize()).collect()
+}
+
+/// What a write does to the runs: runs `runs` become `ends`, the values
+/// column's rows `values` become `replacement`, and every later run end
+/// moves by `shift`.
+struct Plan {
+    runs: Range<usize>,
+    ends: Vec<usize>,
+    values: Range<usize>,
+    replacement: Vec<Scalar>,
+    shift: isize,
 }
 
 /// The run row `index` falls in: one binary search over `ends`; the caller
@@ -142,14 +290,6 @@ impl RunEndEncodedSerie {
         self.len
     }
 
-    /// The run ends column as the integer family it is.
-    fn run_ends_family(&self) -> &IntegerSerie {
-        match &self.run_ends {
-            Serie::Integer(family) => family,
-            _ => unreachable!("{RUN_ENDS}"),
-        }
-    }
-
     /// Refuse a length the run-end width cannot reach, naming the column.
     fn require_fit(&self, total: usize) -> Result<()> {
         if over_run_ends!(self, fits(total)) {
@@ -165,91 +305,95 @@ impl RunEndEncodedSerie {
         })
     }
 
-    /// Lay canonical `rows` out as this column's array, once, at the
-    /// crate's one scalar-array boundary.
-    fn laid_out(&self, rows: &[Scalar]) -> ArrayRef {
-        let borrowed: Vec<&Scalar> = rows.iter().collect();
-        crate::arrow::value::array_from_values(&self.field, &borrowed).expect(LAID_OUT)
-    }
-
-    /// Take `joined` - this column's storage - as this column, through the
-    /// door with its rows already proven.
-    fn rebuilt(&self, joined: ArrayRef) -> Self {
-        let serie =
-            super::arrow::column_of(Arc::clone(&self.field), joined, None, true).expect(CHECKED);
-        let Serie::RunEndEncoded(held) = serie else {
-            unreachable!("{CHECKED}")
+    /// Plan a write of canonical `rows` over `range`.
+    ///
+    /// The replacement is folded into runs of equal neighbours between the
+    /// rows the cut keeps on either side, so a value equal to a neighbour
+    /// extends its run. A neighbour's run keeps its values row - the one
+    /// before the write always, the one after it where it is not the same
+    /// run or swallowed by the one before - so the values column is spliced
+    /// only where runs appear or vanish.
+    fn plan(&self, range: &Range<usize>, rows: &[Scalar]) -> Plan {
+        let cut = over_run_ends!(self, cut(range, self.len));
+        let mut runs: Vec<(Scalar, usize)> = Vec::new();
+        let mut fold = |value: Scalar, length: usize| match runs.last_mut() {
+            Some((held, count)) if *held == value => *count += length,
+            _ => runs.push((value, length)),
         };
-        Arc::unwrap_or_clone(held)
-    }
-
-    /// The values the runs of canonical `rows` hold: one per run of equal
-    /// neighbours, as the layout cuts them.
-    fn runs_of(rows: &[Scalar]) -> Vec<Scalar> {
-        let mut runs: Vec<Scalar> = Vec::new();
-        for row in rows {
-            if runs.last().is_none_or(|previous| previous != row) {
-                runs.push(row.clone());
-            }
+        if let Some(length) = cut.left {
+            fold(proven_row(&self.values, cut.runs.start), length);
         }
-        runs
+        for row in rows {
+            fold(row.clone(), 1);
+        }
+        if let Some(length) = cut.right {
+            fold(proven_row(&self.values, cut.runs.end - 1), length);
+        }
+        let keep_left = usize::from(cut.left.is_some());
+        let keep_right = usize::from(
+            cut.right.is_some() && (keep_left == 0 || (cut.runs.len() > 1 && runs.len() > 1)),
+        );
+        let mut end = cut.base;
+        let ends = runs
+            .iter()
+            .map(|(_, length)| {
+                end += length;
+                end
+            })
+            .collect();
+        let replacement = runs[keep_left..runs.len() - keep_right]
+            .iter()
+            .map(|(value, _)| value.clone())
+            .collect();
+        Plan {
+            values: cut.runs.start + keep_left..cut.runs.end - keep_right,
+            runs: cut.runs,
+            ends,
+            replacement,
+            shift: isize::try_from(rows.len()).expect(ALIGNED)
+                - isize::try_from(range.len()).expect(ALIGNED),
+        }
     }
 
     /// Refuse what a write could not do: a length past the run-end width,
     /// or what the values column refuses for the runs it would gain.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
         self.require_fit(self.len - range.len() + rows.len())?;
-        let held = self.values.len();
-        self.values.check(&(held..held), &Self::runs_of(rows))
+        let plan = self.plan(range, rows);
+        self.values.check(&plan.values, &plan.replacement)
     }
 
-    /// Write canonical `rows` over a checked `range`, rebuilding.
+    /// Write canonical `rows` over a checked `range`, in place: the values
+    /// column spliced where runs appear or vanish, the run ends from the
+    /// first one that moves.
     pub(crate) fn write(&mut self, range: Range<usize>, rows: Vec<Scalar>) {
-        let array = self.into_arrow_array();
-        let joined = joined(
-            &self.field,
-            vec![
-                array.slice(0, range.start),
-                self.laid_out(&rows),
-                array.slice(range.end, self.len - range.end),
-            ],
-        )
-        .expect(CHECKED);
-        *self = self.rebuilt(joined);
+        let plan = self.plan(&range, &rows);
+        if !(plan.values.is_empty() && plan.replacement.is_empty()) {
+            self.values.write(plan.values, plan.replacement);
+        }
+        over_run_ends_mut!(self, rewrite_ends(plan.runs, &plan.ends, plan.shift));
+        self.len = self.len - range.len() + rows.len();
     }
 
     /// Append `other`'s rows, whose field agrees with this one's, answering
     /// whether the run-end width reaches the total; when it does not,
     /// nothing moved.
+    ///
+    /// The values append buffer to buffer and the run ends follow, moved
+    /// past the rows already held; two equal runs meeting at the seam stay
+    /// two runs, which the layout allows.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
         if !over_run_ends!(self, fits(self.len + other.len)) {
             return false;
         }
-        let Ok(joined) = joined(
-            &self.field,
-            vec![self.into_arrow_array(), other.into_arrow_array()],
-        ) else {
+        let ends = over_run_ends!(other, ends_of());
+        if !self.values.append(&other.values) {
             return false;
-        };
-        *self = self.rebuilt(joined);
+        }
+        over_run_ends_mut!(self, extend_ends(&ends, self.len));
+        self.len += other.len;
         true
     }
-}
-
-/// Join `pieces` into one array of `field`'s storage, skipping the empty
-/// ones: the kernel refuses an empty input, and reads the datatype off the
-/// first run array it is given.
-fn joined(field: &Field, pieces: Vec<ArrayRef>) -> std::result::Result<ArrayRef, ArrowError> {
-    let pieces: Vec<&dyn Array> = pieces
-        .iter()
-        .filter(|piece| !piece.is_empty())
-        .map(|piece| piece.as_ref())
-        .collect();
-    if pieces.is_empty() {
-        let storage = field.as_arrow_field_ref().expect(ALIGNED).data_type();
-        return Ok(new_empty_array(storage));
-    }
-    arrow_select::concat::concat(&pieces)
 }
 
 impl SerieValue for RunEndEncodedSerie {
@@ -324,14 +468,11 @@ impl SerieValue for RunEndEncodedSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::RunEndEncoded(Arc::new(self))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::RunEndEncoded(column) => Some(column.as_ref()),
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 

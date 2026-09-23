@@ -13,7 +13,6 @@ use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-use crate::sequence::SequenceType;
 use crate::xxhash;
 use crate::{
     BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
@@ -850,9 +849,7 @@ impl FixMsg {
     /// where the group it declares does not carry both members.
     fn trdregtimestamp_members(&self) -> Option<(&[Scalar], usize, usize)> {
         let at = self.index_of_group(768)?;
-        let DataType::Sequence(sequence) = self.field.fields().get(at)?.dtype() else {
-            return None;
-        };
+        let sequence = (self.field.fields().get(at)?.dtype()).as_serie_type()?;
         let members = sequence.item().fields();
         let stamp = position_of_tag(&self.registry, members, 769)?;
         let kind = position_of_tag(&self.registry, members, 770)?;
@@ -1141,9 +1138,7 @@ impl FixMsg {
     fn trdreg_execution_instant(&self) -> Option<i64> {
         let at = self.index_of_group(768)?;
         let column = self.field.fields().get(at)?;
-        let DataType::Sequence(sequence) = column.dtype() else {
-            return None;
-        };
+        let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let (timestamp, kind) = (
             item.index_of("trdregtimestamp")?,
@@ -1373,9 +1368,7 @@ impl FixMsg {
         // every occurrence is read by those positions.
         let at = self.field.index_of("secaltids")?;
         let column = self.field.fields().get(at)?;
-        let DataType::Sequence(sequence) = column.dtype() else {
-            return None;
-        };
+        let sequence = (column.dtype()).as_serie_type()?;
         let item = sequence.item();
         let (identifier, source) = (
             item.index_of("securityaltid")?,
@@ -2510,7 +2503,7 @@ impl FixMsg {
         self.registry.get_field_by_tag(tag).or_else(|| {
             self.registry
                 .get_group_by_tag(tag)
-                .filter(|group| matches!(group.dtype(), DataType::Mapping(_)))
+                .filter(|group| matches!(group.dtype(), DataType::Map(_) | DataType::SortedMap(_)))
         })
     }
 
@@ -2565,11 +2558,11 @@ impl FixMsg {
                     value.get(index)?.into_owned(),
                 ))
             }
-            DataType::Sequence(SequenceType::List(item))
-            | DataType::Sequence(SequenceType::LargeList(item))
-            | DataType::Sequence(SequenceType::FixedSizeList(item, _))
-            | DataType::Sequence(SequenceType::ListView(item))
-            | DataType::Sequence(SequenceType::LargeListView(item)) => {
+            DataType::List(item)
+            | DataType::LargeList(item)
+            | DataType::FixedSizeList(item, _)
+            | DataType::ListView(item)
+            | DataType::LargeListView(item) => {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
@@ -2581,7 +2574,10 @@ impl FixMsg {
                 };
                 Some((item.as_ref().clone(), value.get(at)?.into_owned()))
             }
-            DataType::Mapping(map) => {
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let FieldSegment::Key(key) = segment else {
                     return None;
                 };
@@ -2704,8 +2700,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let (tag, counter) = super::schema::tag_and_counter(registry, field);
     let tag = tag.unwrap_or(0);
     match field.dtype() {
-        DataType::Sequence(SequenceType::List(item))
-        | DataType::Sequence(SequenceType::LargeList(item)) => {
+        DataType::List(item) | DataType::LargeList(item) => {
             let occurrences = value.as_sequence()?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.
@@ -2738,7 +2733,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
             let members = entries_of(registry, field.fields(), value.as_sequence()?);
             Some(FixEntry::new(tag, field.name(), None).with_entries(members))
         }
-        DataType::Mapping(_) => {
+        DataType::Map(_) | DataType::SortedMap(_) => {
             let members = value
                 .as_mapping()?
                 .iter()

@@ -1,5 +1,6 @@
 //! `rust/src/serie/runend.rs`: the run-end-encoded leaf - the run ends over
-//! their values, read by one search over the runs and rebuilt on a write.
+//! their values, read by one search over the runs and cut in place on a
+//! write.
 
 use std::sync::Arc;
 
@@ -196,7 +197,7 @@ fn a_sliced_input_and_a_window_are_rebased_onto_the_runs_they_reach() {
 }
 
 #[test]
-fn the_writes_rebuild_the_runs_and_the_rows_round_trip() {
+fn the_writes_cut_the_runs_and_the_rows_round_trip() {
     let mut column = states();
 
     column.push(Scalar::from("closed")).expect("a row");
@@ -239,4 +240,136 @@ fn the_writes_rebuild_the_runs_and_the_rows_round_trip() {
     pushed.clear().expect("cleared");
     assert!(pushed.is_empty());
     assert_eq!(pushed.items().map(Serie::len), Some(0));
+}
+
+/// The run ends and the values a run-end column holds, as plain rows.
+fn runs_of(column: &Serie) -> (Vec<i32>, Vec<Scalar>) {
+    let leaf = column.as_run_end_encoded().expect("a run-end column");
+    (
+        leaf.run_ends()
+            .as_int32()
+            .expect("int32 run ends")
+            .values()
+            .to_vec(),
+        leaf.values().rows().into_owned(),
+    )
+}
+
+#[test]
+fn a_push_extends_the_last_run_or_appends_one_and_a_write_folds_into_equal_neighbours() {
+    let mut column = states();
+    let open = || Scalar::from("open");
+    let closed = || Scalar::from("closed");
+
+    // The value the last run holds lengthens it: one run end moves.
+    column.push(closed()).expect("a row");
+    assert_eq!(
+        runs_of(&column),
+        (vec![2, 3, 6], vec![open(), Scalar::Null, closed()])
+    );
+
+    // Another value is one run more.
+    column.push(open()).expect("a row");
+    assert_eq!(
+        runs_of(&column),
+        (
+            vec![2, 3, 6, 7],
+            vec![open(), Scalar::Null, closed(), open()]
+        )
+    );
+
+    // A row set to its left neighbour's value joins that run, and the run it
+    // emptied is gone.
+    column.set(2, open()).expect("one slot");
+    assert_eq!(
+        runs_of(&column),
+        (vec![3, 6, 7], vec![open(), closed(), open()])
+    );
+
+    // A row set inside a run splits it in three.
+    column.set(4, Scalar::Null).expect("one slot");
+    assert_eq!(
+        runs_of(&column),
+        (
+            vec![3, 4, 5, 6, 7],
+            vec![open(), closed(), Scalar::Null, closed(), open()]
+        )
+    );
+
+    // Removing what parts two equal runs joins them.
+    assert_eq!(column.remove(4).unwrap(), Scalar::Null);
+    assert_eq!(
+        runs_of(&column),
+        (vec![3, 5, 6], vec![open(), closed(), open()])
+    );
+
+    // An insert on a boundary equal to the run after it extends that run.
+    column.insert(3, closed()).expect("a row on a boundary");
+    assert_eq!(
+        runs_of(&column),
+        (vec![3, 6, 7], vec![open(), closed(), open()])
+    );
+
+    // Truncating inside a run shortens it; truncating on a boundary drops
+    // the runs past it.
+    column.truncate(5).expect("five rows kept");
+    assert_eq!(runs_of(&column), (vec![3, 5], vec![open(), closed()]));
+    column.truncate(3).expect("three rows kept");
+    assert_eq!(runs_of(&column), (vec![3], vec![open()]));
+
+    // Pushed rows fold into the same runs the door reads a laid-out array as.
+    let mut pushed = Serie::empty(states_field(DataType::Int32, true)).expect("an empty column");
+    for row in state_rows() {
+        pushed.push(row).expect("a row the field accepts");
+    }
+    assert_eq!(runs_of(&pushed), runs_of(&states()));
+}
+
+#[test]
+fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
+    let field = states_field(DataType::Int32, true);
+    let vocabulary = [Scalar::from("a"), Scalar::from("b"), Scalar::Null];
+    let mut column = Serie::empty(field.clone()).expect("an empty column");
+    let mut expected: Vec<Scalar> = Vec::new();
+    // A fixed linear congruential walk: reproducible, and wide enough to
+    // start, end and straddle runs of every length.
+    let mut state: u64 = 0x5eed;
+    let mut next = |bound: usize| {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        usize::try_from(state >> 33).unwrap() % bound
+    };
+    for _ in 0..600 {
+        let len = expected.len();
+        let start = next(len + 1);
+        let end = start + next(len - start + 1).min(3);
+        let count = next(4);
+        let rows: Vec<Scalar> = (0..count)
+            .map(|_| vocabulary[next(vocabulary.len())].clone())
+            .collect();
+        column
+            .splice(start..end, rows.clone())
+            .expect("rows the field accepts");
+        expected.splice(start..end, rows);
+
+        assert_eq!(column.rows().into_owned(), expected);
+        let (ends, values) = runs_of(&column);
+        assert_eq!(ends.len(), values.len());
+        assert_eq!(
+            ends.last().map_or(0, |end| usize::try_from(*end).unwrap()),
+            expected.len()
+        );
+        assert!(
+            values.windows(2).all(|pair| pair[0] != pair[1]),
+            "writes alone never leave two equal runs side by side: {values:?}"
+        );
+    }
+    let crossed = Serie::from_arrow_array(field, column.require_arrow_array().unwrap())
+        .expect("the column crosses back in");
+    assert_eq!(crossed, column);
+    assert_eq!(
+        column.null_count(),
+        expected.iter().filter(|row| **row == Scalar::Null).count()
+    );
 }

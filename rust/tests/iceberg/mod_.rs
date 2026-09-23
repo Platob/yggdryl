@@ -26,7 +26,7 @@ use yggdryl::iceberg::{
     assign_field_ids, schema_from_json, schema_into_json,
 };
 use yggdryl::local::LocalFolder;
-use yggdryl::{DataType, DateTimeType, DecimalType, Field, Scalar, StructType, TimeType};
+use yggdryl::{DataType, Field, Scalar, StructType};
 
 #[test]
 fn immutable_reports_and_metadata_have_complete_value_traits() {
@@ -1235,7 +1235,7 @@ mod schema_documents {
         let message = schema_from_json("row", &yggdryl::json::from_utf8("[1, 2]").unwrap())
             .unwrap_err()
             .to_string();
-        assert!(message.contains("got sequence"), "{message}");
+        assert!(message.contains("got list"), "{message}");
     }
 
     #[test]
@@ -1397,7 +1397,7 @@ mod schema_documents {
 }
 
 mod types {
-    use yggdryl::DateTimeType;
+
     use yggdryl::iceberg::PrimitiveType;
     use yggdryl::{DataType, TimeUnit};
 
@@ -1443,17 +1443,17 @@ mod types {
     fn iceberg_temporal_types_are_microsecond_precision_unless_v3_says_otherwise() {
         assert_eq!(
             PrimitiveType::Timestamp.into_dtype().unwrap(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE
-            })
+            }
         );
         assert_eq!(
             PrimitiveType::TimestampNs.into_dtype().unwrap(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: yggdryl::Timezone::NAIVE
-            })
+            }
         );
         assert_eq!(
             PrimitiveType::Time.into_dtype().unwrap(),
@@ -1565,7 +1565,7 @@ mod types {
 mod partition_specs {
 
     use super::{PartitionSpec, Transform, trade_schema};
-    use yggdryl::DateTimeType;
+
     use yggdryl::StructType;
     use yggdryl::iceberg::assign_field_ids;
     use yggdryl::internals::iceberg_partition::write_transforms;
@@ -1746,10 +1746,10 @@ mod partition_specs {
 
     #[test]
     fn transform_result_types_and_validation_are_owned_by_apache_iceberg() {
-        let timestamp = DataType::DateTime(DateTimeType::DateTime64 {
+        let timestamp = DataType::DateTime64 {
             unit: yggdryl::TimeUnit::Microsecond,
             timezone: yggdryl::Timezone::NAIVE,
-        });
+        };
         assert_eq!(
             Transform::Day.result_type(&timestamp).unwrap(),
             DataType::date32()
@@ -2306,7 +2306,7 @@ mod tables {
         FormatVersion, IOBase, IcebergOptions, LocalFolder, PartitionField, PartitionSpec, Table,
         Transform, assign_field_ids, collect, root, trade_schema, trades,
     };
-    use yggdryl::DateTimeType;
+
     use yggdryl::IOMedia;
     use yggdryl::internals::iceberg_table::child_at;
     use yggdryl::media::IORecordOptions;
@@ -2718,25 +2718,25 @@ mod tables {
         let mut schema = StructType::from_fields([
             DataType::Int32.required_field("id"),
             DataType::utf8().required_field("text"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE,
-            })
+            }
             .required_field("ts_year"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE,
-            })
+            }
             .required_field("ts_month"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE,
-            })
+            }
             .required_field("ts_day"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE,
-            })
+            }
             .required_field("ts_hour"),
             DataType::Int64.required_field("retired"),
         ])
@@ -6018,7 +6018,7 @@ mod datatype_coverage {
     use std::sync::Arc;
 
     use super::*;
-    use yggdryl::SequenceType;
+
     use yggdryl::{Scalar, TimeUnit};
 
     /// Append `rows` under `children`, scan them back, and return the records.
@@ -6067,17 +6067,17 @@ mod datatype_coverage {
             DataType::Int64.required_field("id"),
             DataType::Float32.nullable_field("ratio"),
             DataType::Float64.nullable_field("value"),
-            DataType::Decimal(DecimalType::Decimal128 {
+            DataType::Decimal128 {
                 precision: 18,
                 scale: 4,
-            })
+            }
             .nullable_field("price"),
             DataType::date32().nullable_field("day"),
-            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)).nullable_field("tod"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::Time64(TimeUnit::Microsecond).nullable_field("tod"),
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: yggdryl::Timezone::NAIVE,
-            })
+            }
             .nullable_field("at"),
             DataType::utf8().nullable_field("name"),
             DataType::binary().nullable_field("raw"),
@@ -6155,10 +6155,7 @@ mod datatype_coverage {
         .map(DataType::from)
         .unwrap();
         let deep = StructType::from_fields([
-            DataType::Sequence(SequenceType::List(Arc::new(
-                DataType::Int64.nullable_field("item"),
-            )))
-            .nullable_field("xs"),
+            DataType::List(Arc::new(DataType::Int64.nullable_field("item"))).nullable_field("xs"),
             DataType::map_of(DataType::utf8(), point.clone(), false)
                 .unwrap()
                 .nullable_field("m"),
@@ -6168,10 +6165,7 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             point.clone().nullable_field("p"),
-            DataType::Sequence(SequenceType::List(Arc::new(
-                deep.clone().nullable_field("item"),
-            )))
-            .nullable_field("rows"),
+            DataType::List(Arc::new(deep.clone().nullable_field("item"))).nullable_field("rows"),
         ];
 
         let point_value =
@@ -6204,10 +6198,10 @@ mod datatype_coverage {
         let children = vec![
             DataType::Int64.required_field("id"),
             DataType::utf8().required_field("venue"),
-            DataType::Decimal(DecimalType::Decimal128 {
+            DataType::Decimal128 {
                 precision: 18,
                 scale: 4,
-            })
+            }
             .nullable_field("price"),
         ];
         let schema = StructType::from_fields(children.clone())
@@ -7071,7 +7065,7 @@ mod isolation {
         FormatVersion, IcebergOptions, PartitionSpec, SortField, SortOrder, Table, Transform,
         assign_field_ids, collect, root, schema_from_json, schema_into_json, trade_schema, trades,
     };
-    use yggdryl::DateTimeType;
+
     use yggdryl::holder::{Buffer, Holder};
     use yggdryl::internals::iceberg_table::child_at;
     use yggdryl::local::LocalFolder;
@@ -7252,10 +7246,10 @@ mod isolation {
             yggdryl::fs::FsFolder::from_path(filesystem, "isolation-timepartition", None).unwrap();
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            })
+            }
             .required_field("timepartition"),
         ])
         .map(DataType::from)

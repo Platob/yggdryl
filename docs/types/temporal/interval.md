@@ -6,7 +6,7 @@ A calendar span in one of Arrow's three layouts: months, days and nanoseconds, n
 
 | | |
 | --- | --- |
-| Owned | `IntervalType` with its single `Interval(layout)` leaf, `DataType::Interval(IntervalType)`, the `IntervalField` marker, and the `Interval` value holding all three components |
+| Owned | `IntervalType` with its single `Interval(layout)` leaf, `DataType::Interval(TimeUnit)` with `IntervalType` as its view, the `IntervalField` marker, and the `Interval` value holding all three components |
 | Validated | once, at construction: `DataType::interval(unit)` refuses anything that is not one of the three layouts, and `Interval::new` refuses a component the layout has nowhere to put |
 | Lazy | nothing; the leaf is `Copy` and the value is three components and a layout |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -40,7 +40,7 @@ reinterpreted.
 
     // One leaf, three layouts, and the layout is the parameter.
     let span = DataType::interval(TimeUnit::DayTime)?;
-    assert_eq!(span, DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)));
+    assert_eq!(span, DataType::Interval(TimeUnit::DayTime));
     assert_eq!(span.interval_type(), Some(IntervalType::Interval(TimeUnit::DayTime)));
     assert_eq!(span.to_string(), "interval(day_time)");
     assert_eq!(IntervalType::ALL, [IntervalType::Interval(TimeUnit::MonthDayNano)]);
@@ -65,7 +65,7 @@ reinterpreted.
     assert!(DataType::from_str("interval(day)").is_err());
     assert!(DataType::interval(TimeUnit::Second).is_err());
     assert!(IntervalType::Interval(TimeUnit::Second).validate().is_err());
-    assert!(DataType::Interval(IntervalType::Interval(TimeUnit::Nanosecond)).validate().is_err());
+    assert!(DataType::Interval(TimeUnit::Nanosecond).validate().is_err());
     ```
 
 === "Python"
@@ -269,7 +269,7 @@ assert_eq!(
 );
 
 // A hand-built leaf its layout does not allow stops at the boundary.
-assert!(DataType::Interval(IntervalType::Interval(TimeUnit::Second))
+assert!(DataType::Interval(TimeUnit::Second)
     .into_arrow_datatype()
     .is_err());
 ```

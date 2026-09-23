@@ -52,7 +52,7 @@ mod temporal {
         assert_eq!(default.to_string(), "datetime64(us)");
         assert_eq!(
             DataType::from_str("timestamp").unwrap(),
-            DataType::DateTime(default)
+            DataType::from(default)
         );
 
         // Every clock resolution is valid in every zone, and the constructor
@@ -66,7 +66,7 @@ mod temporal {
             for timezone in [Timezone::NAIVE, Timezone::UTC] {
                 let leaf = DateTimeType::DateTime64 { unit, timezone };
                 let dtype = DataType::datetime64(unit, timezone).unwrap();
-                assert_eq!(dtype, DataType::DateTime(leaf));
+                assert_eq!(dtype, DataType::from(leaf));
                 assert_eq!(DataType::from(leaf), dtype);
                 assert_eq!(dtype.id(), DataTypeId::DateTime64);
                 assert_eq!(dtype.kind(), DataTypeKind::Temporal);
@@ -110,7 +110,7 @@ mod temporal {
                 timezone: Timezone::UTC,
             };
             assert_refused(leaf.validate(), "datetime64", reason);
-            assert_refused(DataType::DateTime(leaf).validate(), "datetime64", reason);
+            assert_refused(DataType::from(leaf).validate(), "datetime64", reason);
         }
     }
 }

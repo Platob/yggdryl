@@ -13,11 +13,10 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, P
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::{
-    DataType as CoreDataType, DateTimeType, EdgeAlgorithm as CoreEdgeAlgorithm,
-    Scheme as CoreScheme, StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit,
-    UnionMode as CoreUnionMode,
+    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
+    StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
-use yggdryl::{DataTypeValue as _, FieldValue as _, SequenceType};
+use yggdryl::{DataTypeValue as _, FieldValue as _};
 
 use crate::field::PyField;
 use crate::parameters::{
@@ -140,7 +139,8 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
         dtype,
         CoreDataType::Uuid
             | CoreDataType::Version
-            | CoreDataType::Uri(_)
+            | CoreDataType::Url
+            | CoreDataType::Urn
             | CoreDataType::Timezone
             | CoreDataType::MimeType
             | CoreDataType::MediaType
@@ -810,12 +810,17 @@ impl PyDataType {
     /// Internal allocation-free dictionary value view for annotation inference.
     fn _dictionary_value_type(&self) -> PyResult<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Ok(Self {
-                inner: dictionary.value().clone(),
-                hash_locked: false,
-                borrowed_from_field: false,
-                children_read_only: self.children_read_only,
-            }),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Ok(Self {
+                    inner: dictionary.value().clone(),
+                    hash_locked: false,
+                    borrowed_from_field: false,
+                    children_read_only: self.children_read_only,
+                })
+            }
             _ => Err(PyTypeError::new_err(
                 "dictionary value type is available only on dictionary datatypes",
             )),
@@ -1472,9 +1477,24 @@ impl PyDataType {
     /// the native value avoids projecting a `PyArrow` datatype for every cell.
     fn _time_unit(&self) -> Option<&'static str> {
         match &self.inner {
-            CoreDataType::DateTime(leaf) => Some(leaf.unit().as_str()),
-            CoreDataType::Time(leaf) => Some(leaf.unit().as_str()),
-            CoreDataType::Duration(leaf) => Some(leaf.unit().as_str()),
+            leaf_dtype @ CoreDataType::DateTime64 { .. } => {
+                let leaf = &leaf_dtype
+                    .datetime_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
+            leaf_dtype @ (CoreDataType::Time32(_) | CoreDataType::Time64(_)) => {
+                let leaf = &leaf_dtype
+                    .time_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
+            leaf_dtype @ (CoreDataType::Duration32(_) | CoreDataType::Duration64(_)) => {
+                let leaf = &leaf_dtype
+                    .duration_type()
+                    .expect("the variant was just matched");
+                Some(leaf.unit().as_str())
+            }
             _ => None,
         }
     }
@@ -1482,9 +1502,7 @@ impl PyDataType {
     /// Internal field-class conversion view of a `DateTime64` timezone.
     fn _timezone(&self) -> Option<&str> {
         match &self.inner {
-            CoreDataType::DateTime(DateTimeType::DateTime64 { timezone, .. }) => {
-                Some(timezone.as_str())
-            }
+            CoreDataType::DateTime64 { timezone, .. } => Some(timezone.as_str()),
             _ => None,
         }
     }
@@ -1501,7 +1519,12 @@ impl PyDataType {
     #[getter]
     fn keys_sorted(&self) -> Option<bool> {
         match &self.inner {
-            CoreDataType::Mapping(mapping) => Some(mapping.keys_sorted()),
+            mapping_dtype @ (CoreDataType::Map(_) | CoreDataType::SortedMap(_)) => {
+                let mapping = &mapping_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
+                Some(mapping.keys_sorted())
+            }
             _ => None,
         }
     }
@@ -1510,7 +1533,12 @@ impl PyDataType {
     #[getter]
     fn dictionary_key(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.key().clone())),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Some(Self::from_inner(dictionary.key().clone()))
+            }
             _ => None,
         }
     }
@@ -1519,7 +1547,12 @@ impl PyDataType {
     #[getter]
     fn dictionary_value(&self) -> Option<Self> {
         match &self.inner {
-            CoreDataType::Enum(dictionary) => Some(Self::from_inner(dictionary.value().clone())),
+            dictionary_dtype @ CoreDataType::Dictionary(_) => {
+                let dictionary = &dictionary_dtype
+                    .enum_type()
+                    .expect("the variant was just matched");
+                Some(Self::from_inner(dictionary.value().clone()))
+            }
             _ => None,
         }
     }
@@ -1584,7 +1617,7 @@ impl PyDataType {
     /// Internal field-class conversion view of fixed-size-list arity.
     fn _fixed_size_list_length(&self) -> Option<i32> {
         match &self.inner {
-            CoreDataType::Sequence(SequenceType::FixedSizeList(_, length)) => Some(*length),
+            CoreDataType::FixedSizeList(_, length) => Some(*length),
             _ => None,
         }
     }

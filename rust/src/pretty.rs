@@ -50,8 +50,6 @@
 
 use std::fmt;
 
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 use crate::{DataType, Field};
 
 /// How many columns one nesting level is indented in the readable form.
@@ -191,14 +189,17 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
     use DataType as D;
     match dtype {
         D::Struct(fields) => write!(formatter, "struct[{}]", fields.len()),
-        D::Sequence(SequenceType::List(_)) => formatter.write_str("list"),
-        D::Sequence(SequenceType::ListView(_)) => formatter.write_str("list_view"),
-        D::Sequence(SequenceType::LargeList(_)) => formatter.write_str("large_list"),
-        D::Sequence(SequenceType::LargeListView(_)) => formatter.write_str("large_list_view"),
-        D::Sequence(SequenceType::FixedSizeList(_, length)) => {
+        D::List(_) => formatter.write_str("list"),
+        D::ListView(_) => formatter.write_str("list_view"),
+        D::LargeList(_) => formatter.write_str("large_list"),
+        D::LargeListView(_) => formatter.write_str("large_list_view"),
+        D::FixedSizeList(_, length) => {
             write!(formatter, "fixed_size_list[{length}]")
         }
-        D::Mapping(map) => {
+        map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             formatter.write_str("map")?;
             if map.keys_sorted() {
                 formatter.write_str("[keys_sorted]")?;
@@ -207,7 +208,7 @@ fn write_head(formatter: &mut fmt::Formatter<'_>, dtype: &DataType) -> fmt::Resu
         }
         D::Union(fields, mode) => write!(formatter, "union[{mode},{}]", fields.len()),
         D::RunEndEncoded(_) => formatter.write_str("run_end_encoded"),
-        D::Enum(EnumType::Dictionary(dictionary)) => {
+        D::Dictionary(dictionary) => {
             write!(formatter, "dictionary[{}]", dictionary.key())
         }
         // Everything else is one token, and the compact spelling is already
@@ -231,15 +232,18 @@ fn write_children(
             }
             Ok(())
         }
-        D::Sequence(SequenceType::List(field))
-        | D::Sequence(SequenceType::ListView(field))
-        | D::Sequence(SequenceType::LargeList(field))
-        | D::Sequence(SequenceType::LargeListView(field))
-        | D::Sequence(SequenceType::FixedSizeList(field, _)) => {
+        D::List(field)
+        | D::ListView(field)
+        | D::LargeList(field)
+        | D::LargeListView(field)
+        | D::FixedSizeList(field, _) => {
             formatter.write_str("\n")?;
             write_field(formatter, field, columns)
         }
-        D::Mapping(map) => {
+        map_dtype @ (D::Map(_) | D::SortedMap(_)) => {
+            let map = &map_dtype
+                .as_mapping()
+                .expect("the variant was just matched");
             formatter.write_str("\n")?;
             write_field(formatter, map.entries(), columns)
         }
@@ -260,7 +264,7 @@ fn write_children(
             formatter.write_str("\n")?;
             write_field(formatter, encoded.values(), columns)
         }
-        D::Enum(EnumType::Dictionary(dictionary)) => {
+        D::Dictionary(dictionary) => {
             formatter.write_str("\n")?;
             write_dtype(formatter, dictionary.value(), columns, Some("value"))
         }

@@ -179,6 +179,7 @@ const {
   Urn: NativeUrn,
   Arn: NativeArn,
   Scalar: NativeScalar,
+  Serie: NativeSerie,
   Version,
 } = binding
 
@@ -1120,6 +1121,8 @@ function fromTransport(value) {
 Object.defineProperty(Scalar, 'from', {
   value(value, options) {
     options = checkedOptions(options)
+    // A serie is already the one value a sequence holds.
+    if (value instanceof NativeSerie) value = value.intoScalar()
     return nativeScalarFromJs(
       value,
       options.maxDepth,
@@ -1246,6 +1249,15 @@ Object.defineProperties(Scalar, {
   },
 })
 
+// The scalar kinds a list layout reports, each read by position.
+const LIST_KINDS = new Set([
+  'list',
+  'list_view',
+  'fixed_size_list',
+  'large_list',
+  'large_list_view',
+])
+
 Object.defineProperties(Scalar.prototype, {
   ...Object.fromEntries(
     Object.entries(nativeScalarArithmetic).map(([name, native]) => [
@@ -1272,7 +1284,7 @@ Object.defineProperties(Scalar.prototype, {
   get: {
     configurable: true,
     value(key) {
-      if (this.kind === 'sequence') {
+      if (LIST_KINDS.has(this.kind)) {
         if (!Number.isSafeInteger(key) || key < 0) {
           throw new TypeError(
             'sequence keys must be non-negative safe integers',
@@ -1351,6 +1363,423 @@ Object.defineProperties(Scalar.prototype, {
     },
   },
 })
+
+// A serie is the native value; the conversions it needs from JavaScript -
+// rows typed through the column's own field, Arrow JS through IPC - and the
+// leaf classes nested columns are handed out as are defined here, over the
+// private natives the loader keeps.
+const nativeSerie = Object.freeze({
+  fromScalars: NativeSerie._fromScalarsNative.bind(NativeSerie),
+  fromArrowArray: NativeSerie._fromArrowArrayIpcNative.bind(NativeSerie),
+  fromArrowBatch: NativeSerie._fromArrowBatchIpcNative.bind(NativeSerie),
+  leaf: Object.getOwnPropertyDescriptor(NativeSerie.prototype, '_leafNative').get,
+  asJs: NativeSerie.prototype._asJsNative,
+  iter: NativeSerie.prototype._iterNative,
+  splice: NativeSerie.prototype._spliceNative,
+  set: NativeSerie.prototype._setNative,
+  push: NativeSerie.prototype._pushNative,
+  insert: NativeSerie.prototype._insertNative,
+  extend: NativeSerie.prototype._extendNative,
+  resize: NativeSerie.prototype._resizeNative,
+  setCell: NativeSerie.prototype._setCellNative,
+  intoArrowArray: NativeSerie.prototype._intoArrowArrayIpcNative,
+  intoArrowBatch: NativeSerie.prototype._intoArrowBatchIpcNative,
+  offsets: NativeSerie.prototype._offsetsNative,
+  sizes: NativeSerie.prototype._sizesNative,
+  width: NativeSerie.prototype._widthNative,
+  range: NativeSerie.prototype._rangeNative,
+  row: NativeSerie.prototype._rowNative,
+  entries: NativeSerie.prototype._entriesNative,
+  keys: NativeSerie.prototype._keysNative,
+  values: NativeSerie.prototype._valuesNative,
+  keysSorted: NativeSerie.prototype._keysSortedNative,
+  names: NativeSerie.prototype._namesNative,
+  withoutChild: NativeSerie.prototype._withoutChildNative,
+  // The natives that answer a serie, each handed out as its leaf's class.
+  answering: Object.freeze({
+    slice: NativeSerie.prototype._sliceNative,
+    child: NativeSerie.prototype._childNative,
+    childAt: NativeSerie.prototype._childAtNative,
+    items: NativeSerie.prototype._itemsNative,
+    getChildByPath: NativeSerie.prototype._getChildByPathNative,
+    clone: NativeSerie.prototype._cloneNative,
+    intoRun: NativeSerie.prototype._intoRunNative,
+  }),
+  children: NativeSerie.prototype._childrenNative,
+  empty: NativeSerie._emptyNative.bind(NativeSerie),
+  withCapacity: NativeSerie._withCapacityNative.bind(NativeSerie),
+  fromArrowReader: NativeSerie._fromArrowReaderNative.bind(NativeSerie),
+  scalarAsSerie: NativeScalar.prototype._asSerieNative,
+})
+for (const name of [
+  '_leafNative',
+  '_asJsNative',
+  '_iterNative',
+  '_spliceNative',
+  '_setNative',
+  '_pushNative',
+  '_insertNative',
+  '_extendNative',
+  '_resizeNative',
+  '_setCellNative',
+  '_intoArrowArrayIpcNative',
+  '_intoArrowBatchIpcNative',
+  '_offsetsNative',
+  '_sizesNative',
+  '_widthNative',
+  '_rangeNative',
+  '_rowNative',
+  '_entriesNative',
+  '_keysNative',
+  '_valuesNative',
+  '_keysSortedNative',
+  '_namesNative',
+  '_withoutChildNative',
+  '_sliceNative',
+  '_childNative',
+  '_childAtNative',
+  '_itemsNative',
+  '_getChildByPathNative',
+  '_cloneNative',
+  '_intoRunNative',
+  '_childrenNative',
+]) {
+  delete NativeSerie.prototype[name]
+}
+delete NativeScalar.prototype._asSerieNative
+delete binding.SerieIterator
+
+// One value converted for a column: a native Scalar or Serie as it is,
+// anything else through `field`'s own contract - the column's for a row,
+// none for a run.
+function serieValue(value, field) {
+  if (value instanceof NativeScalar) return value
+  if (value instanceof NativeSerie) return value.intoScalar()
+  return nativeScalarFromJs(
+    value,
+    undefined,
+    nativeWrapperPrototypes,
+    nativeIntrinsics,
+    field ?? undefined,
+  )
+}
+
+function serieValues(values, field, label) {
+  if (values instanceof NativeSerie) return values.rows()
+  if (values == null || typeof values[Symbol.iterator] !== 'function') {
+    throw new TypeError(`${label} must be an iterable of values`)
+  }
+  return Array.from(values, (value) => serieValue(value, field))
+}
+
+const Serie = publicNativeClass(
+  NativeSerie,
+  'Serie',
+  new Set([
+    '_fromScalarsNative',
+    '_fromArrowArrayIpcNative',
+    '_fromArrowBatchIpcNative',
+    '_emptyNative',
+    '_withCapacityNative',
+    '_fromArrowReaderNative',
+  ]),
+  (args) => (args[0] == null ? [] : [serieValues(args[0], undefined, 'Serie values')]),
+)
+
+// The leaf classes: each shares every Serie verb and adds what its leaf
+// lends. A serie a native answers is handed out re-prototyped to its leaf's
+// class, so nesting reads typed all the way down.
+function serieLeafClass(name) {
+  const LeafClass = function () {
+    throw new TypeError(
+      `${name} is handed out by Serie; build one with Serie.fromScalars or an Arrow door`,
+    )
+  }
+  Object.defineProperty(LeafClass, 'name', { value: name })
+  LeafClass.prototype = Object.create(Serie.prototype, {
+    constructor: { configurable: true, value: LeafClass, writable: true },
+  })
+  Object.setPrototypeOf(LeafClass, Serie)
+  return LeafClass
+}
+
+const ListSerie = serieLeafClass('ListSerie')
+const LargeListSerie = serieLeafClass('LargeListSerie')
+const ListViewSerie = serieLeafClass('ListViewSerie')
+const LargeListViewSerie = serieLeafClass('LargeListViewSerie')
+const FixedSizeListSerie = serieLeafClass('FixedSizeListSerie')
+const MapSerie = serieLeafClass('MapSerie')
+const StructSerie = serieLeafClass('StructSerie')
+const serieLeafPrototypes = Object.freeze({
+  list: ListSerie.prototype,
+  largeList: LargeListSerie.prototype,
+  listView: ListViewSerie.prototype,
+  largeListView: LargeListViewSerie.prototype,
+  fixedSizeList: FixedSizeListSerie.prototype,
+  map: MapSerie.prototype,
+  struct: StructSerie.prototype,
+})
+
+function describedSerie(serie) {
+  if (serie == null) return null
+  const prototype = serieLeafPrototypes[Reflect.apply(nativeSerie.leaf, serie, [])]
+  if (prototype !== undefined) Object.setPrototypeOf(serie, prototype)
+  return serie
+}
+
+function leafVerbs(names) {
+  return Object.fromEntries(
+    names.map((name) => [name, { configurable: true, ...leafVerb(name) }]),
+  )
+}
+
+function leafVerb(name) {
+  switch (name) {
+    case 'offsets':
+    case 'sizes':
+    case 'width':
+    case 'keysSorted':
+    case 'names':
+      return {
+        get() {
+          return Reflect.apply(nativeSerie[name], this, [])
+        },
+      }
+    case 'entries':
+    case 'keys':
+    case 'values':
+      return {
+        get() {
+          return describedSerie(Reflect.apply(nativeSerie[name], this, []))
+        },
+      }
+    case 'range':
+      return {
+        value(index) {
+          return Reflect.apply(nativeSerie.range, this, [index])
+        },
+      }
+    case 'row':
+      return {
+        value(index) {
+          return describedSerie(Reflect.apply(nativeSerie.row, this, [index]))
+        },
+      }
+    case 'withoutChild':
+      return {
+        value(name) {
+          return describedSerie(Reflect.apply(nativeSerie.withoutChild, this, [name]))
+        },
+      }
+    default:
+      throw new Error(`no leaf verb ${name}`)
+  }
+}
+
+Object.defineProperties(ListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(LargeListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(
+  ListViewSerie.prototype,
+  leafVerbs(['offsets', 'sizes', 'range', 'row']),
+)
+Object.defineProperties(
+  LargeListViewSerie.prototype,
+  leafVerbs(['offsets', 'sizes', 'range', 'row']),
+)
+Object.defineProperties(FixedSizeListSerie.prototype, leafVerbs(['width', 'range', 'row']))
+Object.defineProperties(
+  MapSerie.prototype,
+  leafVerbs(['entries', 'keys', 'values', 'offsets', 'keysSorted', 'range', 'row']),
+)
+Object.defineProperties(StructSerie.prototype, leafVerbs(['names', 'withoutChild']))
+
+Object.defineProperties(Serie, {
+  fromScalars: {
+    configurable: true,
+    value(field, rows) {
+      const native = field instanceof NativeField ? field : Field.from(field)
+      return describedSerie(
+        nativeSerie.fromScalars(native, serieValues(rows, native, 'Serie.fromScalars rows')),
+      )
+    },
+  },
+  empty: {
+    configurable: true,
+    value(field) {
+      return describedSerie(nativeSerie.empty(field instanceof NativeField ? field : Field.from(field)))
+    },
+  },
+  withCapacity: {
+    configurable: true,
+    value(field, rows) {
+      return describedSerie(
+        nativeSerie.withCapacity(field instanceof NativeField ? field : Field.from(field), rows),
+      )
+    },
+  },
+  fromArrowArray: {
+    configurable: true,
+    value(vector, field) {
+      return describedSerie(
+        nativeSerie.fromArrowArray(
+          arrowVectorIntoIPC(vector, 'Serie.fromArrowArray input'),
+          field == null ? undefined : field instanceof NativeField ? field : Field.from(field),
+        ),
+      )
+    },
+  },
+  fromArrowBatch: {
+    configurable: true,
+    value(batch) {
+      return describedSerie(
+        nativeSerie.fromArrowBatch(arrowBatchIntoIPC(batch, 'Serie.fromArrowBatch input')),
+      )
+    },
+  },
+  fromArrowTable: {
+    configurable: true,
+    value(table) {
+      return describedSerie(
+        nativeSerie.fromArrowBatch(arrowTableIntoIPC(table, 'Serie.fromArrowTable input')),
+      )
+    },
+  },
+  fromArrowReader: {
+    configurable: true,
+    value(reader) {
+      return describedSerie(nativeSerie.fromArrowReader(reader))
+    },
+  },
+})
+
+Object.defineProperties(Serie.prototype, {
+  ...Object.fromEntries(
+    Object.entries(nativeSerie.answering).map(([name, native]) => [
+      name,
+      {
+        configurable: true,
+        writable: true,
+        value(...args) {
+          return describedSerie(Reflect.apply(native, this, args))
+        },
+      },
+    ]),
+  ),
+  children: {
+    configurable: true,
+    writable: true,
+    value() {
+      return Reflect.apply(nativeSerie.children, this, []).map(describedSerie)
+    },
+  },
+  [Symbol.iterator]: {
+    configurable: true,
+    value() {
+      return Reflect.apply(nativeSerie.iter, this, [])
+    },
+  },
+  asJs: {
+    configurable: true,
+    value(options) {
+      const maxDepth = options == null ? undefined : checkedOptions(options).maxDepth
+      return fromTransport(Reflect.apply(nativeSerie.asJs, this, [maxDepth]))
+    },
+  },
+  toJSON: {
+    configurable: true,
+    value() {
+      return this.asJs()
+    },
+  },
+  splice: {
+    configurable: true,
+    value(start, end, rows) {
+      Reflect.apply(nativeSerie.splice, this, [
+        start,
+        end,
+        serieValues(rows ?? [], this.field, 'Serie.splice rows'),
+      ])
+    },
+  },
+  set: {
+    configurable: true,
+    value(index, value) {
+      Reflect.apply(nativeSerie.set, this, [index, serieValue(value, this.field)])
+    },
+  },
+  push: {
+    configurable: true,
+    value(value) {
+      Reflect.apply(nativeSerie.push, this, [serieValue(value, this.field)])
+    },
+  },
+  insert: {
+    configurable: true,
+    value(index, value) {
+      Reflect.apply(nativeSerie.insert, this, [index, serieValue(value, this.field)])
+    },
+  },
+  extend: {
+    configurable: true,
+    value(rows) {
+      Reflect.apply(nativeSerie.extend, this, [
+        serieValues(rows, this.field, 'Serie.extend rows'),
+      ])
+    },
+  },
+  resize: {
+    configurable: true,
+    value(length, value) {
+      Reflect.apply(nativeSerie.resize, this, [length, serieValue(value, this.field)])
+    },
+  },
+  setCell: {
+    configurable: true,
+    value(path, index, value) {
+      const leaf = this.getChildByPath(path)
+      Reflect.apply(nativeSerie.setCell, this, [
+        path,
+        index,
+        serieValue(value, leaf === null ? undefined : leaf.field),
+      ])
+    },
+  },
+  intoArrowArray: {
+    configurable: true,
+    value() {
+      return arrowVectorFromIPC(
+        Reflect.apply(nativeSerie.intoArrowArray, this, []),
+        'Serie.intoArrowArray output',
+      )
+    },
+  },
+  intoArrowBatch: {
+    configurable: true,
+    value() {
+      return arrowBatchFromIPC(
+        Reflect.apply(nativeSerie.intoArrowBatch, this, []),
+        'Serie.intoArrowBatch output',
+      )
+    },
+  },
+})
+
+// A sequence value holds a serie: the pivot hands it out as its leaf's class.
+Object.defineProperty(Scalar.prototype, 'asSerie', {
+  configurable: true,
+  value() {
+    return describedSerie(Reflect.apply(nativeSerie.scalarAsSerie, this, []))
+  },
+})
+
+binding.Serie = Serie
+binding.ListSerie = ListSerie
+binding.LargeListSerie = LargeListSerie
+binding.ListViewSerie = ListViewSerie
+binding.LargeListViewSerie = LargeListViewSerie
+binding.FixedSizeListSerie = FixedSizeListSerie
+binding.MapSerie = MapSerie
+binding.StructSerie = StructSerie
 
 // The generated enum is name to code only: a numeric reverse map would
 // collide with values that render as digits, and `members` already answers

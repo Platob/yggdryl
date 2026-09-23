@@ -31,7 +31,7 @@
 //!
 //! // So does a datatype: the family payload is what a leaf belongs to.
 //! assert_eq!(DateType::Date32.family(), "date");
-//! assert_eq!(DataType::time(TimeUnit::Second)?, DataType::Time(TimeType::Time32(TimeUnit::Second)));
+//! assert_eq!(DataType::time(TimeUnit::Second)?, DataType::Time32(TimeUnit::Second));
 //! # Ok(())
 //! # }
 //! ```
@@ -89,7 +89,7 @@ impl Temporal {
 
 /// Arrow casts every temporal family shares: they take any temporal.
 pub(crate) mod casts {
-    use crate::enums::EnumType;
+
     use std::sync::Arc;
 
     use arrow_array::{Array, ArrayRef, BooleanArray, StringArray};
@@ -205,11 +205,14 @@ pub(crate) mod casts {
     /// a target the text readers answer for.
     pub(crate) fn holds_temporal(target: &DataType) -> bool {
         match target {
-            DataType::Date(_)
-            | DataType::Time(_)
-            | DataType::DateTime(_)
-            | DataType::Duration(_) => true,
-            DataType::Enum(EnumType::Dictionary(dictionary)) => holds_temporal(dictionary.value()),
+            DataType::Date32
+            | DataType::Date64
+            | DataType::Time32(_)
+            | DataType::Time64(_)
+            | DataType::DateTime64 { .. }
+            | DataType::Duration32(_)
+            | DataType::Duration64(_) => true,
+            DataType::Dictionary(dictionary) => holds_temporal(dictionary.value()),
             DataType::RunEndEncoded(encoded) => holds_temporal(encoded.values().dtype()),
             _ => false,
         }
@@ -1254,11 +1257,9 @@ impl Parser<'_> {
 /// its classic text both ways, and the arithmetic over two of them.
 pub(crate) mod scalars {
     use crate::arithmetic::{Arithmetic, invalid_binary};
-    use crate::date::DateType;
-    use crate::datetime::DateTimeType;
+
     use crate::decimal::exact_value_parts;
-    use crate::duration::DurationType;
-    use crate::time::TimeType;
+
     use crate::value::{ValidationFailure, expected};
     use crate::{DataType, Error, Result, Scalar, TimeUnit, Timezone, i256};
     use smol_str::format_smolstr;
@@ -1380,35 +1381,33 @@ pub(crate) mod scalars {
         /// when the count does not fit the declared unit and width.
         pub(crate) fn from_temporal_text(dtype: &DataType, text: &str) -> Result<Self> {
             match dtype {
-                DataType::Date(DateType::Date32) => Ok(Self::date32(super::parse_date(text)?)),
-                DataType::Date(DateType::Date64) => i64::from(super::parse_date(text)?)
+                DataType::Date32 => Ok(Self::date32(super::parse_date(text)?)),
+                DataType::Date64 => i64::from(super::parse_date(text)?)
                     .checked_mul(86_400_000)
                     .map(Self::date64)
                     .ok_or_else(|| invalid_record("date64 count must fit signed 64 bits")),
-                DataType::Time(TimeType::Time32(unit)) => {
+                DataType::Time32(unit) => {
                     let count = restated(clock_of_day(text)?, *unit, "time32")?;
                     Self::time32(narrow_i32(count, "time32")?, *unit, Timezone::NAIVE)
                 }
-                DataType::Time(TimeType::Time64(unit)) => {
+                DataType::Time64(unit) => {
                     let count = restated(clock_of_day(text)?, *unit, "time64")?;
                     Self::time64(count, *unit, Timezone::NAIVE)
                 }
-                DataType::DateTime(DateTimeType::DateTime64 { unit, timezone })
-                    if timezone.is_naive() =>
-                {
+                DataType::DateTime64 { unit, timezone } if timezone.is_naive() => {
                     let count = restated(super::parse_datetime(text)?, *unit, "datetime64")?;
                     Self::datetime64(count, *unit, Timezone::NAIVE)
                 }
-                DataType::DateTime(DateTimeType::DateTime64 { unit, timezone }) => {
+                DataType::DateTime64 { unit, timezone } => {
                     let (count, source, _) = super::parse_timestamp(text)?;
                     let count = restated((count, source), *unit, "datetime64")?;
                     Self::datetime64(count, *unit, *timezone)
                 }
-                DataType::Duration(DurationType::Duration32(unit)) => {
+                DataType::Duration32(unit) => {
                     let count = restated(super::parse_duration(text)?, *unit, "duration32")?;
                     Self::duration32(narrow_i32(count, "duration32")?, *unit)
                 }
-                DataType::Duration(DurationType::Duration64(unit)) => {
+                DataType::Duration64(unit) => {
                     let count = restated(super::parse_duration(text)?, *unit, "duration64")?;
                     Self::duration64(count, *unit)
                 }
@@ -1618,14 +1617,14 @@ pub(crate) mod scalars {
         let dtype = match value {
             Scalar::Date32(_) => DataType::date32(),
             Scalar::Date64(_) => DataType::date64(),
-            Scalar::Time32(_) => DataType::Time(TimeType::Time32(unit)),
-            Scalar::Time64(_) => DataType::Time(TimeType::Time64(unit)),
-            Scalar::DateTime64(_) => DataType::DateTime(DateTimeType::DateTime64 {
+            Scalar::Time32(_) => DataType::Time32(unit),
+            Scalar::Time64(_) => DataType::Time64(unit),
+            Scalar::DateTime64(_) => DataType::DateTime64 {
                 unit,
                 timezone: zone,
-            }),
-            Scalar::Duration32(_) => DataType::Duration(DurationType::Duration32(unit)),
-            Scalar::Duration64(_) => DataType::Duration(DurationType::Duration64(unit)),
+            },
+            Scalar::Duration32(_) => DataType::Duration32(unit),
+            Scalar::Duration64(_) => DataType::Duration64(unit),
             _ => return None,
         };
         Some(TemporalParts {
@@ -1638,10 +1637,30 @@ pub(crate) mod scalars {
 
     pub(crate) fn temporal_target(dtype: &DataType) -> Option<(TemporalKind, TimeUnit)> {
         match dtype {
-            DataType::Date(leaf) => Some((TemporalKind::Date, leaf.unit())),
-            DataType::Time(leaf) => Some((TemporalKind::Time, leaf.unit())),
-            DataType::DateTime(leaf) => Some((TemporalKind::DateTime, leaf.unit())),
-            DataType::Duration(leaf) => Some((TemporalKind::Duration, leaf.unit())),
+            leaf_dtype @ (DataType::Date32 | DataType::Date64) => {
+                let leaf = &leaf_dtype
+                    .date_type()
+                    .expect("the variant was just matched");
+                Some((TemporalKind::Date, leaf.unit()))
+            }
+            leaf_dtype @ (DataType::Time32(_) | DataType::Time64(_)) => {
+                let leaf = &leaf_dtype
+                    .time_type()
+                    .expect("the variant was just matched");
+                Some((TemporalKind::Time, leaf.unit()))
+            }
+            leaf_dtype @ DataType::DateTime64 { .. } => {
+                let leaf = &leaf_dtype
+                    .datetime_type()
+                    .expect("the variant was just matched");
+                Some((TemporalKind::DateTime, leaf.unit()))
+            }
+            leaf_dtype @ (DataType::Duration32(_) | DataType::Duration64(_)) => {
+                let leaf = &leaf_dtype
+                    .duration_type()
+                    .expect("the variant was just matched");
+                Some((TemporalKind::Duration, leaf.unit()))
+            }
             _ => None,
         }
     }
@@ -1681,13 +1700,8 @@ pub(crate) mod scalars {
             }
             (TemporalKind::Duration, TemporalKind::Duration, Arithmetic::Add | Arithmetic::Sub) => {
                 let unit = finer_unit(left_parts.unit, right_parts.unit);
-                let wide = matches!(
-                    left_parts.dtype,
-                    DataType::Duration(DurationType::Duration64(_))
-                ) || matches!(
-                    right_parts.dtype,
-                    DataType::Duration(DurationType::Duration64(_))
-                );
+                let wide = matches!(left_parts.dtype, DataType::Duration64(_))
+                    || matches!(right_parts.dtype, DataType::Duration64(_));
                 if wide {
                     DataType::duration64(unit)
                 } else {
@@ -1930,26 +1944,22 @@ pub(crate) mod scalars {
             })
         };
         match dtype {
-            DataType::Date(DateType::Date32) => {
-                Scalar::date32_in(narrowed("date32")?, unit, Timezone::NAIVE)
-            }
-            DataType::Date(DateType::Date64) => Scalar::date64_in(count, unit, Timezone::NAIVE),
-            DataType::Time(TimeType::Time32(expected)) if *expected == unit => {
+            DataType::Date32 => Scalar::date32_in(narrowed("date32")?, unit, Timezone::NAIVE),
+            DataType::Date64 => Scalar::date64_in(count, unit, Timezone::NAIVE),
+            DataType::Time32(expected) if *expected == unit => {
                 Scalar::time32(narrowed("time32")?, unit, Timezone::NAIVE)
             }
-            DataType::Time(TimeType::Time64(expected)) if *expected == unit => {
+            DataType::Time64(expected) if *expected == unit => {
                 Scalar::time64(count, unit, Timezone::NAIVE)
             }
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: expected,
                 timezone,
-            }) if *expected == unit => Scalar::datetime64(count, unit, *timezone),
-            DataType::Duration(DurationType::Duration32(expected)) if *expected == unit => {
+            } if *expected == unit => Scalar::datetime64(count, unit, *timezone),
+            DataType::Duration32(expected) if *expected == unit => {
                 Scalar::duration32(narrowed("duration32")?, unit)
             }
-            DataType::Duration(DurationType::Duration64(expected)) if *expected == unit => {
-                Scalar::duration64(count, unit)
-            }
+            DataType::Duration64(expected) if *expected == unit => Scalar::duration64(count, unit),
             _ => Err(Error::InvalidArithmetic {
                 operation: "temporal arithmetic",
                 left: temporal_kind_name(dtype),
@@ -1963,10 +1973,13 @@ pub(crate) mod scalars {
     /// or `temporal` for a datatype the arithmetic does not answer.
     const fn temporal_kind_name(dtype: &DataType) -> &'static str {
         match dtype {
-            DataType::Date(_)
-            | DataType::Time(_)
-            | DataType::DateTime(_)
-            | DataType::Duration(_) => dtype.name(),
+            DataType::Date32
+            | DataType::Date64
+            | DataType::Time32(_)
+            | DataType::Time64(_)
+            | DataType::DateTime64 { .. }
+            | DataType::Duration32(_)
+            | DataType::Duration64(_) => dtype.name(),
             _ => "temporal",
         }
     }

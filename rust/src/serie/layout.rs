@@ -13,7 +13,8 @@ use std::ops::Range;
 
 use arrow_array::OffsetSizeTrait;
 use arrow_buffer::{
-    BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer,
+    ArrowNativeType, BooleanBuffer, BooleanBufferBuilder, MutableBuffer, NullBuffer, OffsetBuffer,
+    ScalarBuffer,
 };
 
 use crate::Result;
@@ -106,6 +107,43 @@ pub(crate) fn splice_bits(
     builder.finish()
 }
 
+/// The typed buffer `values` is with `range` replaced by `replacement`.
+///
+/// Appending at the end, and overwriting as many slots as are written, both
+/// edit the buffer's own bytes when the leaf holds them alone - the rule
+/// [`splice_nulls`] states - and copy them once when it does not; anything
+/// else is one rebuild from prefix, replacement and suffix.
+pub(crate) fn splice_scalars<T: ArrowNativeType>(
+    values: ScalarBuffer<T>,
+    range: Range<usize>,
+    replacement: &[T],
+) -> ScalarBuffer<T> {
+    let len = values.len();
+    if range.start == len || range.len() == replacement.len() {
+        let mut owned = match values.into_inner().into_mutable() {
+            Ok(owned) => owned,
+            Err(shared) => {
+                let mut owned = MutableBuffer::with_capacity(
+                    (len - range.len() + replacement.len()) * std::mem::size_of::<T>(),
+                );
+                owned.extend_from_slice(shared.typed_data::<T>());
+                owned
+            }
+        };
+        if range.start == len {
+            owned.extend_from_slice(replacement);
+        } else {
+            owned.typed_data_mut::<T>()[range].copy_from_slice(replacement);
+        }
+        return ScalarBuffer::from(owned);
+    }
+    let mut rebuilt: Vec<T> = Vec::with_capacity(len - range.len() + replacement.len());
+    rebuilt.extend_from_slice(&values[..range.start]);
+    rebuilt.extend_from_slice(replacement);
+    rebuilt.extend_from_slice(&values[range.end..]);
+    ScalarBuffer::from(rebuilt)
+}
+
 /// The offsets cut with rows `range` replaced by rows of `lengths` items,
 /// and the item range the replaced rows occupied.
 ///
@@ -184,7 +222,7 @@ pub mod internals {
     use std::ops::Range;
 
     use arrow_array::OffsetSizeTrait;
-    use arrow_buffer::{BooleanBuffer, NullBuffer, OffsetBuffer};
+    use arrow_buffer::{ArrowNativeType, BooleanBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 
     use crate::Result;
 
@@ -203,6 +241,14 @@ pub mod internals {
         lengths: &[usize],
     ) -> (OffsetBuffer<O>, Range<usize>) {
         super::splice_offsets(offsets, range, lengths)
+    }
+
+    pub fn splice_scalars<T: ArrowNativeType>(
+        values: ScalarBuffer<T>,
+        range: Range<usize>,
+        replacement: &[T],
+    ) -> ScalarBuffer<T> {
+        super::splice_scalars(values, range, replacement)
     }
 
     pub fn require_offset<O: OffsetSizeTrait>(name: &str, total: usize) -> Result<()> {

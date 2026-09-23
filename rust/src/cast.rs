@@ -47,7 +47,6 @@ pub use plan::ArrowCastPlan;
 use smol_str::SmolStr;
 pub use typed::ArrowFieldType;
 
-use crate::UriType;
 use crate::arrow::{Error, Result};
 use crate::budget::MaterializationBudget;
 use crate::bytes::casts::{bridges_through_binary, ingest_bytes_array};
@@ -58,10 +57,8 @@ use crate::cast::columns::{
 };
 use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keeps_empty_text};
 use crate::decimal::casts::holds_decimal;
-use crate::enums::EnumType;
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::path::{Path, Segment};
-use crate::sequence::SequenceType;
 use crate::string::casts::{StringSource, ingest_code_array, ingest_string_array};
 use crate::string::{is_text_storage, needs_extension};
 use crate::temporal::casts::{
@@ -788,7 +785,7 @@ mod plan {
 /// behind the reading for the spellings only it takes, so a column still reads
 /// everything it used to.
 pub(crate) mod text {
-    use crate::enums::EnumType;
+
     use std::sync::Arc;
 
     use arrow_array::types::{
@@ -809,7 +806,7 @@ pub(crate) mod text {
     use crate::budget::{MaterializationBudget, reserve_vec_bytes};
     use crate::cast::columns::{is_exposed, run_value_exposure};
     use crate::cast::{arrow_cast_exposed, downcast};
-    use crate::sequence::SequenceType;
+
     use crate::value::dtype_canonical;
     use crate::{DataType, Field, Scalar};
 
@@ -826,9 +823,7 @@ pub(crate) mod text {
     /// tail encodes them, so a dictionary column reads like a plain one.
     pub(crate) fn encoded_value_of(target: &DataType) -> &DataType {
         match target {
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
-                encoded_value_of(dictionary.value())
-            }
+            DataType::Dictionary(dictionary) => encoded_value_of(dictionary.value()),
             DataType::RunEndEncoded(encoded) => encoded_value_of(encoded.values().dtype()),
             other => other,
         }
@@ -858,13 +853,11 @@ pub(crate) mod text {
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
             DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
-            DataType::Sequence(
-                SequenceType::List(item)
-                | SequenceType::LargeList(item)
-                | SequenceType::ListView(item)
-                | SequenceType::LargeListView(item)
-                | SequenceType::FixedSizeList(item, _),
-            ) => keeps_empty_text(item.dtype()),
+            DataType::List(item)
+            | DataType::LargeList(item)
+            | DataType::ListView(item)
+            | DataType::LargeListView(item)
+            | DataType::FixedSizeList(item, _) => keeps_empty_text(item.dtype()),
             code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
             _ => false,
         }
@@ -1248,9 +1241,9 @@ mod typed {
     typed_array!(crate::TimeInForceType, arrow_array::StringArray);
     // A UUID stores as the fixed binary of its sixteen bytes.
     typed_array!(crate::uuid::UuidType, arrow_array::FixedSizeBinaryArray);
-    // The sequence family covers five layouts whose arrays genuinely differ,
+    // The serie family covers five layouts whose arrays genuinely differ,
     // so it names none of them; a struct is one struct array.
-    typed_array!(crate::SequenceType, ArrayRef);
+    typed_array!(crate::SerieType, ArrayRef);
     typed_array!(crate::StructType, arrow_array::StructArray);
     typed_array!(crate::UnionType, arrow_array::UnionArray);
     typed_array!(crate::MappingType, arrow_array::MapArray);
@@ -1765,12 +1758,8 @@ impl ArrayCastPlan {
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Version)
             ),
-            DataType::Uri(UriType::Url) => {
-                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url))
-            }
-            DataType::Uri(UriType::Urn) => {
-                !matches!(source_extension.as_ref(), Some(RecognizedExtension::Urn))
-            }
+            DataType::Url => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Url)),
+            DataType::Urn => !matches!(source_extension.as_ref(), Some(RecognizedExtension::Urn)),
             DataType::Timezone => !matches!(
                 source_extension.as_ref(),
                 Some(RecognizedExtension::Timezone)
@@ -1958,16 +1947,12 @@ impl ArrayCastPlan {
             (DataType::Version, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to version is not supported"),
             },
-            (DataType::Uri(UriType::Url), source) if is_text_layout(source) => {
-                ArrayCastKind::UrlIngest
-            }
-            (DataType::Uri(UriType::Url), source) => ArrayCastKind::DeferredUnsupported {
+            (DataType::Url, source) if is_text_layout(source) => ArrayCastKind::UrlIngest,
+            (DataType::Url, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to url is not supported"),
             },
-            (DataType::Uri(UriType::Urn), source) if is_text_layout(source) => {
-                ArrayCastKind::UrnIngest
-            }
-            (DataType::Uri(UriType::Urn), source) => ArrayCastKind::DeferredUnsupported {
+            (DataType::Urn, source) if is_text_layout(source) => ArrayCastKind::UrnIngest,
+            (DataType::Urn, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to urn is not supported"),
             },
             (DataType::Timezone, source) if is_text_layout(source) => ArrayCastKind::TimezoneIngest,
@@ -2179,21 +2164,19 @@ impl ArrayCastPlan {
             // fixed sizes are a different row shape rather than a layout, and
             // that pair is refused below by name.
             (
-                DataType::Sequence(SequenceType::List(child))
-                | DataType::Sequence(SequenceType::LargeList(child))
-                | DataType::Sequence(SequenceType::ListView(child))
-                | DataType::Sequence(SequenceType::LargeListView(child))
-                | DataType::Sequence(SequenceType::FixedSizeList(child, _)),
+                DataType::List(child)
+                | DataType::LargeList(child)
+                | DataType::ListView(child)
+                | DataType::LargeListView(child)
+                | DataType::FixedSizeList(child, _),
                 ArrowDataType::List(source_child)
                 | ArrowDataType::LargeList(source_child)
                 | ArrowDataType::ListView(source_child)
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (
-                    DataType::Sequence(SequenceType::FixedSizeList(_, size)),
-                    ArrowDataType::FixedSizeList(_, source),
-                ) = (dtype, source_type)
+                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
+                    (dtype, source_type)
                 {
                     if size != source {
                         return Err(Error::Unsupported {
@@ -2217,11 +2200,18 @@ impl ArrayCastPlan {
                     kind: source_list_kind(source_type)?,
                 }
             }
-            (DataType::Mapping(map), ArrowDataType::Map(source_entries, _)) => {
+            (
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)),
+                ArrowDataType::Map(source_entries, _),
+            ) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let ArrowDataType::Map(target_entries, ordered) = expected else {
                     return Err(internal_target_error("map"));
                 };
-                let DataType::Mapping(source) = DataType::from_arrow_datatype(source_type)? else {
+                let Some(source) = (DataType::from_arrow_datatype(source_type)?).as_mapping()
+                else {
                     return Err(Error::IncompatibleSchema(
                         "source Arrow Map did not import as a Map datatype".to_owned(),
                     ));
@@ -2242,7 +2232,7 @@ impl ArrayCastPlan {
                 }
             }
             (
-                DataType::Enum(EnumType::Dictionary(dictionary)),
+                DataType::Dictionary(dictionary),
                 ArrowDataType::Dictionary(source_key, source_value),
             ) => ArrayCastKind::Dictionary {
                 source_key: source_key.as_ref().clone(),
@@ -2316,7 +2306,7 @@ impl ArrayCastPlan {
             // wrapper to Arrow's kernel silently skipped. The two arms above
             // stay ahead of this one because a source already in this encoding
             // is re-encoded rather than decoded and rebuilt.
-            (DataType::Enum(EnumType::Dictionary(dictionary)), _) => ArrayCastKind::Encoded {
+            (DataType::Dictionary(dictionary), _) => ArrayCastKind::Encoded {
                 values: Box::new(Self::new_nested_validated(
                     &Field::new("values", dictionary.value().clone(), true),
                     source_type,
@@ -2843,13 +2833,13 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
-        (DataType::Uri(UriType::Url), RecognizedExtension::Url) => Ok(()),
+        (DataType::Url, RecognizedExtension::Url) => Ok(()),
         (DataType::String(parameters), RecognizedExtension::Url)
             if is_text_storage(*parameters) =>
         {
             Ok(())
         }
-        (DataType::Uri(UriType::Urn), RecognizedExtension::Urn) => Ok(()),
+        (DataType::Urn, RecognizedExtension::Urn) => Ok(()),
         (DataType::String(parameters), RecognizedExtension::Urn)
             if is_text_storage(*parameters) =>
         {
@@ -3072,30 +3062,30 @@ pub(crate) mod columns {
     use crate::decimal::casts::DecimalText;
     use crate::{DataType, Field, Scalar, UnionMode};
 
-    use crate::DecimalType;
-    use crate::enums::EnumType;
-    use crate::sequence::SequenceType;
     mod dictionary {
 
         use super::*;
 
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
-                DataType::Enum(EnumType::Dictionary(_)) => true,
-                DataType::Sequence(SequenceType::List(field))
-                | DataType::Sequence(SequenceType::ListView(field))
-                | DataType::Sequence(SequenceType::FixedSizeList(field, _))
-                | DataType::Sequence(SequenceType::LargeList(field))
-                | DataType::Sequence(SequenceType::LargeListView(field)) => {
-                    contains_dictionary(field.dtype())
-                }
+                DataType::Dictionary(_) => true,
+                DataType::List(field)
+                | DataType::ListView(field)
+                | DataType::FixedSizeList(field, _)
+                | DataType::LargeList(field)
+                | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
                 DataType::Struct(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
                 DataType::Union(fields, _) => fields
                     .iter()
                     .any(|(_, field)| contains_dictionary(field.dtype())),
-                DataType::Mapping(map) => contains_dictionary(map.entries().dtype()),
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
+                    contains_dictionary(map.entries().dtype())
+                }
                 DataType::RunEndEncoded(encoded) => contains_dictionary(encoded.values().dtype()),
                 _ => false,
             }
@@ -3152,7 +3142,7 @@ pub(crate) mod columns {
             }
 
             match field.dtype() {
-                DataType::Enum(EnumType::Dictionary(dictionary)) => align_dictionary_arrays(
+                DataType::Dictionary(dictionary) => align_dictionary_arrays(
                     field,
                     dictionary,
                     left,
@@ -3189,7 +3179,7 @@ pub(crate) mod columns {
                         replace_array_children(right, right_children, budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::List(child)) => {
+                DataType::List(child) => {
                     let left_list = downcast::<ListArray>(left.as_ref())?;
                     let right_list = downcast::<ListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3231,7 +3221,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::LargeList(child)) => {
+                DataType::LargeList(child) => {
                     let left_list = downcast::<LargeListArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3263,7 +3253,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::ListView(child)) => {
+                DataType::ListView(child) => {
                     let left_list = downcast::<ListViewArray>(left.as_ref())?;
                     let right_list = downcast::<ListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3305,7 +3295,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::LargeListView(child)) => {
+                DataType::LargeListView(child) => {
                     let left_list = downcast::<LargeListViewArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3337,7 +3327,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+                DataType::FixedSizeList(child, size) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
                     let width = usize::try_from(*size).map_err(|_| {
@@ -3388,7 +3378,10 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::Mapping(map) => {
+                map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                    let map = &map_dtype
+                        .as_mapping()
+                        .expect("the variant was just matched");
                     let left_map = downcast::<MapArray>(left.as_ref())?;
                     let right_map = downcast::<MapArray>(right.as_ref())?;
                     let left_entry_exposure = range_exposure(
@@ -4231,11 +4224,11 @@ pub(crate) mod columns {
                         ordered,
                     )?) as ArrayRef
                 };
-                let DataType::Mapping(target_map) = self.field.dtype() else {
+                let Some(target_map) = (self.field.dtype()).as_mapping() else {
                     return Err(internal_target_error("map"));
                 };
-                if !unchanged || source_map != target_map {
-                    validate_map_invariants(target_map, output.as_ref(), exposure, budget)?;
+                if !unchanged || *source_map != target_map {
+                    validate_map_invariants(&target_map, output.as_ref(), exposure, budget)?;
                 }
                 Ok(output)
             }
@@ -4254,7 +4247,7 @@ pub(crate) mod columns {
             if dtype_semantics && field.dtype().is_default_value(&Scalar::Null)? {
                 return Ok(array);
             }
-            if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
+            if let DataType::Dictionary(dictionary) = field.dtype() {
                 return fill_dictionary_nulls(field, dictionary, array, exposure, budget);
             }
             let phase = budget.mark();
@@ -4778,7 +4771,7 @@ pub(crate) mod columns {
                 return Ok(new_null_array(&arrow_type, len));
             }
             if exposed != 0 && hidden != 0 {
-                if let DataType::Enum(EnumType::Dictionary(dictionary)) = field.dtype() {
+                if let DataType::Dictionary(dictionary) = field.dtype() {
                     let exposure = exposure.ok_or_else(|| {
                         Error::IncompatibleSchema(
                             "mixed missing dictionary exposure requires a mask".to_owned(),
@@ -5115,21 +5108,24 @@ pub(crate) mod columns {
             DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::Decimal(DecimalType::Decimal256 { .. })
+            | DataType::Decimal256 { .. }
             | DataType::Union(..)
-            | DataType::Enum(EnumType::Dictionary(_))
+            | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
-            DataType::Sequence(SequenceType::List(child))
-            | DataType::Sequence(SequenceType::ListView(child))
-            | DataType::Sequence(SequenceType::FixedSizeList(child, _))
-            | DataType::Sequence(SequenceType::LargeList(child))
-            | DataType::Sequence(SequenceType::LargeListView(child)) => {
-                requires_yggdryl_key_comparator(child.dtype())
-            }
+            DataType::List(child)
+            | DataType::ListView(child)
+            | DataType::FixedSizeList(child, _)
+            | DataType::LargeList(child)
+            | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
             DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
-            DataType::Mapping(map) => requires_yggdryl_key_comparator(map.entries().dtype()),
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
+                requires_yggdryl_key_comparator(map.entries().dtype())
+            }
             _ => false,
         }
     }
@@ -5138,7 +5134,7 @@ pub(crate) mod columns {
         matches!(
             dtype,
             DataType::Null
-                | DataType::Enum(EnumType::Dictionary(_))
+                | DataType::Dictionary(_)
                 | DataType::Union(..)
                 | DataType::RunEndEncoded(_)
         )
@@ -5290,7 +5286,7 @@ pub(crate) mod columns {
                         .cmp(&crate::Float64::from_f64(right_values[right]))
                 })
             }
-            DataType::Decimal(DecimalType::Decimal256 { .. }) => {
+            DataType::Decimal256 { .. } => {
                 let left_values = downcast::<Decimal256Array>(left.as_ref())?.values().clone();
                 let right_values = downcast::<Decimal256Array>(right.as_ref())?
                     .values()
@@ -5301,7 +5297,7 @@ pub(crate) mod columns {
                         .cmp(DecimalText::new(right_values[right]).as_bytes())
                 })
             }
-            DataType::Sequence(SequenceType::List(child)) => {
+            DataType::List(child) => {
                 let left_source = downcast::<ListArray>(left.as_ref())?;
                 let right_source = downcast::<ListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5323,7 +5319,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Sequence(SequenceType::LargeList(child)) => {
+            DataType::LargeList(child) => {
                 let left_source = downcast::<LargeListArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5345,7 +5341,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Sequence(SequenceType::ListView(child)) => {
+            DataType::ListView(child) => {
                 let left_source = downcast::<ListViewArray>(left.as_ref())?;
                 let right_source = downcast::<ListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5370,7 +5366,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::Sequence(SequenceType::LargeListView(child)) => {
+            DataType::LargeListView(child) => {
                 let left_source = downcast::<LargeListViewArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5395,7 +5391,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::Sequence(SequenceType::FixedSizeList(child, size)) => {
+            DataType::FixedSizeList(child, size) => {
                 let left_values =
                     Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
                 let right_values =
@@ -5436,7 +5432,10 @@ pub(crate) mod columns {
                         .unwrap_or(Ordering::Equal)
                 })
             }
-            DataType::Mapping(map) => {
+            map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let map = &map_dtype
+                    .as_mapping()
+                    .expect("the variant was just matched");
                 let left_source = downcast::<MapArray>(left.as_ref())?;
                 let right_source = downcast::<MapArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5462,7 +5461,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            DataType::Dictionary(dictionary) => {
                 return match dictionary.key() {
                     DataType::Int8 => {
                         dictionary_key_comparator::<Int8Type>(left, right, dictionary, budget)
@@ -5791,18 +5790,16 @@ pub(crate) mod columns {
 
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
-            DataType::Struct(_) | DataType::Mapping(_) => true,
-            DataType::Sequence(SequenceType::List(field))
-            | DataType::Sequence(SequenceType::ListView(field))
-            | DataType::Sequence(SequenceType::FixedSizeList(field, _))
-            | DataType::Sequence(SequenceType::LargeList(field))
-            | DataType::Sequence(SequenceType::LargeListView(field)) => {
-                contains_struct(field.dtype())
-            }
+            DataType::Struct(_) | DataType::Map(_) | DataType::SortedMap(_) => true,
+            DataType::List(field)
+            | DataType::ListView(field)
+            | DataType::FixedSizeList(field, _)
+            | DataType::LargeList(field)
+            | DataType::LargeListView(field) => contains_struct(field.dtype()),
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
-            DataType::Enum(EnumType::Dictionary(dictionary)) => contains_struct(dictionary.value()),
+            DataType::Dictionary(dictionary) => contains_struct(dictionary.value()),
             DataType::RunEndEncoded(encoded) => contains_struct(encoded.values().dtype()),
             _ => false,
         }
@@ -5811,15 +5808,16 @@ pub(crate) mod columns {
     pub(crate) fn is_reconcilable_nested(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::Sequence(SequenceType::List(_))
-                | DataType::Sequence(SequenceType::ListView(_))
-                | DataType::Sequence(SequenceType::FixedSizeList(_, _))
-                | DataType::Sequence(SequenceType::LargeList(_))
-                | DataType::Sequence(SequenceType::LargeListView(_))
+            DataType::List(_)
+                | DataType::ListView(_)
+                | DataType::FixedSizeList(_, _)
+                | DataType::LargeList(_)
+                | DataType::LargeListView(_)
                 | DataType::Struct(_)
                 | DataType::Union(_, _)
-                | DataType::Enum(EnumType::Dictionary(_))
-                | DataType::Mapping(_)
+                | DataType::Dictionary(_)
+                | DataType::Map(_)
+                | DataType::SortedMap(_)
                 | DataType::RunEndEncoded(_)
         )
     }
@@ -5876,7 +5874,7 @@ pub(crate) mod columns {
         }
         match dtype {
             DataType::Null => Ok(true),
-            DataType::Enum(EnumType::Dictionary(dictionary)) => match dictionary.key() {
+            DataType::Dictionary(dictionary) => match dictionary.key() {
                 DataType::Int8 => dictionary_logical_null_at::<Int8Type>(array, dictionary, index),
                 DataType::Int16 => {
                     dictionary_logical_null_at::<Int16Type>(array, dictionary, index)

@@ -103,9 +103,9 @@ mod pairing {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
+    use yggdryl::UncheckedFieldScalar;
     use yggdryl::interval::Interval;
     use yggdryl::{DataType, Field, FieldScalar, Scalar, StructType, TimeUnit, Timezone};
-    use yggdryl::{DateTimeType, UncheckedFieldScalar};
 
     fn hash_of<T: Hash>(value: &T) -> u64 {
         let mut hasher = DefaultHasher::new();
@@ -135,10 +135,10 @@ mod pairing {
             DataType::Int64,
             DataType::utf8(),
             DataType::binary(),
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::NAIVE,
-            }),
+            },
         ] {
             let nullable = Field::new("value", dtype.clone(), true);
             let typed = FieldScalar::new(&nullable, Scalar::Null).unwrap();

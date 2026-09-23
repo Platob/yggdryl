@@ -104,7 +104,7 @@ fn a_row_past_the_end_and_a_row_the_field_refuses_leave_the_cut() {
             .push(Scalar::from_mapping([(Scalar::from("d"), Scalar::from("four"))]).unwrap())
             .is_err()
     );
-    let leaf = column.as_mapping().expect("a mapping column");
+    let leaf = column.as_map().expect("a mapping column");
     assert_eq!(leaf.offsets().as_ref(), &[0, 2, 2, 3]);
     assert_eq!(leaf.entries().len(), 3);
     assert_eq!(column.rows().into_owned(), tag_rows());
@@ -129,7 +129,7 @@ fn a_mapping_round_trips_through_arrow_and_a_column_built_by_pushes_is_the_laid_
     assert_eq!(back, laid_out);
     assert_eq!(back.rows().into_owned(), tag_rows());
     assert_eq!(back.into_arrow_array().unwrap().as_ref(), out.as_ref());
-    let leaf = back.as_mapping().unwrap();
+    let leaf = back.as_map().unwrap();
     assert_eq!(
         leaf.keys().rows().into_owned(),
         vec![Scalar::from("a"), Scalar::from("b"), Scalar::from("c")]
@@ -140,7 +140,7 @@ fn a_mapping_round_trips_through_arrow_and_a_column_built_by_pushes_is_the_laid_
     // A sliced array is rebased onto the entries it reaches.
     let sliced: ArrayRef = Arc::new(tags().slice(2, 1));
     let window = Serie::from_arrow_array(tags_field(), sliced).unwrap();
-    let leaf = window.as_mapping().unwrap();
+    let leaf = window.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 1]);
     assert_eq!(leaf.entries().len(), 1);
     assert_eq!(window.scalar(0).unwrap(), tag_rows()[2]);
@@ -156,7 +156,7 @@ fn a_mapping_row_set_with_a_different_entry_count_recuts_and_later_rows_read_unc
             Scalar::from_mapping([(Scalar::from("z"), Scalar::from(26_i64))]).unwrap(),
         )
         .expect("two entries become one");
-    let leaf = column.as_mapping().unwrap();
+    let leaf = column.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 1, 1, 2]);
     assert_eq!(leaf.entries().len(), 2);
     assert_eq!(leaf.keys().scalar(0).unwrap(), Scalar::from("z"));
@@ -175,7 +175,7 @@ fn a_mapping_row_set_with_a_different_entry_count_recuts_and_later_rows_read_unc
         )
         .unwrap();
     column.set(2, Scalar::Null).unwrap();
-    let leaf = column.as_mapping().unwrap();
+    let leaf = column.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 1, 3, 3]);
     assert_eq!(leaf.range(1), Some(1..3));
     assert_eq!(leaf.range(2), None);
@@ -187,11 +187,11 @@ fn a_mapping_row_set_with_a_different_entry_count_recuts_and_later_rows_read_unc
         )
         .unwrap();
     assert_eq!(
-        column.as_mapping().unwrap().offsets().as_ref(),
+        column.as_map().unwrap().offsets().as_ref(),
         &[0, 1, 2, 4, 4]
     );
     assert_eq!(
-        column.as_mapping().unwrap().keys().rows().into_owned(),
+        column.as_map().unwrap().keys().rows().into_owned(),
         vec![
             Scalar::from("z"),
             Scalar::from("m"),
@@ -201,7 +201,7 @@ fn a_mapping_row_set_with_a_different_entry_count_recuts_and_later_rows_read_unc
     );
     assert_eq!(column.remove(0).unwrap().len(), 1);
     assert_eq!(column.pop().unwrap(), Some(Scalar::Null));
-    assert_eq!(column.as_mapping().unwrap().offsets().as_ref(), &[0, 1, 3]);
+    assert_eq!(column.as_map().unwrap().offsets().as_ref(), &[0, 1, 3]);
     assert_eq!(column.into_arrow_array().unwrap().len(), 2);
 }
 
@@ -211,7 +211,7 @@ fn extend_from_serie_appends_the_cut_and_the_entries_and_a_slice_rebases() {
     column
         .extend_from_serie(&Serie::from_scalars(tags_field(), tag_rows()).unwrap())
         .expect("one layout appended");
-    let leaf = column.as_mapping().unwrap();
+    let leaf = column.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 2, 2, 3, 5, 5, 6]);
     assert_eq!(leaf.entries().len(), 6);
     assert_eq!(column.null_count(), 2);
@@ -232,14 +232,11 @@ fn extend_from_serie_appends_the_cut_and_the_entries_and_a_slice_rebases() {
     // its own once the original is dropped.
     let mut window = column.slice(2, 2).unwrap();
     drop(column);
-    let leaf = window.as_mapping().unwrap();
+    let leaf = window.as_map().unwrap();
     assert_eq!(leaf.offsets().as_ref(), &[0, 1, 3]);
     assert_eq!(leaf.entries().len(), 3);
     window.push(Scalar::Null).unwrap();
-    assert_eq!(
-        window.as_mapping().unwrap().offsets().as_ref(),
-        &[0, 1, 3, 3]
-    );
+    assert_eq!(window.as_map().unwrap().offsets().as_ref(), &[0, 1, 3, 3]);
     assert_eq!(window.scalar(0).unwrap(), tag_rows()[2]);
     assert_eq!(window.scalar(1).unwrap(), tag_rows()[0]);
     assert_eq!(window.into_arrow_array().unwrap().len(), 3);
@@ -249,14 +246,14 @@ fn extend_from_serie_appends_the_cut_and_the_entries_and_a_slice_rebases() {
 fn keys_sorted_is_read_off_the_field_and_laid_out_on_the_array() {
     let sorted = Field::new("tags", DataType::map(entries_field(), true).unwrap(), true);
     let column = Serie::from_scalars(sorted.clone(), tag_rows()).unwrap();
-    assert!(column.as_mapping().unwrap().keys_sorted());
+    assert!(column.as_map().unwrap().keys_sorted());
     assert!(matches!(
         column.into_arrow_array().unwrap().data_type(),
         ArrowDataType::Map(_, true)
     ));
 
     let unsorted = Serie::from_scalars(tags_field(), tag_rows()).unwrap();
-    assert!(!unsorted.as_mapping().unwrap().keys_sorted());
+    assert!(!unsorted.as_map().unwrap().keys_sorted());
     assert!(matches!(
         unsorted.into_arrow_array().unwrap().data_type(),
         ArrowDataType::Map(_, false)
@@ -271,7 +268,7 @@ fn a_mapping_column_holds_its_entries_as_a_record_column_and_pairs_them_back() {
     let first = tag_rows().swap_remove(0);
     let column =
         Serie::from_scalars(tags_field(), [first.clone(), Scalar::Null]).expect("two mappings");
-    let leaf = column.as_mapping().expect("a mapping column");
+    let leaf = column.as_map().expect("a mapping column");
 
     assert_eq!(leaf.offsets().as_ref(), &[0, 2, 2]);
     assert_eq!(leaf.entries().len(), 2);

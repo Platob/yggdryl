@@ -4,7 +4,7 @@
 //! Arrow lays a date out two ways - `Date32`, days since the epoch, and
 //! `Date64`, milliseconds since the epoch that always name a midnight - and
 //! both are one thing to a reader: a day. [`DateType`] names the two leaves,
-//! [`crate::DataType::Date`] is the one date datatype, and [`Date32`] and
+//! `DataType::Date32` and `DataType::Date64` are the date datatypes, and [`Date32`] and
 //! [`Date64`] are the values, each carrying the unit its width means so the
 //! shared temporal readers never ask the width.
 //!
@@ -151,14 +151,14 @@ impl DataTypeValue for DateType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Date(self)
+        match self {
+            Self::Date32 => DataType::Date32,
+            Self::Date64 => DataType::Date64,
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Date(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.date_type()
     }
 }
 
@@ -171,7 +171,7 @@ impl fmt::Display for DateType {
 
 impl From<DateType> for DataType {
     fn from(value: DateType) -> Self {
-        Self::Date(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -179,13 +179,10 @@ impl TryFrom<&DataType> for DateType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Date(leaf) => Ok(*leaf),
-            other => Err(Error::InvalidDataType {
-                kind: "date",
-                reason: format_smolstr!("expected a date datatype, got {other}"),
-            }),
-        }
+        value.date_type().ok_or_else(|| Error::InvalidDataType {
+            kind: "date",
+            reason: format_smolstr!("expected a date datatype, got {value}"),
+        })
     }
 }
 
@@ -197,21 +194,22 @@ impl DataType {
     /// Days since the Unix epoch - Arrow's `Date32`.
     #[must_use]
     pub const fn date32() -> Self {
-        Self::Date(DateType::Date32)
+        Self::Date32
     }
 
     /// Milliseconds since the Unix epoch representing whole days - Arrow's
     /// `Date64`.
     #[must_use]
     pub const fn date64() -> Self {
-        Self::Date(DateType::Date64)
+        Self::Date64
     }
 
     /// The leaf a date datatype declares, `None` for every other.
     #[must_use]
     pub const fn date_type(&self) -> Option<DateType> {
         match self {
-            Self::Date(leaf) => Some(*leaf),
+            Self::Date32 => Some(DateType::Date32),
+            Self::Date64 => Some(DateType::Date64),
             _ => None,
         }
     }
@@ -225,7 +223,6 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::DateType;
     use crate::invalid;
     use crate::{DataType, Result};
 
@@ -236,8 +233,8 @@ mod arrow {
     /// Returns an error when the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
         match dtype {
-            DataType::Date(DateType::Date32) => Ok(ArrowDataType::Date32),
-            DataType::Date(DateType::Date64) => Ok(ArrowDataType::Date64),
+            DataType::Date32 => Ok(ArrowDataType::Date32),
+            DataType::Date64 => Ok(ArrowDataType::Date64),
             other => Err(invalid(
                 "date",
                 format_smolstr!("expected a date datatype, got {other}"),

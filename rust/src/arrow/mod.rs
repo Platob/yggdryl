@@ -11,7 +11,6 @@ use std::sync::Arc;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::cast::ArrowCastPlan;
-use crate::enums::EnumType;
 use crate::{DataType, Field, Scalar, StructType};
 use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{ArrowError, Schema, SchemaRef};
@@ -993,7 +992,7 @@ pub fn array_to_value(field: &Field, array: &dyn Array) -> Result<Scalar> {
 
 /// Read one record batch as a sequence of rows.
 ///
-/// Each row becomes a [`crate::sequence::Run`] with one value per column, in schema
+/// Each row becomes a [`crate::serie::Run`] with one value per column, in schema
 /// order. The batch schema remains the [`RecordBatch`]'s schema rather than
 /// being duplicated inside every row.
 ///
@@ -1134,7 +1133,7 @@ fn collect_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) {
-    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
+    if let DataType::Dictionary(dictionary) = dtype {
         collect_dictionary_ids_in_dtype(dictionary.value(), path, ids);
         return;
     }
@@ -1263,7 +1262,7 @@ fn restore_dictionary_ids_in_dtype(
     path: &mut Vec<usize>,
     ids: &mut DictionaryIds,
 ) -> Result<DataType> {
-    if let DataType::Enum(EnumType::Dictionary(dictionary)) = dtype {
+    if let DataType::Dictionary(dictionary) = dtype {
         let value = restore_dictionary_ids_in_dtype(dictionary.value(), path, ids)?;
         return DataType::dictionary(dictionary.key().clone(), value).map_err(Error::Core);
     }

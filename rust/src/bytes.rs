@@ -155,7 +155,7 @@ mod arrow {
 }
 /// Binary layout accounting and identity checks for Arrow casts.
 pub(crate) mod casts {
-    use crate::enums::EnumType;
+
     use arrow_array::builder::{
         BinaryBuilder, BinaryViewBuilder, FixedSizeBinaryBuilder, LargeBinaryBuilder,
     };
@@ -176,7 +176,6 @@ pub(crate) mod casts {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::{SmolStr, format_smolstr};
 
-    use crate::DecimalType;
     use crate::arrow::{Error, Result};
     use crate::budget::MaterializationBudget;
     use crate::bytes::BytesType;
@@ -412,9 +411,7 @@ pub(crate) mod casts {
         if array.is_null(index)
             && !matches!(
                 source_type,
-                DataType::Enum(EnumType::Dictionary(_))
-                    | DataType::Union(..)
-                    | DataType::RunEndEncoded(_)
+                DataType::Dictionary(_) | DataType::Union(..) | DataType::RunEndEncoded(_)
             )
         {
             return Ok(0);
@@ -426,7 +423,7 @@ pub(crate) mod casts {
             bytes if bytes.kind().is_bytes() || matches!(bytes, DataType::Uuid) => {
                 byte_cell_len(array, index)?
             }
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            DataType::Dictionary(dictionary) => {
                 macro_rules! dictionary_len {
                     ($key:ty) => {{
                         let dictionary_array = downcast::<DictionaryArray<$key>>(array)?;
@@ -516,19 +513,22 @@ pub(crate) mod casts {
             DataType::Int8 => 4,
             DataType::UInt8 => 3,
             DataType::Int16 => 6,
-            DataType::Int32 | DataType::Decimal(DecimalType::Decimal32 { .. }) => 12,
+            DataType::Int32 | DataType::Decimal32 { .. } => 12,
             DataType::UInt32 => 10,
-            DataType::Int64 | DataType::Decimal(DecimalType::Decimal64 { .. }) => 21,
+            DataType::Int64 | DataType::Decimal64 { .. } => 21,
             DataType::UInt64 => 20,
             DataType::Float16 => 16,
             DataType::Float32 => 24,
             DataType::Float64 => 32,
-            DataType::Decimal(DecimalType::Decimal128 { .. }) => 41,
-            DataType::Decimal(DecimalType::Decimal256 { .. }) => 78,
-            DataType::DateTime(_)
-            | DataType::Date(_)
-            | DataType::Time(_)
-            | DataType::Duration(_)
+            DataType::Decimal128 { .. } => 41,
+            DataType::Decimal256 { .. } => 78,
+            DataType::DateTime64 { .. }
+            | DataType::Date32
+            | DataType::Date64
+            | DataType::Time32(_)
+            | DataType::Time64(_)
+            | DataType::Duration32(_)
+            | DataType::Duration64(_)
             | DataType::Interval(_) => 128,
             _ => 0,
         };

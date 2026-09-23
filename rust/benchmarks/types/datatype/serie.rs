@@ -13,7 +13,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, Int64Array, StringArray, StructArray};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
 use criterion::{BatchSize, Criterion};
-use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType};
+use yggdryl::{DataType, Field, Scalar, Serie, SerieValue, StructType, UnionMode};
 
 /// Rows per measured column. The smoke corpus keeps `cargo test
 /// --all-targets` under a second in a debug build.
@@ -100,6 +100,61 @@ fn orders_column() -> Serie {
         (0..ROWS).map(|index| order_row(i64::try_from(index).expect("a row count fits i64"))),
     )
     .expect("a record column of lists")
+}
+
+/// One nullable run-end field of UTF-8 states over `int32` run ends.
+fn states_field() -> Field {
+    Field::new(
+        "state",
+        DataType::run_end_encoded(
+            Field::new("run_ends", DataType::Int32, false),
+            Field::new("values", DataType::utf8(), true),
+        )
+        .expect("an int32 run-end width"),
+        true,
+    )
+}
+
+/// `ROWS` states in runs of eight, laid out from proven rows.
+fn states_column() -> Serie {
+    Serie::from_scalars(
+        states_field(),
+        (0..ROWS).map(|index| Scalar::from(if index / 8 % 2 == 0 { "open" } else { "closed" })),
+    )
+    .expect("a run-end column")
+}
+
+/// One nullable union of an identifier and a symbol, in `mode`.
+fn quote_field(mode: UnionMode) -> Field {
+    Field::new(
+        "quote",
+        DataType::union(
+            [
+                (0, Field::new("id", DataType::Int64, false)),
+                (1, Field::new("symbol", DataType::utf8(), true)),
+            ],
+            mode,
+        )
+        .expect("two members"),
+        true,
+    )
+}
+
+/// One union row: the member's type id and its payload.
+fn quote(index: usize) -> Scalar {
+    if index % 2 == 0 {
+        Scalar::from_sequence([
+            Scalar::from(0_i64),
+            Scalar::from(i64::try_from(index).expect("a row count fits i64")),
+        ])
+    } else {
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")])
+    }
+}
+
+/// `ROWS` alternating union rows in `mode`, laid out from proven rows.
+fn quotes_union(mode: UnionMode) -> Serie {
+    Serie::from_scalars(quote_field(mode), (0..ROWS).map(quote)).expect("a union column")
 }
 
 pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
@@ -206,6 +261,38 @@ pub(crate) fn serie_benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
+
+    // An encoded push is a cut over the last run: the value it holds
+    // lengthens it by one run-end write, and another value appends one run.
+    group.bench_function("run_end_push", |bencher| {
+        bencher.iter_batched(
+            states_column,
+            |mut states| {
+                states
+                    .push(Scalar::from("closed"))
+                    .expect("the last run's value");
+                states.push(Scalar::from("open")).expect("a run more");
+                states.len()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+
+    // A union push: a sparse one splices every member over the new row, a
+    // dense one lands the payload on its own member.
+    for mode in [UnionMode::Sparse, UnionMode::Dense] {
+        let name = format!("union_push/{}", format!("{mode:?}").to_lowercase());
+        group.bench_function(name, |bencher| {
+            bencher.iter_batched(
+                || quotes_union(mode),
+                |mut quotes| {
+                    quotes.push(quote(ROWS)).expect("one union row");
+                    quotes.len()
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
 
     group.finish();
 }

@@ -8,7 +8,7 @@ Rows out of a stream - as native scalars, as Arrow batches - and the schema on i
 | --- | --- |
 | Owns | `ipc::read_field`, `ipc::read_batch_reader`; `read_records`, `read_arrow_reader`, `read_arrow_field` from [`IOMedia`](../../holder/iobase/records.md) |
 | Native rows | Python `read_records`, JavaScript `readRecords`; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
-| Row shape | a mapping per row in the bindings; an ordered `Scalar::Sequence` under the root in the [value model](../../types/scalar.md) |
+| Row shape | a mapping per row in the bindings; an ordered `Scalar::List` under the root in the [value model](../../types/scalar.md) |
 | Batches | an [`arrow::BatchReader`](../../arrow/readers.md) whose schema is known before the first batch |
 | Lazy | a batch is decoded as the reader is stepped; only the current one is alive |
 | Schema | recovered from the bytes; `options.field` declared instead answers without touching the handle |

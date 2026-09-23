@@ -8,7 +8,7 @@ Lines out of a handle - as native scalars, as Arrow batches - and the Rust conve
 | --- | --- |
 | Owns | `read_records` / `readRecords`, `read_arrow_reader`, `read_arrow_field`, `read_text_lines`, and the Rust `from_arrow_batch` / `from_arrow_reader` |
 | Native rows | Python `read_records`, JavaScript `readRecords` - one row per physical line, or per framed record; Rust reads Arrow and crosses with `ArrowScalar::into_scalar` |
-| Row shape | a mapping per row in the bindings; an ordered `Scalar::Sequence` under the root in the [value model](../../types/scalar.md) |
+| Row shape | a mapping per row in the bindings; an ordered `Scalar::List` under the root in the [value model](../../types/scalar.md) |
 | Batches | an [`arrow::BatchReader`](../../arrow/readers.md) over the [row schema](index.md#row-schema); `read_arrow_field` answers it before any byte is read |
 | Lazy | one decode, `read_text_lines`, behind both surfaces: a batch is built as the reader is stepped and only the current one is alive |
 | Clauses | `read_records` and the Arrow reads answer the [`select` and `where` sections](options.md); `read_text_lines` answers every line, because a `where` may name a column the `select` builds and no line states one |

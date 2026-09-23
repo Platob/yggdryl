@@ -4,7 +4,6 @@
 use std::io::{Cursor, Read};
 use std::str::FromStr;
 
-use yggdryl::DateTimeType;
 use yggdryl::json;
 use yggdryl::text::{self, Format, Formatting, Limits};
 use yggdryl::{
@@ -79,10 +78,10 @@ fn typed_row_field() -> Field {
             Field::new("amount", DataType::decimal256(76, 4).unwrap(), false),
             Field::new(
                 "at",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Second,
                     timezone: Timezone::UTC,
-                }),
+                },
                 false,
             ),
             Field::new(
@@ -182,10 +181,10 @@ fn a_field_folds_an_out_of_day_clock_and_reads_an_elapsed_one() {
     // A datetime carries the hour into the next date instead of folding it.
     let at = Field::new(
         "at",
-        DataType::DateTime(DateTimeType::DateTime64 {
+        DataType::DateTime64 {
             unit: TimeUnit::Second,
             timezone: Timezone::UTC,
-        }),
+        },
         false,
     );
     assert_eq!(

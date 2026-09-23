@@ -79,7 +79,11 @@ fn item_field_ref(field: &Field) -> arrow_schema::FieldRef {
 /// The item field a sequence field repeats.
 fn item_field(field: &Field) -> &Arc<Field> {
     match field.dtype() {
-        DataType::Sequence(sequence) => sequence.item_ref(),
+        DataType::List(item)
+        | DataType::ListView(item)
+        | DataType::FixedSizeList(item, _)
+        | DataType::LargeList(item)
+        | DataType::LargeListView(item) => item,
         _ => unreachable!("a sequence column's field is a sequence field: the door paired them"),
     }
 }
@@ -307,7 +311,8 @@ impl<O: ListLeaf> SerieValue for OffsetListSerie<O> {
         let Some(range) = self.range(index) else {
             return Ok(Scalar::Null);
         };
-        Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))
+        let row = Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))?;
+        Ok(self.field.dtype().declared_layout(row))
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -596,7 +601,8 @@ impl<O: ListLeaf> SerieValue for OffsetListViewSerie<O> {
         let Some(range) = self.range(index) else {
             return Ok(Scalar::Null);
         };
-        Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))
+        let row = Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))?;
+        Ok(self.field.dtype().declared_layout(row))
     }
 
     /// The window's views rebased onto the items they reach, which are
@@ -678,31 +684,19 @@ macro_rules! list_leaf {
             const VIEW_NAME: &'static str = stringify!($view);
 
             fn into_list_serie(column: OffsetListSerie<Self>) -> Serie {
-                Serie::Sequence(Arc::new(super::SequenceSerie::$list(column)))
+                super::Leaf::root(column)
             }
 
             fn from_list_serie(serie: &Serie) -> Option<&OffsetListSerie<Self>> {
-                match serie {
-                    Serie::Sequence(family) => match family.as_ref() {
-                        super::SequenceSerie::$list(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                super::Leaf::narrow(serie)
             }
 
             fn into_list_view_serie(column: OffsetListViewSerie<Self>) -> Serie {
-                Serie::Sequence(Arc::new(super::SequenceSerie::$view(column)))
+                super::Leaf::root(column)
             }
 
             fn from_list_view_serie(serie: &Serie) -> Option<&OffsetListViewSerie<Self>> {
-                match serie {
-                    Serie::Sequence(family) => match family.as_ref() {
-                        super::SequenceSerie::$view(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                super::Leaf::narrow(serie)
             }
         }
     };
@@ -870,7 +864,8 @@ impl SerieValue for FixedSizeListSerie {
         let Some(range) = self.range(index) else {
             return Ok(Scalar::Null);
         };
-        Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))
+        let row = Scalar::try_sequence(range.len(), |item| self.items.scalar(range.start + item))?;
+        Ok(self.field.dtype().declared_layout(row))
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -909,17 +904,11 @@ impl SerieValue for FixedSizeListSerie {
     }
 
     fn into_serie(self) -> Serie {
-        Serie::Sequence(Arc::new(super::SequenceSerie::FixedSizeList(self)))
+        super::Leaf::root(self)
     }
 
     fn from_serie(value: &Serie) -> Option<&Self> {
-        match value {
-            Serie::Sequence(family) => match family.as_ref() {
-                super::SequenceSerie::FixedSizeList(column) => Some(column),
-                _ => None,
-            },
-            _ => None,
-        }
+        super::Leaf::narrow(value)
     }
 }
 
@@ -930,19 +919,6 @@ impl fmt::Debug for FixedSizeListSerie {
 }
 
 serie_leaf!(FixedSizeListSerie);
-
-impl super::SequenceSerie {
-    /// Borrow the item column under whichever cut this leaf is.
-    pub fn items(&self) -> &Serie {
-        match self {
-            Self::List(column) => column.items(),
-            Self::LargeList(column) => column.items(),
-            Self::ListView(column) => column.items(),
-            Self::LargeListView(column) => column.items(),
-            Self::FixedSizeList(column) => column.items(),
-        }
-    }
-}
 
 // ------------------------------------------------------------------------
 // The door: each layout's buffers taken as they are, its cut rebased.
@@ -1067,7 +1043,7 @@ pub(crate) fn column_of(
     use super::arrow::{held, rebased};
 
     let _ = parent;
-    let Some(sequence) = field.dtype().as_sequence_type() else {
+    let Some(sequence) = field.dtype().as_serie_type() else {
         return Ok(None);
     };
     let item = Arc::clone(sequence.item_ref());

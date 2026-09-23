@@ -4,14 +4,10 @@ use std::collections::TryReserveError;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::UriType;
 use crate::push_field_name_path;
 use crate::{Error, Field, Result, Scalar, TimeUnit};
 
 use crate::DataType;
-use crate::DecimalType;
-use crate::enums::EnumType;
-use crate::sequence::SequenceType;
 
 const MAX_DEFAULT_NODES: usize = 1_000_000;
 const MAX_DEFAULT_BYTES: usize = 64 * 1024 * 1024;
@@ -177,11 +173,11 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
         }
         let child_depth = depth + 1;
         match current {
-            DataType::Sequence(SequenceType::List(field))
-            | DataType::Sequence(SequenceType::ListView(field))
-            | DataType::Sequence(SequenceType::FixedSizeList(field, _))
-            | DataType::Sequence(SequenceType::LargeList(field))
-            | DataType::Sequence(SequenceType::LargeListView(field)) => {
+            DataType::List(field)
+            | DataType::ListView(field)
+            | DataType::FixedSizeList(field, _)
+            | DataType::LargeList(field)
+            | DataType::LargeListView(field) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((field.dtype(), child_depth));
             }
@@ -197,12 +193,12 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
                         .map(|(_, field)| (field.dtype(), child_depth)),
                 );
             }
-            DataType::Enum(EnumType::Dictionary(dictionary)) => {
+            DataType::Dictionary(dictionary) => {
                 reserve_pending(&mut pending, visited, 2, kind)?;
                 pending.push((dictionary.key(), child_depth));
                 pending.push((dictionary.value(), child_depth));
             }
-            DataType::Mapping(map) => {
+            DataType::Map(map) | DataType::SortedMap(map) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((map.entries().dtype(), child_depth));
             }
@@ -224,10 +220,10 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Float16
             | DataType::Float32
             | DataType::Float64
-            | DataType::DateTime(_)
-            | DataType::Date(_)
-            | DataType::Time(_)
-            | DataType::Duration(_)
+            | DataType::DateTime64 { .. }
+            | DataType::Date32 | DataType::Date64
+            | DataType::Time32(_) | DataType::Time64(_)
+            | DataType::Duration32(_) | DataType::Duration64(_)
             | DataType::Interval(_)
             | DataType::Bytes(_)
             | DataType::String(_)
@@ -245,14 +241,14 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::TimeInForce
             | DataType::Uuid
             | DataType::Version
-            | DataType::Uri(_)
+            | DataType::Url | DataType::Urn
             | DataType::Timezone
             | DataType::MimeType
             | DataType::MediaType
-            | DataType::Decimal(DecimalType::Decimal32 { .. })
-            | DataType::Decimal(DecimalType::Decimal64 { .. })
-            | DataType::Decimal(DecimalType::Decimal128 { .. })
-            | DataType::Decimal(DecimalType::Decimal256 { .. })
+            | DataType::Decimal32 { .. }
+            | DataType::Decimal64 { .. }
+            | DataType::Decimal128 { .. }
+            | DataType::Decimal256 { .. }
             // A variant declares its types per value and a geometry is one
             // WKB payload: neither holds child fields for the walk to visit.
             | DataType::Variant
@@ -309,15 +305,16 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Int16
         | D::Int32
         | D::Int64
-        | D::DateTime(_)
-        | D::Date(_)
-        | D::Time(_)
-        | D::Duration(_) => scalar(DefaultPlan::Signed, false),
+        | D::DateTime64 { .. }
+        | D::Date32
+        | D::Date64
+        | D::Time32(_)
+        | D::Time64(_)
+        | D::Duration32(_)
+        | D::Duration64(_) => scalar(DefaultPlan::Signed, false),
         D::UInt8 | D::UInt16 | D::UInt32 | D::UInt64 => scalar(DefaultPlan::Unsigned, false),
         D::Float16 | D::Float32 | D::Float64 => scalar(DefaultPlan::Float, false),
-        D::Interval(leaf) if leaf.unit().is_interval() => {
-            scalar(DefaultPlan::Interval(leaf.unit()), false)
-        }
+        D::Interval(leaf) if leaf.is_interval() => scalar(DefaultPlan::Interval(*leaf), false),
         D::Interval(_) => fatal(path, "invalid interval layout"),
         // The empty payload, or on the fixed layout the zero-filled slot of
         // its width: bytes are never padded, so the width is the value.
@@ -330,9 +327,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Version => scalar(DefaultPlan::Version, false),
         // A location has no zero, so the default is the shortest one the
         // validator accepts: the filesystem root.
-        D::Uri(UriType::Url) => scalar(DefaultPlan::Url, false),
+        D::Url => scalar(DefaultPlan::Url, false),
         // A name has no zero either: the shortest URN the validator accepts.
-        D::Uri(UriType::Urn) => scalar(DefaultPlan::Urn, false),
+        D::Urn => scalar(DefaultPlan::Urn, false),
         // The explicit zone-free marker: the one zone every temporal already
         // defaults to, so a zone column and a zone parameter agree.
         D::Timezone => scalar(DefaultPlan::Timezone, false),
@@ -356,11 +353,10 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),
-        D::Sequence(SequenceType::List(_))
-        | D::Sequence(SequenceType::ListView(_))
-        | D::Sequence(SequenceType::LargeList(_))
-        | D::Sequence(SequenceType::LargeListView(_)) => scalar(DefaultPlan::EmptySequence, false),
-        D::Sequence(SequenceType::FixedSizeList(field, length)) => {
+        D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
+            scalar(DefaultPlan::EmptySequence, false)
+        }
+        D::FixedSizeList(field, length) => {
             let length = usize::try_from(*length)
                 .map_err(|_| fatal_error(path, "fixed-size-list length is negative"))?;
             if length == 0 {
@@ -412,22 +408,22 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             })
         }
         D::Union(fields, _) => plan_union(fields, path),
-        D::Enum(EnumType::Dictionary(dictionary)) => {
+        D::Dictionary(dictionary) => {
             path.push(PathSegment::DictionaryValue);
             let value = plan_dtype(dictionary.value(), path);
             path.pop();
             value
         }
-        D::Decimal(DecimalType::Decimal32 { .. })
-        | D::Decimal(DecimalType::Decimal64 { .. })
-        | D::Decimal(DecimalType::Decimal128 { .. }) => scalar(DefaultPlan::Decimal, false),
-        D::Decimal(DecimalType::Decimal256 { .. }) => scalar(DefaultPlan::Decimal256, false),
+        D::Decimal32 { .. } | D::Decimal64 { .. } | D::Decimal128 { .. } => {
+            scalar(DefaultPlan::Decimal, false)
+        }
+        D::Decimal256 { .. } => scalar(DefaultPlan::Decimal256, false),
         // The present default wraps the encoding's null; bare Scalar::Null
         // remains field absence and is chosen only by a nullable field.
         D::Variant => scalar(DefaultPlan::VariantNull, false),
         // The geospatial pair's present empty value is `POINT EMPTY`.
         D::Geometry(_) | D::Geography(_) => scalar(DefaultPlan::PointEmpty, false),
-        D::Mapping(_) => scalar(DefaultPlan::EmptyMapping, false),
+        D::Map(_) | D::SortedMap(_) => scalar(DefaultPlan::EmptyMapping, false),
         D::RunEndEncoded(encoded) => {
             path.push(PathSegment::RunEndValues);
             let present = plan_present_field(encoded.values(), path);
@@ -724,7 +720,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         // A length is constant for either leaf, so no row is built to
         // answer it.
         DefaultPlan::EmptySequence => {
-            matches!(value, Scalar::Sequence(serie) if serie.is_empty())
+            matches!(value, Scalar::List(serie) | Scalar::ListView(serie) | Scalar::FixedSizeList(serie) | Scalar::LargeList(serie) | Scalar::LargeListView(serie) if serie.is_empty())
         }
         DefaultPlan::Sequence(plans) => value.sequence_rows().is_some_and(|values| {
             values.len() == plans.len()
@@ -820,9 +816,7 @@ pub(crate) fn value_is_logically_null(dtype: &DataType, value: &Scalar) -> bool 
         DataType::RunEndEncoded(encoded) => {
             value_is_logically_null(encoded.values().dtype(), value)
         }
-        DataType::Enum(EnumType::Dictionary(dictionary)) => {
-            value_is_logically_null(dictionary.value(), value)
-        }
+        DataType::Dictionary(dictionary) => value_is_logically_null(dictionary.value(), value),
         _ => false,
     }
 }

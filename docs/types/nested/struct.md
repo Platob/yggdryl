@@ -217,7 +217,7 @@ positional and path accessors.
 
 Two spellings of one row. `Scalar::Struct` is named input - the children by
 name, sorted, so two statements of one row in two orders are one value - and
-the ordered `Scalar::Sequence` is what a row **is** once a struct field has
+the ordered `Scalar::List` is what a row **is** once a struct field has
 canonicalized it. The field decides: `Field::scalar` takes either spelling and
 answers the sequence in the schema's declared order, filling a child the input
 did not name with that child's default.

@@ -2,10 +2,8 @@
 
 mod datatypes {
     use yggdryl::BytesType;
-    use yggdryl::DecimalType;
-    use yggdryl::SequenceType;
+
     use yggdryl::{DataType, Field, Scalar, StructType, TimeUnit, Timezone, UnionMode};
-    use yggdryl::{DateTimeType, DurationType, IntervalType, TimeType};
 
     fn all_variants() -> Vec<DataType> {
         let item = || Field::new("item", DataType::Int32, true);
@@ -23,19 +21,19 @@ mod datatypes {
             DataType::Float16,
             DataType::Float32,
             DataType::Float64,
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Microsecond,
                 timezone: Timezone::UTC,
-            }),
+            },
             DataType::date32(),
             DataType::date64(),
-            DataType::Time(TimeType::Time32(TimeUnit::Millisecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            DataType::Duration(DurationType::Duration32(TimeUnit::Second)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Second)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::YearMonth)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::DayTime)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::MonthDayNano)),
+            DataType::Time32(TimeUnit::Millisecond),
+            DataType::Time64(TimeUnit::Nanosecond),
+            DataType::Duration32(TimeUnit::Second),
+            DataType::Duration64(TimeUnit::Second),
+            DataType::Interval(TimeUnit::YearMonth),
+            DataType::Interval(TimeUnit::DayTime),
+            DataType::Interval(TimeUnit::MonthDayNano),
             DataType::binary(),
             DataType::from_str("binary(16)").unwrap(),
             DataType::fixed_binary(3).unwrap(),
@@ -230,32 +228,32 @@ mod datatypes {
     #[test]
     fn defaults_reject_invalid_or_unbounded_caller_constructed_layouts() {
         for invalid in [
-            DataType::Time(TimeType::Time32(TimeUnit::Nanosecond)),
-            DataType::Time(TimeType::Time64(TimeUnit::Millisecond)),
-            DataType::Duration(DurationType::Duration32(TimeUnit::DayTime)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::DayTime)),
-            DataType::Interval(IntervalType::Interval(TimeUnit::Second)),
+            DataType::Time32(TimeUnit::Nanosecond),
+            DataType::Time64(TimeUnit::Millisecond),
+            DataType::Duration32(TimeUnit::DayTime),
+            DataType::Duration64(TimeUnit::DayTime),
+            DataType::Interval(TimeUnit::Second),
             DataType::Bytes(BytesType::FixedBinary(0)),
-            DataType::Sequence(SequenceType::FixedSizeList(
+            DataType::FixedSizeList(
                 std::sync::Arc::new(Field::new("item", DataType::Int32, false)),
                 -1,
-            )),
-            DataType::Decimal(DecimalType::Decimal32 {
+            ),
+            DataType::Decimal32 {
                 precision: 0,
                 scale: 0,
-            }),
-            DataType::Decimal(DecimalType::Decimal64 {
+            },
+            DataType::Decimal64 {
                 precision: 19,
                 scale: 0,
-            }),
-            DataType::Decimal(DecimalType::Decimal128 {
+            },
+            DataType::Decimal128 {
                 precision: 39,
                 scale: 0,
-            }),
-            DataType::Decimal(DecimalType::Decimal256 {
+            },
+            DataType::Decimal256 {
                 precision: 77,
                 scale: 0,
-            }),
+            },
         ] {
             assert!(invalid.default_value().is_err(), "{invalid:?}");
         }
@@ -380,7 +378,6 @@ mod scalars {
     use yggdryl::{
         DataType, DataTypeId, Field, FieldScalar, Scalar, StructType, TimeUnit, Timezone, UnionMode,
     };
-    use yggdryl::{DateTimeType, DurationType, TimeType};
 
     fn representative_types() -> Vec<DataType> {
         let item = || Field::new("item", DataType::Int32, true);
@@ -390,16 +387,16 @@ mod scalars {
             DataType::Int8,
             DataType::UInt64,
             DataType::Float16,
-            DataType::DateTime(DateTimeType::DateTime64 {
+            DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC,
-            }),
+            },
             DataType::date32(),
             DataType::date64(),
-            DataType::Time(TimeType::Time32(TimeUnit::Second)),
-            DataType::Time(TimeType::Time64(TimeUnit::Microsecond)),
-            DataType::Duration(DurationType::Duration32(TimeUnit::Millisecond)),
-            DataType::Duration(DurationType::Duration64(TimeUnit::Millisecond)),
+            DataType::Time32(TimeUnit::Second),
+            DataType::Time64(TimeUnit::Microsecond),
+            DataType::Duration32(TimeUnit::Millisecond),
+            DataType::Duration64(TimeUnit::Millisecond),
             DataType::interval(TimeUnit::YearMonth).unwrap(),
             DataType::interval(TimeUnit::DayTime).unwrap(),
             DataType::interval(TimeUnit::MonthDayNano).unwrap(),

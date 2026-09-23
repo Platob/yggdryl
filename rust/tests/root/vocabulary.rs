@@ -3,7 +3,7 @@
 
 mod rows {
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::DateTimeType;
+
     use yggdryl::{DataType, DataTypeId, Field, Scalar, StringEnum, TimeUnit, Timezone};
 
     /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
@@ -52,10 +52,10 @@ mod rows {
         assert_eq!(Field::from_arrow_schema("row", &schema).unwrap(), row);
         assert_eq!(
             row.dtype().get_field_by_path("at").map(Field::dtype),
-            Some(&DataType::DateTime(DateTimeType::DateTime64 {
+            Some(&DataType::DateTime64 {
                 unit: TimeUnit::Nanosecond,
                 timezone: Timezone::UTC
-            }))
+            })
         );
         // A row declared in the resolved spellings is the same row.
         let resolved = Field::new(
@@ -145,8 +145,8 @@ mod rows {
 }
 
 mod logical {
+    use yggdryl::DataType;
     use yggdryl::Timezone;
-    use yggdryl::{DataType, DateTimeType, TimeType};
     use yggdryl::{TimeUnit, UnionMode};
 
     #[test]
@@ -207,60 +207,54 @@ mod logical {
             ("amt", DataType::Float64),
             (
                 "utctimestamp",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             (
                 "tztimestamp",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
-            (
-                "utctimeonly",
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
-            (
-                "localmkttime",
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
+            ("utctimeonly", DataType::Time64(TimeUnit::Nanosecond)),
+            ("localmkttime", DataType::Time64(TimeUnit::Nanosecond)),
             (
                 "utcdate",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             (
                 "utcdateonly",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             (
                 "localmktdate",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::NAIVE,
-                }),
+                },
             ),
             (
                 "localmktdatetime",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::NAIVE,
-                }),
+                },
             ),
             (
                 "tztimeonly",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC,
-                }),
+                },
             ),
             ("multiplecharvalue", DataType::utf8()),
             ("multiplestringvalue", DataType::utf8()),
@@ -304,10 +298,10 @@ mod logical {
         ] {
             assert_eq!(
                 DataType::from_logical_name(spelling).unwrap(),
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::UTC
-                }),
+                },
                 "{spelling}"
             );
         }
@@ -322,19 +316,13 @@ mod logical {
             ("DayOfMonth", DataType::Int8),
             (
                 "LocalMktDate",
-                DataType::DateTime(DateTimeType::DateTime64 {
+                DataType::DateTime64 {
                     unit: TimeUnit::Nanosecond,
                     timezone: Timezone::NAIVE,
-                }),
+                },
             ),
-            (
-                "LocalMktTime",
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
-            (
-                "UTCTimeOnly",
-                DataType::Time(TimeType::Time64(TimeUnit::Nanosecond)),
-            ),
+            ("LocalMktTime", DataType::Time64(TimeUnit::Nanosecond)),
+            ("UTCTimeOnly", DataType::Time64(TimeUnit::Nanosecond)),
             ("XMLData", DataType::binary()),
             ("data", DataType::binary()),
             ("Tenor", DataType::fixed_ascii(8).unwrap()),

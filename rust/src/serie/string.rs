@@ -15,29 +15,29 @@ use arrow_array::types::{
 
 byte_leaf!(
     /// A column of UTF-8 text, 32-bit offsets.
-    Utf8StringSerie, Utf8Type, Chars, String, StringSerie, Utf8
+    Utf8StringSerie, Utf8Type, Chars
 );
 byte_leaf!(
     /// A column of UTF-8 text, 64-bit offsets.
-    LargeUtf8StringSerie, LargeUtf8Type, Chars, String, StringSerie, LargeUtf8
+    LargeUtf8StringSerie, LargeUtf8Type, Chars
 );
 byte_leaf!(
     /// A column of text in a charset Arrow cannot state, 32-bit offsets.
-    BinaryStringSerie, BinaryType, Chars, String, StringSerie, Binary
+    BinaryStringSerie, BinaryType, Chars
 );
 byte_leaf!(
     /// A column of text in a charset Arrow cannot state, 64-bit offsets.
-    LargeBinaryStringSerie, LargeBinaryType, Chars, String, StringSerie, LargeBinary
+    LargeBinaryStringSerie, LargeBinaryType, Chars
 );
 view_leaf!(
     /// A column of UTF-8 text held as views.
-    Utf8ViewStringSerie, StringViewType, Chars, String, StringSerie, Utf8View
+    Utf8ViewStringSerie, StringViewType, Chars
 );
 view_leaf!(
     /// A column of text in another charset, held as views.
-    BinaryViewStringSerie, BinaryViewType, Chars, String, StringSerie, BinaryView
+    BinaryViewStringSerie, BinaryViewType, Chars
 );
 fixed_leaf!(
     /// A column of fixed-width text: a padded code, or an enum member.
-    FixedStringSerie, Chars, String, StringSerie
+    FixedStringSerie, Chars
 );

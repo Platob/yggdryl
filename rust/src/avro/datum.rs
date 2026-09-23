@@ -781,7 +781,7 @@ impl DatumCodec<'_> {
                                 }
                             }
                         }
-                        Scalar::Mapping(entries) => {
+                        Scalar::Map(entries) | Scalar::SortedMap(entries) => {
                             if !entries.as_slice().is_empty() {
                                 put_long(target, entries.as_slice().len() as i64);
                                 for (key, item) in entries.as_slice() {

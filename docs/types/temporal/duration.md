@@ -6,7 +6,7 @@ An elapsed count at one fixed-length resolution, in one of two widths.
 
 | | |
 | --- | --- |
-| Owned | `DurationType` with its two leaves, `DataType::Duration(DurationType)`, the `DurationField` marker, and the `Duration32` and `Duration64` values |
+| Owned | `DurationType` with its two leaves, `DataType::Duration32(TimeUnit)` and `DataType::Duration64(TimeUnit)`, the `DurationField` marker, and the `Duration32` and `Duration64` values |
 | Validated | once, at construction: both widths carry the five fixed-length units - `d`, `s`, `ms`, `us`, `ns` - and an interval layout is refused under the width's name. A leaf built by hand is caught by `validate` and by the Arrow projection |
 | Lazy | nothing; the leaf is `Copy` and the value is a count, a unit and a zone |
 | Cached | the [field](../field.md)'s Arrow projection; the datatype caches nothing |
@@ -26,8 +26,8 @@ Arrow as the 64-bit storage.
 
 | spelling | datatype | also parsed as |
 | --- | --- | --- |
-| `duration32(ms)` | `Duration(DurationType::Duration32(Millisecond))`; the unit is required | - |
-| `duration64(ns)` | `Duration(DurationType::Duration64(Nanosecond))`; the unit is required | `Duration(ns)`, Arrow's `Debug` form, capital `D` only |
+| `duration32(ms)` | `DataType::Duration32(Millisecond)`; the unit is required | - |
+| `duration64(ns)` | `DataType::Duration64(Nanosecond)`; the unit is required | `Duration(ns)`, Arrow's `Debug` form, capital `D` only |
 
 A bare lowercase `duration` names no width and stays unknown rather than
 becoming a width-ambiguous alias; `duration(ms)` is refused for the same

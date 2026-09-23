@@ -429,7 +429,7 @@ pub(crate) fn column_of(
 /// Name one primitive width as a leaf of the root, and tie Arrow's type
 /// parameter to the family variant it widens through.
 macro_rules! primitive_leaf {
-    ($(#[$meta:meta])* $name:ident, $arrow:ty, $family:ident, $held:ident, $variant:ident) => {
+    ($(#[$meta:meta])* $name:ident, $arrow:ty) => {
         $(#[$meta])*
         pub type $name = PrimitiveSerie<$arrow>;
 
@@ -437,23 +437,17 @@ macro_rules! primitive_leaf {
             const NAME: &'static str = stringify!($name);
 
             fn into_serie(column: PrimitiveSerie<Self>) -> Serie {
-                Serie::$family(::std::sync::Arc::new(super::$held::$variant(column)))
+                super::Leaf::root(column)
             }
 
             fn from_serie(serie: &Serie) -> Option<&PrimitiveSerie<Self>> {
-                match serie {
-                    Serie::$family(family) => match family.as_ref() {
-                        super::$held::$variant(column) => Some(column),
-                        _ => None,
-                    },
-                    _ => None,
-                }
+                super::Leaf::narrow(serie)
             }
         }
     };
     // A width whose native domain is the datatype's whole domain.
-    ($(#[$meta:meta])* $name:ident, $arrow:ty, $family:ident, $held:ident, $variant:ident, native) => {
-        primitive_leaf!($(#[$meta])* $name, $arrow, $family, $held, $variant);
+    ($(#[$meta:meta])* $name:ident, $arrow:ty, native) => {
+        primitive_leaf!($(#[$meta])* $name, $arrow);
 
         impl NativeLeaf for $arrow {}
     };
@@ -461,132 +455,132 @@ macro_rules! primitive_leaf {
 
 primitive_leaf!(
     /// A column of signed 8-bit integers.
-    Int8Serie, Int8Type, Integer, IntegerSerie, Int8, native
+    Int8Serie, Int8Type, native
 );
 primitive_leaf!(
     /// A column of signed 16-bit integers.
-    Int16Serie, Int16Type, Integer, IntegerSerie, Int16, native
+    Int16Serie, Int16Type, native
 );
 primitive_leaf!(
     /// A column of signed 32-bit integers.
-    Int32Serie, Int32Type, Integer, IntegerSerie, Int32, native
+    Int32Serie, Int32Type, native
 );
 primitive_leaf!(
     /// A column of signed 64-bit integers.
-    Int64Serie, Int64Type, Integer, IntegerSerie, Int64, native
+    Int64Serie, Int64Type, native
 );
 primitive_leaf!(
     /// A column of unsigned 8-bit integers.
-    UInt8Serie, UInt8Type, Integer, IntegerSerie, UInt8, native
+    UInt8Serie, UInt8Type, native
 );
 primitive_leaf!(
     /// A column of unsigned 16-bit integers.
-    UInt16Serie, UInt16Type, Integer, IntegerSerie, UInt16, native
+    UInt16Serie, UInt16Type, native
 );
 primitive_leaf!(
     /// A column of unsigned 32-bit integers.
-    UInt32Serie, UInt32Type, Integer, IntegerSerie, UInt32, native
+    UInt32Serie, UInt32Type, native
 );
 primitive_leaf!(
     /// A column of unsigned 64-bit integers.
-    UInt64Serie, UInt64Type, Integer, IntegerSerie, UInt64, native
+    UInt64Serie, UInt64Type, native
 );
 
 primitive_leaf!(
     /// A column of IEEE binary16 floats.
-    Float16Serie, Float16Type, Floating, FloatingSerie, Float16, native
+    Float16Serie, Float16Type, native
 );
 primitive_leaf!(
     /// A column of IEEE binary32 floats.
-    Float32Serie, Float32Type, Floating, FloatingSerie, Float32, native
+    Float32Serie, Float32Type, native
 );
 primitive_leaf!(
     /// A column of IEEE binary64 floats.
-    Float64Serie, Float64Type, Floating, FloatingSerie, Float64, native
+    Float64Serie, Float64Type, native
 );
 
 primitive_leaf!(
     /// A column of 32-bit coefficient-and-scale decimals.
-    Decimal32Serie, Decimal32Type, Decimal, DecimalSerie, Decimal32
+    Decimal32Serie, Decimal32Type
 );
 primitive_leaf!(
     /// A column of 64-bit coefficient-and-scale decimals.
-    Decimal64Serie, Decimal64Type, Decimal, DecimalSerie, Decimal64
+    Decimal64Serie, Decimal64Type
 );
 primitive_leaf!(
     /// A column of 128-bit coefficient-and-scale decimals.
-    Decimal128Serie, Decimal128Type, Decimal, DecimalSerie, Decimal128
+    Decimal128Serie, Decimal128Type
 );
 primitive_leaf!(
     /// A column of 256-bit coefficient-and-scale decimals.
-    Decimal256Serie, Decimal256Type, Decimal, DecimalSerie, Decimal256
+    Decimal256Serie, Decimal256Type
 );
 
 primitive_leaf!(
     /// A column of 32-bit day-count dates.
-    Date32Serie, Date32Type, Temporal, TemporalSerie, Date32, native
+    Date32Serie, Date32Type, native
 );
 primitive_leaf!(
     /// A column of 64-bit millisecond-count dates.
-    Date64Serie, Date64Type, Temporal, TemporalSerie, Date64
+    Date64Serie, Date64Type
 );
 primitive_leaf!(
     /// A column of second-count times of day.
-    Time32SecondSerie, Time32SecondType, Temporal, TemporalSerie, Time32Second
+    Time32SecondSerie, Time32SecondType
 );
 primitive_leaf!(
     /// A column of millisecond-count times of day.
-    Time32MillisecondSerie, Time32MillisecondType, Temporal, TemporalSerie, Time32Millisecond
+    Time32MillisecondSerie, Time32MillisecondType
 );
 primitive_leaf!(
     /// A column of microsecond-count times of day.
-    Time64MicrosecondSerie, Time64MicrosecondType, Temporal, TemporalSerie, Time64Microsecond
+    Time64MicrosecondSerie, Time64MicrosecondType
 );
 primitive_leaf!(
     /// A column of nanosecond-count times of day.
-    Time64NanosecondSerie, Time64NanosecondType, Temporal, TemporalSerie, Time64Nanosecond
+    Time64NanosecondSerie, Time64NanosecondType
 );
 primitive_leaf!(
     /// A column of second-count datetimes.
-    DateTimeSecondSerie, TimestampSecondType, Temporal, TemporalSerie, DateTimeSecond, native
+    DateTimeSecondSerie, TimestampSecondType, native
 );
 primitive_leaf!(
     /// A column of millisecond-count datetimes.
-    DateTimeMillisecondSerie, TimestampMillisecondType, Temporal, TemporalSerie, DateTimeMillisecond, native
+    DateTimeMillisecondSerie, TimestampMillisecondType, native
 );
 primitive_leaf!(
     /// A column of microsecond-count datetimes.
-    DateTimeMicrosecondSerie, TimestampMicrosecondType, Temporal, TemporalSerie, DateTimeMicrosecond, native
+    DateTimeMicrosecondSerie, TimestampMicrosecondType, native
 );
 primitive_leaf!(
     /// A column of nanosecond-count datetimes.
-    DateTimeNanosecondSerie, TimestampNanosecondType, Temporal, TemporalSerie, DateTimeNanosecond, native
+    DateTimeNanosecondSerie, TimestampNanosecondType, native
 );
 primitive_leaf!(
     /// A column of second-count durations.
-    DurationSecondSerie, DurationSecondType, Temporal, TemporalSerie, DurationSecond, native
+    DurationSecondSerie, DurationSecondType, native
 );
 primitive_leaf!(
     /// A column of millisecond-count durations.
-    DurationMillisecondSerie, DurationMillisecondType, Temporal, TemporalSerie, DurationMillisecond, native
+    DurationMillisecondSerie, DurationMillisecondType, native
 );
 primitive_leaf!(
     /// A column of microsecond-count durations.
-    DurationMicrosecondSerie, DurationMicrosecondType, Temporal, TemporalSerie, DurationMicrosecond, native
+    DurationMicrosecondSerie, DurationMicrosecondType, native
 );
 primitive_leaf!(
     /// A column of nanosecond-count durations.
-    DurationNanosecondSerie, DurationNanosecondType, Temporal, TemporalSerie, DurationNanosecond, native
+    DurationNanosecondSerie, DurationNanosecondType, native
 );
 primitive_leaf!(
     /// A column of year-month calendar intervals.
-    IntervalYearMonthSerie, IntervalYearMonthType, Temporal, TemporalSerie, IntervalYearMonth, native
+    IntervalYearMonthSerie, IntervalYearMonthType, native
 );
 primitive_leaf!(
     /// A column of day-time calendar intervals.
-    IntervalDayTimeSerie, IntervalDayTimeType, Temporal, TemporalSerie, IntervalDayTime, native
+    IntervalDayTimeSerie, IntervalDayTimeType, native
 );
 primitive_leaf!(
     /// A column of month-day-nanosecond calendar intervals.
-    IntervalMonthDayNanoSerie, IntervalMonthDayNanoType, Temporal, TemporalSerie, IntervalMonthDayNano, native
+    IntervalMonthDayNanoSerie, IntervalMonthDayNanoType, native
 );

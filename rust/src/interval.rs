@@ -147,14 +147,13 @@ impl DataTypeValue for IntervalType {
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Interval(self)
+        match self {
+            Self::Interval(unit) => DataType::Interval(unit),
+        }
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Interval(leaf) => Some(*leaf),
-            _ => None,
-        }
+        dtype.interval_type()
     }
 }
 
@@ -168,7 +167,7 @@ impl fmt::Display for IntervalType {
 
 impl From<IntervalType> for DataType {
     fn from(value: IntervalType) -> Self {
-        Self::Interval(value)
+        DataTypeValue::into_dtype(value)
     }
 }
 
@@ -176,11 +175,11 @@ impl TryFrom<&DataType> for IntervalType {
     type Error = Error;
 
     fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Interval(leaf) => Ok(*leaf),
-            other => Err(Error::InvalidDataType {
+        match value.interval_type() {
+            Some(leaf) => Ok(leaf),
+            None => Err(Error::InvalidDataType {
                 kind: "interval",
-                reason: format_smolstr!("expected an interval datatype, got {other}"),
+                reason: format_smolstr!("expected an interval datatype, got {value}"),
             }),
         }
     }
@@ -200,14 +199,14 @@ impl DataType {
     pub fn interval(unit: TimeUnit) -> Result<Self> {
         let leaf = IntervalType::Interval(unit);
         leaf.validate()?;
-        Ok(Self::Interval(leaf))
+        Ok(DataTypeValue::into_dtype(leaf))
     }
 
     /// The leaf an interval datatype declares, `None` for every other.
     #[must_use]
     pub const fn interval_type(&self) -> Option<IntervalType> {
         match self {
-            Self::Interval(leaf) => Some(*leaf),
+            Self::Interval(unit) => Some(IntervalType::Interval(*unit)),
             _ => None,
         }
     }
@@ -277,9 +276,7 @@ mod arrow {
     /// belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
         match dtype {
-            DataType::Interval(leaf) => {
-                Ok(ArrowDataType::Interval(leaf.unit().into_arrow_interval()?))
-            }
+            DataType::Interval(unit) => Ok(ArrowDataType::Interval(unit.into_arrow_interval()?)),
             other => Err(invalid(
                 "interval",
                 format_smolstr!("expected an interval datatype, got {other}"),

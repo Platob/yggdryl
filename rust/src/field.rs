@@ -19,9 +19,9 @@ use crate::{
     CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType,
     Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
     Int32Type, Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType,
-    MimeTypeType, NullType, RunEndType, SedolCodeType, SequenceType, SideType, StateType,
-    StringType, StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type,
-    UInt32Type, UInt64Type, UnionType, UriType, UuidType, VariantType, VersionType,
+    MimeTypeType, NullType, RunEndType, SedolCodeType, SerieType, SideType, StateType, StringType,
+    StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type,
+    UInt64Type, UnionType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -931,14 +931,12 @@ fn variant_payload_missing() -> ! {
 }
 
 macro_rules! field_leaves {
-    ($($variant:ident => $leaf:ident / $payload:ty,)+) => {
+    ($([$($variant:ident),+ $(,)?] => $leaf:ident / $payload:ty,)+) => {
         $(
             #[doc = concat!(
-                "A field whose datatype is [`DataType::",
-                stringify!($variant),
-                "`](crate::DataType::",
-                stringify!($variant),
-                ")."
+                "A field whose datatype is one of the variants [`",
+                stringify!($leaf),
+                "`] backs."
             )]
             pub type $leaf = FieldOf<$payload>;
         )+
@@ -952,10 +950,10 @@ macro_rules! field_leaves {
         #[derive(Clone)]
         #[non_exhaustive]
         pub enum Field {
-            $(
+            $($(
                 #[doc = concat!("A field whose datatype is [`DataType::", stringify!($variant), "`].")]
                 $variant($leaf),
-            )+
+            )+)+
         }
 
         impl Field {
@@ -963,13 +961,13 @@ macro_rules! field_leaves {
             pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self {
                 let name = name.into();
                 match &dtype {
-                    $(
+                    $($(
                         DataType::$variant { .. } => {
                             let payload = <$payload as DataTypeValue>::from_dtype(&dtype)
                                 .unwrap_or_else(|| variant_payload_missing());
                             Self::$variant(FieldOf::new(name, payload, nullable))
                         }
-                    )+
+                    )+)+
                 }
             }
 
@@ -981,7 +979,7 @@ macro_rules! field_leaves {
             ) -> Self {
                 let name = name.into();
                 match &dtype {
-                    $(
+                    $($(
                         DataType::$variant { .. } => {
                             let payload = <$payload as DataTypeValue>::from_dtype(&dtype)
                                 .unwrap_or_else(|| variant_payload_missing());
@@ -989,7 +987,7 @@ macro_rules! field_leaves {
                                 name, payload, nullable, metadata,
                             ))
                         }
-                    )+
+                    )+)+
                 }
             }
 
@@ -1017,7 +1015,7 @@ macro_rules! field_leaves {
 
             /// Returns this field's datatype.
             pub fn dtype(&self) -> &DataType {
-                match self { $(Self::$variant(field) => field.dtype(),)+ }
+                match self { $($(Self::$variant(field) => field.dtype(),)+)+ }
             }
 
             /// Replaces the datatype, moving the field to the matching leaf.
@@ -1059,114 +1057,114 @@ macro_rules! field_leaves {
                 // store, and its sidecar says so by refusing: that refusal is
                 // the whole check, so there is nothing to report here.
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         let _ = field.sidecar.set_dictionary_options(id, is_ordered);
-                    })+
+                    })+)+
                 }
             }
 
             /// Seeds the Arrow projection cache of whichever leaf this is.
             pub(crate) fn seed_arrow_cache(&mut self, projection: FieldRef) {
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         field.arrow = OnceLock::from(projection);
-                    })+
+                    })+)+
                 }
             }
 
             fn set_metadata_snapshot(&mut self, metadata: Metadata) {
-                match self { $(Self::$variant(field) => field.metadata = metadata,)+ }
+                match self { $($(Self::$variant(field) => field.metadata = metadata,)+)+ }
             }
 
             /// Returns this field with a different name.
             pub fn with_name(self, name: impl Into<SmolStr>) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_name(name)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_name(name)),)+)+ }
             }
 
             /// Changes the field name.
             pub fn set_name(&mut self, name: impl Into<SmolStr>) {
-                match self { $(Self::$variant(field) => field.set_name(name),)+ }
+                match self { $($(Self::$variant(field) => field.set_name(name),)+)+ }
             }
 
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(name), "`].")]
             pub fn name(&self) -> &str {
-                match self { $(Self::$variant(field) => field.name(),)+ }
+                match self { $($(Self::$variant(field) => field.name(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(id), "`].")]
             pub fn id(&self) -> DataTypeId {
-                match self { $(Self::$variant(field) => field.id(),)+ }
+                match self { $($(Self::$variant(field) => field.id(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(is_nullable), "`].")]
             pub fn is_nullable(&self) -> bool {
-                match self { $(Self::$variant(field) => field.is_nullable(),)+ }
+                match self { $($(Self::$variant(field) => field.is_nullable(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(dictionary_id), "`].")]
             pub fn dictionary_id(&self) -> Option<i64> {
-                match self { $(Self::$variant(field) => field.dictionary_id(),)+ }
+                match self { $($(Self::$variant(field) => field.dictionary_id(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(dictionary_is_ordered), "`].")]
             pub fn dictionary_is_ordered(&self) -> Option<bool> {
-                match self { $(Self::$variant(field) => field.dictionary_is_ordered(),)+ }
+                match self { $($(Self::$variant(field) => field.dictionary_is_ordered(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(metadata_len), "`].")]
             pub fn metadata_len(&self) -> usize {
-                match self { $(Self::$variant(field) => field.metadata_len(),)+ }
+                match self { $($(Self::$variant(field) => field.metadata_len(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(as_metadata), "`].")]
             pub fn as_metadata(&self) -> &Metadata {
-                match self { $(Self::$variant(field) => field.as_metadata(),)+ }
+                match self { $($(Self::$variant(field) => field.as_metadata(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(is_metadata_empty), "`].")]
             pub fn is_metadata_empty(&self) -> bool {
-                match self { $(Self::$variant(field) => field.is_metadata_empty(),)+ }
+                match self { $($(Self::$variant(field) => field.is_metadata_empty(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(metadata_iter), "`].")]
             pub fn metadata_iter(&self) -> MetadataIter<'_> {
-                match self { $(Self::$variant(field) => field.metadata_iter(),)+ }
+                match self { $($(Self::$variant(field) => field.metadata_iter(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(get_metadata), "`].")]
             pub fn get_metadata(&self, key: &str) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.get_metadata(key),)+ }
+                match self { $($(Self::$variant(field) => field.get_metadata(key),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(has_metadata), "`].")]
             pub fn has_metadata(&self, key: &str) -> bool {
-                match self { $(Self::$variant(field) => field.has_metadata(key),)+ }
+                match self { $($(Self::$variant(field) => field.has_metadata(key),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(alias), "`].")]
             pub fn alias(&self) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.alias(),)+ }
+                match self { $($(Self::$variant(field) => field.alias(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(comment), "`].")]
             pub fn comment(&self) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.comment(),)+ }
+                match self { $($(Self::$variant(field) => field.comment(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(display), "`].")]
             pub fn display(&self) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.display(),)+ }
+                match self { $($(Self::$variant(field) => field.display(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(description), "`].")]
             pub fn description(&self) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.description(),)+ }
+                match self { $($(Self::$variant(field) => field.description(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(parquet_field_id), "`].")]
             pub fn parquet_field_id(&self) -> Result<Option<i32>> {
-                match self { $(Self::$variant(field) => field.parquet_field_id(),)+ }
+                match self { $($(Self::$variant(field) => field.parquet_field_id(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(is_init), "`].")]
             pub fn is_init(&self) -> Result<bool> {
-                match self { $(Self::$variant(field) => field.is_init(),)+ }
+                match self { $($(Self::$variant(field) => field.is_init(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(location), "`].")]
             pub fn location(&self) -> Result<Option<Url>> {
-                match self { $(Self::$variant(field) => field.location(),)+ }
+                match self { $($(Self::$variant(field) => field.location(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(get_property), "`].")]
             pub fn get_property(&self, scheme: &Scheme, name: &str) -> Option<&str> {
-                match self { $(Self::$variant(field) => field.get_property(scheme, name),)+ }
+                match self { $($(Self::$variant(field) => field.get_property(scheme, name),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(has_property), "`].")]
             pub fn has_property(&self, scheme: &Scheme, name: &str) -> bool {
-                match self { $(Self::$variant(field) => field.has_property(scheme, name),)+ }
+                match self { $($(Self::$variant(field) => field.has_property(scheme, name),)+)+ }
             }
 
             /// Delegates to [`FieldOf::insert_metadata`].
@@ -1175,7 +1173,7 @@ macro_rules! field_leaves {
                 key: impl Into<String>,
                 value: impl Into<String>,
             ) -> Result<Option<String>> {
-                match self { $(Self::$variant(field) => field.insert_metadata(key, value),)+ }
+                match self { $($(Self::$variant(field) => field.insert_metadata(key, value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::set_metadata`].
@@ -1185,7 +1183,7 @@ macro_rules! field_leaves {
                 K: Into<String>,
                 V: Into<String>,
             {
-                match self { $(Self::$variant(field) => field.set_metadata(values),)+ }
+                match self { $($(Self::$variant(field) => field.set_metadata(values),)+)+ }
             }
 
             /// Delegates to [`FieldOf::update_metadata`].
@@ -1195,7 +1193,7 @@ macro_rules! field_leaves {
                 K: Into<String>,
                 V: Into<String>,
             {
-                match self { $(Self::$variant(field) => field.update_metadata(values),)+ }
+                match self { $($(Self::$variant(field) => field.update_metadata(values),)+)+ }
             }
 
             /// Delegates to [`FieldOf::try_with_metadata_entries`], keeping the leaf.
@@ -1206,20 +1204,20 @@ macro_rules! field_leaves {
                 V: Into<String>,
             {
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         field.try_with_metadata_entries(values).map(Self::$variant)
-                    })+
+                    })+)+
                 }
             }
 
             /// Delegates to [`FieldOf::set_description`].
             pub fn set_description(&mut self, value: impl Into<String>) -> Result<()> {
-                match self { $(Self::$variant(field) => field.set_description(value),)+ }
+                match self { $($(Self::$variant(field) => field.set_description(value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::set_display`].
             pub fn set_display(&mut self, value: impl Into<String>) -> Result<()> {
-                match self { $(Self::$variant(field) => field.set_display(value),)+ }
+                match self { $($(Self::$variant(field) => field.set_display(value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::set_property`].
@@ -1229,7 +1227,7 @@ macro_rules! field_leaves {
                 name: &str,
                 value: impl Into<String>,
             ) -> Result<Option<String>> {
-                match self { $(Self::$variant(field) => field.set_property(scheme, name, value),)+ }
+                match self { $($(Self::$variant(field) => field.set_property(scheme, name, value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::property_iter`].
@@ -1237,7 +1235,7 @@ macro_rules! field_leaves {
                 &'field self,
                 scheme: &'scheme Scheme,
             ) -> PropertyIter<'field, 'scheme> {
-                match self { $(Self::$variant(field) => field.property_iter(scheme),)+ }
+                match self { $($(Self::$variant(field) => field.property_iter(scheme),)+)+ }
             }
 
             /// Delegates to [`FieldOf::next_property_entry`].
@@ -1247,37 +1245,37 @@ macro_rules! field_leaves {
                 after_name: Option<&str>,
             ) -> Option<(&'field str, &'field str)> {
                 match self {
-                    $(Self::$variant(field) => field.next_property_entry(scheme, after_name),)+
+                    $($(Self::$variant(field) => field.next_property_entry(scheme, after_name),)+)+
                 }
             }
 
             /// Borrows the Arrow projection, building it on the first ask.
             pub fn as_arrow_field_ref(&self) -> Result<&FieldRef> {
-                match self { $(Self::$variant(field) => field.as_arrow_field_ref(),)+ }
+                match self { $($(Self::$variant(field) => field.as_arrow_field_ref(),)+)+ }
             }
 
             /// Consumes this field and returns an owned Arrow field.
             pub fn into_arrow_field(self) -> Result<arrow_schema::Field> {
-                match self { $(Self::$variant(field) => field.into_arrow_field(),)+ }
+                match self { $($(Self::$variant(field) => field.into_arrow_field(),)+)+ }
             }
 
             /// Consumes this field and returns a shared Arrow field.
             pub fn into_arrow_field_ref(self) -> Result<FieldRef> {
-                match self { $(Self::$variant(field) => field.into_arrow_field_ref(),)+ }
+                match self { $($(Self::$variant(field) => field.into_arrow_field_ref(),)+)+ }
             }
 
             /// Consumes this field and returns its C schema.
             pub fn into_arrow_field_ffi(self) -> Result<arrow_schema::ffi::FFI_ArrowSchema> {
-                match self { $(Self::$variant(field) => field.into_arrow_field_ffi(),)+ }
+                match self { $($(Self::$variant(field) => field.into_arrow_field_ffi(),)+)+ }
             }
 
             pub(crate) fn metadata_mut(&mut self) -> &mut Metadata {
-                match self { $(Self::$variant(field) => field.metadata_mut(),)+ }
+                match self { $($(Self::$variant(field) => field.metadata_mut(),)+)+ }
             }
 
             fn compare_leaf(&self, other: &Self) -> Ordering {
                 match (self, other) {
-                    $((Self::$variant(left), Self::$variant(right)) => left.cmp(right),)+
+                    $($((Self::$variant(left), Self::$variant(right)) => left.cmp(right),)+)+
                     // Different leaves mean different datatypes, and a field
                     // has always ordered by name first and datatype next.
                     _ => self
@@ -1288,36 +1286,36 @@ macro_rules! field_leaves {
             }
 
             fn hash_leaf<H: Hasher>(&self, state: &mut H) {
-                match self { $(Self::$variant(field) => field.hash(state),)+ }
+                match self { $($(Self::$variant(field) => field.hash(state),)+)+ }
             }
 
             fn display_leaf(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                match self { $(Self::$variant(field) => fmt::Display::fmt(field, formatter),)+ }
+                match self { $($(Self::$variant(field) => fmt::Display::fmt(field, formatter),)+)+ }
             }
 
             fn debug_leaf(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                match self { $(Self::$variant(field) => fmt::Debug::fmt(field, formatter),)+ }
+                match self { $($(Self::$variant(field) => fmt::Debug::fmt(field, formatter),)+)+ }
             }
 
             pub(crate) fn invalidate_arrow(&mut self) {
-                match self { $(Self::$variant(field) => field.invalidate_arrow(),)+ }
+                match self { $($(Self::$variant(field) => field.invalidate_arrow(),)+)+ }
             }
 
             pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
                 match self {
-                    $(Self::$variant(field) => field.arrow_import_is_projection_equivalent(),)+
+                    $($(Self::$variant(field) => field.arrow_import_is_projection_equivalent(),)+)+
                 }
             }
 
 
             /// Delegates to [`FieldOf::set_comment`].
             pub fn set_comment(&mut self, value: impl Into<String>) -> Result<()> {
-                match self { $(Self::$variant(field) => field.set_comment(value),)+ }
+                match self { $($(Self::$variant(field) => field.set_comment(value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::set_alias`].
             pub fn set_alias(&mut self, value: impl Into<String>) -> Result<()> {
-                match self { $(Self::$variant(field) => field.set_alias(value),)+ }
+                match self { $($(Self::$variant(field) => field.set_alias(value),)+)+ }
             }
 
             /// Delegates to [`FieldOf::try_with_metadata`], keeping the leaf.
@@ -1327,9 +1325,9 @@ macro_rules! field_leaves {
                 value: impl Into<String>,
             ) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         field.try_with_metadata(key, value).map(Self::$variant)
-                    })+
+                    })+)+
                 }
             }
 
@@ -1341,39 +1339,39 @@ macro_rules! field_leaves {
                 value: impl Into<String>,
             ) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         field.try_with_property(scheme, name, value).map(Self::$variant)
-                    })+
+                    })+)+
                 }
             }
 
             /// Delegates to [`FieldOf::try_with_alias`], keeping the leaf.
             pub fn try_with_alias(self, value: impl Into<String>) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => field.try_with_alias(value).map(Self::$variant),)+
+                    $($(Self::$variant(field) => field.try_with_alias(value).map(Self::$variant),)+)+
                 }
             }
 
             /// Delegates to [`FieldOf::try_with_comment`], keeping the leaf.
             pub fn try_with_comment(self, value: impl Into<String>) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => field.try_with_comment(value).map(Self::$variant),)+
+                    $($(Self::$variant(field) => field.try_with_comment(value).map(Self::$variant),)+)+
                 }
             }
 
             /// Delegates to [`FieldOf::try_with_display`], keeping the leaf.
             pub fn try_with_display(self, value: impl Into<String>) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => field.try_with_display(value).map(Self::$variant),)+
+                    $($(Self::$variant(field) => field.try_with_display(value).map(Self::$variant),)+)+
                 }
             }
 
             /// Delegates to [`FieldOf::try_with_description`], keeping the leaf.
             pub fn try_with_description(self, value: impl Into<String>) -> Result<Self> {
                 match self {
-                    $(Self::$variant(field) => {
+                    $($(Self::$variant(field) => {
                         field.try_with_description(value).map(Self::$variant)
-                    })+
+                    })+)+
                 }
             }
 
@@ -1385,15 +1383,15 @@ macro_rules! field_leaves {
             for_each_well_known_protocol!(field_protocol_accessors);
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(validate), "`].")]
             pub fn validate(&self) -> Result<()> {
-                match self { $(Self::$variant(field) => field.validate(),)+ }
+                match self { $($(Self::$variant(field) => field.validate(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(validate_bounded), "`].")]
             pub fn validate_bounded(&self) -> Result<()> {
-                match self { $(Self::$variant(field) => field.validate_bounded(),)+ }
+                match self { $($(Self::$variant(field) => field.validate_bounded(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(next_metadata_entry), "`].")]
             pub fn next_metadata_entry(&self, after_key: Option<&str>) -> Option<(&str, &str)> {
-                match self { $(Self::$variant(field) => field.next_metadata_entry(after_key),)+ }
+                match self { $($(Self::$variant(field) => field.next_metadata_entry(after_key),)+)+ }
             }
             /// Returns a mutable view of one protocol's properties.
             pub fn protocol_mut(&mut self, scheme: &Scheme) -> ProtocolFieldMut<'_> {
@@ -1401,99 +1399,99 @@ macro_rules! field_leaves {
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_nullable), "`].")]
             pub fn set_nullable(&mut self, nullable: bool) -> () {
-                match self { $(Self::$variant(field) => field.set_nullable(nullable),)+ }
+                match self { $($(Self::$variant(field) => field.set_nullable(nullable),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_dictionary_options), "`].")]
             pub fn set_dictionary_options(&mut self, id: i64, is_ordered: bool) -> Result<()> {
-                match self { $(Self::$variant(field) => field.set_dictionary_options(id, is_ordered),)+ }
+                match self { $($(Self::$variant(field) => field.set_dictionary_options(id, is_ordered),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_metadata), "`].")]
             pub fn remove_metadata(&mut self, key: &str) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_metadata(key),)+ }
+                match self { $($(Self::$variant(field) => field.remove_metadata(key),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(clear_metadata), "`].")]
             pub fn clear_metadata(&mut self) -> () {
-                match self { $(Self::$variant(field) => field.clear_metadata(),)+ }
+                match self { $($(Self::$variant(field) => field.clear_metadata(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_alias), "`].")]
             pub fn remove_alias(&mut self) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_alias(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_alias(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_comment), "`].")]
             pub fn remove_comment(&mut self) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_comment(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_comment(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_display), "`].")]
             pub fn remove_display(&mut self) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_display(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_display(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_description), "`].")]
             pub fn remove_description(&mut self) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_description(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_description(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_parquet_field_id), "`].")]
             pub fn set_parquet_field_id(&mut self, id: i32) -> () {
-                match self { $(Self::$variant(field) => field.set_parquet_field_id(id),)+ }
+                match self { $($(Self::$variant(field) => field.set_parquet_field_id(id),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_init), "`].")]
             pub fn set_init(&mut self, init: bool) -> () {
-                match self { $(Self::$variant(field) => field.set_init(init),)+ }
+                match self { $($(Self::$variant(field) => field.set_init(init),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_partition), "`].")]
             pub fn set_partition(&mut self, partition: bool) -> () {
-                match self { $(Self::$variant(field) => field.set_partition(partition),)+ }
+                match self { $($(Self::$variant(field) => field.set_partition(partition),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_parquet_field_id), "`].")]
             pub fn remove_parquet_field_id(&mut self) -> Result<Option<i32>> {
-                match self { $(Self::$variant(field) => field.remove_parquet_field_id(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_parquet_field_id(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(set_location), "`].")]
             pub fn set_location(&mut self, location: Url) -> () {
-                match self { $(Self::$variant(field) => field.set_location(location),)+ }
+                match self { $($(Self::$variant(field) => field.set_location(location),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_location), "`].")]
             pub fn remove_location(&mut self) -> Result<Option<Url>> {
-                match self { $(Self::$variant(field) => field.remove_location(),)+ }
+                match self { $($(Self::$variant(field) => field.remove_location(),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(remove_property), "`].")]
             pub fn remove_property(&mut self, scheme: &Scheme, name: &str) -> Option<String> {
-                match self { $(Self::$variant(field) => field.remove_property(scheme, name),)+ }
+                match self { $($(Self::$variant(field) => field.remove_property(scheme, name),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(clear_properties), "`].")]
             pub fn clear_properties(&mut self, scheme: &Scheme) -> () {
-                match self { $(Self::$variant(field) => field.clear_properties(scheme),)+ }
+                match self { $($(Self::$variant(field) => field.clear_properties(scheme),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_nullable), "`], keeping the leaf.")]
             pub fn with_nullable(self, nullable: bool) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_nullable(nullable)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_nullable(nullable)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(try_with_dictionary_options), "`], keeping the leaf.")]
             pub fn try_with_dictionary_options(self, id: i64, is_ordered: bool) -> Result<Self> {
-                match self { $(Self::$variant(field) => field.try_with_dictionary_options(id, is_ordered).map(Self::$variant),)+ }
+                match self { $($(Self::$variant(field) => field.try_with_dictionary_options(id, is_ordered).map(Self::$variant),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_metadata_removed), "`], keeping the leaf.")]
             pub fn with_metadata_removed(self, key: &str) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_metadata_removed(key)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_metadata_removed(key)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_parquet_field_id), "`], keeping the leaf.")]
             pub fn with_parquet_field_id(self, id: i32) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_parquet_field_id(id)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_parquet_field_id(id)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_init), "`], keeping the leaf.")]
             pub fn with_init(self, init: bool) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_init(init)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_init(init)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_partition), "`], keeping the leaf.")]
             pub fn with_partition(self, partition: bool) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_partition(partition)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_partition(partition)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_location), "`], keeping the leaf.")]
             pub fn with_location(self, location: Url) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_location(location)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_location(location)),)+)+ }
             }
             #[doc = concat!("Delegates to [`FieldOf::", stringify!(with_properties_cleared), "`], keeping the leaf.")]
             pub fn with_properties_cleared(self, scheme: &Scheme) -> Self {
-                match self { $(Self::$variant(field) => Self::$variant(field.with_properties_cleared(scheme)),)+ }
+                match self { $($(Self::$variant(field) => Self::$variant(field.with_properties_cleared(scheme)),)+)+ }
             }
         }
 
@@ -1534,7 +1532,12 @@ macro_rules! field_leaves {
         $(
             impl From<$leaf> for Field {
                 fn from(value: $leaf) -> Self {
-                    Self::$variant(value)
+                    $(
+                        if matches!(FieldOf::dtype(&value), DataType::$variant { .. }) {
+                            return Self::$variant(value);
+                        }
+                    )+
+                    variant_payload_missing()
                 }
             }
 
@@ -1564,12 +1567,13 @@ macro_rules! field_leaves {
                 }
 
                 fn into_field(self) -> Field {
-                    Field::$variant(self)
+                    Field::from(self)
                 }
 
                 fn from_field(field: &Field) -> Option<&Self> {
                     match field {
-                        Field::$variant(leaf) => Some(leaf),
+                        $(Field::$variant(leaf))|+ => Some(leaf),
+                        #[allow(unreachable_patterns)]
                         _ => None,
                     }
                 }
@@ -1579,54 +1583,54 @@ macro_rules! field_leaves {
 }
 
 field_leaves! {
-    Null => NullField / NullType,
-    Boolean => BooleanField / BooleanType,
-    Int8 => Int8Field / Int8Type,
-    Int16 => Int16Field / Int16Type,
-    Int32 => Int32Field / Int32Type,
-    Int64 => Int64Field / Int64Type,
-    UInt8 => UInt8Field / UInt8Type,
-    UInt16 => UInt16Field / UInt16Type,
-    UInt32 => UInt32Field / UInt32Type,
-    UInt64 => UInt64Field / UInt64Type,
-    Float16 => Float16Field / Float16Type,
-    Float32 => Float32Field / Float32Type,
-    Float64 => Float64Field / Float64Type,
-    DateTime => DateTimeField / DateTimeType,
-    Date => DateField / DateType,
-    Time => TimeField / TimeType,
-    Duration => DurationField / DurationType,
-    Interval => IntervalField / IntervalType,
-    Bytes => BytesField / BytesType,
-    String => StringField / StringType,
-    Country => CountryField / CountryType,
-    Currency => CurrencyField / CurrencyType,
-    MicCode => MicCodeField / MicCodeType,
-    CfiCode => CfiCodeField / CfiCodeType,
-    IsinCode => IsinCodeField / IsinCodeType,
-    Side => SideField / SideType,
-    State => StateField / StateType,
-    TimeInForce => TimeInForceField / TimeInForceType,
-    Uuid => UuidField / UuidType,
-    Version => VersionField / VersionType,
-    Uri => UriField / UriType,
-    Sequence => SequenceField / SequenceType,
-    Struct => StructField / StructType,
-    Union => UnionField / UnionType,
-    Enum => EnumField / EnumType,
-    Decimal => DecimalField / DecimalType,
-    Mapping => MappingField / MappingType,
-    RunEndEncoded => RunEndEncodedField / RunEndType,
-    Variant => VariantField / VariantType,
-    Geometry => GeometryField / GeometryType,
-    Geography => GeographyField / GeographyType,
-    Timezone => TimezoneField / TimezoneType,
-    MimeType => MimeTypeField / MimeTypeType,
-    MediaType => MediaTypeField / MediaTypeType,
-    CusipCode => CusipCodeField / CusipCodeType,
-    SedolCode => SedolCodeField / SedolCodeType,
-    BloombergCode => BloombergCodeField / BloombergCodeType,
-    FIGICode => FIGICodeField / FIGICodeType,
+    [Null] => NullField / NullType,
+    [Boolean] => BooleanField / BooleanType,
+    [Int8] => Int8Field / Int8Type,
+    [Int16] => Int16Field / Int16Type,
+    [Int32] => Int32Field / Int32Type,
+    [Int64] => Int64Field / Int64Type,
+    [UInt8] => UInt8Field / UInt8Type,
+    [UInt16] => UInt16Field / UInt16Type,
+    [UInt32] => UInt32Field / UInt32Type,
+    [UInt64] => UInt64Field / UInt64Type,
+    [Float16] => Float16Field / Float16Type,
+    [Float32] => Float32Field / Float32Type,
+    [Float64] => Float64Field / Float64Type,
+    [DateTime64] => DateTimeField / DateTimeType,
+    [Date32, Date64] => DateField / DateType,
+    [Time32, Time64] => TimeField / TimeType,
+    [Duration32, Duration64] => DurationField / DurationType,
+    [Interval] => IntervalField / IntervalType,
+    [Bytes] => BytesField / BytesType,
+    [String] => StringField / StringType,
+    [Country] => CountryField / CountryType,
+    [Currency] => CurrencyField / CurrencyType,
+    [MicCode] => MicCodeField / MicCodeType,
+    [CfiCode] => CfiCodeField / CfiCodeType,
+    [IsinCode] => IsinCodeField / IsinCodeType,
+    [Side] => SideField / SideType,
+    [State] => StateField / StateType,
+    [TimeInForce] => TimeInForceField / TimeInForceType,
+    [Uuid] => UuidField / UuidType,
+    [Version] => VersionField / VersionType,
+    [Url, Urn] => UriField / UriType,
+    [List, ListView, FixedSizeList, LargeList, LargeListView] => SerieField / SerieType,
+    [Struct] => StructField / StructType,
+    [Union] => UnionField / UnionType,
+    [Dictionary] => EnumField / EnumType,
+    [Decimal32, Decimal64, Decimal128, Decimal256] => DecimalField / DecimalType,
+    [Map, SortedMap] => MappingField / MappingType,
+    [RunEndEncoded] => RunEndEncodedField / RunEndType,
+    [Variant] => VariantField / VariantType,
+    [Geometry] => GeometryField / GeometryType,
+    [Geography] => GeographyField / GeographyType,
+    [Timezone] => TimezoneField / TimezoneType,
+    [MimeType] => MimeTypeField / MimeTypeType,
+    [MediaType] => MediaTypeField / MediaTypeType,
+    [CusipCode] => CusipCodeField / CusipCodeType,
+    [SedolCode] => SedolCodeField / SedolCodeType,
+    [BloombergCode] => BloombergCodeField / BloombergCodeType,
+    [FIGICode] => FIGICodeField / FIGICodeType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different
