@@ -138,10 +138,19 @@ jobs:
         run: python -m pip install "maturin>=1.9,<2"
       # maturin copies python/wheel-data/ into the wheel and builds no binary
       # of its own, so the command is staged before the wheel is built.
+      #
+      # Both are debug builds. CI never measures (the release workflow builds
+      # what ships), and `release` compiles the core and the extension at
+      # `codegen-units = 1` behind a cache that holds only dev artifacts: on a
+      # 4-core machine that was 10.5 minutes for the extension alone, plus the
+      # release CLI, against about 2 minutes for both in debug over the
+      # `stable-full` cache. The suites downstream pay roughly a minute more
+      # at runtime (1620 tests: 27 s release, 89 s debug) and start ~10
+      # minutes sooner.
       - name: Stage the ygg command
-        run: python scripts/stage_cli.py
+        run: python scripts/stage_cli.py --debug
       - name: Build wheel
-        run: maturin build --locked --manifest-path python/Cargo.toml --interpreter python --out python/dist
+        run: maturin build --locked --profile dev --manifest-path python/Cargo.toml --interpreter python --out python/dist
       # Nothing else fails when staging is skipped - the wheel just quietly
       # loses the command - so the contract is asserted rather than trusted.
       - name: The wheel carries the command
