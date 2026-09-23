@@ -90,13 +90,13 @@ fn operations_round_trip_in_bounded_streaming_batches() {
         trade(4, "T-4"),
     ];
     let mut encoded = MarketOperation::arrow_reader(expected.clone(), Some(2), None).unwrap();
-    assert_eq!(encoded.schema().fields().len(), 52);
+    assert_eq!(encoded.schema().fields().len(), 51);
     assert_eq!(encoded.schema().field(0).name(), "operationkind");
     assert_eq!(encoded.schema().field(1).name(), "currunix");
-    assert_eq!(encoded.schema().field(20).name(), "marketoperationid");
-    assert_eq!(encoded.schema().field(21).name(), "price");
-    assert_eq!(encoded.schema().field(23).name(), "quantity");
-    assert_eq!(encoded.schema().field(51).name(), "executions");
+    assert_eq!(encoded.schema().field(19).name(), "marketoperationid");
+    assert_eq!(encoded.schema().field(20).name(), "price");
+    assert_eq!(encoded.schema().field(22).name(), "quantity");
+    assert_eq!(encoded.schema().field(50).name(), "executions");
 
     let first = encoded.next().unwrap().unwrap();
     let second = encoded.next().unwrap().unwrap();
@@ -142,14 +142,14 @@ fn books_round_trip_with_live_deltas_and_executions() {
     assert_eq!(expected[0].executions().len(), 1);
 
     let mut encoded = Book::arrow_reader(expected.clone(), Some(1), None).unwrap();
-    assert_eq!(encoded.schema().fields().len(), 53);
+    assert_eq!(encoded.schema().fields().len(), 52);
     assert_eq!(encoded.schema().field(0).name(), "currunix");
-    assert_eq!(encoded.schema().field(19).name(), "marketoperationid");
-    assert_eq!(encoded.schema().field(20).name(), "price");
-    assert_eq!(encoded.schema().field(22).name(), "quantity");
-    assert_eq!(encoded.schema().field(50).name(), "bid");
-    assert_eq!(encoded.schema().field(51).name(), "ask");
-    assert_eq!(encoded.schema().field(52).name(), "executions");
+    assert_eq!(encoded.schema().field(18).name(), "marketoperationid");
+    assert_eq!(encoded.schema().field(19).name(), "price");
+    assert_eq!(encoded.schema().field(21).name(), "quantity");
+    assert_eq!(encoded.schema().field(49).name(), "bid");
+    assert_eq!(encoded.schema().field(50).name(), "ask");
+    assert_eq!(encoded.schema().field(51).name(), "executions");
 
     let first = encoded.next().unwrap().unwrap();
     let second = encoded.next().unwrap().unwrap();
@@ -414,7 +414,7 @@ fn book_decoding_refuses_a_serialized_summary_that_disagrees_with_live_depth() {
     let mut encoded = Book::arrow_reader([book(10)], Some(1), None).unwrap();
     let batch = encoded.next().unwrap().unwrap();
     let mut columns = batch.columns().to_vec();
-    columns[20] = Arc::new(
+    columns[19] = Arc::new(
         Decimal128Array::from(vec![Decimal18::from_int(999).units()])
             .with_precision_and_scale(Decimal18::PRECISION, Decimal18::SCALE)
             .unwrap(),

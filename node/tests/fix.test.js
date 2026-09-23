@@ -36,8 +36,8 @@
   // The crate's own definitions, which every registry holds from construction
   // beside the seeded SendingTime (52) and TransactTime (60) clocks. A
   // definition is filed by the shape it has: the columns are scalar fields,
-  // the `identifiers` and `metadata` Maps are groups, and the parent/source
-  // UUID lists are registered scalar columns.
+  // the `identifiers` and `metadata` Maps are groups, and the source UUID
+  // list is a registered scalar column.
   const CRATE = fix.crateFields()
   // Which category a definition lands in is the core's answer, not a shape a
   // test guesses: a snapshot states the three, so the fields it lists are the
@@ -1339,7 +1339,6 @@
     assert.equal(message.state, '00UNKNOWN')
     assert.equal(message.seqnum, 0)
     assert.equal(message.prevuuid, null)
-    assert.deepEqual(message.parentuuids, [])
     assert.deepEqual(message.srcuuids, [])
     assert.equal(message.price, '0')
     // `OrderQty(38)` is the quantity the event is about, so the root's child
@@ -2044,12 +2043,12 @@
   test('the fixed schema places category beside message type and normalized codes once', () => {
     const registry = seed()
     const schema = fix.schema(registry)
-    assert.equal(CRATE.length, 32)
-    assert.equal(CRATE_SCALARS.length, 30)
-    assert.equal(new fix.FixRegistry().size, 34)
-    assert.equal(scalars(new fix.FixRegistry()).length, 32)
-    assert.equal(schema.fieldLen, 128)
-    assert.equal(fix.schemaTags().length, 123)
+    assert.equal(CRATE.length, 31)
+    assert.equal(CRATE_SCALARS.length, 29)
+    assert.equal(new fix.FixRegistry().size, 33)
+    assert.equal(scalars(new fix.FixRegistry()).length, 31)
+    assert.equal(schema.fieldLen, 127)
+    assert.equal(fix.schemaTags().length, 122)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
@@ -3577,7 +3576,6 @@
       assert.equal(message.crosscode, expected[at].crosscode, `message ${at}`)
       assert.ok(message.intoRow(schema).equals(expected[at].intoRow(schema)), `message ${at}`)
       assert.equal(message.prevuuid, at === 0 ? null : back[at - 1].curruuid, `message ${at}`)
-      assert.deepEqual(message.parentuuids, back.slice(0, at).map((held) => held.curruuid), `message ${at}`)
       assert.deepEqual(message.srcuuids, [], `message ${at} was read from bytes`)
       assert.equal(message.crossuuid, back[0].crossuuid, `message ${at}`)
     }
@@ -3663,7 +3661,6 @@
     // those lines carried no delivery key to be folded onto. The synthetic
     // expiry keeps its predecessor's provenance and lands at the stated
     // deadline.
-    assert.ok(walked.every((message) => message.parentuuids.length === message.seqnum))
     assert.ok(messages.every((message) => message.srcuuids.length === 1))
     const inputSources = new Set(messages.flatMap((message) => message.srcuuids))
     assert.ok(retained.every((message) =>
@@ -3707,7 +3704,6 @@
           curruuid: event.curruuid,
           currhashcode: event.currhashcode,
           prevuuid: event.prevuuid,
-          parentuuids: event.parentuuids,
           crossuuid: event.crossuuid,
           crosscode: event.crosscode,
           crosshashcode: event.crosshashcode,
@@ -3733,7 +3729,6 @@
       }
       return held.map((message) => ({
         previous: message.prevuuid === null ? null : indexOf(message.prevuuid),
-        parents: message.parentuuids.map(indexOf),
       }))
     }
     assert.deepEqual(topology(chained), topology(walked))

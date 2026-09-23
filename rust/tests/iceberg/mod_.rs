@@ -6783,7 +6783,7 @@ mod line_projection {
             .into();
         options.set_batch_row_size(Some(2));
 
-        // The row opens with the nineteen event columns, two of them the
+        // The row opens with the eighteen event columns, two of them the
         // `uint64` codes Iceberg has no type for: the table takes the
         // schema as the scheme widens it, `decimal(20, 0)` for those, as a
         // FIX row's table does.

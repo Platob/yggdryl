@@ -1993,20 +1993,9 @@ impl PyFixMsg {
         self.inner.get_prevuuid().map(uuid_scalar)
     }
 
-    /// The identities of the messages this one descends from.
-    #[getter]
-    fn parentuuids(&self) -> Vec<PyScalar> {
-        self.inner
-            .get_parentuuids()
-            .iter()
-            .copied()
-            .map(uuid_scalar)
-            .collect()
-    }
-
     /// The identities of the elements this one was read from: the text line
     /// it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never lineage: no walk moves it.
+    /// never its chain: no walk moves it.
     #[getter]
     fn srcuuids(&self) -> Vec<PyScalar> {
         self.inner
@@ -2833,8 +2822,8 @@ impl PyFixCodec {
     /// its chain, under the cross identity its cross code derives, still
     /// alive - so a chained message carries its predecessor's identity and
     /// instant as `prevuuid` and `prevunix`, its place in the chain as
-    /// `seqnum`, the whole chain before it as its `parentuuids`, the
-    /// lifecycle's creation carried forward as `creaunix`, and is settled
+    /// `seqnum`, the lifecycle's creation carried forward as `creaunix`, and
+    /// is settled
     /// again around
     /// them; a message that arrives before the live one it would follow is
     /// yielded as it came. A message the walk refuses raises `ValueError`
@@ -2976,13 +2965,13 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 ///
 /// The event's clocks - `currunix`, `creaunix`, `execunix`, `recdunix`,
 /// `refrecdunix`, `prevunix`, `snapunix`, `exprtime` - its identities - `currhashcode`, `crosshashcode`,
-/// `curruuid`, `crossuuid`, `prevuuid`, `parentuuids`, the `crosscode` they
+/// `curruuid`, `crossuuid`, `prevuuid`, the `crosscode` they
 /// derive from, its `seqnum` - the `state` it reached - the `srcuuids` of
 /// the lines it was read from - what a bridge's own log states about a line
 /// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` - the `sourceurl`
 /// a line was read from, the `nofixentries` that counts its content, and the
 /// two Map groups `identifiers` and `metadata`, plus the generic
-/// `marketoperationid` shared with market operations. Thirty-two in all,
+/// `marketoperationid` shared with market operations. Thirty-one in all,
 /// each a fact no FIX dictionary publishes, at the datatype its graph column
 /// names.
 #[pyfunction]
@@ -3344,20 +3333,9 @@ impl PyMarketEventData {
         self.inner.get_identifiers().clone()
     }
 
-    /// The identities of the events this one descends from.
-    #[getter]
-    fn parentuuids(&self) -> Vec<PyScalar> {
-        self.inner
-            .get_parentuuids()
-            .iter()
-            .copied()
-            .map(uuid_scalar)
-            .collect()
-    }
-
     /// The identities of the elements this one was read from: the text line
     /// it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never lineage: no walk moves it.
+    /// never its chain: no walk moves it.
     #[getter]
     fn srcuuids(&self) -> Vec<PyScalar> {
         self.inner

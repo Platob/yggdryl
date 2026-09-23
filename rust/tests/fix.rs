@@ -232,7 +232,7 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
 ///
 /// One nested shape is a field rather than a definition: a list of non-null
 /// scalars under one of this crate's own tags is one column under one name -
-/// `parentuuids` and `srcuuids` are that - because a group's occurrence is a
+/// `srcuuids` is that - because a group's occurrence is a
 /// Struct of members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {

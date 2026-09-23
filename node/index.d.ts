@@ -1801,12 +1801,10 @@ export declare class FixMsg {
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
   get prevuuid(): string | null
-  /** The sorted unique identities of the messages this one descends from. */
-  get parentuuids(): Array<string>
   /**
    * The sorted unique identities of the elements this one was read from:
    * the text line it was parsed out of, and none for one parsed from bytes. Provenance,
-   * never lineage: no walk moves it.
+   * never its chain: no walk moves it.
    */
   get srcuuids(): Array<string>
   /**
@@ -6371,14 +6369,14 @@ export interface FixCommitReport {
  *
  * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
  * `recdunix`, `refrecdunix`, `prevunix`, `snapunix` and `exprtime`; the identities `currhashcode`,
- * `crosshashcode`, `curruuid`, `crossuuid`, `prevuuid` and the
- * `parentuuids` list; the `srcuuids` list of the lines it was read from;
+ * `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`; the `srcuuids`
+ * list of the lines it was read from;
  * the `crosscode`, the `seqnum` and the `state` reached; the `identifiers`
  * and `metadata` Map groups; what a bridge's capture states - `msgctxid`,
  * `msgpluginid`, `msgsessionid`; the capture's own column, `sourceurl`,
  * which whoever read the line states on the row and no message holds; the
  * `nofixentries` that counts the content record; and the generic
- * `marketoperationid` shared with market operations. Thirty-two in all,
+ * `marketoperationid` shared with market operations. Thirty-one in all,
  * each a fact no FIX dictionary publishes, at the datatype its graph column
  * names.
  *
@@ -6462,8 +6460,6 @@ export interface FixEventView {
   crosshashcode: bigint
   /** The identifiers the message is known by, scheme to value, sorted. */
   identifiers: Record<string, string>
-  /** The sorted unique UUIDs of the messages this one descends from. */
-  parentuuids: Array<string>
   /**
    * The sorted unique UUIDs of the elements this one was read from: the
    * text line it was parsed out of, and none for one parsed from bytes.

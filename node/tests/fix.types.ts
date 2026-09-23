@@ -167,7 +167,6 @@ const currunix: bigint = message.currunix
 const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
-const parentuuids: string[] = message.parentuuids
 const srcuuids: string[] = message.srcuuids
 const messageIdentifiers: Record<string, string> = message.identifiers
 const price: string = message.price
@@ -204,7 +203,6 @@ const eventFigi: string | null = event.figicode
 const eventBidPx: string | null = event.bidpx
 const eventAskCurrency: string | null = event.askcurrency
 const eventIdentifiers: Record<string, string> = event.identifiers
-const eventParents: string[] = event.parentuuids
 const eventSources: string[] = event.srcuuids
 const beginstring: string = header.beginstring
 const msgtype: string = header.msgtype
@@ -234,7 +232,6 @@ void currunix
 void state
 void seqnum
 void prevuuid
-void parentuuids
 void srcuuids
 void eventSources
 void messageIdentifiers
@@ -271,7 +268,6 @@ void eventFigi
 void eventBidPx
 void eventAskCurrency
 void eventIdentifiers
-void eventParents
 void beginstring
 void msgtype
 void sendercompid

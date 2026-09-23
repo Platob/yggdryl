@@ -139,7 +139,7 @@ mod internal {
     }
 
     /// The crate's own scalars, or its own groups - the Maps - in the order
-    /// every registry iterates them. `parentuuids` is a List of non-null
+    /// every registry iterates them. `srcuuids` is a List of non-null
     /// scalars, which is one column rather than a group, so it is filed among
     /// the fields and walks with them.
     fn crate_names_of(groups: bool) -> Vec<&'static str> {

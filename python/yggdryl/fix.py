@@ -37,7 +37,7 @@ nothing at all when it refuses.
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
-``currhashcode``, ``crosshashcode``, ``identifiers``, ``parentuuids``, ``currunix``,
+``currhashcode``, ``crosshashcode``, ``identifiers``, ``currunix``,
 ``state``, ``seqnum``, the lifecycle's ``creaunix``, ``exprtime``,
 ``execunix``, ``recdunix``, ``refrecdunix``, ``prevunix``, ``prevuuid`` and
 ``snapunix``, the market's integer ``marketoperationid``, ``price``, ``quantity``,
@@ -104,8 +104,7 @@ document expands to - closed on the bytes each row lands as against the
 codec's ``batch_byte_size``. :meth:`FixCodec.lifecycle` chains a stream
 of messages lazily - each stated as the one after the live message it
 follows under its cross identity, carrying ``prevuuid``, ``prevunix``,
-``seqnum``, the predecessor's whole lineage as its ``parentuuids`` and the
-lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
+``seqnum`` and the lifecycle's ``creaunix`` - and :meth:`FixCodec.lifecycle_arrow_reader` does the same
 over batches of rows without parsing them again. Both compose through the two
 converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and

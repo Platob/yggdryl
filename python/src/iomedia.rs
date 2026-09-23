@@ -2343,7 +2343,7 @@ impl PyTextOptions {
     /// The columns the compiled `rowheader` captures, in order.
     ///
     /// These are the columns a read produces after the fixed ones - the
-    /// nineteen event columns, `sourceurl`, `rownum`, `mtime`, `mimetype`,
+    /// eighteen event columns, `sourceurl`, `rownum`, `mtime`, `mimetype`,
     /// `body`, `dropped_byte_size` - so the full source field is known before
     /// any read runs.
     #[getter]

@@ -23,13 +23,12 @@ const KIND: &str = "operationkind";
 const OPERATION_ROOT: &str = "marketoperation";
 const BOOK_ROOT: &str = "book";
 const KIND_COLUMNS: usize = 1;
-const SIDE_ELEMENT_COLUMNS: [EventColumn; 8] = [
+const SIDE_ELEMENT_COLUMNS: [EventColumn; 7] = [
     EventColumn::CurrUuid,
     EventColumn::CrossUuid,
     EventColumn::CrossCode,
     EventColumn::CurrHashCode,
     EventColumn::CrossHashCode,
-    EventColumn::ParentUuids,
     EventColumn::SrcUuids,
     EventColumn::Identifiers,
 ];
@@ -468,9 +467,6 @@ fn element_fact(column: EventColumn, element: &(impl Element + ?Sized)) -> Optio
         }
         EventColumn::CurrHashCode => Some(Scalar::from(element.get_currhashcode())),
         EventColumn::CrossHashCode => Some(Scalar::from(element.get_crosshashcode())),
-        EventColumn::ParentUuids => (!element.get_parentuuids().is_empty()).then(|| {
-            Scalar::from_sequence(element.get_parentuuids().iter().copied().map(Scalar::Uuid))
-        }),
         EventColumn::SrcUuids => (!element.get_srcuuids().is_empty()).then(|| {
             Scalar::from_sequence(element.get_srcuuids().iter().copied().map(Scalar::Uuid))
         }),

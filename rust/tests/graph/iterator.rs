@@ -115,13 +115,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!(third.get_prevuuid(), Some(second.get_curruuid()));
     assert_eq!(third.get_seqnum(), 2);
     assert_eq!(third.get_creaunix(), Some(at(5)));
-    // The parents are the whole lifecycle as a sorted identity set, and a
-    // walk over the walked answers the same parents.
-    assert_eq!(second.get_parentuuids(), [first.get_curruuid()]);
-    assert_eq!(
-        third.get_parentuuids(),
-        [first.get_curruuid(), second.get_curruuid()]
-    );
+    // A walk over the walked answers the same chain.
     assert!(walk.next().is_none());
     let walked = vec![first.clone(), other.clone(), second.clone(), third.clone()];
     let again: Vec<MarketEventData> = EventIterator::new(walked, true).collect();
@@ -335,7 +329,6 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     assert_eq!(twin.get_seqnum(), 1, "the chain grows by nothing");
     assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
     assert_eq!(twin.get_curruuid(), second.get_curruuid());
-    assert_eq!(twin.get_parentuuids(), second.get_parentuuids());
     assert_eq!(twin, second);
     // The next one follows the twin, which is to say the fill.
     let third = walk.next().expect("the third");
@@ -581,7 +574,6 @@ fn a_deadline_emits_one_expired_snapshot_and_retires_the_live_identity() {
     assert_eq!(expired.get_recdunix(), None, "expiry is a new event");
     assert_eq!(expired.get_refrecdunix(), None, "expiry is a new event");
     assert_eq!(expired.get_prevuuid(), Some(walked[0].get_curruuid()));
-    assert_eq!(expired.get_parentuuids(), [walked[0].get_curruuid()]);
     assert_eq!(expired.get_seqnum(), 1);
     assert_eq!(expired.get_crossuuid(), walked[0].get_crossuuid());
     assert_eq!(
