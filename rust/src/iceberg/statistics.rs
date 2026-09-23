@@ -139,6 +139,61 @@ pub(super) fn data_file_from_batches(
     Ok(file)
 }
 
+/// Count the NaN values of every top-level floating-point column.
+///
+/// Iceberg leaves NaN out of a float column's bounds, so this count is what
+/// lets a planner trust them - a count of zero proves they cover every value.
+/// Parquet's own statistics count no NaN, so the rows are counted before they
+/// are encoded, whatever the format.
+///
+/// # Errors
+///
+/// Returns an error when a schema column carries no field identifier.
+pub(super) fn nan_value_counts(
+    schema: &Field,
+    batches: &[arrow_array::RecordBatch],
+) -> Result<Vec<(i32, i64)>> {
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::{Float16Type, Float32Type, Float64Type};
+    use arrow_schema::DataType as ArrowType;
+
+    let mut counts = Vec::new();
+    for (name, id, dtype) in leaf_columns(schema)? {
+        if !dtype.id().is_floating() {
+            continue;
+        }
+        let mut nans = 0_usize;
+        for column in batches
+            .iter()
+            .filter_map(|batch| batch.column_by_name(&name))
+        {
+            nans += match column.data_type() {
+                ArrowType::Float16 => column
+                    .as_primitive::<Float16Type>()
+                    .iter()
+                    .flatten()
+                    .filter(|value| value.is_nan())
+                    .count(),
+                ArrowType::Float32 => column
+                    .as_primitive::<Float32Type>()
+                    .iter()
+                    .flatten()
+                    .filter(|value| value.is_nan())
+                    .count(),
+                ArrowType::Float64 => column
+                    .as_primitive::<Float64Type>()
+                    .iter()
+                    .flatten()
+                    .filter(|value| value.is_nan())
+                    .count(),
+                _ => 0,
+            };
+        }
+        counts.push((id, i64::try_from(nans).unwrap_or(i64::MAX)));
+    }
+    Ok(counts)
+}
+
 /// Keep the smaller or larger of a running bound and one encoded candidate.
 fn fold_encoded(current: &mut Option<Vec<u8>>, candidate: &[u8], dtype: &DataType, minimum: bool) {
     if compare_single(candidate, candidate, dtype).is_none() {

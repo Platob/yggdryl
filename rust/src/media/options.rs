@@ -75,6 +75,48 @@ use crate::{
 /// widened into Arrow before entering the core reader surface.
 pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536;
 
+/// The threads one file may decode or encode on; `None` is what the host
+/// offers.
+///
+/// Crate-internal, and outside every options value's identity: it changes
+/// how fast a file is read or written and never what is, so two options that
+/// differ only here compare, hash and order as equal.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FileThreads(pub(crate) Option<usize>);
+
+impl FileThreads {
+    /// The bound, or every thread the host offers when there is none.
+    pub(crate) fn resolve(self) -> usize {
+        self.0.unwrap_or_else(|| {
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        })
+    }
+}
+
+impl PartialEq for FileThreads {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for FileThreads {}
+
+impl PartialOrd for FileThreads {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FileThreads {
+    fn cmp(&self, _: &Self) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+
+impl std::hash::Hash for FileThreads {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
 /// The read and write settings shared by every record encoding.
 ///
 /// Each encoding stores these as its own fields - there is no shared settings
@@ -371,22 +413,6 @@ pub trait IORecordOptions: Sized {
         }
         self.select()
             .apply_arrow_reader(self.filter().apply_arrow_reader(reader)?)
-    }
-
-    /// The predicate the `where` section's partition equalities spell about
-    /// a *path*.
-    ///
-    /// One filter, built from the pairs, asked of the holder rather than of
-    /// the rows: `&holder.partition['year'] = '2024'`. This is what prunes a
-    /// listing before anything is opened, and it is the same predicate type
-    /// the rows are filtered with - the pairs are sugar over one
-    /// representation, not a second filter.
-    fn partition_filter(&self) -> Filter {
-        Filter::all_holder_partitions_equal(
-            self.partition_pairs()
-                .iter()
-                .map(|(column, value)| (column, value)),
-        )
     }
 
     /// Build the declared field, or say that one is required.
@@ -1157,6 +1183,22 @@ impl RecordOptions {
             .set_compression_name(compression)
     }
 
+    /// Bound the threads one file decodes or encodes on.
+    ///
+    /// A table that already reads or writes several files at once hands each
+    /// file its share this way, so the two levels of parallelism never
+    /// multiply past what it resolved. Parquet splits its row groups and
+    /// columns across the share and Avro its blocks; Arrow IPC and text
+    /// already decode on one thread.
+    pub(crate) fn set_file_threads(&mut self, threads: usize) {
+        match self {
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.threads = Some(threads.max(1)),
+            Self::Avro(options) => options.threads = FileThreads(Some(threads.max(1))),
+            Self::Ipc(_) | Self::Text(_) => {}
+        }
+    }
+
     /// Return the Parquet row-group bound, or `None` for another encoding.
     #[cfg(feature = "parquet")]
     pub const fn parquet_max_row_group_size(&self) -> Option<usize> {
@@ -1361,5 +1403,23 @@ pub mod internals {
         batches: BatchReader,
     ) -> Result<impl Iterator<Item = Result<BatchReader>>> {
         options.commit_arrow_readers(batches)
+    }
+
+    /// Hand one file its share of a table's threads, as a table scan or
+    /// commit does before it reads or writes the file.
+    pub fn set_file_threads(options: &mut RecordOptions, threads: usize) {
+        options.set_file_threads(threads);
+    }
+
+    /// The thread share a file's options carry, when one was handed down;
+    /// `None` for an encoding that decodes on one thread already.
+    #[must_use]
+    pub fn file_threads(options: &RecordOptions) -> Option<usize> {
+        match options {
+            #[cfg(feature = "parquet")]
+            RecordOptions::Parquet(options) => options.threads,
+            RecordOptions::Avro(options) => options.threads.0,
+            RecordOptions::Ipc(_) | RecordOptions::Text(_) => None,
+        }
     }
 }

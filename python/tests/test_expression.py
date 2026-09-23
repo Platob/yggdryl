@@ -147,19 +147,18 @@ def test_parameters_are_supplied_at_bind() -> None:
     assert bound.matches({"size": 11})
 
 
-def test_holder_attributes_are_their_own_question() -> None:
-    term = Term("&holder.partition['year'] = '2024' and &holder.size > 0")
-    assert term.attributes() == ["partition['year']", "size"]
-    assert term.columns() == []
-    assert term.has_attributes
-    bound = term.bind(Field("holder", DataType.from_fields([]), False))
-    assert not bound.reads_rows
-    # A predicate over the holder and the rows splits into the half a
-    # partition path answers and the half the rows have to.
-    mixed = Term("&holder.partition['year'] = '2024' and size > 0").bind(trades_schema())
+def test_a_predicate_splits_into_what_a_partition_layout_answers() -> None:
+    # A predicate over a declared partition column and the rows splits into
+    # the half a partition path answers and the half the rows have to.
+    root = Field(
+        "trades",
+        DataType.from_fields([Field("year", "int32", True), Field("size", "int64", True)]),
+        False,
+    ).with_partition_fields(["year"])
+    mixed = Term("year = 2024 and size > 0").bind(root)
     answerable, remaining = mixed.partition_split()
     assert isinstance(answerable, Filter)
-    assert str(answerable) == "&holder.partition['year'] = '2024'"
+    assert str(answerable) == "year = int32 '2024'"
     assert str(remaining) == "size > 0"
 
 
@@ -199,7 +198,6 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     from yggdryl.expression import (
         COMPARISONS,
         FUNCTIONS,
-        HOLDER_ATTRIBUTES,
         VERBS,
         needs_quoting,
     )
@@ -208,8 +206,6 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
     assert len(FUNCTIONS) == 19
-    assert "size" in HOLDER_ATTRIBUTES
-    assert "url" in HOLDER_ATTRIBUTES
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"
@@ -326,11 +322,6 @@ def test_statistics_settle_a_container_without_reading_it() -> None:
     )
     minimum, maximum, _ = partitioned.column("year")
     assert minimum.as_py() == maximum.as_py() == 2024
-
-    # A holder attribute is a statistic too, the partition one by its column.
-    held = Bounds(rows=1).with_attribute("partition", "2024", "2024", 0, key="year")
-    minimum, maximum, _ = held.attribute("partition", key="year")
-    assert minimum.as_py() == maximum.as_py() == "2024"
 
 
 # ---------------------------------------------------------------------------
@@ -705,7 +696,7 @@ def test_an_expression_is_whichever_clause_its_text_is() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_lake_is_filtered_by_the_same_predicate(tmp_path) -> None:
+def test_a_lake_selects_the_leaves_carrying_a_partition(tmp_path) -> None:
     lake = tmp_path / "lake"
     for year in ("2024", "2025"):
         part = lake / f"year={year}"
@@ -713,15 +704,8 @@ def test_a_lake_is_filtered_by_the_same_predicate(tmp_path) -> None:
         (part / "part-0.parquet").write_bytes(b"")
     handle = yggdryl.IOBase(lake)
 
-    # A listing yields whatever the predicate does not rule out, containers
-    # included; nothing under `year=2025` survives.
-    matched = list(handle.children_matching("&holder.partition['year'] = '2024'"))
-    assert matched
-    assert all("year=2024" in str(entry.url) for entry in matched)
-    assert len(list(handle.children_matching(Filter("&holder.partition['year'] = '2024'")))) == len(matched)
-
-    # The pair spelling selects the leaves rather than the directories, and it
-    # selects the same ones.
+    # The pairs select the leaves rather than the directories, and nothing
+    # under `year=2025` survives.
     pairs = list(handle.children_where({"year": "2024"}))
     assert len(pairs) == 1
     assert str(pairs[0].url).endswith("year=2024/part-0.parquet")
@@ -759,8 +743,8 @@ def test_a_partitioned_table_prunes_manifests_before_a_byte_is_read(tmp_path) ->
     assert whole["tasks"] == 4
 
     # A manifest-list summary bounds each manifest's partition values, so a
-    # question about the file is settled without opening the Avro.
-    held = table.plan_matching("&holder.partition['venue'] = 'XNYS'")
+    # predicate over the partition column is settled without opening the Avro.
+    held = table.plan_matching("venue = 'XNYS'")
     assert held["manifests_skipped"] == 3
     assert held["manifests_read"] == 1
     assert held["tasks"] == 1
@@ -770,14 +754,14 @@ def test_a_partitioned_table_prunes_manifests_before_a_byte_is_read(tmp_path) ->
 def test_one_predicate_mixes_the_file_and_the_rows(tmp_path) -> None:
     table = trades_table(tmp_path)
 
-    # Both halves are load-bearing: the holder conjunct leaves the two XLON rows
-    # and the row conjunct keeps one of them, so neither can be dropped without
-    # changing the answer.
-    mixed = "id >= 4 and &holder.partition['venue'] = 'XLON'"
+    # Both halves are load-bearing: the partition conjunct leaves the two XLON
+    # rows and the row conjunct keeps one of them, so neither can be dropped
+    # without changing the answer.
+    mixed = "id >= 4 and venue = 'XLON'"
     rows = table.scan_matching(mixed).read_all()
     assert rows.column("id").to_pylist() == [4]
     assert table.scan_matching(
-        Filter("&holder.partition['venue'] = 'XLON'")
+        Filter("venue = 'XLON'")
     ).read_all().column("id").to_pylist() == [3, 4]
     assert table.scan_matching("id >= 4").read_all().column("id").to_pylist() == [4]
 

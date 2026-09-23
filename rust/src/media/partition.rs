@@ -589,6 +589,11 @@ fn leaf_name(
 /// agrees on `year`, which makes it useless for telling two of them apart.
 fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<RecordOptions> {
     let mut leaf = options.clone();
+    // A limited read decodes each leaf lazily on one thread, so it stops
+    // where the limit does rather than decoding ahead of it.
+    if options.max_row_size().is_some() {
+        leaf.set_file_threads(1);
+    }
     // The row and byte limits were already applied to the whole operation at
     // the record-method seam, so a leaf must not apply them again: a limit on
     // the tree re-applied per leaf would become one bound per partition, and
@@ -627,22 +632,19 @@ pub(crate) fn folder_reader(
     // A leaf whose path names a different value for a filtered column cannot
     // hold a matching row, so it is skipped before anything is decoded; a
     // leaf that does not name the column stays, and the row filter answers.
-    let filter = options.partition_filter();
-    if !filter.is_always_true() {
-        // The same predicate a listing answers, asked of each leaf's own path.
-        // A leaf that does not name a filtered column is unknown rather than
-        // false, so it stays and the row filter answers for it.
-        let bound = filter.bind(
-            &crate::DataType::from(crate::StructType::from_fields([])?).required_field("holder"),
-        )?;
-        parts = Listing::new(parts.filter_map(move |part| match part {
-            Err(error) => Some(Err(error)),
-            Ok(part) => match bound.matches_holder(&crate::expression::Handle(&part)) {
-                Ok(true) => Some(Ok(part)),
-                Ok(false) => None,
-                Err(error) => Some(Err(error)),
-            },
-        }));
+    let pairs = options.partition_pairs();
+    if !pairs.is_empty() {
+        parts = parts.keeping(move |part| {
+            part.url().is_none_or(|url| {
+                let named = url.hive_partitions();
+                pairs.iter().all(|(column, value)| {
+                    named
+                        .iter()
+                        .find(|(key, _)| key == column)
+                        .is_none_or(|(_, held)| held == value)
+                })
+            })
+        });
     }
     let field = match options.field() {
         Some(field) => Some(field.clone()),

@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use yggdryl::FieldValue as _;
 use yggdryl::expression::{
-    Attribute, Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
+    Bound as CoreBound, BoundSelector as CoreBoundSelector, Bounds as CoreBounds,
     ColumnBounds as CoreColumnBounds, Comparison as CoreComparison, FieldSegment as CoreSegment,
     Function as CoreFunction, IntoFilter, IntoPlan, IntoSelector, Operator,
     Ordering as CoreOrdering, Plan as CorePlan, Projection as CoreProjection,
@@ -292,22 +292,6 @@ fn comparison_from_str(value: &str) -> PyResult<CoreComparison> {
         })
 }
 
-/// Read one holder attribute, `partition` taking the column it reads.
-fn attribute_from_name(name: &str, key: Option<&str>) -> PyResult<Attribute> {
-    match key {
-        Some(key) if name.eq_ignore_ascii_case("partition") => Ok(Attribute::Partition(key.into())),
-        Some(_) => Err(value_error(
-            "expected a key only for the partition attribute",
-        )),
-        None => Attribute::from_name(name).ok_or_else(|| {
-            value_error(format!(
-                "expected one of the holder attributes {}, got {name:?}",
-                Attribute::vocabulary()
-            ))
-        }),
-    }
-}
-
 /// Read native rows: a mapping is a named record, anything else crosses
 /// through the shared value inference.
 fn rows_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
@@ -460,15 +444,6 @@ impl PyTerm {
         .map_err(value_error)
     }
 
-    /// Name one holder attribute, such as `size` or `partition` with a column.
-    #[staticmethod]
-    #[pyo3(signature = (name, key = None))]
-    fn attribute(name: &str, key: Option<&str>) -> PyResult<Self> {
-        Ok(Self::from_core(CoreTerm::attribute(attribute_from_name(
-            name, key,
-        )?)))
-    }
-
     /// Name one late-bound value.
     #[staticmethod]
     fn parameter(name: &str) -> Self {
@@ -533,15 +508,6 @@ impl PyTerm {
     /// Every top-level column this term reads, in first-seen order.
     fn columns(&self) -> Vec<String> {
         self.inner.columns()
-    }
-
-    /// Every holder attribute this term reads, in first-seen order.
-    fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
     }
 
     /// Every parameter this term names, in first-seen order.
@@ -846,12 +812,6 @@ impl PyTerm {
     #[getter]
     fn is_always_false(&self) -> bool {
         self.inner.is_always_false()
-    }
-
-    /// Whether this term reads any holder attribute.
-    #[getter]
-    fn has_attributes(&self) -> bool {
-        self.inner.has_attributes()
     }
 
     fn __add__(&self, other: &Bound<'_, PyAny>) -> PyResult<Self> {
@@ -1234,12 +1194,6 @@ impl PyFilter {
         self.inner.is_always_false()
     }
 
-    /// Whether this filter reads any holder attribute.
-    #[getter]
-    fn has_attributes(&self) -> bool {
-        self.inner.has_attributes()
-    }
-
     /// The top-level `and` operands, each its own filter.
     fn conjuncts(&self) -> Vec<Self> {
         self.inner
@@ -1252,15 +1206,6 @@ impl PyFilter {
     /// Every top-level column this filter reads, in first-seen order.
     fn columns(&self) -> Vec<String> {
         self.inner.columns()
-    }
-
-    /// Every holder attribute this filter reads, in first-seen order.
-    fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
     }
 
     /// Every parameter this filter names, in first-seen order.
@@ -1587,15 +1532,6 @@ impl PySelector {
     /// Every top-level column this selector reads, in first-seen order.
     fn columns(&self) -> Vec<String> {
         self.inner.columns()
-    }
-
-    /// Every holder attribute this selector reads, in first-seen order.
-    fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
     }
 
     /// Every parameter this selector names, in first-seen order.
@@ -2158,15 +2094,6 @@ impl PyPlan {
         self.inner.read_columns()
     }
 
-    /// Every holder attribute this plan reads, in first-seen order.
-    fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Every parameter this plan names, in first-seen order.
     fn parameters(&self) -> Vec<String> {
         self.inner.parameters()
@@ -2473,15 +2400,6 @@ impl PyExpression {
         self.inner.columns()
     }
 
-    /// Every holder attribute this expression reads, in first-seen order.
-    fn attributes(&self) -> Vec<String> {
-        self.inner
-            .attributes()
-            .iter()
-            .map(ToString::to_string)
-            .collect()
-    }
-
     /// Every parameter this expression names, in first-seen order.
     fn parameters(&self) -> Vec<String> {
         self.inner.parameters()
@@ -2752,8 +2670,6 @@ pub(crate) fn expression_vocabularies(py: Python<'_>) -> PyResult<Py<PyDict>> {
             .map(ToString::to_string)
             .collect::<Vec<_>>(),
     )?;
-    let attributes: Vec<&str> = Attribute::ALL.iter().map(Attribute::as_str).collect();
-    listing.set_item("holder_attributes", attributes)?;
     listing.set_item(
         "verbs",
         [
@@ -2829,37 +2745,9 @@ impl PyBounds {
         })
     }
 
-    /// Record one holder attribute's minimum, maximum, and null count;
-    /// `partition` takes the column it reads as `key`.
-    #[pyo3(signature = (name, minimum = None, maximum = None, nulls = None, key = None))]
-    fn with_attribute(
-        &self,
-        name: &str,
-        minimum: Option<&Bound<'_, PyAny>>,
-        maximum: Option<&Bound<'_, PyAny>>,
-        nulls: Option<u64>,
-        key: Option<&str>,
-    ) -> PyResult<Self> {
-        Ok(Self {
-            inner: self.inner.clone().with_attribute(
-                attribute_from_name(name, key)?,
-                minimum.map(crate::scalar::from_py).transpose()?,
-                maximum.map(crate::scalar::from_py).transpose()?,
-                nulls,
-            ),
-        })
-    }
-
     /// One column's recorded statistics, as `(minimum, maximum, nulls)`.
     fn column(&self, name: &str) -> Option<ColumnStatistics> {
         self.inner.column(name).map(column_bounds_parts)
-    }
-
-    /// One attribute's recorded statistics, as `(minimum, maximum, nulls)`.
-    #[pyo3(signature = (name, key = None))]
-    fn attribute(&self, name: &str, key: Option<&str>) -> PyResult<Option<ColumnStatistics>> {
-        let attribute = attribute_from_name(name, key)?;
-        Ok(self.inner.attribute(&attribute).map(column_bounds_parts))
     }
 
     fn __repr__(&self) -> String {

@@ -15,7 +15,7 @@ default = []
 # pinned Arrow release and pulls a thrift/compression stack a schema-only
 # consumer does not need. `snap` rides here because the parquet crate already
 # compiles it, so Avro's snappy blocks cost no crate a build was not paying.
-parquet = ["dep:bytes", "dep:parquet", "dep:snap"]
+parquet = ["dep:parquet", "dep:snap"]
 # Iceberg tables. Official Iceberg 0.10.1 owns metadata serde and validation;
 # its Rust 1.94/Arrow 58 stack stays private. Public records use Yggdryl's
 # Arrow 59/IOBase path, and schema-only builds do not compile this feature.
@@ -44,7 +44,11 @@ arrow-row.workspace = true
 arrow-schema.workspace = true
 arrow-select.workspace = true
 base64.workspace = true
-bytes = { version = "1", optional = true }
+# Shared, reference-counted byte views: the column chunks a Parquet read
+# fetches and the container an Avro read decodes, each shared by the threads
+# that decode it. Arrow's buffer crate already compiles it, so naming it costs
+# no crate.
+bytes = "1"
 # zlib-rs is the fastest pure-Rust DEFLATE; still no C toolchain needed.
 flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 half.workspace = true

@@ -831,8 +831,6 @@ export declare class Expression {
   get steps(): Array<Expression>
   /** Every top-level column this expression reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this expression reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this expression names, in first-seen order. */
   get parameters(): Array<string>
   /** This expression with every clause simplified. */
@@ -1365,12 +1363,8 @@ export declare class Filter {
   get isAlwaysTrue(): boolean
   /** Whether this filter keeps no row. */
   get isAlwaysFalse(): boolean
-  /** Whether this filter reads any holder attribute. */
-  get hasAttributes(): boolean
   /** Every top-level column this filter reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this filter reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this filter names, in first-seen order. */
   get parameters(): Array<string>
   /** The top-level `and` operands, each its own filter. */
@@ -2478,7 +2472,7 @@ export declare class IcebergOptions {
    * which would read nothing at all.
    */
   set readParallelism(threads: number)
-  /** How many large-enough files justify a parallel scan. Default: 16. */
+  /** How many large-enough files justify a parallel scan. Default: 2. */
   get readParallelMinFiles(): number
   /** Set how many large-enough files justify a parallel scan. */
   set readParallelMinFiles(files: number)
@@ -2516,7 +2510,7 @@ export declare class IcebergOptions {
   set writeStaging(staging: string)
   /**
    * The recorded size below which a file does not count toward justifying a
-   * parallel scan, in bytes. Default: 4 MiB.
+   * parallel scan, in bytes. Default: 64 KiB.
    */
   get readParallelMinFileSize(): number
   /**
@@ -2744,19 +2738,6 @@ export declare class IOBase {
   rglob(pattern: string, includePrivate?: boolean | undefined | null): JsListing
   /** The Hive partition pairs this resource's location spells out. */
   get partitions(): Array<PartitionEntry>
-  /**
-   * Iterate the entries beneath this one a predicate does not rule out.
-   *
-   * The predicate is asked of the holder, not of the rows: `&holder.name`,
-   * `&holder.partition['year']`, `&holder.size`. A conjunct that reads a
-   * row column cannot be answered by a listing, so it is dropped rather
-   * than guessed at - this may keep a file the rows later discard and can
-   * never discard one they would have kept.
-   *
-   * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
-   * parses.
-   */
-  childrenMatching(filter: Filter | Term | string, includePrivate?: boolean | undefined | null): JsListing
   /**
    * Iterate the leaves beneath this one carrying every given partition.
    *
@@ -3047,12 +3028,11 @@ export type JsIOCursor = IOCursor
 /**
  * The entries of one listing, one at a time.
  *
- * Built by `iterdir`, `ls`, `glob`, `rglob`, `childrenMatching`, and
- * `childrenWhere`. It wraps the core listing directly, so nothing is
- * collected on the way across the boundary; `next()` is the native half of
- * the iteration protocol and the loader wraps it so `for...of` yields
- * handles. A failure throws at the entry it happened on, after which the
- * listing is exhausted.
+ * Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
+ * the core listing directly, so nothing is collected on the way across the
+ * boundary; `next()` is the native half of the iteration protocol and the
+ * loader wraps it so `for...of` yields handles. A failure throws at the entry
+ * it happened on, after which the listing is exhausted.
  */
 export declare class Listing {
   /** The next entry, or `null` when the listing is exhausted. */
@@ -3563,8 +3543,6 @@ export declare class Plan {
   get columns(): Array<string>
   /** The stored columns a read has to decode, or `null` for all of them. */
   get readColumns(): Array<string> | null
-  /** Every holder attribute this plan reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this plan names, in first-seen order. */
   get parameters(): Array<string>
   /**
@@ -4332,8 +4310,6 @@ export declare class Selector {
   get length(): number
   /** Every top-level column this selector reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this selector reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this selector names, in first-seen order. */
   get parameters(): Array<string>
   /** This selector with one more projection, a term or its text. */
@@ -4574,10 +4550,9 @@ export declare class Table {
    *
    * `filter` is a `Filter`, a `Term`, or the text of a predicate, which
    * parses. It is the whole expression language rather than equality
-   * pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
-   * questions about the files themselves. Planning prunes with the
-   * metadata chain, and only the conjuncts it could not settle are tested
-   * against the rows.
+   * pairs: ranges, null tests, `in` lists, and nested paths. Planning
+   * prunes with the metadata chain, and only the conjuncts it could not
+   * settle are tested against the rows.
    */
   scanMatching(filter: Filter | Term | string, field?: Field | undefined | null): JsBatchReader
   /** Report what one predicate lets the scan leave alone. */
@@ -4905,8 +4880,6 @@ export declare class Term {
   static literal(value: JsScalar): Term
   /** Hold a constant in an explicitly named datatype, checked against it. */
   static typedLiteral(dtype: DataTypeInput, value: JsScalar): Term
-  /** Name one holder attribute, such as `size`, or `partition` with a column. */
-  static attribute(name: string, key?: string | undefined | null): Term
   /** Name one late-bound value. */
   static parameter(name: string): Term
   /** The term that is true for every row. */
@@ -4921,8 +4894,6 @@ export declare class Term {
   static call(name: string, arguments: Array<Term | string>): Term
   /** Every top-level column this term reads, in first-seen order. */
   get columns(): Array<string>
-  /** Every holder attribute this term reads, in first-seen order. */
-  get attributes(): Array<string>
   /** Every parameter this term names, in first-seen order. */
   get parameters(): Array<string>
   /** The top-level `and` operands, flattened. */
@@ -4939,8 +4910,6 @@ export declare class Term {
   get isAlwaysTrue(): boolean
   /** Whether this node is the constant false; an empty `any` counts. */
   get isAlwaysFalse(): boolean
-  /** Whether this term reads any holder attribute. */
-  get hasAttributes(): boolean
   /** Refuse a term past the depth or node limit, before a walk. */
   checkBudget(): void
   /** This term with the same answer and fewer nodes. */
@@ -6205,8 +6174,6 @@ export interface ExpressionVocabularies {
   comparisons: Array<string>
   /** Every function the closed scalar set knows, e.g. `year`, `truncate`. */
   functions: Array<string>
-  /** Every holder attribute `&holder.<name>` can name, e.g. `size`. */
-  holderAttributes: Array<string>
   /** Every write verb a plan spells canonically, e.g. `upsert into`. */
   verbs: Array<string>
 }

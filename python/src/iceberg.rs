@@ -631,7 +631,7 @@ impl PyIcebergOptions {
             .map_err(value_error)
     }
 
-    /// How many large-enough files justify a parallel scan. Default: 16.
+    /// How many large-enough files justify a parallel scan. Default: 2.
     #[getter]
     fn read_parallel_min_files(&self) -> usize {
         self.inner.read_parallel_min_files()
@@ -645,7 +645,7 @@ impl PyIcebergOptions {
     }
 
     /// The recorded size below which a file does not count toward justifying
-    /// a parallel scan, in bytes. Default: 4 MiB.
+    /// a parallel scan, in bytes. Default: 64 KiB.
     #[getter]
     fn read_parallel_min_file_size(&self) -> u64 {
         self.inner.read_parallel_min_file_size_bytes()
@@ -1305,10 +1305,9 @@ impl PyTable {
     ///
     /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
     /// parses. It is the whole expression language rather than equality
-    /// pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
-    /// questions about the files themselves. Planning prunes with the
-    /// metadata chain, and only the conjuncts it could not settle are tested
-    /// against the rows.
+    /// pairs: ranges, null tests, `in` lists, and nested paths. Planning
+    /// prunes with the metadata chain, and only the conjuncts it could not
+    /// settle are tested against the rows.
     #[pyo3(signature = (filter, schema = None))]
     fn scan_matching<'py>(
         &self,

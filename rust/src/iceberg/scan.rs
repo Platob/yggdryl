@@ -16,16 +16,14 @@
 //! - a **data file** carries per-column bounds and null counts, so a file whose
 //!   statistics cannot hold the value is skipped without being opened.
 //!
-//! A filter is a [`Filter`], the same one that filters a lake through
-//! [`IOBase::children_matching`](crate::IOBase::children_matching) and a
-//! batch through [`Bound::filter`](crate::expression::Bound::filter). Each
-//! level of the chain answers it from the statistics it carries, expressed as
-//! the [`Bounds`] every other container in this crate expresses them as: a
-//! partition tuple is a minimum equal to its maximum, so a conjunct it proves
-//! is dropped rather than re-tested, and a file's own path answers every free
-//! `&holder.*` attribute. What no level settles is filtered row by row after
-//! the file is read, because a statistic bounds a *file* and does not select a
-//! row.
+//! A filter is a [`Filter`], the same one that filters a Parquet file's row
+//! groups and a batch through [`Bound::filter`](crate::expression::Bound::filter).
+//! Each level of the chain answers it from the statistics it carries,
+//! expressed as the [`Bounds`] every other container in this crate expresses
+//! them as: a partition tuple is a minimum equal to its maximum, so a conjunct
+//! it proves is dropped rather than re-tested. What no level settles is
+//! filtered row by row after the file is read, because a statistic bounds a
+//! *file* and does not select a row.
 
 use std::sync::Arc;
 
@@ -39,7 +37,7 @@ use super::value::single_to_value;
 use crate::FieldValue as _;
 use crate::arrow::BatchReader;
 use crate::cast::ArrowCastOptions;
-use crate::expression::{Attribute, Bound, Bounds};
+use crate::expression::{Bound, Bounds};
 use crate::holder::Holder;
 use crate::{DataType, Error, Field, Filter, Result, Scalar, StructType};
 
@@ -200,22 +198,11 @@ pub(super) fn manifest_bounds(
             held.as_deref()
                 .and_then(|bytes| single_to_value(bytes, dtype))
         };
-        let (minimum, maximum) = (decode(&summary.lower_bound), decode(&summary.upper_bound));
-        // A partition column is spelled in the path too, so the summary bounds
-        // it as an attribute as well - but only when the two ends meet. A range
-        // of values does not bound the *text* of those values, because text
-        // does not order the way a number does.
-        if let (Some(low), Some(high)) = (&minimum, &maximum) {
-            if low == high {
-                let text = Scalar::from(super::value::scalar_text(low).as_str());
-                bounds = bounds.with_attribute(
-                    Attribute::Partition(column.name().into()),
-                    Some(text.clone()),
-                    Some(text),
-                    Some(0),
-                );
-            }
-        }
+        let (minimum, maximum) = if nan_free(dtype, summary.contains_nan.map(u64::from)) {
+            (decode(&summary.lower_bound), decode(&summary.upper_bound))
+        } else {
+            (None, None)
+        };
         bounds = bounds.with_column(
             column.name(),
             minimum,
@@ -237,12 +224,6 @@ pub(super) fn manifest_bounds(
 pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field) -> Bounds {
     let rows = u64::try_from(file.record_count).ok();
     let mut bounds = Bounds::new(rows);
-    // The file's own path answers every free holder attribute exactly, so a
-    // predicate about the file - its name, its extension, its partition
-    // directories - is settled here without opening it.
-    if let Ok(url) = crate::Url::from_str(&file.file_path) {
-        bounds = bounds.with(Bounds::from_url(&url));
-    }
     let mut settled: Vec<&str> = Vec::new();
     for position in 0..spec.fields.len() {
         let Some(column) = identity_column(spec, position, schema) else {
@@ -258,17 +239,7 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
             bounds = bounds.with_column(column.name(), None, None, rows);
             continue;
         }
-        // The manifest is the authority on the value, and a path spells the
-        // same one, so both spellings are recorded from the same source.
-        let text = Scalar::from(super::value::scalar_text(&value).as_str());
-        bounds = bounds
-            .with_attribute(
-                Attribute::Partition(column.name().into()),
-                Some(text.clone()),
-                Some(text),
-                Some(0),
-            )
-            .with_column(column.name(), Some(value.clone()), Some(value), Some(0));
+        bounds = bounds.with_column(column.name(), Some(value.clone()), Some(value), Some(0));
     }
     for column in schema.fields() {
         if settled.contains(&column.name()) {
@@ -280,8 +251,15 @@ pub(super) fn file_bounds(file: &DataFile, spec: &PartitionSpec, schema: &Field)
         let dtype = column.dtype();
         let decode = |bytes: Option<&[u8]>| bytes.and_then(|bytes| single_to_value(bytes, dtype));
         let nulls = lookup(&file.null_value_counts, id).and_then(|count| u64::try_from(count).ok());
-        let minimum = decode(bound(&file.lower_bounds, id));
-        let maximum = decode(bound(&file.upper_bounds, id));
+        let nans = lookup(&file.nan_value_counts, id).and_then(|count| u64::try_from(count).ok());
+        let (minimum, maximum) = if nan_free(dtype, nans) {
+            (
+                decode(bound(&file.lower_bounds, id)),
+                decode(bound(&file.upper_bounds, id)),
+            )
+        } else {
+            (None, None)
+        };
         if minimum.is_none() && maximum.is_none() && nulls.is_none() {
             continue;
         }
@@ -317,6 +295,15 @@ fn lookup(counts: &[(i32, i64)], id: i32) -> Option<i64> {
     counts
         .iter()
         .find_map(|(key, count)| (*key == id).then_some(*count))
+}
+
+/// Whether a column's recorded bounds cover every value the filter reads.
+///
+/// Iceberg leaves NaN out of a float column's bounds, while this crate orders
+/// NaN past every number, by its sign - so a float column's bounds count only
+/// where a NaN count of zero proves the file holds no NaN.
+fn nan_free(dtype: &DataType, nans: Option<u64>) -> bool {
+    !dtype.id().is_floating() || nans == Some(0)
 }
 
 /// Read one encoded bound by field id.
@@ -518,6 +505,9 @@ struct Refine {
     /// Whether a file may store a column under a name the read root does
     /// not use, so its footer has to be read before its projection is made.
     renamed: bool,
+    /// The threads one file's columns decode on: the whole read parallelism
+    /// when files are read one at a time, a share of it when several are.
+    threads: usize,
 }
 
 impl Refine {
@@ -532,7 +522,8 @@ impl Refine {
         use crate::IOMedia;
         use crate::media::IORecordOptions;
 
-        let options = part.handle.record_options()?;
+        let mut options = part.handle.record_options()?;
+        options.set_file_threads(self.threads);
         if self.target.is_none() {
             // Nothing was asked for, so nothing is pushed down and the file's
             // own columns come back as they are.
@@ -638,6 +629,20 @@ pub(super) fn reader(
     renamed: bool,
 ) -> Result<BatchReader> {
     let schema = crate::arrow::arrow_schema_from_field(&root)?;
+    let qualifying = parts
+        .iter()
+        .filter(|part| {
+            u64::try_from(part.size).is_ok_and(|size| size >= parallel.min_file_size_bytes)
+        })
+        .count();
+    let fan_out = parallel.parallelism >= 2 && parts.len() > 1 && qualifying >= parallel.min_files;
+    // Files in flight at once share the parallelism between them; one file
+    // at a time has all of it for its columns.
+    let in_flight = if fan_out {
+        parallel.parallelism.min(parts.len())
+    } else {
+        1
+    };
     let refine = Arc::new(Refine {
         project: read_root.field_len() != root.field_len(),
         read_root,
@@ -645,14 +650,9 @@ pub(super) fn reader(
         target,
         predicates,
         renamed,
+        threads: (parallel.parallelism / in_flight).max(1),
     });
-    let qualifying = parts
-        .iter()
-        .filter(|part| {
-            u64::try_from(part.size).is_ok_and(|size| size >= parallel.min_file_size_bytes)
-        })
-        .count();
-    if parallel.parallelism >= 2 && parts.len() > 1 && qualifying >= parallel.min_files {
+    if fan_out {
         return Ok(Box::new(ParallelScan::new(
             parts,
             schema,

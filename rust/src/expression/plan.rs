@@ -53,10 +53,10 @@ use std::fmt;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::Expression;
 use super::filter::{Filter, IntoFilter};
 use super::selector::{IntoSelector, Selector};
 use super::term::Term;
-use super::{Attribute, Expression};
 use crate::{Error, Field, Result, Url};
 
 /// Where a target is: a URL, or the parts of a catalog path.
@@ -1012,18 +1012,6 @@ impl Plan {
             return None;
         }
         Some(self.columns())
-    }
-
-    /// Every handle attribute this plan reads, in first-seen order.
-    #[must_use]
-    pub fn attributes(&self) -> Vec<Attribute> {
-        let mut attributes = self.filter.attributes();
-        for attribute in self.selector.attributes() {
-            if !attributes.contains(&attribute) {
-                attributes.push(attribute);
-            }
-        }
-        attributes
     }
 
     /// Every parameter this plan names, in first-seen order.

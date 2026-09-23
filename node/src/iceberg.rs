@@ -385,7 +385,7 @@ impl JsIcebergOptions {
             .map_err(napi_error)
     }
 
-    /// How many large-enough files justify a parallel scan. Default: 16.
+    /// How many large-enough files justify a parallel scan. Default: 2.
     #[napi(getter)]
     pub fn read_parallel_min_files(&self) -> Result<u32> {
         u32::try_from(self.inner.read_parallel_min_files())
@@ -444,7 +444,7 @@ impl JsIcebergOptions {
     }
 
     /// The recorded size below which a file does not count toward justifying a
-    /// parallel scan, in bytes. Default: 4 MiB.
+    /// parallel scan, in bytes. Default: 64 KiB.
     #[napi(getter)]
     pub fn read_parallel_min_file_size(&self) -> Result<f64> {
         crate::exact_f64(
@@ -1729,10 +1729,9 @@ impl JsTable {
     ///
     /// `filter` is a `Filter`, a `Term`, or the text of a predicate, which
     /// parses. It is the whole expression language rather than equality
-    /// pairs: ranges, null tests, `in` lists, nested paths, and `&holder.*`
-    /// questions about the files themselves. Planning prunes with the
-    /// metadata chain, and only the conjuncts it could not settle are tested
-    /// against the rows.
+    /// pairs: ranges, null tests, `in` lists, and nested paths. Planning
+    /// prunes with the metadata chain, and only the conjuncts it could not
+    /// settle are tested against the rows.
     #[napi]
     pub fn scan_matching(
         &self,

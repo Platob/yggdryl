@@ -1,11 +1,11 @@
 //! `rust/src/expression/parser.rs`: the edge cases this module is built to
 //! get right.
 //!
-//! Five properties carry most of the weight, and each is asserted rather than
+//! Four properties carry most of the weight, and each is asserted rather than
 //! reviewed: text round-trips through the grammar, the scalar and vectorized
 //! tiers agree on every operator including nulls and `nan`, a simplification
-//! never changes what a row answers, a free attribute never costs a backend
-//! call, and a pruning decision never loses a row.
+//! never changes what a row answers, and a pruning decision never loses a
+//! row.
 
 mod grammar {
 
@@ -29,6 +29,19 @@ mod grammar {
     }
 
     #[test]
+    fn a_bracketed_location_part_reads_its_raw_text() {
+        use yggdryl::expression::{Location, Plan, Source};
+
+        let plan: Plan = "select * from [R&D].t".parse().unwrap();
+        let Some(Source::Target(target)) = plan.source() else {
+            panic!("expected a target source, got {:?}", plan.source());
+        };
+        assert_eq!(target.location(), &Location::parts(["R&D", "t"]));
+        // `&` is tokenized for that reading alone; no term takes it.
+        assert!("a & b".parse::<Term>().is_err());
+    }
+
+    #[test]
     fn a_parse_failure_names_where_it_stopped() {
         let error = "a = ".parse::<Term>().unwrap_err();
         assert!(
@@ -39,8 +52,6 @@ mod grammar {
         assert!(format!("{error}").contains("at byte "), "{error}");
         let error = "nosuchfn(a)".parse::<Term>().unwrap_err();
         assert!(format!("{error}").contains("lower"), "{error}");
-        let error = "&holder.nosuch".parse::<Term>().unwrap_err();
-        assert!(format!("{error}").contains("partition"), "{error}");
         let error = "a in ()".parse::<Term>().unwrap_err();
         assert!(format!("{error}").contains("at least one"), "{error}");
         let error = "select a as".parse::<Expression>().unwrap_err();

@@ -13,8 +13,7 @@
 | [Filters](filters.md) | `Filter`: predicates, pushdown normalization, three-valued logic |
 | [Functions](functions.md) | The closed function set's one door: registered user functions, their signature as a field, the Python decorators |
 | [Plans](plans.md) | `Plan`: sections, write verbs, locations, nested sources, sequences, `execute` |
-| [Holder attributes](holder.md) | `&holder.*` attributes, cost classes, pruning without reading |
-| [Evaluate](evaluate.md) | The streamed Arrow tier, native records, statistics, Iceberg scan planning |
+| [Evaluate](evaluate.md) | The streamed Arrow tier, native records, statistics pruning, Iceberg scan planning |
 
 ## Contract
 
@@ -179,7 +178,6 @@ The rule every layer follows: do what the text asks whenever one reading does it
 | `n as small int8` over a value past `int8` | null, the safe reading of a cast |
 | `n as small int8 not null` over the same value | refused, naming `small` and the value |
 | `select *` over a stream, or a cast to the type a column already has | the batch is handed back unchanged |
-| `&holder.size > 0` on a listing | answered before any decode; a row conjunct in the same predicate is left to the rows |
 
 The grammar itself accepts every common spelling - `insert into`, `append to`, `merge into ... on (...)`, `upsert into ... by (...)`, `* exclude (...)` and `* except (...)`, `limit` before or after `offset` - and prints one canonical text.
 

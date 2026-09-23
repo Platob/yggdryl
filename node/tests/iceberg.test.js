@@ -769,8 +769,8 @@ test('an options value answers the fields it was given and defaults the rest', (
   assert.equal(untouched.commitMaxBackoffMs, 60_000)
   assert.equal(untouched.commitTotalTimeoutMs, 1_800_000)
   assert.equal(untouched.targetFileSize, 512 * 1024 * 1024)
-  assert.equal(untouched.readParallelMinFiles, 16)
-  assert.equal(untouched.readParallelMinFileSize, 4 * 1024 * 1024)
+  assert.equal(untouched.readParallelMinFiles, 2)
+  assert.equal(untouched.readParallelMinFileSize, 64 * 1024)
   assert.ok(untouched.dataMimeType.equals(MimeType.PARQUET))
   // Nothing compacts on its own until a cadence says so.
   assert.equal(untouched.compactAfterCommits, null)
