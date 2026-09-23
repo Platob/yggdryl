@@ -460,7 +460,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_st
 
 Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused.
 
-A read yields 65,536-row batches unless `batch_row_size` bounds them, never more than a `max_row_size` asks for. From a megabyte of column chunks up, it decodes row groups side by side - and, with fewer row groups than threads, each row group's columns - handing batches back in file order, never one spanning two row groups; a memory-mapped file is decoded in place, its pages never copied. A write encodes each row group's columns side by side, and the file is byte for byte the one a single thread writes.
+A read's `filter` skips every row group whose footer statistics rule it out before a page is decoded - a column counts only when it is stored as the type the filter reads - and the rows of the groups that remain are filtered as always. A read yields 65,536-row batches unless `batch_row_size` bounds them, never more than a `max_row_size` asks for. From a megabyte of column chunks up, it decodes row groups side by side - and, with fewer row groups than threads, each row group's columns - handing batches back in file order, never one spanning two row groups; a memory-mapped file is decoded in place, its pages never copied. A write encodes each row group's columns side by side, and the file is byte for byte the one a single thread writes.
 
 === "Rust"
 

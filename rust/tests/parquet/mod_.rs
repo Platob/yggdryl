@@ -2023,3 +2023,130 @@ mod parallel {
         assert_eq!(media.handle().read_all_bytes().unwrap(), expected);
     }
 }
+
+/// The read's filter answered from the footer before a page is decoded.
+mod pruning {
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::parquet::{Parquet, ParquetOptions};
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, StructType};
+
+    /// Two row groups of sorted ids: 0..1000 and 1000..2000.
+    fn written() -> Parquet<Buffer> {
+        let field = StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().required_field("note"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        let ids: Vec<i64> = (0..2_000).collect();
+        let notes: Vec<String> = ids.iter().map(|id| format!("note {id}")).collect();
+        let batch = RecordBatch::try_new(
+            field.into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(ids)) as ArrayRef,
+                Arc::new(StringArray::from(notes)) as ArrayRef,
+            ],
+        )
+        .unwrap();
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()))
+            .with_options(ParquetOptions::new().with_max_row_group_size(1_000));
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+        media
+    }
+
+    fn rows(media: &Parquet<Buffer>, filter: &str) -> yggdryl::Result<usize> {
+        let options = media.record_options()?.with_filter(filter)?;
+        let mut rows = 0;
+        for batch in media.read_arrow_reader(&options)? {
+            rows += batch.map_err(yggdryl::Error::Arrow)?.num_rows();
+        }
+        Ok(rows)
+    }
+
+    #[test]
+    fn a_row_group_the_statistics_rule_out_is_never_decoded() {
+        let mut media = written();
+        // Break every page of the second row group, footer untouched: a read
+        // that decodes it fails, one that skips it does not.
+        let bytes = media.handle().read_all_bytes().unwrap();
+        let footer = parquet::file::metadata::ParquetMetaDataReader::new()
+            .parse_and_finish(&yggdryl::SharedBytes::from(bytes))
+            .unwrap();
+        let second = footer.row_group(1);
+        let start = second
+            .columns()
+            .iter()
+            .map(|column| column.byte_range().0)
+            .min()
+            .unwrap();
+        let end = second
+            .columns()
+            .iter()
+            .map(|column| column.byte_range().0 + column.byte_range().1)
+            .max()
+            .unwrap();
+        let garbage = vec![0xA5_u8; usize::try_from(end - start).unwrap()];
+        media.pwrite(start, &garbage).unwrap();
+
+        assert_eq!(rows(&media, "id < 10").unwrap(), 10);
+        assert_eq!(
+            rows(&media, "id between 100 and 199 and note is not null").unwrap(),
+            100
+        );
+        assert!(
+            rows(&media, "id >= 0").is_err(),
+            "the broken group is decoded"
+        );
+    }
+
+    #[test]
+    fn a_column_the_declared_root_casts_prunes_nothing() {
+        // Stored as text, read as a number: "10" < "9" as text, so the stored
+        // bounds would rule out the one row the cast value keeps.
+        let stored = StructType::from_fields([DataType::utf8().required_field("id")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let batch = RecordBatch::try_new(
+            stored.into_arrow_schema().unwrap(),
+            vec![Arc::new(StringArray::from(vec!["10", "2", "3"])) as ArrayRef],
+        )
+        .unwrap();
+        let mut media = Parquet::new(Buffer::new().with_media_type(MimeType::PARQUET.into()));
+        let options = media.record_options().unwrap();
+        media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap();
+
+        let read = StructType::from_fields([DataType::Int64.required_field("id")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let options = media
+            .record_options()
+            .unwrap()
+            .with_field(read)
+            .with_filter("id > 5")
+            .unwrap();
+        let kept: usize = media
+            .read_arrow_reader(&options)
+            .unwrap()
+            .map(|batch| batch.unwrap().num_rows())
+            .sum();
+        assert_eq!(kept, 1);
+    }
+}

@@ -450,7 +450,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             schema,
         )));
     }
-    let source = match bounded_source(handle, options)? {
+    let mut source = match bounded_source(handle, options)? {
         Some(source) => source,
         None => open_source(handle)?,
     };
@@ -467,6 +467,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
             })
     });
     let projection = projection_indices(field, columns.as_deref(), source.metadata.schema());
+    source.push_filter(options);
     if let Some(reader) = ParallelRead::open(
         &source,
         projection.as_deref(),
@@ -837,11 +838,132 @@ struct ParquetSource {
     bytes: Bytes,
     /// The decoded footer and the Arrow schema it describes.
     metadata: ArrowReaderMetadata,
-    /// The row groups the read keeps, when a row bound spares the rest.
+    /// The row groups the read keeps, when a row bound or the filter spares
+    /// the rest.
     row_groups: Option<Vec<usize>>,
 }
 
 impl ParquetSource {
+    /// Keep only the row groups the read's filter could find a row in.
+    ///
+    /// Each conjunct is bound against the root the rows are filtered as, and
+    /// every row group's footer statistics become the same
+    /// [`Bounds`](crate::expression::Bounds) an Iceberg manifest entry or a
+    /// Hive path becomes, so one pruning rule answers all three. Only a
+    /// column stored as the type the filter reads takes part - a declared
+    /// root that casts a column filters the cast value, which the stored
+    /// bounds do not bound. A filter that runs after the selection, a
+    /// conjunct that does not bind, and a statistic the file does not carry
+    /// prune nothing, and every row of every group that survives is still
+    /// filtered afterwards, so pruning only ever saves a read.
+    fn push_filter(&mut self, options: &ParquetOptions) {
+        let filter = options.filter();
+        if filter.is_always_true() {
+            return;
+        }
+        let stored = Arc::clone(self.metadata.schema());
+        if crate::expression::filter_after_select(
+            filter,
+            options.select(),
+            stored.fields().iter().map(|field| field.name().as_str()),
+        ) {
+            return;
+        }
+        let root = match options.field() {
+            Some(field) => field,
+            None => match field_from_arrow_schema(options.name(), stored.as_ref()) {
+                Ok(field) => field,
+                Err(_) => return,
+            },
+        };
+        self.prune(&filter.simplify().conjuncts(), &root, &stored);
+    }
+
+    /// Keep only the row groups the bound conjuncts could find a row in.
+    fn prune(&mut self, conjuncts: &[crate::Filter], root: &Field, stored: &Schema) {
+        use parquet::arrow::arrow_reader::statistics::StatisticsConverter;
+
+        let bound: Vec<crate::expression::Bound> = conjuncts
+            .iter()
+            .filter_map(|conjunct| conjunct.bind(root).ok())
+            .collect();
+        if bound.is_empty() {
+            return;
+        }
+        let groups = self.metadata.metadata().row_groups();
+        let kept: Vec<usize> = match &self.row_groups {
+            Some(kept) => kept.clone(),
+            None => (0..groups.len()).collect(),
+        };
+        let parquet_schema = self.metadata.parquet_schema();
+        let mut names: Vec<String> = conjuncts.iter().flat_map(crate::Filter::columns).collect();
+        names.dedup();
+        let mut columns = Vec::new();
+        for name in names {
+            let Some((index, declared)) = stored_column(root, stored, &name) else {
+                continue;
+            };
+            if columns
+                .iter()
+                .any(|(field, _, _, _): &(Field, _, _, _)| field.name() == declared.name())
+            {
+                continue;
+            }
+            let Ok(converter) =
+                StatisticsConverter::try_new(stored.field(index).name(), stored, parquet_schema)
+            else {
+                continue;
+            };
+            // A count the writer did not record is unknown, never zero: an
+            // `is null` must not prune a group that may hold nulls.
+            let converter = converter.with_missing_null_counts_as_zero(false);
+            let chosen = || kept.iter().filter_map(|index| groups.get(*index));
+            let (Ok(minimums), Ok(maximums), Ok(nulls)) = (
+                converter.row_group_mins(chosen()),
+                converter.row_group_maxes(chosen()),
+                converter.row_group_null_counts(chosen()),
+            ) else {
+                continue;
+            };
+            columns.push((declared.with_nullable(true), minimums, maximums, nulls));
+        }
+
+        let bound_at = |field: &Field, values: &arrow_array::ArrayRef, position: usize| {
+            use arrow_array::Array as _;
+            if values.is_null(position) {
+                return None;
+            }
+            crate::arrow::scalar_value(field, values.slice(position, 1).as_ref())
+                .ok()
+                .filter(|value| !value.is_null())
+        };
+        let mut survivors = Vec::with_capacity(kept.len());
+        for (position, index) in kept.iter().enumerate() {
+            let Some(group) = groups.get(*index) else {
+                continue;
+            };
+            let mut bounds = crate::expression::Bounds::new(u64::try_from(group.num_rows()).ok());
+            for (field, minimums, maximums, nulls) in &columns {
+                use arrow_array::Array as _;
+                bounds = bounds.with_column(
+                    field.name(),
+                    bound_at(field, minimums, position),
+                    bound_at(field, maximums, position),
+                    (!nulls.is_null(position)).then(|| nulls.value(position)),
+                );
+            }
+            if bound
+                .iter()
+                .all(|conjunct| conjunct.statistics_prune(&bounds))
+            {
+                survivors.push(*index);
+            }
+        }
+        if survivors.len() < kept.len() {
+            self.row_groups = Some(survivors);
+        }
+    }
+
     /// A reader builder over these bytes, sharing them rather than copying.
     fn builder(&self) -> ParquetRecordBatchReaderBuilder<Bytes> {
         let builder = ParquetRecordBatchReaderBuilder::new_with_metadata(
@@ -853,6 +975,25 @@ impl ParquetSource {
             None => builder,
         }
     }
+}
+
+/// The stored root column a filter column reads, with the field the filter
+/// reads it as - when it is stored as that type, and only then.
+fn stored_column(root: &Field, stored: &Schema, name: &str) -> Option<(usize, Field)> {
+    let declared = root
+        .fields()
+        .iter()
+        .find(|child| child.name().eq_ignore_ascii_case(name))?;
+    let (index, column) = stored
+        .fields()
+        .iter()
+        .enumerate()
+        .find(|(_, column)| column.name().eq_ignore_ascii_case(declared.name()))?;
+    declared
+        .clone()
+        .into_arrow_field()
+        .is_ok_and(|filtered| filtered.data_type() == column.data_type())
+        .then(|| (index, declared.clone()))
 }
 
 /// Open a reader builder over a handle's complete bytes.
@@ -1577,7 +1718,7 @@ impl<H: IOBase> crate::IOMedia for Parquet<H> {
 }
 
 impl<H: IOBase> IOBase for Parquet<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_all_shared, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 

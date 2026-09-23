@@ -12,6 +12,11 @@ the PyArrow side, and ``IOBase.read_arrow_reader`` drained whole
 are PyArrow's time over this crate's, so above one is in this crate's favor:
 whole table against whole table, stream against stream.
 
+The filtered cases read one 4M-row file of 32 row groups through a filter:
+``read_table(filters=...)`` on one side, a ``filter`` string on the other.
+On a sorted key both skip the row groups the footer statistics rule out;
+on the other columns every row group is read and its rows tested.
+
 The write cases time ``pyarrow.parquet.write_table`` against
 ``IOBase.overwrite_arrow_table`` for the same table, Zstandard level 1 - both
 libraries' default - each into a file of its own.
@@ -39,6 +44,18 @@ import pyarrow.parquet as pq
 from yggdryl import IOBase
 
 SYMBOLS = np.array(["AAPL", "MSFT", "GOOG", "AMZN", "NVDA", "META", "TSLA", "BP"])
+
+# One filter string each, beside the PyArrow filter that keeps the same rows.
+FILTERS = [
+    ("id < 100,000, 1 row group of 32", "id < 100000", [("id", "<", 100_000)]),
+    (
+        "id in 2.0M..2.1M, 1 row group of 32",
+        "id between 2000000 and 2100000",
+        [("id", ">=", 2_000_000), ("id", "<=", 2_100_000)],
+    ),
+    ("price > 990, 1% of rows", "price > 990.0", [("price", ">", 990.0)]),
+    ("symbol = 'AAPL', 12.5% of rows", "symbol = 'AAPL'", [("symbol", "=", "AAPL")]),
+]
 VENUES = np.array(["XNAS", "XNYS", "ARCX"])
 
 
@@ -146,6 +163,26 @@ def main() -> None:
                 f"{name:38} {table_time * 1e3:8.2f} ms {iter_time * 1e3:10.2f} ms "
                 f"{all_time * 1e3:7.2f} ms {stream_time * 1e3:7.2f} ms "
                 f"{table_time / all_time:8.2f} {iter_time / stream_time:9.2f}",
+                flush=True,
+            )
+        print()
+        print(f"{'filtered read':38} {'read_table':>11} {'read_all':>13} {'x':>8}")
+        path = root / "filtered.parquet"
+        pq.write_table(reads[5][1], path, compression="zstd", row_group_size=1 << 17)
+        for name, text, filters in FILTERS:
+            if arguments.filter not in name:
+                continue
+            expected = pq.read_table(path, filters=filters)
+            actual = IOBase(path).read_arrow_reader(filter=text).read_all()
+            if actual.num_rows != expected.num_rows:
+                raise SystemExit(f"{name}: the two readers disagree on the rows the filter keeps")
+            their_time = _best(lambda: pq.read_table(path, filters=filters), arguments.repeat)
+            our_time = _best(
+                lambda: IOBase(path).read_arrow_reader(filter=text).read_all(), arguments.repeat
+            )
+            print(
+                f"{name:38} {their_time * 1e3:8.2f} ms {our_time * 1e3:10.2f} ms "
+                f"{their_time / our_time:8.2f}",
                 flush=True,
             )
         print()

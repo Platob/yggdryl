@@ -1829,7 +1829,7 @@ impl<H: IOBase> crate::IOMedia for Avro<H> {
 }
 
 impl<H: IOBase> IOBase for Avro<H> {
-    crate::delegate_iobase!(handle: pread, read_all_bytes, read_range_bytes, pstream_bytes,
+    crate::delegate_iobase!(handle: pread, read_all_bytes, read_all_shared, read_range_bytes, pstream_bytes,
         size, capacity, reserve, uri, url,
         bound_location, mtime, media_type, set_media_type, flush, parent, child_by_path, ls, kind);
 

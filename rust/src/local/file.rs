@@ -259,9 +259,9 @@ fn map_view(file: &File, length: usize) -> Result<memmap2::Mmap> {
     // `LocalFile::read_all_shared`: the view reads the file's pages in place,
     // so a truncation below `length` while it lives turns a later access into
     // SIGBUS. The file handle is only borrowed to establish the mapping, which
-    // then stands on its own. The pages are populated in the one call rather
-    // than faulted in one at a time by the decode that reads every one of them.
-    unsafe { memmap2::MmapOptions::new().len(length).populate().map(file) }.map_err(Error::Io)
+    // then stands on its own. Pages are mapped as they are touched, never up
+    // front: a pruned or projected read touches a fraction of them.
+    unsafe { memmap2::MmapOptions::new().len(length).map(file) }.map_err(Error::Io)
 }
 
 /// Report a poisoned lock without panicking a caller.
