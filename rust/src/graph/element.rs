@@ -3,7 +3,7 @@
 //! Two traits: what an element answers about itself, what it takes, and
 //! the two readings every element has - following another, and merging with
 //! another statement of itself. What an element that stands in a market
-//! answers is [`Market`](super::Market) and [`MarketOperation`](super::MarketOperation). The identity is the crate's own [`Uuid`], so
+//! answers is [`Market`](super::Market) and [`Operation`](super::Operation). The identity is the crate's own [`Uuid`], so
 //! an element is addressed the way every identified value in the crate is,
 //! and a predecessor or a cross element is named by the same
 //! identity rather than by a reference, so an element can name one it does
@@ -44,7 +44,7 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// own identity where none is, [`Self::cross_uuid`], so every element stands
 /// in exactly one chain. The names an operation goes by elsewhere - an
 /// order's `ClOrdID` and `OrderID`, a trade's `ExecID` - are the
-/// operation's own facts, [`MarketOperation::get_altids`](super::MarketOperation::get_altids),
+/// operation's own facts, [`Operation::get_altids`](super::Operation::get_altids),
 /// not the node's.
 /// Every fact is read and written through the trait, so a store or a walk
 /// that only knows an element as `dyn Element` can still place it; every

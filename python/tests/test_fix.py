@@ -44,7 +44,7 @@ from yggdryl.fix import (
     FixMessages,
     FixMsg,
     FixRegistry,
-    MarketOperationEventData,
+    OperationEventData,
     MsgType,
     fix_crate_fields,
     fix_schema,
@@ -2216,7 +2216,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert capture.msgsesseventid is None
 
     event = message.event()
-    assert isinstance(event, MarketOperationEventData)
+    assert isinstance(event, OperationEventData)
     # The transaction stands one second from the sending clock, which is
     # exactly the codec's default delay, so the two are the one event said
     # twice and the more exact saying of it dates the message.

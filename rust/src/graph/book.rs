@@ -10,7 +10,7 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{
     BookRef, Element, Event, Market, MarketData, MarketEvent, MarketEventData, MarketOperation,
-    MarketOperationEvent, MdUpdateAction, Operation, OperationKind, Trade,
+    MdUpdateAction, Operation, OperationEvent, OperationKind, Trade,
 };
 use crate::{Ccy, Decimal18, Error, Result, Side, State, Unit, Uuid};
 
@@ -29,7 +29,7 @@ const ORDER_ID: &str = "ORDERID";
 #[derive(Clone, Debug, PartialEq)]
 pub enum BookInput {
     /// An order, a quote or an execution.
-    Operation(Operation),
+    MarketOperation(MarketOperation),
     /// A composite trade: its executions join the book's.
     Trade(Trade),
     /// A full-snapshot control for one scope, carrying no entry of its own.
@@ -41,7 +41,7 @@ impl BookInput {
     #[must_use]
     pub fn event(&self) -> &MarketEventData {
         match self {
-            Self::Operation(operation) => operation.data().event(),
+            Self::MarketOperation(operation) => operation.data().event(),
             Self::Trade(trade) => trade.data().event(),
             Self::Snapshot(control) => &control.event,
         }
@@ -58,7 +58,7 @@ impl BookInput {
     #[must_use]
     pub fn book(&self) -> Option<&BookRef> {
         match self {
-            Self::Operation(operation) => operation.book(),
+            Self::MarketOperation(operation) => operation.book(),
             Self::Trade(_) => None,
             Self::Snapshot(control) => Some(&control.book),
         }
@@ -81,9 +81,9 @@ impl BookInput {
     }
 }
 
-impl From<Operation> for BookInput {
-    fn from(operation: Operation) -> Self {
-        Self::Operation(operation)
+impl From<MarketOperation> for BookInput {
+    fn from(operation: MarketOperation) -> Self {
+        Self::MarketOperation(operation)
     }
 }
 
@@ -156,7 +156,7 @@ impl SnapshotPartition {
         }
     }
 
-    fn of(operation: &Operation) -> Self {
+    fn of(operation: &MarketOperation) -> Self {
         Self::at(operation.get_ticker(), operation.scope())
     }
 
@@ -181,7 +181,7 @@ struct BookExpiration {
 }
 
 impl LiveKey {
-    fn of(operation: &Operation) -> Self {
+    fn of(operation: &MarketOperation) -> Self {
         Self {
             identity: operation.get_crossuuid(),
             symbol: operation.get_ticker().map(SmolStr::new),
@@ -218,13 +218,13 @@ impl BookPrice {
 #[derive(Clone, Debug)]
 pub struct BookSide {
     element: MarketData,
-    levels: BTreeMap<BookPrice, Vec<Arc<Operation>>>,
+    levels: BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
     /// Derived from `levels` and kept in step by every change, shared with
     /// clones until one changes: a book emitted per instant copies no index,
     /// and the side the walk keeps changes its own in place once the
     /// emitted book is gone.
     index: Arc<SideIndex>,
-    deltas: Vec<Operation>,
+    deltas: Vec<MarketOperation>,
 }
 
 /// Two sides are equal by what they hold; the index is derived from it.
@@ -245,7 +245,7 @@ struct SideIndex {
 
 impl SideIndex {
     /// Records a live entry under the id it states.
-    fn record(&mut self, operation: &Operation, identity: &LiveKey) {
+    fn record(&mut self, operation: &MarketOperation, identity: &LiveKey) {
         let Some(key) = EntryKey::of(operation) else {
             return;
         };
@@ -258,7 +258,7 @@ impl SideIndex {
     }
 
     /// Forgets a live entry leaving the side under the id it states.
-    fn forget(&mut self, operation: &Operation) {
+    fn forget(&mut self, operation: &MarketOperation) {
         let Some(key) = EntryKey::of(operation) else {
             return;
         };
@@ -283,7 +283,7 @@ struct EntryKey {
 }
 
 impl EntryKey {
-    fn of(operation: &Operation) -> Option<Self> {
+    fn of(operation: &MarketOperation) -> Option<Self> {
         let entry = operation.get_altids().get(ENTRY_ID)?;
         Some(Self {
             partition: SnapshotPartition::of(operation),
@@ -304,13 +304,13 @@ struct RemovedLive {
     identity: LiveKey,
     price: BookPrice,
     index: usize,
-    operation: Arc<Operation>,
+    operation: Arc<MarketOperation>,
 }
 
 struct SideJournal {
     element: MarketData,
     deltas_len: usize,
-    cleared_deltas: Option<Vec<Operation>>,
+    cleared_deltas: Option<Vec<MarketOperation>>,
     inserted: Vec<LiveKey>,
     removed: Vec<RemovedLive>,
 }
@@ -371,8 +371,8 @@ impl BookSide {
     /// the serialized deltas as fresh mutations.
     pub(crate) fn from_parts(
         element: MarketData,
-        live: Vec<Operation>,
-        deltas: Vec<Operation>,
+        live: Vec<MarketOperation>,
+        deltas: Vec<MarketOperation>,
     ) -> Result<Self> {
         Self::from_shared_parts(element, live.into_iter().map(Arc::new).collect(), deltas)
     }
@@ -381,8 +381,8 @@ impl BookSide {
     /// rebuilt around its own entries keeps rather than copies.
     fn from_shared_parts(
         element: MarketData,
-        live: Vec<Arc<Operation>>,
-        deltas: Vec<Operation>,
+        live: Vec<Arc<MarketOperation>>,
+        deltas: Vec<MarketOperation>,
     ) -> Result<Self> {
         if !element.get_side().is_bid() && !element.get_side().is_ask() {
             return Err(invalid(
@@ -440,7 +440,7 @@ impl BookSide {
     }
 
     /// The live orders and quotes, best price first.
-    pub fn live(&self) -> impl Iterator<Item = &Operation> {
+    pub fn live(&self) -> impl Iterator<Item = &MarketOperation> {
         self.levels
             .values()
             .flat_map(|level| level.iter().map(Arc::as_ref))
@@ -448,7 +448,7 @@ impl BookSide {
 
     /// Deltas applied since this side was last cleared.
     #[must_use]
-    pub fn deltas(&self) -> &[Operation] {
+    pub fn deltas(&self) -> &[MarketOperation] {
         &self.deltas
     }
 
@@ -485,7 +485,7 @@ impl BookSide {
     }
 
     /// Atomically applies one order or quote delta.
-    pub fn add_operation(&mut self, operation: Operation) -> Result<()> {
+    pub fn add_operation(&mut self, operation: MarketOperation) -> Result<()> {
         let mut journal = SideJournal::new(self, false);
         let result = self
             .apply_inner(operation, None, Some(&mut journal))
@@ -497,7 +497,12 @@ impl BookSide {
         Ok(())
     }
 
-    fn validate_component(&self, operation: &Operation, path: &str, live: bool) -> Result<()> {
+    fn validate_component(
+        &self,
+        operation: &MarketOperation,
+        path: &str,
+        live: bool,
+    ) -> Result<()> {
         if !matches!(
             operation.kind(),
             OperationKind::Order | OperationKind::Quote
@@ -533,14 +538,14 @@ impl BookSide {
         Ok(())
     }
 
-    fn apply(&mut self, operation: Operation) -> Result<()> {
+    fn apply(&mut self, operation: MarketOperation) -> Result<()> {
         self.apply_inner(operation, None, None)
     }
 
     fn apply_inner(
         &mut self,
-        mut operation: Operation,
-        other_side: Option<&Operation>,
+        mut operation: MarketOperation,
+        other_side: Option<&MarketOperation>,
         mut journal: Option<&mut SideJournal>,
     ) -> Result<()> {
         if !matches!(
@@ -678,7 +683,11 @@ impl BookSide {
                     ));
                 }
             };
-            if partial {
+            // A change or an overlay inherits what it leaves unstated, and
+            // so does a delete: it names the entry it removes, and a feed
+            // routinely states no price on it, so the terminal delta carries
+            // the level it takes out.
+            if partial || action == Some(MdUpdateAction::Delete) {
                 if entry_px_of(&operation).is_none() {
                     operation.set_price(previous.get_price());
                 }
@@ -700,7 +709,7 @@ impl BookSide {
                     })
             };
             operation =
-                Operation::new(kind, data).expect("a live predecessor is an order or quote");
+                MarketOperation::new(kind, data).expect("a live predecessor is an order or quote");
             operation.set_book(book);
             operation.finalize();
         }
@@ -746,7 +755,7 @@ impl BookSide {
         Ok(())
     }
 
-    fn identity_of(&self, operation: &Operation) -> LiveKey {
+    fn identity_of(&self, operation: &MarketOperation) -> LiveKey {
         let own = LiveKey::of(operation);
         if let Some(identity) = self.referenced_identity_of(operation) {
             return identity;
@@ -761,14 +770,14 @@ impl BookSide {
             .unwrap_or(own)
     }
 
-    fn referenced_identity_of(&self, operation: &Operation) -> Option<LiveKey> {
+    fn referenced_identity_of(&self, operation: &MarketOperation) -> Option<LiveKey> {
         operation
             .get_altids()
             .get(ENTRY_REF_ID)
             .and_then(|wanted| self.find_entry_identity(operation, wanted))
     }
 
-    fn find_entry_identity(&self, operation: &Operation, wanted: &str) -> Option<LiveKey> {
+    fn find_entry_identity(&self, operation: &MarketOperation, wanted: &str) -> Option<LiveKey> {
         let key = EntryKey {
             partition: SnapshotPartition::of(operation),
             entry: SmolStr::new(wanted),
@@ -788,7 +797,7 @@ impl BookSide {
         &mut self,
         price: BookPrice,
         at: usize,
-        operation: Arc<Operation>,
+        operation: Arc<MarketOperation>,
         identity: LiveKey,
     ) {
         let index = Arc::make_mut(&mut self.index);
@@ -797,7 +806,7 @@ impl BookSide {
         self.levels.entry(price).or_default().insert(at, operation);
     }
 
-    fn get(&self, identity: &LiveKey) -> Option<&Operation> {
+    fn get(&self, identity: &LiveKey) -> Option<&MarketOperation> {
         let price = self.index.positions.get(identity)?;
         self.levels
             .get(price)?
@@ -827,7 +836,7 @@ impl BookSide {
         })
     }
 
-    fn remove(&mut self, identity: &LiveKey) -> Option<Arc<Operation>> {
+    fn remove(&mut self, identity: &LiveKey) -> Option<Arc<MarketOperation>> {
         self.take_removed(identity).map(|removed| removed.operation)
     }
 
@@ -842,7 +851,7 @@ impl BookSide {
 
     fn remove_range(
         &mut self,
-        operation: &Operation,
+        operation: &MarketOperation,
         position: usize,
         through: bool,
         mut journal: Option<&mut SideJournal>,
@@ -889,7 +898,7 @@ impl BookSide {
 
     fn replace_membership(
         &mut self,
-        snapshot: Vec<Operation>,
+        snapshot: Vec<MarketOperation>,
         partitions: &BTreeSet<SnapshotPartition>,
     ) -> Result<()> {
         let mut live = self
@@ -946,9 +955,9 @@ impl BookSide {
 
 fn finalize_side_element(
     element: &mut MarketData,
-    levels: &BTreeMap<BookPrice, Vec<Arc<Operation>>>,
+    levels: &BTreeMap<BookPrice, Vec<Arc<MarketOperation>>>,
     live_len: usize,
-    deltas: &[Operation],
+    deltas: &[MarketOperation],
 ) {
     element.fill_market();
     element.sync_cross();
@@ -1105,7 +1114,7 @@ pub struct Book {
     event: MarketEventData,
     bid: BookSide,
     ask: BookSide,
-    executions: Vec<Operation>,
+    executions: Vec<MarketOperation>,
     snapshots: BTreeSet<SnapshotPartition>,
 }
 
@@ -1114,7 +1123,7 @@ struct BookJournal {
     bid: SideJournal,
     ask: SideJournal,
     executions_len: usize,
-    cleared_executions: Option<Vec<Operation>>,
+    cleared_executions: Option<Vec<MarketOperation>>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -1219,7 +1228,7 @@ impl Book {
         event: MarketEventData,
         bid: BookSide,
         ask: BookSide,
-        executions: Vec<Operation>,
+        executions: Vec<MarketOperation>,
         snapshots: BTreeSet<SnapshotPartition>,
     ) -> Result<Self> {
         let mut book = Self {
@@ -1301,7 +1310,7 @@ impl Book {
     }
 
     #[must_use]
-    pub fn executions(&self) -> &[Operation] {
+    pub fn executions(&self) -> &[MarketOperation] {
         &self.executions
     }
 
@@ -1414,8 +1423,8 @@ impl Book {
 
     fn replace_snapshot_membership(
         &mut self,
-        bid: Vec<Operation>,
-        ask: Vec<Operation>,
+        bid: Vec<MarketOperation>,
+        ask: Vec<MarketOperation>,
         controls: &[BookControl],
         partitions: &BTreeSet<SnapshotPartition>,
         unix: i64,
@@ -1492,7 +1501,9 @@ impl Book {
         )?;
         let mut bounds = EventBounds::of(input.event());
         let changed = match input {
-            BookInput::Operation(execution) if execution.kind() == OperationKind::Execution => {
+            BookInput::MarketOperation(execution)
+                if execution.kind() == OperationKind::Execution =>
+            {
                 self.executions.push(execution);
                 ChangedSides::default()
             }
@@ -1501,7 +1512,7 @@ impl Book {
                 ChangedSides::default()
             }
             BookInput::Snapshot(_) => ChangedSides::default(),
-            BookInput::Operation(operation) if operation.get_side().is_bid() => {
+            BookInput::MarketOperation(operation) if operation.get_side().is_bid() => {
                 let opposite = self.ask.identity_of(&operation);
                 let previous = self.ask.get(&opposite);
                 let ask = if let Some(journal) = journal {
@@ -1520,7 +1531,7 @@ impl Book {
                 );
                 ChangedSides { bid: true, ask }
             }
-            BookInput::Operation(operation) if operation.get_side().is_ask() => {
+            BookInput::MarketOperation(operation) if operation.get_side().is_ask() => {
                 let opposite = self.bid.identity_of(&operation);
                 let previous = self.bid.get(&opposite);
                 let bid = if let Some(journal) = journal {
@@ -1539,7 +1550,7 @@ impl Book {
                 );
                 ChangedSides { bid, ask: true }
             }
-            BookInput::Operation(operation) => {
+            BookInput::MarketOperation(operation) => {
                 return Err(invalid(
                     "$.operation.side",
                     format_smolstr!(
@@ -1656,7 +1667,7 @@ fn finalize_book_event(
     event: &mut MarketEventData,
     bid: &MarketData,
     ask: &MarketData,
-    executions: &[Operation],
+    executions: &[MarketOperation],
     snapshots: &BTreeSet<SnapshotPartition>,
 ) {
     event.sync_cross();
@@ -1679,7 +1690,7 @@ fn finalize_book_event(
     event.finalized(digest.finish());
 }
 
-fn canonicalize_executions(executions: &mut Vec<Operation>) {
+fn canonicalize_executions(executions: &mut Vec<MarketOperation>) {
     executions.sort_by_key(Element::get_curruuid);
     executions.dedup_by_key(|execution| execution.get_curruuid());
 }
@@ -2034,7 +2045,7 @@ where
             expired
                 .entry(expiration.book)
                 .or_default()
-                .push(BookInput::Operation(operation));
+                .push(BookInput::MarketOperation(operation));
         }
         expired
     }
@@ -2098,8 +2109,8 @@ where
 
             let mut raw = self.take_expirations(unix);
             let mut touched = raw.keys().cloned().collect::<BTreeSet<_>>();
-            let mut snapshot_bid: BTreeMap<String, Vec<Operation>> = BTreeMap::new();
-            let mut snapshot_ask: BTreeMap<String, Vec<Operation>> = BTreeMap::new();
+            let mut snapshot_bid: BTreeMap<String, Vec<MarketOperation>> = BTreeMap::new();
+            let mut snapshot_ask: BTreeMap<String, Vec<MarketOperation>> = BTreeMap::new();
             let mut snapshot_controls: BTreeMap<String, Vec<BookControl>> = BTreeMap::new();
             let mut snapshot_partitions: BTreeMap<String, BTreeSet<SnapshotPartition>> =
                 BTreeMap::new();
@@ -2131,7 +2142,7 @@ where
                     }
                     snapshot_views.insert(symbol.clone());
                     match input {
-                        BookInput::Operation(operation)
+                        BookInput::MarketOperation(operation)
                             if matches!(
                                 operation.kind(),
                                 OperationKind::Order | OperationKind::Quote
@@ -2172,7 +2183,7 @@ where
                                 BookInput::Trade(trade) => {
                                     trade.rebase_currunix(unix);
                                 }
-                                BookInput::Operation(operation) => {
+                                BookInput::MarketOperation(operation) => {
                                     operation.set_currunix(unix);
                                     operation.finalize();
                                 }
@@ -2292,7 +2303,7 @@ fn effective_unix(input: &BookInput) -> i64 {
 
 fn is_execution_input(input: &BookInput) -> bool {
     match input {
-        BookInput::Operation(operation) => operation.kind() == OperationKind::Execution,
+        BookInput::MarketOperation(operation) => operation.kind() == OperationKind::Execution,
         BookInput::Trade(_) => true,
         BookInput::Snapshot(_) => false,
     }
@@ -2349,22 +2360,22 @@ fn merge_book_side(
     BookSide::from_parts(element, live, deltas).ok()
 }
 
-fn position_of(operation: &Operation) -> Option<u64> {
+fn position_of(operation: &MarketOperation) -> Option<u64> {
     operation
         .book()
         .and_then(|book| book.position)
         .map(u64::from)
 }
 
-fn entry_px_of(operation: &Operation) -> Option<Decimal18> {
+fn entry_px_of(operation: &MarketOperation) -> Option<Decimal18> {
     operation.book().and_then(|book| book.entry_px)
 }
 
-fn entry_size_of(operation: &Operation) -> Option<Decimal18> {
+fn entry_size_of(operation: &MarketOperation) -> Option<Decimal18> {
     operation.book().and_then(|book| book.entry_size)
 }
 
-fn range_position(operation: &Operation) -> Result<usize> {
+fn range_position(operation: &MarketOperation) -> Result<usize> {
     let Some(position) = operation.book().and_then(|book| book.position) else {
         return Err(invalid(
             "$.operation.book.mdentrypositionno",
@@ -2382,7 +2393,7 @@ fn range_position(operation: &Operation) -> Result<usize> {
         })
 }
 
-fn same_partition(left: &Operation, right: &Operation) -> bool {
+fn same_partition(left: &MarketOperation, right: &MarketOperation) -> bool {
     left.scope() == right.scope() && left.get_ticker() == right.get_ticker()
 }
 

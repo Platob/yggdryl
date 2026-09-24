@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use yggdryl::fix::FIXENTRIES_COLUMN;
 
-use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{

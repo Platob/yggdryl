@@ -7,7 +7,7 @@
 //! answers through them, including as a trait object, and that following,
 //! merging and syncing fold the lifecycle the way the traits say - over the
 //! crate's own holders, [`MarketData`], [`MarketEventData`],
-//! [`MarketOperationData`] and [`MarketOperationEventData`], and over a
+//! [`OperationData`] and [`OperationEventData`], and over a
 //! foreign type that implements only the signatures.
 
 use std::collections::BTreeMap;
@@ -15,8 +15,8 @@ use std::hash::Hasher;
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    Element, Event, Lane, Market, MarketData, MarketEvent, MarketEventData, MarketOperation,
-    MarketOperationData, MarketOperationEvent, MarketOperationEventData,
+    Element, Event, Lane, Market, MarketData, MarketEvent, MarketEventData, Operation,
+    OperationData, OperationEvent, OperationEventData,
 };
 use yggdryl::idmap::IdMap;
 use yggdryl::securityid::{SecType, SecurityId};
@@ -327,13 +327,13 @@ fn trade(ms: i64) -> MarketEventData {
 /// The same trade as an operation, stated and not yet finalized, so the
 /// lanes it implies are still empty and a case about filling them starts
 /// from nothing.
-fn stated_operation(ms: i64) -> MarketOperationEventData {
-    MarketOperationEventData::from(stated(ms))
+fn stated_operation(ms: i64) -> OperationEventData {
+    OperationEventData::from(stated(ms))
 }
 
 /// The same operation, finalized: the lane its side implies is filled,
 /// because finalizing fills.
-fn operation(ms: i64) -> MarketOperationEventData {
+fn operation(ms: i64) -> OperationEventData {
     let mut operation = stated_operation(ms);
     operation.finalize();
     operation
@@ -381,7 +381,7 @@ fn an_element_answers_the_identities_codes_and_sources_it_was_given() {
 
 #[test]
 fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
-    let mut operation = MarketOperationData::default();
+    let mut operation = OperationData::default();
     assert!(operation.get_altids().is_empty(), "no system named it yet");
     assert!(
         operation
@@ -436,7 +436,7 @@ fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
     assert_eq!(operation.get_altids().get("ACCOUNT"), None);
     // And a walk written against the signatures alone reads them the same
     // way, whatever holder stands behind them.
-    fn execid<E: MarketOperation + ?Sized>(held: &E) -> Option<&str> {
+    fn execid<E: Operation + ?Sized>(held: &E) -> Option<&str> {
         held.get_altids().get("EXECID")
     }
     assert_eq!(execid(&operation), Some("E-1"));
@@ -516,10 +516,10 @@ fn an_event_is_after_another_by_its_instant_and_a_market_element_states_no_order
     let stranger = MarketData::default();
     assert!(!stranger.is_after(&first) && !stranger.is_before(&first));
     // An operation entry states no order either.
-    let mut entry = MarketOperationData::default();
+    let mut entry = OperationData::default();
     entry.set_crosscode("FIRST".to_owned());
     entry.finalize();
-    let next = MarketOperationData::default()
+    let next = OperationData::default()
         .with_previous(&entry)
         .expect("an entry follows another");
     assert!(!next.is_after(&entry) && !entry.is_before(&next));
@@ -714,7 +714,7 @@ fn following_carries_the_lifecycle_forward() {
     // does not state them, and its own word stays where it does; a name
     // that is not the order's own - the client's, an execution's - names
     // one statement and travels along no chain.
-    let mut named = MarketOperationEventData::at(at(10));
+    let mut named = OperationEventData::at(at(10));
     named.set_crosscode("O-100".to_owned());
     named
         .insert_altid("ORDERID", "O-1")
@@ -726,7 +726,7 @@ fn following_carries_the_lifecycle_forward() {
         .insert_accountid("ACCOUNT", "ACC-1")
         .expect("a plain holder");
     named.finalize();
-    let mut next = MarketOperationEventData::at(at(20));
+    let mut next = OperationEventData::at(at(20));
     next.set_crosscode("O-100".to_owned());
     next.insert_altid("EXECID", "E-2").expect("a plain holder");
     next.finalize();
@@ -740,7 +740,7 @@ fn following_carries_the_lifecycle_forward() {
         Some("ACC-1"),
         "the accounts carry whole"
     );
-    let mut own = MarketOperationEventData::at(at(20));
+    let mut own = OperationEventData::at(at(20));
     own.set_crosscode("O-100".to_owned());
     own.insert_altid("ORDERID", "O-2").expect("a plain holder");
     own.finalize();
@@ -1623,7 +1623,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
         )
     );
     assert_eq!(
-        readings(&MarketOperationEventData::from(next.clone())).4,
+        readings(&OperationEventData::from(next.clone())).4,
         Some(decimal("82.5")),
         "and an operation event answers the same signatures"
     );
@@ -1906,7 +1906,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
 
     // Only a stated fact fills a lane: no price, no quantity, no currency
     // and no unit are nothing to state on the lane either.
-    let mut unstated = MarketOperationData::default();
+    let mut unstated = OperationData::default();
     unstated.set_side(Side::read("Buy").expect("a side"));
     unstated.fill_lanes();
     assert_eq!(unstated.get_bid(), None);
@@ -2030,7 +2030,7 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
         operation.digest_operation_event().as_u64(),
         operation.digest_market_event().as_u64()
     );
-    let entry = MarketOperationData::from(&operation);
+    let entry = OperationData::from(&operation);
     assert_eq!(
         entry.digest_operation().as_u64(),
         operation.digest_operation().as_u64()
@@ -2154,7 +2154,7 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
 
     // An operation entry's identity is its content too, its operation facts
     // included: the same element named an order is another entry.
-    let mut entry = MarketOperationData::from(element.clone());
+    let mut entry = OperationData::from(element.clone());
     entry.finalize();
     assert_eq!(entry.get_currhashcode(), entry.digest_operation().as_u64());
     assert_eq!(
@@ -2282,7 +2282,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     // The operation holders convert the same way, their own facts with
     // them: an event gains the operation facts stating none, an operation
     // event drops its clocks into an entry and dates again from it.
-    let mut operation = MarketOperationEventData::from(event.clone());
+    let mut operation = OperationEventData::from(event.clone());
     assert_eq!(operation.event(), &event);
     assert_eq!(operation.market(), &element);
     assert!(operation.get_altids().is_empty());
@@ -2301,7 +2301,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
         event
     });
     let entry = operation.clone().into_entry();
-    assert_eq!(entry, MarketOperationData::from(&operation));
+    assert_eq!(entry, OperationData::from(&operation));
     assert_eq!(entry.get_altids().get("ORDERID"), Some("O-100"));
     assert_eq!(entry.get_tif().map(TimeInForce::as_str), Some("0"));
     assert_eq!(entry.get_tradable(), Some(true));
@@ -2323,7 +2323,7 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
         redated.get_curruuid(),
         redated.time_uuid().expect("an identity")
     );
-    assert_eq!(MarketOperationEventData::from(&redated), redated);
+    assert_eq!(OperationEventData::from(&redated), redated);
     assert_eq!(entry.clone().into_market(), MarketData::from(&entry));
 }
 
@@ -2333,7 +2333,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     // last executed price and quantity are those facts and nothing more.
     // The price and the quantity it states stay none, and no lane is
     // filled from what it does not state.
-    let mut fill = MarketOperationEventData::at(at(10));
+    let mut fill = OperationEventData::at(at(10));
     fill.set_side(Side::read("Buy").expect("a side"));
     fill.set_lastpx(Some(decimal("82.5")));
     fill.set_lastqty(Some(Decimal18::from_int(300)));
@@ -2381,7 +2381,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
     // about: the operation's lane rule reads what the side's own lane
     // quotes, and the market ladder reads no lane at all. Nothing is
     // invented for a side that takes neither.
-    let mut quote = MarketOperationEventData::at(at(40));
+    let mut quote = OperationEventData::at(at(40));
     quote.set_side(Side::read("Sell").expect("a side"));
     quote.set_ask(Some(Lane {
         price: Some(Decimal18::from_int(85)),
@@ -2445,7 +2445,7 @@ fn filling_never_invents_a_price_or_a_quantity_the_element_did_not_state() {
 #[test]
 fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     // A bid alone is a party willing to pay: a buy at the bid.
-    let mut bid = MarketOperationEventData::at(at(10));
+    let mut bid = OperationEventData::at(at(10));
     assert_eq!(bid.get_side(), Side::Unknown);
     bid.set_bid(Some(Lane {
         price: Some(decimal("101.5")),
@@ -2463,7 +2463,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     assert_eq!(bid.get_ask(), None, "the other lane stays empty");
 
     // An offer alone is a party willing to be paid: a sell at the offer.
-    let mut ask = MarketOperationEventData::at(at(20));
+    let mut ask = OperationEventData::at(at(20));
     ask.set_ask(Some(Lane {
         price: Some(decimal("102")),
         quantity: Some(Decimal18::from_int(50)),
@@ -2477,7 +2477,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
 
     // Any fact of a lane states it: a currency alone names the side and
     // prices the element in it, and invents no price.
-    let mut priced = MarketOperationEventData::at(at(30));
+    let mut priced = OperationEventData::at(at(30));
     priced.set_ask(Some(Lane {
         currency: Some(currency("EUR")),
         ..Lane::default()
@@ -2488,7 +2488,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     assert_eq!(priced.get_price(), None);
 
     // The FX parts of a forward price ride the lane too.
-    let mut forward = MarketOperationEventData::at(at(35));
+    let mut forward = OperationEventData::at(at(35));
     forward.set_bid(Some(Lane {
         price: Some(decimal("1.1025")),
         spotrate: Some(decimal("1.1")),
@@ -2501,7 +2501,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     assert_eq!(forward.get_forwardpoints(), Some(decimal("0.0025")));
 
     // Two lanes name no side, so nothing reads off either.
-    let mut two = MarketOperationEventData::at(at(40));
+    let mut two = OperationEventData::at(at(40));
     two.set_bid(Some(Lane {
         price: Some(decimal("101")),
         ..Lane::default()
@@ -2516,7 +2516,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
 
     // A side the element states is its own, whatever lane it quotes: a
     // cross takes no lane, so the offer it carries dates nothing either.
-    let mut cross = MarketOperationEventData::at(at(50));
+    let mut cross = OperationEventData::at(at(50));
     cross.set_side(Side::read("Cross").expect("a side"));
     cross.set_ask(Some(Lane {
         price: Some(decimal("102")),
@@ -2529,7 +2529,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     // An element pricing itself is not a quote: a trade at its last
     // executed price beside a lone bid is about the trade, and names no
     // side - so the lane is context, and the price it states stays none.
-    let mut traded = MarketOperationEventData::at(at(60));
+    let mut traded = OperationEventData::at(at(60));
     traded.set_lastpx(Some(decimal("100")));
     traded.set_bid(Some(Lane {
         price: Some(decimal("99")),
@@ -2560,7 +2560,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
 #[test]
 fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
     let quote = |ms: i64, bid: Option<&str>, ask: Option<&str>| {
-        let mut held = MarketOperationEventData::at(at(ms));
+        let mut held = OperationEventData::at(at(ms));
         held.set_crosscode("Q1".to_owned());
         held.set_bid(bid.map(|price| Lane {
             price: Some(decimal(price)),
@@ -2677,7 +2677,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
 
     // The report that answers it names none of that, and states a price and
     // a quantity of its own.
-    let mut report = MarketOperationEventData::at(at(20));
+    let mut report = OperationEventData::at(at(20));
     report.set_crosscode("O-100".to_owned());
     report.set_price(Some(Decimal18::from_int(83)));
     report.set_quantity(Some(Decimal18::from_int(400)));
@@ -2704,7 +2704,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_seqnum(), 1);
 
     // A statement of its own never gives way to the chain's.
-    let mut own = MarketOperationEventData::at(at(20));
+    let mut own = OperationEventData::at(at(20));
     own.set_crosscode("O-100".to_owned());
     own.set_tif(TimeInForce::from_spelling("ImmediateOrCancel"));
     own.set_tradable(Some(false));

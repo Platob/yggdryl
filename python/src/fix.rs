@@ -24,8 +24,8 @@ use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
-    Element, Event, Lane as CoreLane, Market, MarketOperation,
-    MarketOperationEventData as CoreMarketOperationEventData,
+    Element, Event, Lane as CoreLane, Market, Operation,
+    OperationEventData as CoreMarketOperationEventData,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
@@ -3444,7 +3444,7 @@ impl PyFixCapture {
 /// spellings; the security identifiers and the three identifier maps
 /// `dict`s in key order; a lane a `dict` of its six slots, or `None`.
 #[pyclass(
-    name = "MarketOperationEventData",
+    name = "OperationEventData",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
@@ -3765,7 +3765,7 @@ impl PyMarketOperationEventData {
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketOperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
+            "OperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
             self.inner.get_curruuid(),
             self.inner.get_currunix(),
             self.inner.get_state().as_str(),

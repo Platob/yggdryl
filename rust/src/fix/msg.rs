@@ -14,8 +14,8 @@ use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::registry::FixMap;
 use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{
-    Element, Event, Lane, Market, MarketEventData, MarketOperation, MarketOperationEvent,
-    MarketOperationEventData, Metadata,
+    Element, Event, Lane, Market, MarketEventData, Metadata, Operation, OperationEvent,
+    OperationEventData,
 };
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
@@ -178,7 +178,7 @@ pub struct FixMsg {
     ///
     /// Boxed, because the event is forty facts and a message is moved
     /// through every stream by value.
-    event: Box<MarketOperationEventData>,
+    event: Box<OperationEventData>,
     /// The standard header, typed.
     header: Box<FixHeader>,
     /// What the line said about the capture it was written for, typed: a
@@ -671,7 +671,7 @@ impl FixMsg {
         let held = value.as_sequence().ok_or_else(|| {
             identity::refused(field.name(), "a canonical Struct row", value.kind())
         })?;
-        let mut event = Box::new(MarketOperationEventData::default());
+        let mut event = Box::new(OperationEventData::default());
         if let Some(source) = source {
             event.set_srcuuids(vec![source]);
         }
@@ -1789,7 +1789,7 @@ impl FixMsg {
     /// The event this message is: every fact the three graph traits answer,
     /// held as fields.
     #[must_use]
-    pub const fn event(&self) -> &MarketOperationEventData {
+    pub const fn event(&self) -> &OperationEventData {
         &self.event
     }
 
@@ -3082,7 +3082,7 @@ impl From<FixMsg> for Result<FixMsg> {
     }
 }
 
-impl From<FixMsg> for MarketOperationEventData {
+impl From<FixMsg> for OperationEventData {
     /// Moves the message's market operation out without re-reading or
     /// cloning any FIX content.
     fn from(message: FixMsg) -> Self {
@@ -3585,7 +3585,7 @@ impl Market for FixMsg {
     }
 }
 
-impl MarketOperation for FixMsg {
+impl Operation for FixMsg {
     fn get_marketoperationid(&self) -> Option<i32> {
         self.event.get_marketoperationid()
     }

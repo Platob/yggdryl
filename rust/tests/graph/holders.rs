@@ -5,9 +5,7 @@
 use std::mem::size_of;
 
 use yggdryl::Side;
-use yggdryl::graph::{
-    BookRef, MarketData, MarketEventData, MarketOperationData, MarketOperationEventData,
-};
+use yggdryl::graph::{BookRef, MarketData, MarketEventData, OperationData, OperationEventData};
 
 /// A side is one byte: an enum over its code set, no text.
 #[test]
@@ -35,8 +33,8 @@ fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
         (
             size_of::<MarketData>(),
             size_of::<MarketEventData>(),
-            size_of::<MarketOperationData>(),
-            size_of::<MarketOperationEventData>(),
+            size_of::<OperationData>(),
+            size_of::<OperationEventData>(),
         ),
         (640, 816, 864, 1040)
     );

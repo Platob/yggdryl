@@ -1026,14 +1026,14 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
 ### The identifier maps are read off the row
 
-The [identifier maps](message.md#the-identifier-maps) `MarketOperation` answers - `get_accountids()`, `get_userids()` and `get_altids()` - are rebuilt at every settle from the fields that state them: `Account(1)`; `SenderSubID(50)` and `OnBehalfOfSubID(116)`; `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`; and the `PartyID(448)` of a `Parties` occurrence whose role is a customer account, an entering trader or an executing trader. Each entry sits under the upper-cased name of the field that stated it, and no column carries the maps: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to a map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares.
+The [identifier maps](message.md#the-identifier-maps) `Operation` answers - `get_accountids()`, `get_userids()` and `get_altids()` - are rebuilt at every settle from the fields that state them: `Account(1)`; `SenderSubID(50)` and `OnBehalfOfSubID(116)`; `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`; and the `PartyID(448)` of a `Parties` occurrence whose role is a customer account, an entering trader or an executing trader. Each entry sits under the upper-cased name of the field that stated it, and no column carries the maps: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to a map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, MarketOperation};
+    use yggdryl::graph::{Element, Operation};
     use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 

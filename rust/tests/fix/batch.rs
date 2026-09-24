@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 

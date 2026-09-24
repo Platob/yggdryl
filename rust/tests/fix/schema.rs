@@ -5,7 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
     DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };

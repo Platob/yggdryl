@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
     Book, BookControl, BookInput, BookIterator, BookRef, BookSide, Element, Event, GLOBAL_SYMBOL,
-    Market, MarketEventData, MarketOperation, MarketOperationEventData, MdUpdateAction, Operation,
+    Market, MarketEventData, MarketOperation, MdUpdateAction, Operation, OperationEventData,
     OperationKind, Trade,
 };
 use yggdryl::{Ccy, Decimal18, Side, State, Unit};
@@ -26,8 +26,8 @@ fn operation(
     price: &str,
     quantity: i64,
     state: &str,
-) -> Operation {
-    let mut data = MarketOperationEventData::at(unix);
+) -> MarketOperation {
+    let mut data = OperationEventData::at(unix);
     data.set_crosscode(identity.to_owned());
     data.set_ticker(Some(SmolStr::new(symbol)));
     data.set_side(Side::read(side).unwrap());
@@ -38,14 +38,15 @@ fn operation(
     data.set_state(State::read(state).unwrap());
     data.insert_altid(ENTRY_ID, identity).unwrap();
     let kind = OperationKind::read(kind).expect("an operation kind");
-    let mut operation = Operation::new(kind, data).expect("an order, a quote or an execution");
+    let mut operation =
+        MarketOperation::new(kind, data).expect("an order, a quote or an execution");
     operation.finalize();
     operation
 }
 
 /// `operation` carrying the book-control facts `book` states, finalized
 /// again around them.
-fn with_book(mut operation: Operation, book: BookRef) -> Operation {
+fn with_book(mut operation: MarketOperation, book: BookRef) -> MarketOperation {
     operation.set_book(Some(book));
     operation.finalize();
     operation
@@ -53,7 +54,7 @@ fn with_book(mut operation: Operation, book: BookRef) -> Operation {
 
 /// `operation` going by `altids` too, each replacing the key where it held
 /// one already, finalized again around them.
-fn with_altids(mut operation: Operation, altids: &[(&str, &str)]) -> Operation {
+fn with_altids(mut operation: MarketOperation, altids: &[(&str, &str)]) -> MarketOperation {
     for (key, value) in altids {
         operation.remove_altid(key).unwrap();
         operation.insert_altid(key, value).unwrap();
@@ -63,7 +64,7 @@ fn with_altids(mut operation: Operation, altids: &[(&str, &str)]) -> Operation {
 }
 
 /// `operation` without its `MDENTRYID`: an anonymous entry.
-fn anonymous(mut operation: Operation) -> Operation {
+fn anonymous(mut operation: MarketOperation) -> MarketOperation {
     operation.remove_altid(ENTRY_ID).unwrap();
     operation.finalize();
     operation
@@ -99,7 +100,7 @@ fn decimal(text: &str) -> Decimal18 {
 }
 
 /// The operations as the inputs a book takes.
-fn inputs<const N: usize>(operations: [Operation; N]) -> [BookInput; N] {
+fn inputs<const N: usize>(operations: [MarketOperation; N]) -> [BookInput; N] {
     operations.map(BookInput::from)
 }
 
@@ -119,7 +120,7 @@ fn reset_event(unix: i64, identity: &str) -> MarketEventData {
 type Facts = (Option<Decimal18>, Option<Decimal18>, Vec<(String, String)>);
 
 /// [`Facts`] for each operation, in the order given.
-fn facts<'a>(operations: impl Iterator<Item = &'a Operation>) -> Vec<Facts> {
+fn facts<'a>(operations: impl Iterator<Item = &'a MarketOperation>) -> Vec<Facts> {
     operations
         .map(|operation| {
             (
@@ -748,7 +749,7 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
 
 #[test]
 fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock() {
-    let mut first = MarketOperationEventData::at(10);
+    let mut first = OperationEventData::at(10);
     first.set_crosscode("E-1".to_owned());
     first.set_ticker(Some(SmolStr::new("IBM")));
     first.set_price(Some(decimal("100")));
@@ -763,8 +764,8 @@ fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock
 
     let mut book = Book::new(10, "IBM");
     book.add_operations([
-        Operation::execution(first).into(),
-        Operation::execution(second).into(),
+        MarketOperation::execution(first).into(),
+        MarketOperation::execution(second).into(),
     ])
     .unwrap();
     assert_eq!(book.executions().len(), 2);
@@ -777,7 +778,7 @@ fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock
 fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
     let buy = operation("execution", "IBM", "E-BUY", 10, "Buy", "100", 2, "Filled");
     let sell = operation("execution", "IBM", "E-SELL", 10, "Sell", "101", 3, "Filled");
-    let mut event = MarketOperationEventData::at(10);
+    let mut event = OperationEventData::at(10);
     event.set_crosscode("T-1".to_owned());
     event.set_ticker(Some(SmolStr::new("IBM")));
     event.set_state(State::read("Filled").unwrap());
@@ -812,7 +813,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
     live.set_exprtime(Some(3));
     live.finalize();
-    let mut execution = MarketOperationEventData::at(1);
+    let mut execution = OperationEventData::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")));
     execution.set_state(State::read("Filled").unwrap());
@@ -822,7 +823,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     let books = BookIterator::new(
         [
             live,
-            Operation::execution(execution),
+            MarketOperation::execution(execution),
             operation("order", "IBM", "O-1", 3, "Buy", "101", 3, "New"),
         ]
         .into_iter(),
@@ -988,7 +989,7 @@ fn snapshotted_trade_rebases_every_child_and_preserves_execution_time() {
     let mut sell = operation("execution", "IBM", "E-SELL", 2, "Sell", "101", 4, "Trade");
     sell.set_execunix(Some(2));
     sell.finalize();
-    let mut root = MarketOperationEventData::at(2);
+    let mut root = OperationEventData::at(2);
     root.set_crosscode("T-1".to_owned());
     root.set_ticker(Some(SmolStr::new("IBM")));
     root.set_snapunix(Some(3));
@@ -1369,7 +1370,7 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
 
 #[test]
 fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression() {
-    let mut execution = MarketOperationEventData::at(1);
+    let mut execution = OperationEventData::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")));
     execution.set_state(State::read("Filled").unwrap());
@@ -1377,7 +1378,7 @@ fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression()
     let mut book = Book::new(1, "IBM");
     book.add_operations([
         operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New").into(),
-        Operation::execution(execution).into(),
+        MarketOperation::execution(execution).into(),
     ])
     .unwrap();
     assert_eq!(book.executions().len(), 1);
@@ -1611,7 +1612,7 @@ fn a_failed_iterator_group_emits_only_the_error() {
 }
 
 /// One book from the synthetic operations, however they arrive: each as a
-/// `BookInput::Operation` in a group of its own, or all in one
+/// `BookInput::MarketOperation` in a group of its own, or all in one
 /// `add_operations` group, the depth, the deltas and the executions state
 /// the same prices, quantities and names - never compared by identity, which
 /// the grouping is allowed to move.
@@ -1641,7 +1642,7 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
     let mut one_by_one = Book::new(5, "IBM");
     for operation in operations() {
         one_by_one
-            .add_operations([BookInput::Operation(operation)])
+            .add_operations([BookInput::MarketOperation(operation)])
             .unwrap();
     }
     let mut grouped = Book::new(5, "IBM");

@@ -10,7 +10,7 @@ use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use crate::graph::{
     Book, BookControl, BookInput, BookIterator, BookRef, Element, Event, Market, MarketOperation,
-    MarketOperationEventData, MdUpdateAction, Operation, OperationKind, Trade,
+    MdUpdateAction, Operation, OperationEventData, OperationKind, Trade,
 };
 use crate::{Ccy, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
 
@@ -190,7 +190,7 @@ impl FixMsg {
     /// Moves this message into graph market operations.
     ///
     /// A direct order, quote, execution or trade moves its
-    /// [`MarketOperationEventData`] without cloning it, then finalizes the generic
+    /// [`OperationEventData`] without cloning it, then finalizes the generic
     /// operation identity from those projected facts. Book messages
     /// necessarily make one owned event per `NoMDEntries(268)` occurrence, or
     /// one scoped snapshot control for an empty `W`.
@@ -397,12 +397,12 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     let category = category(&message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(&message, message.event())?;
-        let trade = Trade::from_parts(MarketOperationEventData::from(message), executions)?;
+        let trade = Trade::from_parts(OperationEventData::from(message), executions)?;
         return Ok(MessageOperations::One(Some(trade.into())));
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
         return Ok(MessageOperations::One(Some(
-            operation(kind, MarketOperationEventData::from(message)).into(),
+            operation(kind, OperationEventData::from(message)).into(),
         )));
     }
     let msgtype = message.header().msgtype();
@@ -411,8 +411,7 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     }
     let msgtype = SmolStr::new(msgtype);
     let entries = book_entries(&message)?;
-    let operations =
-        build_book_operations(MarketOperationEventData::from(message), &msgtype, &entries)?;
+    let operations = build_book_operations(OperationEventData::from(message), &msgtype, &entries)?;
     Ok(MessageOperations::Many(operations.into_iter()))
 }
 
@@ -441,7 +440,7 @@ impl TryFrom<FixMsg> for BookInput {
     }
 }
 
-fn operations(message: &FixMsg, base: MarketOperationEventData) -> Result<Vec<BookInput>> {
+fn operations(message: &FixMsg, base: OperationEventData) -> Result<Vec<BookInput>> {
     let category = category(message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(message, &base)?;
@@ -496,13 +495,14 @@ fn unsupported_message(message: &FixMsg) -> Error {
     )
 }
 
-fn operation(kind: OperationKind, data: MarketOperationEventData) -> Operation {
-    let mut operation = Operation::new(kind, data).expect("an order, a quote or an execution");
+fn operation(kind: OperationKind, data: OperationEventData) -> MarketOperation {
+    let mut operation =
+        MarketOperation::new(kind, data).expect("an order, a quote or an execution");
     operation.finalize();
     operation
 }
 
-fn trade_executions(message: &FixMsg, base: &MarketOperationEventData) -> Result<Vec<Operation>> {
+fn trade_executions(message: &FixMsg, base: &OperationEventData) -> Result<Vec<MarketOperation>> {
     let mut groups = message
         .entries()
         .iter()
@@ -548,10 +548,10 @@ fn trade_executions(message: &FixMsg, base: &MarketOperationEventData) -> Result
 }
 
 fn trade_execution(
-    base: &MarketOperationEventData,
+    base: &OperationEventData,
     occurrence: &FixEntry,
     index: usize,
-) -> Result<Operation> {
+) -> Result<MarketOperation> {
     let path = |tag: i32, name: &str| format_smolstr!("$.NoSides(552)[{index}].{name}({tag})");
     let raw_side = entry_value(occurrence, 54)
         .ok_or_else(|| invalid(path(54, "Side"), "expected a bid or ask side, got no value"))?;
@@ -622,7 +622,7 @@ fn trade_execution(
         chain.len(),
         side.as_str(),
     ));
-    Ok(Operation::execution(event))
+    Ok(MarketOperation::execution(event))
 }
 
 fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
@@ -871,7 +871,7 @@ fn gather(entry: &FixEntry, facts: &mut Facts) {
 }
 
 fn build_book_operations(
-    base: MarketOperationEventData,
+    base: OperationEventData,
     msgtype: &str,
     entries: &[BookEntry],
 ) -> Result<Vec<BookInput>> {
@@ -890,7 +890,7 @@ fn build_book_operations(
 }
 
 fn build_book_operation(
-    mut event: MarketOperationEventData,
+    mut event: OperationEventData,
     msgtype: &str,
     entry: &BookEntry,
 ) -> Result<BookInput> {
@@ -1043,10 +1043,11 @@ fn build_book_operation(
         entry_px: entry.facts.price.as_ref().and(entry.price),
         entry_size: entry.facts.size.as_ref().and(entry.size),
     };
-    let mut operation = Operation::new(kind, event).expect("an order, a quote or an execution");
+    let mut operation =
+        MarketOperation::new(kind, event).expect("an order, a quote or an execution");
     operation.set_book(Some(book));
     operation.finalize();
-    Ok(BookInput::Operation(operation))
+    Ok(BookInput::MarketOperation(operation))
 }
 
 fn decimal(

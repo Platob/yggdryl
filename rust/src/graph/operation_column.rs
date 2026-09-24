@@ -1,13 +1,13 @@
 //! The eight columns every market operation is stated in, beside the
 //! market's nineteen.
 //!
-//! One column per fact [`MarketOperation`] adds, under one name and one
+//! One column per fact [`Operation`] adds, under one name and one
 //! datatype each: the category, how long it stands, whether it can trade,
 //! the three identifier maps as sorted `map<utf8, utf8>`, and the two lanes
 //! as nullable structs.
 
 use super::market_column::{currency_of, tif_of, unit_of};
-use super::{Lane, MarketOperation};
+use super::{Lane, Operation};
 use crate::idmap::IdMap;
 use crate::{DataType, Decimal18, Field, Result, Scalar, StructType};
 
@@ -75,7 +75,7 @@ impl OperationColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::MarketOperationId => "Market Operation ID",
+            Self::MarketOperationId => "Market MarketOperation ID",
             Self::TimeInForce => "Time In Force",
             Self::Tradable => "Tradable",
             Self::AccountIds => "Account IDs",
@@ -138,7 +138,7 @@ impl OperationColumn {
 
     /// The column's cell for `operation`: the fact it states, `None` where
     /// it states none.
-    pub fn fact<E: MarketOperation + ?Sized>(self, operation: &E) -> Option<Scalar> {
+    pub fn fact<E: Operation + ?Sized>(self, operation: &E) -> Option<Scalar> {
         match self {
             Self::MarketOperationId => operation.get_marketoperationid().map(Scalar::from),
             Self::TimeInForce => operation.get_tif().cloned().map(Scalar::from),
@@ -153,7 +153,7 @@ impl OperationColumn {
 
     /// Records a cell on `operation`, leniently: a null clears an optional
     /// fact, and an incompatible value is ignored.
-    pub fn record<E: MarketOperation + ?Sized>(self, operation: &mut E, value: &Scalar) {
+    pub fn record<E: Operation + ?Sized>(self, operation: &mut E, value: &Scalar) {
         match self {
             Self::MarketOperationId => operation
                 .set_marketoperationid(value.as_i128().and_then(|held| i32::try_from(held).ok())),

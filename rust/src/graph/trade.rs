@@ -6,8 +6,8 @@ use std::hash::Hasher;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::{
-    Element, Event, Market, MarketOperation, MarketOperationEvent, MarketOperationEventData,
-    Operation, OperationKind,
+    Element, Event, Market, MarketOperation, Operation, OperationEvent, OperationEventData,
+    OperationKind,
 };
 use crate::{Error, Result, Uuid};
 
@@ -20,8 +20,8 @@ use crate::{Error, Result, Uuid};
 /// identity, unique by cross code, and dated at the trade's instant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Trade {
-    data: MarketOperationEventData,
-    executions: Vec<Operation>,
+    data: OperationEventData,
+    executions: Vec<MarketOperation>,
 }
 
 impl Trade {
@@ -35,8 +35,8 @@ impl Trade {
     /// another instant, one names another symbol, or two share a cross
     /// code.
     pub fn from_parts(
-        data: MarketOperationEventData,
-        mut executions: Vec<Operation>,
+        data: OperationEventData,
+        mut executions: Vec<MarketOperation>,
     ) -> Result<Self> {
         for execution in &mut executions {
             execution.finalize();
@@ -50,17 +50,17 @@ impl Trade {
 
     /// The executions the trade is made of, in canonical order.
     #[must_use]
-    pub fn executions(&self) -> &[Operation] {
+    pub fn executions(&self) -> &[MarketOperation] {
         &self.executions
     }
 
     /// The root facts.
     #[must_use]
-    pub fn data(&self) -> &MarketOperationEventData {
+    pub fn data(&self) -> &OperationEventData {
         &self.data
     }
 
-    pub(crate) fn into_executions(self) -> Vec<Operation> {
+    pub(crate) fn into_executions(self) -> Vec<MarketOperation> {
         self.executions
     }
 
@@ -140,7 +140,7 @@ impl Trade {
     /// executions', its market filled, and its identity digested over its
     /// own facts and each execution's identity.
     #[must_use]
-    pub(super) fn canonical_data(&self) -> MarketOperationEventData {
+    pub(super) fn canonical_data(&self) -> OperationEventData {
         let mut data = self.data.clone();
         for execution in &self.executions {
             data.set_seqnum(data.get_seqnum().max(execution.get_seqnum()));
@@ -166,14 +166,14 @@ impl Trade {
     }
 }
 
-impl AsRef<MarketOperationEventData> for Trade {
-    fn as_ref(&self) -> &MarketOperationEventData {
+impl AsRef<OperationEventData> for Trade {
+    fn as_ref(&self) -> &OperationEventData {
         &self.data
     }
 }
 
-impl AsMut<MarketOperationEventData> for Trade {
-    fn as_mut(&mut self) -> &mut MarketOperationEventData {
+impl AsMut<OperationEventData> for Trade {
+    fn as_mut(&mut self) -> &mut OperationEventData {
         &mut self.data
     }
 }
@@ -285,7 +285,7 @@ delegate_event!(
 delegate_market!(Trade, data);
 delegate_operation!(Trade, data);
 
-fn compare_executions(left: &Operation, right: &Operation) -> std::cmp::Ordering {
+fn compare_executions(left: &MarketOperation, right: &MarketOperation) -> std::cmp::Ordering {
     (
         left.get_side().as_str(),
         left.get_crosscode(),
@@ -298,8 +298,8 @@ fn compare_executions(left: &Operation, right: &Operation) -> std::cmp::Ordering
         ))
 }
 
-fn combine_executions(left: &[Operation], right: &[Operation]) -> Vec<Operation> {
-    let mut combined = BTreeMap::<String, Operation>::new();
+fn combine_executions(left: &[MarketOperation], right: &[MarketOperation]) -> Vec<MarketOperation> {
+    let mut combined = BTreeMap::<String, MarketOperation>::new();
     for execution in left.iter().chain(right) {
         let crosscode = execution.get_crosscode().to_owned();
         combined
@@ -310,7 +310,7 @@ fn combine_executions(left: &[Operation], right: &[Operation]) -> Vec<Operation>
     combined.into_values().collect()
 }
 
-fn rebase_executions(executions: &mut [Operation], unix: i64) {
+fn rebase_executions(executions: &mut [MarketOperation], unix: i64) {
     for execution in executions {
         if execution.get_currunix() != unix {
             execution.set_currunix(unix);
@@ -319,7 +319,7 @@ fn rebase_executions(executions: &mut [Operation], unix: i64) {
     }
 }
 
-fn merge_execution(left: &Operation, right: &Operation) -> Operation {
+fn merge_execution(left: &MarketOperation, right: &MarketOperation) -> MarketOperation {
     let right_leads = reference_key(right) > reference_key(left);
     let (reference, supplement) = if right_leads {
         (right, left)

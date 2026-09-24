@@ -3091,7 +3091,7 @@ mod internal {
 
     #[test]
     fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes() {
-        use yggdryl::graph::{Market, MarketOperation};
+        use yggdryl::graph::{Market, Operation};
 
         let codec = deriving();
         let held = codec

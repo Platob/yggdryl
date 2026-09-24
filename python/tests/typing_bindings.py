@@ -1458,7 +1458,7 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_event: fix.MarketOperationEventData = fix_message.event()
+fix_message_event: fix.OperationEventData = fix_message.event()
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
@@ -1795,7 +1795,7 @@ assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert isinstance(fix_message_wire_text, str)
-assert isinstance(fix_message_event, fix.MarketOperationEventData)
+assert isinstance(fix_message_event, fix.OperationEventData)
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text

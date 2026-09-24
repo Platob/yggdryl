@@ -2,7 +2,7 @@
 //! operation is stated in beside the market's nineteen, each stating back
 //! exactly the fact it read.
 
-use yggdryl::graph::{Lane, MarketOperation, MarketOperationEventData, OperationColumn};
+use yggdryl::graph::{Lane, Operation, OperationColumn, OperationEventData};
 use yggdryl::idmap::IdMap;
 use yggdryl::{Ccy, DataType, Decimal18, Scalar, TimeInForce, Unit};
 
@@ -12,7 +12,7 @@ fn decimal(text: &str) -> Decimal18 {
 
 #[test]
 fn operation_columns_round_trip_every_fact() {
-    let mut source = MarketOperationEventData::at(10);
+    let mut source = OperationEventData::at(10);
     source.set_marketoperationid(Some(14));
     source.set_tif(TimeInForce::from_spelling("DAY"));
     source.set_tradable(Some(true));
@@ -44,7 +44,7 @@ fn operation_columns_round_trip_every_fact() {
             .scalar(value.clone())
             .expect("the fact fits the column");
     }
-    let mut restored = MarketOperationEventData::default();
+    let mut restored = OperationEventData::default();
     for (column, value) in OperationColumn::ALL.into_iter().zip(&row) {
         column.record(&mut restored, value);
     }
@@ -62,7 +62,7 @@ fn operation_columns_round_trip_every_fact() {
 
 #[test]
 fn a_null_clears_and_nothing_stated_is_none() {
-    let mut operation = MarketOperationEventData::at(7);
+    let mut operation = OperationEventData::at(7);
     operation.set_marketoperationid(Some(3));
     operation.set_tradable(Some(false));
     operation.insert_altid("ORDERID", "O-1").unwrap();

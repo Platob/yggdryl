@@ -11,12 +11,12 @@ use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::graph::book::{ENTRY_ID, SnapshotPartition};
 use yggdryl::graph::{
     Book, BookControl, BookInput, BookRef, Element, Event, Market, MarketEventData,
-    MarketOperation, MarketOperationEventData, MdUpdateAction, Operation, OperationKind, Trade,
+    MarketOperation, MdUpdateAction, Operation, OperationEventData, OperationKind, Trade,
 };
 use yggdryl::{Ccy, Decimal18, Side, State, Unit};
 
-fn operation(kind: &str, unix: i64, code: &str) -> Operation {
-    let mut data = MarketOperationEventData::at(unix);
+fn operation(kind: &str, unix: i64, code: &str) -> MarketOperation {
+    let mut data = OperationEventData::at(unix);
     data.set_crosscode(code.to_owned());
     data.set_seqnum(u64::try_from(unix).unwrap());
     data.set_creaunix(Some(unix - 3));
@@ -35,14 +35,14 @@ fn operation(kind: &str, unix: i64, code: &str) -> Operation {
     data.insert_accountid("ACCOUNT", "ACC-1").unwrap();
     data.finalize();
     let mut operation =
-        Operation::new(OperationKind::read(kind).unwrap(), data).expect("an operation kind");
+        MarketOperation::new(OperationKind::read(kind).unwrap(), data).expect("an operation kind");
     operation.finalize();
     operation
 }
 
 /// An entry as a market-data message states it: an operation with its
 /// typed book control.
-fn entry(kind: &str, unix: i64, code: &str, action: MdUpdateAction) -> Operation {
+fn entry(kind: &str, unix: i64, code: &str, action: MdUpdateAction) -> MarketOperation {
     let mut entry = operation(kind, unix, code).with_book(BookRef {
         action: Some(action),
         scope: Some(SmolStr::new("Symbol=ACME")),
@@ -54,7 +54,7 @@ fn entry(kind: &str, unix: i64, code: &str, action: MdUpdateAction) -> Operation
     entry
 }
 
-fn execution(unix: i64, code: &str, side: &str) -> Operation {
+fn execution(unix: i64, code: &str, side: &str) -> MarketOperation {
     let mut execution = operation("execution", unix, code);
     execution.set_side(Side::read(side).unwrap());
     execution.finalize();
@@ -62,7 +62,7 @@ fn execution(unix: i64, code: &str, side: &str) -> Operation {
 }
 
 fn trade(unix: i64, code: &str) -> BookInput {
-    let mut event = MarketOperationEventData::at(unix);
+    let mut event = OperationEventData::at(unix);
     event.set_crosscode(code.to_owned());
     event.set_ticker(Some(SmolStr::new("ACME")));
     event.set_state(State::read("Filled").unwrap());
@@ -169,7 +169,7 @@ fn operations_round_trip_in_bounded_streaming_batches() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(actual, expected);
-    let BookInput::Operation(decoded) = &actual[1] else {
+    let BookInput::MarketOperation(decoded) = &actual[1] else {
         panic!("an entry decodes as an operation")
     };
     assert_eq!(decoded.action(), Some(MdUpdateAction::Change));
@@ -507,7 +507,7 @@ fn book_decoding_refuses_a_null_price_cell_in_a_live_row() {
 /// and `lastqty` across the round trip, and no zero appears anywhere.
 #[test]
 fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
-    let mut data = MarketOperationEventData::at(5);
+    let mut data = OperationEventData::at(5);
     data.set_crosscode("E-5".to_owned());
     data.set_ticker(Some(SmolStr::new("ACME")));
     data.set_side(Side::read("Buy").unwrap());
@@ -515,7 +515,7 @@ fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
     data.set_lastpx(Some(Decimal18::from_int(105)));
     data.set_lastqty(Some(Decimal18::from_int(15)));
     data.finalize();
-    let mut unstated = Operation::new(OperationKind::Execution, data).unwrap();
+    let mut unstated = MarketOperation::new(OperationKind::Execution, data).unwrap();
     unstated.finalize();
     assert_eq!(
         (unstated.get_price(), unstated.get_quantity()),
@@ -543,7 +543,7 @@ fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
         .unwrap()
         .unwrap();
     assert_eq!(decoded, expected);
-    let BookInput::Operation(decoded) = decoded else {
+    let BookInput::MarketOperation(decoded) = decoded else {
         panic!("expected an operation, got {decoded:?}")
     };
     assert_eq!((decoded.get_price(), decoded.get_quantity()), (None, None));

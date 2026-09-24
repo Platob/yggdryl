@@ -7,10 +7,10 @@
 //! side it takes, what it is priced and counted in, the price and quantity
 //! it is about, its last executed price and quantity and its average, how far it has got, the
 //! step before it, the two FX parts of a price, and free-form metadata.
-//! [`MarketOperation`] is a market element that is also an operation: its
+//! [`Operation`] is a market element that is also an operation: its
 //! category, how long it stands, whether it can trade, the account, user
 //! and alternate identifiers it is known by, and the two lanes a quote is
-//! made of. [`MarketEvent`] and [`MarketOperationEvent`] are the blankets
+//! made of. [`MarketEvent`] and [`OperationEvent`] are the blankets
 //! over an [`Event`] that is one or the other. The traits state signatures
 //! and the provided readings - fill, digest, follow, restate, merge - so a
 //! message, a book entry and a lifecycle incarnation can each be a market
@@ -311,7 +311,7 @@ pub trait Market {
 
 /// A market element that is also an operation on the market: what it adds
 /// to the slim facts.
-pub trait MarketOperation: Market {
+pub trait Operation: Market {
     /// The stable numeric market-operation category, where known.
     fn get_marketoperationid(&self) -> Option<i32>;
     /// Sets [`Self::get_marketoperationid`].
@@ -596,7 +596,7 @@ impl<E: Event + Market + ?Sized> MarketEvent for E {}
 
 /// An event that is an operation on a market: a blanket over every type
 /// that is both, with nothing to implement.
-pub trait MarketOperationEvent: Event + MarketOperation {
+pub trait OperationEvent: Event + Operation {
     /// [`Event::digest_event`] continued with the market's and the
     /// operation's facts.
     fn digest_operation_event(&self) -> Xxh3 {
@@ -651,7 +651,7 @@ pub trait MarketOperationEvent: Event + MarketOperation {
     }
 }
 
-impl<E: Event + MarketOperation + ?Sized> MarketOperationEvent for E {}
+impl<E: Event + Operation + ?Sized> OperationEvent for E {}
 
 /// What restating means for a market event: the timed restatement, then
 /// the market's. Every implementor that is also a [`Market`] delegates
@@ -667,7 +667,7 @@ pub(crate) fn restating_market<E: MarketEvent>(mut this: E, live: &E) -> E {
 
 /// What restating means for a market operation: [`restating_market`]
 /// continued with the operation's facts.
-pub(crate) fn restating_operation<E: MarketOperationEvent>(mut this: E, live: &E) -> E {
+pub(crate) fn restating_operation<E: OperationEvent>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
     this.fold_lifecycle(live);
@@ -687,7 +687,7 @@ pub(crate) fn merge_market_event_into_reference<E: MarketEvent>(this: &mut E, su
 
 /// Merges a market operation into the reference statement it supplements,
 /// finalizing where anything moved.
-pub(crate) fn merge_operation_event_into_reference<E: MarketOperationEvent>(
+pub(crate) fn merge_operation_event_into_reference<E: OperationEvent>(
     this: &mut E,
     supplement: &E,
 ) {
@@ -702,7 +702,7 @@ fn merge_market_event<E: MarketEvent>(this: &mut E, other: &E, other_is_referenc
     merge_market(this, other, other_is_reference) || timed || changed
 }
 
-fn merge_operation_event<E: MarketOperationEvent>(
+fn merge_operation_event<E: OperationEvent>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,
@@ -756,7 +756,7 @@ pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
 }
 
 /// Feeds the operation's facts to a digest, each under its name.
-pub(crate) fn feed_operation<E: MarketOperation + ?Sized>(state: &mut Xxh3, this: &E) {
+pub(crate) fn feed_operation<E: Operation + ?Sized>(state: &mut Xxh3, this: &E) {
     let mut staged = Staged::new(state);
     if let Some(marketoperationid) = this.get_marketoperationid() {
         staged.feed("marketoperationid", &marketoperationid.to_le_bytes());
@@ -795,7 +795,7 @@ pub(crate) fn follow_market<E: Market + ?Sized>(this: &mut E, previous: &E) -> b
 /// [`follow_market`] for an operation: one quoting a lane of its own says
 /// its side itself - one lane names it and two name none - so the chain's
 /// side is not its to take.
-pub(crate) fn follow_market_of_operation<E: MarketOperation + ?Sized>(
+pub(crate) fn follow_market_of_operation<E: Operation + ?Sized>(
     this: &mut E,
     previous: &E,
 ) -> bool {
@@ -826,7 +826,7 @@ fn restate_market<E: Market + ?Sized>(this: &mut E, live: &E) -> bool {
 
 /// [`restate_market`] for an operation, its side under the rule of
 /// [`follow_market_of_operation`].
-fn restate_market_of_operation<E: MarketOperation + ?Sized>(this: &mut E, live: &E) -> bool {
+fn restate_market_of_operation<E: Operation + ?Sized>(this: &mut E, live: &E) -> bool {
     let side_from_chain = lanes_stated(this) == (false, false);
     restate_market_facts(this, live, side_from_chain)
 }
@@ -991,15 +991,15 @@ pub(crate) fn merge_market<E: Market + ?Sized>(this: &mut E, other: &E, later: b
 /// The operation facts an event takes from the statement it follows: the
 /// accounts and users whole, the order's own identifiers, and how long it
 /// stands and whether it can trade where this statement says nothing.
-pub(crate) fn follow_operation<E: MarketOperation + ?Sized>(this: &mut E, previous: &E) -> bool {
+pub(crate) fn follow_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
     chain_operation(this, previous)
 }
 
-fn restate_operation<E: MarketOperation + ?Sized>(this: &mut E, live: &E) -> bool {
+fn restate_operation<E: Operation + ?Sized>(this: &mut E, live: &E) -> bool {
     chain_operation(this, live)
 }
 
-fn chain_operation<E: MarketOperation + ?Sized>(this: &mut E, previous: &E) -> bool {
+fn chain_operation<E: Operation + ?Sized>(this: &mut E, previous: &E) -> bool {
     let mut changed = moved(
         this.get_tif().cloned(),
         stated(this.get_tif().cloned(), previous.get_tif().cloned(), false),
@@ -1029,11 +1029,7 @@ fn chain_operation<E: MarketOperation + ?Sized>(this: &mut E, previous: &E) -> b
 }
 
 /// The operation facts an element takes from another statement of itself.
-pub(crate) fn merge_operation<E: MarketOperation + ?Sized>(
-    this: &mut E,
-    other: &E,
-    later: bool,
-) -> bool {
+pub(crate) fn merge_operation<E: Operation + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
     let mut changed = moved(
         this.get_marketoperationid(),
         stated(
@@ -1095,7 +1091,7 @@ fn merged_lane(this: Option<&Lane>, other: Option<&Lane>, later: bool) -> Option
 }
 
 /// Whether an operation's bid lane and its ask lane each state anything.
-fn lanes_stated<E: MarketOperation + ?Sized>(this: &E) -> (bool, bool) {
+fn lanes_stated<E: Operation + ?Sized>(this: &E) -> (bool, bool) {
     (
         this.get_bid().is_some_and(Lane::is_stated),
         this.get_ask().is_some_and(Lane::is_stated),

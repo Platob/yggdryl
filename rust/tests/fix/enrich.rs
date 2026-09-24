@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
-use yggdryl::graph::{Event, Market, MarketOperation};
+use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::local::LocalFolder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};

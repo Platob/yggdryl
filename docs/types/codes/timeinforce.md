@@ -203,7 +203,7 @@ The value is the wire code itself, under the time-in-force identity. Nothing is 
 | `B` | Good for Auction (GFA) |
 | `C` | Good for this Month (GFM) |
 
-The listing is a vocabulary rather than a gate: a value it does not carry - a venue's `GTX`, a `D` no shipped version names - is held as stated. `TimeInForce::from_spelling` reads a wire code unfolded, else a shipped name folded, else the value as stated, and stores the code; `TimeInForce::read` is the same reading as a refusal, naming `TimeInForce(59)`, for a value past eight bytes. It is the value an operation stands for: [`MarketOperation::get_tif`](../../graph.md#contract) answers `Option<&TimeInForce>`, and `set_tif(TimeInForce::from_spelling("day"))` stores `0`. Rust only.
+The listing is a vocabulary rather than a gate: a value it does not carry - a venue's `GTX`, a `D` no shipped version names - is held as stated. `TimeInForce::from_spelling` reads a wire code unfolded, else a shipped name folded, else the value as stated, and stores the code; `TimeInForce::read` is the same reading as a refusal, naming `TimeInForce(59)`, for a value past eight bytes. It is the value an operation stands for: [`Operation::get_tif`](../../graph.md#contract) answers `Option<&TimeInForce>`, and `set_tif(TimeInForce::from_spelling("day"))` stores `0`. Rust only.
 
 === "Rust"
 

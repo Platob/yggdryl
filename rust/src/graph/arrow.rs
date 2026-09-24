@@ -20,8 +20,8 @@ use smol_str::{SmolStr, format_smolstr};
 use super::book::{BookControl, BookInput, SnapshotPartition};
 use super::{
     Book, BookRef, BookSide, Element, Event, EventColumn, Market, MarketColumn, MarketData,
-    MarketEventData, MarketOperation, MarketOperationEventData, MdUpdateAction, Operation,
-    OperationColumn, OperationKind, Trade,
+    MarketEventData, MarketOperation, MdUpdateAction, Operation, OperationColumn,
+    OperationEventData, OperationKind, Trade,
 };
 use crate::arrow::BatchReader;
 use crate::serie::{Proof, land_batch};
@@ -55,9 +55,9 @@ impl From<BookInput> for Result<BookInput> {
     }
 }
 
-impl From<Operation> for Result<BookInput> {
-    fn from(operation: Operation) -> Self {
-        Ok(BookInput::Operation(operation))
+impl From<MarketOperation> for Result<BookInput> {
+    fn from(operation: MarketOperation) -> Self {
+        Ok(BookInput::MarketOperation(operation))
     }
 }
 
@@ -273,7 +273,7 @@ fn operation_field() -> Result<Field> {
             + 1,
     );
     let mut kind = DataType::utf8().required_field(KIND);
-    kind.set_display("Operation Kind")?;
+    kind.set_display("MarketOperation Kind")?;
     fields.push(kind);
     fields.extend(EventColumn::fields()?);
     fields.extend(MarketColumn::fields()?);
@@ -388,7 +388,7 @@ fn book_control_of(cells: &[Scalar]) -> Option<BookRef> {
 
 fn kind_of(input: &BookInput) -> &'static str {
     match input {
-        BookInput::Operation(operation) => operation.kind().as_str(),
+        BookInput::MarketOperation(operation) => operation.kind().as_str(),
         BookInput::Trade(_) => OperationKind::Trade.as_str(),
         BookInput::Snapshot(_) => SNAPSHOT_KIND,
     }
@@ -400,7 +400,7 @@ fn kind_of(input: &BookInput) -> &'static str {
 fn operation_columns(input: &BookInput) -> Vec<Scalar> {
     let mut cells = Vec::with_capacity(MarketColumn::ALL.len() + OperationColumn::ALL.len());
     match input {
-        BookInput::Operation(operation) => {
+        BookInput::MarketOperation(operation) => {
             cells.extend(market_cells(operation.data()));
             cells.extend(operation_cells(operation.data()));
         }
@@ -428,9 +428,7 @@ fn market_cells(market: &(impl Market + ?Sized)) -> impl Iterator<Item = Scalar>
         .map(move |column| column.fact(market).unwrap_or(Scalar::Null))
 }
 
-fn operation_cells(
-    operation: &(impl MarketOperation + ?Sized),
-) -> impl Iterator<Item = Scalar> + '_ {
+fn operation_cells(operation: &(impl Operation + ?Sized)) -> impl Iterator<Item = Scalar> + '_ {
     OperationColumn::ALL
         .into_iter()
         .map(move |column| column.fact(operation).unwrap_or(Scalar::Null))
@@ -452,7 +450,7 @@ fn row_of(input: &BookInput) -> Scalar {
     )
 }
 
-fn execution_row(operation: &Operation) -> Scalar {
+fn execution_row(operation: &MarketOperation) -> Scalar {
     Scalar::from_sequence(
         event_cells(operation)
             .chain(market_cells(operation))
@@ -463,7 +461,7 @@ fn execution_row(operation: &Operation) -> Scalar {
 
 fn checked_operation_row(input: &BookInput, ordinal: u64) -> Result<Scalar> {
     match input {
-        BookInput::Operation(operation) => {
+        BookInput::MarketOperation(operation) => {
             validate_operation_for_write(operation, |name| format_smolstr!("$[{ordinal}].{name}"))?;
         }
         BookInput::Trade(trade) => validate_trade_for_write(trade, ordinal)?,
@@ -509,7 +507,7 @@ fn checked_book_row(book: &Book, ordinal: u64) -> Result<Scalar> {
 /// An operation is written only as its canonical self: the identities it
 /// states must be the ones its content derives, and its facts must be the
 /// ones its finalize settles on.
-fn validate_operation_for_write<P>(operation: &Operation, path: P) -> Result<()>
+fn validate_operation_for_write<P>(operation: &MarketOperation, path: P) -> Result<()>
 where
     P: Fn(&str) -> SmolStr + Copy,
 {
@@ -605,12 +603,12 @@ fn side_row(side: &BookSide) -> Scalar {
             .chain([
                 Scalar::from_sequence(
                     side.live()
-                        .map(|operation| row_of(&BookInput::Operation(operation.clone()))),
+                        .map(|operation| row_of(&BookInput::MarketOperation(operation.clone()))),
                 ),
                 Scalar::from_sequence(
                     side.deltas()
                         .iter()
-                        .map(|operation| row_of(&BookInput::Operation(operation.clone()))),
+                        .map(|operation| row_of(&BookInput::MarketOperation(operation.clone()))),
                 ),
             ]),
     )
@@ -731,8 +729,8 @@ fn validate_market_event(
 }
 
 fn validate_operation_event(
-    stated: &MarketOperationEventData,
-    canonical: &MarketOperationEventData,
+    stated: &OperationEventData,
+    canonical: &OperationEventData,
     path: impl Fn(&str) -> SmolStr,
 ) -> Result<()> {
     if stated == canonical {
@@ -1011,7 +1009,7 @@ fn operations_from_value(
     value: &Scalar,
     ordinal: u64,
     path: NestedSerie,
-) -> Result<Vec<Operation>> {
+) -> Result<Vec<MarketOperation>> {
     sequence(value, || path.path(ordinal), "a market-operation list")?
         .iter()
         .enumerate()
@@ -1044,7 +1042,7 @@ fn operations_from_value(
                 },
             )?;
             match input {
-                BookInput::Operation(operation) => Ok(operation),
+                BookInput::MarketOperation(operation) => Ok(operation),
                 other => Err(invalid(
                     path.field_path(ordinal, index, KIND),
                     format_smolstr!(
@@ -1057,7 +1055,11 @@ fn operations_from_value(
         .collect()
 }
 
-fn executions_from_value<P, I>(value: &Scalar, list_path: P, item_path: I) -> Result<Vec<Operation>>
+fn executions_from_value<P, I>(
+    value: &Scalar,
+    list_path: P,
+    item_path: I,
+) -> Result<Vec<MarketOperation>>
 where
     P: FnOnce() -> SmolStr,
     I: Fn(usize) -> SmolStr + Copy,
@@ -1069,7 +1071,7 @@ where
         .collect()
 }
 
-fn execution_from_value<I>(value: &Scalar, index: usize, item_path: I) -> Result<Operation>
+fn execution_from_value<I>(value: &Scalar, index: usize, item_path: I) -> Result<MarketOperation>
 where
     I: Fn(usize) -> SmolStr + Copy,
 {
@@ -1087,7 +1089,7 @@ where
     let field_path = |name: &str| format_smolstr!("{}.{name}", item_path(index));
     let (data, claims, book) = data_from_cells(&values, 0, field_path)?;
     let stated = data.clone();
-    let mut operation = Operation::execution(data);
+    let mut operation = MarketOperation::execution(data);
     operation.set_book(book);
     operation.finalize();
     claims.validate(&operation, field_path)?;
@@ -1103,11 +1105,11 @@ fn data_from_cells<P>(
     cells: &[Scalar],
     start: usize,
     path: P,
-) -> Result<(MarketOperationEventData, IdentityClaims, Option<BookRef>)>
+) -> Result<(OperationEventData, IdentityClaims, Option<BookRef>)>
 where
     P: Fn(&str) -> SmolStr + Copy,
 {
-    let mut data = MarketOperationEventData::default();
+    let mut data = OperationEventData::default();
     let mut claims = IdentityClaims::default();
     let mut at = start;
     for column in EventColumn::ALL {
@@ -1181,7 +1183,7 @@ where
                     format_smolstr!("expected null for {}, got an execution list", kind.as_str()),
                 ));
             }
-            let mut operation = Operation::new(kind, data).map_err(|error| {
+            let mut operation = MarketOperation::new(kind, data).map_err(|error| {
                 prefix_invalid(error, || {
                     let base = path(KIND);
                     base.strip_suffix(".operationkind")
@@ -1194,7 +1196,7 @@ where
             let mut stated = stated;
             normalize_identity(&mut stated, operation.data());
             validate_operation_event(&stated, operation.data(), path)?;
-            Ok(BookInput::Operation(operation))
+            Ok(BookInput::MarketOperation(operation))
         }
         (None, SNAPSHOT_KIND) => {
             if executions.is_some() {

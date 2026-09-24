@@ -24,9 +24,9 @@ fn text(value: Option<Decimal18>) -> Option<String> {
 }
 
 /// The operation an input is; a trade or a control is a fixture mistake.
-fn operation_of(input: &BookInput) -> &Operation {
+fn operation_of(input: &BookInput) -> &MarketOperation {
     match input {
-        BookInput::Operation(operation) => operation,
+        BookInput::MarketOperation(operation) => operation,
         other => panic!("expected an operation, got {other:?}"),
     }
 }
@@ -305,7 +305,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_eq!(derived.get_marketoperationid(), Some(14));
     assert!(matches!(
         derived.market_operations().unwrap().as_slice(),
-        [BookInput::Operation(operation)] if operation.kind() == OperationKind::Quote
+        [BookInput::MarketOperation(operation)] if operation.kind() == OperationKind::Quote
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
@@ -664,7 +664,7 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     // given a zero.
     let messages = [
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|270=100|10=0|".as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
@@ -745,7 +745,7 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     .expect("a full refresh");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
     assert_eq!(operations[0].kind(), OperationKind::Quote);
     assert_eq!(operations[1].kind(), OperationKind::Order);
     assert_eq!(operations[2].kind(), OperationKind::Execution);
@@ -853,7 +853,7 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     .expect("incremental operations");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
     assert_eq!(operations[0].action(), Some(MdUpdateAction::New));
     assert_eq!(operations[1].action(), Some(MdUpdateAction::Change));
     assert_eq!(operations[2].action(), Some(MdUpdateAction::Delete));

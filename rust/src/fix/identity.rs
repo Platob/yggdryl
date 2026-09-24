@@ -4,7 +4,7 @@
 use smol_str::SmolStr;
 
 use crate::Decimal18;
-use crate::graph::{Market, MarketOperationEventData};
+use crate::graph::{Market, OperationEventData};
 use crate::securityid::{SecType, SecurityId};
 use crate::{
     BloombergCode, DataType, Error, FIGICode, Field, IsinCode, MicCode, Result, Scalar, TimeUnit,
@@ -779,7 +779,7 @@ pub(super) fn is_typed_tag(tag: i32) -> bool {
 
 /// The four typed holders of a message, read and written by tag.
 pub(super) struct Typed<'msg> {
-    pub(super) event: &'msg MarketOperationEventData,
+    pub(super) event: &'msg OperationEventData,
     pub(super) header: &'msg FixHeader,
     pub(super) capture: &'msg FixCapture,
     pub(super) lifted: &'msg FixLifted,
@@ -804,7 +804,7 @@ impl Typed<'_> {
 /// Records what one typed tag states on the holder that owns it; a null
 /// clears the fact. Whether the tag is a typed tag at all.
 pub(super) fn record(
-    event: &mut MarketOperationEventData,
+    event: &mut OperationEventData,
     header: &mut FixHeader,
     capture: &mut FixCapture,
     lifted: &mut FixLifted,
@@ -826,7 +826,7 @@ pub(super) fn record(
 /// Records what one event column states on the event, through the column
 /// it is: a value the fact's type refuses is silence and a null clears the
 /// fact. Whether the tag is one the event holds.
-pub(super) fn record_event(event: &mut MarketOperationEventData, tag: i32, value: &Scalar) -> bool {
+pub(super) fn record_event(event: &mut OperationEventData, tag: i32, value: &Scalar) -> bool {
     match tag {
         tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
             event,
@@ -872,7 +872,7 @@ pub(super) fn record_event(event: &mut MarketOperationEventData, tag: i32, value
 /// What the event states for one event column, as the raw value the
 /// column's field types, or nothing where it states no fact: an empty name,
 /// an absent instant, identity or code.
-pub(super) fn event_fact(event: &MarketOperationEventData, tag: i32) -> Option<Scalar> {
+pub(super) fn event_fact(event: &OperationEventData, tag: i32) -> Option<Scalar> {
     if let Some(column) = super::crated::event_column_of(tag) {
         return column.fact(event);
     }
@@ -905,7 +905,7 @@ pub(super) fn event_fact(event: &MarketOperationEventData, tag: i32) -> Option<S
 /// The exact clock the two FIX clocks a row types are held under.
 /// Records one crated identifier column onto the security identifiers: a
 /// stated code replaces the entry under its key, a null removes it.
-fn record_securityid(event: &mut MarketOperationEventData, key: &str, code: Option<String>) {
+fn record_securityid(event: &mut OperationEventData, key: &str, code: Option<String>) {
     let key = SecType::read(key).expect("a known security-identifier source");
     let mut ids = event.get_securityids().clone();
     match code

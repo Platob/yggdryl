@@ -45,9 +45,7 @@ use napi::bindgen_prelude::{
     Generator, JsObjectValue as _, Null, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::graph::{
-    Element, Event, Lane, Market, MarketOperation, MarketOperationEvent, Metadata,
-};
+use yggdryl::graph::{Element, Event, Lane, Market, Metadata, Operation, OperationEvent};
 use yggdryl::{CfiCode, Decimal18, IdMap, MicCode, SecurityIds};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
@@ -1194,7 +1192,7 @@ fn decimal_text(held: Option<Decimal18>) -> Either<String, Null> {
 /// The event's facts, read through the graph traits the holder answers -
 /// a message's own, so what it alone states, its metadata among it, is
 /// what crosses.
-fn event_view<E: MarketOperationEvent + ?Sized>(event: &E) -> Result<FixEventView> {
+fn event_view<E: OperationEvent + ?Sized>(event: &E) -> Result<FixEventView> {
     let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
     Ok(FixEventView {
         curruuid: event.get_curruuid().to_string(),
@@ -1753,37 +1751,55 @@ impl JsFixMsg {
     /// FIX's own `LastSpotRate(194)`, the spot rate of the last price, as decimal text, or `null`.
     #[napi(getter)]
     pub fn lastspotrate(&self) -> Option<String> {
-        self.inner.lifted().lastspotrate().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .lastspotrate()
+            .map(|held| held.to_string())
     }
 
     /// FIX's own `LastForwardPoints(195)`, the forward points of the last price, as decimal text, or `null`.
     #[napi(getter)]
     pub fn lastforwardpoints(&self) -> Option<String> {
-        self.inner.lifted().lastforwardpoints().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .lastforwardpoints()
+            .map(|held| held.to_string())
     }
 
     /// FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as decimal text, or `null`.
     #[napi(getter)]
     pub fn bidspotrate(&self) -> Option<String> {
-        self.inner.lifted().bidspotrate().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .bidspotrate()
+            .map(|held| held.to_string())
     }
 
     /// FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as decimal text, or `null`.
     #[napi(getter)]
     pub fn bidforwardpoints(&self) -> Option<String> {
-        self.inner.lifted().bidforwardpoints().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .bidforwardpoints()
+            .map(|held| held.to_string())
     }
 
     /// FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as decimal text, or `null`.
     #[napi(getter)]
     pub fn offerspotrate(&self) -> Option<String> {
-        self.inner.lifted().offerspotrate().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .offerspotrate()
+            .map(|held| held.to_string())
     }
 
     /// FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as decimal text, or `null`.
     #[napi(getter)]
     pub fn offerforwardpoints(&self) -> Option<String> {
-        self.inner.lifted().offerforwardpoints().map(|held| held.to_string())
+        self.inner
+            .lifted()
+            .offerforwardpoints()
+            .map(|held| held.to_string())
     }
 
     /// The price it averaged, `AvgPx(6)`, or `null`.
