@@ -368,11 +368,11 @@ A message holds each fact once. The tags below are the holders' and are never in
 | tags | holder | facts |
 | --- | --- | --- |
 | 8, 35, 49, 56, 34, 52, 43, 385, 93, 89, 10 | `header()` | the frame: `beginstring`, `msgtype`, `sendercompid`, `targetcompid`, `msgseqnum`, `sendingtime` with `stated_sendingtime`, `possdupflag`, `msgdirection`, and the trailer `signaturelength`, `signature`, `checksum` |
-| 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 188, 189, 190, 191, 194, 195, 198, 262, 1003 | `lifted()` | the numbers a consumer reads first and the identifiers one message of a chain shares with the next: `Price`, `OrderQty`, `Quantity`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `ClOrdID`, `OrigClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `QuoteID`, `QuoteReqID`, `MDReqID`, `TradeID` - each exactly as the message stated it |
+| 6, 11, 14, 17, 31, 32, 37, 38, 41, 44, 53, 117, 131, 151, 188, 189, 190, 191, 194, 195, 198, 262, 1003 | `lifted()` | the numbers a consumer reads first and the identifiers one message of a chain shares with the next: `Price`, `OrderQty`, `Quantity`, `LastPx`, `LastQty`, `AvgPx`, `CumQty`, `LeavesQty`, `ClOrdID`, `OrigClOrdID`, `OrderID`, `SecondaryOrderID`, `ExecID`, `QuoteID`, `QuoteReqID`, `MDReqID`, `TradeID`, and the six FX parts of a price behind one pointer - `LastSpotRate(194)`, `LastForwardPoints(195)`, `BidSpotRate(188)`, `BidForwardPoints(189)`, `OfferSpotRate(190)`, `OfferForwardPoints(191)`, read as `lifted().lastspotrate()` and its five siblings - each exactly as the message stated it |
 | every [crate tag](capture.md#the-crates-own-columns), 65000 to 65099, but `sourceurl` (65026) | `event()` and `capture()` | the identities, the codes, the instants, the place in the chain, the state it reached and when it expires on the event; `msgpluginid`, `msgctxid`, `msgsessionid` and the `msgsesseventid` they join to on the capture; `metadata` is the bridge's namespaced keys; the names a message goes by are its [identifier maps](#the-identifier-maps), read off the FIX fields that state them and no column of their own. The one exception is [the capture's own column](#a-row-is-a-message-again): no holder answers it, so `get_by_tag(SOURCEURL_TAG_NAME.0)` is a miss on every message |
 | 58 | `text()` | the free text |
 
-Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source, the `secaltids` group and the market are ordinary children of the row, and what a [`Market` or `Operation`](../graph.md) getter answers is derived from them and from the lifted numbers - `get_price` is `Price(44)`, else `LastPx(31)`, else `AvgPx(6)`, else the price its own side's lane quotes; `get_securityids` is built at every settle from `SecurityID(48)` under `SecurityIDSource(22)`, each `secaltids` occurrence read through `SecType::read`, and the crated `isincode`, `bloombergcode` and `figicode` views a row stated; `get_bid` and `get_ask` are the two `Lane`s the lanes 132 to 135 state - and a quote stating one lane, no `Side(54)` and no price, `LastPx` or `AvgPx` of its own takes that lane's side, `BUY` for `BidPx(132)`/`BidSize(134)` alone and `SELL` for `OfferPx(133)`/`OfferSize(135)` alone, so its price, quantity and currency read off that lane. A derived market fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to. Four readings are event facts with [columns of the crate's own](capture.md#the-crates-own-columns): `state` (65052) and `exprtime` (65053), which a walk folds forward; `execunix` (65062), the lifecycle's latest precise execution clock, which a report `FixMsg::is_execution` accepts takes from its own `currunix` when it settles stating none and follows nothing; and the observation's own `recdunix` (65063). Duplicate observations of one event merge `execunix` and `recdunix` to their earliest precise values before lifecycle following carries the latest execution forward, and the later `recdunix` of the two decides which one is the reference. A row stating one is the row's word; none reaches the wire or the entries.
+Every market fact is *not* here. `Currency(15)`, `Side(54)`, `CFICode(461)`, the lanes 132 to 135, `SecurityID(48)` under its source, the `secaltids` group and the market are ordinary children of the row, and what a [`Market` or `Operation`](../graph.md) getter answers is derived from them and from the lifted numbers - `get_price` is `Price(44)`, else the price its own side's lane quotes, and `None` otherwise - never `LastPx(31)` or `AvgPx(6)`, which are the last executed and the average price and answer as `get_lastpx` and `get_avgpx`; `get_spotrate` and `get_forwardpoints` are `LastSpotRate(194)` and `LastForwardPoints(195)`, and each lane's are its own four; `get_securityids` is built at every settle from `SecurityID(48)` under `SecurityIDSource(22)`, each `secaltids` occurrence read through `SecType::read`, and the crated `isincode`, `bloombergcode` and `figicode` views a row stated; `get_bid` and `get_ask` are the two `Lane`s the lanes 132 to 135 state - and a quote stating one lane, no `Side(54)` and no price, `LastPx` or `AvgPx` of its own takes that lane's side, `BUY` for `BidPx(132)`/`BidSize(134)` alone and `SELL` for `OfferPx(133)`/`OfferSize(135)` alone, so its price, quantity and currency read off that lane. A derived market fact is the traits' to answer and nobody's to emit: it reaches no column, no entry, no byte on the wire and no input to the code the message digests to. Four readings are event facts with [columns of the crate's own](capture.md#the-crates-own-columns): `state` (65052) and `exprtime` (65053), which a walk folds forward; `execunix` (65062), the lifecycle's latest precise execution clock, which a report `FixMsg::is_execution` accepts takes from its own `currunix` when it settles stating none and follows nothing; and the observation's own `recdunix` (65063). Duplicate observations of one event merge `execunix` and `recdunix` to their earliest precise values before lifecycle following carries the latest execution forward, and the later `recdunix` of the two decides which one is the reference. A row stating one is the row's word; none reaches the wire or the entries.
 
 A typed fact answers as its column types it: `by_tag(35)` is text, `by_tag(52)` a `datetime64(ns, UTC)`, `by_tag(54)` the side's name - `BUY`, `SELL` - `by_tag(CURRHASHCODE_TAG_NAME.0)` a `UInt64`, `by_tag(CURRUUID_TAG_NAME.0)` a `Uuid`, `by_tag(METADATA_TAG_NAME.0)` a sorted map; a holder stating nothing - a side of `UNKNOWN`, a place of zero in no chain - answers nothing, and a state of `00UNKNOWN` answers as it is, the state stated as none, so `by_tag(STATE_TAG_NAME.0)` is never a miss and the `state` column never null on a row a message wrote.
 
@@ -400,6 +400,82 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 | `event`, `header`, `capture`, `text`, `metadata` | the holders themselves, borrowed without a lookup |
 
 Every lookup answers an owned `Scalar`: a holder's fact is rendered into the column's type on the way out, and a row child cloned.
+
+## Anomalies
+
+A value that will not type is null in the row rather than a failure, a counter that disagrees with the group it counts is kept as it arrived, and a settle drops a stated identifier that conflicts with a stated one: each is a fact about the message worth more than a null nobody can explain. `anomalies()` reads them off the message beside the row, in arrival order - the parse's first, then what the last settle dropped - each a `FixAnomaly` of the field it was stated under and the reason. Never a column, never part of the code the message digests to; two statements of one message merge them as a union, the reference's first.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{FixCodec, FixRegistry};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+    let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
+    let reader = FixCodec::new(Arc::clone(&registry));
+
+    // `StopPx(99)` is a decimal and `abc` is not one: the row types null, the
+    // refusal names the field and what arrived.
+    let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=abc|10=0|")?;
+    assert!(held.get_by_tag(99).is_none_or(|value| value.is_null()));
+    let [refused] = held.anomalies() else { panic!("one anomaly") };
+    assert_eq!(refused.field(), "stoppx");
+    assert!(refused.reason().ends_with(", got \"abc\""), "{}", refused.reason());
+
+    // A counter that disagrees with its group: the group is the row, the
+    // disagreement is kept.
+    let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")?;
+    assert_eq!(held.anomalies()[0].to_string(), "nopartyids: states 2, the group holds 1");
+
+    // A line that types whole has none.
+    let clean = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|")?;
+    assert!(clean.anomalies().is_empty());
+    ```
+
+=== "Python"
+
+    ```python
+    from pathlib import Path
+
+    from yggdryl.fix import FixCodec, FixRegistry
+
+    registry = FixRegistry.from_handle(Path("config/fix").resolve())
+    reader = FixCodec(registry)
+
+    held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=abc|10=0|")
+    [(field, reason)] = held.anomalies
+    assert field == "stoppx"
+    assert reason.endswith(', got "abc"'), reason
+
+    held = reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|")
+    assert held.anomalies == [("nopartyids", "states 2, the group holds 1")]
+
+    assert reader.parse_fix_line(b"8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|").anomalies == []
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const path = require('node:path')
+    const { fix } = require('yggdryl')
+
+    const registry = fix.FixRegistry.fromHandle(path.resolve('config/fix'))
+    const reader = new fix.FixCodec(registry)
+
+    const held = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|99=abc|10=0|'))
+    assert.equal(held.anomalies.length, 1)
+    assert.equal(held.anomalies[0].field, 'stoppx')
+    assert.ok(held.anomalies[0].reason.endsWith(', got "abc"'), held.anomalies[0].reason)
+
+    const counted = reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|453=2|448=BROKER|447=D|452=1|10=0|'))
+    assert.deepEqual(counted.anomalies, [{ field: 'nopartyids', reason: 'states 2, the group holds 1' }])
+
+    assert.deepEqual(reader.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A1|55=AAPL|99=10.5|10=0|')).anomalies, [])
+    ```
 
 ## Written into the row
 
