@@ -11,8 +11,10 @@ A struct `Field` is the schema. There is no separate record or schema type: a
 non-null `Struct` field describes rows, and a row is one ordered
 `Scalar::Serie` with one value per child field.
 
-Query execution, network clients, and transport protocols are outside the
-project's scope.
+Storage backends (local, memory-mapped, ZIP, and the S3, Google Cloud Storage,
+and Azure Blob object stores behind the `s3` feature), record media, and the FIX
+protocol are core domains over those same values; the expression layer is a
+grammar over them, never a second query engine.
 
 ## Documentation
 
@@ -29,7 +31,7 @@ page per family in that layer, so the site tree and source tree agree:
 | Storage handles and backends | [holder](docs/holder/index.md) |
 | Record encodings, tables, documents, codings, charsets | [media](docs/media/index.md) |
 | Identifiers | [uri](docs/uri/index.md) |
-| Arrow, expressions, hashing, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [fix](docs/fix/index.md) |
+| Arrow, expressions, hashing, graph, FIX | [arrow](docs/arrow/index.md), [expression](docs/expression/index.md), [hashing](docs/hashing.md), [graph](docs/graph.md), [fix](docs/fix/index.md) |
 
 Cross-runtime examples use linked tabs: choose Rust, Python, or JavaScript once
 and the site keeps that context while you move between pages.
@@ -46,34 +48,48 @@ pushes to `main` publish the result to GitHub Pages.
 
 ```text
 rust/                    The core crate
-  src/*.rs               One type with its datatype, field and scalar, or
-                         one shared trait, enum or value, per root file
-  src/holder/            What every storage backend shares; local/, fs/,
-                         zip/ and s3/ are one root folder each
-  src/coding/            What every codec shares; gzip.rs, zlib.rs and
-                         zstd.rs are one root file each
-  src/charset/           What every code page shares; utf8.rs, ascii.rs
-                         and cp1252.rs are one root file each
-  src/media/             What every medium shares; avro/, ipc/, parquet/
-                         and iceberg/ are one root folder each
-  src/text/              Plain text and what the structured codecs share;
-                         json/, toml/ and yaml/ are one root folder each
+  src/*.rs               One type per root file - its datatype, field and
+                         scalar - or one shared trait, enum or value; codecs
+                         (gzip.rs, zlib.rs, zstd.rs) and charsets with string
+                         leaves (utf8.rs, ascii.rs, cp1252.rs) are root files
+  src/value/             What a datatype, a field and a value owe the root
+  src/serie/             Serie's Arrow layouts, the row codec and the Arrow door
+  src/iobase/            IOBase's behavior modules; iopath.rs, iofolder.rs,
+                         iofile.rs and iomedia.rs are root files
+  src/holder/            What every storage backend shares: Holder, Buffer,
+                         Buffered, Counted
+  src/{local,fs,zip,s3}/ One folder per storage backend
+  src/coding/            What every codec shares: Coded and Codec dispatch
+  src/charset/           What every code page shares
+  src/media/             What every record medium shares: Media, record
+                         options, inference, magic, merge, partitions
+  src/{ipc,parquet,avro,iceberg}/
+                         One folder per record medium
+  src/text/              The plain-text medium and what the structured
+                         codecs share
+  src/{json,toml,yaml}/  One folder per structured codec
+  src/{metadata,mime_type,media_type,uri}/
+                         Field metadata, MIME and media types, identifiers
+  src/{arrow,expression,graph,fix}/
+                         Arrow interop, the expression grammar, the event
+                         graph, FIX
   src/hashing/           The private stable-hash adapters; xxhash/ and
-                         txhash/ are one root folder each
-  src/{uri,arrow,expression,graph,fix}/
-                         The remaining core layers
+                         txhash/ are one folder each
   tests/                 One test file per source file, at the mirrored path
   benchmarks/            Criterion targets, grouped by theme
 python/                  The Python extension
-  src/                   PyO3 views over the matching core domains
-  yggdryl/               The Python package, including field classes and annotations
+  src/                   PyO3 views, one type per root file; media/ holds
+                         only the shared handle classes and partitions
+  yggdryl/               The Python package
   tests/                 The mirror of both, file for file
 node/                    The JavaScript extension
-  src/                   Node-API views over the matching core domains
+  src/                   Node-API views, laid out like python/src
   *.js                   The loader and its convenience protocols
   tests/                 The mirror of both, file for file
+cli/                     The ygg command-line tool
+config/fix/              The generated FIX dictionary store
 docs/                    The MkDocs site sources
-scripts/                 Documentation and interoperability checkers
+scripts/                 Generators, documentation and interoperability checkers
 ```
 
 The repository root owns the workspace manifest, the shared dependency pins, and
@@ -208,20 +224,19 @@ use yggdryl::text::{self, Format};
 use yggdryl::Scalar;
 
 # fn main() -> Result<(), Box<dyn std::error::Error>> {
-let value = Scalar::from_mapping([
-    (Scalar::from("id"), Scalar::from(42_i64)),
-    (Scalar::from("active"), Scalar::from(true)),
-])?;
-let bytes = text::into_bytes(&value, Format::Json)?;
+// An object is a Struct: a sorted name-to-value map.
+let value = text::from_bytes(br#"{"symbol":"AAPL","quantity":100}"#, Format::Json)?;
+assert_eq!(value.get_key_str("symbol").and_then(Scalar::as_str), Some("AAPL"));
 
+let bytes = text::into_bytes(&value, Format::Json)?;
+assert_eq!(bytes, br#"{"quantity":100,"symbol":"AAPL"}"#);
 assert_eq!(text::from_bytes(&bytes, Format::Json)?, value);
 # Ok(())
 # }
 ```
 
-The shared native value preserves bytes, wide integers, exact decimals, the four
-temporals, non-finite floats, and arbitrary mapping keys across JSON, TOML, and
-YAML.
+Without a `Field`, a document answers only the types it proves; with one, the
+field types natural strings, orders records, and canonicalizes the value.
 Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
 explicit byte, depth, node, and document limits. See the
 [JSON](docs/media/index.md#json), [TOML](docs/media/index.md#toml), and
