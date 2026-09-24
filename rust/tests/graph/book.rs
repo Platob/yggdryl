@@ -385,6 +385,74 @@ fn iterator_grid_emits_complete_snapshots_without_losing_live_orders() {
 }
 
 #[test]
+fn a_snapshot_is_the_same_book_with_every_living_order_and_nothing_else() {
+    // Two orders live, then one dies before the next tick: the tick's book is
+    // the same struct with every living order kept - the survivor - and
+    // everything else purged: no deltas, no executions, and the dead order
+    // nowhere. The book the order died in still carries it, as a delta.
+    let operations = vec![
+        operation("order", "IBM", "O-1", 1_000_000, "Buy", "100", 2, "New"),
+        operation("order", "IBM", "O-2", 1_500_000, "Buy", "101", 3, "New"),
+        operation(
+            "order", "IBM", "O-2", 2_500_000, "Buy", "101", 3, "Canceled",
+        ),
+        // A later order, so the walk crosses the tick after the death.
+        operation("order", "IBM", "O-3", 3_500_000, "Buy", "99", 1, "New"),
+    ];
+    let books = BookIterator::new(operations.clone().into_iter(), 1, false)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    let at = |unix: i64| {
+        books
+            .iter()
+            .find(|book| book.get_currunix() == unix)
+            .unwrap_or_else(|| panic!("a book at {unix}"))
+    };
+    let died = at(2_500_000);
+    assert_eq!(died.bid().live().count(), 1, "the survivor stays live");
+    assert_eq!(
+        died.bid().deltas().len(),
+        1,
+        "the cancel is the delta of the book it died in"
+    );
+    let snapshot = at(3_000_000);
+    assert_eq!(snapshot.get_snapunix(), Some(3_000_000));
+    assert_eq!(
+        snapshot
+            .bid()
+            .live()
+            .map(|held| held.get_crosscode().to_owned())
+            .collect::<Vec<_>>(),
+        ["O-1"],
+        "every living order, and no dead one"
+    );
+    assert!(
+        snapshot.bid().deltas().is_empty(),
+        "nothing but the living orders"
+    );
+    assert!(snapshot.executions().is_empty());
+    assert!(snapshot.ask().live().next().is_none());
+
+    // With no grid, every emitted book keeps all living orders beside its
+    // own deltas: nothing is ever purged between books.
+    let books = BookIterator::new(operations.into_iter(), 0, false)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(books.len(), 4);
+    assert!(books.iter().all(|book| book.get_snapunix().is_none()));
+    assert_eq!(books[1].bid().live().count(), 2, "both live at 1.5 ms");
+    assert_eq!(books[2].bid().live().count(), 1, "the survivor at 2.5 ms");
+    assert_eq!(books[2].bid().deltas().len(), 1);
+    assert_eq!(
+        books[3].bid().live().count(),
+        2,
+        "the survivor and the newcomer at 3.5 ms"
+    );
+}
+
+#[test]
 fn an_exact_grid_tick_emits_every_symbol_after_the_equal_time_source() {
     let books = BookIterator::new(
         [

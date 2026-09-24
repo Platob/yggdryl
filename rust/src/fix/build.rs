@@ -1220,8 +1220,12 @@ impl<'registry> Builder<'registry> {
         match self.typed_value(field, source, raw, &cleaned) {
             Ok(value) => value,
             Err(error) => {
-                self.anomalies
-                    .push(super::FixAnomaly::new(field.name(), error.to_string()));
+                // The refusal, then what arrived: the text the row could not
+                // take is the fact worth reading beside the null.
+                self.anomalies.push(super::FixAnomaly::new(
+                    field.name(),
+                    format!("{error}, got {cleaned:?}"),
+                ));
                 Scalar::Null
             }
         }

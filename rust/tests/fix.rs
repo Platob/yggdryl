@@ -372,6 +372,8 @@ fn decimal(text: &str) -> yggdryl::Scalar {
 
 #[path = "fix/aliases.rs"]
 mod aliases;
+#[path = "fix/anomaly.rs"]
+mod anomaly;
 #[path = "fix/batch.rs"]
 mod batch;
 #[path = "fix/cfb.rs"]

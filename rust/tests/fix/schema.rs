@@ -49,8 +49,9 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // MsgCat, two optional event clocks, the session event and three
     // normalized identifiers - ISIN, Bloomberg, FIGI - join the existing
     // standard CFI column; the identifiers map and the CUSIP and SEDOL
-    // columns are retired, their tags never reused.
-    assert_eq!(tags.len(), 119);
+    // columns are retired, their tags never reused; the six FX parts of a
+    // price - 194, 195, 188 to 191 - are columns of their own.
+    assert_eq!(tags.len(), 125);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -143,7 +144,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 124);
+    assert_eq!(schema.fields().len(), 130);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     // The frame closes the row: the trailer, then the bridge's own keys, then
     // the arrival record and the counter that counts it.

@@ -1150,3 +1150,88 @@ fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
         expected
     );
 }
+
+#[test]
+fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_reaches_the_books_executions() {
+    // The forward's two parts are lifted under their own tags; `LastPx(31)`,
+    // stated by nobody, derives as their sum; the market reads both parts.
+    let held = message(
+        b"8=FIX.4.4|35=8|17=E1|37=O1|55=EURUSD|54=1|32=1000000|150=F|194=1.25|195=0.0025|10=0|",
+    );
+    assert_eq!(text(held.lifted().lastspotrate()).as_deref(), Some("1.25"));
+    assert_eq!(
+        text(held.lifted().lastforwardpoints()).as_deref(),
+        Some("0.0025")
+    );
+    assert_eq!(
+        text(held.get_lastpx()).as_deref(),
+        Some("1.2525"),
+        "31 is their sum"
+    );
+    assert_eq!(text(held.get_spotrate()).as_deref(), Some("1.25"));
+    assert_eq!(text(held.get_forwardpoints()).as_deref(), Some("0.0025"));
+    assert_eq!(
+        held.get_price(),
+        None,
+        "an execution states no price of its own"
+    );
+    assert!(
+        held.entries()
+            .iter()
+            .all(|entry| entry.tag() != 194 && entry.tag() != 195),
+        "a lifted tag is a holder's, never an entry"
+    );
+    assert_eq!(held.by_tag(194).unwrap(), super::decimal("1.25"));
+    assert_eq!(held.by_tag(195).unwrap(), super::decimal("0.0025"));
+
+    // The execution reaches a book with its FX parts.
+    let inputs = held.into_market_operations().expect("an execution");
+    assert_eq!(inputs.len(), 1);
+    let books = yggdryl::graph::BookIterator::new(inputs.into_iter(), 0, false)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(books.len(), 1);
+    let [execution] = books[0].executions() else {
+        panic!("one execution on the book")
+    };
+    assert_eq!(text(execution.get_spotrate()).as_deref(), Some("1.25"));
+    assert_eq!(
+        text(execution.get_forwardpoints()).as_deref(),
+        Some("0.0025")
+    );
+    assert_eq!(text(execution.get_lastpx()).as_deref(), Some("1.2525"));
+}
+
+#[test]
+fn a_quotes_fx_parts_land_on_its_two_lanes() {
+    let held = message(
+        b"8=FIX.4.4|35=S|117=Q1|55=EURUSD|132=1.2|134=1000000|133=1.21|135=1000000|188=1.19|189=0.01|190=1.2|191=0.011|10=0|",
+    );
+    let bid = held.get_bid().expect("a bid lane");
+    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
+    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
+    let ask = held.get_ask().expect("an ask lane");
+    assert_eq!(text(ask.spotrate).as_deref(), Some("1.2"));
+    assert_eq!(text(ask.forwardpoints).as_deref(), Some("0.011"));
+    assert_eq!(
+        held.get_spotrate(),
+        None,
+        "a two-lane quote states no last price of its own"
+    );
+}
+
+#[test]
+fn a_levels_fx_parts_read_onto_its_lane() {
+    let held = message(
+        b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|270=1.2|271=100|1026=1.19|1027=0.01|10=0|",
+    );
+    let inputs = held.into_market_operations().expect("one level");
+    let level = operation_of(&inputs[0]);
+    assert_eq!(text(level.get_spotrate()).as_deref(), Some("1.19"));
+    assert_eq!(text(level.get_forwardpoints()).as_deref(), Some("0.01"));
+    let bid = level.get_bid().expect("the level is a bid lane");
+    assert_eq!(text(bid.price).as_deref(), Some("1.2"));
+    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
+    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
+}
