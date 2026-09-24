@@ -19,9 +19,9 @@ fn securityid(key: &str, code: &str) -> SecurityId {
 #[test]
 fn market_columns_round_trip_every_optional_band() {
     let mut source = MarketEventData::at(10);
-    source.set_price(decimal("101.25"));
+    source.set_price(Some(decimal("101.25")));
     source.set_currency(Ccy::new("USD").unwrap());
-    source.set_quantity(Decimal18::from_int(7));
+    source.set_quantity(Some(Decimal18::from_int(7)));
     source.set_unit(Unit::new("share").unwrap());
     source.set_side(Side::read("Buy").unwrap());
     source
@@ -98,9 +98,9 @@ fn market_columns_round_trip_every_optional_band() {
 #[test]
 fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     let mut element = MarketData::default();
-    element.set_price(decimal("1"));
+    element.set_price(Some(decimal("1")));
     element.set_currency(Ccy::new("EUR").unwrap());
-    element.set_quantity(Decimal18::from_int(2));
+    element.set_quantity(Some(Decimal18::from_int(2)));
     element.set_unit(Unit::new("bbl").unwrap());
     element.set_side(Side::read("Sell").unwrap());
     element.set_lastpx(Some(decimal("3")));
@@ -113,10 +113,12 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     }
     // A required column is never null, so a null is no reading of it and
     // the stated fact stands - except the unit, a code that spells none,
-    // for which a null is that spelling; an optional one is cleared.
-    assert_eq!(element.get_price(), decimal("1"));
+    // for which a null is that spelling; an optional one is cleared, and
+    // the price and the quantity are optional: a null cell is a price the
+    // element no longer states, never a zero.
+    assert_eq!(element.get_price(), None);
     assert_eq!(element.get_currency().as_str(), "EUR");
-    assert_eq!(element.get_quantity(), Decimal18::from_int(2));
+    assert_eq!(element.get_quantity(), None);
     assert_eq!(element.get_unit(), &Unit::none());
     assert_eq!(element.get_side(), Side::Sell);
     assert_eq!(element.get_lastpx(), None);
@@ -130,9 +132,13 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
             assert!(fact.is_some(), "{} is stated", column.name());
         }
     }
-    // And an element stating nothing states its five required facts as
-    // nothing: a zero, an empty code, an unknown side.
+    // And an element stating nothing states its three required facts as
+    // nothing - an empty code, an unknown side - and no price or quantity
+    // at all: those two columns are nullable and answer `None`.
     let bare = MarketData::default();
+    assert!(MarketColumn::Price.nullable() && MarketColumn::Quantity.nullable());
+    assert_eq!(MarketColumn::Price.fact(&bare), None);
+    assert_eq!(MarketColumn::Quantity.fact(&bare), None);
     for column in MarketColumn::ALL
         .into_iter()
         .filter(|column| !column.nullable())
@@ -152,7 +158,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
             .filter(|column| !column.nullable())
             .map(|column| column.name())
             .collect::<Vec<_>>(),
-        ["price", "currency", "quantity", "unit", "side"]
+        ["currency", "unit", "side"]
     );
 }
 

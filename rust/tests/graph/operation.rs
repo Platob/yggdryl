@@ -15,9 +15,9 @@ fn full_order() -> MarketOperationEventData {
     data.set_crosscode("O-100".to_owned());
     data.set_srcuuids(vec![Uuid::from_v8(7)]);
     data.set_state(State::from_spelling("Filled").expect("a shipped state"));
-    data.set_price(Decimal18::from_int(82));
+    data.set_price(Some(Decimal18::from_int(82)));
     data.set_currency(Ccy::new("USD").expect("a currency"));
-    data.set_quantity(Decimal18::from_int(10));
+    data.set_quantity(Some(Decimal18::from_int(10)));
     data.set_unit(Unit::new("lot").expect("a unit"));
     data.set_side(Side::read("Buy").expect("a side"));
     data.set_lastpx(Some(Decimal18::from_int(81)));
@@ -286,13 +286,13 @@ fn the_update_action_reads_the_fix_code_the_name_and_the_legacy_snapshot() {
 fn an_operation_follows_and_merges_through_its_holder_and_keeps_its_kind() {
     let mut first = MarketOperationEventData::at(1_000_000);
     first.set_crosscode("O-100".to_owned());
-    first.set_price(Decimal18::from_int(80));
+    first.set_price(Some(Decimal18::from_int(80)));
     first.finalize();
     let first = Operation::order(first);
 
     let mut second = MarketOperationEventData::at(2_000_000);
     second.set_crosscode("O-100".to_owned());
-    second.set_price(Decimal18::from_int(81));
+    second.set_price(Some(Decimal18::from_int(81)));
     second.finalize();
     let second = Operation::order(second)
         .with_previous(&first)

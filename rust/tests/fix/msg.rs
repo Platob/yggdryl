@@ -1529,8 +1529,8 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         )
         .unwrap();
     assert_eq!(bid.get_side().as_str(), "BUY");
-    assert_eq!(bid.get_price(), decimal("101.5"));
-    assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
+    assert_eq!(bid.get_price(), Some(decimal("101.5")));
+    assert_eq!(bid.get_quantity(), Some(Decimal18::from_int(200)));
     assert_eq!(bid.get_currency().as_str(), "USD");
     assert_eq!(
         bid.get_bid()
@@ -1550,15 +1550,15 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q2|55=AAPL|133=102|135=50|10=0|")
         .unwrap();
     assert_eq!(offer.get_side().as_str(), "SELL");
-    assert_eq!(offer.get_price(), decimal("102"));
-    assert_eq!(offer.get_quantity(), Decimal18::from_int(50));
+    assert_eq!(offer.get_price(), Some(decimal("102")));
+    assert_eq!(offer.get_quantity(), Some(Decimal18::from_int(50)));
 
     // Both lanes name no side, and nothing reads off either.
     let two = reader
         .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q3|55=AAPL|132=101|133=102|134=10|135=20|10=0|")
         .unwrap();
     assert_eq!(two.get_side().as_str(), "UNKNOWN");
-    assert_eq!(two.get_price(), Decimal18::ZERO);
+    assert_eq!(two.get_price(), None);
 
     // A stated side is the message's own: a sell quoting only a bid keeps
     // its side, and its own lane quotes nothing to read.
@@ -1566,17 +1566,22 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         .sole_line(b"8=FIX.4.4|35=S|52=20240102-10:15:30|117=Q4|55=AAPL|54=2|132=101|134=10|10=0|")
         .unwrap();
     assert_eq!(stated.get_side().as_str(), "SELL");
-    assert_eq!(stated.get_price(), Decimal18::ZERO);
+    assert_eq!(stated.get_price(), None);
 
-    // A report pricing itself is not a quote: a fill at its last price
-    // beside a lone bid is about the fill, and names no side.
+    // A report pricing itself is not a quote: a fill at its last executed
+    // price beside a lone bid is about the fill, and names no side. The
+    // lane is context, and the price the fill states stays none: what it
+    // last executed at is `lastpx`, never the price.
     let fill = reader
         .sole_line(
             b"8=FIX.4.4|35=8|52=20240102-10:15:30|37=O|17=E|150=F|39=2|31=100|32=10|132=99|10=0|",
         )
         .unwrap();
     assert_eq!(fill.get_side().as_str(), "UNKNOWN");
-    assert_eq!(fill.get_price(), decimal("100"));
+    assert_eq!(fill.get_price(), None);
+    assert_eq!(fill.get_quantity(), None);
+    assert_eq!(fill.get_lastpx(), Some(decimal("100")));
+    assert_eq!(fill.get_lastqty(), Some(Decimal18::from_int(10)));
 
     // A lane read under a side is the side's, not a statement of its own: a
     // buy whose side a write takes away quotes no lane any more, so it names

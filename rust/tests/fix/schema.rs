@@ -501,7 +501,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
         at(&row, &schema, 44).as_decimal(),
         Some((yggdryl::i256::from_i128(12_500_000_000_000_000_000), 18))
     );
-    assert_eq!(order_px.to_string(), "12.5");
+    assert_eq!(order_px.map(|px| px.to_string()).as_deref(), Some("12.5"));
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.

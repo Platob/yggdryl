@@ -1339,7 +1339,8 @@
     assert.equal(message.seqnum, 0)
     assert.equal(message.prevuuid, null)
     assert.deepEqual(message.srcuuids, [])
-    assert.equal(message.price, '0')
+    // No `Price(44)` is no price stated: null, never a zero standing in.
+    assert.equal(message.price, null)
     // `OrderQty(38)` is the quantity the event is about, so the root's child
     // filled it rather than staying a column.
     assert.equal(message.quantity, '100')
@@ -2276,9 +2277,11 @@
     const names = [...latest.field.dtype.keys()]
     assert.equal(names.filter((name) => name === 'lastqty').length, 0, 'the event holds it')
     assert.ok(!names.includes('lastshares'))
-    // The event reads the report: the last price, the venue's order
-    // identifier as the cross code, the names the report goes by.
-    assert.equal(latest.price, '10.5')
+    // The event reads the report: the last executed price as `lastpx` and
+    // no price stated, the venue's order identifier as the cross code, the
+    // names the report goes by.
+    assert.equal(latest.price, null)
+    assert.equal(latest.lastpx, '10.5')
     assert.equal(latest.crosscode, 'O1')
     assert.deepEqual(latest.altids, { EXECID: 'E1', ORDERID: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
@@ -3101,10 +3104,17 @@
     assert.deepEqual([...bySide.keys()].sort(), ['BUY', 'SELL'])
     assert.equal(buy.marketoperationid, 21)
     assert.equal(sell.marketoperationid, 21)
-    assert.equal(BigInt(buy.price.toString()), 10125n * 10n ** 16n)
-    assert.equal(BigInt(sell.price.toString()), 10125n * 10n ** 16n)
-    assert.equal(BigInt(buy.quantity.toString()), 4n * 10n ** 18n)
-    assert.equal(BigInt(sell.quantity.toString()), 6n * 10n ** 18n)
+    // A trade-capture side states no price and no quantity: its last
+    // executed price and quantity are `lastpx` and `lastqty`, and the two
+    // nullable columns carry the null.
+    assert.equal(buy.price, null)
+    assert.equal(sell.price, null)
+    assert.equal(buy.quantity, null)
+    assert.equal(sell.quantity, null)
+    assert.equal(BigInt(buy.lastpx.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(sell.lastpx.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(buy.lastqty.toString()), 4n * 10n ** 18n)
+    assert.equal(BigInt(sell.lastqty.toString()), 6n * 10n ** 18n)
     assert.equal(new Map(buy.altids).get('SIDEEXECID'), 'BUY-EXEC')
     assert.equal(new Map(sell.altids).get('SIDEEXECID'), 'SELL-EXEC')
     assert.notDeepEqual(buy.curruuid, sell.curruuid)

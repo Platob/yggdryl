@@ -1956,10 +1956,16 @@ export declare class FixMsg {
   get altids(): Record<string, string>
   /** The stable integer category of the market operation, or `null`. */
   get marketoperationid(): number | null
-  /** The price, as decimal text; `0` where none is stated. */
-  get price(): string
-  /** The quantity, as decimal text; `0` where none is stated. */
-  get quantity(): string
+  /**
+   * The price stated, as decimal text, or `null` where none is. Never a
+   * last executed price, which `lastpx` answers.
+   */
+  get price(): string | null
+  /**
+   * The quantity stated, as decimal text, or `null` where none is. Never
+   * a last executed quantity, which `lastqty` answers.
+   */
+  get quantity(): string | null
   /**
    * The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
    * where none is stated.
@@ -6745,12 +6751,12 @@ export interface FixEventView {
   prevuuid: string | null
   /** The instant a snapshot was taken at, where one was. */
   snapunix: bigint | null
-  /** The price, as decimal text; `0` where none is stated. */
-  price: string
+  /** The price stated, as decimal text, or `null` where none is. */
+  price: string | null
   /** The currency, `XXX` where none is stated. */
   currency: string
-  /** The quantity, as decimal text; `0` where none is stated. */
-  quantity: string
+  /** The quantity stated, as decimal text, or `null` where none is. */
+  quantity: string | null
   /** The unit the quantity is counted in, empty where none is stated. */
   unit: string
   /**

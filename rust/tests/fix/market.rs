@@ -8,12 +8,19 @@ use yggdryl::graph::{
     Book, BookInput, Element, Event, Market, MarketOperation, MdUpdateAction, Operation,
     OperationKind,
 };
-use yggdryl::{DataType, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType};
+use yggdryl::{
+    DataType, Decimal18, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType,
+};
 
 fn message(line: &[u8]) -> FixMsg {
     fixed_codec(committed_registry())
         .sole_line(line)
         .expect("one FIX message")
+}
+
+/// The decimal text of a stated price or quantity, `None` where none is.
+fn text(value: Option<Decimal18>) -> Option<String> {
+    value.map(|held| held.to_string())
 }
 
 /// The operation an input is; a trade or a control is a fixture mistake.
@@ -90,8 +97,12 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
         panic!("one composite trade")
     };
     assert_eq!(trade.get_marketoperationid(), Some(21));
-    assert_eq!(trade.get_price().to_string(), "101.25");
-    assert_eq!(trade.get_quantity().to_string(), "10");
+    // A trade capture states no price and no quantity of its own: what it
+    // last executed at, and how much, are `lastpx` and `lastqty`, and
+    // neither stands in for the price or the quantity.
+    assert_eq!((trade.get_price(), trade.get_quantity()), (None, None));
+    assert_eq!(text(trade.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(trade.get_lastqty()).as_deref(), Some("10"));
 
     let [buy, sell] = trade.executions() else {
         panic!("one execution per stated trade side")
@@ -99,10 +110,15 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
     assert_eq!(buy.kind(), OperationKind::Execution);
-    assert_eq!(buy.get_price().to_string(), "101.25");
-    assert_eq!(sell.get_price().to_string(), "101.25");
-    assert_eq!(buy.get_quantity().to_string(), "4");
-    assert_eq!(sell.get_quantity().to_string(), "6");
+    // Each side keeps `SideLastQty(1009)` as its last executed quantity
+    // only, beside the trade's last executed price: a side states no
+    // price and no quantity, and nothing invents one.
+    assert_eq!((buy.get_price(), sell.get_price()), (None, None));
+    assert_eq!((buy.get_quantity(), sell.get_quantity()), (None, None));
+    assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(sell.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(buy.get_lastqty()).as_deref(), Some("4"));
+    assert_eq!(text(sell.get_lastqty()).as_deref(), Some("6"));
     assert_eq!(buy.get_altids().get("SIDEEXECID"), Some("BUY-EXEC"));
     assert_eq!(sell.get_altids().get("SIDEEXECID"), Some("SELL-EXEC"));
     assert_eq!(buy.get_altids().get("ORDERID"), Some("BUY-ORDER"));
@@ -433,10 +449,10 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     assert_eq!(books.len(), 2);
     assert_eq!(books[0].bid().best_price().unwrap().to_string(), "100");
     assert_eq!(books[0].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(books[0].get_price().to_string(), "101");
+    assert_eq!(text(books[0].get_price()).as_deref(), Some("101"));
     assert_eq!(books[1].bid().best_price().unwrap().to_string(), "101");
     assert_eq!(books[1].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(books[1].get_price().to_string(), "101.5");
+    assert_eq!(text(books[1].get_price()).as_deref(), Some("101.5"));
     assert_eq!(books[1].executions().len(), 1);
     assert_eq!(
         books[1]
@@ -589,32 +605,32 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         assert_eq!(operation.get_altids().get("ORDERID"), Some("O1"));
         assert_eq!(operation.get_seqnum(), index as u64);
         assert_eq!(
-            operation.get_price().to_string(),
-            ["100", "100", "101"][index]
+            text(operation.get_price()).as_deref(),
+            Some(["100", "100", "101"][index])
         );
         assert_eq!(
-            operation.get_quantity().to_string(),
-            ["10", "11", "11"][index]
+            text(operation.get_quantity()).as_deref(),
+            Some(["10", "11", "11"][index])
         );
         if index < 2 {
             assert!(operation.get_side().is_bid());
             let bid = operation.get_bid().expect("the bid lane");
-            assert_eq!(bid.price, Some(operation.get_price()));
-            assert_eq!(bid.quantity, Some(operation.get_quantity()));
+            assert_eq!(bid.price, operation.get_price());
+            assert_eq!(bid.quantity, operation.get_quantity());
             assert_eq!(operation.get_ask(), None);
         } else {
             assert!(operation.get_side().is_ask());
             let ask = operation.get_ask().expect("the ask lane");
-            assert_eq!(ask.price, Some(operation.get_price()));
-            assert_eq!(ask.quantity, Some(operation.get_quantity()));
+            assert_eq!(ask.price, operation.get_price());
+            assert_eq!(ask.quantity, operation.get_quantity());
             assert_eq!(operation.get_bid(), None);
         }
     }
     for pair in versions.windows(2) {
         assert_eq!(pair[1].get_prevuuid(), Some(pair[0].get_curruuid()));
         assert_eq!(pair[1].get_prevunix(), Some(pair[0].get_currunix()));
-        assert_eq!(pair[1].get_prevpx(), Some(pair[0].get_price()));
-        assert_eq!(pair[1].get_prevqty(), Some(pair[0].get_quantity()));
+        assert_eq!(pair[1].get_prevpx(), pair[0].get_price());
+        assert_eq!(pair[1].get_prevqty(), pair[0].get_quantity());
     }
     assert_eq!(versions[0].get_prevuuid(), None);
     // The book control each entry stated rides with it, typed: what the
@@ -643,9 +659,12 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
 #[test]
 fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    // The delete states its price like any operation a side takes: a
+    // level is a price, and a delete stating none is refused rather than
+    // given a zero.
     let messages = [
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
-        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
+        b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|270=100|10=0|".as_slice(),
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
@@ -671,8 +690,8 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
     assert_eq!(deleted.get_seqnum(), previous.get_seqnum() + 1);
-    assert_eq!(deleted.get_prevpx(), Some(previous.get_price()));
-    assert_eq!(deleted.get_prevqty(), Some(previous.get_quantity()));
+    assert_eq!(deleted.get_prevpx(), previous.get_price());
+    assert_eq!(deleted.get_prevqty(), previous.get_quantity());
 }
 
 #[test]
@@ -706,8 +725,14 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
         let operation = book.bid().live().next().unwrap();
         assert_eq!(operation.kind(), OperationKind::Order);
         assert_eq!(operation.get_ticker(), Some("AAPL"));
-        assert_eq!(operation.get_price().to_string(), ["100", "101"][index]);
-        assert_eq!(operation.get_quantity().to_string(), ["5", "6"][index]);
+        assert_eq!(
+            text(operation.get_price()).as_deref(),
+            Some(["100", "101"][index])
+        );
+        assert_eq!(
+            text(operation.get_quantity()).as_deref(),
+            Some(["5", "6"][index])
+        );
     }
 }
 
@@ -729,8 +754,8 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     assert!(operations[0].get_crosscode().ends_with("|MDEntryID=B1"));
     assert!(operations[1].get_crosscode().ends_with("|MDEntryID=A1"));
     assert!(operations[2].get_crosscode().ends_with("|MDEntryID=T1"));
-    assert_eq!(operations[0].get_price().to_string(), "100");
-    assert_eq!(operations[1].get_quantity().to_string(), "12");
+    assert_eq!(text(operations[0].get_price()).as_deref(), Some("100"));
+    assert_eq!(text(operations[1].get_quantity()).as_deref(), Some("12"));
     assert_eq!(operations[0].get_ticker(), Some("AAPL"));
     assert_eq!(operations[1].get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(
@@ -968,16 +993,16 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
         .unwrap();
     book.add_operations(size_only).unwrap();
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.get_price().to_string(), "100");
-    assert_eq!(live.get_quantity().to_string(), "11");
+    assert_eq!(text(live.get_price()).as_deref(), Some("100"));
+    assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 
     let price_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=5|269=0|278=B1|270=101|10=0|")
         .into_market_operations()
         .unwrap();
     book.add_operations(price_only).unwrap();
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.get_price().to_string(), "101");
-    assert_eq!(live.get_quantity().to_string(), "11");
+    assert_eq!(text(live.get_price()).as_deref(), Some("101"));
+    assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 }
 
 #[test]
@@ -1000,12 +1025,12 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     book.add_operations(change).unwrap();
     assert_eq!(book.bid().len(), 1);
     assert_eq!(
-        book.bid().live().next().unwrap().get_price().to_string(),
-        "100"
+        text(book.bid().live().next().unwrap().get_price()).as_deref(),
+        Some("100")
     );
     assert_eq!(
-        book.bid().live().next().unwrap().get_quantity().to_string(),
-        "11"
+        text(book.bid().live().next().unwrap().get_quantity()).as_deref(),
+        Some("11")
     );
 
     let error = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|271=12|10=0|")

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use arrow_array::{
     Array, ArrayRef, Decimal128Array, ListArray, RecordBatch, RecordBatchReader as _, StringArray,
-    StructArray, UInt64Array,
+    StructArray, UInt64Array, new_null_array,
 };
 use smol_str::SmolStr;
 use yggdryl::arrow::{BatchReader, batch_reader};
@@ -22,8 +22,8 @@ fn operation(kind: &str, unix: i64, code: &str) -> Operation {
     data.set_creaunix(Some(unix - 3));
     data.set_execunix(Some(unix - 2));
     data.set_recdunix(Some(unix - 1));
-    data.set_price(Decimal18::from_int(100 + unix));
-    data.set_quantity(Decimal18::from_int(10 + unix));
+    data.set_price(Some(Decimal18::from_int(100 + unix)));
+    data.set_quantity(Some(Decimal18::from_int(10 + unix)));
     data.set_currency(Ccy::new("USD").unwrap());
     data.set_unit(Unit::new("share").unwrap());
     data.set_side(Side::read(if kind == "quote" { "Sell" } else { "Buy" }).unwrap());
@@ -451,10 +451,110 @@ fn book_decoding_locates_an_invalid_nested_typed_code() {
     assert!(error.contains("$[0].bid.live[0].miccode"), "{error}");
 }
 
+/// A level is a price: the price column is nullable, but a null cell in a
+/// live row is refused where it stands. The per-row derivation check meets
+/// it first - the row's lane still states the price the element would fill
+/// from - so the location is what this pins; the side's own refusal of an
+/// operation stating no price is pinned where it is applied, in `book.rs`.
+#[test]
+fn book_decoding_refuses_a_null_price_cell_in_a_live_row() {
+    let mut encoded = Book::arrow_reader([book(10)], Some(1), None).unwrap();
+    let batch = encoded.next().unwrap().unwrap();
+    let bid_column = batch.schema().index_of("bid").unwrap();
+    let bid = batch.column(bid_column);
+    let bid = bid.as_any().downcast_ref::<StructArray>().unwrap();
+    let live = bid
+        .column_by_name("live")
+        .unwrap()
+        .as_any()
+        .downcast_ref::<ListArray>()
+        .unwrap();
+    let operations = live
+        .values()
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .unwrap();
+    let price = operations.column_by_name("price").unwrap();
+    let unstated = new_null_array(price.data_type(), operations.len());
+    let operations = replace_struct_child(operations, "price", unstated);
+    let item = match live.data_type() {
+        arrow_schema::DataType::List(item) => Arc::clone(item),
+        other => panic!("expected a list, got {other}"),
+    };
+    let live = ListArray::new(
+        item,
+        live.offsets().clone(),
+        Arc::new(operations),
+        live.nulls().cloned(),
+    );
+    let bid = replace_struct_child(bid, "live", Arc::new(live));
+    let mut columns = batch.columns().to_vec();
+    columns[bid_column] = Arc::new(bid);
+    let batch = RecordBatch::try_new(batch.schema(), columns).unwrap();
+    let source = batch_reader(batch.schema(), [batch]);
+    let error = Book::from_arrow_reader(source)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("$[0].bid.live[0].price"), "{error}");
+}
+
+/// A price or a quantity an operation does not state is a null cell in
+/// the two nullable columns, and a null cell read back is none stated: an
+/// execution reporting only what it last executed keeps that as `lastpx`
+/// and `lastqty` across the round trip, and no zero appears anywhere.
+#[test]
+fn an_operation_stating_no_price_or_quantity_round_trips_as_null() {
+    let mut data = MarketOperationEventData::at(5);
+    data.set_crosscode("E-5".to_owned());
+    data.set_ticker(Some(SmolStr::new("ACME")));
+    data.set_side(Side::read("Buy").unwrap());
+    data.set_state(State::read("Filled").unwrap());
+    data.set_lastpx(Some(Decimal18::from_int(105)));
+    data.set_lastqty(Some(Decimal18::from_int(15)));
+    data.finalize();
+    let mut unstated = Operation::new(OperationKind::Execution, data).unwrap();
+    unstated.finalize();
+    assert_eq!(
+        (unstated.get_price(), unstated.get_quantity()),
+        (None, None)
+    );
+    assert_eq!(unstated.get_bid(), None, "no fact to state on the lane");
+    let expected: BookInput = unstated.into();
+
+    let mut encoded = BookInput::arrow_reader([expected.clone()], Some(1), None).unwrap();
+    let batch = encoded.next().unwrap().unwrap();
+    let schema = batch.schema();
+    for name in ["price", "quantity"] {
+        let column = schema.index_of(name).unwrap();
+        assert!(schema.field(column).is_nullable(), "{name} is nullable");
+        assert_eq!(batch.column(column).null_count(), 1, "{name} is null");
+    }
+    for name in ["lastpx", "lastqty"] {
+        let column = schema.index_of(name).unwrap();
+        assert_eq!(batch.column(column).null_count(), 0, "{name} is stated");
+    }
+    let source = batch_reader(schema, [batch]);
+    let decoded = BookInput::from_arrow_reader(source)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(decoded, expected);
+    let BookInput::Operation(decoded) = decoded else {
+        panic!("expected an operation, got {decoded:?}")
+    };
+    assert_eq!((decoded.get_price(), decoded.get_quantity()), (None, None));
+    assert_eq!(decoded.get_lastpx(), Some(Decimal18::from_int(105)));
+    assert_eq!(decoded.get_lastqty(), Some(Decimal18::from_int(15)));
+}
+
 #[test]
 fn book_encoding_refuses_a_stale_summary_at_the_source_row() {
     let mut invalid = book(10);
-    invalid.set_price(Decimal18::from_int(999));
+    invalid.set_price(Some(Decimal18::from_int(999)));
     let mut encoded = Book::arrow_reader([invalid], Some(1), None).unwrap();
     let error = encoded.next().unwrap().unwrap_err().to_string();
     assert!(error.contains("$[0].price"), "{error}");

@@ -443,13 +443,14 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     by_side = {execution["side"]: execution for execution in book["executions"]}
     assert set(by_side) == {"BUY", "SELL"}
     buy, sell = by_side["BUY"], by_side["SELL"]
-    assert (buy["price"], sell["price"]) == (
+    # A trade-capture side states no price and no quantity: its last
+    # executed price and quantity are lastpx and lastqty, and the two
+    # nullable columns carry the null.
+    assert (buy["price"], sell["price"]) == (None, None)
+    assert (buy["quantity"], sell["quantity"]) == (None, None)
+    assert (buy["lastpx"], sell["lastpx"]) == (
         decimal.Decimal("101.25"),
         decimal.Decimal("101.25"),
-    )
-    assert (buy["quantity"], sell["quantity"]) == (
-        decimal.Decimal("4"),
-        decimal.Decimal("6"),
     )
     assert (buy["lastqty"], sell["lastqty"]) == (
         decimal.Decimal("4"),

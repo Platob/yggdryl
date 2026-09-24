@@ -879,8 +879,8 @@ fn allocation_book_operation(
     event.set_crosscode(code.into());
     event.set_ticker(Some(SmolStr::new("ALLOC")));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_price(Decimal18::from_int(100));
-    event.set_quantity(Decimal18::from_int(quantity));
+    event.set_price(Some(Decimal18::from_int(100)));
+    event.set_quantity(Some(Decimal18::from_int(quantity)));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
     let mut quote = Operation::quote(event);

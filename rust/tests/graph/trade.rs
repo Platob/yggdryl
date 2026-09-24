@@ -34,7 +34,7 @@ fn execution(
 ) -> Operation {
     let mut event = event(unix, crosscode, symbol, recdunix);
     event.set_side(Side::read(side).unwrap());
-    event.set_price(Decimal18::from_int(price));
+    event.set_price(Some(Decimal18::from_int(price)));
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
     event.set_execunix(execunix);
@@ -213,7 +213,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .find(|held| held.get_crosscode() == "E-1")
             .unwrap()
             .get_price(),
-        Decimal18::from_int(101),
+        Some(Decimal18::from_int(101)),
         "the later-recorded child leads its merge"
     );
     assert_eq!(merged.get_seqnum(), 4);
@@ -251,10 +251,10 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .get_price()
     };
     let alone = right.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&alone), Decimal18::from_int(101));
+    assert_eq!(e1_price(&alone), Some(Decimal18::from_int(101)));
     assert_eq!(alone.get_recdunix(), Some(15));
     let folded = merged.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&folded), Decimal18::from_int(105));
+    assert_eq!(e1_price(&folded), Some(Decimal18::from_int(105)));
     assert_eq!(folded.get_recdunix(), Some(10));
 }
 

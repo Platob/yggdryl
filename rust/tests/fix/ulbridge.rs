@@ -545,9 +545,9 @@ mod dataset {
             "the price the line stated, exact"
         );
         assert_eq!(
-            fill.get_price().to_string(),
-            "83.08",
-            "and the price the message is about, read off it"
+            fill.get_price().map(|px| px.to_string()).as_deref(),
+            Some("83.08"),
+            "and the price the message states, read off it"
         );
         assert_eq!(fill.get_securityids().get("ISIN"), Some("CH0012221716"));
         assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
