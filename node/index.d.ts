@@ -1983,8 +1983,26 @@ export declare class FixMsg {
    * FIX's own `LastPx(31)`.
    */
   get lastpx(): string | null
+  /**
+   * What the message states that its reading could not take as it
+   * stands, in arrival order: a value that would not type, a counter
+   * disagreeing with its group, what the last settle dropped.
+   */
+  get anomalies(): Array<FixAnomalyView>
   /** The quantity it last traded, `LastQty(32)`, or `null`. */
   get lastqty(): string | null
+  /** FIX's own `LastSpotRate(194)`, the spot rate of the last price, as decimal text, or `null`. */
+  get lastspotrate(): string | null
+  /** FIX's own `LastForwardPoints(195)`, the forward points of the last price, as decimal text, or `null`. */
+  get lastforwardpoints(): string | null
+  /** FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as decimal text, or `null`. */
+  get bidspotrate(): string | null
+  /** FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as decimal text, or `null`. */
+  get bidforwardpoints(): string | null
+  /** FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as decimal text, or `null`. */
+  get offerspotrate(): string | null
+  /** FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as decimal text, or `null`. */
+  get offerforwardpoints(): string | null
   /** The price it averaged, `AvgPx(6)`, or `null`. */
   get avgpx(): string | null
   /** How much of its quantity is done, `CumQty(14)`, or `null`. */
@@ -6454,6 +6472,25 @@ export interface FileSelector {
 }
 
 /**
+ * One member of a FIX code set, as the plain object JavaScript reads and
+ * writes.
+ *
+ * The record a store writes under `codesets/<name>.json`: the wire value
+ * and the symbolic name every member states, and the spellings, the wording
+ * and the group a specification adds where it has them. A key a member does
+ * not state is absent rather than empty, so a bare code is the two facts it
+ * is.
+ * One thing a message states that its reading could not take as it
+ * stands: the field it was stated under, and why.
+ */
+export interface FixAnomalyView {
+  /** The dictionary's name for the field, else the key as it arrived. */
+  field: string
+  /** Why the reading could not take the value as it stands. */
+  reason: string
+}
+
+/**
  * What the capture stated about the line a message was read from, as
  * plain values.
  *
@@ -6491,16 +6528,6 @@ export interface FixCaptureView {
   msgsesseventid: string | null
 }
 
-/**
- * One member of a FIX code set, as the plain object JavaScript reads and
- * writes.
- *
- * The record a store writes under `codesets/<name>.json`: the wire value
- * and the symbolic name every member states, and the spellings, the wording
- * and the group a specification adds where it has them. A key a member does
- * not state is absent rather than empty, so a bare code is the two facts it
- * is.
- */
 export interface FixCode {
   /** The wire value this code stands for. */
   value: string
