@@ -25,7 +25,7 @@ use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
     Element, Event, Lane as CoreLane, Market, Operation,
-    OperationEventData as CoreMarketOperationEventData,
+    OperationEventData as CoreOperationEventData,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
@@ -1925,8 +1925,8 @@ impl PyFixMsg {
     ///
     /// A copy at the moment it is asked for, so a message written afterwards
     /// leaves it behind; the same facts are the message's own properties.
-    fn event(&self) -> PyMarketOperationEventData {
-        PyMarketOperationEventData {
+    fn event(&self) -> PyOperationEventData {
+        PyOperationEventData {
             inner: self.inner.event().clone(),
         }
     }
@@ -3450,12 +3450,12 @@ impl PyFixCapture {
     skip_from_py_object
 )]
 #[derive(Clone)]
-pub(crate) struct PyMarketOperationEventData {
-    inner: CoreMarketOperationEventData,
+pub(crate) struct PyOperationEventData {
+    inner: CoreOperationEventData,
 }
 
 #[pymethods]
-impl PyMarketOperationEventData {
+impl PyOperationEventData {
     /// The event's `UUIDv7` identity: its millisecond and sequence lead an
     /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
     /// `crosshashcode`.
