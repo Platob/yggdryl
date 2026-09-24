@@ -265,7 +265,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     );
     // What it states: the side it takes, then one ladder of prices and one
     // of quantities, each from the number the message is about down through
-    // the ones it was read off - what it moved from, what it last traded,
+    // the ones it was read off - what it moved from, its last executed price and quantity,
     // where it has got to - then what those are counted and denominated in,
     // how the order was written, and last the quote's two lanes.
     //

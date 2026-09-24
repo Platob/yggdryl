@@ -1371,8 +1371,8 @@ impl FixMsg {
         if let Some(marketoperationid) = marketoperationid {
             event.set_marketoperationid(Some(marketoperationid));
         }
-        event.set_price(price.unwrap_or(Decimal18::ZERO));
-        event.set_quantity(orderqty.or(quantity).unwrap_or(Decimal18::ZERO));
+        event.set_price(price);
+        event.set_quantity(orderqty.or(quantity));
         event.set_lastpx(lastpx);
         event.set_lastqty(lastqty);
         event.set_avgpx(avgpx);
@@ -1954,8 +1954,8 @@ impl FixMsg {
     /// // message is *about* is read off them.
     /// msg.set(44, Scalar::from("82.5"))?;
     /// msg.set(38, Scalar::from(100_i64))?;
-    /// assert_eq!(msg.get_price().to_string(), "82.5");
-    /// assert_eq!(msg.get_quantity().to_string(), "100");
+    /// assert_eq!(msg.get_price().map(|px| px.to_string()).as_deref(), Some("82.5"));
+    /// assert_eq!(msg.get_quantity().map(|qty| qty.to_string()).as_deref(), Some("100"));
     /// assert_eq!(msg.as_field().fields().len(), 1);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
@@ -3282,11 +3282,11 @@ impl Event for FixMsg {
 }
 
 impl Market for FixMsg {
-    fn get_price(&self) -> Decimal18 {
+    fn get_price(&self) -> Option<Decimal18> {
         self.event.get_price()
     }
 
-    fn set_price(&mut self, px: Decimal18) {
+    fn set_price(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_price(px);
     }
@@ -3300,11 +3300,11 @@ impl Market for FixMsg {
         self.event.set_currency(currency);
     }
 
-    fn get_quantity(&self) -> Decimal18 {
+    fn get_quantity(&self) -> Option<Decimal18> {
         self.event.get_quantity()
     }
 
-    fn set_quantity(&mut self, qty: Decimal18) {
+    fn set_quantity(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_quantity(qty);
     }

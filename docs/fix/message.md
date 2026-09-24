@@ -116,7 +116,7 @@ The book control retains the effective action (`Snapshot` for `W`, the wire code
     assert_eq!(msg.by_tag(35)?, Scalar::from("D"));
     assert_eq!(msg.by_tag(54)?, Scalar::from("1"));
     assert_eq!(msg.by_tag(38)?, hundred);
-    assert_eq!(msg.get_quantity(), yggdryl::Decimal18::from_int(100));
+    assert_eq!(msg.get_quantity(), Some(yggdryl::Decimal18::from_int(100)));
     assert_eq!(msg.by_name("ticker")?, Scalar::from("AAPL"));
     assert_eq!(msg.by_path(&FieldPath::from_str("Parties[0].PartyID")?)?, Scalar::from("BROKER"));
     assert_eq!(msg.by_tag(9999)?, Scalar::from("custom"), "an unknown tag is retained");

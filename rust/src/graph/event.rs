@@ -23,8 +23,8 @@
 //! let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 //! event.set_crosscode("O-1".to_owned());
 //! event.set_side(Side::Buy);
-//! event.set_price(Decimal18::from_int(101));
-//! event.set_quantity(Decimal18::from_int(5));
+//! event.set_price(Some(Decimal18::from_int(101)));
+//! event.set_quantity(Some(Decimal18::from_int(5)));
 //! event.set_currency(Ccy::new("USD")?);
 //! event.finalize();
 //! assert_ne!(event.get_currhashcode(), 0);
@@ -33,8 +33,8 @@
 //! let mut again = MarketEventData::at(1_700_000_000_000_000_000);
 //! again.set_crosscode("O-1".to_owned());
 //! again.set_side(Side::Buy);
-//! again.set_price(Decimal18::from_int(101));
-//! again.set_quantity(Decimal18::from_int(5));
+//! again.set_price(Some(Decimal18::from_int(101)));
+//! again.set_quantity(Some(Decimal18::from_int(5)));
 //! again.set_currency(Ccy::new("USD")?);
 //! again.finalize();
 //! assert_eq!(again.get_curruuid(), event.get_curruuid());
@@ -60,9 +60,9 @@ pub struct MarketData {
     currhashcode: u64,
     crosshashcode: u64,
     srcuuids: Vec<Uuid>,
-    price: Decimal18,
+    price: Option<Decimal18>,
     currency: Ccy,
-    quantity: Decimal18,
+    quantity: Option<Decimal18>,
     unit: Unit,
     side: Side,
     securityids: SecurityIds,
@@ -91,9 +91,9 @@ impl Default for MarketData {
             currhashcode: 0,
             crosshashcode: 0,
             srcuuids: Vec::new(),
-            price: Decimal18::ZERO,
+            price: None,
             currency: Ccy::none(),
-            quantity: Decimal18::ZERO,
+            quantity: None,
             unit: Unit::none(),
             side: Side::Unknown,
             securityids: SecurityIds::default(),
@@ -196,11 +196,11 @@ impl Element for MarketData {
 }
 
 impl Market for MarketData {
-    fn get_price(&self) -> Decimal18 {
+    fn get_price(&self) -> Option<Decimal18> {
         self.price
     }
 
-    fn set_price(&mut self, price: Decimal18) {
+    fn set_price(&mut self, price: Option<Decimal18>) {
         self.price = price;
     }
 
@@ -212,11 +212,11 @@ impl Market for MarketData {
         self.currency = currency;
     }
 
-    fn get_quantity(&self) -> Decimal18 {
+    fn get_quantity(&self) -> Option<Decimal18> {
         self.quantity
     }
 
-    fn set_quantity(&mut self, quantity: Decimal18) {
+    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
         self.quantity = quantity;
     }
 

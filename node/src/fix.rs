@@ -1043,12 +1043,12 @@ pub struct FixEventView {
     /// The instant a snapshot was taken at, where one was.
     #[napi(ts_type = "bigint | null")]
     pub snapunix: Either<BigInt, Null>,
-    /// The price, as decimal text; `0` where none is stated.
-    pub price: String,
+    /// The price stated, as decimal text, or `null` where none is.
+    pub price: Either<String, Null>,
     /// The currency, `XXX` where none is stated.
     pub currency: String,
-    /// The quantity, as decimal text; `0` where none is stated.
-    pub quantity: String,
+    /// The quantity stated, as decimal text, or `null` where none is.
+    pub quantity: Either<String, Null>,
     /// The unit the quantity is counted in, empty where none is stated.
     pub unit: String,
     /// The side: the one stated, else the lane a single-sided quote states -
@@ -1203,9 +1203,9 @@ fn event_view<E: MarketOperationEvent + ?Sized>(event: &E) -> Result<FixEventVie
         prevunix: or_null(event.get_prevunix().map(instant)),
         prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
         snapunix: or_null(event.get_snapunix().map(instant)),
-        price: event.get_price().to_string(),
+        price: decimal_text(event.get_price()),
         currency: event.get_currency().as_str().to_owned(),
-        quantity: event.get_quantity().to_string(),
+        quantity: decimal_text(event.get_quantity()),
         unit: event.get_unit().as_str().to_owned(),
         side: event.get_side().as_str().to_owned(),
         securityids: securityids_view(event.get_securityids()),
@@ -1678,16 +1678,18 @@ impl JsFixMsg {
         self.inner.get_marketoperationid()
     }
 
-    /// The price, as decimal text; `0` where none is stated.
+    /// The price stated, as decimal text, or `null` where none is. Never a
+    /// last executed price, which `lastpx` answers.
     #[napi(getter)]
-    pub fn price(&self) -> String {
-        self.inner.get_price().to_string()
+    pub fn price(&self) -> Option<String> {
+        self.inner.get_price().map(|held| held.to_string())
     }
 
-    /// The quantity, as decimal text; `0` where none is stated.
+    /// The quantity stated, as decimal text, or `null` where none is. Never
+    /// a last executed quantity, which `lastqty` answers.
     #[napi(getter)]
-    pub fn quantity(&self) -> String {
-        self.inner.get_quantity().to_string()
+    pub fn quantity(&self) -> Option<String> {
+        self.inner.get_quantity().map(|held| held.to_string())
     }
 
     /// The unit the quantity is counted in, `UnitOfMeasure(996)`; empty

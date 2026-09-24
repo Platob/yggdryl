@@ -2068,11 +2068,11 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The price the message states, as a decimal; zero where it states
-    /// none.
+    /// The price the message states, as a decimal; `None` where it states
+    /// none. Never a last executed price, which `lastpx` answers.
     #[getter]
-    fn price(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
+    fn price(&self) -> Option<PyScalar> {
+        self.inner.get_price().map(decimal_scalar)
     }
 
     /// The currency, as the `currency` code it is; `XXX` where none is
@@ -2082,11 +2082,11 @@ impl PyFixMsg {
         code_scalar(self.inner.get_currency())
     }
 
-    /// The quantity the message states, as a decimal; zero where it states
-    /// none.
+    /// The quantity the message states, as a decimal; `None` where it
+    /// states none. Never a last executed quantity, which `lastqty` answers.
     #[getter]
-    fn quantity(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    fn quantity(&self) -> Option<PyScalar> {
+        self.inner.get_quantity().map(decimal_scalar)
     }
 
     /// The unit the quantity is counted in, as spelled; empty where the
@@ -3512,10 +3512,11 @@ impl PyMarketOperationEventData {
         self.inner.get_snapunix()
     }
 
-    /// The price, as a decimal; zero where none is stated.
+    /// The price stated, as a decimal; `None` where none is. Never a last
+    /// executed price, which `lastpx` answers.
     #[getter]
-    fn price(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
+    fn price(&self) -> Option<PyScalar> {
+        self.inner.get_price().map(decimal_scalar)
     }
 
     /// The currency, as the `currency` code it is; `XXX` where none is
@@ -3525,10 +3526,11 @@ impl PyMarketOperationEventData {
         code_scalar(self.inner.get_currency())
     }
 
-    /// The quantity, as a decimal; zero where none is stated.
+    /// The quantity stated, as a decimal; `None` where none is. Never a
+    /// last executed quantity, which `lastqty` answers.
     #[getter]
-    fn quantity(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    fn quantity(&self) -> Option<PyScalar> {
+        self.inner.get_quantity().map(decimal_scalar)
     }
 
     /// The unit the quantity is counted in, as spelled; empty where none

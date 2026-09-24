@@ -9,7 +9,7 @@
 //! [`Event`] is an element that also happened at one instant and stands in
 //! one state. [`market`] holds the two that stand in a market: [`Market`]
 //! is the slim reading any plain struct gives cheaply - the instrument, the
-//! side, the price and quantity, what it last traded - and
+//! side, the price and quantity it states, its last executed price and quantity - and
 //! [`MarketOperation`] adds what an operation states: its category, how long
 //! it stands, its account, user and own identifiers, and its two lanes.
 //! [`MarketEvent`] and [`MarketOperationEvent`] are the blankets over an
@@ -127,10 +127,10 @@ macro_rules! delegate_event {
 macro_rules! delegate_market {
     ($type:ty, $($field:ident).+) => {
         impl $crate::graph::Market for $type {
-            fn get_price(&self) -> $crate::Decimal18 {
+            fn get_price(&self) -> Option<$crate::Decimal18> {
                 $crate::graph::Market::get_price(&self.$($field).+)
             }
-            fn set_price(&mut self, price: $crate::Decimal18) {
+            fn set_price(&mut self, price: Option<$crate::Decimal18>) {
                 $crate::graph::Market::set_price(&mut self.$($field).+, price);
             }
             fn get_currency(&self) -> &$crate::Ccy {
@@ -139,10 +139,10 @@ macro_rules! delegate_market {
             fn set_currency(&mut self, currency: $crate::Ccy) {
                 $crate::graph::Market::set_currency(&mut self.$($field).+, currency);
             }
-            fn get_quantity(&self) -> $crate::Decimal18 {
+            fn get_quantity(&self) -> Option<$crate::Decimal18> {
                 $crate::graph::Market::get_quantity(&self.$($field).+)
             }
-            fn set_quantity(&mut self, quantity: $crate::Decimal18) {
+            fn set_quantity(&mut self, quantity: Option<$crate::Decimal18>) {
                 $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity);
             }
             fn get_unit(&self) -> &$crate::Unit {

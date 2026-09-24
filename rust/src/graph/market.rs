@@ -5,7 +5,7 @@
 //! cheaply: the instrument it is about - its security identifiers, its
 //! classification, the market it trades on and the ticker it goes by - the
 //! side it takes, what it is priced and counted in, the price and quantity
-//! it is about, what it last traded and averaged, how far it has got, the
+//! it is about, its last executed price and quantity and its average, how far it has got, the
 //! step before it, the two FX parts of a price, and free-form metadata.
 //! [`MarketOperation`] is a market element that is also an operation: its
 //! category, how long it stands, whether it can trade, the account, user
@@ -143,18 +143,20 @@ impl Lane {
 /// over its own fields - writes the store through and may refuse. A plain
 /// holder always answers `Ok`.
 pub trait Market {
-    /// The price the element is about, zero where it states none.
-    fn get_price(&self) -> Decimal18;
+    /// The price the element states; `None` where it states none. Never
+    /// defaulted: a last executed price is [`Self::get_lastpx`], not this.
+    fn get_price(&self) -> Option<Decimal18>;
     /// Sets [`Self::get_price`].
-    fn set_price(&mut self, price: Decimal18);
+    fn set_price(&mut self, price: Option<Decimal18>);
     /// The currency the element is priced in, [`Ccy::none`] where unstated.
     fn get_currency(&self) -> &Ccy;
     /// Sets [`Self::get_currency`].
     fn set_currency(&mut self, currency: Ccy);
-    /// The quantity the element is about, zero where it states none.
-    fn get_quantity(&self) -> Decimal18;
+    /// The quantity the element states; `None` where it states none. Never
+    /// defaulted: a last executed quantity is [`Self::get_lastqty`], not this.
+    fn get_quantity(&self) -> Option<Decimal18>;
     /// Sets [`Self::get_quantity`].
-    fn set_quantity(&mut self, quantity: Decimal18);
+    fn set_quantity(&mut self, quantity: Option<Decimal18>);
     /// The unit the quantity is counted in, [`Unit::none`] where unstated.
     fn get_unit(&self) -> &Unit;
     /// Sets [`Self::get_unit`].
@@ -199,11 +201,13 @@ pub trait Market {
     fn get_miccode(&self) -> Option<&MicCode>;
     /// Sets [`Self::get_miccode`].
     fn set_miccode(&mut self, code: Option<MicCode>);
-    /// The price of the last trade the element reports.
+    /// The last executed price: what the element's last execution traded
+    /// at, never the price it states.
     fn get_lastpx(&self) -> Option<Decimal18>;
     /// Sets [`Self::get_lastpx`].
     fn set_lastpx(&mut self, px: Option<Decimal18>);
-    /// The quantity of the last trade the element reports.
+    /// The last executed quantity: what the element's last execution
+    /// traded, never the quantity it states.
     fn get_lastqty(&self) -> Option<Decimal18>;
     /// Sets [`Self::get_lastqty`].
     fn set_lastqty(&mut self, qty: Option<Decimal18>);
@@ -248,11 +252,12 @@ pub trait Market {
     /// Fills every market fact this element implies from the ones it
     /// states, and stops where it would be inventing.
     ///
-    /// The price is what the element is about, else what it last traded,
-    /// else what it averaged; the quantity is what it orders, else what it
-    /// last traded. How much is done and how much is left are not on that
-    /// ladder, because together they *are* the quantity ordered and the
-    /// dictionary already says so. An ISIN carries the national identifier
+    /// The price and the quantity are what the element states and nothing
+    /// else: never a last executed price or quantity, which `lastpx` and
+    /// `lastqty` answer, and never an average. How much is done and how
+    /// much is left stay beside them, because together they *are* the
+    /// quantity ordered and the dictionary already says so. An ISIN carries
+    /// the national identifier
     /// of its country - a CUSIP, a SEDOL, a WKN, a Valor - which fills only
     /// a key the element does not state, as a derived identifier.
     ///
@@ -262,16 +267,6 @@ pub trait Market {
     where
         Self: Sized,
     {
-        if self.get_price() == Decimal18::ZERO {
-            if let Some(px) = self.get_lastpx().or_else(|| self.get_avgpx()) {
-                self.set_price(px);
-            }
-        }
-        if self.get_quantity() == Decimal18::ZERO {
-            if let Some(qty) = self.get_lastqty() {
-                self.set_quantity(qty);
-            }
-        }
         let embedded: Vec<SecurityId> = self
             .get_securityids()
             .get_id("ISIN")
@@ -429,7 +424,7 @@ pub trait MarketOperation: Market {
         Self: Sized,
     {
         if self.get_side() == Side::Unknown
-            && self.get_price() == Decimal18::ZERO
+            && self.get_price().is_none()
             && self.get_lastpx().is_none()
             && self.get_avgpx().is_none()
         {
@@ -451,15 +446,11 @@ pub trait MarketOperation: Market {
             None
         };
         if let Some(lane) = lane {
-            if self.get_price() == Decimal18::ZERO {
-                if let Some(px) = lane.price {
-                    self.set_price(px);
-                }
+            if self.get_price().is_none() {
+                self.set_price(lane.price);
             }
-            if self.get_quantity() == Decimal18::ZERO {
-                if let Some(qty) = lane.quantity {
-                    self.set_quantity(qty);
-                }
+            if self.get_quantity().is_none() {
+                self.set_quantity(lane.quantity);
             }
             if *self.get_currency() == Ccy::none() {
                 if let Some(currency) = lane.currency {
@@ -484,8 +475,8 @@ pub trait MarketOperation: Market {
     /// Fills the lane the side implies from the element's own facts, where
     /// the lane states nothing of its own: a buy at a price is a party
     /// willing to pay it, and a sell at one a party willing to be paid it.
-    /// Only a stated fact fills a lane - a price or a quantity of nothing,
-    /// no currency, no unit, is nothing to state on the lane either - and a
+    /// Only a stated fact fills a lane - no price or quantity, no currency,
+    /// no unit, is nothing to state on the lane either - and a
     /// side taking neither lane fills nothing.
     fn fill_lanes(&mut self)
     where
@@ -496,11 +487,11 @@ pub trait MarketOperation: Market {
             return;
         }
         let own = Lane {
-            price: Some(self.get_price()).filter(|px| *px != Decimal18::ZERO),
+            price: self.get_price(),
             spotrate: self.get_spotrate(),
             forwardpoints: self.get_forwardpoints(),
             currency: Some(self.get_currency().clone()).filter(|held| *held != Ccy::none()),
-            quantity: Some(self.get_quantity()).filter(|qty| *qty != Decimal18::ZERO),
+            quantity: self.get_quantity(),
             unit: Some(self.get_unit().clone()).filter(|unit| !unit.is_none()),
         };
         let held = if side.is_bid() {
@@ -724,9 +715,13 @@ fn merge_operation_event<E: MarketOperationEvent>(
 /// element states, never an identity, an instant or the step before it.
 pub(crate) fn feed_market<E: Market + ?Sized>(state: &mut Xxh3, this: &E) {
     let mut staged = Staged::new(state);
-    staged.feed("price", &this.get_price().units().to_le_bytes());
+    if let Some(price) = this.get_price() {
+        staged.feed("price", &price.units().to_le_bytes());
+    }
     staged.feed("currency", this.get_currency().as_str().as_bytes());
-    staged.feed("quantity", &this.get_quantity().units().to_le_bytes());
+    if let Some(quantity) = this.get_quantity() {
+        staged.feed("quantity", &quantity.units().to_le_bytes());
+    }
     staged.feed("unit", this.get_unit().as_str().as_bytes());
     staged.feed("side", this.get_side().as_str().as_bytes());
     for id in this.get_securityids() {
@@ -815,11 +810,11 @@ fn follow_market_facts<E: Market + ?Sized>(
 ) -> bool {
     let mut changed = false;
     if this.get_prevpx().is_none() {
-        let px = Some(previous.get_price()).filter(|px| *px != Decimal18::ZERO);
+        let px = previous.get_price();
         changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
     }
     if this.get_prevqty().is_none() {
-        let qty = Some(previous.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
+        let qty = previous.get_quantity();
         changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
     }
     changed | chain_market(this, previous, side_from_chain)

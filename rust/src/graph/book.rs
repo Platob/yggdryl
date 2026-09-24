@@ -406,7 +406,10 @@ impl BookSide {
         for (index, operation) in live.into_iter().enumerate() {
             let path = format_smolstr!("$.live[{index}]");
             side.validate_component(&operation, &path, true)?;
-            let price = BookPrice::of(operation.get_side(), operation.get_price())
+            let stated = operation
+                .get_price()
+                .expect("a validated operation states a price");
+            let price = BookPrice::of(operation.get_side(), stated)
                 .expect("a validated side has a book price");
             let identity = LiveKey::of(&operation);
             if built.positions.insert(identity.clone(), price).is_some() {
@@ -476,7 +479,7 @@ impl BookSide {
                 .1
                 .iter()
                 .fold(Decimal18::ZERO, |quantity, operation| {
-                    quantity + operation.get_quantity()
+                    quantity + operation.get_quantity().unwrap_or(Decimal18::ZERO)
                 }),
         )
     }
@@ -517,6 +520,14 @@ impl BookSide {
                     self.get_side().as_str(),
                     operation.get_side().as_str()
                 ),
+            ));
+        }
+        // A level is a price: an operation stating none has no place on a
+        // side, and nothing here invents one for it.
+        if operation.get_price().is_none() {
+            return Err(invalid(
+                format_smolstr!("{path}.price"),
+                "expected a price on a book side",
             ));
         }
         Ok(())
@@ -693,7 +704,13 @@ impl BookSide {
             operation.set_book(book);
             operation.finalize();
         }
-        let Some(price) = BookPrice::of(operation.get_side(), operation.get_price()) else {
+        let Some(stated) = operation.get_price() else {
+            return Err(invalid(
+                "$.operation.price",
+                "expected a price on a book side",
+            ));
+        };
+        let Some(price) = BookPrice::of(operation.get_side(), stated) else {
             return Err(invalid(
                 "$.operation.side",
                 format_smolstr!(
@@ -889,13 +906,14 @@ impl BookSide {
 
     pub(super) fn canonical_element(&self) -> Result<MarketData> {
         let mut element = self.element.clone();
-        element.set_price(Decimal18::ZERO);
-        element.set_quantity(Decimal18::ZERO);
+        element.set_price(None);
+        element.set_quantity(None);
         element.set_currency(Ccy::none());
         element.set_unit(Unit::none());
         if let Some((price, level)) = self.levels.first_key_value() {
             let quantity = level.iter().try_fold(Decimal18::ZERO, |sum, operation| {
-                sum.checked_add(operation.get_quantity()).ok_or_else(|| {
+                sum.checked_add(operation.get_quantity().unwrap_or(Decimal18::ZERO))
+                    .ok_or_else(|| {
                     invalid(
                         "$.quantity",
                         "aggregate best-level quantity exceeds decimal18",
@@ -903,8 +921,8 @@ impl BookSide {
                 })
             })?;
             let first = &level[0];
-            element.set_price(price.price());
-            element.set_quantity(quantity);
+            element.set_price(Some(price.price()));
+            element.set_quantity(Some(quantity));
             element.set_currency(first.get_currency().clone());
             element.set_unit(first.get_unit().clone());
         }
@@ -1311,8 +1329,8 @@ impl Book {
 
     fn cached_median_quantity(&self, bid: &MarketData, ask: &MarketData) -> Option<Decimal18> {
         median_quantity(
-            (!self.bid.is_empty()).then(|| bid.get_quantity()),
-            (!self.ask.is_empty()).then(|| ask.get_quantity()),
+            (!self.bid.is_empty()).then(|| bid.get_quantity()).flatten(),
+            (!self.ask.is_empty()).then(|| ask.get_quantity()).flatten(),
         )
     }
 
@@ -1554,11 +1572,8 @@ impl Book {
             self.bbo_midpoint()
                 .or_else(|| self.bid.best_price().or_else(|| self.ask.best_price()))
         };
-        event.set_price(midpoint.unwrap_or(Decimal18::ZERO));
-        event.set_quantity(
-            self.cached_median_quantity(bid, ask)
-                .unwrap_or(Decimal18::ZERO),
-        );
+        event.set_price(midpoint);
+        event.set_quantity(self.cached_median_quantity(bid, ask));
         let currency = match (
             (!self.bid.is_empty()).then(|| bid.get_currency()),
             (!self.ask.is_empty()).then(|| ask.get_currency()),

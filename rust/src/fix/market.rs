@@ -562,17 +562,14 @@ fn trade_execution(
 
     let mut event = base.clone();
     event.set_side(side);
+    // A side's last executed quantity and average price are those facts
+    // and nothing more: neither stands in for the price or the quantity the
+    // side states.
     if let Some(value) = entry_decimal(occurrence, 1009, path(1009, "SideLastQty"))? {
         event.set_lastqty(Some(value));
-        event.set_quantity(value);
-    } else if let Some(value) = base.get_lastqty() {
-        event.set_quantity(value);
     }
     if let Some(value) = entry_decimal(occurrence, 1852, path(1852, "SideAvgPx"))? {
         event.set_avgpx(Some(value));
-        if base.get_lastpx().is_none() {
-            event.set_price(value);
-        }
     }
     if let Some(value) = entry_value(occurrence, 1154) {
         event.set_currency(Ccy::new(value).map_err(|_| {
@@ -983,8 +980,8 @@ fn build_book_operation(
         fallback_crosscode(&scope, entry_type, action.as_str(), &entry.facts, &path)?
     };
 
-    event.set_price(entry.price.unwrap_or(Decimal18::ZERO));
-    event.set_quantity(entry.size.unwrap_or(Decimal18::ZERO));
+    event.set_price(entry.price);
+    event.set_quantity(entry.size);
     event.set_side(side);
     event.set_state(state);
     let ticker = entry
