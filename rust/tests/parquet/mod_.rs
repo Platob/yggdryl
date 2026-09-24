@@ -132,7 +132,7 @@ mod internal {
             "currency.parquet",
             vec![
                 ArrowField::new("id", ArrowDataType::Int64, false),
-                extension_field("ccy", ArrowDataType::Utf8, "yggdryl.currency", Some("")),
+                extension_field("ccy", ArrowDataType::Utf8, "yggdryl.ccy", Some("")),
             ],
             vec![
                 Arc::new(Int64Array::from(vec![1, 2, 3])),
@@ -160,7 +160,7 @@ mod internal {
             .map(|batch| batch.unwrap())
             .collect();
         let restored = Field::from_arrow_field(batches[0].schema().field(1)).unwrap();
-        assert_eq!(restored.dtype(), &DataType::Currency);
+        assert_eq!(restored.dtype(), &DataType::Ccy);
         assert_eq!(restored.name(), "ccy");
         let cells = batches[0]
             .column(1)
@@ -401,13 +401,22 @@ mod internal {
             .next()
             .unwrap()
             .unwrap();
-        let read: Vec<yggdryl::Scalar> = (0..batch.num_rows())
+        // The column is the variant field's own layout, so landing it casts
+        // nothing: each row reads as the value it was written as.
+        let payload = DataType::Variant.nullable_field("payload");
+        assert_eq!(
+            batch.column(0).data_type(),
+            payload.clone().into_arrow_field().unwrap().data_type()
+        );
+        let column = yggdryl::Serie::from_arrow_array(
+            Some(&payload),
+            Arc::clone(batch.column(0)),
+            ArrowCastOptions::default(),
+        )
+        .unwrap();
+        let read: Vec<yggdryl::Scalar> = (0..column.len())
             .map(|row| {
-                let held = yggdryl::arrow::scalar_value(
-                    &DataType::Variant.nullable_field("payload"),
-                    batch.column(0).slice(row, 1).as_ref(),
-                )
-                .unwrap();
+                let held = column.scalar(row).unwrap();
                 let yggdryl::Scalar::Variant(variant) = held else {
                     panic!("a variant value, got {held:?}");
                 };
@@ -558,10 +567,19 @@ mod internal {
         .next()
         .unwrap()
         .unwrap();
-        let held = yggdryl::arrow::scalar_value(
-            &DataType::Variant.nullable_field("payload"),
-            batch.column(0).slice(0, 1).as_ref(),
+        let payload = DataType::Variant.nullable_field("payload");
+        assert_eq!(
+            batch.column(0).data_type(),
+            payload.clone().into_arrow_field().unwrap().data_type(),
+            "the column is the variant field's own layout, so landing it casts nothing"
+        );
+        let held = yggdryl::Serie::from_arrow_array(
+            Some(&payload),
+            batch.column(0).slice(0, 1),
+            ArrowCastOptions::default(),
         )
+        .unwrap()
+        .scalar(0)
         .unwrap();
         let yggdryl::Scalar::Variant(variant) = held else {
             panic!("a variant value, got {held:?}");

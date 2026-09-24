@@ -6,7 +6,7 @@ use std::mem::size_of;
 use yggdryl::graph::{
     Element, Event, MarketElement, MarketElementData, MarketEventData, Order, OrderEntry,
 };
-use yggdryl::{Currency, Decimal18, Side, State, Uuid};
+use yggdryl::{Ccy, Decimal18, Side, State, Uuid};
 
 fn full_order() -> MarketEventData {
     let mut event = MarketEventData::at(1_700_000_000_000_000_000);
@@ -14,7 +14,7 @@ fn full_order() -> MarketEventData {
     event.set_srcuuids(vec![Uuid::from_v8(7)]);
     event.set_state(State::from_spelling("Filled").expect("a shipped state"));
     event.set_price(Decimal18::from_int(82));
-    event.set_currency(Currency::new("USD").expect("a currency"));
+    event.set_currency(Ccy::new("USD").expect("a currency"));
     event.set_quantity(Decimal18::from_int(10));
     event.set_unit("lot".to_owned());
     event.set_side(Side::read("Buy").expect("a side"));

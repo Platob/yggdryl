@@ -65,7 +65,7 @@ here too - `UTCTimestamp` and `TZTimestamp` to `datetime64(ns,"UTC")`,
     assert_eq!(leaf, DateTimeType::DateTime64 { unit: TimeUnit::Microsecond, timezone: Timezone::NAIVE });
     assert_eq!(leaf.unit(), TimeUnit::Microsecond);
     assert_eq!(leaf.bit_width(), 64);
-    assert_eq!(leaf.family(), "datetime");
+    assert_eq!(leaf.id().temporal_family(), Some("datetime"));
     assert_eq!(leaf.with_timezone(Timezone::UTC).timezone(), Timezone::UTC);
     assert_eq!(leaf.with_unit(TimeUnit::Second)?.unit(), TimeUnit::Second);
     assert_eq!(DateTimeType::ALL, [leaf]);

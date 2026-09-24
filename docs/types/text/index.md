@@ -6,7 +6,7 @@ Two families whose value is a run of bytes: one string family in eighteen leaves
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::String(StringType)` and `DataType::Bytes(BytesType)`, and the values `Str` and `Bytes` they store |
+| Owns | the eighteen string and six byte leaves - each a `DataType`, `Field` and `Scalar` variant, viewed as `StringType` and `BytesType` - and the `Str` and `Bytes` their values hold |
 | Constructors | `DataType::string` and `DataType::bytes` take the whole declaration; one constructor per leaf picks it once - `utf8`, `large_utf8`, `utf8_view`, `large_utf8_view`, `fixed_utf8(n)`, `sized_utf8(n)`, the same six under `ascii` and `cp1252`, and `binary`, `large_binary`, `binary_view`, `large_binary_view`, `fixed_binary(n)`, `sized_binary(n)` |
 | Validates | At construction, the number: a leaf that *is* a number does not stand without one, the other four of each shape refuse one, and zero is refused. At the value door, the charset and the bound |
 | Lazy | Nothing - a leaf is a copy value with no registry, no child and no deferred parse |
@@ -169,7 +169,7 @@ something narrower.
 
 - A leaf that *is* its number - `fixed_utf8`, `sized_ascii`, `fixed_binary` - stated with none -> refused; a bound of `0` -> refused, `at least one byte, got 0`.
 - `utf8(32)`, `ascii(4)`, `cp1252(32)`, `binary(16)` -> the sized leaf written short; `large_utf8(64)`, `utf8_view(8)`, `large_binary(16)` -> refused, a large or view leaf holds no maximum.
-- A value never carries a maximum: the `dtype` of a cell read out of `sized_utf8(32)` is `utf8`, of `sized_binary(16)` is `binary`.
+- A value carries the leaf of its column, a maximum included: the `dtype` of a cell read out of `sized_utf8(32)` is `sized_utf8(32)`, of `sized_binary(16)` is `sized_binary(16)`; equality, order and hash read the characters or the payload alone.
 - `string_parameters` on a code, `bytes_parameters` on a UUID -> `None`; `fixed_byte_width` answers for a fixed string, fixed bytes and a UUID, and a code answers `code_width` instead, the maximum its standard fixes over the text it stores.
 - A `yggdryl.string` or `yggdryl.bytes` document over a storage it does not describe -> a foreign field wearing our name, imported as its storage.
 - Merging follows [Field](../field.md): two strings and two byte types meet parameter by parameter, and neither meets the other.

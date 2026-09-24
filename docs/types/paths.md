@@ -9,7 +9,7 @@ afterwards.
 | step | spelling | reaches |
 | --- | --- | --- |
 | child | `.name`, or a bare `name` at the start | a struct child, resolved ASCII case-insensitively |
-| position | `[0]`, `[-1]` | one list element, 0-based, a negative index counting back from the end |
+| position | `[0]`, `[-1]` | one serie element, 0-based, a negative index counting back from the end |
 | key | `['k']` | one map entry by text key |
 | quoted child | `"a.b"` | a child whose name carries a dot, a bracket or a space |
 | alias | `... as name`, `... as "a name"` | what to call what the path reached |

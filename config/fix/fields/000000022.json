@@ -333,7 +333,7 @@
   {
     "name": "legcomplexoptpayoutcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -422,7 +422,7 @@
   {
     "name": "legcomplexeventcurrencyone",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -434,7 +434,7 @@
   {
     "name": "legcomplexeventcurrencytwo",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -834,7 +834,7 @@
   {
     "name": "underlyingcomplexoptpayoutcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -858,7 +858,7 @@
   {
     "name": "underlyingcomplexeventcurrencyone",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -870,7 +870,7 @@
   {
     "name": "underlyingcomplexeventcurrencytwo",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

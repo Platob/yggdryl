@@ -30,7 +30,7 @@ pub enum FixCategory {
     Fields,
     /// Named Struct definitions; one carrying `FIX:msgtype` is a message.
     Components,
-    /// Lists of component occurrences, referencing a scalar counter.
+    /// Series of component occurrences, referencing a scalar counter.
     Groups,
 }
 

@@ -78,7 +78,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
     let row = DataType::from_str(
-        "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, at: UTCTimestamp>",
+        "struct<ccy: Ccy, venue: Exchange, px: Price, qty: Qty, at: UTCTimestamp>",
     )?;
     assert_eq!(
         row.get_field_by_path("venue").map(|field| field.dtype().clone()),
@@ -96,7 +96,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
         DataType::from_str("utc_date_only")?,
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
-    assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
+    assert_eq!(DataType::LOGICAL_NAMES[0], ("ccy", DataType::Ccy));
 
     // Three of the names also prebuild the vocabulary their codes come from.
     assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
@@ -120,14 +120,14 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert str(price) == "float64"
 
     # The same lookup backs the grammar, so a FIX declaration types a row.
-    row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
+    row = DataType("struct<ccy: Ccy, venue: Exchange, px: Price, at: UTCTimestamp>")
     assert row["venue"].dtype == DataType("mic")
     assert row["at"].dtype == DataType('datetime64(ns,"UTC")')
 
     # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     # A FIX date is that day's midnight, so it resolves to an instant.
     assert DataType("utc_date_only") == DataType("datetime64(ns, UTC)")
-    assert DataType.logical_names()["currency"] == DataType("currency")
+    assert DataType.logical_names()["ccy"] == DataType("ccy")
 
     # Three of the names also prebuild the vocabulary their codes come from.
     assert StringEnum.prebuilt()["mic"] == StringEnum.prebuilt()["exchange"]
@@ -152,14 +152,14 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(price.toString(), 'float64')
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
-    const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
+    const row = DataType.from('struct<ccy: Ccy, venue: Exchange, px: Price, at: UTCTimestamp>')
     assert.equal(row.getField('venue').dtype.id, 'mic')
     assert.equal(row.getField('at').dtype.toString(), 'datetime64(ns,"UTC")')
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     // A FIX date is that day's midnight, so it resolves to an instant.
     assert.equal(DataType.from('utc_date_only').id, 'datetime64')
-    assert.equal(DataType.logicalNames().currency.id, 'currency')
+    assert.equal(DataType.logicalNames().ccy.id, 'ccy')
 
     // Three of the names also prebuild the vocabulary their codes come from.
     assert.deepEqual(StringEnum.prebuilt().mic, StringEnum.prebuilt().exchange)
@@ -172,11 +172,11 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Currency` | String | `currency` | ISO 4217 alpha-3, at most 3 bytes |
+| `Ccy` | String | `ccy` | ISO 4217 alpha-3, at most 3 bytes |
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
@@ -217,7 +217,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 
 ## Identity and family
 
-`id` names the variant, `kind` its family; both drop parameters and touch no nested state.
+`id` names the variant, `kind` its family; both drop parameters and touch no nested state. A family is the range of identifier bytes its `DataTypeKind` owns - `DataTypeKind::range`, from `DataTypeKind::id` to `DataTypeKind::last` - so `kind` is the family whose range `id` is in and `DataTypeKind::contains` asks it of one identifier; the temporal range holds five families, and `DataTypeId::temporal_family` names which. `DataTypeId::from_str` reads each identifier's `as_str` name, ignoring case, and also the five names the [serie layouts](nested/sequence.md#datatype) had before they took their own, `DataTypeId::LEGACY_NAMES`, which nothing writes.
 
 === "Rust"
 
@@ -239,6 +239,18 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 
     assert_eq!(DataType::decimal(38, 4)?.id(), DataTypeId::Decimal128);
     assert_eq!(DataType::decimal(38, 4)?.kind(), DataTypeKind::Decimal);
+
+    // A family is a range of identifier bytes, and membership is its bounds.
+    assert_eq!(DataTypeKind::Temporal.range(), 0x30..=0x3f);
+    assert_eq!(DataTypeKind::Temporal.last(), 0x3f);
+    assert!(DataTypeKind::Temporal.contains(stamp.id()));
+    assert!(!DataTypeKind::Integer.contains(stamp.id()));
+    assert_eq!(DataTypeKind::of_u8(stamp.id().as_u8()), Some(DataTypeKind::Temporal));
+
+    // The temporal range holds five families, named by the identifier.
+    assert_eq!(stamp.id().temporal_family(), Some("datetime"));
+    assert_eq!(DataTypeId::Duration32.temporal_family(), Some("duration"));
+    assert_eq!(DataTypeId::Decimal128.temporal_family(), None);
     ```
 
 === "Python"
@@ -276,7 +288,7 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
     assert.equal(fields.decimal('amount', 38, 4).dtype.kind, 'decimal')
     ```
 
-Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte.
+Both vocabularies live on [Scalar](scalar.md); the bindings see lowercase strings. `DataTypeId::as_u8` is the identifier as one byte, laid out by family - `DataTypeKind::id` is the family's own number, the start of the range its leaves take and a placeholder no leaf takes but for the null family's, and `DataTypeKind::last` its end - and `DataTypeId::from_u8` and `DataTypeKind::of_u8` read a byte back; the [value stream](value-stream.md) and the [digest feed](../hashing.md#encoding) write that byte. `DataTypeKind::range`, `last`, `contains` and `DataTypeId::temporal_family` are Rust only.
 
 ## Arrow projection
 
@@ -476,7 +488,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     ```rust
     use yggdryl::{DataType, StructType};
 
-    let rows = DataType::list(
+    let rows = DataType::serie(
         DataType::from(StructType::from_fields([DataType::utf8().nullable_field("venue")])?).nullable_field("item"),
     );
 
@@ -487,7 +499,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(format!("{rows:#}"), rows.into_pretty_str().to_string());
     assert_eq!(
         format!("{rows:#}"),
-        "list\n  item: struct[1], nullable\n    venue: utf8, nullable",
+        "serie\n  item: struct[1], nullable\n    venue: utf8, nullable",
     );
     ```
 
@@ -524,7 +536,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
         Field::new("wide", DataType::UInt64, true),
         Field::new(
             "text",
-            DataType::large_list(DataType::utf8_view().nullable_field("item")),
+            DataType::large_serie(DataType::utf8_view().nullable_field("item")),
             false,
         ),
     ])?);
@@ -535,7 +547,7 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
     assert_eq!(rewritten[1].dtype(), &DataType::decimal128(20, 0)?);
     assert_eq!(
         rewritten[2].dtype(),
-        &DataType::list(DataType::utf8().nullable_field("item"))
+        &DataType::serie(DataType::utf8().nullable_field("item"))
     );
 
     // Arrow is a validated clone; Polars keeps the unsigned integers Spark has to widen.
@@ -607,8 +619,8 @@ Compact still round-trips; `{:#}` and `pretty()` render one fact per line, one i
 | target | rewrite |
 | --- | --- |
 | `arrow` | validated clone |
-| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, fixed-size list -> list |
-| `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and fixed-size list |
+| `spark` | `uint8` -> `int16`, `uint64` -> `decimal128(20,0)`, `fixed_size_serie` -> `serie` |
+| `polars`, `pandas` | no map, and the error names key/value structs; Polars keeps unsigned and `fixed_size_serie` |
 | `iceberg` | `int8`, `int16`, `uint8`, `uint16` -> `int32`; keeps `fixed[n]`, us/ns timestamps; no duration or interval |
 
 On a [Field](field.md) the call keeps name, nullability, and metadata, and rebuilds the Arrow projection cache only when something changed.
@@ -626,7 +638,7 @@ assert!(broken.validate().is_err());
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());
 
 // A valid value validates without allocating, recursing through every child.
-let value = DataType::list(Field::new(
+let value = DataType::serie(Field::new(
     "item",
     DataType::decimal128(18, 4)?,
     true,
@@ -640,7 +652,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 ## Edges
 
 - `Time32(Nanosecond)` built directly -> `validate`, `into_arrow`, `into_arrow_ffi` fail; `DataType::time32` refuses.
-- `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a fixed-size list default over that byte limit fails the same way.
+- `fixed_size_binary(64 * 1024 * 1024 + 1).default_value()` -> error, not null; a `fixed_size_serie` default over that byte limit fails the same way.
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
@@ -653,7 +665,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - `DataType::from_arrow(currency.into_arrow())` -> `utf8`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
-- prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
+- prebuilt `ccy`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.
 - a JavaScript default -> a plain array, `Buffer`, `Map`, or `{ typeId, value }`.
 - JSON emit order -> `name`, `dtype`, `nullable`, `dictionary_id` when non-zero, `dictionary_is_ordered` when set, then `metadata`.

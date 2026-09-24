@@ -26,11 +26,11 @@ pub(crate) fn into_natural(value: Scalar, field: &Field) -> Result<Scalar> {
     }
     match field.dtype() {
         DataType::Struct(fields) => named(value, fields, field),
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => {
+        DataType::Serie(child)
+        | DataType::SerieView(child)
+        | DataType::FixedSizeSerie(child, _)
+        | DataType::LargeSerie(child)
+        | DataType::LargeSerieView(child) => {
             sequence(value, |value| into_natural(value, child), field)
         }
         DataType::Union(fields, _) => {
@@ -130,14 +130,14 @@ fn prepare(value: Scalar, field: &Field) -> Result<Scalar> {
         return Ok(value);
     }
     match field.dtype() {
-        DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => {
+        crate::bytes_dtypes!() | DataType::Geometry(_) | DataType::Geography(_) => {
             base64_payload(value, field)
         }
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => sequence(value, |value| prepare(value, child), field),
+        DataType::Serie(child)
+        | DataType::SerieView(child)
+        | DataType::FixedSizeSerie(child, _)
+        | DataType::LargeSerie(child)
+        | DataType::LargeSerieView(child) => sequence(value, |value| prepare(value, child), field),
         DataType::Struct(fields) => structure(value, fields, field),
         DataType::Union(fields, _) => union(value, fields, field),
         DataType::Dictionary(dictionary) => prepare_for_type(value, dictionary.value(), field),
@@ -192,11 +192,11 @@ fn structure(value: Scalar, fields: &crate::StructType, field: &Field) -> Result
                 .collect::<Result<Vec<_>>>()?;
             Scalar::from_struct(prepared)
         }
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             if values.len() != fields.len() {
                 return Err(invalid(field, "struct array has the wrong length"));
             }
@@ -263,12 +263,12 @@ fn mapping(value: Scalar, map: &crate::MappingType, field: &Field) -> Result<Sca
 /// Whether a subtree stores bytes anywhere a document would spell base64.
 fn holds_byte_leaf(dtype: &DataType) -> bool {
     match dtype {
-        DataType::Bytes(_) | DataType::Geometry(_) | DataType::Geography(_) => true,
-        DataType::List(child)
-        | DataType::ListView(child)
-        | DataType::FixedSizeList(child, _)
-        | DataType::LargeList(child)
-        | DataType::LargeListView(child) => holds_byte_leaf(child.dtype()),
+        crate::bytes_dtypes!() | DataType::Geometry(_) | DataType::Geography(_) => true,
+        DataType::Serie(child)
+        | DataType::SerieView(child)
+        | DataType::FixedSizeSerie(child, _)
+        | DataType::LargeSerie(child)
+        | DataType::LargeSerieView(child) => holds_byte_leaf(child.dtype()),
         DataType::RunEndEncoded(encoded) => holds_byte_leaf(encoded.values().dtype()),
         DataType::Struct(fields) => fields.iter().any(|field| holds_byte_leaf(field.dtype())),
         DataType::Union(fields, _) => fields
@@ -288,7 +288,7 @@ fn holds_byte_leaf(dtype: &DataType) -> bool {
 /// Decode the base64 a document spells a byte payload with.
 fn base64_payload(value: Scalar, field: &Field) -> Result<Scalar> {
     match value {
-        Scalar::String(encoded) => base64::engine::general_purpose::STANDARD
+        crate::string_scalars!(encoded) => base64::engine::general_purpose::STANDARD
             .decode(encoded.as_str().as_bytes())
             .map(Scalar::from)
             .map_err(|_| invalid(field, "expected base64 text")),

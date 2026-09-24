@@ -148,8 +148,8 @@ step is run, never which step is skipped.
 | media format | `<name>/` at the root, free functions over `IOBase` + a stateful wrapper, reached through `MediaType`/`RecordOptions` -> interop both directions -> docs |
 | metadata property | a protocol view keyed `<SCHEME>:<property>`, the scheme upper case; never a new `Field` accessor |
 | binding method | core method first; the binding only infers, coerces, redirects - plus a parity test, a boundary benchmark, a docs entry |
-| Arrow collection verb | a `Serie` verb in `serie.rs` or `serie/arrow.rs`, or a node or rule of `ArrowCastPlan` in `cast.rs` - never a function in `arrow/`, a method on `DataTypeValue`, `FieldValue` or `Field`, or a helper in the calling module -> `rust/tests/serie/<file>.rs` or `rust/tests/root/cast.rs`, plus an `allocations` row at two corpus sizes -> both bindings' `Serie`, `SerieReader` or `ArrowCastPlan` -> `docs/types/serie.md` or `docs/types/cast.md` |
-| a surface reading Arrow rows | one `SerieReader` per stream, or one landing per batch with the root resolved once per reader; casts through one `ArrowCastPlan` compiled before the loop; each column narrowed to its leaf once and read through leaf accessors per row -> a pin that the per-row path allocates only what it hands back -> the surface's bench |
+| Arrow collection verb | a `Serie` verb in `serie.rs` or `serie/arrow.rs`, a `ChunkedSerie` verb in `chunked_serie.rs`, or a node or rule of `ArrowCastPlan` in `cast.rs` - never a function in `arrow/`, a method on `DataTypeValue`, `FieldValue` or `Field`, or a helper in the calling module -> `rust/tests/serie/<file>.rs`, `rust/tests/root/chunked_serie.rs` or `rust/tests/root/cast.rs`, plus an `allocations` row at two corpus sizes -> both bindings' `Serie`, `ChunkedSerie`, `SerieReader` or `ArrowCastPlan` -> `docs/types/serie.md`, `docs/types/chunked-serie.md` or `docs/types/cast.md` |
+| a surface reading Arrow rows | one `SerieReader` per stream, or one landing per batch with the root resolved once per reader; casts through one `ArrowCastPlan` compiled before the loop; each column's storage proven once - `as_<leaf>`, or, for a text or byte column that takes any of its layouts, the crate-private `Serie::is_string_storage`/`is_byte_storage` - and read per row through that leaf's accessors and `value`, or the crate-private `Serie::value_bytes` -> a pin that the per-row path allocates only what it hands back -> the surface's bench |
 
 ## Smoke loop
 
@@ -259,8 +259,9 @@ JavaScript - each set on a copy of the options by its own setter, so
 `read_arrow_reader(rowheader=...)` and `readArrowReader({ rowheader })` read
 with the handle's own options carrying that property. The inputs of the
 expression layer cross as one `Scalar` (`Scalar.from_`, `Scalar.from`; a
-columnar object lands as `Scalar::Arrow` with its buffers) and the core reads
-them with `from_scalar` - a binding never re-implements a parser, and the
+columnar object lands as the serie `Scalar` its `Serie` is, sharing its
+buffers - a stream is drained into one, never held as a `Scalar`) and the core
+reads them with `from_scalar` - a binding never re-implements a parser, and the
 function set stays closed: `namespace.name(...)` is a registered user function,
 typed and called through its signature field, opaque to pushdown.
 
@@ -315,25 +316,26 @@ Paths below are under `rust/src/` unless stated otherwise.
 | --- | --- |
 | `<name>.rs` | one shared trait, enum, value or type each, re-exported from the crate root; a type file holds its datatype, its field and its scalar in that order ([One type, one file](#one-type-one-file)) |
 | `iobase.rs` + `iobase/` | the single `IOBase` trait and its behavior modules; `iopath.rs`, `iofolder.rs`, `iofile.rs` the three roles every storage backend implements, `iocursor.rs` the one retained position, `iomedia.rs` the record operations derived from the byte trait, `iokind.rs` and `iomode.rs` their vocabulary |
-| `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, `parser.rs` the canonical display and the Arrow, SQL, Hive and Spark parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
+| `datatype.rs` | `DataType`, the shared logical datatype enum and its cross-family value contract; `datatype_id.rs` and `datatype_kind.rs` the exact-variant and family enums, a family being the range of identifier bytes it owns (`DataTypeKind::range`, `contains`), `parser.rs` the canonical display and the Arrow, SQL, Hive and Spark parsing, `serde.rs` the structural document, `compatibility.rs` the concrete targets, `vocabulary.rs` the logical names, `default.rs` the canonical defaults, `diff.rs` schema equality and its differences, `merge.rs` the one place two schemas become one |
 | `field.rs` | `Field`, one variant per `DataType` shape, each carrying name, nullability, metadata and the Arrow projection cache; `metadata.rs` + `metadata/` the `<SCHEME>:<property>` map and its validation, `protocol.rs` the borrowed protocol views |
 | `scalar.rs` | `Scalar`, the one value every part of the project speaks; `arithmetic.rs` checked arithmetic over exact natives, `path.rs` the one allocation-free value path every recursive walk uses, `pretty.rs` the indented rendering of a schema |
-| `value/` | what a datatype, a field and a value each owe the root that holds them, and what a family owes its leaves: the `Value` and `FamilyValue` contracts, `DataTypeValue`, `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the family traits `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue` and `NestedValue` - declared here, implemented beside each leaf - and the `Nested` value enum, and `SerieValue`, what every column leaf of `Serie` owes, with `Children::Column`/`ColumnRows` walking a column's rows as `Cow`; the other six family value enums, `Integer`, `Floating`, `Decimal`, `Temporal`, `Code` and `Geospatial`, live in their family files; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
+| `value/` | what a datatype, a field and a value each owe the root that holds them, and what the leaves of one family share: the `Value` contract, `DataTypeValue` (its `kind` the family whose range its `id` is in), `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the leaf contracts `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue` and `NestedValue` - declared here, implemented beside each leaf - and `SerieValue`, what every column leaf of `Serie` owes, its `id` and `kind` its field's, with `Children::Column`/`ColumnRows` walking a column's rows as `Cow`; a family is no type - it is the `DataTypeId` byte range its `DataTypeKind` owns, and a value is its leaf; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
 | `typed.rs` | the typed markers and the field-borrowing values: `TypedField<K>`, `FieldScalar<'_>`, `UncheckedFieldScalar<'_>`, `FieldRecord<'_>` and the prebuilt shared fields |
-| `cast.rs` | the one recursive cast engine, and it is `Serie`'s: the crate-private `ArrayCastPlan` node tree - exact, bit, kernel, byte bridge, the ingest and render kinds, and the nested and encoded arms - with the kernels it calls; the public `ArrowCastPlan`, one `Field`-to-`Field` cast compiled once, applied to a `Serie`, certifying per node which leaves it proved, with a transport face (`reconcile_batch`, `reconcile_array`) for batches that are only moved; `ArrowCastOptions`; and the crate's `PlanCache`, one plan per distinct source schema for a loop whose batches can change schema. `budget.rs` holds the bounded scratch and output reservations it draws on. Nothing reaches the engine except `Serie::cast`, the `Serie` Arrow doors, `SerieReader`, a held `ArrowCastPlan`, and the crate's stage plans (`AppliedPlan` and the write session's shaping) |
+| `cast.rs` | the one recursive cast engine, and it is `Serie`'s: the crate-private `ArrayCastPlan` node tree - exact, bit, kernel, byte bridge, the ingest and render kinds, and the nested and encoded arms - with the kernels it calls; the public `ArrowCastPlan`, one `Field`-to-`Field` cast compiled once, applied to a `Serie` - or, by `apply_chunked`, to every chunk of a `ChunkedSerie` - certifying per node which leaves it proved, with a transport face (`reconcile_batch`, `reconcile_array`) for batches that are only moved; `ArrowCastOptions`; and the crate's `PlanCache`, one plan per distinct source schema for a loop whose batches can change schema. `budget.rs` holds the bounded scratch and output reservations it draws on. Nothing reaches the engine except `Serie::cast`, the `Serie` and `ChunkedSerie` Arrow doors, `ChunkedSerie::cast`, `SerieReader`, a held `ArrowCastPlan`, and the crate's stage plans (`AppliedPlan` and the write session's shaping) |
 | `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
-| `serie.rs` + `serie/` | `Serie`, the fourth side of the value model: many values, as a schema-free `Run` or as a column - the Arrow buffers of one `Field`, holding no `Scalar`, nested as `Serie` children all the way down - with the collection verbs (`scalar`, `get`, `rows`, `iter`, `slice`, `splice` and the writes spelled over it: `set`, `push`, `insert`, `remove`, `pop`, `truncate`, `clear`, `extend`, `extend_from_serie`, `resize`, `set_child`, `set_cell`), identity over the rows alone, serde, a flat root of one variant per `DataType` variant spelled as it is - the payload families `Time32Serie`, `Time64Serie`, `DateTime64Serie`, `DurationSerie`, `IntervalSerie`, `StringSerie` and `BytesSerie` only where one variant spans several layouts - and the `as_<leaf>`/`get_<leaf>_mut` narrowings; `serie/datatype.rs` is the family's datatype and field - `SerieType`, the five list layouts over one item field, and `SerieField` - and `Run`, the schema-free ordered run a row canonicalizes to: one shared `Arc<[Scalar]>`, one allocation to build, and the one leaf of `Serie` that declares no field; `serie/` otherwise holds one leaf per Arrow layout - `primitive.rs`, `boolean.rs`, `null.rs`, `bytes.rs` with its `string.rs` aliases, `structure.rs`, `list.rs`, `mapping.rs`, `variant.rs`, `enums.rs`, `runend.rs`, `union.rs` - each lending its buffers and writing them in place through prove-check-write, `layout.rs` the buffer edits they share, and `arrow.rs` the one door buffers take in and out (`from_arrow_array`, `from_scalars`, `empty`, `with_capacity`, the batch and reader pairs), proving the layout against the field's projection, absence on the validity words, and - only where the layout is not the datatype's whole contract (`DataType::layout_is_contract`) - each row once. `SerieValue`, the contract every column leaf and family enum owes, is in `value/` |
-| `code.rs` | the contract every registered code answers - the trait and the two builders; the twelve codes are one file each: `currency.rs`, `country.rs`, `mic_code.rs`, `cfi_code.rs`, `isin_code.rs`, `cusip_code.rs`, `sedol_code.rs`, `bloomberg_code.rs`, `figi_code.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
-| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the `Temporal` value enum over the eight leaves, whose `family()` answers `date`, `time`, `datetime`, `duration` or `interval`, the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`as_temporal`, `temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
-| `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - the family's view over the flat `DataType::Date32` and `DataType::Date64` leaves, with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
-| `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - the family's view over the flat `DataType::Time32(TimeUnit)` and `DataType::Time64(TimeUnit)` leaves, with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
-| `datetime.rs` | the datetime family: `DateTimeType` - one leaf, `DateTime64 { unit, timezone }` - the family's view over the flat `DataType::DateTime64 { unit, timezone }` leaf, with `datetime64` and `datetime_type`, every `timestamp` spelling of the grammar, the `DateTime64` value, one Arrow projection (`Timestamp`, carrying the zone only when the datatype states one) |
-| `duration.rs` | the duration family: `DurationType` - `Duration32(unit)`, `Duration64(unit)` - the family's view over the flat `DataType::Duration32(TimeUnit)` and `DataType::Duration64(TimeUnit)` leaves, with `duration32`, `duration64`, `duration_of` and `duration_type`, the `Duration32` and `Duration64` values, one Arrow projection (`Duration`, which imports back as `duration64` because Arrow has one width) |
-| `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - the family's view over the flat `DataType::Interval(TimeUnit)` leaf, with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
+| `serie.rs` + `serie/` | `Serie`, the fourth side of the value model: many values, as a schema-free `Run` or as a column - the Arrow buffers of one `Field`, holding no `Scalar`, nested as `Serie` children all the way down - with the collection verbs (`scalar`, `get`, `rows`, `iter`, `slice`, `splice` and the writes spelled over it: `set`, `push`, `insert`, `remove`, `pop`, `truncate`, `clear`, `extend`, `extend_from_serie`, `resize`, `set_child`, `set_cell`), identity over the rows alone, serde, a flat root of one variant per storage layout named as the leaf that holds it (`Utf8String`, `DurationMillisecond`, `IntervalDayTime`) - a variant names the layout, never the datatype, because one layout serves several (`Utf8String` every string leaf laid out as UTF-8, `DurationSecond` both widths), so a column's datatype is its field's, `SerieValue::id`; the five serie layouts each serve one datatype and are named as it is - `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView` - each holding its `<Variant>Serie` leaf (`SerieSerie`, `SerieViewSerie`, `FixedSizeSerieSerie`, `LargeSerieSerie`, `LargeSerieViewSerie`, over the `OffsetSerie<O>`/`OffsetViewSerie<O>` shapes whose offset width is an `OffsetLeaf`), so `Serie::as_serie` narrows a column to `SerieSerie` where `Scalar::as_serie` borrows the whole `Serie` a value holds; the codes, `Version`, `Url`, `Urn`, `Timezone`, `MimeType`, `MediaType`, `Uuid`, `Geometry`, `Geography` and `SortedMap` keep variants of their own - and the `as_<leaf>`/`get_<leaf>_mut` narrowings, and, crate-private, the `is_string_storage`/`is_byte_storage` predicates the text body readers and the FIX payload guard on, and the `value_bytes` those readers and the digest feed - which matches the same storage variants by name - read per row; `serie/datatype.rs` is the family's datatype and field - `SerieType`, the five serie layouts over one item field, and `SerieField` - and `Run`, the schema-free ordered run a row canonicalizes to: one shared `Arc<[Scalar]>`, one allocation to build, and the one leaf of `Serie` that declares no field; `serie/` otherwise holds one leaf per Arrow layout - `primitive.rs`, `boolean.rs`, `null.rs`, `bytes.rs` with its `string.rs` aliases, `structure.rs`, `sequence.rs` (the five serie layouts), `mapping.rs`, `variant.rs`, `enums.rs`, `runend.rs`, `union.rs` - each lending its buffers and writing them in place through prove-check-write - a primitive, boolean or byte leaf reading its own typed buffer through the reading its field resolved where it landed, and a string or byte leaf's `value(i)` lending a run's bytes where they lie across offsets, views and fixed widths with no value built - `layout.rs` the buffer edits they share, `value.rs` the one codec between a row and an Arrow slot (named by nothing outside `serie/`, `cast.rs` and `temporal.rs`), and `arrow.rs` the one door buffers take in and out (`from_arrow_array`, `from_scalars`, `empty`, `with_capacity`, the batch and reader pairs, `SerieReader::from_serie` and `SerieReader::from_chunked`), proving the layout against the field's projection, absence on the validity words, and - only where the layout is not the datatype's whole contract (`DataType::layout_is_contract`) - each row once, a refusal naming the landed row and the path below it (`$[3].bid.live[0].miccode`). `SerieValue`, the contract every column leaf owes, is in `value/` |
+| `chunked_serie.rs` | `ChunkedSerie`: many `Serie` columns under one field, held apart - the chunked array and the table - each chunk a column of exactly that field, proven at its own door, with the chunk ends kept beside the chunks so a row is a binary search and the length a read; the row verbs read across the chunks, a child is the child of every chunk, identity is the rows alone; `from_arrow_arrays`/`into_arrow_arrays` cross a chunked array one array per chunk, `from_arrow_reader`/`into_arrow_reader` a table one batch per chunk, `cast` is one plan over every chunk and `into_serie` the one join; `SerieReader::from_chunked`, beside `from_serie` in `serie/arrow.rs`, streams its chunks |
+| `code.rs` | the contract every registered code answers - the trait and the two builders; the twelve codes are one file each: `ccy.rs`, `country.rs`, `mic_code.rs`, `cfi_code.rs`, `isin_code.rs`, `cusip_code.rs`, `sedol_code.rs`, `bloomberg_code.rs`, `figi_code.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
+| `temporal.rs` | what the five temporal families share and nothing any one of them owns: the crate-private `TemporalKind` tag the arithmetic, the digests and canonicalization branch on - public only as `DataTypeId::temporal_family`, `date`, `time`, `datetime`, `duration` or `interval` - the `temporal_leaf!` macro the family files build their count-unit-zone values with, the unit validators the constructors call, the ISO 8601 spellings every text codec and the scalar renderer write through, the Arrow casts that take any temporal, and the `Scalar` readers that answer across the families (`temporal_unit`, `temporal_timezone`, `temporal_count`); `TemporalValue`, the contract every leaf answers, is in `value/`; no datatype, no field and no leaf value live here |
+| `date.rs` | the date family: `DateType` - `Date32`, `Date64`, no parameter, the unit being what the leaf is - the typed field's payload over the flat `DataType::Date32` and `DataType::Date64` leaves, with `date32()`, `date64()` and `date_type()`, the `Date32` and `Date64` values with their `Scalar` constructors, one Arrow projection (`Date32`, `Date64`) |
+| `time.rs` | the time family: `TimeType` - `Time32(unit)`, `Time64(unit)`, the resolution a parameter of the leaf and `for_unit` the one rule `DataType::time` picks a width by - the typed field's payload over the flat `DataType::Time32(TimeUnit)` and `DataType::Time64(TimeUnit)` leaves, with `time`, `time32`, `time64`, `time_of` and `time_type`, SQL's `time(p)` grammar, the `Time32` and `Time64` values, one Arrow projection (`Time32`, `Time64`) |
+| `datetime.rs` | the datetime family: `DateTimeType` - one leaf, `DateTime64 { unit, timezone }` - the typed field's payload over the flat `DataType::DateTime64 { unit, timezone }` leaf, with `datetime64` and `datetime_type`, every `timestamp` spelling of the grammar, the `DateTime64` value, one Arrow projection (`Timestamp`, carrying the zone only when the datatype states one) |
+| `duration.rs` | the duration family: `DurationType` - `Duration32(unit)`, `Duration64(unit)` - the typed field's payload over the flat `DataType::Duration32(TimeUnit)` and `DataType::Duration64(TimeUnit)` leaves, with `duration32`, `duration64`, `duration_of` and `duration_type`, the `Duration32` and `Duration64` values, one Arrow projection (`Duration`, which imports back as `duration64` because Arrow has one width) |
+| `interval.rs` | the interval family: `IntervalType` - one leaf, `Interval(layout)`, the layout a `TimeUnit` interval member - the typed field's payload over the flat `DataType::Interval(TimeUnit)` leaf, with the validating `interval(unit)` and `interval_type`, the `interval` grammar with SQL's bare `interval day`, the `Interval` value holding every component of every layout, one Arrow projection (`Interval`) |
 | `timezone.rs` | the `Timezone` value, its bundled IANA registry, and the `timezone` datatype a column of zones declares |
 | `mime_type.rs` + `mime_type/`, `media_type.rs` + `media_type/` | the root `MimeType` and `MediaType` values, which stay the media routing vocabulary, each with a `datatype.rs` beneath it for the `mimetype` and `mediatype` datatypes a column declares; `mime_type/` also holds the extension registry and the line classifier |
-| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the one string datatype `DataType::String(StringType)`, the one string value `Str`, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The twelve registered codes are not strings and are not here: each is its own file - `currency.rs`, `country.rs`, the seven `*_code.rs` leaves, `side.rs`, `state.rs` and `timeinforce.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all leaves of `DataType::String` and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `Str::from_bytes` and `encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
-| `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `Str::from_bytes` and `Str::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
+| `string.rs` | every string the crate has, one family: the `StringType` enum of eighteen leaves - six shapes in each of UTF-8, US-ASCII and windows-1252 - the eighteen `DataType` and `Scalar` leaf variants it views, the characters `Str` every string value holds, the `FIELD:enum` dictionary `StringEnum` and its ISO listings, one Arrow projection, one cast tier, one grammar, one set of field markers. The twelve registered codes are not strings and are not here: each is its own file - `ccy.rs`, `country.rs`, the seven `*_code.rs` leaves, `side.rs`, `state.rs` and `timeinforce.rs` - over the contract in `code.rs`. `utf8`, `large_utf8`, `sized_ascii(4)`, `fixed_cp1252(8)` and the spelling `string(windows-1252,32)` are all string leaves and all answer `DataType::string_parameters`; a code answers `DataType::code_width` and `is_code` instead, because it is an identity over a registry rather than a charset, and rides `Utf8` under its own extension name. The per-charset arms - `charset()`, the fixed and sized leaf constructors, `with_charset`, the decode and encode behind `StringType::scalar_from_bytes` and `StringType::encode`, a value's repertoire check - dispatch to `utf8.rs`, `ascii.rs` and `cp1252.rs`; the eighteen-variant enum itself stays here, because a variant is not a type of its own |
+| `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `StringType::read_text` and `StringType::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
@@ -345,7 +347,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - `TextLine` an `Event` of the graph holding the whole line, row header included, and the `Arc<TextOptions>` it reads itself by, every reading resolved once on its first ask and a `set_` stated over it - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
 | `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
 | `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
-| `arrow/` | Arrow interop: stream combinators, schema projections, `rows.rs`, the value functions and `ArrowScalar`; casting belongs to `cast.rs` and is reached through `Serie`, `SerieReader` and `ArrowCastPlan` |
+| `arrow/` | Arrow interop: stream combinators, schema projections, the IPC dictionary sidecar, and `rows.rs`, the bounded row-to-batch reader that lays each batch out through `Serie`; every value crossing is `Serie`'s and every cast `cast.rs`'s, reached through `Serie`, `SerieReader` and `ArrowCastPlan` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
 | `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes, its names and its canonically sorted source UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants, a state and a place in its chain, the predecessor named by `prevuuid` alone, and `MarketElement`/`MarketEvent`; `event.rs` the two holders, `iterator.rs` the one walk, `column.rs` the seventeen event columns (`EventColumn`) every generated event schema states under one name and one datatype each - a text line's batch opens with them in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; `instrument.rs` the lifecycle-local association registry: a conservative 32 MiB reserve charges 1 KiB per valid ISIN, admits at most 32,768 under that reserve and 65,536 in all, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
@@ -436,7 +438,7 @@ the JavaScript files beside it, `node/src/text/line.rs` by
 ## Ownership
 
 - One row schema: a non-null Struct `Field`. Rows canonicalize to ordered
-  `Scalar::List`; `Scalar::Struct` is a sorted name-to-scalar *input* shape.
+  `Scalar::Serie`; `Scalar::Struct` is a sorted name-to-scalar *input* shape.
   No second row/schema class or accessor; `FieldRecord<'_>` is a borrowed view
   of one row under that field, never a class of its own.
 - Codec parsing and local per-event enrichment depend only on that event. They
@@ -471,7 +473,8 @@ the JavaScript files beside it, `node/src/text/line.rs` by
   writes their steps.
 - `IOMode` = `ReadOnly`, `Overwrite`, `Append`, `Merge`, `Random`; operations
   reject modes that do not apply; no alias.
-- `DataTypeId` = exact variant, `DataTypeKind` = family. `TimeUnit` is the only
+- `DataTypeId` = exact variant, `DataTypeKind` = family, which is the range of
+  `DataTypeId` bytes it owns (`range`, `contains`), never a value type. `TimeUnit` is the only
   temporal/interval unit parser and Arrow converter; `MimeType`/`MediaType` own
   MIME parsing, suffix and content-coding inference, preferred extensions;
   `Scheme` owns URI and compatibility scheme vocabulary.
@@ -486,7 +489,7 @@ predicates naming it - then the **field** - its `FieldType` marker and
 `TypedField` alias - then the **scalar** - its value, its `Value` impl and the
 `Scalar` variant that carries it. Its Arrow reading belongs there too: the
 storage it projects to, the extension name it is recognised by, and the cast
-that reads it back. Nothing about a currency is anywhere but `currency.rs`.
+that reads it back. Nothing about a currency is anywhere but `ccy.rs`.
 A type too big for one file keeps the file and adds a folder of its own name
 beside it, never a folder under another type: `mime_type.rs` holds the
 `MimeType` value and `mime_type/` its datatype, its registry and its line
@@ -497,7 +500,7 @@ it as `yggdryl::<Type>`.
 `<type>` is the vocabulary, not the width. Every integer width is one
 `IntegerValue` over one set of rules, so `integer.rs` holds all ten; every
 registered code is its own standard with its own validity, so `country.rs`,
-`currency.rs`, `isin.rs` and the eight beside them are eight more files.
+`ccy.rs`, `isin.rs` and the eight beside them are eight more files.
 
 What is shared by several types is a file of its own beside them, never a
 folder under one of them: `code.rs` carries the contract every registered code
@@ -517,20 +520,23 @@ share a scope with one reading `crate::{Error, Result}`.
 | checked value | `DataType::scalar(v)`, `Field::scalar(v)` | the only way a caller value becomes a stored one |
 | narrowed view | `TypedField<K>`, `TypedFieldRef<'_, K>` | a marker validating the variant; parameters stay in the wrapped `Field` |
 | field-borrowing value | `FieldScalar<'_>`, `FieldRecord<'_>` | a borrowed `Field` and the value its `scalar` contract answered; `UncheckedFieldScalar<'_>` is the pairing before that proof |
-| many values | `Serie` | a schema-free `Run` - what a row is - or the Arrow buffers of one `Field`, nested as `Serie` children; `Scalar::List` holds one, every column leaf is a `SerieValue`, identity is the rows alone, and it is the type that reads a cell, casts, or builds an Arrow array or batch |
+| many values | `Serie` | a schema-free `Run` - what a row is - or the Arrow buffers of one `Field`, nested as `Serie` children; `Scalar::Serie` holds one, every column leaf is a `SerieValue`, identity is the rows alone, and it is the type that reads a cell, casts, or builds an Arrow array or batch |
+| many values, chunked | `ChunkedSerie` | `Serie` columns of one `Field` held apart - a chunked array, or a table of one batch per chunk - read across the chunks as one column; identity is the rows alone, `cast` is one plan over every chunk, and `into_serie` is the one join |
 | many values, streamed | `SerieReader` | one record `Serie` per batch of a `BatchReader`, under one `ArrowCastPlan` compiled from the reader's schema; `into_arrow_reader` is its transport face and hands the inner reader back untouched when the plan is the identity. A stream is never a `Scalar` |
-| Arrow value | `arrow::ArrowScalar` | the shape wrapper a value takes crossing the Arrow boundary: one scalar, array, batch or stream under one `Field`, held opaquely with the cast door and the shape queries, answering `None` to every native accessor. `Serie` is the column itself, the buffers a caller reads and writes; the two share one layout proof (`arrow::require_projection`) and no bridge method - `Serie::from_arrow_array(field, held.into_array()?)` reaches the column, `ArrowScalar::from_array(field, serie.require_arrow_array()?)` crosses back, and `ArrowScalar::into_scalar` keeps answering runs; `ArrowScalar::cast` redirects to `Serie::cast` and `SerieReader` |
+| Arrow value | `Serie`, `ChunkedSerie`, `SerieReader` | a held column, table or one-row array is a `Serie` - `Scalar::from(serie)` makes it one value and `as_serie` borrows it back, neither reading a row - a held chunked column or table is a `ChunkedSerie`, its arrays or batches kept apart, and a stream is a `SerieReader`, never a `Scalar`; `SerieReader::from_serie` is the one-item reader over a held column and `SerieReader::from_chunked` the reader of a held chunked one's chunks, and `IOMedia::read_arrow`/`write_arrow` answer and take a `SerieReader` |
 
 Equivalences a change keeps lossless, in both directions:
 
 - `DataType`/`Field` <-> Arrow, through `from_arrow`/`into_arrow` and the core
   recursive exporters - never a schema rebuilt in a binding.
-- `Scalar` <-> Arrow array or scalar, through `arrow::scalar_array` and
-  `arrow::scalar_value` under the exact `Field`, which decides nullability,
+- `Scalar` <-> Arrow array or scalar, through `Serie::from_scalars(field,
+  [value])` and `Serie::from_arrow_array(Some(field), array, options)?.scalar(0)`
+  under the exact `Field`, which decides nullability,
   dictionaries, extension identity.
-- rows <-> ordered `Scalar::List`; named input <-> sorted `Scalar::Struct`
+- rows <-> ordered `Scalar::Serie`; named input <-> sorted `Scalar::Struct`
   (`from_record`), canonicalized against the Struct `Field`;
-  `ArrowScalar::from_rows` and `into_scalar` cross the same way.
+  `Serie::from_scalars(root, rows)` and `Scalar::from(serie)` cross the same
+  way, the second zero copy.
 - `Serie` <-> Arrow array, batch or reader, through `from_arrow_array`/
   `into_arrow_array`, `from_arrow_batch`/`into_arrow_batch` and
   `from_arrow_reader`/`SerieReader`/`into_arrow_reader`, by sharing buffers.
@@ -539,11 +545,16 @@ Equivalences a change keeps lossless, in both directions:
   layout is the identity plan. No row is read except to prove a leaf whose
   layout is not its datatype's whole contract, once, and not even then when the
   caller's `Proof` certifies it - never on the strength of an extension label.
+- `ChunkedSerie` <-> Arrow chunked array or table, through `from_arrow_arrays`/
+  `into_arrow_arrays` and `from_arrow_reader`/`into_arrow_reader`, one chunk
+  per array or batch, by sharing buffers; `into_serie` is the one join.
 - a datatype's canonical default is `default_value`/`is_default_value` - the
   value a declaring protocol's `apply_arrow_batch` leaves alone.
 - widths: a family constructor picks the physical width once, and shared logic
   reads across widths with `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`.
+  `temporal_unit`/`temporal_timezone`/`temporal_count`; which family is the
+  `id`'s range (`family`, `DataTypeKind::contains`), which temporal family
+  `id().temporal_family()`.
 
 ### Stack: holder -> media -> arrow
 
@@ -552,8 +563,8 @@ Equivalences a change keeps lossless, in both directions:
 | bytes | `IOBase`: `pread`/`pwrite`, `read_all_bytes`, `read_range_bytes`, `append_bytes`, `pstream_bytes`, `read_digest` | positional bytes, digests, bounded streams |
 | position | `IOCursor`, `Cursor<H>` | the only place a cursor is retained |
 | records | `IOMedia`: `read_arrow_field`, `read_arrow_reader`, `read_arrow`, `write_arrow_*`, `*_records`, `row_size`, `column_size`, `record_options` | schema, rows, batches, statistics |
-| values | `yggdryl::arrow`: `scalar_array`, `scalar_value`, `ArrowScalar`, `combined` | the `Scalar`/Arrow boundary |
-| columns | `Serie`: `from_arrow_array`/`from_arrow_batch`/`from_arrow_reader`, `cast`, `into_arrow_*`; `SerieReader` for a stream | every Arrow cast and every collection read or written in place |
+| values | `Scalar::from(serie)`, `Scalar::as_serie`, `Serie::from_scalars`, `Serie::scalar` | the `Scalar`/Arrow boundary: a column is one serie value and a value lays out as a column, through `Serie` alone |
+| columns | `Serie`: `from_arrow_array`/`from_arrow_batch`/`from_arrow_reader`, `cast`, `into_arrow_*`; `ChunkedSerie` for columns held apart; `SerieReader` for a stream | every Arrow cast and every collection read or written in place |
 
 `IOBase: Send + IOMedia`, so every handle answers records; a media wrapper
 implements `overwrite_arrow_reader` and inherits streamed append and merge.
@@ -569,18 +580,23 @@ never to a wrapper's own buffer.
 
 - Whole value: `read_scalar(field)` / `write_scalar(value)`. Schema alone:
   `read_arrow_field(options)`.
-- Rows out: `read_arrow_reader(options)` streams; `read_arrow(field)`
-  answers an `ArrowScalar` carrying its own shape.
+- Rows out: `read_arrow_reader(options)` streams batches; `read_arrow(options)`
+  answers a `SerieReader`, one record `Serie` per batch - a structured text
+  document is the one column its rows parse into.
 - Rows in, by shape, each with `overwrite`/`append`/`merge` plus a generic
   `write_*` taking an `IOMode`: `*_arrow_reader` (the streamed primitive),
-  `*_arrow_batch` (one batch), `*_records` (a row iterator), `write_arrow`.
+  `*_arrow_batch` (one batch), `*_records` (a row iterator), `write_arrow`
+  (a `SerieReader`, a held column through `SerieReader::from_serie`, a held
+  chunked column through `SerieReader::from_chunked`).
 - Navigate a row `Scalar` with `get`, `get_key_str`, `path`, `iter`,
   `sequence_rows`, `record_iter`, and update with `with_field`/`without_field`;
   a row is an ordered sequence, never a map, and `get`, `path` and `iter`
   answer `Cow` - borrowed from a run, built from a column.
-- `ArrowScalar` reports `shape`, `is_scalar`/`is_array`/`is_batch`/`is_stream`,
-  `row_size`, `column_size`; borrows with `as_array`/`as_batch`; consumes with
-  `into_array`/`into_batch`/`into_reader`/`into_scalar`; converts with `cast`.
+- A column read off Arrow is a `Serie`: `len`, `field`, `scalar(i)`, the
+  leaf narrowings, `cast`, and `into_arrow_array`/`into_arrow_batch`/
+  `into_arrow_reader`/`into_arrow_scalar`; `Scalar::from(serie)` holds it as
+  one value. A chunked array or a table kept apart is a `ChunkedSerie`, read
+  with the same verbs across its chunks.
 - `FieldRecord<'_>` is the row view under one Struct `Field`, borrowing
   the field: cell `i` is a `FieldScalar` borrowing child `i`, built by the
   field's own row canonicalization from a `Sequence` or a `Struct`, read with
@@ -599,7 +615,7 @@ never to a wrapper's own buffer.
 | accept | `from_str`/`from_*`, `Uri::from_path`, `impl Into<Holder>`, `MimeType`/`MediaType`, `Coded::infer`, `text::io::Plan::infer`, `RecordOptions::for_media_type`, binding coercion (§3, §4) | every documented spelling of one thing, each listed and tested |
 | resolve | `DataType::from_str`, `Field::from_str`, `DataType::LOGICAL_NAMES`, `Scalar::dtype`, `inferred_*_field`, `DataType::scalar`/`Field::scalar` | one exact answer or a typed error, computed once |
 | carry | `DataType`, `Field`, `Scalar`, `TypedField<K>`, `FieldScalar<'_>`/`FieldRecord<'_>`, the dispatch enums | the proof travels with the value; no later caller re-derives it |
-| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `SerieReader`, the crate's `PlanCache` and stage plans, the leaf reads (`as_<leaf>`, `values`, `value`, `offsets`, `nulls`), `scalar_array`/`scalar_value`, cached Arrow projections, `as_i128`/`as_u128`/`as_f64`/`as_decimal`/`temporal_*`, `default_value` | schema-dependent work leaves the per-item path |
+| exploit | `ArrowCastPlan::compile`/`preflight`/`apply`, `SerieReader`, the crate's `PlanCache` and stage plans, the leaf reads (`as_<leaf>`, `values`, `value`, `offsets`, `nulls`) and the reading each leaf resolved where it landed, cached Arrow projections, `as_i128`/`as_u128`/`as_f64`/`as_decimal`/`temporal_*`, `default_value` | schema-dependent work leaves the per-item path |
 
 - Precedence, where the caller did not say: an explicit argument, then a declared
   `Field`, `MediaType`, or path suffix, then one bounded content read - never a
@@ -623,7 +639,7 @@ never to a wrapper's own buffer.
   is a `FieldPath`, parsed once at its boundary by that type's one parser and
   carried resolved. It lives in `expression/`, whose grammar writes the same
   steps and shares the one segment type. Its grammar is the whole vocabulary:
-  `.name` for a struct child, `[0]` and `[-1]` for a list element, `['key']` for
+  `.name` for a struct child, `[0]` and `[-1]` for a serie element, `['key']` for
   a map entry, a quoted name for one carrying a dot, so a field named `a.b` has
   exactly one spelling and it is not two levels, and a trailing `as name` saying
   what to call what the path reached. A surface may accept a path as text at its
@@ -643,7 +659,7 @@ never to a wrapper's own buffer.
 Holds, and is asserted with the counting allocator at several corpus sizes -
 timing alone proves nothing:
 
-- borrowed views allocate nothing: `as_*`, `as_array`, `as_batch`, `as_field`,
+- borrowed views allocate nothing: `as_*`, `as_serie`, `as_field`,
   `TypedFieldRef`, `ProtocolField`; `into_*` is the allocating counterpart.
 - typing allocates nothing where the proof already exists: `FieldScalar::infer`
   borrows the prebuilt shared field of a leaf datatype, `FieldScalar::new`
@@ -658,6 +674,9 @@ timing alone proves nothing:
 - `local/` is memory-mapped, `Buffered<H>` pins pages instead of copying
   them forward, and shared nesting clones a reference while empty collections
   hold no backing.
+- a `ChunkedSerie` clone, window or child moves chunk pointers into one vector
+  of chunks and one of their ends - a window slicing only the two chunks at
+  its edges - and never a row.
 - Python crosses the C Data Interface and PyArrow holders.
 
 Does not hold, and is never claimed: JavaScript interop is copied IPC with
@@ -667,19 +686,24 @@ rendering allocate by contract.
 ### Serie is the collection
 
 `Serie` is the one type that reads a cell, casts, or builds an Arrow array or
-batch, and `SerieReader` the one that does it to a stream; `ArrowCastPlan` is
-the cast both run. `RecordBatch`, `ArrayRef` and `BatchReader` are transport,
-never a second collection API.
+batch, `ChunkedSerie` the one that holds such columns of one field apart, and
+`SerieReader` the one that does it to a stream; `ArrowCastPlan` is the cast
+all three run. A held column is a `Serie`, a held chunked column or table a
+`ChunkedSerie`, a stream a `SerieReader`; `RecordBatch`, `ArrayRef` and
+`BatchReader` are transport, never a second collection API.
 
 | Want | Spell it |
 | --- | --- |
 | an Arrow array, batch or drained stream as a column | `Serie::from_arrow_array(field, array, options)`, `Serie::from_arrow_batch(root, &batch, options)`, `Serie::from_arrow_reader(root, reader, options)` - `None` is the input's own field, and a layout that is not the field's is cast |
+| a chunked array or a table, kept apart | `ChunkedSerie::from_arrow_arrays(field, arrays, options)` - one array per chunk, one plan compiled from the first array's layout - or `ChunkedSerie::from_arrow_reader(root, reader, options)`, one chunk per batch; `ChunkedSerie::from_series(field, chunks, options)` for columns in hand; `into_serie` is the one join |
 | a stream, lazily | `SerieReader::from_arrow_reader(root, reader, options)`: one record `Serie` per batch under one plan; `into_arrow_reader` back to a `BatchReader` |
 | rows, or the canonical default | `Serie::from_scalars(field, rows)`, `Serie::from_default(field, rows)` |
-| a column under another field | `serie.cast(target, options)` once; `ArrowCastPlan::compile(source, target, options)` held and `apply`ed wherever it repeats |
-| a typed read | `serie.as_<leaf>()` or `<Leaf as SerieValue>::from_serie(&serie)`, then the leaf's `values`, `value`, `offsets`, `nulls`, `array` |
-| Arrow out | `into_arrow_array`, `into_arrow_batch`, `into_arrow_reader`, `into_arrow_scalar` |
+| a column under another field | `serie.cast(target, options)` once, `chunked.cast(target, options)` for every chunk by one plan; `ArrowCastPlan::compile(source, target, options)` held and `apply`ed wherever it repeats |
+| a typed read | `serie.as_<leaf>()` or `<Leaf as SerieValue>::from_serie(&serie)` once - the leaf names the storage layout, its `id` the datatype - then the leaf's `values`, `value`, `offsets`, `nulls`, `array` per row |
+| Arrow out | `into_arrow_array`, `into_arrow_batch`, `into_arrow_reader`, `into_arrow_scalar`; a `ChunkedSerie`'s `into_arrow_arrays` and `into_arrow_reader`, one array or batch per chunk |
 | a column as one value | `Scalar::from(serie)`; read back with `as_serie` and `iter` or `sequence_rows` |
+| a held column as a stream | `SerieReader::from_serie(serie)`: one record column, a non-record column as the one child of a record; a run is refused. `SerieReader::from_chunked(chunked)` is the same per chunk |
+| a text or byte cell's bytes | the storage leaf once (`as_utf8`, `as_binary_string`, `as_fixed_string`, `as_binary`, ...), then its `value(i)`: borrowed where they lie, no value built; inside the crate a reader that takes every text or byte layout checks `is_string_storage`/`is_byte_storage` once and reads `Serie::value_bytes` per row |
 
 - **One plan per stream, bind or write session.** A `Serie` Arrow door or
   `Serie::cast` inside a batch loop compiles per batch and is a defect. The
@@ -692,7 +716,11 @@ never a second collection API.
   row it was promised, so this is a safety boundary. The landing
   (`serie::arrow::column_of`) proves the projection and absence at every
   level, and reads each row of a leaf whose layout is not its datatype's
-  contract once - unless the caller's `Proof` certifies it. A `Proof::Proven`
+  contract once - unless the caller's `Proof` certifies it. Every public child
+  remains readable on its own: ancestor-null rows mask aligned children, hidden
+  narrow list and map spans are compacted, and dictionary or run-end values are
+  masked by visible reachability. A value it refuses is named by the row of the
+  landed array it lies in and the path below it, found again on the way out. A `Proof::Proven`
   is passed only for rows the crate laid out (`from_canonical_rows`), a
   selection of a landed column (`repeat`), or a plan node that certifies: an
   ingest that read every value under the target's rule, a contract target, a
@@ -783,10 +811,18 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
   `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
-  `Geometry`, `Geography`; `List`, `ListView`, `FixedSizeList`, `LargeList`, `LargeListView`, `Map`, `SortedMap`, `Struct`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
+  `Geometry`, `Geography`; `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView`, `Map`, `SortedMap`, `Struct`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
   The wire vocabulary does not follow the spelling: `Scalar::kind()` and the
-  serde tags keep the short `i8`, `d128` names they always wrote.
+  serde tags keep the short `i8`, `d128` names they always wrote. The serie
+  family is the one whose tags moved with its name: `kind()` and the tag are
+  the layout's own name - `serie`, `serie_view`, `fixed_size_serie`,
+  `large_serie`, `large_serie_view` - one tag per layout over a run's rows or
+  a column's field beside its rows, the payload's shape saying which, and the
+  tags it wrote before (`list`, `list_view`, `fixed_size_list`, `large_list`,
+  `large_list_view`, a column's `serie`, `list_view_serie`,
+  `fixed_size_list_serie`, `large_list_serie`, `large_list_view_serie`) are
+  still read, never written ([legacy names](#datatypes-parsers-errors)).
 - `Scalar::Struct` is a deterministic sorted name-to-`Scalar` map, resolved to an
   ordered sequence by Struct-field canonicalization; enum scalars keep generic
   enum identity in the smallest lossless integer representation.
@@ -801,14 +837,17 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   records. Shared nesting uses immutable references, empty collections allocate
   no backing, caller input never reaches `unsafe`, `unwrap`, or panic.
 - Rust keeps exact-width variants and constructors, every width a direct
-  `Scalar` variant with no family enum between, each geospatial reading and
-  each registered code likewise - a code is `Scalar::Currency`, the way its
-  type is `DataType::Currency`; shared logic goes through the
-  cross-width readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
-  `as_temporal`/`temporal_unit`/`temporal_timezone`/`temporal_count`, or
-  narrows to a family value enum - `as_integer`, `as_floating`,
-  `Decimal::from_scalar`, `as_temporal`, `as_code`, `as_geospatial`,
-  `as_nested` - and a family constructor picks the physical width once.
+  `Scalar` variant with nothing between, each geospatial reading and each
+  registered code likewise - a code is `Scalar::Ccy`, the way its type
+  is `DataType::Ccy`. A family is no type but the `DataTypeId` byte range
+  its `DataTypeKind` owns: "is it an X" is `family()` or
+  `DataTypeKind::X.contains(id)` (`is_integer`, `is_temporal`, ... are that
+  check), never a narrowing. Shared logic goes through the cross-width
+  readers `as_i128`/`as_u128`, `as_f64`, `as_decimal`, and
+  `temporal_unit`/`temporal_timezone`/`temporal_count`, or reads the leaf -
+  the matched variant, or its `Value::from_scalar` - through the leaf
+  contract it answers (`IntegerValue`, `TemporalValue`, ...); a family
+  constructor picks the physical width once.
 - A typed view compares, orders, and hashes over `(dtype, value)` - never the
   field's name, nullability, or metadata - so a value is one value whichever
   column holds it, and its `stable_hash` is the value's own. A borrowing view
@@ -827,6 +866,21 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   the registered names prebuild; `StringEnum::from_logical_name` builds the
   enum a field declares from one. A listing is a constant: every reader answers
   the same members.
+- `DataTypeId::LEGACY_NAMES` is the one table of the names the serie family
+  had before it took its own - `list`, `list_view`, `fixed_size_list`,
+  `large_list`, `large_list_view` - and `DataTypeId::from_legacy_name` reads
+  it, as `DataTypeId::from_str` and both bindings' datatype ids do. Every
+  other door that reads a datatype's name accepts the same five: the type
+  grammar (folded like every keyword, so `largelist` and `LARGE-LIST` are
+  that spelling, beside the Hive/Spark `array` words), the `DataType`/`Field`
+  serde tags, the `Scalar` wire tags and the pickles that re-parse through
+  them; an expression document's `[a, b]` constructor, written under `list`
+  before, reads under that tag too. Nothing writes one: `as_str`, `Display`, the pretty form,
+  `Scalar::kind()` and every tag spell `serie`, `serie_view`,
+  `fixed_size_serie`, `large_serie`, `large_serie_view`, so a schema,
+  document or pickle written under an old name reads, and writes back under
+  the new one. Each old spelling is an accepted one, listed and tested at
+  every door.
 - Split only at top-level separators, honoring balanced wrappers, quoting, and
   escapes; reject trailing tokens, duplicates, malformed numbers, and invalid
   nullability with byte position and context. `variant(...)` is dense-union input
@@ -1192,12 +1246,17 @@ every byte that becomes text anywhere else.
 hold one charset's six leaves beside that charset's codec; these bind a change
 to any of the eighteen leaves or to what a string declares.
 
-- **One datatype, one value, eighteen leaves.** `StringType` is an enum whose
-  leaves are the columns: six shapes - plain, large, view, large view,
+- **Eighteen leaves, each a variant of its own.** A string is one of
+  eighteen leaves: six shapes - plain, large, view, large view,
   `Fixed*(u32)`, `Sized*(u32)` - in each of the three charsets that have a
   datatype, UTF-8, US-ASCII and windows-1252 (`Utf8String` through
-  `SizedCp1252String`). `DataType::String(StringType)` is every string the
-  crate has, `DataType::string` its one constructor and `utf8()`,
+  `SizedCp1252String`). Each leaf is a `DataType` variant, a `Field` variant
+  and a `Scalar` variant of its own, one to one with its `DataTypeId`, the
+  number a numbered leaf states carried inline. `StringType` is the view over
+  the eighteen - what a `StringField` holds, what `string_parameters` answers
+  on a datatype and on a value, and the owner of every rule a leaf has - and
+  `DataType::from(leaf)` is the variant it names. `DataType::string` is the
+  one validating constructor and `utf8()`,
   `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(n)`,
   `sized_utf8(n)` and the same six for `ascii` and `cp1252` that constructor
   picking a leaf once. There is no layout beside a charset beside a bound, no
@@ -1210,7 +1269,7 @@ to any of the eighteen leaves or to what a string declares.
   (`with_charset`). `string_parameters` reads back for every string, which is
   what makes "which charset is this column in" one question. The twelve
   registered codes are not strings: a currency is an identity over ISO 4217
-  that stores as the text it is, so it is `DataType::Currency`, kind `Code`,
+  that stores as the text it is, so it is `DataType::Ccy`, kind `Code`,
   answers `is_code` and `code_width`, and never `string_parameters`.
   `code_width` is a maximum rather than a layout, so `fixed_byte_width`
   answers `None` for a code.
@@ -1241,17 +1300,25 @@ to any of the eighteen leaves or to what a string declares.
   `from_declaration(layout, charset, bound)` is the sequence a binding's three
   arguments run, so a binding decides nothing. The grammar tracks what was
   *read*, never the placeholder `1` a numbered leaf carries in `ALL`.
-- **`Str` is the string.** `Scalar::String(Str)` holds the characters in the
-  crate's compact string - inline to `INLINE_CAPACITY` bytes, static for free,
-  one `Arc<str>` beyond - beside the leaf they are stored under. A maximum is
-  the column's rule and never the value's: `storage()` is what a value in a
-  sized column carries, the plain leaf of its charset, so a cell read out of
-  `sized_utf8(32)` is a `utf8`. Equality, order and hash read the characters
-  alone, so a value is one value whichever column holds it, and `Borrow<str>`
-  is sound for that reason and no other. `Str` is the holder every
-  string-family API answers with - `ascii_value`, `StringEnum` members,
-  `str_from_value` - and `SmolStr` stays the crate's utility string for names,
-  keys and errors.
+- **`Str` is the characters; the variant is the leaf.** Every string
+  `Scalar` variant holds a `Str` - the crate's compact string, inline to
+  `INLINE_CAPACITY` bytes, static for free, one `Arc<str>` beyond - and the
+  numbered ones their number beside it: `Scalar::FixedAsciiString(Str, u32)`.
+  A value carries the leaf of the column it was read from, a maximum as well
+  as a width, so a cell read out of `sized_utf8(32)` is
+  `SizedUtf8String(text, 32)` and its `id`, `kind` and `dtype` say so.
+  Equality, order and hash read the characters alone, so a value is one value
+  whichever leaf holds it, and `Borrow<str>` is sound for that reason and no
+  other. `StringType::scalar` is the value door - the NUL trim of a fixed
+  slot, the US-ASCII repertoire, the width and the bound - and a canonical row
+  holds the column's exact leaf: a value of another leaf, or of the same leaf
+  under another number, is restated under the column's, and the validation
+  that precedes it judges the text against the column's leaf, never the one a
+  value names. `Str` is the holder every string-family API answers with -
+  `ascii_value`, `StringEnum` members, `str_from_value` - and `SmolStr` stays
+  the crate's utility string for names, keys and errors. `string_scalars!`
+  and `string_dtypes!` are the or-patterns over the eighteen variants that
+  every match in the crate spells them through.
 - **The bound counts stored bytes**: the exact width on a `Fixed*` leaf, the
   maximum on a `Sized*` one. Bytes, because that is what the buffer holds and
   what Arrow's offsets measure; a scalar count would make a bound a walk of
@@ -1262,9 +1329,10 @@ to any of the eighteen leaves or to what a string declares.
   it here would make the permissive read useless, and the refusal names the
   scalar where it is written instead.
 - **A value holds UTF-8 and remembers its charset.** Decoding happens at the
-  seam, as everywhere else; what a `Str` keeps is the leaf it is *written*
-  under, so it goes back out the way it came without the column being read
-  twice. `as_str` is therefore infallible on every string value there is.
+  seam, as everywhere else; what a value keeps is the leaf it is *written*
+  under - its variant - so it goes back out the way it came without the column
+  being read twice. `as_str` is therefore infallible on every string value
+  there is.
 - **Arrow gets the truth about the bytes.** UTF-8 and US-ASCII ride Arrow's
   string layouts - ASCII bytes are UTF-8 - and windows-1252 rides the matching
   *binary* layout, because the bytes are not UTF-8 and an Arrow reader told
@@ -1283,26 +1351,30 @@ to any of the eighteen leaves or to what a string declares.
   all still read the pairing they replaced - a shape name beside a `charset`
   key, a `max` beside any unbounded shape - as the leaf it names.
 - **A code's identity is its extension name, not its storage.** That split
-  governs `DataType::String`; a registered code is outside it. A code is
+  governs the string leaves; a registered code is outside it. A code is
   US-ASCII text held to one width, so it rides Arrow's `Utf8` whatever else
   is true, and what separates it from the text beside it is the *name*:
-  `yggdryl.currency` over `Utf8` with an empty document is a currency, the
+  `yggdryl.ccy` over `Utf8` with an empty document is a currency, the
   same storage under `yggdryl.string` is the string that document describes,
-  and under no name at all it is plain text. `yggdryl.currency` over any
+  and under no name at all it is plain text. `yggdryl.ccy` over any
   other storage is a foreign field wearing our name and imports as that
   storage, by the same rule a string document does. The width no column
+  The retired `yggdryl.currency` name is refused before that foreign-extension fallback.
   enforces is enforced where values enter, which is what makes it a value
   rule rather than a layout.
-- **`Str::from_bytes` is the one door bytes take, and the charset decides how
-  strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
+- **`StringType::scalar_from_bytes` is the one door bytes take, and the
+  charset decides how strict it is.** UTF-8 and US-ASCII are validated repertoires - Arrow
   guarantees the first and the second rides Arrow's text storage - so bytes
   that are not what they claim are refused, and a US-ASCII value holds no NUL
   and no byte above `0x7F`. windows-1252 is a declaration that the column
   holds legacy bytes, and those are transcribed rather than refused:
   `Charset::transcribe` reads an unassigned byte as its ISO 8859-1 scalar.
-  The row door, the Arrow cell reader and the cast all call that one function,
-  so a batch and a row cannot read bytes differently; a text-storage cell is
-  `Str::from_storage`, checked when it was written and not again.
+  The row door, the Arrow cell reader and the cast all call that one function
+  (or `read_text`, its text beneath it), so a batch and a row cannot read
+  bytes differently; a text-storage cell is adopted as the column's leaf,
+  checked when it was written and not again, through one reader per leaf
+  chosen once per run. The value stream is input from outside, so every
+  string and byte value it decodes crosses the leaf's door.
 - **The value door judges US-ASCII and counts everything else.** A value
   restated under windows-1252 may hold scalars that charset cannot write -
   that is what recovering damage means - and the write seam (the Arrow array
@@ -1320,11 +1392,13 @@ to any of the eighteen leaves or to what a string declares.
 these bind a change to any of the six leaves or to what a byte column
 declares.
 
-- **One datatype, one value, six leaves.** `BytesType` is an enum whose
-  leaves are the columns - `Binary`, `LargeBinary`, `BinaryView`,
-  `LargeBinaryView`, `FixedBinary(u32)`, `SizedBinary(u32)` -
-  `DataType::Bytes(BytesType)` is every byte column the crate has,
-  `DataType::bytes` is its one constructor and `binary()`, `large_binary()`,
+- **Six leaves, each a variant of its own.** A byte column is one of six
+  leaves - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`,
+  `FixedBinary(u32)`, `SizedBinary(u32)` - and each is a `DataType`, `Field`
+  and `Scalar` variant of its own. `BytesType` is the view over the six, what
+  a `BytesField` holds and `bytes_parameters` answers, and
+  `DataType::from(leaf)` the variant it names. `DataType::bytes` is the one
+  validating constructor and `binary()`, `large_binary()`,
   `binary_view()`, `large_binary_view()`, `fixed_binary(n)`, `sized_binary(n)`
   are that constructor picking a leaf once. There is no `BytesLayout` and no
   parameter struct beside a bound. `bytes_parameters` reads back for every
@@ -1348,14 +1422,16 @@ declares.
   spellings and render as the canonical ones; `BytesType::from_spelling`,
   `with_bound` and `with_declared_bound` are the one table and the one rule
   the grammar and both bindings read.
-- **`Bytes` is the byte string.** `Scalar::Bytes(Bytes)` holds the payload
-  inline to `INLINE_BYTES` bytes with no heap behind it, static for free, one
-  `Arc<[u8]>` beyond, beside the leaf it is stored under. A maximum is the
-  column's rule and never the value's: `storage()` is the plain leaf a value
-  in a sized column carries. Equality, order and hash read the payload alone,
-  and `Borrow<[u8]>` is sound for that reason and no other. `Bytes::from_storage`
-  adopts a cell of a column's own storage; `bytes_from_value` is what a value
-  spells as bytes.
+- **`Bytes` is the payload; the variant is the leaf.** Every byte `Scalar`
+  variant holds a `Bytes` - inline to `INLINE_BYTES` bytes with no heap behind
+  it, static for free, one `Arc<[u8]>` beyond - and the numbered ones their
+  number beside it. A value carries the leaf of the column it was read from, a
+  maximum included. Equality, order and hash read the payload alone, and
+  `Borrow<[u8]>` is sound for that reason and no other. `BytesType::scalar`
+  is the value door; a cell of a column's own storage is adopted as the
+  column's leaf; `bytes_from_value` is what a value spells as bytes.
+  `as_bytes` reads the payload of a byte or a geospatial value, `as_binary`
+  of a byte value alone.
 - **Arrow already says the layout.** The storage is the leaf, and only what
   no Arrow type can state - a maximum, and the second view width - rides the
   `yggdryl.bytes` document; a fixed width is the storage itself. A document
@@ -1409,11 +1485,17 @@ machinery they share in `text/`.
   clones, inferring a typed leaf, and reading a typed row's cells and names do
   not allocate; corpus sizes vary in the check, and timing alone never proves
   it. Preflight slot and fixed-buffer budgets before allocating.
-- `yggdryl::arrow` owns Struct scalar/array, batch, reader, IPC conversion:
-  exhaustive, field-directed, at most one source batch held, never JSON.
-  `arrow::scalar_array`/`arrow::scalar_value` are the single scalar-array
-  boundary, where the exact `Field` controls nullability, dictionaries, extension
-  identity.
+- `Serie` owns every value crossing: `serie/value.rs` is the one codec
+  between a row and an Arrow slot, named by nothing outside `serie/`,
+  `cast.rs` and `temporal.rs`, and a column leaf reads its own typed buffer
+  through the reading its field resolved where it landed - a cell read is
+  one buffer read and one constructor, `Serie::scalar(i)` allocates nothing
+  for a leaf value and a record row costs its run alone. `Serie::from_scalars`
+  and `Serie::from_arrow_array(...).scalar(0)` are the scalar-array
+  boundary, where the exact `Field` controls nullability, dictionaries,
+  extension identity; `yggdryl::arrow` keeps the stream combinators, the
+  IPC dictionary sidecar and the bounded row-to-batch reader, at most one
+  source batch held, never JSON.
 - `cast.rs` owns recursive casting and is reached through `Serie`: Struct
   casts reconcile names, reject ambiguous folds, follow target order, fill
   valid missing fields, and preserve exact buffers; wrapper exposure
@@ -1421,6 +1503,13 @@ machinery they share in `text/`.
   required field is absence, repaired under `Nullability::Default` and refused
   under `Strict` - except where null is the datatype's own canonical default,
   the one exception, stated once in the engine and once in the landing.
+- Hidden-span compaction and noncompact list-view gathering draw on the landing's
+  one materialization budget. A root run-end gather searches each selected span
+  once, and a nested run-end uses indexed take unless its tree also contains a
+  zero-width fixed-size serie. That combined tree uses generic range extension
+  to preserve the zero-width row count and may rescan the nested runs once per
+  selected span; retain its explicit cost caveat until one recursive gather
+  replaces it.
 - `ArrowCastOptions` carries the three independent answers a cast needs and every
   entry point takes it: `safe` = may a present value convert, `Nullability` = may
   a declared value be absent, `Representation` = what a same-width pair carries.
@@ -1588,10 +1677,22 @@ Python-only:
 - `pyarrow.RecordBatchReader` is the primitive record shape - table, batch, and
   dataclass row methods redirect through it over the C Stream interface, on the C
   Data Interface and PyArrow holders.
-- Columnar host objects cross as `Serie` (held) or `SerieReader` (streamed),
-  and a cast is `Serie.cast` or an `ArrowCastPlan`, passing the caller's `safe`,
-  `nullability` and `representation`. No binding casts, rebuilds rows from, or
-  walks an Arrow array itself.
+- Columnar host objects cross as `Serie` (held), `ChunkedSerie` (held apart:
+  a `pyarrow.ChunkedArray`'s chunks, a table's batches) or `SerieReader`
+  (streamed): `Serie.from_(value, field=None)`, `ChunkedSerie.from_(value,
+  field=None)` and `SerieReader.from_(value, root=None)` share one recognition
+  ladder for pyarrow, pandas, polars, NumPy and any Arrow
+  C exporter. After it, a concrete scalar or container takes `Serie.from_`'s
+  scalar boundary and becomes one held reader item. A Python sequence recognized
+  as mapping records or columnar batches remains an incremental record stream and
+  reuses its first batch import; an iterator or generic reusable iterable remains
+  incremental too, and schema resolution may pull its first item. A held non-record
+  column is wrapped as a record before the reader's root is applied.
+  `SerieReader.from_serie` and `SerieReader.from_chunked` make a held column or
+  a held chunked one a stream, and `IOBase.read_arrow` answers a `SerieReader`.
+  A cast is `Serie.cast`, `ChunkedSerie.cast` or an `ArrowCastPlan`, passing
+  the caller's `safe`, `nullability` and `representation`. No binding casts,
+  rebuilds rows from, or walks an Arrow array itself.
 - Structured codec facades stay byte-oriented and native, `cls=` is explicit
   reconstruction, and encoders never close caller-owned streams.
 
@@ -1639,13 +1740,22 @@ JavaScript-only:
 - `BatchReader` is the one-shot primitive: `BatchReader.from` accepts readers,
   Arrow JS tables/batches, batch arrays, or IPC bytes; `intoIpc`/`intoTable` drain
   it; one batch crosses as one self-contained IPC stream.
-- `Serie` and `SerieReader` are the Arrow doors: `Serie.fromArrowArray(vector,
-  field?, options?)`, `Serie.fromArrowBatch(batchOrTable, root?, options?)`,
+- `Serie`, `ChunkedSerie` and `SerieReader` are the Arrow doors:
+  `Serie.fromArrowArray(vector, field?, options?)`,
+  `Serie.fromArrowBatch(batchOrTable, root?, options?)`,
   `Serie.fromArrowReader(reader, root?, options?)`,
-  `SerieReader.fromArrowReader(reader, root?, options?)`, `serie.cast(field,
-  options?)` and `ArrowCastPlan`; `{ safe, nullability, representation }`
-  reach the core. A chunked input is one reader door and one cast, never a
-  cast followed by `extendFromSerie` per chunk.
+  `ChunkedSerie.fromArrowArray(vector, field?, options?)` (one chunk per
+  `Data`), `ChunkedSerie.fromArrowBatch(batchOrTable, root?, options?)` (one
+  chunk per batch), `ChunkedSerie.fromArrowReader(reader, root?, options?)`,
+  `SerieReader.fromArrowReader(reader, root?, options?)`,
+  `SerieReader.fromSerie(serie)`, `SerieReader.fromChunked(chunked)`,
+  `serie.cast(field, options?)`, `chunked.cast(field, options?)` and
+  `ArrowCastPlan`; `{ safe, nullability, representation }` reach the core. A
+  `Scalar` has no Arrow door of its own: a value crosses as
+  `Serie.fromScalars(field, rows)` and comes back as `scalar(0)` or
+  `intoScalar()`. A chunked input is one reader door and one cast, never a
+  cast followed by `extendFromSerie` per chunk, and a `ChunkedSerie` where its
+  chunks stay apart.
 - Arrow JS interop is copied IPC with bounded cursors and a validated cached
   schema - never claim zero-copy; public IDs are transport-local while native
   records keep canonical IDs.

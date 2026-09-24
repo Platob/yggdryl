@@ -298,7 +298,7 @@ mod lake {
     fn a_code_partition_column_keeps_its_identity_through_the_path() {
         let (root, mut handle) = lake("code");
         let field = StructType::from_fields([
-            DataType::Currency.required_field("ccy"),
+            DataType::Ccy.required_field("ccy"),
             DataType::Int64.required_field("qty"),
         ])
         .map(DataType::from)
@@ -336,7 +336,7 @@ mod lake {
             // A code stores as the text it is, so the restored column holds the
             // path's own spelling and reads back a currency.
             let restored = yggdryl::Field::from_arrow_field(batch.schema().field(0)).unwrap();
-            assert_eq!(restored.dtype(), &DataType::Currency);
+            assert_eq!(restored.dtype(), &DataType::Ccy);
             let ccy = batch
                 .column_by_name("ccy")
                 .unwrap()
@@ -1551,11 +1551,19 @@ fn every_temporal_family_survives_the_directory_name_it_spells() {
         )
         .unwrap_or_else(|error| panic!("{dtype} did not read {spelled:?}: {error}"));
         // One row out of the partition column, through the public boundary:
-        // a one-element slice is what `scalar_value` reads.
+        // a one-row slice, already in the field's own layout - so nothing is
+        // cast - read as the column the partition's field types.
+        let at = dtype.clone().nullable_field("at");
         let column = restored.column_by_name("at").unwrap().slice(0, 1);
-        let read =
-            yggdryl::arrow::scalar_value(&dtype.clone().nullable_field("at"), column.as_ref())
-                .unwrap();
+        assert_eq!(
+            column.data_type(),
+            at.as_arrow_field_ref().unwrap().data_type(),
+            "{dtype}"
+        );
+        let read = Serie::from_arrow_array(Some(&at), column, ArrowCastOptions::default())
+            .unwrap()
+            .scalar(0)
+            .unwrap();
         assert_eq!(
             read, value,
             "{dtype} did not round trip through {spelled:?}"

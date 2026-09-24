@@ -20,20 +20,19 @@ from yggdryl import (
     BytesField,
     CfiCodeField,
     CountryField,
-    CurrencyField,
+    CcyField,
     CusipCodeField,
     DataType,
     DenseUnionField,
     Expression,
     Field,
     Filter,
-    FixedSizeListField,
+    FixedSizeSerieField,
     GeographyField,
     GeometryField,
     IOBase,
     Int32Field,
     IsinCodeField,
-    ListField,
     MediaType,
     MicCodeField,
     MimeType,
@@ -47,6 +46,7 @@ from yggdryl import (
     SedolCodeField,
     Selector,
     Serie,
+    SerieField,
     SerieReader,
     StringField,
     Term,
@@ -91,7 +91,7 @@ from yggdryl._native import (
     StringParameters,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
+from yggdryl.enums import AsciiCode, CcyCode, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -332,9 +332,9 @@ typed_bit_cast_array: pa.Array = Serie.from_arrow_array(
     pa.array([2**32 - 1], type=pa.uint32()), typed_id, representation="bits"
 ).into_arrow_array()
 typed_clock: TimeField = yggdryl.time("clock", "microseconds", nullable=False)
-typed_ids: ListField[int] = yggdryl.list("ids", typed_id)
+typed_ids: SerieField[int] = yggdryl.serie("ids", typed_id)
 nullable_item: Int32Field = yggdryl.int32("item")
-typed_fixed: FixedSizeListField[int] = yggdryl.fixed_size_list(
+typed_fixed: FixedSizeSerieField[int] = yggdryl.fixed_size_serie(
     "fixed", nullable_item, 2, nullable=False
 )
 typed_fixed_default_scalar: Scalar = typed_fixed.default_scalar()
@@ -454,8 +454,8 @@ large_binary_dtype: DataType = DataType.large_binary()
 binary_view_dtype: DataType = DataType.binary_view()
 fixed_size_binary_dtype: DataType = DataType.fixed_size_binary(16)
 bytes_dtype_parameters: BytesParameters | None = bytes_dtype.bytes_parameters
-currency_dtype: DataType = DataType.from_logical_name("currency")
-currency_width: int | None = currency_dtype.fixed_byte_width
+ccy_dtype: DataType = DataType.from_logical_name("ccy")
+ccy_width: int | None = ccy_dtype.fixed_byte_width
 logical_names: dict[str, DataType] = DataType.logical_names()
 prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
 prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
@@ -502,8 +502,8 @@ typed_binary_kind: Literal[
 ] = typed_binary.dtype.id
 typed_country: CountryField = yggdryl.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
-typed_currency: CurrencyField = yggdryl.currency("ccy", nullable=False)
-typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
+typed_ccy: CcyField = yggdryl.ccy("ccy", nullable=False)
+typed_ccy_kind: Literal["ccy"] = typed_ccy.dtype.id
 typed_mic: MicCodeField = yggdryl.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiCodeField = yggdryl.cfi("classification")
@@ -531,20 +531,20 @@ ascii_member_name: str = StringEnum.member_name("n/a")
 ascii_width_base: type[AsciiCode] = fixed_ascii(4)
 
 
-class TypedCurrency(CurrencyCode):
+class TypedCcy(CcyCode):
     USD = "USD"
     EUR = "EUR"
 
 
-ascii_declared_code: int = int(TypedCurrency.USD)
-ascii_declared_value: str = TypedCurrency.USD.into_str()
-ascii_parsed: TypedCurrency = TypedCurrency.from_str("JPY")
-ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
-ascii_declared_dtype: DataType = TypedCurrency.dtype()
-ascii_declared_enum: StringEnum = TypedCurrency.as_enum()
-ascii_declared_field: Field = TypedCurrency.into_field("ccy", nullable=False)
+ascii_declared_code: int = int(TypedCcy.USD)
+ascii_declared_value: str = TypedCcy.USD.into_str()
+ascii_parsed: TypedCcy = TypedCcy.from_str("JPY")
+ascii_by_code: TypedCcy = TypedCcy.from_code(0x55534400)
+ascii_declared_dtype: DataType = TypedCcy.dtype()
+ascii_declared_enum: StringEnum = TypedCcy.as_enum()
+ascii_declared_field: Field = TypedCcy.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
-ascii_base: type[AsciiCode] = TypedCurrency
+ascii_base: type[AsciiCode] = TypedCcy
 
 ascii_declaration: StringEnum = StringEnum("Side", {"BUY": "B"})
 ascii_declaration_json: str = ascii_declaration.into_json()
@@ -1639,7 +1639,7 @@ fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 fix_counter: Field = Field("nopartyids", "int32")
 fix_counter.fix.tag = 453
 fix_component: Field = Field("party", DataType.from_fields([fix_field]), nullable=False)
-fix_group: Field = yggdryl.list("parties", fix_component)
+fix_group: Field = yggdryl.serie("parties", fix_component)
 fix_group.fix.counter = 453
 fix_group.fix.component = "party"
 fix_reference: Field = Field("partyid", "null")
@@ -1897,7 +1897,7 @@ serie_arrow: pa.Array = serie_column.into_arrow_array()
 serie_rows: list[Scalar] = serie_column.rows()
 serie_field: Field | None = serie_column.field
 serie_legs = yggdryl.Serie.from_arrow_array(pa.array([[1, 2], [3]], pa.list_(pa.int64())))
-assert isinstance(serie_legs, yggdryl.ListSerie)
+assert isinstance(serie_legs, yggdryl.SerieSerie)
 serie_offsets: list[int] = serie_legs.offsets
 serie_leg: yggdryl.Serie | None = serie_legs.row(0)
 serie_range: tuple[int, int] | None = serie_legs.range(1)
@@ -1912,3 +1912,57 @@ assert len(serie_run) == 3 and serie_row is not None and serie_window is not Non
 assert serie_arrow is not None and serie_rows and serie_field is not None
 assert serie_offsets and serie_leg is not None and serie_range is not None
 assert serie_names and serie_scalar_serie is not None
+
+# A chunked serie: many columns under one field, held apart - a chunked
+# array, or a table of one batch per chunk.
+chunked_prices: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_chunked_array(
+    pa.chunked_array([[1, 2], [3]]), Field("price", "int64"), safe=False
+)
+chunked_table: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_reader(
+    pa.Table.from_batches([source_batch, source_batch]), nullability="strict"
+)
+chunked_from: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_(source_batch)
+chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
+    [serie_column], Field("price", "int64"), representation="bits"
+)
+chunked_empty: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.empty(Field("price", "int64"))
+chunked_one: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(serie_column)
+chunked_chunks: list[yggdryl.Serie] = chunked_prices.chunks
+chunked_chunk: yggdryl.Serie | None = chunked_prices.chunk(0)
+chunked_count: int = chunked_prices.num_chunks
+chunked_field: Field = chunked_prices.field
+chunked_dtype: DataType = chunked_prices.dtype
+chunked_row: Scalar = chunked_prices[0]
+chunked_window: yggdryl.ChunkedSerie = chunked_prices[1:]
+chunked_slice: yggdryl.ChunkedSerie = chunked_prices.slice(0, 2)
+chunked_column: yggdryl.ChunkedSerie | None = chunked_table.child("value")
+chunked_children: list[yggdryl.ChunkedSerie] = chunked_table.children()
+chunked_path: yggdryl.ChunkedSerie | None = chunked_table.get_child_by_path("value")
+chunked_joined: yggdryl.Serie = chunked_prices.into_serie()
+chunked_cast: yggdryl.ChunkedSerie = chunked_prices.cast(DataType("float64"), safe=False)
+chunked_arrow: pa.ChunkedArray = chunked_prices.into_arrow_chunked_array()
+chunked_arrow_table: pa.Table = chunked_table.into_arrow_table()
+chunked_arrow_reader: pa.RecordBatchReader = chunked_table.into_arrow_reader()
+chunked_rows: list[Scalar] = chunked_prices.rows()
+chunked_values: list[Any] = chunked_prices.as_py()
+chunked_get: Scalar | None = chunked_prices.get(5)
+chunked_prices.push_chunk(serie_column, nullability="strict")
+chunked_reader: SerieReader = SerieReader.from_chunked(chunked_prices)
+chunked_plan: yggdryl.ChunkedSerie = ArrowCastPlan(
+    Field("price", "int64"), Field("price", "float64")
+).apply(chunked_prices)
+chunked_serie_plan: Serie = ArrowCastPlan(
+    Field("price", "int64"), Field("price", "float64")
+).apply(serie_column)
+chunked_equal: bool = chunked_prices == serie_column
+chunked_ordered: bool = chunked_prices < serie_column
+assert chunked_count == 2 and chunked_chunks and chunked_chunk is not None
+assert chunked_field is not None and chunked_dtype is not None and chunked_row is not None
+assert len(chunked_window) == 2 and len(chunked_slice) == 2 and chunked_column is not None
+assert chunked_children and chunked_path is not None and chunked_joined is not None
+assert chunked_cast is not None and chunked_arrow is not None and chunked_rows
+assert chunked_arrow_table is not None and chunked_arrow_reader is not None
+assert chunked_values and chunked_get is None and chunked_reader is not None
+assert chunked_plan is not None and chunked_serie_plan is not None
+assert chunked_from is not None and chunked_series is not None and chunked_empty.is_empty()
+assert chunked_one is not None and not chunked_equal and not chunked_ordered

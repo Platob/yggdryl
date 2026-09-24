@@ -1,18 +1,22 @@
 use std::fmt;
+use std::ops::RangeInclusive;
 use std::str::FromStr;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::format_smolstr;
 
-use crate::{Error, Result};
+use crate::{DataTypeId, Error, Result};
 
 /// A coarse datatype category shared by every variant of one family.
 ///
 /// [`DataTypeKind`] mirrors the responsibility split of the `datatype` module,
 /// so behavior that is uniform across a family dispatches on one value instead
-/// of re-listing variants. Use [`crate::DataTypeId`] when a specific variant
-/// matters and this value when only the family does.
+/// of re-listing variants. A family is a range of [`DataTypeId`] bytes -
+/// [`Self::range`] - so "is this an integer" is [`Self::contains`], one
+/// comparison of two bounds, and no family has a value type of its own: a
+/// value is its leaf. Use [`DataTypeId`] when a specific variant matters and
+/// this value when only the family does.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[non_exhaustive]
 pub enum DataTypeKind {
@@ -34,7 +38,7 @@ pub enum DataTypeKind {
     Code,
     /// Byte strings in variable, fixed, large, and view layouts.
     Bytes,
-    /// Lists, structs, unions, maps, wrappers, and self-describing values.
+    /// Series, structs, unions, maps, wrappers, and self-describing values.
     Nested,
     /// Geometries and geographies carried as Well-Known Binary.
     ///
@@ -99,10 +103,11 @@ impl DataTypeKind {
         }
     }
 
-    /// Return whether the category is a fixed-width or exact number.
-    /// The family's own number: the start of the range of bytes its leaves
-    /// take, and a byte no leaf takes, so a value tagged with it is a value
-    /// of the family and of no leaf - the placeholder the encodings keep.
+    /// The family's own number: the first byte of the range its leaves
+    /// take, and - for every family but [`Self::Null`], whose one leaf
+    /// states it - a byte no leaf takes, so a value tagged with it is a
+    /// value of the family and of no leaf: the placeholder the encodings
+    /// keep.
     ///
     /// ```
     /// use yggdryl::{DataTypeId, DataTypeKind};
@@ -128,27 +133,63 @@ impl DataTypeKind {
         }
     }
 
+    /// The last byte of the range the family owns: its leaves, stated or
+    /// still placeholders, sit between [`Self::id`] and this.
+    pub const fn last(self) -> u8 {
+        match self {
+            Self::Null => 0x07,
+            Self::Boolean => 0x0f,
+            Self::Integer => 0x1f,
+            Self::Floating => 0x27,
+            Self::Decimal => 0x2f,
+            Self::Temporal => 0x3f,
+            Self::Bytes => 0x4f,
+            Self::Text => 0x6f,
+            Self::Code => 0x7f,
+            Self::Uuid => 0x8f,
+            Self::Nested => 0xaf,
+            Self::Geospatial => 0xbf,
+        }
+    }
+
+    /// The range of bytes the family owns, [`Self::id`] to [`Self::last`]:
+    /// a family *is* this range, so which family an identifier belongs to is
+    /// which range its byte is in.
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// assert_eq!(DataTypeKind::Temporal.range(), 0x30..=0x3f);
+    /// assert!(DataTypeKind::Temporal.range().contains(&DataTypeId::Date32.as_u8()));
+    /// ```
+    pub const fn range(self) -> RangeInclusive<u8> {
+        RangeInclusive::new(self.id(), self.last())
+    }
+
+    /// Whether `id` is one of this family's leaves: its byte is in
+    /// [`Self::range`].
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// assert!(DataTypeKind::Integer.contains(DataTypeId::UInt128));
+    /// assert!(!DataTypeKind::Integer.contains(DataTypeId::Float32));
+    /// assert!(DataTypeKind::Text.contains(DataTypeId::Url));
+    /// assert!(!DataTypeKind::Text.contains(DataTypeId::Country));
+    /// ```
+    pub const fn contains(self, id: DataTypeId) -> bool {
+        let byte = id.as_u8();
+        byte >= self.id() && byte <= self.last()
+    }
+
     /// The family whose range one byte is in - the family's own number or
     /// one of its leaves, stated or still a placeholder - or nothing for a
     /// byte past every family.
     pub const fn of_u8(byte: u8) -> Option<Self> {
-        Some(match byte {
-            0x00..=0x07 => Self::Null,
-            0x08..=0x0f => Self::Boolean,
-            0x10..=0x1f => Self::Integer,
-            0x20..=0x27 => Self::Floating,
-            0x28..=0x2f => Self::Decimal,
-            0x30..=0x3f => Self::Temporal,
-            0x40..=0x4f => Self::Bytes,
-            0x50..=0x6f => Self::Text,
-            0x70..=0x7f => Self::Code,
-            0x80..=0x8f => Self::Uuid,
-            0x90..=0xaf => Self::Nested,
-            0xb0..=0xbf => Self::Geospatial,
-            _ => return None,
-        })
+        OF_U8[byte as usize]
     }
 
+    /// Return whether the category is a fixed-width or exact number.
     pub const fn is_numeric(self) -> bool {
         matches!(self, Self::Integer | Self::Floating | Self::Decimal)
     }
@@ -163,6 +204,24 @@ impl DataTypeKind {
         !matches!(self, Self::Nested | Self::Geospatial)
     }
 }
+
+/// Every byte's family, built once from each family's [`DataTypeKind::range`]:
+/// the ranges are laid out by hand, so two that overlap fail to compile.
+const OF_U8: [Option<DataTypeKind>; 256] = {
+    let mut table = [None; 256];
+    let mut index = 0;
+    while index < DataTypeKind::ALL.len() {
+        let kind = DataTypeKind::ALL[index];
+        let mut byte = kind.id() as usize;
+        while byte <= kind.last() as usize {
+            assert!(table[byte].is_none(), "two families claim one byte");
+            table[byte] = Some(kind);
+            byte += 1;
+        }
+        index += 1;
+    }
+    table
+};
 
 impl FromStr for DataTypeKind {
     type Err = Error;

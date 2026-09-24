@@ -82,35 +82,25 @@ One [`DataTypeKind`](../datatype.md#identity-and-family) per family, and the kin
     assert.equal(DataType.from('decimal(38,4)').id, 'decimal128')
     ```
 
-## Family values
+## The family a value is in
 
-Three of the four families have several leaves, so each is one `FamilyValue` enum over them - `Integer`, `Floating` and `Decimal`. A boolean has one leaf, so the leaf *is* the family and there is no enum. The enums are Rust only; the full contract is on [Scalar](../scalar.md#families).
-
-```rust
-use yggdryl::{Decimal, DataTypeKind, FamilyValue, Floating, Int32, Integer, Scalar};
-
-// The variant is the leaf, spelled as the scalar spells it.
-let held = Integer::from(Int32::new(7));
-assert_eq!(Integer::KIND, DataTypeKind::Integer);
-assert_eq!(Scalar::from(7_i32).as_integer(), Some(held));
-assert!(matches!(Scalar::from(1.5_f64).as_floating(), Some(Floating::Float64(_))));
-
-// The decimal family narrows through its own enum, because `as_decimal`
-// is the coefficient-and-scale reader.
-assert!(matches!(Decimal::from_scalar(&Scalar::d128(1_250, 2)), Some(Decimal::Decimal128(_))));
-assert_eq!(Decimal::from_scalar(&Scalar::from(3_i64)), None);
-
-// A boolean has one leaf, so there is nothing to narrow to.
-assert_eq!(Scalar::from(true).as_bool(), Some(true));
-```
-
-In every language the value itself answers which family it belongs to.
+A family is not a type: it is the range of identifiers its `DataTypeKind` owns, so the value answers which one it is in, `DataTypeKind::contains` checks an identifier against it, and the value itself is the leaf its variant holds - `Scalar::Int32(Int32)`, never an enum over the widths ([Scalar](../scalar.md#families)). The ranges are Rust only; every language reads `family` off the value.
 
 === "Rust"
 
     ```rust
-    use yggdryl::Scalar;
+    use yggdryl::{DataTypeKind, Scalar};
 
+    assert_eq!(Scalar::from(7_i32).family(), DataTypeKind::Integer);
+    assert_eq!(Scalar::from(1.5_f64).family(), DataTypeKind::Floating);
+    assert_eq!(Scalar::d128(1_250, 2).family(), DataTypeKind::Decimal);
+    assert_eq!(Scalar::from(true).family(), DataTypeKind::Boolean);
+
+    // Membership is the identifier's range, whichever width holds the value.
+    assert!(DataTypeKind::Integer.contains(Scalar::from(7_u8).id()));
+    assert!(Scalar::d128(1_250, 2).is_number() && !Scalar::d128(1_250, 2).is_integer());
+
+    // The kind is the width, the id the datatype it proves.
     assert_eq!(Scalar::from(7_i32).kind(), "i32");
     assert_eq!(Scalar::from(1.5_f64).kind(), "f64");
     assert_eq!(Scalar::d128(1_250, 2).kind(), "d128");

@@ -276,7 +276,7 @@ fn compatibility_rows_answer_for_every_target() {
 
 #[test]
 fn the_geospatial_family_stands_for_both_interpretations() {
-    use yggdryl::{FamilyValue, Geography, Geometry, Geospatial};
+    use yggdryl::{Geography, Geometry, Value};
 
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());
@@ -286,8 +286,8 @@ fn the_geospatial_family_stands_for_both_interpretations() {
 
     crate::scalar::assert_family_round_trip(
         vec![
-            crate::family_leaf!(Geospatial::Geometry, geometry.clone()),
-            crate::family_leaf!(Geospatial::Geography, geography.clone()),
+            crate::family_leaf!(Geometry, geometry.clone()),
+            crate::family_leaf!(Geography, geography.clone()),
         ],
         DataTypeKind::Geospatial,
         &Scalar::from(1_i64),
@@ -295,20 +295,12 @@ fn the_geospatial_family_stands_for_both_interpretations() {
 
     // The two interpretations of one payload are equal scalars, so the
     // variant is what tells them apart, on the way in and on the way out.
-    assert!(matches!(
-        Geospatial::from_scalar(&Scalar::Geometry(geometry.clone())),
-        Some(Geospatial::Geometry(_))
-    ));
-    assert!(matches!(
-        Geospatial::from_scalar(&Scalar::Geography(geography.clone())),
-        Some(Geospatial::Geography(_))
-    ));
-    assert!(matches!(
-        Geospatial::from(geometry).into_scalar(),
-        Scalar::Geometry(_)
-    ));
-    assert!(matches!(
-        Geospatial::from(geography).into_scalar(),
-        Scalar::Geography(_)
-    ));
+    let planar = Scalar::Geometry(geometry.clone());
+    let spherical = Scalar::Geography(geography.clone());
+    assert_eq!(Geometry::from_scalar(&planar), Some(&geometry));
+    assert_eq!(Geometry::from_scalar(&spherical), None);
+    assert_eq!(Geography::from_scalar(&spherical), Some(&geography));
+    assert_eq!(Geography::from_scalar(&planar), None);
+    assert!(matches!(geometry.into_scalar(), Scalar::Geometry(_)));
+    assert!(matches!(geography.into_scalar(), Scalar::Geography(_)));
 }

@@ -339,11 +339,11 @@ impl Hash for Schema {
 /// them (`Mapping` or `Record`) while preserving every key and nested value.
 fn normalized_schema_json(value: &Scalar) -> Result<Scalar> {
     match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => Ok(Scalar::from_sequence(
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => Ok(Scalar::from_sequence(
             values
                 .iter()
                 .map(|value| normalized_schema_json(&value))

@@ -226,23 +226,26 @@ fn sequence(value: yggdryl::Scalar) -> Vec<yggdryl::Scalar> {
     value.as_sequence().expect("a sequence").to_vec()
 }
 
-/// The item field a list column repeats.
+/// The item field a serie column repeats.
 #[track_caller]
 fn item_of(list: &yggdryl::Field) -> yggdryl::Field {
     list.dtype()
         .as_serie_type()
-        .expect("a list column")
+        .expect("a serie column")
         .item()
         .clone()
 }
 
-/// A canonical row with the list cell at `at` restated as the column of its
+/// A canonical row with the serie cell at `at` restated as the column of its
 /// rows under `item`, every other cell kept: the cell a row read out of
 /// Arrow holds where the crate's own build holds a run.
 #[track_caller]
 fn with_column_at(row: &yggdryl::Scalar, at: usize, item: &yggdryl::Field) -> yggdryl::Scalar {
     let cells = row.as_sequence().expect("a canonical row");
-    let rows = cells[at].sequence_rows().expect("a list cell").into_owned();
+    let rows = cells[at]
+        .sequence_rows()
+        .expect("a serie cell")
+        .into_owned();
     let column = yggdryl::Scalar::from(
         yggdryl::Serie::from_scalars(item.clone(), rows).expect("the rows fit their item"),
     );
@@ -296,17 +299,17 @@ fn holds_column(message: &yggdryl::FixMsg, name: &str) -> bool {
 }
 
 /// Which category a registry field is filed under: a definition is filed by
-/// the shape it has - a Struct is a component, a List or a Map a group - and
+/// the shape it has - a Struct is a component, a Serie or a Map a group - and
 /// everything else is a wire field.
 ///
-/// One nested shape is a field rather than a definition: a list of non-null
+/// One nested shape is a field rather than a definition: a serie of non-null
 /// scalars under one of this crate's own tags is one column under one name -
 /// `srcuuids` is that - because a group's occurrence is a
 /// Struct of members a wire states one tag at a time.
 fn category_of(field: &yggdryl::Field) -> yggdryl::FixCategory {
     match field.dtype() {
         yggdryl::DataType::Struct(_) => yggdryl::FixCategory::Components,
-        yggdryl::DataType::List(item) | yggdryl::DataType::LargeList(item)
+        yggdryl::DataType::Serie(item) | yggdryl::DataType::LargeSerie(item)
             if !item.is_nullable() && !item.dtype().is_nested() =>
         {
             yggdryl::FixCategory::Fields

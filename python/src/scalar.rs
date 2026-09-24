@@ -19,19 +19,18 @@ use pyo3::types::{
     PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo};
-use yggdryl::arrow::{array_from_value, batch_from_value, scalar_array};
-use yggdryl::bytes::{Bytes, BytesType};
+use yggdryl::bytes::Bytes;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
 use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
-    Side, State, TimeInForce,
+    BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
+    State, TimeInForce,
 };
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, Float16, Float32, Float64,
-    Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
+    DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
+    Float64, Scalar, Serie, TimeUnit, Timezone, Vocabulary, i256,
 };
 
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
@@ -122,7 +121,8 @@ fn i256_from_py(value: &Bound<'_, PyAny>) -> PyResult<i256> {
         .map_err(|error| PyOverflowError::new_err(error.to_string()))
 }
 
-pub(crate) fn arrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
+/// One `pyarrow.Scalar` as the one-row array of its own type.
+pub(crate) fn pyarrow_scalar_into_array(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
     ensure_pyarrow_instance(value, "Scalar")?;
     let py = value.py();
     let values = PyList::new(py, [value])?;
@@ -146,12 +146,33 @@ fn ensure_pyarrow_instance(value: &Bound<'_, PyAny>, class: &str) -> PyResult<()
     }
 }
 
-fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
-    array_from_value(field, value).map_err(value_error)
+/// An outer Sequence as the column `field` types: a column cast once, and a
+/// run's rows each through the field's contract.
+fn sequence_serie(field: &CoreField, value: &Scalar) -> PyResult<Serie> {
+    let rows = value.as_serie().ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "expected an outer Sequence to lay out as an Arrow column, got {}",
+            value.kind()
+        ))
+    })?;
+    if rows.is_column() {
+        return rows
+            .cast(field, yggdryl::ArrowCastOptions::new())
+            .map_err(value_error);
+    }
+    Serie::from_scalars(field.clone(), rows.rows().into_owned()).map_err(value_error)
 }
 
-fn value_into_arrow_batch(field: &CoreField, value: &Scalar) -> PyResult<RecordBatch> {
-    batch_from_value(field, value).map_err(value_error)
+fn value_into_arrow_array(field: &CoreField, value: &Scalar) -> PyResult<ArrayRef> {
+    sequence_serie(field, value)?
+        .require_arrow_array()
+        .map_err(value_error)
+}
+
+fn value_into_arrow_batch(root: &CoreField, value: &Scalar) -> PyResult<RecordBatch> {
+    sequence_serie(root, value)?
+        .into_arrow_batch()
+        .map_err(value_error)
 }
 
 /// Preserve the arithmetic failure categories Python's numeric protocol uses.
@@ -305,19 +326,18 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
         }
         // The ordinary string - the plain `utf8` leaf - pickles its
         // characters alone. Any other leaf pickles its name beside the text,
-        // and a fixed leaf its width: the name already says the charset.
-        Scalar::String(value) if value.parameters() == StringType::default() => {
-            tagged_pickle_state(
-                py,
-                "string",
-                Some(PyString::new(py, value.as_str()).into_any().unbind()),
-            )
-        }
-        Scalar::String(value) => {
-            let layout = PyString::new(py, value.parameters().as_str())
-                .into_any()
-                .unbind();
-            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
+        // and a fixed or sized leaf its number: the name already says the
+        // charset.
+        Scalar::Utf8String(value) => tagged_pickle_state(
+            py,
+            "string",
+            Some(PyString::new(py, value.as_str()).into_any().unbind()),
+        ),
+        string if string.string_parameters().is_some() => {
+            let parameters = string.string_parameters().expect("a string leaf");
+            let value = string.as_string().expect("a string leaf");
+            let layout = PyString::new(py, parameters.as_str()).into_any().unbind();
+            let fixed = parameters.bound().into_pyobject(py)?.into_any().unbind();
             let text = PyString::new(py, value.as_str()).into_any().unbind();
             tagged_pickle_state(
                 py,
@@ -371,18 +391,18 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             "mediatype",
             Some(PyString::new(py, &value.to_string()).into_any().unbind()),
         ),
-        // Plain bytes pickle as the payload alone; another layout or a fixed
-        // width pickles the declaration beside it.
-        Scalar::Bytes(value) if value.parameters() == BytesType::default() => tagged_pickle_state(
+        // Plain bytes pickle as the payload alone; another leaf pickles its
+        // name beside it, and a fixed or sized leaf its number.
+        Scalar::Binary(value) => tagged_pickle_state(
             py,
             "bytes",
             Some(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         ),
-        Scalar::Bytes(value) => {
-            let layout = PyString::new(py, value.parameters().as_str())
-                .into_any()
-                .unbind();
-            let fixed = value.fixed().into_pyobject(py)?.into_any().unbind();
+        bytes if bytes.bytes_parameters().is_some() => {
+            let parameters = bytes.bytes_parameters().expect("a byte leaf");
+            let value = bytes.as_binary().expect("a byte leaf");
+            let layout = PyString::new(py, parameters.as_str()).into_any().unbind();
+            let fixed = parameters.bound().into_pyobject(py)?.into_any().unbind();
             let payload = PyBytes::new(py, value.as_bytes()).into_any().unbind();
             tagged_pickle_state(
                 py,
@@ -453,11 +473,11 @@ pub(crate) fn scalar_pickle_state(py: Python<'_>, value: &Scalar) -> PyResult<Py
             value.nanoseconds(),
             value.unit(),
         ),
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             let values = values
                 .iter()
                 .map(|value| scalar_pickle_state(py, &value))
@@ -527,6 +547,23 @@ where
         time_unit(&unit)?,
         Timezone::from_str(&zone).map_err(value_error)?,
     ))
+}
+
+/// The serie layout a pickle tag names: a sequence's `Scalar.kind`
+/// (`serie`, `serie_view`, ...), or the legacy spelling (`list`,
+/// `list_view`, ...) a state written before the rename carries - both read
+/// through the one table [`DataTypeId`] parses.
+fn serie_pickle_layout(tag: &str) -> Option<DataTypeId> {
+    tag.parse::<DataTypeId>().ok().filter(|id| {
+        matches!(
+            id,
+            DataTypeId::Serie
+                | DataTypeId::SerieView
+                | DataTypeId::FixedSizeSerie
+                | DataTypeId::LargeSerie
+                | DataTypeId::LargeSerieView
+        )
+    })
 }
 
 /// Rebuild one exact native scalar from the private pickle/repr state.
@@ -613,21 +650,18 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 return Ok(Scalar::from(text));
             }
             let (layout, fixed, text) = payload.extract::<(String, Option<u32>, String)>()?;
-            // The name alone lands a fixed leaf on its placeholder, so the
-            // width the state carries is put back before it is read.
+            // The name alone lands a numbered leaf on its placeholder, so the
+            // number the state carries is put back before it is read.
             let parameters = StringType::from_str(&layout)
                 .and_then(|leaf| leaf.with_declared_bound(fixed))
                 .map_err(value_error)?;
-            Str::new(text)
-                .try_with_parameters(parameters)
-                .map(Scalar::String)
-                .map_err(value_error)
+            parameters.scalar(Str::new(text)).map_err(value_error)
         }
         "country" => Country::new(payload()?.extract::<String>()?)
             .map(Scalar::Country)
             .map_err(value_error),
-        "currency" => Currency::new(payload()?.extract::<String>()?)
-            .map(Scalar::Currency)
+        "ccy" => Ccy::new(payload()?.extract::<String>()?)
+            .map(Scalar::Ccy)
             .map_err(value_error),
         "mic" => MicCode::new(payload()?.extract::<String>()?)
             .map(Scalar::MicCode)
@@ -698,7 +732,7 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
         "bytes" => {
             let payload = payload()?;
             if let Ok(bytes) = payload.cast::<PyBytes>() {
-                return Ok(Scalar::Bytes(Bytes::new(bytes.as_bytes())));
+                return Ok(Scalar::Binary(Bytes::new(bytes.as_bytes())));
             }
             let (layout, fixed, bytes) = payload
                 .extract::<(String, Option<u32>, Bound<'_, PyAny>)>()
@@ -708,9 +742,8 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                     )
                 })?;
             let parameters = crate::parameters::core_bytes_parameters(&layout, fixed)?;
-            Bytes::from_shared(pickle_bytes(&bytes)?)
-                .try_with_parameters(parameters)
-                .map(Scalar::Bytes)
+            parameters
+                .scalar(Bytes::from_shared(pickle_bytes(&bytes)?))
                 .map_err(value_error)
         }
         "geospatial" => Geometry::new(pickle_bytes(&payload()?)?)
@@ -768,24 +801,6 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .map(Scalar::Interval)
                 .map_err(value_error)
         }
-        "list" | "list_view" | "fixed_size_list" | "large_list" | "large_list_view" => {
-            let payload = payload()?;
-            let values = payload
-                .cast::<PyTuple>()
-                .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
-            let values = values
-                .iter()
-                .map(|value| scalar_from_pickle_state(&value, depth + 1))
-                .collect::<PyResult<Vec<_>>>()?;
-            let serie = Serie::new(values);
-            Ok(match tag.as_str() {
-                "list_view" => Scalar::ListView(serie),
-                "fixed_size_list" => Scalar::FixedSizeList(serie),
-                "large_list" => Scalar::LargeList(serie),
-                "large_list_view" => Scalar::LargeListView(serie),
-                _ => Scalar::List(serie),
-            })
-        }
         "map" | "sorted_map" => {
             let payload = payload()?;
             let entries = payload
@@ -838,10 +853,36 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
                 .collect::<PyResult<Vec<_>>>()?;
             Scalar::from_struct(entries).map_err(value_error)
         }
-        _ => Err(PyValueError::new_err(format!(
-            "unknown Scalar pickle tag {tag:?}"
-        ))),
+        _ => match serie_pickle_layout(&tag) {
+            Some(layout) => serie_from_pickle_state(layout, &payload()?, depth),
+            None => Err(PyValueError::new_err(format!(
+                "unknown Scalar pickle tag {tag:?}"
+            ))),
+        },
     }
+}
+
+/// Rebuild one sequence scalar of `layout` from its tuple of item states.
+fn serie_from_pickle_state(
+    layout: DataTypeId,
+    payload: &Bound<'_, PyAny>,
+    depth: usize,
+) -> PyResult<Scalar> {
+    let values = payload
+        .cast::<PyTuple>()
+        .map_err(|_| PyTypeError::new_err("Scalar sequence state must be a tuple"))?;
+    let values = values
+        .iter()
+        .map(|value| scalar_from_pickle_state(&value, depth + 1))
+        .collect::<PyResult<Vec<_>>>()?;
+    let serie = Serie::new(values);
+    Ok(match layout {
+        DataTypeId::SerieView => Scalar::SerieView(serie),
+        DataTypeId::FixedSizeSerie => Scalar::FixedSizeSerie(serie),
+        DataTypeId::LargeSerie => Scalar::LargeSerie(serie),
+        DataTypeId::LargeSerieView => Scalar::LargeSerieView(serie),
+        _ => Scalar::Serie(serie),
+    })
 }
 
 #[pymethods]
@@ -999,7 +1040,9 @@ impl PyScalar {
             || self.inner.inferred_scalar_field().map_err(value_error),
             core_field_from_value,
         )?;
-        let array = scalar_array(&field, &self.inner).map_err(value_error)?;
+        let array = Serie::from_scalars(field.clone(), [self.inner.clone()])
+            .and_then(|serie| serie.require_arrow_array())
+            .map_err(value_error)?;
         arrow_array_to_pyarrow(py, &array, Some(&field))?.get_item(0)
     }
 
@@ -1596,12 +1639,6 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 /// equality.
 pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        // An Arrow payload is the `ArrowScalar` it is, buffers shared.
-        Scalar::Arrow(value) => Ok(Py::new(
-            py,
-            crate::arrow::PyArrowScalar::from_inner((**value).clone()),
-        )?
-        .into_any()),
         Scalar::Null => Ok(py.None()),
         Scalar::Boolean(value) => Ok(value
             .get()
@@ -1626,7 +1663,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => decimal_as_py(py, value),
-        Scalar::String(value) => Ok(PyString::new(py, value.as_str()).into_any().unbind()),
+        string if string.string_parameters().is_some() => Ok(PyString::new(
+            py,
+            string.as_str().expect("a string borrowed its text"),
+        )
+        .into_any()
+        .unbind()),
         code if code.is_code() => Ok(PyString::new(
             py,
             code.as_str().expect("a code borrowed its text"),
@@ -1648,7 +1690,12 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::MediaType(value) => Ok(PyString::new(py, &value.to_string()).into_any().unbind()),
         // A geometry has no Python binding surface yet, so its WKB crosses as
         // its plain shape: bytes.
-        Scalar::Bytes(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
+        bytes if bytes.bytes_parameters().is_some() => Ok(PyBytes::new(
+            py,
+            bytes.as_bytes().expect("a byte value borrowed its payload"),
+        )
+        .into_any()
+        .unbind()),
         Scalar::Geometry(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         Scalar::Geography(value) => Ok(PyBytes::new(py, value.as_bytes()).into_any().unbind()),
         // A variant crosses as the value it holds, which is what a caller
@@ -1660,15 +1707,22 @@ pub(crate) fn as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
         Scalar::DateTime64(datetime) => datetime_as_py(py, value, datetime.timezone()),
         Scalar::Duration32(_) | Scalar::Duration64(_) => duration_as_py(py, value),
         Scalar::Interval(interval) => interval_as_py(py, interval),
-        Scalar::List(items)
-        | Scalar::ListView(items)
-        | Scalar::FixedSizeList(items)
-        | Scalar::LargeList(items)
-        | Scalar::LargeListView(items) => {
-            let items = items
-                .iter()
-                .map(|item| as_py(py, &item))
-                .collect::<PyResult<Vec<_>>>()?;
+        Scalar::Serie(items)
+        | Scalar::SerieView(items)
+        | Scalar::FixedSizeSerie(items)
+        | Scalar::LargeSerie(items)
+        | Scalar::LargeSerieView(items) => {
+            // A column names what its rows are, so each row reads under it.
+            let items = match items.field() {
+                Some(field) => items
+                    .iter()
+                    .map(|item| as_py_with_field(py, &item, field))
+                    .collect::<PyResult<Vec<_>>>()?,
+                None => items
+                    .iter()
+                    .map(|item| as_py(py, &item))
+                    .collect::<PyResult<Vec<_>>>()?,
+            };
             Ok(PyList::new(py, items)?.into_any().unbind())
         }
         Scalar::Map(entries) | Scalar::SortedMap(entries) => {
@@ -1700,11 +1754,11 @@ pub(crate) fn as_py_with_field(
             let fields = structure.as_fields();
             let output = PyDict::new(py);
             match value {
-                Scalar::List(values)
-                | Scalar::ListView(values)
-                | Scalar::FixedSizeList(values)
-                | Scalar::LargeList(values)
-                | Scalar::LargeListView(values)
+                Scalar::Serie(values)
+                | Scalar::SerieView(values)
+                | Scalar::FixedSizeSerie(values)
+                | Scalar::LargeSerie(values)
+                | Scalar::LargeSerieView(values)
                     if values.len() == fields.len() =>
                 {
                     for (child, value) in fields.iter().zip(values.iter()) {
@@ -1732,18 +1786,18 @@ pub(crate) fn as_py_with_field(
             }
             Ok(output.into_any().unbind())
         }
-        sequence_dtype @ (CoreDataType::List(_)
-        | CoreDataType::ListView(_)
-        | CoreDataType::FixedSizeList(..)
-        | CoreDataType::LargeList(_)
-        | CoreDataType::LargeListView(_)) => {
+        sequence_dtype @ (CoreDataType::Serie(_)
+        | CoreDataType::SerieView(_)
+        | CoreDataType::FixedSizeSerie(..)
+        | CoreDataType::LargeSerie(_)
+        | CoreDataType::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
             let child = sequence.item();
             let values = value.as_serie().ok_or_else(|| {
                 PyValueError::new_err(format!(
-                    "expected a typed list sequence, got {}",
+                    "expected a typed serie sequence, got {}",
                     value.kind()
                 ))
             })?;
@@ -1836,11 +1890,11 @@ fn mapping_to_python(py: Python<'_>, entries: &[(Scalar, Scalar)]) -> PyResult<P
 /// reads a tuple of pairs back as a mapping.
 fn as_py_key(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
     match value {
-        Scalar::List(items)
-        | Scalar::ListView(items)
-        | Scalar::FixedSizeList(items)
-        | Scalar::LargeList(items)
-        | Scalar::LargeListView(items) => {
+        Scalar::Serie(items)
+        | Scalar::SerieView(items)
+        | Scalar::FixedSizeSerie(items)
+        | Scalar::LargeSerie(items)
+        | Scalar::LargeSerieView(items) => {
             let items = items
                 .iter()
                 .map(|item| as_py_key(py, &item))
@@ -1893,10 +1947,12 @@ impl Encoder {
             return Ok(value);
         }
         // A columnar object - a pyarrow container, a pandas or polars frame
-        // or series, a numpy array, an Arrow C exporter - is the Arrow scalar
-        // it already is, buffers shared rather than rows walked.
-        if let Some(arrow) = crate::arrow::try_ingest(value)? {
-            return Ok(Scalar::Arrow(std::sync::Arc::new(arrow)));
+        // or series, a numpy array, an Arrow C exporter - is the column it
+        // already is, held as a serie sharing its buffers rather than rows
+        // walked. A stream is drained into that column; one Arrow scalar is
+        // its row.
+        if let Some(value) = crate::serie::columnar_value(value)? {
+            return Ok(value);
         }
         // A path is recognized by its protocol rather than by its class,
         // because every path-like object answers `__fspath__` and none of them

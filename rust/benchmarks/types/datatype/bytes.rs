@@ -15,7 +15,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, BinaryArray};
 use criterion::{BenchmarkId, Criterion, Throughput};
 use yggdryl::BytesType;
-use yggdryl::{Bytes, DataType, Scalar};
+use yggdryl::{ArrowCastOptions, Bytes, DataType, Field, Scalar, Serie};
 
 use super::doors;
 
@@ -54,6 +54,25 @@ fn column(rows: usize, size: usize) -> Scalar {
     Scalar::from_sequence((0..rows).map(|index| Scalar::from(payload(size, index))))
 }
 
+/// Lay a column's rows out as the Arrow array `field` types.
+fn lay_out(field: &Arc<Field>, rows: &[Scalar]) -> ArrayRef {
+    Serie::from_scalars(Arc::clone(field), rows.iter().cloned())
+        .and_then(|serie| serie.require_arrow_array())
+        .expect("the benchmark column is valid")
+}
+
+/// Land an array as the column `field` types, held as one value, and build
+/// its rows back out of it.
+fn read_back(field: &Field, array: &ArrayRef) -> Vec<Scalar> {
+    let column = Serie::from_arrow_array(Some(field), Arc::clone(array), ArrowCastOptions::new())
+        .map(Scalar::from)
+        .expect("the built column reads back");
+    column
+        .sequence_rows()
+        .expect("a column reads back as a sequence")
+        .into_owned()
+}
+
 /// Time a column across Arrow in both directions.
 fn column_round_trip(
     group: &mut criterion::BenchmarkGroup<'_, criterion::measurement::WallTime>,
@@ -61,31 +80,25 @@ fn column_round_trip(
     dtype: &DataType,
     column: &Scalar,
 ) {
-    let field = dtype.clone().nullable_field("value");
+    let field = Arc::new(dtype.clone().nullable_field("value"));
+    let column = column
+        .as_sequence()
+        .expect("the benchmark column is a run of values");
     group.bench_function(
         BenchmarkId::new(format!("{label}_write"), ROWS),
         |bencher| {
-            bencher.iter(|| {
-                yggdryl::arrow::array_from_value(black_box(&field), black_box(column))
-                    .expect("the benchmark column is valid")
-            });
+            bencher.iter(|| lay_out(black_box(&field), black_box(column)));
         },
     );
-    let array = yggdryl::arrow::array_from_value(&field, column).expect("the column builds");
+    let array = lay_out(&field, column);
     group.bench_function(BenchmarkId::new(format!("{label}_read"), ROWS), |bencher| {
-        bencher.iter(|| {
-            yggdryl::arrow::array_to_value(black_box(&field), black_box(array.as_ref()))
-                .expect("the built column reads back")
-        });
+        bencher.iter(|| read_back(black_box(&field), black_box(&array)));
     });
     // Clone and drop of every row read out of the column, one value at a
     // time: what a value's handle costs once it is no longer a buffer Arrow
-    // owns. The sequence itself is one shared handle, so it is walked.
-    let rows = yggdryl::arrow::array_to_value(&field, array.as_ref())
-        .expect("the built column reads back");
-    let rows = rows
-        .as_sequence()
-        .expect("a column reads back as a sequence");
+    // owns. The rows are held once, so only the clones are measured.
+    let rows = read_back(&field, &array);
+    let rows = rows.as_slice();
     group.bench_function(
         BenchmarkId::new(format!("{label}_row_clone"), ROWS),
         |bencher| {
@@ -125,7 +138,7 @@ pub(crate) fn bytes_benchmarks(criterion: &mut Criterion) {
         group.bench_function(BenchmarkId::new("restate_fixed", size), |bencher| {
             bencher.iter(|| {
                 black_box(&fixed)
-                    .scalar(Scalar::Bytes(black_box(&value).clone()))
+                    .scalar(Scalar::Binary(black_box(&value).clone()))
                     .expect("the payload is exactly the width")
             });
         });

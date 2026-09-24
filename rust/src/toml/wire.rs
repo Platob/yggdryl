@@ -5,9 +5,9 @@ use std::io::Write;
 
 use base64::Engine as _;
 
-use crate::code_scalars;
 use crate::timezone::{civil_from_days, days_from_civil};
 use crate::{Error, Result, Scalar, Serie, TimeUnit, Timezone};
+use crate::{bytes_scalars, code_scalars, string_scalars};
 
 const SECONDS_PER_DAY: i64 = 86_400;
 const NANOSECONDS_PER_SECOND: i64 = 1_000_000_000;
@@ -160,11 +160,11 @@ fn check_value(value: &Scalar, parent: usize, maximum: usize) -> Result<()> {
         _ if value.is_integer() && value.as_i64().is_none() => {
             Err(codec_error("TOML integer exceeds i64"))
         }
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             let depth = parent.saturating_add(1);
             observe_depth(depth, maximum)?;
             for value in values.iter() {
@@ -261,14 +261,6 @@ fn write_scalar<W: Write>(
     depth: usize,
 ) -> Result<()> {
     match value {
-        Scalar::Arrow(_) => {
-            let native = value.into_native().map_err(|error| Error::Codec {
-                format: "toml",
-                position: 0,
-                reason: error.to_string().into(),
-            })?;
-            return write_scalar(writer, &native, layout, depth);
-        }
         // A variant is the value its bytes hold, written as that value.
         Scalar::Variant(held) => {
             let held = held.scalar()?;
@@ -300,7 +292,7 @@ fn write_scalar<W: Write>(
         Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::String(value) => write_quoted(writer, value.as_str())?,
+        string_scalars!(value) => write_quoted(writer, value.as_str())?,
         code_scalars!() => {
             write_quoted(writer, value.as_str().expect("a code borrowed its text"))?;
         }
@@ -314,7 +306,7 @@ fn write_scalar<W: Write>(
             let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             write_quoted(writer, value.render(&mut slot))?;
         }
-        Scalar::Bytes(value) => write_quoted(
+        bytes_scalars!(value) => write_quoted(
             writer,
             &base64::engine::general_purpose::STANDARD.encode(value.as_bytes()),
         )?,
@@ -359,11 +351,11 @@ fn write_scalar<W: Write>(
             )?,
             _ => return Err(codec_error("invalid interval layout")),
         },
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => write_sequence(writer, values, layout, depth)?,
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => write_sequence(writer, values, layout, depth)?,
         Scalar::Struct(entries) => {
             writer.write_all(b"{")?;
             for (index, (name, value)) in entries.as_map().iter().enumerate() {

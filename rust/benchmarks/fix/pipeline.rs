@@ -35,8 +35,8 @@ use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
 use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, State, StructType, Timezone, Url,
-    fix_schema,
+    ArrowCastOptions, DataType, Field, FixCodec, FixMsg, FixRegistry, IOMedia, SerieReader, State,
+    StructType, Timezone, Url, fix_schema,
 };
 
 use super::seed;
@@ -106,16 +106,22 @@ fn batched_text(rows: usize) -> RecordOptions {
 }
 
 /// The bodies the text reader hands the codec, framed and stripped.
+///
+/// Each batch lands as one record column, its body narrowed to the text leaf
+/// once and each row's bytes borrowed where they lie.
 fn bodies(source: &Buffer) -> Vec<Vec<u8>> {
-    use arrow_array::cast::AsArray;
-
+    let read = source.read_arrow_reader(&text()).expect("a reader");
+    let columns = SerieReader::from_arrow_reader(None, read, ArrowCastOptions::new())
+        .expect("the text reader's rows are records");
     let mut held = Vec::new();
-    for batch in source.read_arrow_reader(&text()).expect("a reader") {
-        let batch = batch.expect("a batch");
-        let at = batch.schema().index_of("body").expect("the body column");
-        let column = batch.column(at).as_string::<i32>();
-        for row in 0..batch.num_rows() {
-            held.push(column.value(row).as_bytes().to_vec());
+    for records in columns {
+        let records = records.expect("a batch");
+        let body = records
+            .child("body")
+            .and_then(|column| column.as_utf8())
+            .expect("the body column");
+        for row in 0..records.len() {
+            held.push(body.value(row).map_or(&[][..], str::as_bytes).to_vec());
         }
     }
     held

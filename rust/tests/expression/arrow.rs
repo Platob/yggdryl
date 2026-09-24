@@ -48,15 +48,15 @@ mod grammar {
                 // Temporal text, so a cast into and out of a temporal is one of
                 // the pairs the two tiers are compared on.
                 Field::new("clock", DataType::utf8(), true),
-                // A list, so a position and a run are compared on both tiers.
+                // A serie, so a position and a run are compared on both tiers.
                 Field::new(
                     "xs",
-                    DataType::list(DataType::Int64.nullable_field("item")),
+                    DataType::serie(DataType::Int64.nullable_field("item")),
                     true,
                 ),
-                // A list of structs holding a list of structs, so a predicate
+                // A serie of structs holding a serie of structs, so a predicate
                 // segment and one nested in another are compared on both tiers.
-                Field::new("legs", DataType::list(leg_field()), true),
+                Field::new("legs", DataType::serie(leg_field()), true),
             ])
             .map(DataType::from)
             .unwrap(),
@@ -64,13 +64,13 @@ mod grammar {
         )
     }
 
-    /// One leg: a currency, a size, and notes that are themselves a list of
+    /// One leg: a currency, a size, and notes that are themselves a serie of
     /// structs.
     fn leg_field() -> Field {
         StructType::from_fields([
             DataType::utf8().nullable_field("ccy"),
             DataType::Int64.nullable_field("size"),
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([
                     DataType::utf8().nullable_field("k"),
                     DataType::Int64.nullable_field("v"),
@@ -106,7 +106,7 @@ mod grammar {
             |micros: i64| Scalar::datetime64(micros, TimeUnit::Microsecond, Timezone::UTC).unwrap();
         let nested =
             |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
-        let list =
+        let serie =
             |items: &[i64]| Scalar::from_sequence(items.iter().map(|item| Scalar::from(*item)));
         vec![
             Scalar::from_sequence([
@@ -119,7 +119,7 @@ mod grammar {
                 Scalar::from(2024),
                 nested(Some("EUR")),
                 Scalar::from("10:23:45"),
-                list(&[1, 2, 3]),
+                serie(&[1, 2, 3]),
                 Scalar::from_sequence([
                     leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
                     leg(Some("USD"), Some(2), Some(&[])),
@@ -136,8 +136,8 @@ mod grammar {
                 Scalar::from(2024),
                 nested(None),
                 Scalar::from("25:30:00"),
-                list(&[]),
-                // An empty list keeps nothing and is not null.
+                serie(&[]),
+                // An empty serie keeps nothing and is not null.
                 Scalar::from_sequence([]),
             ]),
             Scalar::from_sequence([
@@ -151,7 +151,7 @@ mod grammar {
                 Scalar::Null,
                 Scalar::Null,
                 Scalar::Null,
-                // A null list stays null through every predicate.
+                // A null serie stays null through every predicate.
                 Scalar::Null,
             ]),
             Scalar::from_sequence([
@@ -164,7 +164,7 @@ mod grammar {
                 Scalar::from(2023),
                 nested(Some("USD")),
                 Scalar::from("99:59:59"),
-                list(&[7]),
+                serie(&[7]),
                 // A null element is dropped; a null size makes a size test unknown.
                 Scalar::from_sequence([Scalar::Null, leg(Some("EUR"), None, Some(&[("a", 5)]))]),
             ]),
@@ -178,7 +178,7 @@ mod grammar {
                 Scalar::from(2025),
                 nested(Some("eur")),
                 Scalar::from("00:00:00.500"),
-                list(&[0, -1]),
+                serie(&[0, -1]),
                 Scalar::from_sequence([
                     leg(Some("eur"), Some(10), Some(&[("c", 3)])),
                     leg(Some("GBP"), Some(0), Some(&[("z", 0)])),
@@ -221,8 +221,8 @@ mod grammar {
         "cast(clock as duration64(millisecond))",
         "cast(t as string)",
         "try_cast(clock as time32(second))",
-        // A predicate segment inside a comparison: the kept list is counted,
-        // an empty match is zero, and a null list is unknown.
+        // A predicate segment inside a comparison: the kept serie is counted,
+        // an empty match is zero, and a null serie is unknown.
         "size(legs[ccy = 'EUR']) > 1",
         "legs[size > 1][-1].ccy = 'EUR'",
         "legs[notes[v > 1][0].k = 'b'][0].size = 1",
@@ -238,14 +238,25 @@ mod grammar {
             .bind(schema)
             .unwrap_or_else(|error| panic!("{text}: {error}"));
         let vectorized = bound.evaluate(&batch).unwrap();
+        let field = bound.field().clone().with_nullable(true);
+        // The vectorized column is laid out exactly as the bound field
+        // declares, so reading it back casts nothing.
+        assert_eq!(
+            vectorized.data_type(),
+            field.as_arrow_field_ref().unwrap().data_type(),
+            "{text}"
+        );
         for (position, row) in rows.iter().enumerate() {
             let scalar = bound.eval(row).unwrap();
             // One row out of the vectorized column, through the public boundary:
             // a one-element slice is the scalar it holds.
-            let held = yggdryl::arrow::scalar_value(
-                &bound.field().clone().with_nullable(true),
-                vectorized.slice(position, 1).as_ref(),
+            let held = yggdryl::Serie::from_arrow_array(
+                Some(&field),
+                vectorized.slice(position, 1),
+                yggdryl::ArrowCastOptions::default(),
             )
+            .unwrap()
+            .scalar(0)
             .unwrap();
             assert_eq!(
                 scalar, held,
@@ -266,7 +277,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();
@@ -306,7 +319,7 @@ mod grammar {
             "xs[-2:]",
             "slice(xs, 1, null)",
             "get(nested, 'leg')",
-            // The predicate segment: an empty match, a null list, a null
+            // The predicate segment: an empty match, a null serie, a null
             // element, a predicate nested in a predicate, chained predicates, a
             // bare boolean and a null predicate, and a function, arithmetic and
             // a membership test over the element's fields.

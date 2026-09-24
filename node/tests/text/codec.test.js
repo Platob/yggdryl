@@ -591,6 +591,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     Version,
     Timezone,
     Scalar,
+    Serie,
     codec,
     json,
     toml,
@@ -893,10 +894,10 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       [Scalar.from('AAPL'), 'utf8', 'text'],
       [
         json.loads('"USD"', {
-          field: new Field('value', 'currency', false),
+          field: new Field('value', 'ccy', false),
           scalar: true,
         }),
-        'currency',
+        'ccy',
         'code',
       ],
       [
@@ -968,7 +969,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(record.path('legs.9.at'), null)
 
     // Record iteration is deterministic field-name order and yields values.
-    assert.deepEqual([...record].map((value) => value.kind), ['list', 'i64'])
+    assert.deepEqual([...record].map((value) => value.kind), ['serie', 'i64'])
     // Sequence iteration yields its exact children.
     assert.equal([...legs][0].path('at').count, instant.count)
 
@@ -977,7 +978,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(changed.get('z').kind, 'datetime64')
     assert.deepEqual([...changed].map((value) => value.kind), [
       'i64',
-      'list',
+      'serie',
       'datetime64',
     ])
     const removed = changed.remove('legs')
@@ -1135,44 +1136,63 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.throws(() => json.loads('1', { field: {} }), /static intoStructField getter/)
   })
 
-  test('Scalar Arrow scalar and array interop uses standard IPC', () => {
+  test('the Scalar Arrow doors are retired: Arrow crosses as a Serie', () => {
+    for (const name of ['fromArrowScalar', 'fromArrowArray', 'fromArrowBatch', 'fromArrowTable']) {
+      assert.equal(Scalar[name], undefined, name)
+    }
+    for (const name of ['intoArrowScalar', 'intoArrowArray', 'intoArrowBatch', 'intoArrowTable']) {
+      assert.equal(Scalar.prototype[name], undefined, name)
+    }
+    // The native bridges behind them are gone too, not merely hidden.
+    for (const name of [
+      '_fromArrowScalarIpcNative',
+      '_fromArrowArrayIpcNative',
+      '_fromArrowBatchIpcNative',
+      '_fromArrowTableIpcNative',
+    ]) {
+      assert.equal(nativeBinding.Scalar[name], undefined, name)
+    }
+  })
+
+  test('an Arrow scalar or array lands as a value through its column', () => {
     const vector = arrow.vectorFromArray(Int32Array.from([1, 2, 3]))
-    const values = Scalar.fromArrowArray(vector)
-    assert.equal(values.kind, 'list')
+    const values = Serie.fromArrowArray(vector).intoScalar()
+    assert.equal(values.kind, 'serie')
     assert.deepEqual(values.asJs(), [1, 2, 3])
-    assert.deepEqual([...values.intoArrowArray()], [1, 2, 3])
+    assert.deepEqual([...values.asSerie().intoArrowArray()], [1, 2, 3])
 
     const scalarVector = arrow.vectorFromArray(Int32Array.of(42))
-    const scalar = Scalar.fromArrowScalar(scalarVector)
+    const scalar = Serie.fromArrowArray(scalarVector).scalar(0)
     assert.equal(scalar.kind, 'i32')
-    assert.equal(scalar.intoArrowScalar(), 42)
+    assert.equal(Serie.fromScalars(scalar.intoField(), [scalar]).intoArrowScalar(), 42)
 
     const coefficient = new Uint32Array(8)
     coefficient[0] = 1
-    const decimal = Scalar.fromArrowScalar(
+    const decimal = Serie.fromArrowArray(
       arrow.vectorFromArray([coefficient], new arrow.Decimal(2, 40, 256)),
-    )
-    const duration = Scalar.fromArrowScalar(
+    ).scalar(0)
+    const duration = Serie.fromArrowArray(
       arrow.vectorFromArray([1n], new arrow.DurationMicrosecond()),
-    )
+    ).scalar(0)
     assert.equal(decimal.kind, 'd256')
     assert.equal(decimal.asJs().kind, 'd256')
     assert.equal(duration.kind, 'duration64')
     assert.equal(duration.asJs().kind, 'duration64')
 
     assert.throws(
-      () => Scalar.fromArrowScalar(vector),
-      /one-item Arrow Vector/,
+      () => Serie.fromArrowArray(vector).intoArrowScalar(),
+      /exactly one row, got 3/,
     )
 
+    // An empty sequence names no item field, so the caller's field types it.
     const empty = Scalar.from([])
-    assert.throws(() => empty.intoArrowArray(), /empty.*pass a Field/i)
-    const emptyVector = empty.intoArrowArray(new Field('value', 'int32', true))
+    assert.throws(() => empty.intoArrayField(), /empty.*pass a Field/i)
+    const emptyVector = Serie.fromScalars(new Field('value', 'int32', true), empty).intoArrowArray()
     assert.equal(emptyVector.length, 0)
 
     const overflowing = arrow.vectorFromArray(Int32Array.of(200))
     assert.deepEqual(
-      Scalar.fromArrowArray(overflowing, new Field('value', 'int8', false)).asJs(),
+      Serie.fromArrowArray(overflowing, new Field('value', 'int8', false)).intoScalar().asJs(),
       [0],
     )
   })
@@ -1200,7 +1220,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.throws(() => Scalar.from([[1]]).intoStructField(), /field names/)
   })
 
-  test('Scalar Arrow record and table interop uses the native schema engine', () => {
+  test('Arrow records land as a value through their record column', () => {
     const table = arrow.tableFromArrays({
       id: Int32Array.from([1, 2]),
       symbol: ['AAPL', 'MSFT'],
@@ -1213,39 +1233,40 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       ]),
       false,
     )
-    const rows = Scalar.fromArrowTable(table, root)
+    const rows = Serie.fromArrowBatch(table, root).intoScalar()
     assert.deepEqual(rows.asJs(), [[1, 'AAPL'], [2, 'MSFT']])
-    const restored = rows.intoArrowTable(root)
+    const restored = Serie.fromScalars(root, rows).intoArrowBatch()
     assert.equal(restored.numRows, 2)
     assert.deepEqual([...restored.getChild('id')], [1, 2])
 
-    const inferred = Scalar.from([{ id: 1 }, { id: 2 }]).intoArrowBatch()
+    const plain = Scalar.from([{ id: 1 }, { id: 2 }])
+    const inferred = Serie.fromScalars(plain.intoStructField(), plain).intoArrowBatch()
     assert.deepEqual([...inferred.getChild('id')], [1n, 2n])
     assert.throws(
-      () => Scalar.from([]).intoArrowTable(),
+      () => Scalar.from([]).intoStructField(),
       /cannot infer a Struct Field from empty rows; pass a Struct Field/i,
     )
   })
 
-  test('the Scalar Arrow doors cast under the three answers the caller gave', () => {
+  test('a value landed from Arrow is cast under the three answers the caller gave', () => {
     const overflowing = arrow.vectorFromArray(Int32Array.of(7, 200))
     const quantity = new Field('value', 'int8', false)
-    assert.deepEqual(Scalar.fromArrowArray(overflowing, quantity).asJs(), [7, 0])
+    assert.deepEqual(Serie.fromArrowArray(overflowing, quantity).intoScalar().asJs(), [7, 0])
     assert.throws(
-      () => Scalar.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
+      () => Serie.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
       /required Arrow field \$\.value holds 1 null values/,
     )
     assert.throws(
-      () => Scalar.fromArrowArray(overflowing, 'value: int8', { safe: false }),
+      () => Serie.fromArrowArray(overflowing, 'value: int8', { safe: false }),
       /Can't cast value 200 to type Int8/,
     )
     assert.equal(
-      Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity).asJs(),
+      Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity).scalar(0).asJs(),
       0,
     )
     assert.throws(
       () =>
-        Scalar.fromArrowScalar(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
+        Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
           safe: false,
         }),
       /Can't cast value 200 to type Int8/,
@@ -1253,15 +1274,15 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
     const table = arrow.tableFromArrays({ id: Int32Array.from([1, 2]) })
     const root = Field.from('row: struct<id: int64, venue: utf8 not null> not null')
-    assert.deepEqual(Scalar.fromArrowTable(table, root).asJs(), [[1, ''], [2, '']])
+    assert.deepEqual(Serie.fromArrowBatch(table, root).intoScalar().asJs(), [[1, ''], [2, '']])
     for (const read of [
-      () => Scalar.fromArrowTable(table, root, { nullability: 'strict' }),
-      () => Scalar.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
+      () => Serie.fromArrowBatch(table, root, { nullability: 'strict' }),
+      () => Serie.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
     ]) {
       assert.throws(read, /required Arrow field \$\.venue is missing from the source/)
     }
     assert.throws(
-      () => Scalar.fromArrowTable(table, root, { strict: true }),
+      () => Serie.fromArrowBatch(table, root, { strict: true }),
       /cast options take safe, nullability and representation/,
     )
   })
@@ -1297,7 +1318,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
   test('fromJs and asJs are the conversion every codec entry point crosses', () => {
     // The pivot answers what a JavaScript value becomes, losses included.
-    assert.equal(Scalar.from(new Set([1, 2])).kind, 'list')
+    assert.equal(Scalar.from(new Set([1, 2])).kind, 'serie')
     assert.deepEqual(Scalar.from(new Set([1, 2])).asJs(), [1, 2])
     assert.equal(Scalar.from(new Map([['id', 1]])).kind, 'map')
     assert.deepEqual(Scalar.from(new Map([['id', 1]])).asJs(), new Map([['id', 1]]))
@@ -1322,7 +1343,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(Scalar.from(null, { field: new Field('count', 'int8', true) }).kind, 'null')
     const row = new Field('row', 'struct<id: int8 not null, release: version not null>', false)
     const resolved = Scalar.from({ release: '5.0.300', id: 7 }, { field: row })
-    assert.equal(resolved.kind, 'list')
+    assert.equal(resolved.kind, 'serie')
     assert.equal(resolved.get(0).kind, 'i8')
     assert.ok(resolved.get(1).asJs().equals(new Version(5, 0, 300)))
   })

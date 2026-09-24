@@ -17,7 +17,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::invalid;
 use crate::value::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Result};
+use crate::{DataType, DataTypeId, Result};
 use smol_str::format_smolstr;
 
 /// Shared dictionary key and value types.
@@ -110,10 +110,6 @@ impl DataTypeValue for EnumType {
         }
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
-    }
-
     fn validate(&self) -> Result<()> {
         validate_dictionary_key(self.key())
     }
@@ -145,8 +141,8 @@ impl From<EnumType> for DataType {
 }
 
 impl DataType {
-    /// The enum family's view of a dictionary datatype, `None` for every
-    /// other: a shared-pointer clone.
+    /// The typed field's payload over a dictionary datatype, `None` for
+    /// every other: a shared-pointer clone.
     #[must_use]
     pub fn enum_type(&self) -> Option<EnumType> {
         match self {

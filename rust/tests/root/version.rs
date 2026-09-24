@@ -46,7 +46,6 @@ mod ordered {
     use arrow_schema::DataType as ArrowDataType;
 
     use yggdryl::DataType;
-    use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
         ArrowCastOptions, DataTypeId, DataTypeKind, Error, Field, FieldScalar, Scalar, Scheme,
         Serie, StructType, Version, VersionField,
@@ -235,7 +234,10 @@ mod ordered {
                 canonical
             );
             assert_eq!(
-                scalar_value(&field, array.as_ref()).unwrap(),
+                Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default())
+                    .unwrap()
+                    .scalar(0)
+                    .unwrap(),
                 Scalar::Version(expected)
             );
         }
@@ -362,7 +364,10 @@ mod ordered {
         assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.version");
         assert_eq!(Field::from_arrow_field(&arrow).unwrap(), field);
 
-        let stored = scalar_array(&field, &Scalar::from(version("5.0.2"))).unwrap();
+        let stored = Serie::from_scalars(field.clone(), [Scalar::from(version("5.0.2"))])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_eq!(
             stored
                 .as_any()
@@ -372,7 +377,10 @@ mod ordered {
             "5.0.2"
         );
         assert_eq!(
-            scalar_value(&field, stored.as_ref()).unwrap(),
+            Serie::from_arrow_array(Some(&field), stored, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
             Scalar::from(version("5.0.2"))
         );
 

@@ -243,7 +243,7 @@ mod internal {
         );
         let held = serie::Run::new(Arc::from([Scalar::from(1_i32)]));
         assert_eq!(
-            leaf_display(&Scalar::List(yggdryl::Serie::Run(held.clone())))
+            leaf_display(&Scalar::Serie(yggdryl::Serie::Run(held.clone())))
                 .unwrap()
                 .to_string(),
             held.to_string()
@@ -507,7 +507,7 @@ mod values {
         let left = Scalar::from(Vec::<u8>::new());
         let encoded = serde_json::to_vec(&left).unwrap();
         let right: Scalar = serde_json::from_slice(&encoded).unwrap();
-        let (Scalar::Bytes(left), Scalar::Bytes(right)) = (&left, &right) else {
+        let (Some(left), Some(right)) = (left.as_binary(), right.as_binary()) else {
             unreachable!();
         };
         // An empty byte value has no backing at all: it is inline on both sides.
@@ -517,16 +517,16 @@ mod values {
         let left = Scalar::from_sequence([]);
         let right = Scalar::from_sequence([]);
         let (
-            Scalar::List(left)
-            | Scalar::ListView(left)
-            | Scalar::FixedSizeList(left)
-            | Scalar::LargeList(left)
-            | Scalar::LargeListView(left),
-            Scalar::List(right)
-            | Scalar::ListView(right)
-            | Scalar::FixedSizeList(right)
-            | Scalar::LargeList(right)
-            | Scalar::LargeListView(right),
+            Scalar::Serie(left)
+            | Scalar::SerieView(left)
+            | Scalar::FixedSizeSerie(left)
+            | Scalar::LargeSerie(left)
+            | Scalar::LargeSerieView(left),
+            Scalar::Serie(right)
+            | Scalar::SerieView(right)
+            | Scalar::FixedSizeSerie(right)
+            | Scalar::LargeSerie(right)
+            | Scalar::LargeSerieView(right),
         ) = (&left, &right)
         else {
             unreachable!();
@@ -570,12 +570,12 @@ use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use yggdryl::{Code, FamilyValue, FloatingValue, Geospatial, Nested, Temporal, TemporalValue};
+use yggdryl::FloatingValue;
 use yggdryl::{DataType, DataTypeId, DataTypeKind, TimeUnit, Timezone, Value, i256};
 use yggdryl::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 use yggdryl::{Field, Serie, Variant};
-use yggdryl::{Float16, Float32, Float64, Floating, Scalar};
-use yggdryl::{Int8, Int16, Int32, Int64, Int128, Integer, UInt8, UInt16, UInt32, UInt64, UInt128};
+use yggdryl::{Float16, Float32, Float64, Scalar};
+use yggdryl::{Int8, Int16, Int32, Int64, Int128, UInt8, UInt16, UInt32, UInt64, UInt128};
 
 fn order() -> Scalar {
     Scalar::from_mapping([
@@ -726,8 +726,8 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
     use yggdryl::{
-        BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
-        SedolCode, TimeInForce,
+        BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
+        TimeInForce,
     };
 
     fn hash_of(value: &Scalar) -> u64 {
@@ -741,7 +741,7 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     // what makes a sorted column of fields and a sorted column of values agree.
     let ascending = [
         Scalar::Country(Country::new("FR").unwrap()),
-        Scalar::Currency(Currency::new("EUR").unwrap()),
+        Scalar::Ccy(Ccy::new("EUR").unwrap()),
         Scalar::MicCode(MicCode::new("XPAR").unwrap()),
         Scalar::CfiCode(CfiCode::new("ESVUFR").unwrap()),
         Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
@@ -763,18 +763,18 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     }
 
     // Two codes whose bytes agree are two values, and their hashes say so.
-    let currency = Scalar::Currency(Currency::new("XXX").unwrap());
+    let currency = Scalar::Ccy(Ccy::new("XXX").unwrap());
     let country = Scalar::Country(Country::new("XX").unwrap());
     assert_ne!(currency, country);
     assert_ne!(hash_of(&currency), hash_of(&country));
 
     // Within one code the text decides, and hash agrees with order.
-    let one = Scalar::Currency(Currency::new("EUR").unwrap());
-    let other = Scalar::Currency(Currency::new("USD").unwrap());
+    let one = Scalar::Ccy(Ccy::new("EUR").unwrap());
+    let other = Scalar::Ccy(Ccy::new("USD").unwrap());
     assert!(one < other);
     assert_eq!(
         hash_of(&one),
-        hash_of(&Scalar::Currency(Currency::new("EUR").unwrap()))
+        hash_of(&Scalar::Ccy(Ccy::new("EUR").unwrap()))
     );
     assert_ne!(hash_of(&one), hash_of(&other));
 }
@@ -1091,69 +1091,61 @@ fn scalar_traits_narrow_an_existing_leaf_without_revalidation() {
     assert_eq!(<Float32 as FloatingValue>::BIT_WIDTH, 32);
 }
 
-/// One leaf beside the family variant that shares its name, and what the
-/// family owes it: the widening `From<Leaf>`, the scalar variant of the same
-/// name, the leaf's own datatype and its rendering.
+/// One leaf of a family, as the scalar variant that holds it and the
+/// leaf's own datatype: what [`assert_family_round_trip`] reads.
 #[macro_export]
 macro_rules! family_leaf {
-    ($family:ident :: $variant:ident, $leaf:expr) => {{
+    ($variant:ident, $leaf:expr) => {{
         let leaf = $leaf;
         (
-            $family::$variant(leaf.clone()),
-            $family::from(leaf.clone()),
             yggdryl::Scalar::$variant(leaf.clone()),
             yggdryl::Value::dtype(&leaf).unwrap(),
-            leaf.to_string(),
         )
     }};
 }
 
-/// One family leaf as [`family_leaf!`] states it: the family variant, the
-/// widened leaf, the scalar, the leaf's datatype and its rendering.
-pub(crate) type FamilyLeaf<F> = (F, F, Scalar, DataType, String);
+/// One family leaf as [`family_leaf!`] states it: the scalar and the
+/// leaf's datatype.
+pub(crate) type FamilyLeaf = (Scalar, DataType);
 
-/// What a family enum answers for each of its leaves: `from_scalar` narrows
-/// the leaf's scalar to that variant, `dtype` and `Display` are the leaf's,
-/// `into_scalar` and `From<Family> for Scalar` widen back to the scalar the
-/// leaf widens to, `KIND` is the family's, and a scalar of another kind
-/// narrows to nothing.
-pub(crate) fn assert_family_round_trip<F>(
-    leaves: Vec<FamilyLeaf<F>>,
+/// What a family is to each of its leaves: the range of identifiers its
+/// kind owns holds the leaf's, and the leaf's scalar answers that family and
+/// the leaf's own datatype - which is where it materializes, a decimal for
+/// the two 128-bit integers Arrow has no layout for, so not always a
+/// datatype of the same identifier. A scalar of another kind, and null, lie
+/// outside the range.
+pub(crate) fn assert_family_round_trip(
+    leaves: Vec<FamilyLeaf>,
     kind: DataTypeKind,
     other: &Scalar,
-) where
-    F: FamilyValue,
-    Scalar: From<F>,
-{
-    assert_eq!(F::KIND, kind);
-    for (held, widened, scalar, dtype, display) in leaves {
-        assert_eq!(widened, held, "{scalar:?}");
-        assert_eq!(F::from_scalar(&scalar), Some(held.clone()), "{scalar:?}");
+) {
+    for (scalar, dtype) in leaves {
+        let id = scalar.id();
+        assert!(kind.contains(id), "{scalar:?}");
+        assert!(kind.range().contains(&id.as_u8()), "{scalar:?}");
+        assert_eq!(DataTypeKind::of_u8(id.as_u8()), Some(kind), "{scalar:?}");
         assert_eq!(scalar.family(), kind, "{scalar:?}");
-        assert_eq!(held.dtype().unwrap(), dtype, "{scalar:?}");
-        assert_eq!(held.to_string(), display, "{scalar:?}");
-        assert_eq!(held.clone().into_scalar(), scalar, "{scalar:?}");
-        assert_eq!(Scalar::from(held), scalar, "{scalar:?}");
+        assert_eq!(scalar.dtype().unwrap(), dtype, "{scalar:?}");
     }
+    assert!(!kind.contains(other.id()), "{other:?}");
     assert_ne!(other.family(), kind, "{other:?}");
-    assert_eq!(F::from_scalar(other), None, "{other:?}");
-    assert_eq!(F::from_scalar(&Scalar::Null), None);
+    assert!(!kind.contains(Scalar::Null.id()));
 }
 
 #[test]
 fn the_integer_family_stands_for_every_width() {
     assert_family_round_trip(
         vec![
-            family_leaf!(Integer::Int8, Int8::new(-8)),
-            family_leaf!(Integer::Int16, Int16::new(-16)),
-            family_leaf!(Integer::Int32, Int32::new(-32)),
-            family_leaf!(Integer::Int64, Int64::new(-64)),
-            family_leaf!(Integer::UInt8, UInt8::new(8)),
-            family_leaf!(Integer::UInt16, UInt16::new(16)),
-            family_leaf!(Integer::UInt32, UInt32::new(32)),
-            family_leaf!(Integer::UInt64, UInt64::new(64)),
-            family_leaf!(Integer::Int128, Int128::new(i128::MIN)),
-            family_leaf!(Integer::UInt128, UInt128::new(u128::MAX)),
+            family_leaf!(Int8, Int8::new(-8)),
+            family_leaf!(Int16, Int16::new(-16)),
+            family_leaf!(Int32, Int32::new(-32)),
+            family_leaf!(Int64, Int64::new(-64)),
+            family_leaf!(UInt8, UInt8::new(8)),
+            family_leaf!(UInt16, UInt16::new(16)),
+            family_leaf!(UInt32, UInt32::new(32)),
+            family_leaf!(UInt64, UInt64::new(64)),
+            family_leaf!(Int128, Int128::new(i128::MIN)),
+            family_leaf!(UInt128, UInt128::new(u128::MAX)),
         ],
         DataTypeKind::Integer,
         &Scalar::from(1.5_f64),
@@ -1164,12 +1156,9 @@ fn the_integer_family_stands_for_every_width() {
 fn the_floating_family_stands_for_every_width() {
     assert_family_round_trip(
         vec![
-            family_leaf!(
-                Floating::Float16,
-                Float16::from_f16(half::f16::from_f32(1.5))
-            ),
-            family_leaf!(Floating::Float32, Float32::from_f32(1.25)),
-            family_leaf!(Floating::Float64, Float64::from_f64(0.1)),
+            family_leaf!(Float16, Float16::from_f16(half::f16::from_f32(1.5))),
+            family_leaf!(Float32, Float32::from_f32(1.25)),
+            family_leaf!(Float64, Float64::from_f64(0.1)),
         ],
         DataTypeKind::Floating,
         &Scalar::from(1_i64),
@@ -1177,66 +1166,93 @@ fn the_floating_family_stands_for_every_width() {
 }
 
 #[test]
-fn every_family_accessor_answers_its_own_kind_and_no_other() {
+fn every_family_is_the_range_its_kind_owns_and_no_other() {
     let mut point = vec![1, 1, 0, 0, 0];
     point.extend_from_slice(&1.5_f64.to_le_bytes());
     point.extend_from_slice(&2.5_f64.to_le_bytes());
-    // One value of every kind, so each accessor meets every other kind.
+    // One value of every kind, so each family meets every other kind.
     let values = [
-        Scalar::Null,
-        Scalar::from(true),
-        Scalar::from(7_i32),
-        Scalar::from(u128::MAX),
-        Scalar::from(1.5_f32),
-        Scalar::d128(125, 1),
-        Scalar::date32(1),
-        Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
-        Scalar::from("text"),
-        Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
-        Scalar::from(vec![1_u8, 2]),
-        Scalar::Uuid(yggdryl::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap()),
-        Scalar::Timezone(Timezone::UTC),
-        Scalar::Geometry(yggdryl::Geometry::new(point.clone()).unwrap()),
-        Scalar::Geography(yggdryl::Geography::new(point).unwrap()),
-        Scalar::from_sequence([Scalar::from(1_i64)]),
-        Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
-        Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap(),
+        (Scalar::Null, DataTypeKind::Null),
+        (Scalar::from(true), DataTypeKind::Boolean),
+        (Scalar::from(7_i32), DataTypeKind::Integer),
+        (Scalar::from(u128::MAX), DataTypeKind::Integer),
+        (Scalar::from(1.5_f32), DataTypeKind::Floating),
+        (Scalar::d128(125, 1), DataTypeKind::Decimal),
+        (Scalar::date32(1), DataTypeKind::Temporal),
+        (
+            Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
+            DataTypeKind::Temporal,
+        ),
+        (Scalar::from("text"), DataTypeKind::Text),
+        (
+            Scalar::Ccy(yggdryl::Ccy::new("EUR").unwrap()),
+            DataTypeKind::Code,
+        ),
+        (Scalar::from(vec![1_u8, 2]), DataTypeKind::Bytes),
+        (
+            Scalar::Uuid(
+                yggdryl::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap(),
+            ),
+            DataTypeKind::Uuid,
+        ),
+        (Scalar::Timezone(Timezone::UTC), DataTypeKind::Text),
+        (
+            Scalar::Geometry(yggdryl::Geometry::new(point.clone()).unwrap()),
+            DataTypeKind::Geospatial,
+        ),
+        (
+            Scalar::Geography(yggdryl::Geography::new(point).unwrap()),
+            DataTypeKind::Geospatial,
+        ),
+        (
+            Scalar::from_sequence([Scalar::from(1_i64)]),
+            DataTypeKind::Nested,
+        ),
+        (
+            Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap(),
+            DataTypeKind::Nested,
+        ),
+        (
+            Scalar::from_struct([("id", Scalar::from(1_i64))]).unwrap(),
+            DataTypeKind::Nested,
+        ),
     ];
 
-    // An accessor is the family's own narrowing: it answers exactly where
-    // the scalar's kind is the family's, and what it answers widens back to
-    // the scalar it read.
-    macro_rules! answers_its_own_kind {
-        ($accessor:ident, $family:ident) => {
-            for value in &values {
-                let held = value.$accessor();
-                assert_eq!(held, $family::from_scalar(value), "{value:?}");
-                assert_eq!(
-                    held.is_some(),
-                    value.family() == DataTypeKind::$family,
-                    "{value:?}"
-                );
-                if let Some(held) = held {
-                    assert_eq!(Scalar::from(held), *value, "{value:?}");
-                }
-            }
-        };
+    // A value's family is the one range its identifier is in: every kind
+    // contains exactly the values stated under it, and the predicates the
+    // scalar answers are the same range checks.
+    for (value, family) in &values {
+        assert_eq!(value.family(), *family, "{value:?}");
+        for kind in DataTypeKind::ALL {
+            assert_eq!(
+                kind.contains(value.id()),
+                kind == *family,
+                "{value:?} {kind}"
+            );
+        }
+        assert_eq!(
+            value.is_integer(),
+            *family == DataTypeKind::Integer,
+            "{value:?}"
+        );
+        assert_eq!(
+            value.is_decimal(),
+            *family == DataTypeKind::Decimal,
+            "{value:?}"
+        );
+        assert_eq!(
+            value.is_temporal(),
+            *family == DataTypeKind::Temporal,
+            "{value:?}"
+        );
+        assert_eq!(value.is_code(), *family == DataTypeKind::Code, "{value:?}");
+        assert_eq!(value.is_number(), family.is_numeric(), "{value:?}");
     }
-    answers_its_own_kind!(as_integer, Integer);
-    answers_its_own_kind!(as_floating, Floating);
-    answers_its_own_kind!(as_temporal, Temporal);
-    answers_its_own_kind!(as_code, Code);
-    answers_its_own_kind!(as_geospatial, Geospatial);
-    answers_its_own_kind!(as_nested, Nested);
 
-    // The decimal family narrows through its own `from_scalar`; `as_decimal`
-    // is the coefficient-and-scale reader.
+    // `as_decimal` is the coefficient-and-scale reader, not a family.
     let price = Scalar::d128(125, 1);
     assert_eq!(price.as_decimal(), Some((i256::from_i128(125), 1)));
-    assert!(matches!(
-        yggdryl::Decimal::from_scalar(&price),
-        Some(yggdryl::Decimal::Decimal128(_))
-    ));
+    assert!(matches!(price, Scalar::Decimal128(_)));
     assert_eq!(Scalar::from(7_i32).as_decimal(), None);
 }
 
@@ -1246,60 +1262,53 @@ fn a_temporal_names_its_family_as_a_datatype_spells_it() {
     // is the word a column of it declares.
     let cases = [
         (
-            Temporal::from(Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()),
+            Scalar::Date32(Date32::new(1, TimeUnit::Day, Timezone::NAIVE).unwrap()),
             "date",
         ),
         (
-            Temporal::from(
+            Scalar::Date64(
                 Date64::new(86_400_000, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
             ),
             "date",
         ),
         (
-            Temporal::from(Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()),
+            Scalar::Time32(Time32::new(1, TimeUnit::Second, Timezone::NAIVE).unwrap()),
             "time",
         ),
         (
-            Temporal::from(Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            Scalar::Time64(Time64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
             "time",
         ),
         (
-            Temporal::from(DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()),
+            Scalar::DateTime64(DateTime64::new(1, TimeUnit::Nanosecond, Timezone::UTC).unwrap()),
             "datetime",
         ),
         (
-            Temporal::from(Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap()),
+            Scalar::Duration32(
+                Duration32::new(-1, TimeUnit::Millisecond, Timezone::NAIVE).unwrap(),
+            ),
             "duration",
         ),
         (
-            Temporal::from(Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
+            Scalar::Duration64(Duration64::new(1, TimeUnit::Microsecond, Timezone::NAIVE).unwrap()),
             "duration",
         ),
         (
-            Temporal::from(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
+            Scalar::Interval(Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
     ];
     for (held, family) in &cases {
-        assert_eq!(held.family(), *family, "{held:?}");
+        assert_eq!(held.id().temporal_family(), Some(*family), "{held:?}");
         assert_eq!(
-            Scalar::from(held.clone())
-                .as_temporal()
-                .map(|held| held.family()),
+            held.dtype().unwrap().id().temporal_family(),
             Some(*family),
             "{held:?}"
         );
+        assert!(DataTypeKind::Temporal.contains(held.id()), "{held:?}");
     }
-
-    // Each leaf type states the same word as a constant.
-    assert_eq!(Date32::FAMILY, "date");
-    assert_eq!(Date64::FAMILY, "date");
-    assert_eq!(Time32::FAMILY, "time");
-    assert_eq!(Time64::FAMILY, "time");
-    assert_eq!(DateTime64::FAMILY, "datetime");
-    assert_eq!(Duration32::FAMILY, "duration");
-    assert_eq!(Duration64::FAMILY, "duration");
-    assert_eq!(Interval::FAMILY, "interval");
+    assert_eq!(Scalar::from(1_i64).id().temporal_family(), None);
+    assert_eq!(Scalar::Null.id().temporal_family(), None);
 }
 
 #[test]
@@ -1327,22 +1336,28 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(milliseconds.count(), 2_000);
     assert_eq!(milliseconds.unit(), TimeUnit::Millisecond);
 
-    let text = string::Str::new("AAPL")
-        .try_with_parameters(string::StringType::LargeUtf8String)
-        .unwrap();
+    // The text alone is a value of the plain leaf; the leaf a column gives
+    // it is the variant of the value that holds it, and any leaf lends it.
+    let text = string::Str::new("AAPL");
     assert_eq!(text.as_str(), "AAPL");
-    assert_eq!(Value::dtype(&text).unwrap(), DataType::large_utf8());
-
-    let bytes = bytes::Bytes::new([1, 2, 3])
-        .try_with_parameters(bytes::BytesType::BinaryView)
+    assert_eq!(Value::dtype(&text).unwrap(), DataType::utf8());
+    let large = string::StringType::LargeUtf8String
+        .scalar(text.clone())
         .unwrap();
-    assert_eq!(bytes.as_bytes(), [1, 2, 3]);
-    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary_view());
+    assert_eq!(large.dtype().unwrap(), DataType::large_utf8());
+    assert_eq!(<string::Str as Value>::from_scalar(&large), Some(&text));
 
-    let currency = yggdryl::Currency::new("USD").unwrap();
-    assert_eq!(<yggdryl::Currency as CodeValue>::WIDTH, 3);
+    let bytes = bytes::Bytes::new([1, 2, 3]);
+    assert_eq!(bytes.as_bytes(), [1, 2, 3]);
+    assert_eq!(Value::dtype(&bytes).unwrap(), DataType::binary());
+    let view = bytes::BytesType::BinaryView.scalar(bytes.clone()).unwrap();
+    assert_eq!(view.dtype().unwrap(), DataType::binary_view());
+    assert_eq!(<bytes::Bytes as Value>::from_scalar(&view), Some(&bytes));
+
+    let currency = yggdryl::Ccy::new("USD").unwrap();
+    assert_eq!(<yggdryl::Ccy as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
-    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
+    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Ccy);
 
     let geometry = geospatial::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap();
     assert_eq!(
@@ -1354,14 +1369,16 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     let sequence = serie::Run::new(Arc::from([Scalar::from(1_i32), Scalar::from(2_i32)]));
     assert_eq!(NestedValue::len(&sequence), 2);
     assert_eq!(NestedValue::children(&sequence).count(), 2);
-    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::List);
+    assert_eq!(Value::dtype(&sequence).unwrap().id(), DataTypeId::Serie);
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
     assert_eq!(Value::dtype(&uuid).unwrap(), DataType::Uuid);
 
     let scalar = Value::into_scalar(text);
-    assert_eq!(scalar.id(), DataTypeId::LargeUtf8String);
+    assert_eq!(scalar.id(), DataTypeId::Utf8String);
     assert_eq!(scalar.family(), DataTypeKind::Text);
+    assert_eq!(large.id(), DataTypeId::LargeUtf8String);
+    assert_eq!(large.family(), DataTypeKind::Text);
 }
 
 #[test]
@@ -1387,43 +1404,42 @@ fn concrete_leaves_preserve_their_physical_identity() {
     assert!(date::Date32::new(0, TimeUnit::Second, Timezone::NAIVE).is_err());
 
     let utf8 = string::Str::new("東京");
-    let view = utf8
-        .clone()
-        .try_with_parameters(string::StringType::Utf8StringView)
+    let view = string::StringType::Utf8StringView
+        .scalar(utf8.clone())
         .unwrap();
-    assert_eq!(utf8.as_str(), view.as_str());
-    assert_eq!(utf8.parameters(), string::StringType::Utf8String);
-    assert_eq!(view.parameters(), string::StringType::Utf8StringView);
+    assert_eq!(view.as_string(), Some(&utf8));
+    assert_eq!(view.as_str(), Some(utf8.as_str()));
+    assert_eq!(
+        Scalar::from(utf8.clone()).string_parameters(),
+        Some(string::StringType::Utf8String)
+    );
+    assert_eq!(
+        view.string_parameters(),
+        Some(string::StringType::Utf8StringView)
+    );
+    // The text alone serializes as the bare text: no leaf rides it.
+    assert_eq!(serde_json::to_string(&utf8).unwrap(), r#""東京""#);
     assert_eq!(
         serde_json::from_str::<string::Str>(&serde_json::to_string(&utf8).unwrap()).unwrap(),
         utf8
     );
 
-    let ascii = string::Str::new("FIX")
-        .try_with_parameters(string::StringType::AsciiString)
-        .unwrap();
-    let currency = yggdryl::Currency::new("USD").unwrap();
-    assert_eq!(ascii.as_str(), "FIX");
-    assert_eq!(ascii.charset(), yggdryl::Charset::Ascii);
+    let ascii = string::StringType::AsciiString.scalar("FIX").unwrap();
+    let currency = yggdryl::Ccy::new("USD").unwrap();
+    assert_eq!(ascii.as_str(), Some("FIX"));
+    assert_eq!(
+        ascii.string_parameters().map(string::StringType::charset),
+        Some(yggdryl::Charset::Ascii)
+    );
     assert_eq!(currency.as_str(), "USD");
-    assert!(
-        string::Str::new("café")
-            .try_with_parameters(string::StringType::AsciiString)
-            .is_err()
-    );
-    assert!(
-        string::Str::new("")
-            .try_with_parameters(string::StringType::FixedAsciiString(0))
-            .is_err()
-    );
+    assert!(string::StringType::AsciiString.scalar("café").is_err());
+    assert!(string::StringType::FixedAsciiString(0).scalar("").is_err());
     assert!(yggdryl::CfiCode::new("TOO-LONG").is_err());
 
     let binary = bytes::Bytes::from(vec![0, 1, 0xff]);
-    let binary_view = binary
-        .clone()
-        .try_with_parameters(bytes::BytesType::BinaryView)
-        .unwrap();
-    assert_eq!(binary.as_bytes(), binary_view.as_bytes());
+    let binary_view = bytes::BytesType::BinaryView.scalar(binary.clone()).unwrap();
+    assert_eq!(Some(binary.as_bytes()), binary_view.as_bytes());
+    assert_eq!(binary_view.as_binary(), Some(&binary));
     assert_eq!(binary.to_string(), "0001ff");
 
     let uuid = uuid::Uuid::from_bytes(b"550e8400-e29b-41d4-a716-446655440000").unwrap();
@@ -1469,19 +1485,26 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     assert_eq!(narrow.as_decimal(), Some((i256::from_i128(1_250), 2)));
     assert_eq!(wide.as_decimal(), Some((i256::from_i128(125), 1)));
 
-    let utf8 = string::Str::new("same");
-    let large = utf8
-        .clone()
-        .try_with_parameters(string::StringType::LargeUtf8String)
+    // A string or byte value is one value whichever leaf holds it, a
+    // maximum included: equality reads the text or the payload alone.
+    let utf8 = Scalar::Utf8String(string::Str::new("same"));
+    let large = string::StringType::LargeUtf8String.scalar("same").unwrap();
+    let sized = string::StringType::SizedUtf8String(8)
+        .scalar("same")
         .unwrap();
     assert_eq!(utf8, large);
+    assert_eq!(utf8, sized);
+    assert_eq!(utf8.kind(), "string");
+    assert_eq!(large.kind(), "large_utf8");
+    assert_eq!(sized.kind(), "sized_utf8");
 
-    let binary = bytes::Bytes::from(vec![1, 2]);
-    let view = binary
-        .clone()
-        .try_with_parameters(bytes::BytesType::BinaryView)
-        .unwrap();
+    let binary = Scalar::Binary(bytes::Bytes::from(vec![1, 2]));
+    let view = bytes::BytesType::BinaryView.scalar(vec![1, 2]).unwrap();
+    let fixed = bytes::BytesType::FixedBinary(2).scalar(vec![1, 2]).unwrap();
     assert_eq!(binary, view);
+    assert_eq!(binary, fixed);
+    assert_eq!(binary.kind(), "bytes");
+    assert_eq!(view.kind(), "binary_view");
 
     // A code carries its identity: two codes whose bytes agree are two
     // values, and neither is the string spelling the same bytes.
@@ -1498,7 +1521,7 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let geography = Scalar::Geography(geospatial::Geography::new(point).unwrap());
     assert_eq!(geometry, geography);
 
-    let sequence = Scalar::List(yggdryl::Serie::Run(serie::Run::new(Arc::from([
+    let sequence = Scalar::Serie(yggdryl::Serie::Run(serie::Run::new(Arc::from([
         Scalar::from(1_i32),
         Scalar::from(2_i32),
     ]))));
@@ -1509,14 +1532,8 @@ fn width_variants_keep_exact_members_and_logical_identity() {
     let datetime = Scalar::DateTime64(
         datetime::DateTime64::new(7, TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
     );
-    assert_eq!(
-        datetime.as_temporal().map(|held| held.family()),
-        Some("datetime")
-    );
-    assert!(matches!(
-        datetime.as_temporal(),
-        Some(Temporal::DateTime64(_))
-    ));
+    assert_eq!(datetime.id().temporal_family(), Some("datetime"));
+    assert!(DataTypeKind::Temporal.contains(datetime.id()));
     assert_eq!(datetime.kind(), "datetime64");
     assert_eq!(datetime.temporal_timezone(), Some(Timezone::UTC));
 
@@ -1576,7 +1593,7 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             Scalar::Interval(yggdryl::Interval::new(1, 2, 3, TimeUnit::MonthDayNano).unwrap()),
             "interval",
         ),
-        (Scalar::from_sequence([Scalar::from(1_i32)]), "list"),
+        (Scalar::from_sequence([Scalar::from(1_i32)]), "serie"),
         (
             Scalar::from_mapping([(Scalar::from("a"), Scalar::from(1_i32))]).unwrap(),
             "map",
@@ -1836,7 +1853,7 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         Serie::from_scalars(
             Field::new(
                 "leg",
-                DataType::list(Field::new("item", DataType::Int64, true)),
+                DataType::serie(Field::new("item", DataType::Int64, true)),
                 true,
             ),
             [Scalar::from_sequence([
@@ -1860,8 +1877,8 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         Some(&Scalar::from(3_i64))
     );
     assert_eq!((&column).into_iter().count(), (&run).into_iter().count());
-    assert_eq!(column.kind(), "list");
-    assert_eq!(column.id(), DataTypeId::List);
+    assert_eq!(column.kind(), "serie");
+    assert_eq!(column.id(), DataTypeId::Serie);
     assert_eq!(column.dtype().unwrap(), run.dtype().unwrap());
 }
 
@@ -1911,6 +1928,74 @@ fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
 }
 
 #[test]
+fn every_serie_layout_writes_one_tag_and_reads_the_tags_it_was_written_under() {
+    let rows = [Scalar::from(1_i64), Scalar::Null, Scalar::from(3_i64)];
+    let field = Field::new("size", DataType::Int64, true);
+    let run = || Serie::new(rows.to_vec());
+    let column = || Serie::from_scalars(field.clone(), rows.clone()).unwrap();
+    // Each layout: the variant, the one tag it writes, and the two it was
+    // written under before - a run's rows under the list word, a column's
+    // document under `<list word>_serie`, the 32-bit one's under `serie`.
+    type Layout = fn(Serie) -> Scalar;
+    let layouts: [(Layout, &str, &str, &str); 5] = [
+        (Scalar::Serie, "serie", "list", "serie"),
+        (
+            Scalar::SerieView,
+            "serie_view",
+            "list_view",
+            "list_view_serie",
+        ),
+        (
+            Scalar::FixedSizeSerie,
+            "fixed_size_serie",
+            "fixed_size_list",
+            "fixed_size_list_serie",
+        ),
+        (
+            Scalar::LargeSerie,
+            "large_serie",
+            "large_list",
+            "large_list_serie",
+        ),
+        (
+            Scalar::LargeSerieView,
+            "large_serie_view",
+            "large_list_view",
+            "large_list_view_serie",
+        ),
+    ];
+    for (layout, tag, rows_tag, column_tag) in layouts {
+        for held in [layout(run()), layout(column())] {
+            let is_column = held.as_serie().is_some_and(Serie::is_column);
+            // One tag per layout, the payload's shape saying run or column.
+            let document = serde_json::to_value(&held).unwrap();
+            assert_eq!(document["type"], tag, "{document}");
+            assert_eq!(held.kind(), tag);
+            assert_eq!(document["value"].is_array(), !is_column, "{document}");
+            assert_eq!(document["value"].is_object(), is_column, "{document}");
+            // The document is the value: reading it back writes it again
+            // byte for byte, the layout and the shape both kept.
+            let back: Scalar = serde_json::from_value(document.clone()).unwrap();
+            assert_eq!(back, held);
+            assert_eq!(back.as_serie().map(Serie::is_column), Some(is_column));
+            assert_eq!(serde_json::to_value(&back).unwrap(), document);
+
+            // The tag it was written under before reads as the same value,
+            // and so does the other old tag of its layout, whichever shape
+            // the payload has.
+            let written_before = if is_column { column_tag } else { rows_tag };
+            for legacy in [written_before, rows_tag, column_tag] {
+                let mut old = document.clone();
+                old["type"] = serde_json::Value::from(legacy);
+                let read: Scalar =
+                    serde_json::from_value(old).unwrap_or_else(|error| panic!("{legacy}: {error}"));
+                assert_eq!(serde_json::to_value(&read).unwrap(), document, "{legacy}");
+            }
+        }
+    }
+}
+
+#[test]
 fn a_column_writes_through_every_wire_as_its_run_does() {
     let (column, run) = column_and_run();
 
@@ -1943,11 +2028,12 @@ fn a_column_writes_through_every_wire_as_its_run_does() {
         run
     );
 
-    // The crate's own serde is the one wire that tells the two apart: a run
-    // under `list`, a column with its field under `serie`, and each
-    // reads back as what it was.
+    // The crate's own serde is the one wire that tells the two apart: one
+    // `serie` tag, whose payload is a run's rows or a column's field beside
+    // its rows, and each reads back as what it was.
     let run_document = serde_json::to_value(&run).unwrap();
-    assert_eq!(run_document["type"], "list");
+    assert_eq!(run_document["type"], "serie");
+    assert!(run_document["value"].is_array(), "{run_document}");
     let column_document = serde_json::to_value(&column).unwrap();
     assert_eq!(column_document["type"], "serie");
     assert_eq!(column_document["value"]["field"]["name"], "size");
@@ -1962,10 +2048,14 @@ fn a_column_writes_through_every_wire_as_its_run_does() {
     let read: Scalar = serde_json::from_value(run_document).unwrap();
     assert!(read.as_serie().is_some_and(|serie| !serie.is_column()));
     assert_eq!(read, run);
-    // A list under the `serie` tag is refused naming the wire.
+    // A payload that is neither shape is refused naming both.
     let refused = serde_json::from_value::<Scalar>(serde_json::json!({
         "type": "serie",
-        "value": [1, 2, 3],
-    }));
-    assert!(refused.is_err());
+        "value": 3,
+    }))
+    .expect_err("a number is no serie");
+    assert!(
+        refused.to_string().contains("field beside its rows"),
+        "{refused}"
+    );
 }

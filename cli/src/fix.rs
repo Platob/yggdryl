@@ -13,7 +13,7 @@ use crate::{diff, quality, registry, schema, shell, style};
 /// What the dictionary tool was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nA field reads its values by a named code set the dictionary holds: --codes names one, and codesets list/read/write/delete states its members.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
+    after_help = "Examples:\n  ygg fix fields list Party\n  ygg fix fields read 453 --json\n  ygg fix components create Party 'struct<PartyID: utf8>'\n  ygg fix groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party\n  ygg fix components create --input Order.json\n  ygg fix codesets write msgdirectioncodeset --codes '[{\"value\":\"R\",\"name\":\"Receive\"},{\"value\":\"S\",\"name\":\"Send\"}]'\n  ygg fix fields update MsgDirection utf8 --tag 385 --codes msgdirectioncodeset --directions '[{\"code\":\"S\",\"patterns\":[\"(?i)^TX\\\\b\"]},{\"code\":\"R\",\"patterns\":[\"(?i)^RX\\\\b\"]}]'\n\nEach category supports list, read, create, update, and delete.\nUse <category> <operation> --help for inputs and examples.\nA field reads its values by a named code set the dictionary holds: --codes names one, and codesets list/read/write/delete states its members.\nTag 385's direction rules live in FIX:directions metadata; --directions accepts that JSON document, one entry per code of the set, and an empty list removes it so the crate's defaults read again."
 )]
 pub enum Command {
     /// Tagged scalar fields, including int32 repeating-group counters.
@@ -27,7 +27,7 @@ pub enum Command {
         #[command(subcommand)]
         command: CategoryCommand,
     },
-    /// Repeating lists with a separate counter tag and component.
+    /// Repeating series with a separate counter tag and component.
     Groups {
         #[command(subcommand)]
         command: CategoryCommand,
@@ -185,7 +185,7 @@ pub struct DefinitionArgs {
     /// Canonical definition name, preserving its spelling.
     #[arg(required_unless_present = "input")]
     name: Option<String>,
-    /// Core datatype expression: int32, utf8, struct<...>, list<...>.
+    /// Core datatype expression: int32, utf8, struct<...>, serie<...>.
     #[arg(required_unless_present = "input")]
     dtype: Option<String>,
     /// Read one native Field JSON document; replaces positional inputs and flags.

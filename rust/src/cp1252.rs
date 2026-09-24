@@ -76,6 +76,16 @@ pub(crate) fn encode(input: &str) -> Result<Cow<'_, [u8]>> {
     CP1252.encode(input)
 }
 
+/// Prove that recovered text can be written back without allocating output.
+pub(crate) fn require_encodable(input: &str) -> Result<()> {
+    for (position, scalar) in input.char_indices() {
+        if byte_of(scalar).is_none() {
+            return Err(crate::charset::unencodable(name(), position, scalar));
+        }
+    }
+    Ok(())
+}
+
 /// Encode text into a byte target.
 pub(crate) fn encode_into(input: &str, target: &mut Vec<u8>) -> Result<()> {
     CP1252.encode_into(input, target)
@@ -107,25 +117,25 @@ impl DataType {
     /// Unbounded windows-1252 with 32-bit offsets.
     #[must_use]
     pub const fn cp1252() -> Self {
-        Self::String(StringType::Cp1252String)
+        Self::Cp1252String
     }
 
     /// Unbounded windows-1252 with 64-bit offsets.
     #[must_use]
     pub const fn large_cp1252() -> Self {
-        Self::String(StringType::LargeCp1252String)
+        Self::LargeCp1252String
     }
 
     /// Unbounded windows-1252 in the view layout.
     #[must_use]
     pub const fn cp1252_view() -> Self {
-        Self::String(StringType::Cp1252StringView)
+        Self::Cp1252StringView
     }
 
     /// Unbounded windows-1252 in the view layout over 64-bit offsets.
     #[must_use]
     pub const fn large_cp1252_view() -> Self {
-        Self::String(StringType::LargeCp1252StringView)
+        Self::LargeCp1252StringView
     }
 
     /// Windows-1252 of exactly `width` stored bytes, padded with trailing NUL.

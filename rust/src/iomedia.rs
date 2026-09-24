@@ -257,33 +257,35 @@ pub trait IOMedia: Send {
         options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
     }
 
-    /// Read this resource's rows as one [`ArrowScalar`](crate::ArrowScalar).
+    /// Read this resource's rows as a [`SerieReader`](crate::SerieReader):
+    /// one record [`Serie`](crate::Serie) per batch.
     ///
-    /// This is the Arrow-shaped sibling of
+    /// This is the column-shaped sibling of
     /// [`read_scalar`](crate::IOBase::read_scalar), and the one entry point
     /// that does not need the caller to know first what the resource is. A
     /// record encoding - Arrow IPC, Parquet, Avro, plain text - answers the
     /// stream [`read_arrow_reader`](Self::read_arrow_reader) already
-    /// produces under `options`; a structured text document - JSON, JSON
-    /// Lines, YAML, TOML - answers the batch its rows parse into, because a
-    /// document has no frame to read a prefix of, and reads only the
-    /// declared field off the options.
+    /// produces under `options`, each batch landed as it arrives; a
+    /// structured text document - JSON, JSON Lines, YAML, TOML - answers the
+    /// one record column its rows parse into, because a document has no
+    /// frame to read a prefix of, and reads only the declared field off the
+    /// options.
     ///
     /// `options` absent is the handle's own encoding read whole: a record
     /// encoding answers its stored schema and a document names the root its
     /// own contents prove.
     ///
     /// ```
-    /// use yggdryl::{ArrowShape, Field, IOMedia, IOBase, Scalar, Url, holder::Buffer};
+    /// use yggdryl::{IOMedia, IOBase, Serie, Url, holder::Buffer};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut handle = Buffer::new()
     ///     .with_media_type(Url::from_str("file:///trades.jsonl")?.media_type());
     /// handle.write_all_bytes(b"{\"symbol\": \"AAPL\", \"size\": 100}\n")?;
     ///
-    /// let value = handle.read_arrow(None)?;
-    /// assert_eq!(value.shape(), ArrowShape::Batch);
-    /// assert_eq!(value.row_size(), Some(1));
+    /// let columns = handle.read_arrow(None)?.collect::<Result<Vec<Serie>, _>>()?;
+    /// assert_eq!(columns.len(), 1);
+    /// assert_eq!(columns[0].len(), 1);
     /// # Ok(())
     /// # }
     /// ```
@@ -293,33 +295,38 @@ pub trait IOMedia: Send {
     /// Returns a read, decoding, parse, inference, or cast failure, or an
     /// error naming the media type when it is neither a record encoding this
     /// build implements nor a structured text format.
-    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::arrow::ArrowScalar> {
+    fn read_arrow(&self, options: Option<&RecordOptions>) -> Result<crate::SerieReader> {
         use crate::media::IORecordOptions;
 
         let handle = self.as_io_base();
         if crate::text::Format::from_media_type(handle.media_type()).is_ok() {
             let field = options.and_then(IORecordOptions::field);
-            return crate::media::structured::read_arrow(handle, field.as_ref());
+            let records = crate::media::structured::read_arrow(handle, field.as_ref())?;
+            return Ok(crate::SerieReader::from_serie(records)?);
         }
         let reader = match options {
             Some(options) => self.read_arrow_reader(options)?,
             None => self.read_arrow_reader(&RecordOptions::for_media_type(handle.media_type())?)?,
         };
-        Ok(crate::arrow::ArrowScalar::from_reader(reader)?)
+        Ok(crate::SerieReader::from_arrow_reader(
+            None,
+            reader,
+            crate::ArrowCastOptions::default(),
+        )?)
     }
 
-    /// Write one [`ArrowScalar`](crate::ArrowScalar) as this resource's rows.
+    /// Write a [`SerieReader`](crate::SerieReader)'s record columns as this
+    /// resource's rows.
     ///
-    /// The Arrow-shaped sibling of
+    /// The column-shaped sibling of
     /// [`write_scalar`](crate::IOBase::write_scalar), and the generic write:
-    /// whatever shape the value holds is redirected to the primitive that
-    /// takes it as it stands - a stream to
-    /// [`write_arrow_reader`](Self::write_arrow_reader) without collecting
-    /// it, a held table to [`write_arrow_batch`](Self::write_arrow_batch)
-    /// without wrapping it, and a pinned row or a column as the one batch its
-    /// rows form - so every [`IOMode`](crate::IOMode) and every option
-    /// applies. A structured text document is one frame around every row it
-    /// holds, so it is replaced whole and only
+    /// the stream goes to [`write_arrow_reader`](Self::write_arrow_reader)
+    /// as its transport face, without collecting it, so every
+    /// [`IOMode`](crate::IOMode) and every option applies. A held column is
+    /// the one batch it is, as
+    /// [`SerieReader::from_serie`](crate::SerieReader::from_serie) reads it.
+    /// A structured text document is one frame around every row it holds,
+    /// so it is replaced whole and only
     /// [`IOMode::Overwrite`](crate::IOMode::Overwrite) applies.
     ///
     /// # Errors
@@ -330,7 +337,7 @@ pub trait IOMedia: Send {
     /// overwrite.
     fn write_arrow(
         &mut self,
-        value: crate::arrow::ArrowScalar,
+        value: crate::SerieReader,
         mode: crate::IOMode,
         options: Option<&RecordOptions>,
     ) -> Result<()> {
@@ -358,10 +365,7 @@ pub trait IOMedia: Send {
                 &own
             }
         };
-        if value.is_stream() {
-            return self.write_arrow_reader(value.into_reader()?, mode, options);
-        }
-        self.write_arrow_batch(value.into_batch()?, mode, options)
+        self.write_arrow_reader(value.into_arrow_reader(), mode, options)
     }
 
     /// Write a batch stream using one explicit [`IOMode`](crate::IOMode).

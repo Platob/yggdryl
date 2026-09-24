@@ -57,16 +57,16 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
     code_refusal, recognized_arrow_extension,
 };
-use crate::{DataType, Field, Scalar};
+use crate::{BytesType, DataType, Field, Scalar};
 
 mod kernel {
     use std::sync::Arc;
 
-    use arrow_array::{ArrayRef, BooleanArray, Scalar as ArrowScalar, UInt32Array};
+    use arrow_array::{ArrayRef, BooleanArray, Scalar as ArrowDatum, UInt32Array};
     use arrow_buffer::BooleanBuffer;
     use arrow_cast::{CastOptions, cast_with_options};
     use arrow_schema::DataType as ArrowDataType;
@@ -185,8 +185,8 @@ mod kernel {
                 return Ok(scattered);
             }
             let mask = BooleanArray::new(exposure.clone(), None);
-            let placeholder = crate::arrow::value::physical_placeholder_for_field(target)?;
-            let placeholder = crate::arrow::value::array_from_values(target, &[&placeholder])?;
+            let placeholder = crate::serie::value::physical_placeholder_for_field(target)?;
+            let placeholder = crate::serie::value::array_of_rows(target, &[&placeholder])?;
             let (scattered, placeholder) = if contains_dictionary(target.dtype()) {
                 align_nested_dictionaries(
                     target,
@@ -199,7 +199,7 @@ mod kernel {
             } else {
                 (scattered, placeholder)
             };
-            let placeholder = ArrowScalar::new(placeholder);
+            let placeholder = ArrowDatum::new(placeholder);
             zip(&mask, &scattered.as_ref(), &placeholder).map_err(Into::into)
         })()?;
 
@@ -503,7 +503,7 @@ mod plan {
     use crate::budget::MaterializationBudget;
     use crate::media::DEFAULT_ROOT_NAME;
     use crate::serie::{Proof, land};
-    use crate::{Field, Serie};
+    use crate::{ChunkedSerie, Field, Serie};
 
     use super::{ArrayCastPlan, ArrowCastOptions, Deferred, PlanRules, downcast};
     use crate::path::Path;
@@ -729,18 +729,7 @@ mod plan {
         /// [`Nullability::Strict`](super::Nullability::Strict).
         pub fn apply(&self, serie: &Serie) -> Result<Serie> {
             let field = serie.require_field()?;
-            let layout = field.as_arrow_field_ref()?;
-            let same_layout = layout.data_type() == self.source.data_type()
-                && (matches!(self.source.data_type(), ArrowDataType::Struct(_))
-                    || same_extension(layout, &self.source));
-            if !same_layout {
-                return Err(Error::IncompatibleSchema(format!(
-                    "column {:?} lays out as {}, and this cast plan was compiled for {}",
-                    field.name(),
-                    layout.data_type(),
-                    self.source.data_type()
-                )));
-            }
+            self.require_layout(field)?;
             if self.identity && field == self.target.as_ref() {
                 return Ok(serie.clone());
             }
@@ -748,6 +737,48 @@ mod plan {
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, &mut budget)?;
             land(Arc::clone(&self.target), cast, &self.serie)
+        }
+
+        /// Casts every chunk of a chunked column whose field lays out as
+        /// [`Self::as_source`], keeping the chunks apart: [`Self::apply`]
+        /// per chunk under this one plan, so a table of a thousand batches
+        /// compiles nothing. An identity plan hands the chunked column
+        /// itself back when the target is its own field.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::apply`]'s, raised for the field before any chunk and for
+        /// the first chunk a value or an absent row refuses.
+        pub fn apply_chunked(&self, chunked: &ChunkedSerie) -> Result<ChunkedSerie> {
+            self.require_layout(chunked.field())?;
+            if self.identity && chunked.field() == self.target.as_ref() {
+                return Ok(chunked.clone());
+            }
+            let mut chunks = Vec::with_capacity(chunked.num_chunks());
+            for chunk in chunked.chunks() {
+                chunks.push(self.apply(chunk)?);
+            }
+            Ok(ChunkedSerie::from_landed(Arc::clone(&self.target), chunks))
+        }
+
+        /// Refuse a field that does not lay out as the source, naming both.
+        ///
+        /// A name and a nullability may differ from the source's; the storage
+        /// and the extension identity may not.
+        fn require_layout(&self, field: &Field) -> Result<()> {
+            let layout = field.as_arrow_field_ref()?;
+            let same_layout = layout.data_type() == self.source.data_type()
+                && (matches!(self.source.data_type(), ArrowDataType::Struct(_))
+                    || same_extension(layout, &self.source));
+            if same_layout {
+                return Ok(());
+            }
+            Err(Error::IncompatibleSchema(format!(
+                "column {:?} lays out as {}, and this cast plan was compiled for {}",
+                field.name(),
+                layout.data_type(),
+                self.source.data_type()
+            )))
         }
 
         /// Casts foreign buffers of the source layout as transport: the array
@@ -932,12 +963,12 @@ pub(crate) mod text {
     /// its canonical default - holds it as that member.
     pub(crate) fn keeps_empty_text(target: &DataType) -> bool {
         match encoded_value_of(target) {
-            DataType::String(_) | DataType::Bytes(_) | DataType::Interval(_) => true,
-            DataType::List(item)
-            | DataType::LargeList(item)
-            | DataType::ListView(item)
-            | DataType::LargeListView(item)
-            | DataType::FixedSizeList(item, _) => keeps_empty_text(item.dtype()),
+            crate::string_dtypes!() | crate::bytes_dtypes!() | DataType::Interval(_) => true,
+            DataType::Serie(item)
+            | DataType::LargeSerie(item)
+            | DataType::SerieView(item)
+            | DataType::LargeSerieView(item)
+            | DataType::FixedSizeSerie(item, _) => keeps_empty_text(item.dtype()),
             code if code.is_code() => dtype_canonical(code, Scalar::from("")).is_ok(),
             _ => false,
         }
@@ -946,7 +977,7 @@ pub(crate) mod text {
     /// Whether a row value is an empty text cell entering a datatype that reads
     /// it as absence: the empty-cell rule at the scalar door.
     pub(crate) fn is_blank_text(target: &DataType, value: &Scalar) -> bool {
-        matches!(value, Scalar::String(text) if text.as_str().is_empty())
+        matches!(value.as_string(), Some(text) if text.as_str().is_empty())
             && !keeps_empty_text(target)
     }
 
@@ -1185,7 +1216,7 @@ pub(crate) mod text {
         }
         let mask = BooleanArray::new(ours.finish(), None);
         let read_here =
-            crate::arrow::value::array_from_values(&read, &values.iter().collect::<Vec<_>>())?;
+            crate::serie::value::array_of_rows(&read, &values.iter().collect::<Vec<_>>())?;
         let cast = if refused && can_cast_types(source.data_type(), expected) {
             // Arrow reads what this crate could not at its own risk: a value
             // neither reading takes stays null, and strict mode reports it below.
@@ -1413,7 +1444,7 @@ impl ArrayCastPlan {
                     .collect(),
             ),
             ArrayCastKind::List { child, .. } => Proof::of_children(vec![child.proof(serie)]),
-            ArrayCastKind::Map { entries, .. } => Proof::of_children(vec![entries.proof(serie)]),
+            ArrayCastKind::Map { entries, .. } => Proof::map(entries.proof(serie)),
             ArrayCastKind::Dictionary { values, .. }
             | ArrayCastKind::Encoded { values }
             | ArrayCastKind::RunEndEncoded { values, .. } => {
@@ -1609,7 +1640,7 @@ impl ArrayCastPlan {
             ..
         } = rules;
         let source_extension = match source_metadata {
-            Some(metadata) => recognized_arrow_extension(metadata, source_type)?,
+            Some(metadata) => recognized_arrow_extension(metadata, source_type, path)?,
             None => None,
         };
         check_extension_source(field, source_extension.as_ref())?;
@@ -1623,8 +1654,11 @@ impl ArrayCastPlan {
         // where only a maximum says more than the layout.
         let ingest_validated = match field.dtype() {
             DataType::Geometry(_) | DataType::Geography(_) => true,
-            DataType::String(parameters) => {
-                needs_extension(*parameters)
+            crate::string_dtypes!() => {
+                field
+                    .dtype()
+                    .string_parameters()
+                    .is_some_and(needs_extension)
                     && !matches!(
                         source_extension.as_ref(),
                         Some(RecognizedExtension::String(source)) if source == field.dtype()
@@ -1632,8 +1666,11 @@ impl ArrayCastPlan {
             }
             // A fixed width is not re-read: the storage Arrow declares is the
             // width, so a column already in it holds nothing to check.
-            DataType::Bytes(parameters) => {
-                crate::bytes::needs_extension(*parameters)
+            crate::bytes_dtypes!() => {
+                field
+                    .dtype()
+                    .bytes_parameters()
+                    .is_some_and(crate::bytes::needs_extension)
                     && !matches!(
                         source_extension.as_ref(),
                         Some(RecognizedExtension::Bytes(source)) if source == field.dtype()
@@ -1742,6 +1779,13 @@ impl ArrayCastPlan {
         let dictionary_value = path.child(Segment::DictionaryValue);
         let run_end_values = path.child(Segment::RunEndValues);
         let dtype = field.dtype();
+        // The leaf a string or byte target declares, read once for the guards
+        // below. A string whose storage is text and whose bound has nothing
+        // to check is what the text renderings write into as they are.
+        let string_leaf = dtype.string_parameters();
+        let bytes_leaf = dtype.bytes_parameters();
+        let plain_text =
+            string_leaf.is_some_and(|leaf| is_text_storage(leaf) && !leaf.is_bounded());
         let kind = match (dtype, source_type) {
             // The extension-typed variants follow declared rules, never the
             // positional kernel: WKB is validated entering a geospatial
@@ -1815,9 +1859,8 @@ impl ArrayCastPlan {
             // The renderings below spell a value as text and write it into
             // the target's text storage as it is, so they take only a string
             // whose storage is text and whose bound has nothing to check.
-            (DataType::String(parameters), ArrowDataType::Binary)
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
+            (crate::string_dtypes!(), ArrowDataType::Binary)
+                if plain_text
                     && matches!(source_extension, Some(RecognizedExtension::Geospatial(_))) =>
             {
                 ArrayCastKind::GeospatialWkt
@@ -1863,11 +1906,7 @@ impl ArrayCastPlan {
             (DataType::MediaType, source) => ArrayCastKind::DeferredUnsupported {
                 reason: format!("casting {source:?} to mediatype is not supported"),
             },
-            (DataType::String(parameters), source)
-                if is_text_storage(*parameters)
-                    && !parameters.is_bounded()
-                    && is_temporal_arrow(source) =>
-            {
+            (crate::string_dtypes!(), source) if plain_text && is_temporal_arrow(source) => {
                 ArrayCastKind::TemporalText
             }
             // A string reads its values, never its buffers: a recognized
@@ -1878,11 +1917,11 @@ impl ArrayCastPlan {
             // nothing to check, so it stays with Arrow's own kernel below; an
             // encoded source is decoded first, by the arms below, so the
             // reading sees the column the encoding was hiding.
-            (DataType::String(parameters), source)
+            (crate::string_dtypes!(), source)
                 if !matches!(
                     source,
                     ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
-                ) && (needs_extension(*parameters)
+                ) && (string_leaf.is_some_and(needs_extension)
                     || matches!(
                         source_extension,
                         Some(
@@ -1910,9 +1949,9 @@ impl ArrayCastPlan {
                 }
                 ArrayCastKind::StringIngest {
                     source: match source_extension {
-                        Some(RecognizedExtension::String(DataType::String(parameters))) => {
-                            StringSource::String(*parameters)
-                        }
+                        Some(RecognizedExtension::String(declared)) => declared
+                            .string_parameters()
+                            .map_or(StringSource::Bare, StringSource::String),
                         Some(RecognizedExtension::Code(code)) => StringSource::Code(code.clone()),
                         Some(RecognizedExtension::Uuid) => StringSource::Uuid,
                         _ => StringSource::Bare,
@@ -1923,10 +1962,8 @@ impl ArrayCastPlan {
             // pair gets: the payload a row holds is not the payload the target
             // declares, so it is a value change rather than a framing change,
             // and Arrow's own message names neither datatype.
-            (DataType::Bytes(parameters), ArrowDataType::FixedSizeBinary(source_width))
-                if parameters
-                    .fixed()
-                    .is_some_and(|width| u32::try_from(*source_width) != Ok(width)) =>
+            (DataType::FixedBinary(width), ArrowDataType::FixedSizeBinary(source_width))
+                if u32::try_from(*source_width) != Ok(*width) =>
             {
                 return Err(Error::Unsupported {
                     kind: dtype.name(),
@@ -1943,8 +1980,8 @@ impl ArrayCastPlan {
             // check at all; a fixed width it checks, but only with a message
             // that names neither side. An encoded source is decoded first, by
             // the arms below.
-            (DataType::Bytes(parameters), source)
-                if parameters.is_bounded()
+            (crate::bytes_dtypes!(), source)
+                if bytes_leaf.is_some_and(BytesType::is_bounded)
                     && !matches!(
                         source,
                         ArrowDataType::Dictionary(..) | ArrowDataType::RunEndEncoded(..)
@@ -2058,19 +2095,21 @@ impl ArrayCastPlan {
             // fixed sizes are a different row shape rather than a layout, and
             // that pair is refused below by name.
             (
-                DataType::List(child)
-                | DataType::LargeList(child)
-                | DataType::ListView(child)
-                | DataType::LargeListView(child)
-                | DataType::FixedSizeList(child, _),
+                DataType::Serie(child)
+                | DataType::LargeSerie(child)
+                | DataType::SerieView(child)
+                | DataType::LargeSerieView(child)
+                | DataType::FixedSizeSerie(child, _),
                 ArrowDataType::List(source_child)
                 | ArrowDataType::LargeList(source_child)
                 | ArrowDataType::ListView(source_child)
                 | ArrowDataType::LargeListView(source_child)
                 | ArrowDataType::FixedSizeList(source_child, _),
             ) => {
-                if let (DataType::FixedSizeList(_, size), ArrowDataType::FixedSizeList(_, source)) =
-                    (dtype, source_type)
+                if let (
+                    DataType::FixedSizeSerie(_, size),
+                    ArrowDataType::FixedSizeList(_, source),
+                ) = (dtype, source_type)
                 {
                     if size != source {
                         return Err(Error::Unsupported {
@@ -2409,7 +2448,7 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::Currency => ingest_code_array::<CURRENCY_WIDTH>(
+                DataType::Ccy => ingest_code_array::<CCY_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
@@ -2688,6 +2727,12 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
     let Some(source) = source else {
         return Ok(());
     };
+    // A string target whose storage is text takes a canonical text source's
+    // characters as they are.
+    let text_target = target
+        .dtype()
+        .string_parameters()
+        .is_some_and(is_text_storage);
     match (target.dtype(), source) {
         (DataType::Variant, RecognizedExtension::Variant) => Ok(()),
         (_, RecognizedExtension::Code(_) | RecognizedExtension::String(_)) => Ok(()),
@@ -2699,27 +2744,15 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // the bytes as it reads bare storage.
         (_, RecognizedExtension::Bytes(_)) => Ok(()),
         (DataType::Version, RecognizedExtension::Version) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Version)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Version) if text_target => Ok(()),
         (other, RecognizedExtension::Version) => Err(Error::Unsupported {
             kind: "version",
             reason: format!("casting version to {} is not supported", other.name()),
         }),
         (DataType::Url, RecognizedExtension::Url) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Url)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Url) if text_target => Ok(()),
         (DataType::Urn, RecognizedExtension::Urn) => Ok(()),
-        (DataType::String(parameters), RecognizedExtension::Urn)
-            if is_text_storage(*parameters) =>
-        {
-            Ok(())
-        }
+        (crate::string_dtypes!(), RecognizedExtension::Urn) if text_target => Ok(()),
         (other, RecognizedExtension::Url) => Err(Error::Unsupported {
             kind: "url",
             reason: format!("casting url to {} is not supported", other.name()),
@@ -2734,11 +2767,11 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         | (DataType::MimeType, RecognizedExtension::MimeType)
         | (DataType::MediaType, RecognizedExtension::MediaType) => Ok(()),
         (
-            DataType::String(parameters),
+            crate::string_dtypes!(),
             RecognizedExtension::Timezone
             | RecognizedExtension::MimeType
             | RecognizedExtension::MediaType,
-        ) if is_text_storage(*parameters) => Ok(()),
+        ) if text_target => Ok(()),
         (other, RecognizedExtension::Timezone) => Err(Error::Unsupported {
             kind: "timezone",
             reason: format!("casting timezone to {} is not supported", other.name()),
@@ -2916,7 +2949,7 @@ pub(crate) mod columns {
         Array, ArrayRef, BooleanArray, Decimal256Array, DictionaryArray, FixedSizeListArray,
         Float16Array, Float32Array, Float64Array, Int16RunArray, Int32RunArray, Int64RunArray,
         LargeListArray, LargeListViewArray, ListArray, ListViewArray, MapArray, PrimitiveArray,
-        RunArray, Scalar as ArrowScalar, StructArray, UInt32Array, UnionArray, make_array,
+        RunArray, Scalar as ArrowDatum, StructArray, UInt32Array, UnionArray, make_array,
         new_null_array,
     };
     use arrow_buffer::{ArrowNativeType, BooleanBuffer, BooleanBufferBuilder};
@@ -2944,11 +2977,11 @@ pub(crate) mod columns {
         pub(crate) fn contains_dictionary(dtype: &DataType) -> bool {
             match dtype {
                 DataType::Dictionary(_) => true,
-                DataType::List(field)
-                | DataType::ListView(field)
-                | DataType::FixedSizeList(field, _)
-                | DataType::LargeList(field)
-                | DataType::LargeListView(field) => contains_dictionary(field.dtype()),
+                DataType::Serie(field)
+                | DataType::SerieView(field)
+                | DataType::FixedSizeSerie(field, _)
+                | DataType::LargeSerie(field)
+                | DataType::LargeSerieView(field) => contains_dictionary(field.dtype()),
                 DataType::Struct(fields) => fields
                     .iter()
                     .any(|field| contains_dictionary(field.dtype())),
@@ -3054,7 +3087,7 @@ pub(crate) mod columns {
                         replace_array_children(right, right_children, budget)?,
                     ))
                 }
-                DataType::List(child) => {
+                DataType::Serie(child) => {
                     let left_list = downcast::<ListArray>(left.as_ref())?;
                     let right_list = downcast::<ListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3096,7 +3129,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeList(child) => {
+                DataType::LargeSerie(child) => {
                     let left_list = downcast::<LargeListArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3128,7 +3161,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::ListView(child) => {
+                DataType::SerieView(child) => {
                     let left_list = downcast::<ListViewArray>(left.as_ref())?;
                     let right_list = downcast::<ListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3170,7 +3203,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::LargeListView(child) => {
+                DataType::LargeSerieView(child) => {
                     let left_list = downcast::<LargeListViewArray>(left.as_ref())?;
                     let right_list = downcast::<LargeListViewArray>(right.as_ref())?;
                     let left_child_exposure = range_exposure(
@@ -3202,7 +3235,7 @@ pub(crate) mod columns {
                         replace_array_children(right, vec![right_child], budget)?,
                     ))
                 }
-                DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeSerie(child, size) => {
                     let left_list = downcast::<FixedSizeListArray>(left.as_ref())?;
                     let right_list = downcast::<FixedSizeListArray>(right.as_ref())?;
                     let width = usize::try_from(*size).map_err(|_| {
@@ -4189,7 +4222,7 @@ pub(crate) mod columns {
             } else {
                 (array, default)
             };
-            let default = ArrowScalar::new(default);
+            let default = ArrowDatum::new(default);
             let truthy: &dyn Array = array.as_ref();
             let output = zip(&mask, &truthy, &default)?;
 
@@ -4663,9 +4696,8 @@ pub(crate) mod columns {
                     if len != 1 {
                         budget.add_array(&DataType::UInt32, len)?;
                     }
-                    let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder =
-                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder = crate::serie::value::physical_placeholder_for_field(field)?;
+                    let placeholder = crate::serie::value::array_of_rows(field, &[&placeholder])?;
                     repeat_scalar(&placeholder, len)?
                 }
                 (_, 0) => {
@@ -4682,9 +4714,8 @@ pub(crate) mod columns {
                         )
                     })?;
                     let default = default_row()?;
-                    let placeholder = crate::arrow::value::physical_placeholder_for_field(field)?;
-                    let placeholder =
-                        crate::arrow::value::array_from_values(field, &[&placeholder])?;
+                    let placeholder = crate::serie::value::physical_placeholder_for_field(field)?;
+                    let placeholder = crate::serie::value::array_of_rows(field, &[&placeholder])?;
                     let mask = BooleanArray::new(exposure.clone(), None);
                     let (default, placeholder) = if contains_dictionary(field.dtype()) {
                         align_nested_dictionaries(
@@ -4698,8 +4729,8 @@ pub(crate) mod columns {
                     } else {
                         (default, placeholder)
                     };
-                    let default = ArrowScalar::new(default);
-                    let placeholder = ArrowScalar::new(placeholder);
+                    let default = ArrowDatum::new(default);
+                    let placeholder = ArrowDatum::new(placeholder);
                     zip(&mask, &default, &placeholder)?
                 }
             };
@@ -4979,11 +5010,11 @@ pub(crate) mod columns {
             | DataType::Union(..)
             | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
-            DataType::List(child)
-            | DataType::ListView(child)
-            | DataType::FixedSizeList(child, _)
-            | DataType::LargeList(child)
-            | DataType::LargeListView(child) => requires_yggdryl_key_comparator(child.dtype()),
+            DataType::Serie(child)
+            | DataType::SerieView(child)
+            | DataType::FixedSizeSerie(child, _)
+            | DataType::LargeSerie(child)
+            | DataType::LargeSerieView(child) => requires_yggdryl_key_comparator(child.dtype()),
             DataType::Struct(fields) => fields
                 .iter()
                 .any(|field| requires_yggdryl_key_comparator(field.dtype())),
@@ -5164,7 +5195,7 @@ pub(crate) mod columns {
                         .cmp(DecimalText::new(right_values[right]).as_bytes())
                 })
             }
-            DataType::List(child) => {
+            DataType::Serie(child) => {
                 let left_source = downcast::<ListArray>(left.as_ref())?;
                 let right_source = downcast::<ListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5186,7 +5217,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::LargeList(child) => {
+            DataType::LargeSerie(child) => {
                 let left_source = downcast::<LargeListArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5208,7 +5239,7 @@ pub(crate) mod columns {
                     left.len().cmp(&right.len())
                 })
             }
-            DataType::ListView(child) => {
+            DataType::SerieView(child) => {
                 let left_source = downcast::<ListViewArray>(left.as_ref())?;
                 let right_source = downcast::<ListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5233,7 +5264,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::LargeListView(child) => {
+            DataType::LargeSerieView(child) => {
                 let left_source = downcast::<LargeListViewArray>(left.as_ref())?;
                 let right_source = downcast::<LargeListViewArray>(right.as_ref())?;
                 let left_offsets = left_source.offsets().clone();
@@ -5258,7 +5289,7 @@ pub(crate) mod columns {
                     left_len.cmp(&right_len)
                 })
             }
-            DataType::FixedSizeList(child, size) => {
+            DataType::FixedSizeSerie(child, size) => {
                 let left_values =
                     Arc::clone(downcast::<FixedSizeListArray>(left.as_ref())?.values());
                 let right_values =
@@ -5658,11 +5689,11 @@ pub(crate) mod columns {
     pub(crate) fn contains_struct(dtype: &DataType) -> bool {
         match dtype {
             DataType::Struct(_) | DataType::Map(_) | DataType::SortedMap(_) => true,
-            DataType::List(field)
-            | DataType::ListView(field)
-            | DataType::FixedSizeList(field, _)
-            | DataType::LargeList(field)
-            | DataType::LargeListView(field) => contains_struct(field.dtype()),
+            DataType::Serie(field)
+            | DataType::SerieView(field)
+            | DataType::FixedSizeSerie(field, _)
+            | DataType::LargeSerie(field)
+            | DataType::LargeSerieView(field) => contains_struct(field.dtype()),
             DataType::Union(fields, _) => fields
                 .iter()
                 .any(|(_, field)| contains_struct(field.dtype())),
@@ -5675,11 +5706,11 @@ pub(crate) mod columns {
     pub(crate) fn is_reconcilable_nested(dtype: &DataType) -> bool {
         matches!(
             dtype,
-            DataType::List(_)
-                | DataType::ListView(_)
-                | DataType::FixedSizeList(_, _)
-                | DataType::LargeList(_)
-                | DataType::LargeListView(_)
+            DataType::Serie(_)
+                | DataType::SerieView(_)
+                | DataType::FixedSizeSerie(_, _)
+                | DataType::LargeSerie(_)
+                | DataType::LargeSerieView(_)
                 | DataType::Struct(_)
                 | DataType::Union(_, _)
                 | DataType::Dictionary(_)

@@ -102,7 +102,7 @@ fn decode_mapping(
 
     if entries.iter().all(|(key, _)| key.as_str().is_some()) {
         let record = entries.into_iter().map(|(key, value)| {
-            let Scalar::String(name) = key else {
+            let crate::string_scalars!(name) = key else {
                 unreachable!("the record predicate accepted only strings")
             };
             (name.into_inner(), value)

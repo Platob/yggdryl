@@ -117,7 +117,7 @@ mod avro {
                     DataType::Int64.required_field("id"),
                     DataType::utf8().nullable_field("symbol"),
                     DataType::Float64.nullable_field("price"),
-                    DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
+                    DataType::serie(DataType::Int64.required_field("item")).required_field("legs"),
                 ])
                 .map(DataType::from)
                 .unwrap(),
@@ -162,6 +162,16 @@ mod avro {
             )
             .unwrap();
             (schema, batch)
+        }
+
+        /// One batch's rows, each the positional sequence of its columns'
+        /// values: the batch landed as a column of its own schema and held as
+        /// one value, then its rows built.
+        fn rows_of(batch: &RecordBatch) -> Vec<Scalar> {
+            let landed =
+                yggdryl::Serie::from_arrow_batch(None, batch, yggdryl::ArrowCastOptions::default())
+                    .unwrap();
+            Scalar::from(landed).sequence_rows().unwrap().into_owned()
         }
 
         fn handle() -> Buffer {
@@ -349,7 +359,7 @@ mod avro {
             .map(DataType::from)
             .unwrap()
             .required_field("row");
-            let rows = Scalar::from_sequence([Scalar::from_struct([
+            let row = Scalar::from_struct([
                 ("id", Scalar::from("00112233-4455-6677-8899-aabbccddeeff")),
                 ("small", Scalar::d128(123, 2)),
                 ("large", Scalar::d128(456, 2)),
@@ -363,8 +373,11 @@ mod avro {
                     ]),
                 ),
             ])
-            .unwrap()]);
-            let batch = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+            .unwrap();
+            let batch = yggdryl::Serie::from_scalars(field, [row])
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
             let mut handle = handle();
             avro::overwrite_arrow_reader(
                 &mut handle,
@@ -394,8 +407,8 @@ mod avro {
                 .unwrap()
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap();
-            let values = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
-            let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
+            let values = rows_of(&batches[0]);
+            let row = values[0].as_sequence().unwrap();
             assert_eq!(row.iter().map(Scalar::id).collect::<Vec<_>>(), ids);
         }
 
@@ -502,12 +515,13 @@ mod avro {
                 ("size", Scalar::from(100_i64)),
             ])
             .unwrap();
-            let rows = Scalar::from_sequence([Scalar::from_struct([
-                ("id", Scalar::from(1_i64)),
-                ("payload", payload.clone()),
-            ])
-            .unwrap()]);
-            let batch = yggdryl::arrow::batch_from_value(&field, &rows).unwrap();
+            let row =
+                Scalar::from_struct([("id", Scalar::from(1_i64)), ("payload", payload.clone())])
+                    .unwrap();
+            let batch = yggdryl::Serie::from_scalars(field, [row])
+                .unwrap()
+                .into_arrow_batch()
+                .unwrap();
             let mut handle = handle();
             avro::overwrite_arrow_reader(
                 &mut handle,
@@ -551,8 +565,8 @@ mod avro {
                 .unwrap()
                 .collect::<Result<Vec<_>, _>>()
                 .unwrap();
-            let values = yggdryl::arrow::batch_to_value(&batches[0]).unwrap();
-            let row = values.as_sequence().unwrap()[0].as_sequence().unwrap();
+            let values = rows_of(&batches[0]);
+            let row = values[0].as_sequence().unwrap();
             let Scalar::Variant(held) = &row[1] else {
                 panic!("a variant value, got {:?}", row[1]);
             };
@@ -625,8 +639,7 @@ mod avro {
                 .next()
                 .unwrap()
                 .unwrap();
-            let union_values = yggdryl::arrow::batch_to_value(&union_batch).unwrap();
-            let rows = union_values.as_sequence().unwrap();
+            let rows = rows_of(&union_batch);
             assert!(matches!(
                 rows[0].as_sequence().unwrap()[0],
                 Scalar::Variant(_)
@@ -653,9 +666,8 @@ mod avro {
                     .collect::<Vec<_>>(),
                 ["metadata", "value"]
             );
-            let values = yggdryl::arrow::batch_to_value(&batch).unwrap();
-            let Scalar::Variant(read) = &values.as_sequence().unwrap()[0].as_sequence().unwrap()[0]
-            else {
+            let values = rows_of(&batch);
+            let Scalar::Variant(read) = &values[0].as_sequence().unwrap()[0] else {
                 panic!("a variant value, got {values:?}");
             };
             assert_eq!(read.scalar().unwrap(), payload);

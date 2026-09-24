@@ -61,8 +61,6 @@ use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
 
-use crate::arrow::columnar_reader;
-
 /// Read a core root Field out of anything Python describes rows with.
 ///
 /// A root is a non-null Struct Field, and Python spells one four ways: the
@@ -129,6 +127,40 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
         "expected a pyarrow.RecordBatchReader, Table, RecordBatch, Arrow C stream exporter, or \
          iterable of RecordBatch",
     ))
+}
+
+/// Read a batch stream out of a value that is already a source of rows.
+///
+/// This is the one recognition ladder for foreign row sources, shared by the
+/// record write surface and by [`crate::serie::columnar`]: a pandas or polars
+/// frame, anything exporting the Arrow C stream, and a dataset or scanner
+/// that hands one back. `None` means the value names rows some other way,
+/// which is what leaves the iterable paths to the caller. Nothing here
+/// consumes an iterator.
+///
+/// # Errors
+///
+/// Returns whatever an attribute lookup or a library conversion raised.
+pub(crate) fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
+    // A frame is recognized before the stream protocol so that the conversion
+    // is the library's own on every release of it, rather than the C stream on
+    // the releases that grew one.
+    if Frames::Pandas.holds(value) || Frames::Polars.holds(value) {
+        return batch_reader_from_value(&frame_to_arrow(value)?).map(Some);
+    }
+    if value.hasattr("__arrow_c_stream__")? {
+        return batch_reader_from_value(value).map(Some);
+    }
+    // A `Scanner` already describes one pass over rows, and a `Dataset` makes
+    // one on request. Both hand back a reader, so neither is materialized.
+    if value.hasattr("to_reader")? {
+        return batch_reader_from_value(&value.call_method0("to_reader")?).map(Some);
+    }
+    if value.hasattr("scanner")? {
+        let scanner = value.call_method0("scanner")?;
+        return batch_reader_from_value(&scanner.call_method0("to_reader")?).map(Some);
+    }
+    Ok(None)
 }
 
 /// Read an Arrow stream while refusing shapes with their own typed adapter.
@@ -356,6 +388,25 @@ pub(crate) fn batch_reader_from_any(
     chained_reader(&items, options, None)
 }
 
+/// Recognize a concrete sequence of mappings or batch sources before the
+/// scalar collection door. Its first source is converted only once.
+pub(crate) fn batch_reader_from_record_sequence(
+    value: &Bound<'_, PyAny>,
+    options: &RecordOptions,
+) -> PyResult<Option<BatchReader>> {
+    let items = value.try_iter()?;
+    let Some(first) = next_item(&items)? else {
+        return Ok(None);
+    };
+    if let Some(reader) = columnar_reader(&first)? {
+        return chain_with_reader(&items, reader, options, None).map(Some);
+    }
+    if first.cast::<PyMapping>().is_ok() && first.hasattr("keys")? {
+        return row_reader(&items, &first, options).map(Some);
+    }
+    Ok(None)
+}
+
 /// Build one streamed reader from Python row records.
 ///
 /// A decorated dataclass instance supplies its class's cached
@@ -434,6 +485,16 @@ fn chained_reader(
             None => return row_reader(items, &first, options),
         },
     };
+    chain_with_reader(items, reader, options, only)
+}
+
+/// Continue with the already imported first source and the unconsumed tail.
+fn chain_with_reader(
+    items: &Bound<'_, PyAny>,
+    reader: BatchReader,
+    options: &RecordOptions,
+    only: Option<Frames>,
+) -> PyResult<BatchReader> {
     let root = CoreField::from_arrow_schema(options.name(), reader.schema().as_ref())
         .map_err(value_error)?;
     Ok(Box::new(Chained {

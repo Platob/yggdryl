@@ -15,7 +15,7 @@ use crate::invalid;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Field, FieldPath, FieldSegment, Result};
+use crate::{DataType, DataTypeId, Error, Field, FieldPath, FieldSegment, Result};
 use std::collections::{BTreeMap, HashSet};
 
 /// One failed borrowed schema traversal, before a public wrapper owns its error.
@@ -28,11 +28,11 @@ impl DataType {
     /// Returns the number of direct child fields without allocating.
     pub fn field_len(&self) -> usize {
         match self {
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(..)
-            | Self::LargeList(_)
-            | Self::LargeListView(_)
+            Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(..)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_)
             | Self::Map(_)
             | Self::SortedMap(_) => 1,
             Self::Struct(structure) => structure.len(),
@@ -45,11 +45,11 @@ impl DataType {
     /// Returns a direct child field by position without allocating.
     pub fn get_field_at(&self, index: usize) -> Option<&Field> {
         match self {
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => (index == 0).then_some(&**item),
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => (index == 0).then_some(&**item),
             Self::Struct(structure) => structure.get(index),
             Self::Union(fields, _) => fields.get(index).map(|(_, field)| field),
             Self::Map(map) | Self::SortedMap(map) => (index == 0).then_some(map.entries()),
@@ -67,11 +67,11 @@ impl DataType {
     /// This is the step every named [`FieldSegment`] takes.
     pub(crate) fn get_field_by_name(&self, name: &str) -> Option<&Field> {
         match self {
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => (item.name() == name).then_some(&**item),
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => (item.name() == name).then_some(&**item),
             Self::Struct(structure) => structure
                 .as_fields()
                 .iter()
@@ -99,8 +99,8 @@ impl DataType {
     /// `"a.b"` is one child and `a.b` is two steps. Every non-bare spelling is
     /// parsed once into [`FieldSegment`]s before this borrowed walk begins.
     ///
-    /// A list-shaped datatype - `List`, `LargeList`, `FixedSizeList`,
-    /// `ListView`, `LargeListView` - is transparent to a path: a segment is
+    /// A serie-shaped datatype - `Serie`, `LargeSerie`, `FixedSizeSerie`,
+    /// `SerieView`, `LargeSerieView` - is transparent to a path: a segment is
     /// matched against the item's own name first, and otherwise resolved
     /// against the item's children, so `orders.price` reaches the price of an
     /// `array<struct>` item the way `orders.item.price` does. A map is not
@@ -121,7 +121,7 @@ impl DataType {
     /// let dotted = DataType::from(StructType::from_fields([DataType::Int64.required_field("a.b")])?);
     /// assert_eq!(dotted.get_field_by_path("\"a.b\"").unwrap().name(), "a.b");
     ///
-    /// // A list is transparent: its item is a step the path need not spell.
+    /// // A serie is transparent: its item is a step the path need not spell.
     /// let orders = DataType::from_str("struct<orders:array<struct<price:double>>>")?;
     /// assert_eq!(orders.get_field_by_path("orders.price").unwrap().name(), "price");
     /// assert_eq!(orders.get_field_by_path("orders.item.price").unwrap().name(), "price");
@@ -248,11 +248,11 @@ impl DataType {
     /// appends only to the current struct; a missing parent or a non-container
     /// refuses, so a dotted spelling never becomes one literal child name.
     ///
-    /// The one difference from the reader is deliberate: a list is not
-    /// transparent to a write. Reading `orders.price` may reach into a list's
+    /// The one difference from the reader is deliberate: a serie is not
+    /// transparent to a write. Reading `orders.price` may reach into a serie's
     /// item, but replacing or removing a child is a change to the node that
     /// holds it, so a write addresses the item by its own name -
-    /// `orders.item.price` - and a list never grows a second child.
+    /// `orders.item.price` - and a serie never grows a second child.
     ///
     /// The child is stored under the name the path ends in, whatever it calls
     /// itself.
@@ -360,9 +360,9 @@ impl DataType {
     /// A leaf under a nullable ancestor is nullable, because a null parent
     /// leaves the leaf with no value to carry.
     ///
-    /// Collections are leaves here: a `list` or a `map` contributes itself,
+    /// Collections are leaves here: a `serie` or a `map` contributes itself,
     /// not its element. Unnesting answers what a flat column list looks like,
-    /// and a list is one column; [`Self::explode_fields`] is what reaches
+    /// and a serie is one column; [`Self::explode_fields`] is what reaches
     /// inside one.
     ///
     /// ```
@@ -419,7 +419,7 @@ impl DataType {
     /// Returns this node's children with every collection replaced by what it
     /// holds.
     ///
-    /// A list answers its item, a map its entries, and a dictionary or run-end
+    /// A serie answers its item, a map its entries, and a dictionary or run-end
     /// node the values it encodes. A child that is not a collection is
     /// returned unchanged, so the result always names the same columns in the
     /// same order - one row's worth of a table whose collections have been
@@ -427,9 +427,9 @@ impl DataType {
     ///
     /// The column keeps its own name rather than the element's, because
     /// exploding does not rename a column, and it is nullable when either the
-    /// collection or its element is: an absent list yields no element.
+    /// collection or its element is: an absent serie yields no element.
     ///
-    /// Only one level is unwrapped, so a list of lists answers a list. Calling
+    /// Only one level is unwrapped, so a serie of series answers a serie. Calling
     /// it again reaches the next one, which is what makes the depth the
     /// caller's decision rather than this method's.
     ///
@@ -440,7 +440,7 @@ impl DataType {
     /// # fn main() -> yggdryl::Result<()> {
     /// let row = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+    ///     DataType::serie(DataType::Float64.nullable_field("item")).nullable_field("levels"),
     /// ])?);
     ///
     /// let exploded = row.explode_fields();
@@ -460,7 +460,7 @@ impl DataType {
     /// Returns the struct children as an owned vector, or a refusal.
     ///
     /// Appending and removing change the child count, and a struct is the only
-    /// layout whose arity is not fixed by what it is: a list holds exactly one
+    /// layout whose arity is not fixed by what it is: a serie holds exactly one
     /// child, a run-end node exactly two. Rebuilding one of those through
     /// [`StructType::from_fields`] would silently make it a struct, so this refuses
     /// instead.
@@ -510,16 +510,18 @@ impl DataType {
         let child = if let Some(name) = segment.as_name() {
             match self.get_field_by_name(name) {
                 Some(child) => child,
-                None => match self.list_item() {
-                    // Reading a schema sees through a list item, but writes
-                    // name that item explicitly because they rebuild the list.
+                None => match self.serie_item() {
+                    // Reading a schema sees through a serie item, but writes
+                    // name that item explicitly because they rebuild the serie.
                     Some(item) => return item.dtype().walk_field_by_segments(segments),
                     None => return Err(SchemaPathError::Missing(self)),
                 },
             }
         } else {
             match segment {
-                FieldSegment::Index(_) => self.list_item().ok_or(SchemaPathError::Missing(self))?,
+                FieldSegment::Index(_) => {
+                    self.serie_item().ok_or(SchemaPathError::Missing(self))?
+                }
                 FieldSegment::Key(_) => return Err(SchemaPathError::Unsupported(segment)),
                 FieldSegment::Field(_) => unreachable!("named above"),
                 FieldSegment::Range { .. } | FieldSegment::Where(_) => {
@@ -623,7 +625,7 @@ impl DataType {
                 .value()
                 .as_str()
                 .and_then(|name| self.index_of_name(name)),
-            FieldSegment::Index(_) => self.list_item().map(|_| 0),
+            FieldSegment::Index(_) => self.serie_item().map(|_| 0),
             FieldSegment::Range { .. } | FieldSegment::Where(_) => None,
         }
     }
@@ -662,7 +664,7 @@ impl DataType {
 
     /// Returns this datatype with its direct children replaced.
     ///
-    /// The layout is kept exactly - a list stays a list, a map stays a map with
+    /// The layout is kept exactly - a serie stays a serie, a map stays a map with
     /// the same key ordering, a union keeps its type IDs and mode - and only
     /// the children change. This is the write side of [`Self::get_field`]: one
     /// generic walk can rebuild any nested datatype without a match per
@@ -672,10 +674,10 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let list = DataType::list(DataType::Int32.nullable_field("item"));
-    /// let widened = list.with_fields([DataType::Int64.nullable_field("item")])?;
+    /// let serie = DataType::serie(DataType::Int32.nullable_field("item"));
+    /// let widened = serie.with_fields([DataType::Int64.nullable_field("item")])?;
     ///
-    /// assert_eq!(widened, DataType::list(DataType::Int64.nullable_field("item")));
+    /// assert_eq!(widened, DataType::serie(DataType::Int64.nullable_field("item")));
     /// # Ok(())
     /// # }
     /// ```
@@ -706,11 +708,11 @@ impl DataType {
                 .expect("a child of the arity this layout declares")
         };
         Ok(match self {
-            Self::List(_) => Self::list(next()),
-            Self::ListView(_) => Self::list_view(next()),
-            Self::FixedSizeList(_, length) => Self::fixed_size_list(next(), *length)?,
-            Self::LargeList(_) => Self::large_list(next()),
-            Self::LargeListView(_) => Self::large_list_view(next()),
+            Self::Serie(_) => Self::serie(next()),
+            Self::SerieView(_) => Self::serie_view(next()),
+            Self::FixedSizeSerie(_, length) => Self::fixed_size_serie(next(), *length)?,
+            Self::LargeSerie(_) => Self::large_serie(next()),
+            Self::LargeSerieView(_) => Self::large_serie_view(next()),
             Self::Struct(_) => Self::from(StructType::from_fields(children)?),
             Self::Union(members, mode) => {
                 let ids: Vec<i8> = members.iter().map(|(id, _)| id).collect();
@@ -757,7 +759,7 @@ impl Field {
     /// Returns one nested child by the expression path grammar.
     ///
     /// [`DataType::get_field_by_path`] carries the rule, including the one
-    /// that makes a list transparent - `orders.price` reaches the price of an
+    /// that makes a serie transparent - `orders.price` reaches the price of an
     /// `array<struct>` item; this node's datatype is where it starts.
     pub fn get_field_by_path(&self, path: &str) -> Option<&Field> {
         self.dtype().get_field_by_path(path)
@@ -1586,10 +1588,6 @@ impl DataTypeValue for StructType {
         DataTypeId::Struct
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
-    }
-
     fn validate(&self) -> Result<()> {
         for field in self.iter() {
             field.validate()?;
@@ -1635,11 +1633,11 @@ impl<'a> From<&'a String> for FieldKey<'a> {
 
 pub(crate) fn exploded(child: &Field) -> Field {
     let held = match child.dtype() {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some((item.dtype().clone(), item.is_nullable())),
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => Some((item.dtype().clone(), item.is_nullable())),
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()
@@ -1685,7 +1683,7 @@ pub(crate) fn missing_child(node: &DataType, path: &str) -> Error {
 fn schema_segment_refusal(path: &str, segment: &FieldSegment) -> Error {
     Error::InvalidRecord {
         path: format_smolstr!("$.{path}"),
-        reason: format_smolstr!("expected a named child or one list item, got {segment}"),
+        reason: format_smolstr!("expected a named child or one serie item, got {segment}"),
     }
 }
 

@@ -42,9 +42,10 @@ ARCHITECTURE IN BRIEF:
   BATCHES over any handle. Reading returns \`yggdryl::arrow::BatchReader\`, which STREAMS; primitive
   writes take that same reader. Reader, table, record-batch, and ordered row-record entry points
   name overwrite, append, or merge intent explicitly and converge on those primitives.
-- \`yggdryl::arrow\` holds scalars (scalar_array / scalar_value, StructScalar, the default_arrow_array methods), schema projection
+- \`yggdryl::arrow\` holds schema projection
   (\`Field::into_arrow_schema\`, \`Field::from_arrow_schema\`,
-  \`Field::into_arrow_exchange_schema\`), and BatchReader.
+  \`Field::into_arrow_exchange_schema\`), and BatchReader. Every value crossing Arrow - one row, a column, a
+  table - is a \`Serie\`, and a stream of them a \`SerieReader\`.
 - \`yggdryl::field::cast\` holds the ArrowCast trait and the typed per-datatype casts
   (Int64Field::cast_arrow_array -> Int64Array via ArrowFieldType). Batch casting IS array casting.
 - \`yggdryl::generic\` holds the shared \`Scalar\` tree; \`yggdryl::text\` owns the four format types \`Json\`, \`Jsonl\`,
@@ -127,7 +128,7 @@ const CORE_PAGES = [
     cover: 'A field is a name, datatype, nullability, and metadata; a non-null struct field is the schema. Cover construction, metadata mappings, typed aliases, Scalar validation/canonicalization, comparison, and ArrowCast. Python `@scalar` wraps a stdlib dataclass and installs cached static `Class.into_field()`; global `field(value, name=None)` is only a builder. Rust keeps typed `into_field`/`into_struct_field`.' },
   { module: 'arrow', title: 'Arrow interoperability', bindings: true,
     read: 'rust/src/arrow/, rust/tests/default_scalar.rs, rust/tests/value_bounds.rs, rust/tests/batch_cast.rs, plus the arrow_scalar methods in python/src and node/src',
-    cover: 'scalar_array / scalar_value and StructScalar, the DataType/Field default_arrow_array methods and the FieldScalar Arrow projection, Field::into_arrow_schema / Field::from_arrow_schema / Field::into_arrow_exchange_schema, and the streaming BatchReader. Say plainly that Arrow speaks batches and scalars. Cover materialization budgets that reject oversized allocations first. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
+    cover: 'One row across Arrow as a one-row Serie (Serie::from_scalars and Serie::from_arrow_array(...).scalar(0)), Serie::from_default, Field::into_arrow_schema / Field::from_arrow_schema / Field::into_arrow_exchange_schema, and the streaming BatchReader. Say plainly that Arrow speaks batches and scalars. Cover materialization budgets that reject oversized allocations first. Python and JavaScript expose arrow scalars and casting, so those get three tabs.' },
   { module: 'ipc', title: 'Arrow IPC', bindings: true,
     read: 'rust/src/ipc/ (mod.rs, tests.rs), rust/src/io/media.rs, python/src/io.rs, python/tests/media/test_init.py, node/src/io.rs, node/tests/iobase.test.js',
     cover: 'Reading and writing Arrow IPC over any handle: read_arrow_field/read_arrow_reader, overwrite/append/merge and the mode-dispatching write methods, optimized table and record-batch widening, shared RecordOptions, streaming BatchReader behavior, and automatic content coding. Present overwrite, append, keyed merge, and read in Rust/Python/JavaScript tabs.' },

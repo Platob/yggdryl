@@ -9,19 +9,24 @@ mod coded {
 
     use arrow_array::{Array, StringArray};
 
-    use yggdryl::arrow::{scalar_array, scalar_value};
-    use yggdryl::{DataType, Field, Scalar};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     #[test]
     fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
         let cfi = Field::new("classification", DataType::CfiCode, false);
-        let stored = scalar_array(&cfi, &Scalar::from("ESVUFR")).unwrap();
+        let stored = Serie::from_scalars(cfi.clone(), [Scalar::from("ESVUFR")])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         let cells = stored.as_any().downcast_ref::<StringArray>().unwrap();
 
         assert_eq!(cells.value(0), "ESVUFR");
         assert_eq!(cells.value_length(0), 6);
         assert_eq!(
-            scalar_value(&cfi, stored.as_ref()).unwrap(),
+            Serie::from_arrow_array(Some(&cfi), stored, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
             DataType::CfiCode.scalar(Scalar::from("ESVUFR")).unwrap()
         );
         // A width of six bytes is spellable and is still not a CFI code.

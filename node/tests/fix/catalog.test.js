@@ -47,7 +47,7 @@ function catalog() {
   member.fix.fieldRef = 'PartyID'
   const component = fields.struct('Party', [member], { nullable: false })
   registry.insert(component)
-  const group = fields.list('Parties', component)
+  const group = fields.serie('Parties', component)
   group.fix.counter = 453
   group.fix.component = 'Party'
   registry.insert(group)
@@ -62,11 +62,11 @@ function catalog() {
 test('a definition is filed by the shape it has and reached through the field doors', () => {
   const registry = catalog()
 
-  // A Struct is a component, a List of Structs a group, and a Struct
+  // A Struct is a component, a Serie of Structs a group, and a Struct
   // carrying `FIX:msgtype` a message; each is reached by its name, and a
   // group by the counter it opens.
   assert.equal(registry.fieldByName('Party').dtype.id, 'struct')
-  assert.equal(registry.fieldByName('Parties').dtype.id, 'list')
+  assert.equal(registry.fieldByName('Parties').dtype.id, 'serie')
   assert.equal(registry.fieldByCounter(453).name, 'Parties')
   assert.ok(registry.getFieldByCounter(453).equals(registry.fieldByName('Parties')))
   assert.equal(registry.getFieldByCounter(999), null)

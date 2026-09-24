@@ -403,3 +403,623 @@ fn a_long_walk_of_splices_reads_as_the_same_splices_over_a_plain_run() {
         expected.iter().filter(|row| **row == Scalar::Null).count()
     );
 }
+
+/// One inferred batch column whose nullable records contain required ISIN
+/// values under Arrow's run-end encoding.
+fn isin_run_batch(
+    run_ends: Vec<i32>,
+    values: Vec<&str>,
+    present: Vec<bool>,
+) -> arrow_array::RecordBatch {
+    let isin = Field::new(
+        "isin",
+        DataType::run_end_encoded(
+            Field::new("run_ends", DataType::Int32, false),
+            Field::new("values", DataType::IsinCode, false),
+        )
+        .expect("int32 run ends"),
+        false,
+    )
+    .into_arrow_field_ref()
+    .expect("the run-end field projects");
+    let plain =
+        RunArray::<Int32Type>::try_new(&Int32Array::from(run_ends), &StringArray::from(values))
+            .expect("climbing run ends");
+    let encoded = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(isin.data_type().clone())
+            .build()
+            .expect("the projected value extension is legal Arrow metadata"),
+    );
+    let records = arrow_array::StructArray::new(
+        vec![isin].into(),
+        vec![encoded],
+        Some(arrow_buffer::NullBuffer::from(present)),
+    );
+    let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+        "wrapped",
+        records.data_type().clone(),
+        true,
+    )]));
+    arrow_array::RecordBatch::try_new(schema, vec![Arc::new(records)])
+        .expect("one nullable record column")
+}
+
+#[test]
+fn an_invalid_run_value_is_ignored_only_when_the_whole_run_is_under_a_null_struct() {
+    let hidden = isin_run_batch(
+        vec![1, 2, 3],
+        vec!["US0378331005", "BAD", "US5949181045"],
+        vec![true, false, true],
+    );
+    let landed = Serie::from_arrow_batch(None, &hidden, ArrowCastOptions::new())
+        .expect("the invalid run is wholly under an absent record");
+    let records = landed.child("wrapped").expect("the nullable records");
+    assert!(records.is_null(1).unwrap());
+    assert_eq!(records.scalar(1).unwrap(), Scalar::Null);
+    let values = records.child("isin").expect("the run-end child");
+    assert_eq!(values.scalar(0).unwrap().as_str(), Some("US0378331005"));
+    assert_eq!(values.scalar(2).unwrap().as_str(), Some("US5949181045"));
+
+    // The invalid run spans rows 1 and 2. The first is hidden, but the second
+    // is visible, so the run's one physical value still has to be proved.
+    let exposed = isin_run_batch(
+        vec![1, 3, 4],
+        vec!["US0378331005", "BAD", "US5949181045"],
+        vec![true, false, true, true],
+    );
+    let refusal = Serie::from_arrow_batch(None, &exposed, ArrowCastOptions::new())
+        .expect_err("a run crossing into a visible row must be proved");
+    assert!(refusal.to_string().contains("values"), "{refusal}");
+}
+
+#[test]
+fn list_view_gathers_sliced_isin_runs_in_reordered_overlapping_order() {
+    const A: &str = "US0378331005";
+    const B: &str = "US5949181045";
+    const C: &str = "GB0002634946";
+
+    let item = Field::new(
+        "item",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::IsinCode.required_field("values"),
+        )
+        .expect("int32 run ends"),
+        false,
+    );
+    let projected = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run-end item projects");
+    let plain = RunArray::<Int32Type>::try_new(
+        &Int32Array::from(vec![2, 4, 6, 8, 10]),
+        &StringArray::from(vec![A, B, "BAD", C, A]),
+    )
+    .expect("climbing run ends");
+    let typed = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected.data_type().clone())
+            .build()
+            .expect("the ISIN extension is legal Arrow metadata"),
+    );
+    let sliced = typed.slice(1, 8);
+    assert_eq!(
+        sliced.offset(),
+        1,
+        "the gather starts from a sliced run array"
+    );
+    let views: ArrayRef = Arc::new(arrow_array::ListViewArray::new(
+        projected,
+        arrow_buffer::ScalarBuffer::from(vec![5_i32, 3, 0, 1, 5]),
+        arrow_buffer::ScalarBuffer::from(vec![3_i32, 2, 3, 2, 2]),
+        sliced,
+        Some(arrow_buffer::NullBuffer::from(vec![
+            true, false, true, true, true,
+        ])),
+    ));
+    views
+        .to_data()
+        .validate_full()
+        .expect("the sliced, overlapping source is legal Arrow");
+    let field = Field::new("spans", DataType::serie_view(item), true);
+    let column = Serie::from_arrow_array(Some(&field), views, ArrowCastOptions::new())
+        .expect("the null view hides the only BAD run");
+
+    let seq = |values: &[&str]| {
+        Scalar::SerieView(Serie::new(
+            values
+                .iter()
+                .map(|value| Scalar::IsinCode(yggdryl::IsinCode::new(value).unwrap()))
+                .collect::<Vec<_>>(),
+        ))
+    };
+    assert_eq!(
+        column.rows().into_owned(),
+        vec![
+            seq(&[C, C, A]),
+            Scalar::Null,
+            seq(&[A, B, B]),
+            seq(&[B, B]),
+            seq(&[C, C]),
+        ]
+    );
+    let items = column
+        .items()
+        .and_then(Serie::as_run_end_encoded)
+        .expect("the gathered run-end items");
+    assert_eq!(
+        (0..items.len())
+            .map(|row| items.scalar(row).unwrap())
+            .collect::<Vec<_>>(),
+        [C, C, A, A, B, B, B, B, C, C]
+            .into_iter()
+            .map(|value| Scalar::IsinCode(yggdryl::IsinCode::new(value).unwrap()))
+            .collect::<Vec<_>>()
+    );
+
+    let exported = column.require_arrow_array().expect("an Arrow list view");
+    exported
+        .to_data()
+        .validate_full()
+        .expect("the gathered run ends and values remain aligned");
+    let arrow_schema::DataType::ListView(item) = exported.data_type() else {
+        panic!("the list-view layout changed: {}", exported.data_type());
+    };
+    let arrow_schema::DataType::RunEndEncoded(_, values) = item.data_type() else {
+        panic!(
+            "the item is no longer run-end encoded: {}",
+            item.data_type()
+        );
+    };
+    assert_eq!(item.name(), "item");
+    assert_eq!(values.name(), "values");
+    assert_eq!(
+        values
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str),
+        Some("yggdryl.isin")
+    );
+}
+
+#[test]
+fn list_view_run_gather_refuses_an_i16_logical_total_before_building_arrow() {
+    let item = Field::new(
+        "item",
+        DataType::run_end_encoded(
+            DataType::Int16.required_field("run_ends"),
+            DataType::IsinCode.required_field("values"),
+        )
+        .expect("int16 run ends"),
+        false,
+    );
+    let projected = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run-end item projects");
+    let plain = arrow_array::RunArray::<arrow_array::types::Int16Type>::try_new(
+        &arrow_array::Int16Array::from(vec![20_000_i16]),
+        &StringArray::from(vec!["US0378331005"]),
+    )
+    .expect("one physical run within int16");
+    let typed = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected.data_type().clone())
+            .build()
+            .expect("the ISIN extension is legal Arrow metadata"),
+    );
+    let views: ArrayRef = Arc::new(arrow_array::ListViewArray::new(
+        projected,
+        arrow_buffer::ScalarBuffer::from(vec![0_i32, 0, 0]),
+        arrow_buffer::ScalarBuffer::from(vec![20_000_i32, 1, 20_000]),
+        typed,
+        Some(arrow_buffer::NullBuffer::from(vec![true, false, true])),
+    ));
+    views
+        .to_data()
+        .validate_full()
+        .expect("each view fits the one physical source run");
+    let field = Field::new("spans", DataType::serie_view(item), true);
+
+    let refusal = Serie::from_arrow_array(Some(&field), views, ArrowCastOptions::new())
+        .expect_err("two repeated spans total 40000 rows, past int16");
+    let message = refusal.to_string();
+    assert!(
+        message.contains("spans"),
+        "names the outer column: {message}"
+    );
+    assert!(
+        message.contains("40000"),
+        "names the logical selection: {message}"
+    );
+    assert!(
+        message.contains("int16"),
+        "names the run-end width: {message}"
+    );
+}
+
+#[test]
+fn list_view_run_gather_rejects_a_huge_single_run_at_the_budget() {
+    const SPAN: i32 = 50_000_000;
+
+    let item = Field::new(
+        "item",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::IsinCode.required_field("values"),
+        )
+        .expect("int32 run ends"),
+        false,
+    );
+    let projected = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run-end item projects");
+    let plain = RunArray::<Int32Type>::try_new(
+        &Int32Array::from(vec![SPAN]),
+        &StringArray::from(vec!["US0378331005"]),
+    )
+    .expect("one physical run represents fifty million rows");
+    let typed = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected.data_type().clone())
+            .build()
+            .expect("the ISIN extension is legal Arrow metadata"),
+    );
+    let views: ArrayRef = Arc::new(arrow_array::ListViewArray::new(
+        projected,
+        arrow_buffer::ScalarBuffer::from(vec![0_i32, 0, 0]),
+        arrow_buffer::ScalarBuffer::from(vec![SPAN, 1, SPAN]),
+        typed,
+        Some(arrow_buffer::NullBuffer::from(vec![true, false, true])),
+    ));
+    // `ListViewArray::new` has already checked the three view bounds. A full
+    // Arrow validation would walk the fifty-million-row RunArray before the
+    // landing can exercise its constant-time materialization-budget refusal.
+    let refusal = Serie::from_arrow_array(None, views, ArrowCastOptions::new())
+        .expect_err("one hundred million output rows exceed the materialization budget");
+    let message = refusal.to_string();
+    assert!(
+        message.contains("item"),
+        "names the inferred root item: {message}"
+    );
+    assert!(
+        message.contains("expanded slots"),
+        "names the resource: {message}"
+    );
+    assert!(
+        message.contains("100000000"),
+        "names the requested rows: {message}"
+    );
+    assert!(message.contains("1000000"), "names the limit: {message}");
+}
+
+#[test]
+fn list_view_gathers_nested_run_values_with_null_and_zero_width_children() {
+    const A: &str = "US0378331005";
+    const B: &str = "US5949181045";
+    const C: &str = "GB0002634946";
+
+    let empty_field = Field::new(
+        "empty",
+        DataType::fixed_size_serie(DataType::Int64.required_field("item"), 0)
+            .expect("zero is a fixed width"),
+        false,
+    );
+    let values_field = Field::new(
+        "values",
+        DataType::from(
+            yggdryl::StructType::from_fields([
+                DataType::IsinCode.required_field("code"),
+                empty_field,
+            ])
+            .expect("two record children"),
+        ),
+        true,
+    );
+    let arrow_values = values_field
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run values project");
+    let arrow_schema::DataType::Struct(value_fields) = arrow_values.data_type() else {
+        panic!(
+            "the values are no longer a record: {}",
+            arrow_values.data_type()
+        );
+    };
+    let empty: ArrayRef = Arc::new(
+        arrow_array::FixedSizeListArray::try_new_with_length(
+            DataType::Int64
+                .required_field("item")
+                .into_arrow_field_ref()
+                .unwrap(),
+            0,
+            Arc::new(arrow_array::Int64Array::from(Vec::<i64>::new())),
+            None,
+            6,
+        )
+        .expect("six zero-width rows"),
+    );
+    let values = arrow_array::StructArray::new(
+        value_fields.clone(),
+        vec![
+            Arc::new(StringArray::from(vec![A, "BAD", B, "BAD", C, A])),
+            empty,
+        ],
+        Some(arrow_buffer::NullBuffer::from(vec![
+            true, false, true, true, true, true,
+        ])),
+    );
+    let item = Field::new(
+        "item",
+        DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), values_field)
+            .expect("int32 run ends"),
+        true,
+    );
+    let projected = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the nested run-end item projects");
+    let plain =
+        RunArray::<Int32Type>::try_new(&Int32Array::from(vec![2, 4, 6, 8, 10, 12]), &values)
+            .expect("six two-row runs");
+    let typed = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected.data_type().clone())
+            .build()
+            .expect("the nested projected fields are legal Arrow metadata"),
+    );
+    let views: ArrayRef = Arc::new(arrow_array::ListViewArray::new(
+        projected,
+        arrow_buffer::ScalarBuffer::from(vec![8_i32, 1, 6, 0]),
+        arrow_buffer::ScalarBuffer::from(vec![2_i32, 5, 2, 3]),
+        typed,
+        Some(arrow_buffer::NullBuffer::from(vec![
+            true, true, false, true,
+        ])),
+    ));
+    views
+        .to_data()
+        .validate_full()
+        .expect("the noncontiguous nested views are legal Arrow");
+    let field = Field::new("spans", DataType::serie_view(item), true);
+    let column = Serie::from_arrow_array(Some(&field), views, ArrowCastOptions::new())
+        .expect("the null view hides the only present BAD record");
+
+    let list_lengths = [Some(2), Some(5), None, Some(3)];
+    for (row, expected) in list_lengths.into_iter().enumerate() {
+        let scalar = column.scalar(row).expect("a list-view row");
+        assert_eq!(
+            scalar.as_sequence().map(<[Scalar]>::len),
+            expected,
+            "outer row {row}"
+        );
+    }
+    let items = column
+        .items()
+        .and_then(Serie::as_run_end_encoded)
+        .expect("the gathered nested runs");
+    let expected = [
+        Some(C),
+        Some(C),
+        Some(A),
+        None,
+        None,
+        Some(B),
+        Some(B),
+        Some(A),
+        Some(A),
+        None,
+    ];
+    assert_eq!(items.logical_len(), expected.len());
+    for (row, expected) in expected.into_iter().enumerate() {
+        let value = items.scalar(row).expect("a gathered run row");
+        match expected {
+            None => assert_eq!(value, Scalar::Null, "row {row}"),
+            Some(code) => {
+                let cells = value.as_sequence().expect("a present record value");
+                assert_eq!(cells[0].as_str(), Some(code), "row {row}");
+                assert_eq!(
+                    cells[1].as_sequence().map(<[Scalar]>::len),
+                    Some(0),
+                    "row {row} keeps its zero-width child"
+                );
+            }
+        }
+    }
+
+    let records = items.values();
+    let codes = records.child("code").expect("the narrow child");
+    let empty = records
+        .child("empty")
+        .and_then(Serie::as_fixed_size_serie)
+        .expect("the zero-width child");
+    assert_eq!(empty.width(), 0);
+    assert_eq!(empty.len(), records.len());
+    for row in 0..records.len() {
+        assert_eq!(empty.scalar(row).unwrap(), Scalar::from_sequence([]));
+        if records.is_null(row).unwrap() {
+            assert_eq!(
+                codes.scalar(row).unwrap(),
+                Scalar::Null,
+                "a null record owns a safe physical placeholder"
+            );
+        } else {
+            assert_ne!(codes.scalar(row).unwrap().as_str(), Some("BAD"));
+        }
+    }
+
+    let exported = column.require_arrow_array().expect("an Arrow list view");
+    exported
+        .to_data()
+        .validate_full()
+        .expect("all gathered descendants remain aligned");
+    let arrow_schema::DataType::ListView(item) = exported.data_type() else {
+        panic!("the outer layout changed: {}", exported.data_type());
+    };
+    let arrow_schema::DataType::RunEndEncoded(_, values) = item.data_type() else {
+        panic!(
+            "the item is no longer run-end encoded: {}",
+            item.data_type()
+        );
+    };
+    let arrow_schema::DataType::Struct(fields) = values.data_type() else {
+        panic!(
+            "the run values are no longer records: {}",
+            values.data_type()
+        );
+    };
+    assert_eq!(
+        fields[0]
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str),
+        Some("yggdryl.isin")
+    );
+    assert!(matches!(
+        fields[1].data_type(),
+        arrow_schema::DataType::FixedSizeList(_, 0)
+    ));
+}
+
+#[test]
+fn list_view_gathers_struct_items_with_nested_isin_runs() {
+    const A: &str = "US0378331005";
+    const B: &str = "US5949181045";
+    const C: &str = "GB0002634946";
+
+    let run_field = Field::new(
+        "encoded",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::IsinCode.required_field("values"),
+        )
+        .expect("int32 run ends"),
+        false,
+    );
+    let projected_run = run_field
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the nested run-end field projects");
+    let plain = RunArray::<Int32Type>::try_new(
+        &Int32Array::from(vec![2, 4, 6, 8, 10, 12]),
+        &StringArray::from(vec![A, B, "BAD", C, A, B]),
+    )
+    .expect("six two-row runs");
+    let runs = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected_run.data_type().clone())
+            .build()
+            .expect("the ISIN extension is legal Arrow metadata"),
+    );
+
+    let item = Field::new(
+        "item",
+        DataType::from(
+            yggdryl::StructType::from_fields([run_field, DataType::Int64.required_field("id")])
+                .expect("two record children"),
+        ),
+        false,
+    );
+    let projected_item = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the record item projects");
+    let arrow_schema::DataType::Struct(item_fields) = projected_item.data_type() else {
+        panic!(
+            "the item is no longer a record: {}",
+            projected_item.data_type()
+        );
+    };
+    let records: ArrayRef = Arc::new(arrow_array::StructArray::new(
+        item_fields.clone(),
+        vec![
+            runs,
+            Arc::new(arrow_array::Int64Array::from(vec![
+                0_i64, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+            ])),
+        ],
+        None,
+    ));
+    let views: ArrayRef = Arc::new(arrow_array::ListViewArray::new(
+        projected_item,
+        arrow_buffer::ScalarBuffer::from(vec![8_i32, 0, 4, 6]),
+        arrow_buffer::ScalarBuffer::from(vec![4_i32, 4, 2, 4]),
+        records,
+        Some(arrow_buffer::NullBuffer::from(vec![
+            true, true, false, true,
+        ])),
+    ));
+    let field = Field::new("spans", DataType::serie_view(item), true);
+    let column = Serie::from_arrow_array(Some(&field), views, ArrowCastOptions::new())
+        .expect("the null view hides the invalid nested run value");
+
+    for (row, expected) in [Some(4), Some(4), None, Some(4)].into_iter().enumerate() {
+        assert_eq!(
+            column
+                .scalar(row)
+                .expect("a list-view row")
+                .as_sequence()
+                .map(<[Scalar]>::len),
+            expected,
+            "outer row {row}"
+        );
+    }
+    let records = column.items().expect("the gathered record items");
+    let encoded = records
+        .child("encoded")
+        .and_then(Serie::as_run_end_encoded)
+        .expect("the nested run-end child");
+    let expected_codes = [A, A, B, B, A, A, B, B, C, C, A, A];
+    assert_eq!(encoded.logical_len(), expected_codes.len());
+    for (row, expected) in expected_codes.into_iter().enumerate() {
+        assert_eq!(
+            encoded.scalar(row).unwrap().as_str(),
+            Some(expected),
+            "row {row}"
+        );
+    }
+    assert_eq!(
+        records
+            .child("id")
+            .and_then(Serie::as_int64)
+            .expect("the aligned id child")
+            .values(),
+        &[8, 9, 10, 11, 0, 1, 2, 3, 6, 7, 8, 9]
+    );
+
+    let exported = column.require_arrow_array().expect("an Arrow list view");
+    exported
+        .to_data()
+        .validate_full()
+        .expect("the gathered record descendants remain aligned");
+    let arrow_schema::DataType::ListView(item) = exported.data_type() else {
+        panic!("the outer layout changed: {}", exported.data_type());
+    };
+    let arrow_schema::DataType::Struct(fields) = item.data_type() else {
+        panic!("the item is no longer a record: {}", item.data_type());
+    };
+    let arrow_schema::DataType::RunEndEncoded(_, values) = fields[0].data_type() else {
+        panic!("the nested child is no longer run-end encoded");
+    };
+    assert_eq!(
+        values
+            .metadata()
+            .get("ARROW:extension:name")
+            .map(String::as_str),
+        Some("yggdryl.isin")
+    );
+}

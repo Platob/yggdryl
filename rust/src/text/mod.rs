@@ -462,11 +462,11 @@ pub fn into_writer_with_formatting<W: Write>(
     match format {
         Format::Json => crate::json::into_writer_with_formatting(value, writer, formatting),
         Format::JsonLines => match value {
-            Scalar::List(values)
-            | Scalar::ListView(values)
-            | Scalar::FixedSizeList(values)
-            | Scalar::LargeList(values)
-            | Scalar::LargeListView(values) => {
+            Scalar::Serie(values)
+            | Scalar::SerieView(values)
+            | Scalar::FixedSizeSerie(values)
+            | Scalar::LargeSerie(values)
+            | Scalar::LargeSerieView(values) => {
                 crate::json::into_writer_all_with_formatting(values.iter(), writer, formatting)
             }
             value => crate::json::into_writer_all_with_formatting(
@@ -672,11 +672,11 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
         }
         let child_depth = depth.saturating_add(1);
         match value {
-            Scalar::List(values)
-            | Scalar::ListView(values)
-            | Scalar::FixedSizeList(values)
-            | Scalar::LargeList(values)
-            | Scalar::LargeListView(values) => {
+            Scalar::Serie(values)
+            | Scalar::SerieView(values)
+            | Scalar::FixedSizeSerie(values)
+            | Scalar::LargeSerie(values)
+            | Scalar::LargeSerieView(values) => {
                 for value in values.iter() {
                     visit(&value, child_depth, maximum, format)?;
                 }
@@ -692,9 +692,9 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
                     visit(value, child_depth, maximum, format)?;
                 }
             }
-            // An Arrow payload nests by its field, and a variant by the
-            // parse limit its own decoder holds: both are bounded already.
-            Scalar::Arrow(_) | Scalar::Variant(_) => {}
+            // A variant nests by the parse limit its own decoder holds, so
+            // it is bounded already.
+            Scalar::Variant(_) => {}
             Scalar::Null
             | Scalar::Boolean(_)
             | Scalar::Int8(_)
@@ -722,9 +722,9 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Duration32(_)
             | Scalar::Duration64(_)
             | Scalar::Interval(_)
-            | Scalar::String(_)
+            | crate::string_scalars!(_)
             | Scalar::Country(_)
-            | Scalar::Currency(_)
+            | Scalar::Ccy(_)
             | Scalar::MicCode(_)
             | Scalar::CfiCode(_)
             | Scalar::Side(_)
@@ -742,7 +742,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Timezone(_)
             | Scalar::MimeType(_)
             | Scalar::MediaType(_)
-            | Scalar::Bytes(_)
+            | crate::bytes_scalars!(_)
             | Scalar::Geometry(_)
             | Scalar::Geography(_) => {}
         }

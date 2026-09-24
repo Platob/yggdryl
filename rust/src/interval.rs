@@ -38,10 +38,10 @@ use smol_str::format_smolstr;
 
 use crate::invalid;
 use crate::parser::Parser;
-use crate::temporal::{TemporalKind, invalid_record};
+use crate::temporal::invalid_record;
 use crate::value::DataTypeValue;
 use crate::value::TemporalValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone, Value};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone, Value};
 
 // ------------------------------------------------------------------------
 // The interval payload: one leaf, three layouts.
@@ -109,12 +109,6 @@ impl IntervalType {
         }
     }
 
-    /// The family's name, `interval`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        TemporalKind::Interval.as_str()
-    }
-
     /// Reject a unit that is not an interval layout.
     ///
     /// # Errors
@@ -136,10 +130,6 @@ impl DataTypeValue for IntervalType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Temporal
     }
 
     fn validate(&self) -> Result<()> {
@@ -427,7 +417,6 @@ impl Value for Interval {
 /// An interval answers the temporal contract with what it has: its
 /// nanosecond component for a count, its layout for a unit, and no zone.
 impl TemporalValue for Interval {
-    const FAMILY: &'static str = TemporalKind::Interval.as_str();
     const BIT_WIDTH: u8 = 128;
 
     fn count(&self) -> i64 {

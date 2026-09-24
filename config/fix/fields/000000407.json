@@ -167,7 +167,7 @@
   {
     "name": "underlyingpaymentstubfixedcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -520,7 +520,7 @@
   {
     "name": "paymentstreamsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1085,7 +1085,7 @@
   {
     "name": "paymentstreamrateoramountcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

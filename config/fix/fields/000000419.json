@@ -16,7 +16,7 @@
   {
     "name": "underlyingpaymentstreammaximumpaymentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -42,7 +42,7 @@
   {
     "name": "underlyingpaymentstreammaximumtransactioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -107,7 +107,7 @@
   {
     "name": "underlyingpaymentstreamcontractpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -259,7 +259,7 @@
   {
     "name": "underlyingpaymentstreamratespreadcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -906,7 +906,7 @@
   {
     "name": "underlyingstreamcommoditycurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

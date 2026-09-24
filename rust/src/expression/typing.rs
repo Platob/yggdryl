@@ -267,7 +267,7 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
                 false,
             ))
         }
-        Term::List(items) => {
+        Term::Serie(items) => {
             let mut unified: Option<DataType> = None;
             let mut nullable = false;
             for item in items.iter() {
@@ -276,7 +276,7 @@ fn resolve(expression: &Term, schema: &Field) -> Result<Field> {
                 unified = Some(unify(unified.as_ref(), item.dtype(), expression)?);
             }
             let item = Field::new("item", unified.unwrap_or(DataType::Null), nullable);
-            Ok(named(expression, DataType::list(item), false))
+            Ok(named(expression, DataType::serie(item), false))
         }
         Term::Map(entries) => {
             let mut keys: Option<DataType> = None;
@@ -406,7 +406,7 @@ pub(crate) fn is_text(dtype: &DataType) -> bool {
 
 /// Return whether a datatype holds bytes.
 pub(crate) fn is_binary(dtype: &DataType) -> bool {
-    matches!(unwrap_dictionary(dtype), DataType::Bytes(_))
+    matches!(unwrap_dictionary(dtype), crate::bytes_dtypes!())
 }
 
 /// Return whether a datatype holds a whole number.
@@ -734,16 +734,16 @@ fn function_field(
         Function::Size => {
             if !matches!(
                 unwrap_dictionary(&first),
-                DataType::List(_)
-                    | DataType::ListView(_)
-                    | DataType::FixedSizeList(..)
-                    | DataType::LargeList(_)
-                    | DataType::LargeListView(_)
+                DataType::Serie(_)
+                    | DataType::SerieView(_)
+                    | DataType::FixedSizeSerie(..)
+                    | DataType::LargeSerie(_)
+                    | DataType::LargeSerieView(_)
                     | DataType::Map(_)
                     | DataType::SortedMap(_)
             ) {
                 return Err(typing_error(format_smolstr!(
-                    "expected a list or a map for size, got {first}"
+                    "expected a serie or a map for size, got {first}"
                 )));
             }
             DataType::Int64

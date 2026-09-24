@@ -1,34 +1,41 @@
 //! `rust/src/budget.rs`: adversarial physical-materialization budget tests.
 
-use arrow_array::Array;
-use yggdryl::arrow::{scalar_array, scalar_value};
-use yggdryl::{DataType, Field, Scalar, StructType, UnionMode};
+use arrow_array::{Array, ArrayRef};
+use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, StructType, UnionMode};
+
+/// Lay one value out as the one-row column `field` types.
+fn lay_out(field: &Field, value: &Scalar) -> yggdryl::Result<ArrayRef> {
+    Serie::from_scalars(field.clone(), [value.clone()])?.require_arrow_array()
+}
 
 fn round_trip(field: &Field, value: &Scalar) -> Scalar {
-    let array = scalar_array(field, value).expect("the value materializes");
-    scalar_value(field, array.as_ref()).expect("the array decodes")
+    let array = lay_out(field, value).expect("the value materializes");
+    Serie::from_arrow_array(Some(field), array, ArrowCastOptions::default())
+        .expect("the array decodes")
+        .scalar(0)
+        .expect("the one row reads")
 }
 
 fn union_value(type_id: i8, payload: Scalar) -> Scalar {
     Scalar::from_sequence([Scalar::from(type_id), payload])
 }
 
-fn fixed_list_field(name: &str, length: i32, nullable: bool) -> Field {
+fn fixed_serie_field(name: &str, length: i32, nullable: bool) -> Field {
     Field::new(
         name,
-        DataType::fixed_size_list(Field::new("item", DataType::Int32, false), length).unwrap(),
+        DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), length).unwrap(),
         nullable,
     )
 }
 
 #[test]
-fn nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation() {
+fn nullable_fixed_serie_rejects_hidden_slot_expansion_before_allocation() {
     let field = Field::new(
         "items",
-        DataType::fixed_size_list(Field::new("item", DataType::Int32, false), 1_000_001).unwrap(),
+        DataType::fixed_size_serie(Field::new("item", DataType::Int32, false), 1_000_001).unwrap(),
         true,
     );
-    let error = scalar_array(&field, &Scalar::Null).unwrap_err();
+    let error = lay_out(&field, &Scalar::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("expanded slots"), "{message}");
     assert!(message.contains("expected at most 1000000"), "{message}");
@@ -38,11 +45,11 @@ fn nullable_fixed_list_rejects_hidden_slot_expansion_before_allocation() {
 #[test]
 fn sparse_union_joins_selected_and_inactive_children_into_one_budget() {
     let fields = [
-        (1, fixed_list_field("selected", 600_000, true)),
-        (2, fixed_list_field("inactive", 600_000, true)),
+        (1, fixed_serie_field("selected", 600_000, true)),
+        (2, fixed_serie_field("inactive", 600_000, true)),
     ];
     let sparse = DataType::union(fields, UnionMode::Sparse).unwrap();
-    let error = scalar_array(
+    let error = lay_out(
         &Field::new("choice", sparse, true),
         &union_value(1, Scalar::Null),
     )
@@ -101,7 +108,7 @@ fn nullable_struct_rejects_aggregate_fixed_physical_bytes() {
     ])
     .map(DataType::from)
     .unwrap();
-    let error = scalar_array(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
+    let error = lay_out(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -129,7 +136,7 @@ fn nullable_struct_aggregates_selected_dense_union_payloads() {
     ])
     .map(DataType::from)
     .unwrap();
-    let error = scalar_array(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
+    let error = lay_out(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -151,7 +158,7 @@ fn dictionary_and_run_end_wrappers_join_the_hidden_byte_budget() {
     ])
     .map(DataType::from)
     .unwrap();
-    let error = scalar_array(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
+    let error = lay_out(&Field::new("wide", structure, true), &Scalar::Null).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("fixed bytes"), "{message}");
     assert!(message.contains("expected at most 67108864"), "{message}");
@@ -165,7 +172,7 @@ fn every_valid_nested_datatype_can_materialize_zero_rows_without_a_default() {
         )
     };
     let wrappers = [
-        DataType::list(Field::new("item", required_null_struct(), false)),
+        DataType::serie(Field::new("item", required_null_struct(), false)),
         DataType::dictionary(DataType::Int8, required_null_struct()).unwrap(),
         DataType::map_of(DataType::Int32, required_null_struct(), false).unwrap(),
         DataType::run_end_encoded(
@@ -214,7 +221,7 @@ fn masked_hidden_slots_do_not_require_a_logical_default() {
     let field = Field::new("outer", structure, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 
-    let fixed = DataType::fixed_size_list(Field::new("item", impossible(), false), 2).unwrap();
+    let fixed = DataType::fixed_size_serie(Field::new("item", impossible(), false), 2).unwrap();
     let field = Field::new("outer", fixed, true);
     assert_eq!(round_trip(&field, &Scalar::Null), Scalar::Null);
 

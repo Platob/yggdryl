@@ -63,13 +63,12 @@ impl Scalar {
     /// ```
     pub fn as_value_bytes(&self) -> Option<ValueBytes<'_>> {
         let inline = match self {
-            Self::Arrow(_) => return None,
             Self::Null
-            | Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_)
+            | Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_)
             | Self::Map(_)
             | Self::SortedMap(_)
             | Self::Struct(_)
@@ -78,7 +77,9 @@ impl Scalar {
             | Self::Url(_)
             | Self::Urn(_)
             | Self::MediaType(_) => return None,
-            Self::String(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
+            crate::string_scalars!(value) => {
+                return Some(ValueBytes::borrowed(value.as_str().as_bytes()));
+            }
             code_scalars!() => {
                 return Some(ValueBytes::borrowed(
                     self.as_str().expect("a code borrowed its text").as_bytes(),
@@ -86,7 +87,7 @@ impl Scalar {
             }
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
-            Self::Bytes(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
+            crate::bytes_scalars!(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
             Self::Geometry(value) => {
                 return Some(ValueBytes::borrowed(value.as_bytes()));
             }
@@ -172,8 +173,9 @@ impl Scalar {
     /// The tag is the value's own [`DataTypeId`], except where a family
     /// compares equal across its members and one member's tag then stands for
     /// all of them: integers feed `int128` or `uint128` by sign, floats and
-    /// decimals feed their widest member, every string feeds `utf8`
-    /// whatever leaf its column declares, and a geography feeds `geometry`. A
+    /// decimals feed their widest member, every string leaf feeds `utf8` and
+    /// every byte leaf `binary` whatever width or bound it carries, and a
+    /// geography feeds `geometry`. A
     /// code feeds its own identifier, because a currency and a country whose
     /// bytes agree are two values.
     ///
@@ -184,21 +186,21 @@ impl Scalar {
     /// | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
     /// | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
     /// | `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
-    /// | `String` | `utf8` | length `u64` little-endian, then UTF-8 |
+    /// | `Utf8String`..`SizedCp1252String` | `utf8` | length `u64` little-endian, then UTF-8 |
     /// | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
     /// | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
     /// | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
     /// | `Timezone` | `timezone` | length `u64` little-endian, then the canonical name |
     /// | `MimeType` | `mimetype` | length `u64` little-endian, then the canonical name |
     /// | `MediaType` | `mediatype` | rendered length `u64` little-endian, then the canonical rendering |
-    /// | `Bytes` | `binary` | length `u64` little-endian, then the bytes |
+    /// | `Binary`..`SizedBinary` | `binary` | length `u64` little-endian, then the bytes |
     /// | `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
     /// | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
     /// | `Time32`/`Time64` | `time64` | as above |
     /// | `DateTime64` | `datetime64` | as above |
     /// | `Duration32`/`Duration64` | `duration64` | as above |
     /// | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
-    /// | `Sequence` | `list` | element count `u64` little-endian, then each element's feed |
+    /// | `Sequence` | `serie` | element count `u64` little-endian, then each element's feed |
     /// | `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
     /// | `Record` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
     ///
@@ -324,15 +326,11 @@ impl Scalar {
             _ => {}
         }
         match self {
-            // An Arrow payload hashes as the native value it holds, so the
-            // digest of a column does not depend on which side it crossed.
-            Self::Arrow(_) => match self.into_native() {
-                Ok(native) => native.feed(sink, depth),
-                Err(_) => write_null(sink),
-            },
             Self::Null => write_null(sink),
             Self::Boolean(value) => write_bool(sink, value.get()),
-            Self::String(value) => write_string(sink, value.as_str()),
+            // Every string leaf feeds the one string shape: a value is one
+            // value whichever column holds it.
+            crate::string_scalars!(value) => write_string(sink, value.as_str()),
             code_scalars!() => {
                 write_tag(sink, self.id());
                 write_text(sink, self.as_str().expect("a code borrowed its text"));
@@ -374,14 +372,14 @@ impl Scalar {
                 write_len(sink, canonical.len());
                 sink.write(canonical.as_bytes());
             }
-            Self::Bytes(value) => write_binary(sink, value.as_bytes()),
+            crate::bytes_scalars!(value) => write_binary(sink, value.as_bytes()),
             Self::Geometry(value) => write_geospatial(sink, value.as_bytes()),
             Self::Geography(value) => write_geospatial(sink, value.as_bytes()),
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => {
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => {
                 let rows = values.rows();
                 write_sequence_header(sink, rows.len());
                 for value in rows.iter() {
@@ -695,7 +693,7 @@ pub(super) fn write_geospatial(sink: &mut impl Hasher, bytes: &[u8]) {
 /// columns, which is what lets a row digest be built without materializing the
 /// row.
 pub(super) fn write_sequence_header(sink: &mut impl Hasher, count: usize) {
-    write_tag(sink, DataTypeId::List);
+    write_tag(sink, DataTypeId::Serie);
     write_len(sink, count);
 }
 

@@ -7,7 +7,15 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import ArrowCastPlan, DataType, Field, Serie, SerieReader, StructSerie
+from yggdryl import (
+    ArrowCastPlan,
+    ChunkedSerie,
+    DataType,
+    Field,
+    Serie,
+    SerieReader,
+    StructSerie,
+)
 from yggdryl.enums import NULLABILITIES, REPRESENTATIONS
 
 ROOT = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
@@ -85,6 +93,44 @@ def test_an_identity_plan_shares_the_columns_buffers() -> None:
     # The column itself comes back when it is already under the target.
     held = Serie.from_arrow_array(array, Field("id", "int64"))
     assert plan.apply(held).into_arrow_array().buffers()[1].address == array.buffers()[1].address
+
+
+def test_a_table_or_a_chunked_column_is_cast_chunk_by_chunk() -> None:
+    plan = ArrowCastPlan(SOURCE, ROOT)
+    table = pa.Table.from_batches([quotes([1, 2], ["AAPL", "MSFT"]), quotes([3], ["AMD"])])
+
+    # A table is one chunk per batch, and every chunk crosses the one plan.
+    cast = plan.apply(table)
+    assert isinstance(cast, ChunkedSerie)
+    assert cast.field == ROOT
+    assert cast.num_chunks == 2
+    assert [len(chunk) for chunk in cast.chunks] == [2, 1]
+    out = cast.into_arrow_table()
+    assert out.schema.field("id").type == pa.int64()
+    assert [batch.num_rows for batch in out.to_batches()] == [2, 1]
+    assert cast == Serie.from_(table, ROOT)
+
+    # A native chunked serie answers the same, and so does a chunked array.
+    assert plan.apply(ChunkedSerie.from_(table)) == cast
+    ids = ArrowCastPlan(Field("item", "int32"), Field("id", "int64"))
+    chunked = ids.apply(pa.chunked_array([[1, 2], [3]], pa.int32()))
+    assert isinstance(chunked, ChunkedSerie)
+    assert chunked.field == Field("id", "int64")
+    assert chunked.num_chunks == 2
+    assert chunked.as_py() == [1, 2, 3]
+
+    # A chunk the plan was not compiled for is refused, naming both.
+    with pytest.raises(ValueError, match="compiled for"):
+        plan.apply(pa.chunked_array([[1, 2]], pa.int64()))
+
+
+def test_an_identity_plan_shares_every_chunks_buffers() -> None:
+    plan = ArrowCastPlan(Field("item", "int64"), Field("item", "int64"))
+    source = pa.chunked_array([[1, 2], [3]], pa.int64())
+    cast = plan.apply(source)
+    assert isinstance(cast, ChunkedSerie)
+    for chunk, original in zip(cast.chunks, source.chunks):
+        assert chunk.into_arrow_array().buffers()[1].address == original.buffers()[1].address
 
 
 def test_a_plan_refuses_at_compile_time_what_two_fields_alone_decide() -> None:
@@ -318,7 +364,7 @@ class TestArrowNullability:
 
         # A collection is one step of that path too, spelled with brackets.
         listed = Field(
-            "row", DataType("struct<users: list<struct<zip: string not null>>>"), False
+            "row", DataType("struct<users: serie<struct<zip: string not null>>>"), False
         )
         rows = pa.record_batch(
             {

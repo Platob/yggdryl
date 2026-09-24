@@ -518,8 +518,12 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
         .map(std::result::Result::unwrap)
         .next()
         .expect("one batch");
-    let rows = yggdryl::arrow::batch_to_value(&parsed).expect("the rows");
-    let cell = rows.as_sequence().expect("rows")[0]
+    let rows =
+        yggdryl::Serie::from_arrow_batch(None, &parsed, yggdryl::ArrowCastOptions::default())
+            .expect("the rows");
+    let cell = rows
+        .scalar(0)
+        .expect("the first row")
         .as_sequence()
         .expect("columns")[super::tag_index(&parsed, yggdryl::MSGSESSEVENTID_TAG_NAME.0)]
     .clone();

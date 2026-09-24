@@ -19,7 +19,6 @@ from dataclasses import dataclass
 import pyarrow as pa
 
 from yggdryl import DataType, Field, Scalar, Term, Url
-from yggdryl.arrow import ArrowScalar
 from yggdryl.iceberg import IcebergOptions, PartitionSpec, ScanPlan
 
 
@@ -39,15 +38,15 @@ NATIVE_DIVISOR = Scalar.from_(2)
 NATIVE_ENUM = Scalar.from_enum("IOMode", "append")
 PRICE_EXPRESSION = Term.column("price")
 ARROW_SCALAR = pa.scalar(12.5, pa.float32())
-NATIVE_SCALAR = ArrowScalar.from_(ARROW_SCALAR).into_scalar()
+NATIVE_SCALAR = Scalar.from_(ARROW_SCALAR)
 ARROW_ARRAY = pa.array(range(4096), type=pa.int32())
-NATIVE_ARRAY = ArrowScalar.from_(ARROW_ARRAY).into_scalar()
+NATIVE_ARRAY = Scalar.from_(ARROW_ARRAY)
 INFERRED_ROWS = Scalar.from_([InferredRow(1, "AAPL")])
 ARROW_BATCH = pa.record_batch(
     [ARROW_ARRAY, pa.array(["AAPL"] * len(ARROW_ARRAY))], names=["id", "symbol"]
 )
 ROOT = Field.from_arrow_schema(ARROW_BATCH.schema)
-NATIVE_ROWS = ArrowScalar.from_(ARROW_BATCH).into_scalar()
+NATIVE_ROWS = Scalar.from_(ARROW_BATCH)
 ARROW_TABLE = pa.Table.from_batches([ARROW_BATCH])
 URL_TEXT = "https://example.com/archive/data.json"
 URL_VALUE = Url(URL_TEXT)
@@ -137,13 +136,13 @@ def main() -> None:
             ("infer scalar Field", NATIVE_SCALAR.into_field, small),
             ("infer array Field", NATIVE_ARRAY.into_array_field, small),
             ("infer struct Field", INFERRED_ROWS.into_struct_field, small),
-            ("from Arrow scalar", lambda: ArrowScalar.from_(ARROW_SCALAR).into_scalar(), small),
+            ("from Arrow scalar", lambda: Scalar.from_(ARROW_SCALAR), small),
             ("into Arrow scalar", NATIVE_SCALAR.into_arrow_scalar, small),
-            ("from Arrow array (4096)", lambda: ArrowScalar.from_(ARROW_ARRAY).into_scalar(), bulk),
+            ("from Arrow array (4096)", lambda: Scalar.from_(ARROW_ARRAY), bulk),
             ("into Arrow array (4096)", NATIVE_ARRAY.into_arrow_array, bulk),
-            ("from Arrow batch (4096)", lambda: ArrowScalar.from_(ARROW_BATCH).into_scalar(), bulk),
+            ("from Arrow batch (4096)", lambda: Scalar.from_(ARROW_BATCH), bulk),
             ("into Arrow batch (4096)", lambda: NATIVE_ROWS.into_arrow_batch(ROOT), bulk),
-            ("from Arrow table (4096)", lambda: ArrowScalar.from_(ARROW_TABLE).into_scalar(), bulk),
+            ("from Arrow table (4096)", lambda: Scalar.from_(ARROW_TABLE), bulk),
             ("into Arrow table (4096)", lambda: NATIVE_ROWS.into_arrow_table(ROOT), bulk),
         ):
             _measure(name, operation, iterations)

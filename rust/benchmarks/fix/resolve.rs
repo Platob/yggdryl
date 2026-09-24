@@ -17,7 +17,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
     assert!(matches!(
         registry.field_by_name("Parties").unwrap().dtype(),
-        DataType::List(_)
+        DataType::Serie(_)
     ));
     assert_eq!(
         registry.field_by_counter(453).unwrap(),
@@ -265,7 +265,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .map(yggdryl::DataType::from)
                 .unwrap()
                 .required_field("item");
-        let mut field = yggdryl::DataType::list(item).nullable_field(format!("Group{index:05}"));
+        let mut field = yggdryl::DataType::serie(item).nullable_field(format!("Group{index:05}"));
         field
             .as_fix_mut()
             .set_counter(i32::try_from(5_000 + index).unwrap())

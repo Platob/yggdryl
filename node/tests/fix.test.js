@@ -1312,7 +1312,7 @@
     assert.equal(message.field.equals(root), false)
     assert.deepEqual([...message.field.dtype.keys()], CONTENT)
     assert.equal(message.size, CONTENT.length)
-    assert.equal(message.value.kind, 'list')
+    assert.equal(message.value.kind, 'serie')
     assert.equal(message.value.length, CONTENT.length)
     // The header states what the root stated: no version, the type, the
     // clock, and none of the trailer the frame never carried.
@@ -2507,7 +2507,7 @@
     // beside it under the counter it stated.
     const registry = new fix.FixRegistry()
     registry.insert(fixField('norows', 'int32', 90_001))
-    const group = fields.list('rows', fields.struct('row', [fixField('scopedvalue', 'utf8', 90_002)], { nullable: false }))
+    const group = fields.serie('rows', fields.struct('row', [fixField('scopedvalue', 'utf8', 90_002)], { nullable: false }))
     group.fix.counter = 90_001
     assert.equal(registry.insert(group), null)
     assert.equal(registry.getFieldByTag(90_002), null)

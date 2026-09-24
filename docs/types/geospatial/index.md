@@ -6,16 +6,16 @@ Two datatypes over one payload - planar `geometry` and spherical `geography`, bo
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::Geometry` and `DataType::Geography`, each carrying a shared `GeospatialParameters`; the values `Geometry` and `Geography`, the `Geospatial` family enum over them, and the `wkb` reader beside them |
+| Owns | `DataType::Geometry` and `DataType::Geography`, each carrying a shared `GeospatialParameters`; the values `Geometry` and `Geography`, the `GeospatialValue` contract both answer, and the `wkb` reader beside them |
 | Constructors | `DataType::geometry(crs)` and `DataType::geography(crs, algorithm)`; `None` fills the defaults, so the bare spelling is the common column |
 | Defaults | CRS `OGC:CRS84`, edges `spherical` - the defaults [Parquet](../../media/index.md#parquet) and [Iceberg](../../media/index.md#iceberg) v3 share; the display omits them |
 | Validates | The CRS at construction - never empty; the payload at the value door, by reading it whole as WKB |
 | Lazy | Nothing - a payload is read once, on the way in, and never re-read to be compared or hashed |
 | Cached | The Arrow projection of a [`Field`](../field.md); the payload is one shared `Arc<[u8]>`, so restating a geometry as a geography clones a handle rather than copying bytes |
-| Kinds | `DataTypeKind::Geospatial`; ids `geometry` (`0xb1`) and `geography` (`0xb2`) |
+| Kinds | `DataTypeKind::Geospatial`, the range `0xb0..=0xbf`; ids `geometry` (`0xb1`) and `geography` (`0xb2`) |
 | Arrow | A `Binary` column of WKB under the `geoarrow.wkb` extension name, with the CRS and the edges in a GeoArrow JSON document on `ARROW:extension:metadata` |
 | Refuses | An empty CRS, an edge algorithm on a geometry, an algorithm outside the vocabulary, a payload the reader cannot read whole, and text on the way in - there is no WKT parser |
-| Bindings | The datatypes and the field factories are in all three languages; `Geometry`, `Geography`, `Geospatial` and the `wkb` module are Rust only, and a value crosses a binding as plain WKB bytes |
+| Bindings | The datatypes and the field factories are in all three languages; `Geometry`, `Geography`, `GeospatialValue` and the `wkb` module are Rust only, and a value crosses a binding as plain WKB bytes |
 
 ## Pages
 
@@ -97,13 +97,14 @@ column - not the cell - says whether those bytes are planar or spherical.
     assert.deepEqual(Buffer.from(spherical.asJs()), point)
     ```
 
-Rust names that shared payload twice: `GeospatialValue` is what a leaf answers -
-the bytes and the shared handle behind them - and `Geospatial` is the family as
-one value, which [`Scalar::as_geospatial`](../scalar.md) narrows to. Neither
-crosses a binding.
+Rust names that shared payload once: `GeospatialValue` is the leaf contract
+both answer - the bytes and the shared handle behind them. The family is the
+geospatial range of identifiers, not a type: each value is its own `Scalar`
+variant, and the leaf's `from_scalar` borrows it back out
+([Scalar](../scalar.md#families)). Neither crosses a binding.
 
 ```rust
-use yggdryl::{DataTypeKind, FamilyValue, Geometry, Geospatial, GeospatialValue, Scalar};
+use yggdryl::{DataTypeKind, Geometry, GeospatialValue, Scalar, Value};
 
 let mut point = vec![1_u8, 1, 0, 0, 0];
 point.extend(10.0_f64.to_le_bytes());
@@ -112,13 +113,14 @@ point.extend(20.0_f64.to_le_bytes());
 let value = Geometry::new(point.clone())?;
 assert_eq!(GeospatialValue::as_bytes(&value), point.as_slice());
 
-// The family stands for either leaf, and narrows back out of a scalar.
-let held = Geospatial::from(value.clone());
-assert_eq!(Geospatial::KIND, DataTypeKind::Geospatial);
-assert_eq!(held.dtype()?.kind(), DataTypeKind::Geospatial);
-assert_eq!(held.clone().into_scalar(), Scalar::Geometry(value));
-assert_eq!(Scalar::Geometry(Geometry::new(point)?).as_geospatial(), Some(held));
-assert_eq!(Scalar::from(1_i64).as_geospatial(), None);
+// The family is a range of identifiers; the value is its leaf's own variant.
+let held = value.clone().into_scalar();
+assert_eq!(held, Scalar::Geometry(value.clone()));
+assert_eq!(held.family(), DataTypeKind::Geospatial);
+assert!(DataTypeKind::Geospatial.contains(held.id()));
+assert_eq!(Value::dtype(&value)?.kind(), DataTypeKind::Geospatial);
+assert_eq!(<Geometry as Value>::from_scalar(&held), Some(&value));
+assert_eq!(<Geometry as Value>::from_scalar(&Scalar::from(1_i64)), None);
 ```
 
 ## The coordinate reference system
@@ -476,7 +478,7 @@ geospatial cell crosses a binding as.
 - EWKB SRID -> read past, not modeled: bounds and text are the same in every reference system.
 - `POINT EMPTY` -> NaN coordinates decode as `coordinate: None`, and the dimension marker survives: `POINT ZM EMPTY`.
 - An empty geometry -> `bounding_box` is the fold identity, and `BoundingBox::is_empty` names it so a statistics writer can skip the box.
-- `Scalar::Bytes` holding WKB under either field -> canonicalized to `Scalar::Geometry` or `Scalar::Geography`; `as_wkb` reads all three spellings.
+- A byte value (`Scalar::Binary` or any other byte leaf) holding WKB under either field -> canonicalized to `Scalar::Geometry` or `Scalar::Geography`; `as_wkb` reads all three spellings.
 - The same payload as a geometry and as a geography -> equal scalars; as a plain byte value -> a different value, because the kind is part of the identity.
 - A geospatial value in arithmetic -> refused: it reads as bytes, but two WKB payloads do not join.
 - `bytes_parameters` on either type -> `None`; a geospatial value is bytes with an identity, like a [UUID](../uuid.md) ([Strings & bytes](../text/index.md)).

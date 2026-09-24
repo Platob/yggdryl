@@ -403,7 +403,7 @@ fn a_reserved_word_reached_after_a_dot_renders_quoted() {
 #[test]
 fn a_step_types_one_level_and_reads_one_value() {
     let root = StructType::from_fields([
-        DataType::list(DataType::Int64.required_field("item")).required_field("legs"),
+        DataType::serie(DataType::Int64.required_field("item")).required_field("legs"),
         StructType::from_fields([DataType::utf8().nullable_field("ccy")])
             .map(DataType::from)
             .unwrap()
@@ -413,7 +413,7 @@ fn a_step_types_one_level_and_reads_one_value() {
     .unwrap()
     .required_field("row");
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
-    assert!(matches!(legs.dtype(), DataType::List(_)));
+    assert!(matches!(legs.dtype(), DataType::Serie(_)));
     let first = FieldSegment::index(0).apply_field(&legs).unwrap();
     assert_eq!(first.dtype(), &DataType::Int64);
     assert!(first.is_nullable(), "a position past the end reads as null");
@@ -459,10 +459,10 @@ fn a_step_types_one_level_and_reads_one_value() {
 // The predicate segment
 // ---------------------------------------------------------------------------
 
-/// A row holding one list of structs, the shape a predicate keeps elements of.
+/// A row holding one serie of structs, the shape a predicate keeps elements of.
 fn legs_root() -> Field {
     StructType::from_fields([
-        DataType::list(
+        DataType::serie(
             StructType::from_fields([
                 DataType::utf8().nullable_field("ccy"),
                 DataType::Int64.nullable_field("size"),
@@ -473,7 +473,7 @@ fn legs_root() -> Field {
             .nullable_field("item"),
         )
         .nullable_field("legs"),
-        DataType::list(DataType::Int64.nullable_field("item")).nullable_field("xs"),
+        DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("xs"),
         DataType::utf8().nullable_field("ccy"),
     ])
     .map(DataType::from)
@@ -589,7 +589,7 @@ fn a_predicate_segment_sorts_after_every_other_kind() {
 }
 
 #[test]
-fn a_predicate_segment_types_as_the_list_it_keeps_elements_of() {
+fn a_predicate_segment_types_as_the_serie_it_keeps_elements_of() {
     let root = legs_root();
     let legs = FieldSegment::field("legs").apply_field(&root).unwrap();
     let kept = FieldSegment::filter("ccy = 'EUR'".parse().unwrap())
@@ -621,12 +621,12 @@ fn a_predicate_segment_types_as_the_list_it_keeps_elements_of() {
     );
     let not_a_list = parse("ccy[size = 1]").apply_field(&root).unwrap_err();
     assert!(
-        not_a_list.to_string().contains("list of structs"),
+        not_a_list.to_string().contains("serie of structs"),
         "{not_a_list}"
     );
     let not_structs = parse("xs[item > 1]").apply_field(&root).unwrap_err();
     assert!(
-        not_structs.to_string().contains("list of structs"),
+        not_structs.to_string().contains("serie of structs"),
         "{not_structs}"
     );
 }
@@ -697,8 +697,11 @@ fn a_predicate_segment_reads_the_elements_a_row_holds() {
     );
     let refused = segment
         .apply_scalar(&root, &full)
-        .expect_err("a row is no list of structs");
-    assert!(refused.to_string().contains("list of structs"), "{refused}");
+        .expect_err("a row is no serie of structs");
+    assert!(
+        refused.to_string().contains("serie of structs"),
+        "{refused}"
+    );
 }
 
 mod grammar {
@@ -740,15 +743,15 @@ mod grammar {
                 // Temporal text, so a cast into and out of a temporal is one of
                 // the pairs the two tiers are compared on.
                 Field::new("clock", DataType::utf8(), true),
-                // A list, so a position and a run are compared on both tiers.
+                // A serie, so a position and a run are compared on both tiers.
                 Field::new(
                     "xs",
-                    DataType::list(DataType::Int64.nullable_field("item")),
+                    DataType::serie(DataType::Int64.nullable_field("item")),
                     true,
                 ),
-                // A list of structs holding a list of structs, so a predicate
+                // A serie of structs holding a serie of structs, so a predicate
                 // segment and one nested in another are compared on both tiers.
-                Field::new("legs", DataType::list(leg_field()), true),
+                Field::new("legs", DataType::serie(leg_field()), true),
             ])
             .map(DataType::from)
             .unwrap(),
@@ -756,13 +759,13 @@ mod grammar {
         )
     }
 
-    /// One leg: a currency, a size, and notes that are themselves a list of
+    /// One leg: a currency, a size, and notes that are themselves a serie of
     /// structs.
     fn leg_field() -> Field {
         StructType::from_fields([
             DataType::utf8().nullable_field("ccy"),
             DataType::Int64.nullable_field("size"),
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([
                     DataType::utf8().nullable_field("k"),
                     DataType::Int64.nullable_field("v"),
@@ -798,7 +801,7 @@ mod grammar {
             |micros: i64| Scalar::datetime64(micros, TimeUnit::Microsecond, Timezone::UTC).unwrap();
         let nested =
             |leg: Option<&str>| Scalar::from_sequence([leg.map_or(Scalar::Null, Scalar::from)]);
-        let list =
+        let serie =
             |items: &[i64]| Scalar::from_sequence(items.iter().map(|item| Scalar::from(*item)));
         vec![
             Scalar::from_sequence([
@@ -811,7 +814,7 @@ mod grammar {
                 Scalar::from(2024),
                 nested(Some("EUR")),
                 Scalar::from("10:23:45"),
-                list(&[1, 2, 3]),
+                serie(&[1, 2, 3]),
                 Scalar::from_sequence([
                     leg(Some("EUR"), Some(1), Some(&[("a", 1), ("b", 2)])),
                     leg(Some("USD"), Some(2), Some(&[])),
@@ -828,8 +831,8 @@ mod grammar {
                 Scalar::from(2024),
                 nested(None),
                 Scalar::from("25:30:00"),
-                list(&[]),
-                // An empty list keeps nothing and is not null.
+                serie(&[]),
+                // An empty serie keeps nothing and is not null.
                 Scalar::from_sequence([]),
             ]),
             Scalar::from_sequence([
@@ -843,7 +846,7 @@ mod grammar {
                 Scalar::Null,
                 Scalar::Null,
                 Scalar::Null,
-                // A null list stays null through every predicate.
+                // A null serie stays null through every predicate.
                 Scalar::Null,
             ]),
             Scalar::from_sequence([
@@ -856,7 +859,7 @@ mod grammar {
                 Scalar::from(2023),
                 nested(Some("USD")),
                 Scalar::from("99:59:59"),
-                list(&[7]),
+                serie(&[7]),
                 // A null element is dropped; a null size makes a size test unknown.
                 Scalar::from_sequence([Scalar::Null, leg(Some("EUR"), None, Some(&[("a", 5)]))]),
             ]),
@@ -870,7 +873,7 @@ mod grammar {
                 Scalar::from(2025),
                 nested(Some("eur")),
                 Scalar::from("00:00:00.500"),
-                list(&[0, -1]),
+                serie(&[0, -1]),
                 Scalar::from_sequence([
                     leg(Some("eur"), Some(10), Some(&[("c", 3)])),
                     leg(Some("GBP"), Some(0), Some(&[("z", 0)])),
@@ -890,7 +893,9 @@ mod grammar {
                     .iter()
                     .map(|row| row.as_sequence().unwrap()[index].clone())
                     .collect();
-                yggdryl::arrow::array_from_value(field, &yggdryl::Scalar::from_sequence(values))
+                yggdryl::Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
                     .unwrap()
             })
             .collect();
@@ -949,7 +954,7 @@ mod grammar {
         assert_eq!(first.eval(&rows[1]).unwrap(), Scalar::Null);
         assert_eq!(first.eval(&rows[3]).unwrap(), Scalar::Null);
 
-        // A predicate over the element's own list of structs, chained.
+        // A predicate over the element's own serie of structs, chained.
         let nested = "legs[notes[v > 1][0].k = 'b'][0].ccy"
             .parse::<Term>()
             .unwrap()
@@ -960,10 +965,10 @@ mod grammar {
     }
 
     #[test]
-    fn a_predicate_segment_over_a_sliced_large_list_matches_the_row_tier() {
+    fn a_predicate_segment_over_a_sliced_large_serie_matches_the_row_tier() {
         let schema = Field::new(
             "rows",
-            StructType::from_fields([Field::new("legs", DataType::large_list(leg_field()), true)])
+            StructType::from_fields([Field::new("legs", DataType::large_serie(leg_field()), true)])
                 .map(DataType::from)
                 .unwrap(),
             false,
@@ -980,11 +985,19 @@ mod grammar {
             .unwrap();
         let column = bound.evaluate(&batch).unwrap();
         assert_eq!(column.len(), 3);
+        let field = bound.field().clone().with_nullable(true);
+        assert_eq!(
+            column.data_type(),
+            field.as_arrow_field_ref().unwrap().data_type()
+        );
         for (position, row) in rows[1..4].iter().enumerate() {
-            let held = yggdryl::arrow::scalar_value(
-                &bound.field().clone().with_nullable(true),
-                column.slice(position, 1).as_ref(),
+            let held = yggdryl::Serie::from_arrow_array(
+                Some(&field),
+                column.slice(position, 1),
+                yggdryl::ArrowCastOptions::default(),
             )
+            .unwrap()
+            .scalar(0)
             .unwrap();
             assert_eq!(bound.eval(row).unwrap(), held, "row {position}");
         }
@@ -994,8 +1007,8 @@ mod grammar {
     fn a_predicate_segment_is_refused_where_it_cannot_keep_elements() {
         let schema = rows_schema();
         for (text, expected) in [
-            ("i[x = 1]", "list of structs"),
-            ("xs[item > 1]", "list of structs"),
+            ("i[x = 1]", "serie of structs"),
+            ("xs[item > 1]", "serie of structs"),
             ("legs[size]", "boolean predicate"),
             ("legs[nope = 1]", "ccy, size, notes"),
             ("legs[i = 1]", "ccy, size, notes"),
@@ -1146,7 +1159,7 @@ mod nested {
     }
 
     #[test]
-    fn a_list_is_transparent_to_a_dotted_path_when_reading() {
+    fn a_serie_is_transparent_to_a_dotted_path_when_reading() {
         let item = StructType::from_fields([
             DataType::Float64.required_field("price"),
             StructType::from_fields([DataType::utf8().required_field("id")])
@@ -1158,7 +1171,7 @@ mod nested {
         .unwrap()
         .required_field("item");
         let orders =
-            StructType::from_fields([DataType::list(item.clone()).nullable_field("orders")])
+            StructType::from_fields([DataType::serie(item.clone()).nullable_field("orders")])
                 .map(DataType::from)
                 .unwrap()
                 .required_field("row");
@@ -1201,17 +1214,17 @@ mod nested {
         assert!(message.contains("orders.quantity"), "{message}");
         assert!(orders.get_field_by_path("orders.quantity").is_none());
 
-        // Every list layout reads the same way; a map keeps its entries by name.
+        // Every serie layout reads the same way; a map keeps its entries by name.
         let leaf = StructType::from_fields([DataType::Int64.required_field("value")])
             .map(DataType::from)
             .unwrap()
             .required_field("item");
         for layout in [
-            DataType::list(leaf.clone()),
-            DataType::large_list(leaf.clone()),
-            DataType::list_view(leaf.clone()),
-            DataType::large_list_view(leaf.clone()),
-            DataType::fixed_size_list(leaf.clone(), 2).unwrap(),
+            DataType::serie(leaf.clone()),
+            DataType::large_serie(leaf.clone()),
+            DataType::serie_view(leaf.clone()),
+            DataType::large_serie_view(leaf.clone()),
+            DataType::fixed_size_serie(leaf.clone(), 2).unwrap(),
         ] {
             assert_eq!(
                 layout.get_field_by_path("value").map(Field::name),
@@ -1232,7 +1245,7 @@ mod nested {
         );
 
         // A write is not transparent: it addresses the item by its own name, and
-        // a list never grows a second child.
+        // a serie never grows a second child.
         let mut written = orders.clone();
         written
             .set_field_by_path(
@@ -1264,7 +1277,7 @@ mod nested {
                 .unwrap()
                 .required_field("line"),
             DataType::Int64.required_field("id"),
-            DataType::list(item).nullable_field("orders"),
+            DataType::serie(item).nullable_field("orders"),
         ])
         .map(DataType::from)
         .unwrap()
@@ -1284,7 +1297,7 @@ mod nested {
         );
 
         // Boolean and null segments parse as predicates; a decimal is refused at
-        // the parser boundary because only a whole number can select a list item.
+        // the parser boundary because only a whole number can select a serie item.
         for path in ["orders[true].price", "orders[null].price"] {
             assert!(FieldPath::from_str(path).is_ok(), "{path}");
         }
@@ -1390,7 +1403,7 @@ mod nested {
 #[test]
 fn a_range_over_a_column_is_a_window_of_it() {
     let item = DataType::Int64.nullable_field("item");
-    let root = StructType::from_fields([DataType::list(item.clone()).nullable_field("xs")])
+    let root = StructType::from_fields([DataType::serie(item.clone()).nullable_field("xs")])
         .map(DataType::from)
         .unwrap()
         .required_field("row");

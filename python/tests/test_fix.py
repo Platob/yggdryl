@@ -788,7 +788,7 @@ def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
     member.fix.field_ref = "PartyID"
     registry.insert(Field("Party", DataType.from_fields([member, *members]), nullable=False))
     component = registry.field_by_name("Party")
-    group = yggdryl.list("Parties", component)
+    group = yggdryl.serie("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
     registry.insert(group)
@@ -801,7 +801,7 @@ def _catalog(members: Iterable[Field] = ()) -> FixRegistry:
 
 
 def test_a_definition_is_filed_by_the_shape_it_has() -> None:
-    """One `insert`: a Struct is a component, a List or a Map a group."""
+    """One `insert`: a Struct is a component, a Serie or a Map a group."""
     registry = _catalog()
 
     component = registry.field_by_name("Party")
@@ -1141,7 +1141,7 @@ def _numeric_group_registry(scoped: bool) -> FixRegistry:
     component = Field("AlphaRowsEntry", DataType.from_fields([member]), nullable=False)
     component.fix.branches = ["alpha"]
     registry.insert(component)
-    held = yggdryl.list("AlphaRows", component)
+    held = yggdryl.serie("AlphaRows", component)
     held.fix.branches = ["alpha"]
     held.fix.counter = 6000
     held.fix.component = component.name
@@ -1471,7 +1471,7 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     # vocabulary; the protocol's own code sets keep their base type, and
     # tag 54 is the one FIX field typed as the value it holds.
     assert seed.field_by_tag(54).dtype == DataType("side")
-    assert seed.field_by_tag(15).dtype == DataType("currency")
+    assert seed.field_by_tag(15).dtype == DataType("ccy")
     assert seed.field_by_tag(39).dtype == DataType("utf8")
     assert seed.field_by_tag(40).dtype == DataType("utf8")
 

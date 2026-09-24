@@ -45,7 +45,7 @@ mod record {
     /// exact match, so a key the field refuses the row refuses too.
     ///
     /// Building one canonicalizes through the field's row walk, so an ordered
-    /// [`Scalar::List`](Scalar) and a named [`Scalar::Struct`](Scalar) are
+    /// [`Scalar::Serie`](Scalar) and a named [`Scalar::Struct`](Scalar) are
     /// both accepted, and the cells are exactly what
     /// [`Field::canonicalize_value`] answers. Top-level row construction uses
     /// only the cells' `Vec`; nested canonicalization owns any storage its
@@ -174,94 +174,6 @@ mod record {
         /// One allocation: the sequence's own storage.
         pub fn into_scalar(self) -> Scalar {
             Scalar::from_sequence(self.values.into_iter().map(FieldScalar::into_value))
-        }
-    }
-
-    impl<'a> FieldRecord<'a> {
-        /// Read one row of a batch under the field the batch was written under.
-        ///
-        /// The caller guarantees the batch is under `field`: the columns are
-        /// read positionally as the field's children, in the datatype each child
-        /// declares, and a batch of another schema is a schema error only where
-        /// a column's physical layout disagrees with the child reading it. The
-        /// row bound and the column count are checked here.
-        ///
-        /// ```
-        /// use yggdryl::arrow::batch_from_value;
-        /// use yggdryl::{DataType, FieldRecord, Scalar, StructType};
-        ///
-        /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-        /// let row = DataType::from(StructType::from_fields([
-        ///     DataType::Int64.required_field("id"),
-        ///     DataType::utf8().nullable_field("symbol"),
-        /// ])?)
-        /// .required_field("row");
-        /// let rows = Scalar::from_sequence([
-        ///     Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
-        ///     Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
-        /// ]);
-        /// let batch = batch_from_value(&row, &rows)?;
-        ///
-        /// let second = FieldRecord::from_arrow_batch(&row, &batch, 1)?;
-        /// assert_eq!(second["id"].as_i64(), Some(2));
-        /// assert!(second["symbol"].is_null());
-        /// assert!(FieldRecord::from_arrow_batch(&row, &batch, 2).is_err());
-        /// # Ok(())
-        /// # }
-        /// ```
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when the field is not a non-null Struct, when `row`
-        /// is past the batch's rows, when the batch has another number of
-        /// columns than the field has children, or when a column cannot be read
-        /// as the child's datatype.
-        pub fn from_arrow_batch(
-            field: &'a Field,
-            batch: &arrow_array::RecordBatch,
-            row: usize,
-        ) -> crate::arrow::Result<Self> {
-            field.require_struct_root()?;
-            if row >= batch.num_rows() {
-                return Err(crate::arrow::Error::IncompatibleSchema(format!(
-                    "row {row} is past the batch's {} rows",
-                    batch.num_rows()
-                )));
-            }
-            if batch.num_columns() != field.field_len() {
-                return Err(crate::arrow::Error::IncompatibleSchema(format!(
-                    "expected {} columns under field {:?}, got {}",
-                    field.field_len(),
-                    field.name(),
-                    batch.num_columns()
-                )));
-            }
-            let mut values = Vec::with_capacity(field.field_len());
-            for (child, column) in field.fields().iter().zip(batch.columns()) {
-                let value =
-                    crate::arrow::value::value_from_array(child.dtype(), column.as_ref(), row)?;
-                values.push(FieldScalar::new(child, value)?);
-            }
-            Ok(Self { field, values })
-        }
-
-        /// Materialize this row as a one-row Arrow batch under the field.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when the physical Arrow layout cannot represent a
-        /// cell.
-        pub fn into_arrow_batch(self) -> crate::arrow::Result<arrow_array::RecordBatch> {
-            let field = self.field;
-            let schema = crate::arrow::arrow_schema_from_field(field)?;
-            let mut columns = Vec::with_capacity(self.values.len());
-            for value in self.values {
-                columns.push(value.into_arrow_array()?);
-            }
-            let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(1));
-            Ok(arrow_array::RecordBatch::try_new_with_options(
-                schema, columns, &options,
-            )?)
         }
     }
 
@@ -398,7 +310,6 @@ mod shared {
     use std::collections::HashMap;
     use std::sync::{LazyLock, PoisonError, RwLock};
 
-    use crate::{BytesType, StringType};
     use crate::{DataType, DataTypeId, Field, Scalar};
 
     /// The name every shared field carries - the name an inferred scalar field
@@ -451,41 +362,6 @@ mod shared {
             .map(Field::dtype)
     }
 
-    /// One nullable field per plain unbounded UTF-8 leaf.
-    ///
-    /// Every string identifier is parameterized, so none has a slot in
-    /// [`PREBUILT`]; these four are what a bare string value names, and a value
-    /// typed by inference borrows one of them rather than interning anything.
-    static PLAIN_UTF8: LazyLock<[(StringType, Field); 4]> = LazyLock::new(|| {
-        [
-            StringType::Utf8String,
-            StringType::LargeUtf8String,
-            StringType::Utf8StringView,
-            StringType::LargeUtf8StringView,
-        ]
-        .map(|parameters| {
-            (
-                parameters,
-                Field::new(SHARED_NAME, DataType::String(parameters), true),
-            )
-        })
-    });
-
-    /// One nullable field per plain unbounded byte layout, for the same reason.
-    static PLAIN_BYTES: LazyLock<[(BytesType, Field); 3]> = LazyLock::new(|| {
-        [
-            BytesType::Binary,
-            BytesType::LargeBinary,
-            BytesType::BinaryView,
-        ]
-        .map(|parameters| {
-            (
-                parameters,
-                Field::new(SHARED_NAME, DataType::Bytes(parameters), true),
-            )
-        })
-    });
-
     /// The interned fields of parameterized leaf datatypes, bounded by
     /// [`INTERN_LIMIT`].
     static INTERNED: LazyLock<RwLock<HashMap<DataType, &'static Field>>> =
@@ -494,12 +370,11 @@ mod shared {
     impl DataType {
         /// The shared nullable `value` field of this datatype, when it has one.
         ///
-        /// Every parameter-free leaf answers a field built once for the program,
-        /// and so does a plain unbounded UTF-8 string or a plain unbounded byte
-        /// column in any layout; every other parameterized leaf - a string
-        /// declaring a charset, a bound or a fixed width, bounded or fixed bytes,
-        /// a decimal, a timestamp, a time, a duration, an interval - answers one
-        /// interned on its first ask, so a second ask for the same datatype is a
+        /// Every parameter-free leaf answers a field built once for the program -
+        /// every string and byte leaf with no number among them, in any charset
+        /// and layout; every other parameterized leaf - a fixed or sized string,
+        /// fixed or sized bytes, a decimal, a timestamp, a time, a duration, an
+        /// interval - answers one interned on its first ask, so a second ask for the same datatype is a
         /// lookup that allocates nothing. A nested datatype, and a geometry or
         /// geography whose coordinate reference is unbounded text, answers
         /// `None`; so does a parameterized leaf once 4096 distinct ones are held,
@@ -521,8 +396,8 @@ mod shared {
         ///     price.shared_field().unwrap()
         /// ));
         /// // A nested datatype has no shared field: pair it under your own.
-        /// let list = DataType::list(Field::new("item", DataType::Int64, true));
-        /// assert!(list.shared_field().is_none());
+        /// let serie = DataType::serie(Field::new("item", DataType::Int64, true));
+        /// assert!(serie.shared_field().is_none());
         /// # Ok(())
         /// # }
         /// ```
@@ -532,17 +407,15 @@ mod shared {
                 return PREBUILT[usize::from(id.as_u8())].as_ref();
             }
             match self {
-                Self::String(parameters) => PLAIN_UTF8
-                    .iter()
-                    .find(|(plain, _)| plain == parameters)
-                    .map(|(_, field)| field)
-                    .or_else(|| interned(self)),
-                Self::Bytes(parameters) => PLAIN_BYTES
-                    .iter()
-                    .find(|(plain, _)| plain == parameters)
-                    .map(|(_, field)| field)
-                    .or_else(|| interned(self)),
-                Self::DateTime64 { .. }
+                Self::FixedUtf8String(_)
+                | Self::SizedUtf8String(_)
+                | Self::FixedAsciiString(_)
+                | Self::SizedAsciiString(_)
+                | Self::FixedCp1252String(_)
+                | Self::SizedCp1252String(_)
+                | Self::FixedBinary(_)
+                | Self::SizedBinary(_)
+                | Self::DateTime64 { .. }
                 | Self::Time32(_)
                 | Self::Time64(_)
                 | Self::Duration32(_)
@@ -690,7 +563,7 @@ impl<'a> FieldScalar<'a> {
     /// crate prebuilt for that datatype, so a leaf value becomes a typed value
     /// without building a field - the pairing borrows a field that lives for
     /// the whole program. A datatype with no shared field, such as a struct
-    /// or a list, is paired through [`Self::new`] under a field of the
+    /// or a serie, is paired through [`Self::new`] under a field of the
     /// caller's own.
     ///
     /// ```
@@ -704,7 +577,7 @@ impl<'a> FieldScalar<'a> {
     ///
     /// let row = Scalar::from_sequence([Scalar::from(1_i64)]);
     /// let refused = FieldScalar::infer(row).unwrap_err().to_string();
-    /// assert!(refused.contains("list"), "{refused}");
+    /// assert!(refused.contains("serie"), "{refused}");
     /// # Ok(())
     /// # }
     /// ```
@@ -858,70 +731,6 @@ impl<'a> FieldScalar<'a> {
     }
 }
 
-impl<'a> FieldScalar<'a> {
-    /// Decode row 0 of a one-row Arrow array under the field.
-    ///
-    /// [`crate::arrow::scalar_value`] reads the array - exactly one row, the
-    /// field's exact physical layout - and the reading is then paired the
-    /// way every value is, through [`Field::scalar`]: an Arrow reading spells
-    /// a value physically, a float16 as its narrow float, and the pairing
-    /// holds the canonical one.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, Field, Scalar, FieldScalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let field = Field::new("size", DataType::Int64, false);
-    /// let array = FieldScalar::new(&field, 7_i64)?.into_arrow_array()?;
-    /// let typed = FieldScalar::from_arrow_array(&field, array.as_ref())?;
-    /// assert_eq!(typed.value(), &Scalar::from(7));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the array does not hold exactly one row of the
-    /// field's exact physical layout, or when the decoded value is not one
-    /// the field accepts.
-    pub fn from_arrow_array(
-        field: &'a Field,
-        array: &dyn arrow_array::Array,
-    ) -> crate::arrow::Result<Self> {
-        let value = crate::arrow::scalar_value(field, array)?;
-        Self::new(field, value).map_err(crate::arrow::Error::from)
-    }
-
-    /// Materialize this pairing as an exact one-row Arrow array.
-    ///
-    /// The field decides nullability, dictionary options, and extension
-    /// identity, exactly as [`crate::arrow::scalar_array`] reads them; the
-    /// pairing is that function's validated half, so the array is built
-    /// without a second walk over the value.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, Field, FieldScalar};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let field = Field::new("size", DataType::Int64, true);
-    /// let array = FieldScalar::new(&field, 7_i64)?.into_arrow_array()?;
-    /// assert_eq!(array.len(), 1);
-    /// assert_eq!(array.data_type(), &arrow_schema::DataType::Int64);
-    /// // A null is what the nullable column stores, so it projects too.
-    /// assert!(FieldScalar::new(&field, yggdryl::Scalar::Null)?.into_arrow_array()?.is_null(0));
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when the physical Arrow layout cannot represent the
-    /// value.
-    pub fn into_arrow_array(self) -> crate::arrow::Result<arrow_array::ArrayRef> {
-        crate::arrow::value::array_from_values(self.field, &[&self.value])
-    }
-}
-
 /// Write a value's canonical text, or its family's own form when it has none.
 ///
 /// `str_from_value` owns the spelling, and it declines exactly four shapes:
@@ -934,7 +743,7 @@ fn write_value(formatter: &mut fmt::Formatter<'_>, value: &Scalar) -> fmt::Resul
         Some(Ok(text)) => formatter.write_str(&text),
         Some(Err(_)) | None => match value {
             Scalar::Null => formatter.write_str("null"),
-            Scalar::Bytes(held) => fmt::Display::fmt(held, formatter),
+            crate::bytes_scalars!(held) => fmt::Display::fmt(held, formatter),
             Scalar::Geometry(held) => fmt::Display::fmt(held, formatter),
             Scalar::Geography(held) => fmt::Display::fmt(held, formatter),
             // A temporal without a classic spelling and a nested value write
@@ -1204,9 +1013,6 @@ macro_rules! define_field_types {
                 $crate::DataTypeId::$variant
             }
 
-            fn kind(&self) -> $crate::DataTypeKind {
-                $crate::DataTypeId::$variant.kind()
-            }
 
             fn validate(&self) -> $crate::Result<()> {
                 Ok(())

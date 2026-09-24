@@ -17,7 +17,3 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
 mod mod_;
 #[path = "arrow/rows.rs"]
 mod rows;
-#[path = "arrow/scalars.rs"]
-mod scalars;
-#[path = "arrow/value.rs"]
-mod value;

@@ -41,7 +41,7 @@
   {
     "name": "paymentstreamratespreadcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -734,7 +734,7 @@
   {
     "name": "streamcommoditycurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1230,7 +1230,7 @@
   {
     "name": "streamcommoditysettlperiodpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

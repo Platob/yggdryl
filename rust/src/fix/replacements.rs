@@ -28,7 +28,7 @@
 //! The whole of the old fill vocabulary is ordinary terms. A constant is a
 //! literal, the source's own value is the column naming it, another field's
 //! value is that column, a join is [`concat`](crate::expression::Function),
-//! and one occurrence of a repeating group is a list of one struct - so
+//! and one occurrence of a repeating group is a serie of one struct - so
 //! `ExecBroker(76)` reads:
 //!
 //! ```text

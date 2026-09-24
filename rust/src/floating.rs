@@ -8,65 +8,12 @@ use std::ops::{
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use crate::arithmetic::{Arithmetic, invalid_binary};
 use crate::typed::define_field_types;
-use crate::value::{FloatingValue, family_value};
-use crate::{DataType, DataTypeId, Error, Result, Scalar, Value};
-
-// ------------------------------------------------------------------------
-// Floating-point datatype family.
-// ------------------------------------------------------------------------
-
-/// One Arrow floating-point datatype.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum FloatingType {
-    /// IEEE binary16.
-    Float16,
-    /// IEEE binary32.
-    Float32,
-    /// IEEE binary64.
-    Float64,
-}
-
-impl FloatingType {
-    /// Return the exact datatype identifier.
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::Float16 => DataTypeId::Float16,
-            Self::Float32 => DataTypeId::Float32,
-            Self::Float64 => DataTypeId::Float64,
-        }
-    }
-}
-
-impl From<FloatingType> for DataType {
-    fn from(value: FloatingType) -> Self {
-        match value {
-            FloatingType::Float16 => Self::Float16,
-            FloatingType::Float32 => Self::Float32,
-            FloatingType::Float64 => Self::Float64,
-        }
-    }
-}
-
-impl TryFrom<&DataType> for FloatingType {
-    type Error = Error;
-
-    fn try_from(value: &DataType) -> std::result::Result<Self, Self::Error> {
-        match value {
-            DataType::Float16 => Ok(Self::Float16),
-            DataType::Float32 => Ok(Self::Float32),
-            DataType::Float64 => Ok(Self::Float64),
-            other => Err(Error::InvalidDataType {
-                kind: "floating",
-                reason: format_smolstr!("expected a floating datatype, got {other}"),
-            }),
-        }
-    }
-}
+use crate::value::FloatingValue;
+use crate::{DataType, Error, Result, Scalar, Value};
 
 // ------------------------------------------------------------------------
 // Floating-point field markers.
@@ -79,22 +26,6 @@ define_field_types!(Float64Type, Float64);
 // ------------------------------------------------------------------------
 // Floating scalar canonicalization.
 // ------------------------------------------------------------------------
-
-family_value!(
-    /// The floating family as one value: any of the three widths.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, FamilyValue, Floating, Scalar};
-    ///
-    /// let value = Scalar::from(1.5_f64);
-    /// let held = Floating::from_scalar(&value).expect("a float");
-    /// assert!(matches!(held, Floating::Float64(_)));
-    /// assert_eq!(held.dtype().unwrap(), DataType::Float64);
-    /// assert_eq!(held.into_scalar(), value);
-    /// assert_eq!(Floating::from_scalar(&Scalar::from(1_i64)), None);
-    /// ```
-    Floating, Floating, [Float16, Float32, Float64]
-);
 
 pub(crate) enum FloatWidth {
     Float16,
@@ -900,38 +831,27 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::FloatingType;
     use crate::invalid;
-    use crate::{DataType, Result};
+    use crate::{DataType, Error, Result};
 
-    impl FloatingType {
-        /// The Arrow storage this width lays out.
-        pub(crate) const fn arrow_storage(self) -> ArrowDataType {
-            match self {
-                Self::Float16 => ArrowDataType::Float16,
-                Self::Float32 => ArrowDataType::Float32,
-                Self::Float64 => ArrowDataType::Float64,
-            }
-        }
-
-        /// The width one Arrow floating storage names, `None` for anything else.
-        pub(crate) const fn from_arrow_storage(value: &ArrowDataType) -> Option<Self> {
-            match value {
-                ArrowDataType::Float16 => Some(Self::Float16),
-                ArrowDataType::Float32 => Some(Self::Float32),
-                ArrowDataType::Float64 => Some(Self::Float64),
-                _ => None,
-            }
-        }
-    }
-
-    /// The Arrow storage one floating datatype lays out.
+    /// The Arrow storage one floating datatype lays out: every IEEE width
+    /// is one of Arrow's own.
     ///
     /// # Errors
     ///
     /// Returns an error when the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        Ok(FloatingType::try_from(dtype)?.arrow_storage())
+        Ok(match dtype {
+            DataType::Float16 => ArrowDataType::Float16,
+            DataType::Float32 => ArrowDataType::Float32,
+            DataType::Float64 => ArrowDataType::Float64,
+            other => {
+                return Err(Error::InvalidDataType {
+                    kind: "floating",
+                    reason: format_smolstr!("expected a floating datatype, got {other}"),
+                });
+            }
+        })
     }
 
     /// The floating datatype one Arrow storage imports as.
@@ -940,14 +860,17 @@ mod arrow {
     ///
     /// Returns an error when the storage belongs to another family.
     pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
-        FloatingType::from_arrow_storage(value)
-            .map(DataType::from)
-            .ok_or_else(|| {
-                invalid(
+        Ok(match value {
+            ArrowDataType::Float16 => DataType::Float16,
+            ArrowDataType::Float32 => DataType::Float32,
+            ArrowDataType::Float64 => DataType::Float64,
+            _ => {
+                return Err(invalid(
                     "floating",
                     format_smolstr!("expected a floating storage, got {value}"),
-                )
-            })
+                ));
+            }
+        })
     }
 }
 

@@ -2,22 +2,27 @@
 //! schema-free run or as the Arrow buffers of one field.
 //!
 //! [`JsSerie`] owns only the core value and redirects every verb to it. The
-//! verbs one nested leaf lends - a list's offsets and rows, a map's entries,
+//! verbs one nested leaf lends - a serie's offsets and rows, a map's entries,
 //! a record's names - are private natives here; `binding.js` publishes them
-//! on `ListSerie`, `LargeListSerie`, `ListViewSerie`, `LargeListViewSerie`,
-//! `FixedSizeListSerie`, `MapSerie` and `StructSerie`, the subclasses every
+//! on `SerieSerie`, `LargeSerieSerie`, `SerieViewSerie`, `LargeSerieViewSerie`,
+//! `FixedSizeSerieSerie`, `MapSerie` and `StructSerie`, the subclasses every
 //! serie is handed out as by the leaf `_leafNative` names, so nesting reads
 //! typed all the way down. Arrow crosses as copied IPC, as it does for every
 //! other value of this binding.
 //!
 //! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
 //! native `BatchReader`, every batch cast by the one plan the core compiled
-//! when the reader was built.
+//! when the reader was built, the one record serie a held column is, or one
+//! per chunk of a held chunked column.
 
 use std::borrow::Cow;
+use std::io::Cursor;
 use std::ops::Range;
+use std::sync::Arc;
 
-use arrow_array::RecordBatch;
+use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
+use arrow_ipc::reader::StreamReader;
+use arrow_schema::{Schema, SchemaRef};
 use napi::bindgen_prelude::{Buffer, ClassInstance, Either, Generator, Result, Uint8Array};
 use napi_derive::napi;
 use serde_json::Value as JsonValue;
@@ -25,13 +30,13 @@ use yggdryl::{
     ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieReader, SerieValue,
 };
 
+use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
 use crate::field::JsField;
-use crate::iomedia::JsBatchReader;
+use crate::iomedia::{JsBatchReader, encoded};
 use crate::napi_error;
 use crate::text::codec::{
-    JsScalar, arrow_array_ipc, arrow_batches, checked_depth, ensure_one_column, value_to_transport,
-    value_to_transport_with_field,
+    JsScalar, checked_depth, value_to_transport, value_to_transport_with_field,
 };
 
 /// The invariant `binding.js` keeps: a leaf verb is published only on the
@@ -65,6 +70,15 @@ impl Generator for JsSerieIterator {
     }
 }
 
+impl JsSerieIterator {
+    /// Iterate rows already built, in order.
+    pub(crate) fn from_rows(rows: Vec<Scalar>) -> Self {
+        Self {
+            inner: rows.into_iter(),
+        }
+    }
+}
+
 impl JsSerie {
     /// Wrap one native serie for JavaScript.
     pub(crate) const fn from_core(inner: Serie) -> Self {
@@ -73,7 +87,7 @@ impl JsSerie {
 }
 
 /// Read a JavaScript index as a row position.
-fn position(index: f64, name: &str) -> Result<usize> {
+pub(crate) fn position(index: f64, name: &str) -> Result<usize> {
     let index = crate::exact_u64(index, name)?;
     usize::try_from(index)
         .map_err(|_| napi_error(format!("{name} {index} exceeds this platform's range")))
@@ -96,6 +110,46 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
     values.iter().map(|value| (*value).into() as f64).collect()
 }
 
+/// The schema and batches of one Arrow IPC stream; an empty stream names no
+/// schema and is refused.
+pub(crate) fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+    if bytes.is_empty() {
+        return Err(napi_error("Arrow IPC input is empty and has no schema"));
+    }
+    let mut reader =
+        StreamReader::try_new(Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+    let schema = reader.schema();
+    let batches = reader
+        .by_ref()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(napi_error)?;
+    Ok((schema, batches))
+}
+
+/// One column under `field` as the one-column Arrow IPC stream Arrow JS
+/// reads a vector from.
+fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
+    arrow_arrays_ipc(field, vec![array])
+}
+
+/// Columns under `field` as the one-column Arrow IPC stream Arrow JS reads
+/// one vector from, one batch - one `Data` of the vector - per column.
+pub(crate) fn arrow_arrays_ipc(field: &CoreField, arrays: Vec<ArrayRef>) -> Result<Buffer> {
+    let schema = Arc::new(Schema::new([field
+        .clone()
+        .into_arrow_field_ref()
+        .map_err(napi_error)?]));
+    let batches = arrays
+        .into_iter()
+        .map(|array| {
+            let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
+            RecordBatch::try_new_with_options(Arc::clone(&schema), vec![array], &options)
+                .map_err(napi_error)
+        })
+        .collect::<Result<Vec<RecordBatch>>>()?;
+    encoded(&schema, &batches)
+}
+
 /// The column a one-column Arrow IPC stream holds, through the core array
 /// door: of its own layout under the `item` field the core names an array
 /// by, or cast into `field` under `options`.
@@ -104,28 +158,32 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
 /// nothing is cast there - and its one child's buffers take the array door
 /// once: one plan however many batches the vector crossed as. The IPC
 /// column's own name and nullability are the bridge's, never the caller's.
-pub(crate) fn column_from_ipc(
+fn column_from_ipc(
     bytes: &[u8],
-    label: &str,
     field: Option<&CoreField>,
     options: ArrowCastOptions,
 ) -> Result<Serie> {
     let (schema, batches) = arrow_batches(bytes)?;
-    ensure_one_column(&schema, label)?;
+    if schema.fields().len() != 1 {
+        return Err(napi_error(format!(
+            "Serie IPC must contain exactly one column, got {}",
+            schema.fields().len()
+        )));
+    }
     let reader = yggdryl::arrow::batch_reader(schema, batches);
     let records =
         Serie::from_arrow_reader(None, reader, ArrowCastOptions::new()).map_err(napi_error)?;
     let column = records
         .as_struct()
         .and_then(|records| records.child_at(0))
-        .ok_or_else(|| napi_error(format!("{label} IPC has no value column")))?;
+        .ok_or_else(|| napi_error("Serie IPC has no value column"))?;
     let array = column.require_arrow_array().map_err(napi_error)?;
     Serie::from_arrow_array(field, array, options).map_err(napi_error)
 }
 
 /// The record column an Arrow IPC stream's batches hold: of its own schema,
 /// or cast into `root` under `options`.
-pub(crate) fn records_from_ipc(
+fn records_from_ipc(
     bytes: &[u8],
     root: Option<&CoreField>,
     options: ArrowCastOptions,
@@ -190,13 +248,8 @@ impl JsSerie {
         representation: Option<String>,
     ) -> Result<Self> {
         let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
-        column_from_ipc(
-            &bytes,
-            "Serie",
-            field.as_ref().map(|field| &field.inner),
-            options,
-        )
-        .map(Self::from_core)
+        column_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
+            .map(Self::from_core)
     }
 
     /// Decode one Arrow JS record batch or table as a record column, cast
@@ -240,7 +293,7 @@ impl JsSerie {
         self.inner.field().cloned().map(JsField::from_core)
     }
 
-    /// `list(<the field named item>)` for a column; agreed out of a run's rows.
+    /// `serie(<the field named item>)` for a column; agreed out of a run's rows.
     #[napi(getter)]
     pub fn dtype(&self) -> Result<JsDataType> {
         self.inner
@@ -263,16 +316,16 @@ impl JsSerie {
         length
     }
 
-    /// Which nested leaf this is - `list`, `largeList`, `listView`,
-    /// `largeListView`, `fixedSizeList`, `map`, `struct` - or `null`.
+    /// Which nested leaf this is - `serie`, `largeSerie`, `serieView`,
+    /// `largeSerieView`, `fixedSizeSerie`, `map`, `struct` - or `null`.
     #[napi(getter, js_name = "_leafNative", skip_typescript)]
     pub fn leaf_native(&self) -> Option<&'static str> {
         match &self.inner {
-            Serie::List(_) => Some("list"),
-            Serie::LargeList(_) => Some("largeList"),
-            Serie::ListView(_) => Some("listView"),
-            Serie::LargeListView(_) => Some("largeListView"),
-            Serie::FixedSizeList(_) => Some("fixedSizeList"),
+            Serie::Serie(_) => Some("serie"),
+            Serie::LargeSerie(_) => Some("largeSerie"),
+            Serie::SerieView(_) => Some("serieView"),
+            Serie::LargeSerieView(_) => Some("largeSerieView"),
+            Serie::FixedSizeSerie(_) => Some("fixedSizeSerie"),
             Serie::Map(_) | Serie::SortedMap(_) => Some("map"),
             Serie::Struct(_) => Some("struct"),
             _ => None,
@@ -583,19 +636,38 @@ impl JsSerie {
     #[napi]
     pub fn into_arrow_reader(&self) -> Result<JsBatchReader> {
         let reader = self.inner.into_arrow_reader().map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(reader, "row"))
+        let root = SerieReader::root_of(self.inner.require_field().map_err(napi_error)?)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, root.name()))
     }
 
-    /// Whether two series hold equal rows, whichever leaf holds them.
-    #[napi]
-    pub fn equals(&self, other: &JsSerie) -> bool {
-        self.inner == other.inner
+    /// Whether the rows equal another serie's, or a chunked serie's,
+    /// whichever leaf or cut holds them.
+    #[napi(js_name = "_equalsNative", skip_typescript)]
+    pub fn equals_native(
+        &self,
+        other: Either<ClassInstance<'_, JsSerie>, ClassInstance<'_, JsChunkedSerie>>,
+    ) -> bool {
+        match other {
+            Either::A(serie) => self.inner == serie.inner,
+            Either::B(chunked) => self.inner == chunked.inner,
+        }
     }
 
-    /// Order two series by their rows, as the core defines it.
-    #[napi]
-    pub fn compare(&self, other: &JsSerie) -> i32 {
-        crate::ordering_value(self.inner.cmp(&other.inner))
+    /// Order the rows against another serie's, or a chunked serie's, as the
+    /// core defines it.
+    #[napi(js_name = "_compareNative", skip_typescript)]
+    pub fn compare_native(
+        &self,
+        other: Either<ClassInstance<'_, JsSerie>, ClassInstance<'_, JsChunkedSerie>>,
+    ) -> Result<i32> {
+        let ordering = match other {
+            Either::A(serie) => Some(self.inner.cmp(&serie.inner)),
+            Either::B(chunked) => self.inner.partial_cmp(&chunked.inner),
+        };
+        ordering
+            .map(crate::ordering_value)
+            .ok_or_else(|| napi_error("the rows of a serie and a chunked serie have no order"))
     }
 
     /// A copy sharing the buffers; writing either copies them once.
@@ -614,7 +686,7 @@ impl JsSerie {
     // The verbs one nested leaf lends, published on its subclass.
     // ------------------------------------------------------------------
 
-    /// A list, list-view or map leaf's offsets.
+    /// A serie, serie-view or map leaf's offsets.
     ///
     /// # Panics
     ///
@@ -623,22 +695,22 @@ impl JsSerie {
     #[napi(js_name = "_offsetsNative", skip_typescript)]
     pub fn offsets_native(&self) -> Vec<f64> {
         let serie = &self.inner;
-        if let Some(leaf) = serie.as_list() {
+        if let Some(leaf) = serie.as_serie() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_large_list() {
+        if let Some(leaf) = serie.as_large_serie() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_list_view() {
+        if let Some(leaf) = serie.as_serie_view() {
             return numbers(leaf.offsets());
         }
-        if let Some(leaf) = serie.as_large_list_view() {
+        if let Some(leaf) = serie.as_large_serie_view() {
             return numbers(leaf.offsets());
         }
         numbers(serie.as_map().expect(LEAF).offsets())
     }
 
-    /// A list-view leaf's sizes.
+    /// A serie-view leaf's sizes.
     ///
     /// # Panics
     ///
@@ -646,13 +718,13 @@ impl JsSerie {
     /// reads.
     #[napi(js_name = "_sizesNative", skip_typescript)]
     pub fn sizes_native(&self) -> Vec<f64> {
-        match self.inner.as_list_view() {
+        match self.inner.as_serie_view() {
             Some(leaf) => numbers(leaf.sizes()),
-            None => numbers(self.inner.as_large_list_view().expect(LEAF).sizes()),
+            None => numbers(self.inner.as_large_serie_view().expect(LEAF).sizes()),
         }
     }
 
-    /// A fixed-size list leaf's width.
+    /// A fixed-size serie leaf's width.
     ///
     /// # Panics
     ///
@@ -661,7 +733,7 @@ impl JsSerie {
     #[napi(js_name = "_widthNative", skip_typescript)]
     pub fn width_native(&self) -> f64 {
         #[allow(clippy::cast_precision_loss)]
-        let width = self.inner.as_fixed_size_list().expect(LEAF).width() as f64;
+        let width = self.inner.as_fixed_size_serie().expect(LEAF).width() as f64;
         width
     }
 
@@ -675,15 +747,15 @@ impl JsSerie {
     pub fn range_native(&self, index: f64) -> Result<Option<Vec<f64>>> {
         let index = position(index, "index")?;
         let serie = &self.inner;
-        let range = if let Some(leaf) = serie.as_list() {
+        let range = if let Some(leaf) = serie.as_serie() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_large_list() {
+        } else if let Some(leaf) = serie.as_large_serie() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_list_view() {
+        } else if let Some(leaf) = serie.as_serie_view() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_large_list_view() {
+        } else if let Some(leaf) = serie.as_large_serie_view() {
             leaf.range(index)
-        } else if let Some(leaf) = serie.as_fixed_size_list() {
+        } else if let Some(leaf) = serie.as_fixed_size_serie() {
             leaf.range(index)
         } else {
             serie.as_map().expect(LEAF).range(index)
@@ -701,15 +773,15 @@ impl JsSerie {
     pub fn row_native(&self, index: f64) -> Result<Option<JsSerie>> {
         let index = position(index, "index")?;
         let serie = &self.inner;
-        let row = if let Some(leaf) = serie.as_list() {
+        let row = if let Some(leaf) = serie.as_serie() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_large_list() {
+        } else if let Some(leaf) = serie.as_large_serie() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_list_view() {
+        } else if let Some(leaf) = serie.as_serie_view() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_large_list_view() {
+        } else if let Some(leaf) = serie.as_large_serie_view() {
             leaf.row(index)
-        } else if let Some(leaf) = serie.as_fixed_size_list() {
+        } else if let Some(leaf) = serie.as_fixed_size_serie() {
             leaf.row(index)
         } else {
             serie.as_map().expect(LEAF).row(index)
@@ -796,7 +868,8 @@ impl JsSerie {
 }
 
 /// One record serie per batch of a native `BatchReader`, each cast by the
-/// one plan the core compiled from the stream's schema.
+/// one plan the core compiled from the stream's schema, or the one record
+/// serie a held column is.
 ///
 /// The reader is a stream, read once: iterating it and `intoArrowReader`
 /// both consume it, and a batch's failure surfaces at the pull that read it.
@@ -814,6 +887,17 @@ pub struct JsSerieReader {
 /// The refusal a second consumer of one stream reads.
 fn serie_reader_consumed() -> napi::Error {
     napi_error("this SerieReader has already been consumed; a stream is read once")
+}
+
+impl JsSerieReader {
+    /// Wrap one undrained core reader, keeping the root it names.
+    fn from_core(inner: SerieReader) -> Self {
+        Self {
+            root: inner.field().clone(),
+            inner: Some(inner),
+            taken: false,
+        }
+    }
 }
 
 #[napi]
@@ -835,11 +919,29 @@ impl JsSerieReader {
             options,
         )
         .map_err(napi_error)?;
-        Ok(Self {
-            root: inner.field().clone(),
-            inner: Some(inner),
-            taken: false,
-        })
+        Ok(Self::from_core(inner))
+    }
+
+    /// Read one held column as a stream of one record serie: a record column
+    /// as it stands, any other column as the one child of a record named
+    /// `row`. Nothing is cast or copied; a run, and a record column holding
+    /// an absent row, are refused.
+    #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
+    pub fn from_serie(serie: &JsSerie) -> Result<Self> {
+        SerieReader::from_serie(serie.inner.clone())
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Read a held chunked column as the stream of its chunks, one record
+    /// serie per chunk: a record's chunks as they stand, any other field's
+    /// each the one child of a record named `row`. Nothing is cast or
+    /// copied; a record chunk holding an absent row is refused.
+    #[napi(factory, js_name = "_fromChunkedNative", skip_typescript)]
+    pub fn from_chunked(chunked: &JsChunkedSerie) -> Result<Self> {
+        SerieReader::from_chunked(chunked.inner.clone())
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// The record every yielded serie is typed by.

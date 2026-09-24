@@ -583,7 +583,7 @@
   {
     "name": "tradingcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -798,7 +798,7 @@
   {
     "name": "derivativestrikecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

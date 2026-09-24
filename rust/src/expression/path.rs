@@ -6,11 +6,11 @@
 //! so a field genuinely named `a.b` resolved, the scalar navigator did not so
 //! the same path selected a column and then failed to select its value, the
 //! FIX navigator read a decimal segment as a repeating-group index, and none of
-//! the plain splitters could address a list or a map at all.
+//! the plain splitters could address a serie or a map at all.
 //!
 //! One grammar answers all of it: `.name` for a struct child, `[0]` and `[-1]`
-//! for a list element, `['key']` for a map entry, `[1:3]` for a run of list
-//! elements, `[ccy = 'EUR']` for the elements of a list of structs a predicate
+//! for a serie element, `['key']` for a map entry, `[1:3]` for a run of serie
+//! elements, `[ccy = 'EUR']` for the elements of a serie of structs a predicate
 //! over the element's own fields keeps. A name the bare spelling cannot carry
 //! is quoted, so `a.b` has exactly one spelling and it is not two levels. A
 //! trailing `as name`, spelled the way SQL spells it, says what to call what
@@ -54,7 +54,7 @@ pub enum FieldSegment {
     /// `.name` - a struct child, resolved ASCII case-insensitively the way
     /// every cast in this crate resolves a name.
     Field(SmolStr),
-    /// `[0]`, `[-1]` - one list element by position, 0-based, a negative index
+    /// `[0]`, `[-1]` - one serie element by position, 0-based, a negative index
     /// counting back from the end. Out of range is null rather than an error,
     /// because absence is not a failure on the read path anywhere else here.
     Index(i64),
@@ -62,22 +62,22 @@ pub enum FieldSegment {
     /// key type. A struct child may also be reached this way when the key is
     /// text, which is the spelling JSON tooling already uses.
     Key(Literal),
-    /// `[1:3]`, `[:2]`, `[-2:]` - a run of list elements, half-open the way
+    /// `[1:3]`, `[:2]`, `[-2:]` - a run of serie elements, half-open the way
     /// every slice in this crate is, a negative end counting back from the
-    /// end. The result is a list of the same item type, and a run that
+    /// end. The result is a serie of the same item type, and a run that
     /// reaches past either end is clipped rather than refused.
     Range {
-        /// The first position kept; absent means the start of the list.
+        /// The first position kept; absent means the start of the serie.
         start: Option<i64>,
-        /// The first position not kept; absent means the end of the list.
+        /// The first position not kept; absent means the end of the serie.
         end: Option<i64>,
     },
-    /// `[ccy = 'EUR']` - the elements of a list of structs a predicate keeps,
+    /// `[ccy = 'EUR']` - the elements of a serie of structs a predicate keeps,
     /// JSONPath's `[?(...)]` without the `?`. The term is a boolean over the
     /// element's own fields: a name inside it resolves against the element
-    /// struct, never against the row. The result is a list of the same item
+    /// struct, never against the row. The result is a serie of the same item
     /// type; an element the predicate answers false or unknown for is
-    /// dropped, a null element is dropped, and a null list stays null.
+    /// dropped, a null element is dropped, and a null serie stays null.
     ///
     /// Inside brackets an integer is a position, a text literal a key, a
     /// colon a run, and anything else - a bare boolean column included - is
@@ -92,7 +92,7 @@ impl FieldSegment {
         Self::Field(name.into())
     }
 
-    /// Name a list element by position.
+    /// Name a serie element by position.
     #[must_use]
     pub const fn index(position: i64) -> Self {
         Self::Index(position)
@@ -117,13 +117,13 @@ impl FieldSegment {
         }
     }
 
-    /// Name a run of list elements, half-open.
+    /// Name a run of serie elements, half-open.
     #[must_use]
     pub const fn range(start: Option<i64>, end: Option<i64>) -> Self {
         Self::Range { start, end }
     }
 
-    /// Keep the elements of a list of structs a predicate answers true for.
+    /// Keep the elements of a serie of structs a predicate answers true for.
     ///
     /// The predicate is typed and bound against the element struct when the
     /// segment is applied, so the names it reads are the element's fields.
@@ -144,7 +144,7 @@ impl FieldSegment {
     /// Name a map entry by text key.
     ///
     /// A path key is text, because text is what a path can write down and read
-    /// back unambiguously. A whole number in brackets is a list position, and
+    /// back unambiguously. A whole number in brackets is a serie position, and
     /// a map keyed by anything else is reached through the expression
     /// grammar's own accessor, which takes a computed key and never has to
     /// render it.
@@ -219,22 +219,22 @@ impl FieldSegment {
                     "expected a struct or a map to reach .{name} through, got {other}"
                 ))),
             },
-            Self::Index(_) => match list_item(dtype) {
+            Self::Index(_) => match dtype.serie_item() {
                 Some(item) => Ok(item.clone().with_nullable(true)),
                 None => Err(typing_error(format_smolstr!(
-                    "expected a list to index into, got {dtype}"
+                    "expected a serie to index into, got {dtype}"
                 ))),
             },
-            Self::Range { .. } => match list_item(dtype) {
-                Some(item) => Ok(kept_list_field(field, item)),
+            Self::Range { .. } => match dtype.serie_item() {
+                Some(item) => Ok(kept_serie_field(field, item)),
                 None => Err(typing_error(format_smolstr!(
-                    "expected a list to take a range of, got {dtype}"
+                    "expected a serie to take a range of, got {dtype}"
                 ))),
             },
             Self::Where(predicate) => {
                 let element = element_field(field)?;
                 require_predicate(&predicate.field(&element)?, predicate)?;
-                Ok(kept_list_field(field, &element))
+                Ok(kept_serie_field(field, &element))
             }
             Self::Key(key) => match dtype {
                 map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
@@ -278,7 +278,7 @@ impl FieldSegment {
     /// # Errors
     ///
     /// Returns an error when a predicate segment is applied to anything but
-    /// a list of structs, its term does not bind against the element struct
+    /// a serie of structs, its term does not bind against the element struct
     /// or answers no boolean, or its evaluation refuses an element.
     pub fn apply_scalar(&self, field: &Field, value: &Scalar) -> Result<Scalar> {
         if value.is_null() {
@@ -338,13 +338,13 @@ impl FieldSegment {
 ///
 /// # Errors
 ///
-/// Returns an error naming the datatype when it is not a list of structs.
+/// Returns an error naming the datatype when it is not a serie of structs.
 pub(crate) fn element_field(field: &Field) -> Result<Field> {
     let dtype = unwrap_dictionary(field.dtype());
-    match list_item(dtype) {
+    match dtype.serie_item() {
         Some(item) if item.is_struct() => Ok(item.clone()),
         _ => Err(typing_error(format_smolstr!(
-            "expected a list of structs to keep elements of by a predicate, got {dtype}"
+            "expected a serie of structs to keep elements of by a predicate, got {dtype}"
         ))),
     }
 }
@@ -355,15 +355,15 @@ pub(crate) fn require_predicate(answer: &Field, predicate: &Term) -> Result<()> 
         return Ok(());
     }
     Err(typing_error(format_smolstr!(
-        "expected a boolean predicate to keep list elements by, got [{predicate}] of {}",
+        "expected a boolean predicate to keep serie elements by, got [{predicate}] of {}",
         answer.dtype()
     )))
 }
 
-/// The list a run or a predicate leaves: the same item type, and nullable,
-/// because the run or the kept elements of a null list are null.
-pub(crate) fn kept_list_field(field: &Field, item: &Field) -> Field {
-    Field::new(field.name(), DataType::list(item.clone()), true)
+/// The serie a run or a predicate leaves: the same item type, and nullable,
+/// because the run or the kept elements of a null serie are null.
+pub(crate) fn kept_serie_field(field: &Field, item: &Field) -> Field {
+    Field::new(field.name(), DataType::serie(item.clone()), true)
 }
 
 /// One struct value as the column values its field orders, whichever spelling
@@ -473,18 +473,6 @@ fn struct_child_field(field: &Field, name: &str) -> Result<Field> {
                 field.dtype()
             ))
         })
-}
-
-/// The item field of a list-shaped datatype, whichever layout it uses.
-pub(crate) fn list_item(dtype: &DataType) -> Option<&Field> {
-    match dtype {
-        DataType::List(item)
-        | DataType::ListView(item)
-        | DataType::FixedSizeList(item, _)
-        | DataType::LargeList(item)
-        | DataType::LargeListView(item) => Some(item.as_ref()),
-        _ => None,
-    }
 }
 
 fn map_key_field(map: &crate::MappingType) -> Result<Field> {

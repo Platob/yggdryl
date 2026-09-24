@@ -45,7 +45,7 @@ const TYPES = [
   ['fixed_ascii(12)', 12],
   ['fixed_ascii(16)', 16],
   ['country', 'country'],
-  ['currency', 'currency'],
+  ['ccy', 'ccy'],
   ['mic', 'mic'],
   ['cfi', 'cfi'],
   // Not a case of its own: the text column every stored row is read back
@@ -161,7 +161,7 @@ const ENCODE = {
     ['non-ASCII', 'FÉ'],
     ['lower case', 'us'],
   ],
-  currency: [
+  ccy: [
     ['typical', 'USD'],
     ['ISO 4217', 'EUR'],
     ['empty', ''],
@@ -246,7 +246,7 @@ const DECODE = {
     ['padded', [0x55, 0x00]],
     ['all NUL', [0x00, 0x00]],
   ],
-  currency: [
+  ccy: [
     ['exactly the width', [0x55, 0x53, 0x44]],
     ['padded', [0x55, 0x53, 0x00]],
     ['all NUL', [0x00, 0x00, 0x00]],
@@ -264,8 +264,8 @@ const DECODE = {
 }
 
 // The declared vocabulary the section walks: the ISO 4217 listing the package
-// ships, over the `currency` datatype it is registered against.
-const VOCABULARY = 'currency'
+// ships, over the `ccy` datatype it is registered against.
+const VOCABULARY = 'ccy'
 // The members the stepper walks, one per rule the naming applies.
 const DECLARED = [
   ['USD', 'USD'],
@@ -456,7 +456,7 @@ function vocabulary() {
   // The declaration rides on the field as ordinary metadata under one
   // reserved key, so it crosses Arrow beside the extension identity and reads
   // back as the enum that wrote it.
-  const field = fields.currency('ccy', { nullable: false })
+  const field = fields.ccy('ccy', { nullable: false })
   field.setStringEnum(declared)
   const projected = Serie.fromArrowBatch(
     textTable('USD'),
@@ -482,7 +482,7 @@ function vocabulary() {
       // the package projected.
       carried: projected.metadata.get('FIELD:enum'),
       call:
-        `const ccy = ${fieldCall('currency')}\n` +
+        `const ccy = ${fieldCall('ccy')}\n` +
         `ccy.setStringEnum(new StringEnum(${literal(ENUM)}, ` +
         `${JSON.stringify(Object.fromEntries(DECLARED))}))\n` +
         `Serie.fromArrowBatch(${textTableCall('USD')}, ` +

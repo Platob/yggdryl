@@ -65,12 +65,12 @@ impl Mix {
 /// `Parties.PartyID` resolving its first segment and refusing its second is
 /// one function disagreeing with itself.
 ///
-/// A list is stepped through before anything else, including the exact walk.
+/// A serie is stepped through before anything else, including the exact walk.
 /// A repeating group's occurrence is not a path segment - nobody spelling a
 /// path names it - so consulting [`Field::get_field_by_path`] first would let
 /// the occurrence match by its own name, which is exactly what this walk must
 /// not allow now that the occurrence carries the component's name. The exact
-/// walk still runs under the list, because it is the cheap answer and the
+/// walk still runs under the serie, because it is the cheap answer and the
 /// common one.
 pub(super) fn descend<'field>(
     field: &'field Field,
@@ -79,7 +79,7 @@ pub(super) fn descend<'field>(
     let Some((head, rest)) = segments.split_first() else {
         return Some(field);
     };
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+    if let crate::DataType::Serie(item) | crate::DataType::LargeSerie(item) = field.dtype() {
         // A group's occurrence is transparent in a schema: every one of them
         // has the field the item declares, so an index states which
         // occurrence a caller means without changing which field that is.
@@ -104,15 +104,15 @@ pub(super) fn descend<'field>(
 ///
 /// A schema is addressed by name: a position says which occurrence of a group
 /// a caller means, and every occurrence holds the same field, so a position
-/// names no child here and is spent by the list it stands on.
+/// names no child here and is spent by the serie it stands on.
 fn segment_name(segment: &FieldSegment) -> Option<&str> {
     segment.as_name()
 }
 
 /// One child by folded name, reaching through a group's occurrence.
 ///
-/// A repeating group is a List of one Struct, so a member is that struct's
-/// child and not the list's. The occurrence is transparent: it is recursed
+/// A repeating group is a Serie of one Struct, so a member is that struct's
+/// child and not the serie's. The occurrence is transparent: it is recursed
 /// through without consuming a segment and it is never matched by its own
 /// name, because that name is the component's - `Parties.PartyID` names
 /// tag 448 and must never answer the struct that happens to share its
@@ -120,7 +120,7 @@ fn segment_name(segment: &FieldSegment) -> Option<&str> {
 /// struct already carries, so matching the occurrence would shadow every one
 /// of them silently.
 fn folded_child<'field>(field: &'field Field, name: &str) -> Option<&'field Field> {
-    if let crate::DataType::List(item) | crate::DataType::LargeList(item) = field.dtype() {
+    if let crate::DataType::Serie(item) | crate::DataType::LargeSerie(item) = field.dtype() {
         return folded_child(item, name);
     }
     field
@@ -594,7 +594,7 @@ impl FixRegistry {
         self.get_definition(crate::FixCategory::Groups, name)
             .filter(|group| matches!(group.dtype(), crate::DataType::Map(_) | crate::DataType::SortedMap(_)))
             .or_else(|| self.get_field_by_name(name))
-            // Last, and only for a name nothing else answers: a List group is
+            // Last, and only for a name nothing else answers: a Serie group is
             // reached by its own name - `Parties`, never `NoPartyIDs`, which
             // names the count beside it - so a message can be written one
             // whole, which is what lifting a group out of the arrival record
@@ -622,7 +622,7 @@ impl FixRegistry {
     ///
     /// The path is the crate's one grammar, already parsed, and the same
     /// spelling a message is addressed by: a schema states one item type for
-    /// a list, so an indexed segment answers that item - every occurrence of
+    /// a serie, so an indexed segment answers that item - every occurrence of
     /// a group has the field the item declares - and `Parties[0].PartyID`
     /// therefore reaches the member here as well as in the message that
     /// carries it.
@@ -1034,7 +1034,7 @@ impl FixRegistry {
     ///
     /// 1. A nested field is a named definition and goes to
     ///    [`Self::insert`] under the category its shape names: a
-    ///    `List` or `LargeList` of non-null Struct occurrences is a group, a
+    ///    `Serie` or `LargeSerie` of non-null Struct occurrences is a group, a
     ///    Struct declaring `FIX:msgtype` is a message, any other Struct is a
     ///    component. Any other nested datatype is refused as a scalar field
     ///    would refuse it.
@@ -1403,7 +1403,7 @@ impl FixRegistry {
         if !field.dtype().is_nested() {
             return Ok(None);
         }
-        // A list of non-null scalars is one column under one name rather
+        // A serie of non-null scalars is one column under one name rather
         // than a definition, so it folds as a field does; the catalog's own
         // shape check is where that reading lives.
         match super::catalog::definition_category(field) {

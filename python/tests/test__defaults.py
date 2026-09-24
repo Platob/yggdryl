@@ -257,7 +257,7 @@ def test_typed_factory_defaults_cover_field_and_nested_child_nullability() -> No
     assert required_item.default_scalar().as_py() == 0
     assert required_item.dtype.default_scalar().as_py() == 0
 
-    fixed = yggdryl.fixed_size_list(
+    fixed = yggdryl.fixed_size_serie(
         "values", nullable_item, 2, nullable=False
     )
     assert fixed.default_scalar().as_py() == [None, None]
@@ -506,8 +506,8 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
 
     impossible = Field(
         "fixed",
-        DataType._list(
-            "fixed_size_list",
+        DataType._serie(
+            "fixed_size_serie",
             Field("item", "null", nullable=False),
             1,
         ),
@@ -515,7 +515,7 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
     )
     selected = Field(
         "variable",
-        DataType._list("list", Field("item", "null")),
+        DataType._serie("serie", Field("item", "null")),
         nullable=False,
     )
     selected_second = DataType.variant((impossible, selected))
@@ -547,8 +547,8 @@ def test_variant_defaults_retain_collapsed_physical_branch_selection() -> None:
             Field("choice", duplicate_python_hint, nullable=False),
             Field(
                 "repeated",
-                DataType._list(
-                    "fixed_size_list",
+                DataType._serie(
+                    "fixed_size_serie",
                     Field("item", duplicate_python_hint, nullable=False),
                     2,
                 ),

@@ -238,7 +238,7 @@ impl StructSerie {
             .iter()
             .any(Scalar::is_null)
             .then(|| {
-                crate::arrow::value::physical_placeholder_for_field(&self.field.fields()[position])
+                crate::serie::value::physical_placeholder_for_field(&self.field.fields()[position])
             })
             .transpose()?
             .unwrap_or(Scalar::Null);
@@ -414,23 +414,25 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Struct(_)) {
         return Ok(None);
     }
     let records = super::arrow::held::<StructArray>(&array)?;
+    let hidden = super::arrow::parent_nulls(parent, records.nulls(), budget)?;
     let children = field
         .fields()
         .iter()
         .zip(records.columns())
         .enumerate()
         .map(|(index, (child, column))| {
-            super::arrow::column_of(
+            super::arrow::child_of(
                 Arc::new(child.clone()),
                 Arc::clone(column),
-                records.nulls(),
+                hidden.as_ref(),
                 proof.child(index),
+                budget,
             )
         })
         .collect::<crate::arrow::Result<Vec<Serie>>>()?;

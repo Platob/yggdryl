@@ -1,7 +1,7 @@
 """Open ASCII vocabularies declared as enums over one packable datatype.
 
 A subclass of one of the four registered code bases - `CountryCode`,
-`CurrencyCode`, `MicCode`, `CfiCode` - or of the base `fixed_ascii(width)`
+`CcyCode`, `MicCode`, `CfiCode` - or of the base `fixed_ascii(width)`
 builds, declares its values as ASCII text, and a member *is* the integer that
 value packs into: the value's own storage bytes read big-endian. The code is
 therefore the same in every process, is exactly what the column stores, and is
@@ -15,7 +15,7 @@ bytes the packing does not read.
 
 A width says how many bytes a value may take. A registered code says what the
 value *is*, and carries that identity across Arrow under its own extension
-name, so a vocabulary declared over `CurrencyCode` builds a `currency` column
+name, so a vocabulary declared over `CcyCode` builds a `ccy` column
 rather than anonymous text.
 
 The vocabulary stays open: a valid value that was not declared reads back as a
@@ -99,7 +99,7 @@ class _AsciiCodeMeta(enum.EnumMeta):
 
 
 _COUNTRY = DataType("country")
-_CURRENCY = DataType("currency")
+_CCY = DataType("ccy")
 _MIC = DataType("mic")
 _CFI = DataType("cfi")
 
@@ -196,7 +196,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
 
         raise TypeError(
             f"{cls.__name__} declares no datatype; subclass fixed_ascii(width) "
-            "or one of the codes CountryCode, CurrencyCode, MicCode, CfiCode"
+            "or one of the codes CountryCode, CcyCode, MicCode, CfiCode"
         )
 
     @classmethod
@@ -253,7 +253,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
                 f"{', '.join(sorted(shadowed))}, which name the class API "
                 "rather than a value"
             )
-        # Read off the datatype, not the width alone: `currency` and
+        # Read off the datatype, not the width alone: `ccy` and
         # `fixed_ascii(3)` are three bytes each and are not the same base.
         base = _base_for(field.dtype)
         if base is None:
@@ -315,12 +315,12 @@ class CountryCode(AsciiCode):
         return _COUNTRY
 
 
-class CurrencyCode(AsciiCode):
-    """A vocabulary of ISO 4217 currency codes, over `currency`."""
+class CcyCode(AsciiCode):
+    """A vocabulary of ISO 4217 currency codes, over `ccy`."""
 
     @classmethod
     def dtype(cls) -> DataType:
-        return _CURRENCY
+        return _CCY
 
 
 class MicCode(AsciiCode):
@@ -342,7 +342,7 @@ class CfiCode(AsciiCode):
 #: The base each registered code declares its values under.
 _CODES: Mapping[str, type[AsciiCode]] = {
     "country": CountryCode,
-    "currency": CurrencyCode,
+    "ccy": CcyCode,
     "mic": MicCode,
     "cfi": CfiCode,
 }
@@ -367,7 +367,7 @@ __all__ = [
     "AsciiCode",
     "CfiCode",
     "CountryCode",
-    "CurrencyCode",
+    "CcyCode",
     "MicCode",
     "fixed_ascii",
 ]

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::{Element, Event, MarketElement, MarketEvent};
 use crate::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
     Side, State, Uuid,
 };
 
@@ -73,7 +73,7 @@ pub struct MarketElementData {
     srcuuids: Vec<Uuid>,
     marketoperationid: Option<i32>,
     price: Decimal18,
-    currency: Currency,
+    currency: Ccy,
     quantity: Decimal18,
     unit: String,
     side: Side,
@@ -95,11 +95,11 @@ pub struct MarketElementData {
     prevpx: Option<Decimal18>,
     prevqty: Option<Decimal18>,
     bidpx: Option<Decimal18>,
-    bidcurrency: Option<Currency>,
+    bidcurrency: Option<Ccy>,
     bidqty: Option<Decimal18>,
     bidunit: Option<String>,
     askpx: Option<Decimal18>,
-    askcurrency: Option<Currency>,
+    askcurrency: Option<Ccy>,
     askqty: Option<Decimal18>,
     askunit: Option<String>,
 }
@@ -127,7 +127,7 @@ impl Default for MarketElementData {
             symbolticker: None,
             prevpx: None,
             prevqty: None,
-            currency: Currency::none(),
+            currency: Ccy::none(),
             quantity: Decimal18::ZERO,
             unit: String::new(),
             side: Side::unknown(),
@@ -256,11 +256,11 @@ impl MarketElement for MarketElementData {
         self.price = price;
     }
 
-    fn get_currency(&self) -> &Currency {
+    fn get_currency(&self) -> &Ccy {
         &self.currency
     }
 
-    fn set_currency(&mut self, currency: Currency) {
+    fn set_currency(&mut self, currency: Ccy) {
         self.currency = currency;
     }
 
@@ -438,11 +438,11 @@ impl MarketElement for MarketElementData {
         self.bidpx = px;
     }
 
-    fn get_bidcurrency(&self) -> Option<&Currency> {
+    fn get_bidcurrency(&self) -> Option<&Ccy> {
         self.bidcurrency.as_ref()
     }
 
-    fn set_bidcurrency(&mut self, currency: Option<Currency>) {
+    fn set_bidcurrency(&mut self, currency: Option<Ccy>) {
         self.bidcurrency = currency;
     }
 
@@ -470,11 +470,11 @@ impl MarketElement for MarketElementData {
         self.askpx = px;
     }
 
-    fn get_askcurrency(&self) -> Option<&Currency> {
+    fn get_askcurrency(&self) -> Option<&Ccy> {
         self.askcurrency.as_ref()
     }
 
-    fn set_askcurrency(&mut self, currency: Option<Currency>) {
+    fn set_askcurrency(&mut self, currency: Option<Ccy>) {
         self.askcurrency = currency;
     }
 
@@ -819,11 +819,11 @@ impl MarketElement for MarketEventData {
         self.element.price = price;
     }
 
-    fn get_currency(&self) -> &Currency {
+    fn get_currency(&self) -> &Ccy {
         &self.element.currency
     }
 
-    fn set_currency(&mut self, currency: Currency) {
+    fn set_currency(&mut self, currency: Ccy) {
         self.element.currency = currency;
     }
 
@@ -995,11 +995,11 @@ impl MarketElement for MarketEventData {
         self.element.bidpx = px;
     }
 
-    fn get_bidcurrency(&self) -> Option<&Currency> {
+    fn get_bidcurrency(&self) -> Option<&Ccy> {
         self.element.bidcurrency.as_ref()
     }
 
-    fn set_bidcurrency(&mut self, currency: Option<Currency>) {
+    fn set_bidcurrency(&mut self, currency: Option<Ccy>) {
         self.element.bidcurrency = currency;
     }
 
@@ -1027,11 +1027,11 @@ impl MarketElement for MarketEventData {
         self.element.askpx = px;
     }
 
-    fn get_askcurrency(&self) -> Option<&Currency> {
+    fn get_askcurrency(&self) -> Option<&Ccy> {
         self.element.askcurrency.as_ref()
     }
 
-    fn set_askcurrency(&mut self, currency: Option<Currency>) {
+    fn set_askcurrency(&mut self, currency: Option<Ccy>) {
         self.element.askcurrency = currency;
     }
 

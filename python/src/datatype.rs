@@ -12,7 +12,7 @@ use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, P
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
 use yggdryl::{
-    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
+    DataType as CoreDataType, DataTypeId, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
     StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
 };
 
@@ -20,7 +20,7 @@ use crate::field::PyField;
 use crate::parameters::{
     PyBytesParameters, PyStringParameters, core_bytes_parameters, core_string_parameters,
 };
-use crate::scalar::{PyScalar, arrow_scalar_into_array, from_py};
+use crate::scalar::{PyScalar, from_py, pyarrow_scalar_into_array};
 use crate::{
     FieldKey, PyDifferenceIterator, compare, field_at_of, field_by_path_of, field_of,
     normalize_index, one_field_key, value_error,
@@ -160,14 +160,16 @@ pub(crate) fn core_arrow_scalar<'py>(
     let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
         yggdryl::Serie::from_arrow_array(
             Some(&field),
-            arrow_scalar_into_array(value)?,
+            pyarrow_scalar_into_array(value)?,
             ArrowCastOptions::new().with_safe(safe),
         )
         .map_err(value_error)?
         .require_arrow_array()
         .map_err(value_error)?
     } else {
-        yggdryl::arrow::scalar_array(&field, &from_py(value)?).map_err(value_error)?
+        yggdryl::Serie::from_scalars(field, [from_py(value)?])
+            .and_then(|serie| serie.require_arrow_array())
+            .map_err(value_error)?
     };
     arrow_array_to_pyarrow(py, &array, None)?.get_item(0)
 }
@@ -454,7 +456,7 @@ impl PyDataType {
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
-            "currency" => CoreDataType::Currency,
+            "ccy" => CoreDataType::Ccy,
             "mic" => CoreDataType::MicCode,
             "cfi" => CoreDataType::CfiCode,
             "isin" => CoreDataType::IsinCode,
@@ -555,25 +557,28 @@ impl PyDataType {
         Self::from_validated(result.map_err(value_error)?)
     }
 
-    /// Internal list-layout constructor preserving the exact child Field.
+    /// Internal serie-layout constructor preserving the exact child Field.
+    ///
+    /// `kind` is read as a datatype identifier, so a legacy spelling
+    /// (`list`, `large_list_view`, ...) names the layout it always did.
     #[staticmethod]
     #[pyo3(signature = (kind, item, length=None))]
     #[allow(clippy::needless_pass_by_value)]
-    fn _list(kind: &str, item: PyRef<'_, PyField>, length: Option<i32>) -> PyResult<Self> {
+    fn _serie(kind: &str, item: PyRef<'_, PyField>, length: Option<i32>) -> PyResult<Self> {
         let item = item.inner.clone();
-        let inner = match kind {
-            "list" if length.is_none() => CoreDataType::list(item),
-            "list_view" if length.is_none() => CoreDataType::list_view(item),
-            "fixed_size_list" => CoreDataType::fixed_size_list(
+        let inner = match (kind.parse::<DataTypeId>().ok(), length) {
+            (Some(DataTypeId::Serie), None) => CoreDataType::serie(item),
+            (Some(DataTypeId::SerieView), None) => CoreDataType::serie_view(item),
+            (Some(DataTypeId::FixedSizeSerie), length) => CoreDataType::fixed_size_serie(
                 item,
-                length.ok_or_else(|| PyTypeError::new_err("fixed_size_list requires a length"))?,
+                length.ok_or_else(|| PyTypeError::new_err("fixed_size_serie requires a length"))?,
             )
             .map_err(value_error)?,
-            "large_list" if length.is_none() => CoreDataType::large_list(item),
-            "large_list_view" if length.is_none() => CoreDataType::large_list_view(item),
+            (Some(DataTypeId::LargeSerie), None) => CoreDataType::large_serie(item),
+            (Some(DataTypeId::LargeSerieView), None) => CoreDataType::large_serie_view(item),
             _ => {
                 return Err(PyValueError::new_err(format!(
-                    "invalid list kind/length combination: {kind:?}, {length:?}"
+                    "invalid serie kind/length combination: {kind:?}, {length:?}"
                 )));
             }
         };
@@ -757,7 +762,7 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Resolves a registered logical name such as ``currency`` or ``Price``
+    /// Resolves a registered logical name such as ``ccy`` or ``Price``
     /// to the datatype it spells, folding case, ``_``, ``-``, and spaces.
     #[staticmethod]
     fn from_logical_name(name: &str) -> PyResult<Self> {
@@ -1021,7 +1026,7 @@ impl PyDataType {
     /// Rebuild this nested datatype with replacement children.
     ///
     /// The layout is kept, so exactly as many children as it declares are
-    /// required, and the rebuilt datatype is validated - a `list` still holds
+    /// required, and the rebuilt datatype is validated - a `serie` still holds
     /// one item field and a `map` still holds its entry struct.
     fn with_fields(&self, fields: &Bound<'_, PyAny>) -> PyResult<Self> {
         let mut children = Vec::new();
@@ -1163,7 +1168,7 @@ impl PyDataType {
         Ok(())
     }
 
-    /// Coarse datatype family, such as ``integer`` or ``list``.
+    /// Coarse datatype family, such as ``integer`` or ``nested``.
     #[getter]
     fn kind(&self) -> &'static str {
         self.inner.kind().as_str()
@@ -1509,10 +1514,10 @@ impl PyDataType {
         }
     }
 
-    /// Internal field-class conversion view of fixed-size-list arity.
-    fn _fixed_size_list_length(&self) -> Option<i32> {
+    /// Internal field-class conversion view of fixed-size-serie arity.
+    fn _fixed_size_serie_length(&self) -> Option<i32> {
         match &self.inner {
-            CoreDataType::FixedSizeList(_, length) => Some(*length),
+            CoreDataType::FixedSizeSerie(_, length) => Some(*length),
             _ => None,
         }
     }
@@ -1577,7 +1582,7 @@ impl PyDataType {
     ///
     /// Reading and writing are now the same story on both classes: `dtype[key]`
     /// and `field[key]` reach the same child, and either can rewrite it. A
-    /// datatype rebuilds itself in place, so a list stays a list and only a
+    /// datatype rebuilds itself in place, so a serie stays a serie and only a
     /// struct may grow or shrink.
     ///
     /// A datatype that has been hashed refuses, so one already used as a dict
@@ -1636,7 +1641,7 @@ impl PyDataType {
     /// Every leaf under this node, named by its dotted path.
     ///
     /// Struct nesting flattens all the way down, and a leaf under a nullable
-    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// ancestor is nullable. Collections are leaves: a serie or a map is one
     /// column, and `explode_fields` is what reaches inside one. Every name
     /// this answers is one `field_by_path` resolves.
     fn unnest_fields(&self) -> Vec<PyField> {
@@ -1649,7 +1654,7 @@ impl PyDataType {
 
     /// This node's children with every collection replaced by what it holds.
     ///
-    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// A serie answers its item, a map its entries, a dictionary or run-end
     /// node the values it encodes, and anything else itself - so the result
     /// names the same columns in the same order. One level only, so the depth
     /// is the caller's decision.

@@ -172,7 +172,7 @@ impl Term {
                     .map(|(name, value)| Tree::node(format!("{name} ="), vec![value.tree()]))
                     .collect(),
             ),
-            Self::List(items) => Tree::node("list", children(items)),
+            Self::Serie(items) => Tree::node("serie", children(items)),
             Self::Map(entries) => Tree::node(
                 "map",
                 entries
@@ -348,7 +348,7 @@ fn node_tree(node: &Node, schema: &Field) -> Tree {
                 .map(|(field, value)| Tree::node(format!("{} =", field.name()), vec![one(value)]))
                 .collect(),
         ),
-        Kind::List(items) => ("list".to_owned(), children(items)),
+        Kind::Serie(items) => ("serie".to_owned(), children(items)),
         Kind::Map(entries) => (
             "map".to_owned(),
             entries

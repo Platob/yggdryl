@@ -46,15 +46,15 @@ mod grammar {
                 // Temporal text, so a cast into and out of a temporal is one of
                 // the pairs the two tiers are compared on.
                 Field::new("clock", DataType::utf8(), true),
-                // A list, so a position and a run are compared on both tiers.
+                // A serie, so a position and a run are compared on both tiers.
                 Field::new(
                     "xs",
-                    DataType::list(DataType::Int64.nullable_field("item")),
+                    DataType::serie(DataType::Int64.nullable_field("item")),
                     true,
                 ),
-                // A list of structs holding a list of structs, so a predicate
+                // A serie of structs holding a serie of structs, so a predicate
                 // segment and one nested in another are compared on both tiers.
-                Field::new("legs", DataType::list(leg_field()), true),
+                Field::new("legs", DataType::serie(leg_field()), true),
             ])
             .map(DataType::from)
             .unwrap(),
@@ -62,13 +62,13 @@ mod grammar {
         )
     }
 
-    /// One leg: a currency, a size, and notes that are themselves a list of
+    /// One leg: a currency, a size, and notes that are themselves a serie of
     /// structs.
     fn leg_field() -> Field {
         StructType::from_fields([
             DataType::utf8().nullable_field("ccy"),
             DataType::Int64.nullable_field("size"),
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([
                     DataType::utf8().nullable_field("k"),
                     DataType::Int64.nullable_field("v"),

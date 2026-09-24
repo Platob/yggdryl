@@ -19,7 +19,6 @@ export {
   RecordOptions,
   Records,
   Selector,
-  Serie,
   SerieReader,
   ArrowCastPlan,
   StringEnum,
@@ -64,6 +63,7 @@ import type {
   BoundSelector,
   ByteIterator,
   BytesParametersInput,
+  ChunkedSerie as NativeChunkedSerie,
   DataType,
   Digest,
   Field,
@@ -79,7 +79,7 @@ import type {
   RecordOptions,
   Records,
   Selector,
-  Serie,
+  Serie as NativeSerie,
   SerieReader,
   ArrowCastPlan,
   StringParametersInput,
@@ -127,6 +127,83 @@ import type {
 } from 'apache-arrow'
 import type { Buffer } from 'node:buffer'
 import type { URL as NodeURL } from 'node:url'
+
+/** Many values as a schema-free run or the buffers of one field. */
+export type Serie = NativeSerie
+/** The public constructor converts each JavaScript row through Scalar. */
+export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
+  readonly prototype: Serie
+  new(rows?: Iterable<unknown> | null): Serie
+}
+
+/** Many columns under one field, held apart: a chunked array, or a table. */
+export type ChunkedSerie = NativeChunkedSerie
+/** Built only through its statics: there is no public constructor. */
+export declare const ChunkedSerie: Omit<typeof NativeChunkedSerie, 'prototype'> &
+  (abstract new () => ChunkedSerie) & {
+    readonly prototype: ChunkedSerie
+  }
+
+/** A serie column with 32-bit offsets, handed out by a Serie factory. */
+export declare class SerieSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie column with 64-bit offsets, handed out by a Serie factory. */
+export declare class LargeSerieSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie view with 32-bit offsets and sizes. */
+export declare class SerieViewSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  readonly sizes: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie view with 64-bit offsets and sizes. */
+export declare class LargeSerieViewSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  readonly sizes: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A fixed-size serie column, handed out by a Serie factory. */
+export declare class FixedSizeSerieSerie extends Serie {
+  private constructor()
+  readonly width: number
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A map column whose rows cut a record column of entries. */
+export declare class MapSerie extends Serie {
+  private constructor()
+  readonly entries: StructSerie
+  readonly keys: Serie
+  readonly values: Serie
+  readonly offsets: number[]
+  readonly keysSorted: boolean
+  range(index: number): [number, number] | null
+  row(index: number): StructSerie | null
+}
+
+/** A record column, handed out by a Serie factory. */
+export declare class StructSerie extends Serie {
+  private constructor()
+  readonly names: string[]
+  withoutChild(name: string): StructSerie
+}
 
 export type {
   Catalog,
@@ -242,7 +319,7 @@ export type DataTypeId =
   | 'large_utf8'
   | 'large_utf8_view'
   | 'country'
-  | 'currency'
+  | 'ccy'
   | 'mic'
   | 'cfi'
   | 'isin'
@@ -260,11 +337,11 @@ export type DataTypeId =
   | 'timezone'
   | 'mimetype'
   | 'mediatype'
-  | 'list'
-  | 'list_view'
-  | 'fixed_size_list'
-  | 'large_list'
-  | 'large_list_view'
+  | 'serie'
+  | 'serie_view'
+  | 'fixed_size_serie'
+  | 'large_serie'
+  | 'large_serie_view'
   | 'struct'
   | 'union'
   | 'dictionary'
@@ -349,7 +426,7 @@ interface DataTypeKindById {
   large_utf8: 'text'
   large_utf8_view: 'text'
   country: 'code'
-  currency: 'code'
+  ccy: 'code'
   mic: 'code'
   cfi: 'code'
   isin: 'code'
@@ -367,11 +444,11 @@ interface DataTypeKindById {
   timezone: 'text'
   mimetype: 'text'
   mediatype: 'text'
-  list: 'nested'
-  list_view: 'nested'
-  fixed_size_list: 'nested'
-  large_list: 'nested'
-  large_list_view: 'nested'
+  serie: 'nested'
+  serie_view: 'nested'
+  fixed_size_serie: 'nested'
+  large_serie: 'nested'
+  large_serie_view: 'nested'
   struct: 'nested'
   union: 'nested'
   dictionary: 'nested'
@@ -704,6 +781,46 @@ declare module './index' {
   }
 
   interface Serie extends Iterable<Scalar> {
+    /** Whether the rows equal another serie's, or a chunked serie's. */
+    equals(other: Serie | ChunkedSerie): boolean
+    /** Order the rows against another serie's, or a chunked serie's. */
+    compare(other: Serie | ChunkedSerie): number
+    /** Every row as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Iterate the rows as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /** A copy sharing the buffers; writing either copies them once. */
+    clone(): Serie
+    /** Drop the field and retain the rows as a schema-free run. */
+    intoRun(): Serie
+    /** The length rows starting at offset. */
+    slice(offset: number, length: number): Serie
+    /** A named record child, or null when absent. */
+    child(name: string): Serie | null
+    /** A record child or union member at index, or null when absent. */
+    childAt(index: number): Serie | null
+    /** Every record child or union member. */
+    children(): Serie[]
+    /** Sequence items, map entries or encoded values; null elsewhere. */
+    items(): Serie | null
+    /** The column a field path reaches, or null when absent. */
+    getChildByPath(path: string): Serie | null
+    /** Replace start..end by rows; omitted rows remove the range. */
+    splice(start: number, end: number, rows?: Iterable<unknown> | null): void
+    /** Overwrite one row through its field's contract. */
+    set(index: number, value: unknown): void
+    /** Append one row through its field's contract. */
+    push(value: unknown): void
+    /** Insert one row before index. */
+    insert(index: number, value: unknown): void
+    /** Append every row through its field's contract. */
+    extend(rows: Iterable<unknown>): void
+    /** Truncate, or grow with copies of value. */
+    resize(length: number, value: unknown): void
+    /** Set a nested cell through the field named by path. */
+    setCell(path: string, index: number, value: unknown): void
     /**
      * This column under `field` - a DataType as its required `value` field -
      * cast once; a run is refused.
@@ -728,11 +845,119 @@ declare module './index' {
       root?: Field | string,
       options?: ArrowCastOptions,
     ): SerieReader
+    /**
+     * Read one held column as a stream of the one record serie it is: a
+     * record column as it stands, any other column as the one child of a
+     * record named `row`. A run, and a record column with an absent row,
+     * are refused.
+     */
+    function fromSerie(serie: Serie): SerieReader
+    /**
+     * Read a held chunked column as the stream of its chunks, one record
+     * serie per chunk: a record's chunks as they stand, any other field's
+     * each the one child of a record named `row`. Nothing is cast or copied;
+     * a record chunk with an absent row is refused.
+     */
+    function fromChunked(chunked: ChunkedSerie): SerieReader
   }
 
   interface SerieReader extends Iterable<Serie> {
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
+  }
+
+  namespace ChunkedSerie {
+    /** The chunked serie of no chunks under `field`. */
+    function empty(field: Field | string): ChunkedSerie
+    /** One held column as its one chunk, sharing its buffers; a run is refused. */
+    function fromSerie(serie: Serie): ChunkedSerie
+    /**
+     * Held columns as chunks under one field. With no field they are one
+     * datatype in pieces under the first chunk's field, nullable where any
+     * chunk's is, and a chunk of another datatype is refused naming it; with
+     * `field`, every other layout is cast into it, one plan per run of
+     * chunks under one source field. No chunk and no field is refused.
+     */
+    function fromSeries(
+      chunks: Iterable<Serie>,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * One Apache Arrow JS vector as one chunk per `Data` it holds: of its
+     * own layout under the field `item`, nullable only where a row is null,
+     * or cast into `field` by one plan. Every chunk must lay out as the first.
+     */
+    function fromArrowArray(
+      vector: ArrowVector,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * One Apache Arrow JS table as one record chunk per batch, and one
+     * record batch as one chunk: of its own schema, named `row`, or cast
+     * into `root` by one plan.
+     */
+    function fromArrowBatch(
+      batch: ArrowRecordBatch | ArrowTable,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * Drain a native reader, one record chunk per batch, every batch cast
+     * by one plan; the reader is consumed.
+     */
+    function fromArrowReader(
+      reader: BatchReader,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+  }
+
+  interface ChunkedSerie extends Iterable<Scalar> {
+    /** Every chunk, in order, each handed out as its leaf's class. */
+    readonly chunks: Serie[]
+    /** Chunk `index`, or null past the last. */
+    chunk(index: number): Serie | null
+    /** Every row as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Iterate the rows, chunk after chunk, as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /**
+     * Append one column as a chunk: under the field as it stands, any other
+     * cast into it; a refusal leaves the chunks as they were.
+     */
+    pushChunk(chunk: Serie, options?: ArrowCastOptions): void
+    /** Every row as one column: the one join. */
+    intoSerie(): Serie
+    /**
+     * Every chunk under `field` - a DataType as its required `value` field -
+     * by one plan.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): ChunkedSerie
+    /**
+     * One Apache Arrow JS vector holding one `Data` per chunk. Arrow JS
+     * holds no vector of no `Data`, so a chunked serie of no chunk is a
+     * vector of one empty `Data`.
+     */
+    intoArrowArray(): ArrowVector
+    /**
+     * One Apache Arrow JS table of one batch per chunk: a record's chunks
+     * the batches they are, any other field's the one column of a `row`
+     * root. A record chunk with an absent row is refused. A chunked serie
+     * of no chunk is a table whose one batch is Arrow JS's empty
+     * placeholder, which crosses back as no chunk.
+     */
+    intoArrowTable(): ArrowTable
+    /** Whether the rows equal another chunked serie's, or a serie's. */
+    equals(other: ChunkedSerie | Serie): boolean
+    /**
+     * Order the rows against another chunked serie's, or a serie's, as the
+     * core orders a column's, however the rows are cut.
+     */
+    compare(other: ChunkedSerie | Serie): number
   }
 
   namespace ArrowCastPlan {
@@ -751,6 +976,8 @@ declare module './index' {
   interface ArrowCastPlan {
     /** Cast one column laid out as `source`. */
     apply(serie: Serie): Serie
+    /** Cast every chunk of a chunked column laid out as `source`, kept apart. */
+    apply(chunked: ChunkedSerie): ChunkedSerie
     /** The three cast answers this plan was compiled under. */
     readonly options: Readonly<Required<ArrowCastOptions>>
   }
@@ -926,7 +1153,7 @@ export type SizedCp1252Field = FieldOf<'sized_cp1252', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
-export type CurrencyField = FieldOf<'currency', string>
+export type CcyField = FieldOf<'ccy', string>
 /** ISO 10383, the four-character market identifier code. */
 export type MicCodeField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
@@ -947,27 +1174,27 @@ export type SideField = FieldOf<'side', string>
 export type StateField = FieldOf<'state', string>
 /** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
-export type ListField<V = unknown> = FieldOf<'list', V[], string, unknown>
-export type ListViewField<V = unknown> = FieldOf<
-  'list_view',
+export type SerieField<V = unknown> = FieldOf<'serie', V[], string, unknown>
+export type SerieViewField<V = unknown> = FieldOf<
+  'serie_view',
   V[],
   string,
   unknown
 >
-export type FixedSizeListField<V = unknown> = FieldOf<
-  'fixed_size_list',
+export type FixedSizeSerieField<V = unknown> = FieldOf<
+  'fixed_size_serie',
   V[],
   string,
   unknown
 >
-export type LargeListField<V = unknown> = FieldOf<
-  'large_list',
+export type LargeSerieField<V = unknown> = FieldOf<
+  'large_serie',
   V[],
   string,
   unknown
 >
-export type LargeListViewField<V = unknown> = FieldOf<
-  'large_list_view',
+export type LargeSerieViewField<V = unknown> = FieldOf<
+  'large_serie_view',
   V[],
   string,
   unknown
@@ -1172,32 +1399,32 @@ export interface FieldsNamespace {
     options?: FieldOptions,
   ): FixedCp1252Field
   sizedCp1252(name: string, max: number, options?: FieldOptions): SizedCp1252Field
-  list<F extends Field>(
+  serie<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): ListField<TypedFieldValue<F>>
-  listView<F extends Field>(
+  ): SerieField<TypedFieldValue<F>>
+  serieView<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): ListViewField<TypedFieldValue<F>>
-  fixedSizeList<F extends Field>(
+  ): SerieViewField<TypedFieldValue<F>>
+  fixedSizeSerie<F extends Field>(
     name: string,
     item: F,
     length: number,
     options?: FieldOptions,
-  ): FixedSizeListField<TypedFieldValue<F>>
-  largeList<F extends Field>(
+  ): FixedSizeSerieField<TypedFieldValue<F>>
+  largeSerie<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): LargeListField<TypedFieldValue<F>>
-  largeListView<F extends Field>(
+  ): LargeSerieField<TypedFieldValue<F>>
+  largeSerieView<F extends Field>(
     name: string,
     item: F,
     options?: FieldOptions,
-  ): LargeListViewField<TypedFieldValue<F>>
+  ): LargeSerieViewField<TypedFieldValue<F>>
   struct(
     name: string,
     children: Iterable<Field>,
@@ -1228,7 +1455,7 @@ export interface FieldsNamespace {
   mimetype(name: string, options?: FieldOptions): MimeTypeField
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
-  currency(name: string, options?: FieldOptions): CurrencyField
+  ccy(name: string, options?: FieldOptions): CcyField
   mic(name: string, options?: FieldOptions): MicCodeField
   cfi(name: string, options?: FieldOptions): CfiCodeField
   isin(name: string, options?: FieldOptions): IsinCodeField
@@ -1708,7 +1935,7 @@ export interface FieldsNamespace {
     max: number,
     options?: O,
   ): NamedField<'sized_cp1252', string, N, O>
-  list<
+  serie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1716,8 +1943,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  listView<
+  ): NamedField<'serie', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  serieView<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1725,8 +1952,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'list_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  fixedSizeList<
+  ): NamedField<'serie_view', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  fixedSizeSerie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1736,13 +1963,13 @@ export interface FieldsNamespace {
     length: number,
     options?: O,
   ): NamedField<
-    'fixed_size_list',
+    'fixed_size_serie',
     TypedFieldValue<F>[],
     N,
     O,
     TypedFieldInput<F>[]
   >
-  largeList<
+  largeSerie<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1750,8 +1977,8 @@ export interface FieldsNamespace {
     name: N,
     item: F,
     options?: O,
-  ): NamedField<'large_list', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
-  largeListView<
+  ): NamedField<'large_serie', TypedFieldValue<F>[], N, O, TypedFieldInput<F>[]>
+  largeSerieView<
     const N extends string,
     F extends Field,
     const O extends FieldOptionsInput = undefined,
@@ -1760,7 +1987,7 @@ export interface FieldsNamespace {
     item: F,
     options?: O,
   ): NamedField<
-    'large_list_view',
+    'large_serie_view',
     TypedFieldValue<F>[],
     N,
     O,
@@ -1827,13 +2054,13 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'country', string, N, O>
-  currency<
+  ccy<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'currency', string, N, O>
+  ): NamedField<'ccy', string, N, O>
   mic<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -2851,6 +3078,8 @@ declare module './index' {
     function fromExtensions(values: Iterable<string>): MediaType
   }
   interface Scalar extends Iterable<Scalar> {
+    /** The serie a sequence value holds, or null for another value. */
+    asSerie(): Serie | null
     /** Add an inferred JavaScript or native numeric value in Rust. */
     add(other: unknown): Scalar
     /** Subtract an inferred JavaScript or native numeric value in Rust. */
@@ -2889,42 +3118,10 @@ declare module './index' {
     intoArrayField(): Field
     /** Infer a non-null Struct root from named record rows. */
     intoStructField(): Field
-    /** Materialize this value as an Apache Arrow scalar. */
-    intoArrowScalar(field?: Field): unknown
-    /** Materialize this sequence as an Apache Arrow Vector. */
-    intoArrowArray(field?: Field): ArrowVector
-    /** Materialize record values as one Apache Arrow RecordBatch. */
-    intoArrowBatch(field?: Field): ArrowRecordBatch
-    /** Materialize record values as an Apache Arrow Table. */
-    intoArrowTable(field?: Field): ArrowTable
   }
   namespace Scalar {
     /** Convert one JavaScript value into the native value it becomes. */
     function from(value: unknown, options?: CodecOptions): Scalar
-    /** Read one item from a one-item Apache Arrow Vector, cast into `field`. */
-    function fromArrowScalar(
-      value: ArrowVector,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow Vector as the sequence of its column, cast into `field`. */
-    function fromArrowArray(
-      value: ArrowVector,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow RecordBatch as the sequence of its rows, cast into `field`. */
-    function fromArrowBatch(
-      value: ArrowRecordBatch,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
-    /** Read an Apache Arrow Table as the sequence of its rows, cast into `field`. */
-    function fromArrowTable(
-      value: ArrowTable,
-      field?: Field | string,
-      options?: ArrowCastOptions,
-    ): Scalar
   }
   interface Uri extends Iterable<string> {
     /** Join path components through the generic URI core. */

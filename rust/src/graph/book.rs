@@ -12,7 +12,7 @@ use super::{
     Element, Event, Execution, ExecutionEntry, MarketElement, MarketElementData, MarketEvent,
     MarketEventData, Order, OrderEntry, Quote, QuoteEntry, Trade,
 };
-use crate::{Currency, Decimal18, Error, Result, Side, State, Uuid};
+use crate::{Ccy, Decimal18, Error, Result, Side, State, Uuid};
 
 /// The symbol of the one consolidated book emitted in global mode.
 pub const GLOBAL_SYMBOL: &str = "GLOBAL";
@@ -1169,7 +1169,7 @@ impl BookSide {
         let mut element = self.element.clone();
         element.set_price(Decimal18::ZERO);
         element.set_quantity(Decimal18::ZERO);
-        element.set_currency(Currency::none());
+        element.set_currency(Ccy::none());
         element.set_unit(String::new());
         element.set_bidpx(None);
         element.set_bidqty(None);
@@ -1880,7 +1880,7 @@ impl Book {
         ) {
             (Some(bid), Some(ask)) if bid == ask => bid.clone(),
             (Some(currency), None) | (None, Some(currency)) => currency.clone(),
-            _ => Currency::none(),
+            _ => Ccy::none(),
         };
         event.set_currency(currency);
         let unit = match (

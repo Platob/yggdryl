@@ -3610,9 +3610,14 @@ pub(super) fn extreme(
     let Some(row) = indices.values().first().copied() else {
         return Ok(None);
     };
-    let slice = column.slice(row as usize, 1);
-    let scalar = crate::arrow::scalar_value(&field.clone().with_nullable(true), slice.as_ref())
-        .map_err(|error| invalid(format_smolstr!("{error}")))?;
+    // The one row lands under the field, read once through its leaf.
+    let scalar = crate::serie::land(
+        std::sync::Arc::new(field.clone().with_nullable(true)),
+        column.slice(row as usize, 1),
+        &crate::serie::Proof::Unproven,
+    )
+    .and_then(|extreme| Ok(extreme.scalar(0)?))
+    .map_err(|error| invalid(format_smolstr!("{error}")))?;
     Ok(single_value(&scalar, field.dtype()))
 }
 
@@ -3878,11 +3883,13 @@ fn source_value(
             return Ok(Scalar::Null);
         }
     }
-    let slice = column.slice(row, 1);
-    crate::arrow::scalar_value(
-        &transform.source().clone().with_nullable(true),
-        slice.as_ref(),
+    // The one row lands under the source field, read once through its leaf.
+    crate::serie::land(
+        std::sync::Arc::new(transform.source().clone().with_nullable(true)),
+        column.slice(row, 1),
+        &crate::serie::Proof::Unproven,
     )
+    .and_then(|source| Ok(source.scalar(0)?))
     .map_err(|error| invalid(format_smolstr!("{error}")))
 }
 

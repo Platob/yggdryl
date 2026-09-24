@@ -281,7 +281,7 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("US"), Scalar::Null]),
             ),
             (
-                Field::new("currency", DataType::Currency, true),
+                Field::new("currency", DataType::Ccy, true),
                 Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
             ),
             (
@@ -621,8 +621,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "list",
-                    DataType::list(Field::new("item", DataType::Int64, true)),
+                    "serie",
+                    DataType::serie(Field::new("item", DataType::Int64, true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -633,8 +633,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "list_view",
-                    DataType::list_view(Field::new("item", DataType::Int64, true)),
+                    "serie_view",
+                    DataType::serie_view(Field::new("item", DataType::Int64, true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -645,8 +645,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "fixed_size_list",
-                    DataType::fixed_size_list(Field::new("item", DataType::Int64, true), 2)
+                    "fixed_size_serie",
+                    DataType::fixed_size_serie(Field::new("item", DataType::Int64, true), 2)
                         .unwrap(),
                     true,
                 ),
@@ -658,8 +658,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "large_list",
-                    DataType::large_list(Field::new("item", DataType::utf8(), true)),
+                    "large_serie",
+                    DataType::large_serie(Field::new("item", DataType::utf8(), true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -670,8 +670,8 @@ mod columns {
             ),
             (
                 Field::new(
-                    "large_list_view",
-                    DataType::large_list_view(Field::new("item", DataType::utf8(), true)),
+                    "large_serie_view",
+                    DataType::large_serie_view(Field::new("item", DataType::utf8(), true)),
                     true,
                 ),
                 Scalar::from_sequence([
@@ -847,14 +847,21 @@ mod columns {
     #[test]
     fn a_column_digest_equals_the_value_feed_on_every_datatype_family() {
         for (field, values) in columns() {
-            let array = yggdryl::arrow::array_from_value(&field, &values)
+            let values = values.as_sequence().expect("a sequence of values").to_vec();
+            let array = yggdryl::Serie::from_scalars(field.clone(), values)
+                .and_then(|serie| serie.require_arrow_array())
                 .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
             // Read the values back through the shared boundary rather than reusing
             // the input, so a column that canonicalizes on the way in is compared
             // against what it actually stores.
-            let stored = yggdryl::arrow::array_to_value(&field, array.as_ref())
-                .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
-            let stored = stored.as_sequence().expect("a sequence of values");
+            let stored = yggdryl::Serie::from_arrow_array(
+                Some(&field),
+                Arc::clone(&array),
+                yggdryl::ArrowCastOptions::default(),
+            )
+            .map(Scalar::from)
+            .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
+            let stored = stored.sequence_rows().expect("a sequence of values");
 
             for algorithm in DigestAlgorithm::ALL {
                 let column = column_digests(Arc::clone(&array), &field, algorithm)
@@ -899,7 +906,8 @@ mod columns {
             };
             padded.resize(width, filler);
             let field = field.clone().with_nullable(true);
-            let array = yggdryl::arrow::array_from_value(&field, &Scalar::from_sequence(padded))
+            let array = yggdryl::Serie::from_scalars(field.clone(), padded)
+                .and_then(|serie| serie.require_arrow_array())
                 .unwrap_or_else(|error| panic!("{}: {error}", field.name()));
             fields.push(field);
             arrays.push(array);
@@ -915,8 +923,11 @@ mod columns {
             .unwrap();
         let batch = RecordBatch::try_new(Arc::new(Schema::new(arrow_fields)), arrays).unwrap();
 
-        let rows = yggdryl::arrow::batch_to_value(&batch).unwrap();
-        let rows = rows.as_sequence().expect("a sequence of rows");
+        let rows =
+            yggdryl::Serie::from_arrow_batch(None, &batch, yggdryl::ArrowCastOptions::default())
+                .map(Scalar::from)
+                .unwrap();
+        let rows = rows.sequence_rows().expect("a sequence of rows");
         assert_eq!(rows.len(), width);
 
         for algorithm in DigestAlgorithm::ALL {
@@ -1143,8 +1154,11 @@ mod columns {
     #[test]
     fn a_null_never_collides_with_an_empty_value() {
         let field = Field::new("symbol", DataType::utf8(), true);
-        let values = Scalar::from_sequence([Scalar::Null, Scalar::from("")]);
-        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+        let values = [Scalar::Null, Scalar::from("")];
+        let array = yggdryl::Serie::from_scalars(field.clone(), values)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         let column = digests(
             &column_digests(array, &field, DigestAlgorithm::Xxh3).unwrap(),
             DigestAlgorithm::Xxh3,
@@ -1157,8 +1171,11 @@ mod columns {
     #[test]
     fn the_column_width_follows_the_algorithm() {
         let field = Field::new("quantity", DataType::Int64, false);
-        let values = Scalar::from_sequence([Scalar::from(1), Scalar::from(2)]);
-        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+        let values = [Scalar::from(1), Scalar::from(2)];
+        let array = yggdryl::Serie::from_scalars(field.clone(), values)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
 
         let widths = [
             (DigestAlgorithm::Xxh32, ArrowDataType::UInt32),
@@ -1300,7 +1317,11 @@ mod columns {
             ]),
             Scalar::from_sequence([Scalar::Null, Scalar::from(0_u64)]),
         ]);
-        let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+        let rows = rows.as_sequence().expect("a run of rows").to_vec();
+        let source = yggdryl::Serie::from_scalars(root.clone(), rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
 
         let conditional = Xxh3::new()
             .apply_arrow_batch(&root, source.clone(), false)
@@ -1531,11 +1552,11 @@ mod columns {
         let item = element.clone().required_field("item");
 
         let layouts = [
-            DataType::list(item.clone()),
-            DataType::list_view(item.clone()),
-            DataType::large_list(item.clone()),
-            DataType::large_list_view(item.clone()),
-            DataType::fixed_size_list(item.clone(), 1).unwrap(),
+            DataType::serie(item.clone()),
+            DataType::serie_view(item.clone()),
+            DataType::large_serie(item.clone()),
+            DataType::large_serie_view(item.clone()),
+            DataType::fixed_size_serie(item.clone(), 1).unwrap(),
             DataType::map_of(DataType::utf8(), element.clone(), false).unwrap(),
             DataType::run_end_encoded(DataType::Int32.required_field("run_ends"), item.clone())
                 .unwrap(),

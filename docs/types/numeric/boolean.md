@@ -114,7 +114,7 @@ Two parameterless variants, so the enum is the constructor. `bool` and `void` ar
 
 ## Scalar
 
-`Boolean` wraps one `bool`, `Null` is the one absent value, and the pair is its own family: there is no leaf below either of them and no enum above. `as_bool` is a *reading* and answers only for a boolean, which is what keeps the `None` a filter's three-valued logic walks.
+`Boolean` wraps one `bool`, `Null` is the one absent value, and each is the one leaf of its family's [range](../scalar.md#families): there is nothing below either of them. `as_bool` is a *reading* and answers only for a boolean, which is what keeps the `None` a filter's three-valued logic walks.
 
 === "Rust"
 

@@ -69,6 +69,6 @@ pub(crate) fn parser_benchmarks(criterion: &mut Criterion) {
 /// registration resolves into: an ASCII width, a decimal, a temporal, and an
 /// integer.
 const FIX_ROW: &str = concat!(
-    "struct<ccy:Currency,venue:Exchange,px:Price,qty:Qty,",
+    "struct<ccy:Ccy,venue:Exchange,px:Price,qty:Qty,",
     "at:UTCTimestamp,day:LocalMktDate,seq:SeqNum>"
 );

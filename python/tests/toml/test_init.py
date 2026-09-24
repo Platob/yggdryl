@@ -82,7 +82,7 @@ def test_values_lower_to_their_canonical_native_shape() -> None:
         "deque": deque((1, 2), maxlen=4),
         "ordered": OrderedDict((("b", 2), ("a", 1))),
         "path": pathlib.PurePosixPath("nested/file.arrow"),
-        "datatype": DataType("list<int64>"),
+        "datatype": DataType("serie<int64>"),
         "field": Field("price", "decimal(18,4)", nullable=False),
     }
 
@@ -104,7 +104,7 @@ def test_values_lower_to_their_canonical_native_shape() -> None:
                 "name": "item",
                 "nullable": True,
             },
-            "type": "list",
+            "type": "serie",
         },
         "field": {
             "dtype": {"precision": 18, "scale": 4, "type": "decimal64"},

@@ -11,7 +11,6 @@ mod datatype {
 
     use yggdryl::DataType;
     use yggdryl::FieldValue as _;
-    use yggdryl::arrow::{scalar_array, scalar_value};
     use yggdryl::{
         ArrowCastOptions, DataTypeId, DataTypeKind, Field, FieldScalar, Scalar, Serie, StructType,
         UriField, UriType, Url,
@@ -146,7 +145,10 @@ mod datatype {
         );
 
         let value = url("https://example.com/a");
-        let stored = scalar_array(&field, &value).unwrap();
+        let stored = Serie::from_scalars(field.clone(), [value.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert_eq!(stored.data_type(), &ArrowDataType::Utf8);
         assert_eq!(
             stored
@@ -156,7 +158,13 @@ mod datatype {
                 .value(0),
             "https://example.com/a"
         );
-        assert_eq!(scalar_value(&field, stored.as_ref()).unwrap(), value);
+        assert_eq!(
+            Serie::from_arrow_array(Some(&field), stored, ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap(),
+            value
+        );
     }
 
     #[test]

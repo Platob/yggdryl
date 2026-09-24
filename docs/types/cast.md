@@ -7,9 +7,9 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Key | Value |
 | --- | --- |
 | Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Nullability`, `Representation`; `validate_value` and `canonicalize_value` for rows |
-| Ways in | `Serie::cast` for a column in hand; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
+| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
-| Returns | A `Serie` under the target field. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
+| Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
 | Exact input | The identity plan: the same buffers, and a column already under the target is itself |
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
@@ -18,11 +18,11 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; `nullability` decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
-| Layouts | Every list layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
+| Layouts | Every serie layout reads every other one, every byte framing reads every other one, and an encoding is a layout: a dictionary or run-end target runs its values' rule, and an encoded source is read as the column it holds |
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
-| Bindings | `Serie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
+| Bindings | `Serie`, `ChunkedSerie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
 
 ## Use
 
@@ -319,7 +319,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
 
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "list"
+    assert row.kind == "serie"
     assert row.as_py() == [1, "AAPL"]
     root.validate_value(row)
     with pytest.raises(ValueError):
@@ -653,7 +653,8 @@ Everything a cast decides from two fields - which source child answers which tar
 child order, the recursive type dispatch, the target's Arrow projection, the kernel options - is a
 function of those fields alone. `ArrowCastPlan` is that work made once: `compile` from a source
 field, a target field and the options; `preflight` to exercise the whole recursion over no rows;
-`apply` per column of the source layout, each landing a `Serie` under the target. A batch's schema
+`apply` per column of the source layout, each landing a `Serie` under the target, and `apply_chunked`
+per chunked column, every chunk under the one plan. A batch's schema
 is a source as the record it lays out as: `Field::from_arrow_schema("row", &schema)`. The plan is
 immutable and `Send + Sync`, so one serves every column of a stream and every thread of a
 parallel scan; only the masks, offsets, and dictionary reachability a column actually carries vary.
@@ -788,7 +789,7 @@ here is a whole day.
     let message = Serie::from_arrow_batch(Some(&root), &batch, ArrowCastOptions::new())
         .unwrap_err()
         .to_string();
-    assert!(message.contains("\"u\"") && message.contains("row 0"), "{message}");
+    assert!(message.contains("$[0].u"), "{message}");
 
     // A kernel moves the bytes; the field's rule still reads them.
     let day = Field::new("day", DataType::Date64, false);
@@ -813,7 +814,7 @@ here is a whole day.
         try:
             Serie.from_arrow_batch(labelled, claimed)
         except ValueError as error:
-            assert '"u"' in str(error) and "row 0" in str(error), error
+            assert "$[0].u" in str(error), error
         else:
             raise AssertionError("a label proves nothing")
 
@@ -842,7 +843,7 @@ here is a whole day.
     const labelled = new arrow.Table(new arrow.Schema([url]), plain.batches)
     const root = Field.from('row: struct<u: url> not null')
     for (const claimed of [root, undefined]) {
-      assert.throws(() => Serie.fromArrowBatch(labelled, claimed), /column "u" row 0/)
+      assert.throws(() => Serie.fromArrowBatch(labelled, claimed), /\$\[0\]\.u/)
     }
 
     // A kernel moves the bytes; the field's rule still reads them.
@@ -1111,7 +1112,7 @@ What each binding door accepts, each resolved once at the door:
 - Text into `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64` -> everything [text](../media/index.md#json) accepts, a duration included, which Arrow reads into none.
 - Text into a decimal -> read at the declared scale and refused when a digit would be dropped, on both tiers; Arrow's rounding is never the answer.
 - Text into a boolean or a number at the row tier -> this crate's canonical spelling; a column keeps Arrow's wider vocabulary behind it, as it does for temporals.
-- Two fixed sizes, list or binary -> a value change rather than a layout change, refused by name.
+- Two fixed sizes, serie or binary -> a value change rather than a layout change, refused by name.
 - A string target declaring a bound, a fixed width or a charset other than UTF-8 -> `StringIngest`: every cell validated, a `yggdryl.string` source read under its own parameters first, bare binary storage read as bytes already in the target charset; a bounded variable byte target -> `BytesIngest`, every cell's length checked ([String](text/string.md#casts) and [Bytes](text/bytes.md#casts) casts). Under `safe` a refused cell is null, under strict the row and column are named.
 - A byte source entering a code or a UUID -> read as bytes under all four binary framings, so a payload that is not US-ASCII is refused rather than nulled under strict. A fixed slot is trimmed of the padding it wrote, except into `uuid` at sixteen bytes, where every byte carries identity.
 - A code or a UUID source entering a string -> read as the text the code holds and as the canonical spelling of the identifier, under the target's own layout, charset and bound: one `StringIngest`, not a second renderer per source.
@@ -1180,7 +1181,7 @@ cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggd
 
 ### Row canonicalization
 
-Row canonicalization over a three-column row - `utf8`, `binary`, `currency` - at two payload
+Row canonicalization over a three-column row - `utf8`, `binary`, `ccy` - at two payload
 sizes. Containerized x86_64 Linux, Intel Xeon, rustc 1.94.1 release, Criterion point estimates.
 `unchanged` hands the root a row already in its declared representation; `relayout` hands the
 same row to a `large_utf8`/`large_binary` root. Both are flat in the payload because neither

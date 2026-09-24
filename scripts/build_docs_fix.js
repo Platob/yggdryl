@@ -233,7 +233,7 @@ function storeDocument(field) {
  * Every definition bucketed the way the registry files it.
  *
  * Which category a definition lands in is the core's answer rather than a
- * shape read off the datatype - a list of UUIDs is a field, a Map is a
+ * shape read off the datatype - a serie of UUIDs is a field, a Map is a
  * group - so the snapshot's own three listings say where each one belongs,
  * and the walk supplies them in the native order.
  */

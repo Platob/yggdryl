@@ -15,13 +15,13 @@ use crate::metadata::{
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::{
-    BloombergCodeType, BooleanType, BytesType, CfiCodeType, CountryType, CurrencyType,
-    CusipCodeType, DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType,
-    Float16Type, Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type,
-    Int32Type, Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType,
-    MimeTypeType, NullType, RunEndType, SedolCodeType, SerieType, SideType, StateType, StringType,
-    StructType, TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type,
-    UInt64Type, UnionType, UriType, UuidType, VariantType, VersionType,
+    BloombergCodeType, BooleanType, BytesType, CcyType, CfiCodeType, CountryType, CusipCodeType,
+    DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType, Float16Type,
+    Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type,
+    Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType, MimeTypeType,
+    NullType, RunEndType, SedolCodeType, SerieType, SideType, StateType, StringType, StructType,
+    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
+    UnionType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1606,10 +1606,15 @@ field_leaves! {
     [Time32, Time64] => TimeField / TimeType,
     [Duration32, Duration64] => DurationField / DurationType,
     [Interval] => IntervalField / IntervalType,
-    [Bytes] => BytesField / BytesType,
-    [String] => StringField / StringType,
+    [Binary, LargeBinary, BinaryView, LargeBinaryView, FixedBinary, SizedBinary] => BytesField / BytesType,
+    [
+        Utf8String, LargeUtf8String, Utf8StringView, LargeUtf8StringView, FixedUtf8String,
+        SizedUtf8String, AsciiString, LargeAsciiString, AsciiStringView, LargeAsciiStringView,
+        FixedAsciiString, SizedAsciiString, Cp1252String, LargeCp1252String, Cp1252StringView,
+        LargeCp1252StringView, FixedCp1252String, SizedCp1252String
+    ] => StringField / StringType,
     [Country] => CountryField / CountryType,
-    [Currency] => CurrencyField / CurrencyType,
+    [Ccy] => CcyField / CcyType,
     [MicCode] => MicCodeField / MicCodeType,
     [CfiCode] => CfiCodeField / CfiCodeType,
     [IsinCode] => IsinCodeField / IsinCodeType,
@@ -1619,7 +1624,7 @@ field_leaves! {
     [Uuid] => UuidField / UuidType,
     [Version] => VersionField / VersionType,
     [Url, Urn] => UriField / UriType,
-    [List, ListView, FixedSizeList, LargeList, LargeListView] => SerieField / SerieType,
+    [Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView] => SerieField / SerieType,
     [Struct] => StructField / StructType,
     [Union] => UnionField / UnionType,
     [Dictionary] => EnumField / EnumType,
@@ -1709,7 +1714,7 @@ impl Field {
     /// field identifier.
     ///
     /// The walk is over every child a datatype has - struct and union members,
-    /// a list's item, a map's entries, a run-end layout's two - because an
+    /// a serie's item, a map's entries, a run-end layout's two - because an
     /// identifier is unique across a whole schema and not only across one
     /// level of it.
     ///
@@ -1720,7 +1725,7 @@ impl Field {
     /// # fn main() -> yggdryl::Result<()> {
     /// let mut schema = DataType::from(StructType::from_fields([
     ///     DataType::Int64.required_field("id"),
-    ///     DataType::list(DataType::utf8().nullable_field("item")).nullable_field("tags"),
+    ///     DataType::serie(DataType::utf8().nullable_field("item")).nullable_field("tags"),
     /// ])?)
     /// .required_field("row");
     ///
@@ -2319,10 +2324,10 @@ mod arrow {
         /// The community `geoarrow.wkb` over Binary storage; the parsed GeoArrow
         /// document says whether it is a geometry or a geography.
         Geospatial(GeospatialParameters),
-        /// A code's own `yggdryl.{country,currency,mic,cfi}` over Utf8.
+        /// A code's own `yggdryl.{country,ccy,mic,cfi}` over Utf8.
         ///
         /// It is separate from [`Self::String`] because the identity is the
-        /// point: text under `yggdryl.currency` is a currency and the same text
+        /// point: text under `yggdryl.ccy` is a currency and the same text
         /// under `yggdryl.string` is a bounded ASCII string, and neither imports
         /// as the other.
         Code(DataType),
@@ -2377,7 +2382,7 @@ mod arrow {
     /// `arrow.parquet.variant` over the two binaries of the Parquet Variant
     /// encoding with an empty extension metadata document,
     /// `yggdryl.string` and `yggdryl.bytes` over the storage their documents lay
-    /// out, each registered code's own `yggdryl.{country,currency,mic,cfi}` over
+    /// out, each registered code's own `yggdryl.{country,ccy,mic,cfi}` over
     /// Utf8, and the canonical `arrow.uuid` over `FixedSizeBinary(16)`, each with
     /// an empty or absent document.
     ///
@@ -2396,15 +2401,28 @@ mod arrow {
     /// # Errors
     ///
     /// Returns an error when a recognized `geoarrow.wkb` field carries a GeoArrow
-    /// metadata document that does not parse, or when a dictionary key is not an
-    /// Arrow type this crate imports.
+    /// metadata document that does not parse, when a dictionary key is not an
+    /// Arrow type this crate imports, or when a field carries the retired
+    /// `yggdryl.currency` extension name.
     pub(crate) fn recognized_arrow_extension(
         metadata: &HashMap<String, String>,
         storage: &ArrowDataType,
+        location: impl std::fmt::Display,
     ) -> Result<Option<RecognizedExtension>> {
         let Some(name) = metadata.get(EXTENSION_TYPE_NAME_KEY) else {
             return Ok(None);
         };
+        // Retired identity is refused before storage/encoding can make it look
+        // foreign; unrecognized third-party extensions still keep their storage.
+        if name.as_str() == concat!("yggdryl.", "currency") {
+            return Err(Error::InvalidMetadataValue {
+                key: SmolStr::new_static(EXTENSION_TYPE_NAME_KEY),
+                reason: format_smolstr!(
+                    "Arrow field {location} uses retired extension {name:?}; expected {:?}",
+                    crate::CCY_EXTENSION_NAME
+                ),
+            });
+        }
         let document = metadata
             .get(EXTENSION_TYPE_METADATA_KEY)
             .map(String::as_str);
@@ -2501,7 +2519,7 @@ mod arrow {
     /// Arrow's `Dictionary` carries a bare datatype for its values rather than a
     /// field, so a dictionary-encoded extension column has nowhere but the field
     /// itself to declare its identity. Peeling here is what lets a caller's own
-    /// `dictionary(int32, currency)` - or `dictionary(int32, uuid)`, or any other
+    /// `dictionary(int32, ccy)` - or `dictionary(int32, uuid)`, or any other
     /// extension - import as itself rather than as anonymous storage; no datatype
     /// this crate recognizes *is* a dictionary - a code is its own fixed binary -
     /// so this is only about not losing what a caller composed.
@@ -2539,7 +2557,9 @@ mod arrow {
     /// the reserved `PARQUET:field_id` spelling, and the projection back to Arrow
     /// re-derives them from the datatype. Every other field imports unchanged.
     fn imported_parts(value: &ArrowField, depth: usize) -> Result<(DataType, Metadata)> {
-        if let Some(recognized) = recognized_arrow_extension(value.metadata(), value.data_type())? {
+        if let Some(recognized) =
+            recognized_arrow_extension(value.metadata(), value.data_type(), value.name())?
+        {
             let stripped: HashMap<String, String> = value
                 .metadata()
                 .iter()

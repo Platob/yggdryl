@@ -238,7 +238,7 @@ assert_eq!(CfiCode::coarse('X', None), None);
 
 ## Two statements of one instrument
 
-`CfiCode::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the family contract states it - the merged code where the two describe one instrument, this code as it is where they do not. Rust only.
+`CfiCode::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the `CodeValue` leaf contract states it - the merged code where the two describe one instrument, this code as it is where they do not. Rust only.
 
 ```rust
 use yggdryl::{CfiCode, CodeValue};
@@ -253,7 +253,7 @@ assert_eq!(CfiCode::merged("ESVUFR", "ESNUFR").as_deref(), Some("ESXUFR"));
 assert_eq!(CfiCode::merged("ESVUFR", "DBFNFB"), None);
 assert_eq!(CfiCode::merged("ESVUFR", "EPVNFR"), None);
 
-// The family contract reads the same rule, keeping this code where they do not.
+// The leaf contract reads the same rule, keeping this code where they do not.
 assert_eq!(CfiCode::new("ESVXXX")?.merge_with(&CfiCode::new("ESXUFR")?).as_str(), "ESVUFR");
 assert_eq!(CfiCode::new("ESVUFR")?.merge_with(&CfiCode::new("DBFNFB")?).as_str(), "ESVUFR");
 ```

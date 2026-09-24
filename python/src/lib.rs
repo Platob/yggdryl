@@ -25,10 +25,10 @@ use crate::uri::{
     PyArn, PyParameterIterator, PyParameters, PyUri, PyUriPathIterator, PyUrl, PyUrn,
 };
 
-mod arrow;
 mod avro;
 mod cast;
 mod charset;
+mod chunked_serie;
 mod coding;
 mod datatype;
 mod enums;
@@ -452,15 +452,15 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyField>()?;
     module.add_class::<PyScalar>()?;
     module.add_class::<serie::PySerie>()?;
-    module.add_class::<serie::PyListSerie>()?;
-    module.add_class::<serie::PyLargeListSerie>()?;
-    module.add_class::<serie::PyListViewSerie>()?;
-    module.add_class::<serie::PyLargeListViewSerie>()?;
-    module.add_class::<serie::PyFixedSizeListSerie>()?;
+    module.add_class::<serie::PySerieSerie>()?;
+    module.add_class::<serie::PyLargeSerieSerie>()?;
+    module.add_class::<serie::PySerieViewSerie>()?;
+    module.add_class::<serie::PyLargeSerieViewSerie>()?;
+    module.add_class::<serie::PyFixedSizeSerieSerie>()?;
     module.add_class::<serie::PyMapSerie>()?;
     module.add_class::<serie::PyStructSerie>()?;
     module.add_class::<serie::PySerieReader>()?;
-    module.add_class::<crate::arrow::PyArrowScalar>()?;
+    module.add_class::<chunked_serie::PyChunkedSerie>()?;
     module.add_class::<scalar::PyScalarIterator>()?;
     module.add_class::<scalar::PyScalarEntryIterator>()?;
     module.add_class::<avro::PyAvroSchema>()?;
@@ -505,7 +505,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     coding::handles::register(module)?;
     media::handles::register(module)?;
     module.add_function(wrap_pyfunction!(enum_values, module)?)?;
-    module.add_function(wrap_pyfunction!(crate::arrow::arrow_shapes, module)?)?;
     module.add_function(wrap_pyfunction!(iomedia::combined, module)?)?;
     module.add_class::<crate::iobase::PyIOCursor>()?;
     module.add_class::<crate::iobase::PyByteIterator>()?;

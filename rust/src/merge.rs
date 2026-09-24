@@ -12,7 +12,7 @@
 //!    position, so a column inferred as all-null takes the shape the other
 //!    side gives it.
 //! 3. Two nested layouts of the same family recurse into their children. A
-//!    struct takes the *union* of its fields; a list, map, or run-end node
+//!    struct takes the *union* of its fields; a serie, map, or run-end node
 //!    merges the children it has.
 //! 4. Bytes win. A byte type paired with anything else answers bytes,
 //!    because bytes are the container every other encoding fits inside. Two
@@ -140,8 +140,8 @@ impl DataType {
     ///
     /// // Narrowing keeps the tighter type: the code over the width it stores
     /// // in, and the decimal's own backing over the one precision needs.
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), false)?, DataType::Currency);
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+    /// assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), false)?, DataType::Ccy);
+    /// assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), true)?, DataType::utf8());
     /// assert_eq!(
     ///     DataType::decimal128(10, 2)?.merge_with(&DataType::Int16, true)?,
     ///     DataType::decimal128(10, 2)?,
@@ -297,14 +297,14 @@ fn merge_nested(
             )
             .map(Some)
         }
-        _ => match (list_parts(left), list_parts(right)) {
+        _ => match (serie_parts(left), serie_parts(right)) {
             (
                 Some((left_rank, left_item, left_size)),
                 Some((right_rank, right_item, right_size)),
             ) => {
                 let item = left_item.merge(right_item, how, recode)?;
                 // A fixed size survives only when both sides fix the same one;
-                // otherwise the pair is a variable list.
+                // otherwise the pair is a variable serie.
                 let rank = if left_size == right_size {
                     how.pick((left_rank, left_rank), (right_rank, right_rank))
                 } else {
@@ -313,7 +313,7 @@ fn merge_nested(
                         (right_rank.max(1), right_rank.max(1)),
                     )
                 };
-                rebuild_list(
+                rebuild_serie(
                     rank,
                     item,
                     left_size.filter(|size| Some(*size) == right_size),
@@ -393,28 +393,28 @@ fn merge_union(
     DataType::union(merged, mode)
 }
 
-/// The item field, width rank, and fixed size of a list-shaped layout.
-fn list_parts(dtype: &DataType) -> Option<(u8, &Field, Option<i32>)> {
+/// The item field, width rank, and fixed size of a serie-shaped layout.
+fn serie_parts(dtype: &DataType) -> Option<(u8, &Field, Option<i32>)> {
     match dtype {
-        DataType::List(item) => Some((0, item, None)),
-        DataType::ListView(item) => Some((1, item, None)),
-        DataType::FixedSizeList(item, size) => Some((0, item, Some(*size))),
-        DataType::LargeList(item) => Some((2, item, None)),
-        DataType::LargeListView(item) => Some((3, item, None)),
+        DataType::Serie(item) => Some((0, item, None)),
+        DataType::SerieView(item) => Some((1, item, None)),
+        DataType::FixedSizeSerie(item, size) => Some((0, item, Some(*size))),
+        DataType::LargeSerie(item) => Some((2, item, None)),
+        DataType::LargeSerieView(item) => Some((3, item, None)),
         _ => None,
     }
 }
 
-/// Rebuild a list-shaped layout from a width rank and an item.
-fn rebuild_list(rank: u8, item: Field, size: Option<i32>) -> Result<DataType> {
+/// Rebuild a serie-shaped layout from a width rank and an item.
+fn rebuild_serie(rank: u8, item: Field, size: Option<i32>) -> Result<DataType> {
     if let Some(size) = size {
-        return DataType::fixed_size_list(item, size);
+        return DataType::fixed_size_serie(item, size);
     }
     Ok(match rank {
-        1 => DataType::list_view(item),
-        2 => DataType::large_list(item),
-        3 => DataType::large_list_view(item),
-        _ => DataType::list(item),
+        1 => DataType::serie_view(item),
+        2 => DataType::large_serie(item),
+        3 => DataType::large_serie_view(item),
+        _ => DataType::serie(item),
     })
 }
 
@@ -470,7 +470,7 @@ fn is_mergeable_into_bytes(dtype: &DataType) -> bool {
     !matches!(
         dtype,
         DataType::Struct(_) | DataType::Union(..) | DataType::Map(_) | DataType::SortedMap(_)
-    ) && list_parts(dtype).is_none()
+    ) && serie_parts(dtype).is_none()
 }
 
 /// Whether a type has a text rendering a merge may fall back to.
@@ -563,7 +563,9 @@ const fn variable_bytes_shape(view: bool, large: bool) -> BytesType {
 /// width is a maximum over variable text rather than a layout.
 fn fixed_width(dtype: &DataType) -> Option<usize> {
     match dtype {
-        DataType::Bytes(_) | DataType::String(_) | DataType::Uuid => dtype.fixed_byte_width(),
+        crate::bytes_dtypes!() | crate::string_dtypes!() | DataType::Uuid => {
+            dtype.fixed_byte_width()
+        }
         _ => None,
     }
 }
@@ -596,7 +598,7 @@ fn rebuild_binary(
             }
         }
     }
-    Ok(DataType::Bytes(match parameters.is_fixed() {
+    Ok(DataType::from(match parameters.is_fixed() {
         true => BytesType::Binary,
         false => parameters,
     }))
@@ -610,9 +612,9 @@ fn rebuild_binary(
 /// decides only the pairs that disagree, and [`merge_text`] is what says when
 /// the code identity survives.
 fn text_parameters(dtype: &DataType) -> Option<StringType> {
-    match dtype {
-        DataType::String(parameters) => Some(*parameters),
-        _ => {
+    match dtype.string_parameters() {
+        Some(parameters) => Some(parameters),
+        None => {
             let width = u32::try_from(dtype.code_width()?).ok()?;
             Some(StringType::SizedAsciiString(width))
         }
@@ -622,11 +624,11 @@ fn text_parameters(dtype: &DataType) -> Option<StringType> {
 /// Meet two text types, conserving a registered code where the direction can.
 ///
 /// Widening never answers a code: a code names fewer values than the width it
-/// is bounded by, so the type holding both sides is the plain one - `currency`
+/// is bounded by, so the type holding both sides is the plain one - `ccy`
 /// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
 /// the tightest type that names both, and there the code is the answer
-/// whenever the other side is at least as general: `currency` beside `utf8`
-/// or `ascii(3)` narrows to `currency`, and only a side narrower still, such
+/// whenever the other side is at least as general: `ccy` beside `utf8`
+/// or `ascii(3)` narrows to `ccy`, and only a side narrower still, such
 /// as `ascii(2)`, outranks it.
 ///
 /// Two *different* codes are the one pair neither direction answers with a

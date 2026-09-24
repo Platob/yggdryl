@@ -135,6 +135,7 @@ nav:
       - Field: types/field.md
       - Scalar: types/scalar.md
       - Serie: types/serie.md
+      - Chunked serie: types/chunked-serie.md
       - Cast: types/cast.md
       - Paths: types/paths.md
       - Protocol: types/protocol.md
@@ -158,7 +159,7 @@ nav:
       - Bytes: types/text/bytes.md
     - Codes:
       - types/codes/index.md
-      - Currency: types/codes/currency.md
+      - Ccy: types/codes/ccy.md
       - Country: types/codes/country.md
       - MIC: types/codes/mic.md
       - CFI: types/codes/cfi.md
@@ -173,7 +174,7 @@ nav:
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md
-      - List: types/nested/list.md
+      - Serie layouts: types/nested/sequence.md
       - Map: types/nested/map.md
       - Union: types/nested/union.md
       - Dictionary: types/nested/dictionary.md
@@ -200,8 +201,6 @@ nav:
     - Patterns: uri/patterns.md
   - Arrow:
     - arrow/index.md
-    - Scalars: arrow/scalars.md
-    - Values: arrow/values.md
     - Schema: arrow/schema.md
     - Readers: arrow/readers.md
   - Expression:

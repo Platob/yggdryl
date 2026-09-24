@@ -39,7 +39,7 @@ fn maps_are_groups_with_one_reserved_counter_and_never_scalar_fields() {
     registry.insert(group.clone()).unwrap();
     assert_eq!(registry.get_field_by_counter(65_090), Some(&group));
     assert!(registry.get_field_by_tag(65_090).is_none());
-    // Every wire field is a leaf but the list of scalars the crate owns:
+    // Every wire field is a leaf but the serie of scalars the crate owns:
     // `srcuuids` is one column under one name, because a group's occurrence
     // is a Struct of members a wire states one tag at a time and it is not.
     assert!(
@@ -103,8 +103,8 @@ fn map_counters_refuse_scalar_collisions_in_either_insertion_order() {
 }
 
 #[test]
-fn ordinary_list_groups_still_require_a_separate_int32_counter() {
-    let mut group = DataType::list(
+fn ordinary_serie_groups_still_require_a_separate_int32_counter() {
+    let mut group = DataType::serie(
         StructType::from_fields([DataType::utf8().nullable_field("id")])
             .map(DataType::from)
             .unwrap()
@@ -185,8 +185,18 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
         assert_eq!(&msg.into_row(schema).unwrap(), row);
-        let array = yggdryl::arrow::scalar_array(schema, row).unwrap();
-        let restored = yggdryl::arrow::scalar_value(schema, array.as_ref()).unwrap();
+        let array = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        let restored = yggdryl::Serie::from_arrow_array(
+            Some(schema),
+            array,
+            yggdryl::ArrowCastOptions::default(),
+        )
+        .unwrap()
+        .scalar(0)
+        .unwrap();
         assert_eq!(&restored, row);
         let restored_msg = FixMsg::from_row(Arc::clone(&registry), schema, &restored).unwrap();
         assert_eq!(&restored_msg.into_row(schema).unwrap(), row);

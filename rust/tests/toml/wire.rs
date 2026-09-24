@@ -56,7 +56,7 @@ fn named_zones_and_durations_have_no_native_toml_scalar() {
     assert!(native_datetime(&duration).is_none());
 }
 
-/// A `list<int64>` value held as a column, and the run of its rows.
+/// A `serie<int64>` value held as a column, and the run of its rows.
 fn int64s() -> (Scalar, Scalar) {
     let item = yggdryl::Field::new("item", yggdryl::DataType::Int64, false);
     let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
@@ -65,7 +65,7 @@ fn int64s() -> (Scalar, Scalar) {
 }
 
 #[test]
-fn a_list_column_writes_as_the_run_of_its_rows() {
+fn a_serie_column_writes_as_the_run_of_its_rows() {
     let (column, run) = int64s();
     let table = |xs: Scalar| Scalar::from_struct([("xs", xs)]).unwrap();
     for formatting in [

@@ -1,17 +1,17 @@
 //! The serie family's datatype: many of one thing, in all five layouts
 //! Arrow gives it - and the run a row is.
 //!
-//! The five `DataType` list variants are the family's leaves, and
+//! The five `DataType` serie variants are the family's leaves, and
 //! [`SerieType`] is the view they all answer, so a caller walking a column's
 //! item never asks which offset width it was stored under.
 //!
 //! | leaf | offsets | length |
 //! | --- | --- | --- |
-//! | [`SerieType::List`] | 32-bit | variable |
-//! | [`SerieType::ListView`] | 32-bit, viewed | variable |
-//! | [`SerieType::FixedSizeList`] | none | fixed |
-//! | [`SerieType::LargeList`] | 64-bit | variable |
-//! | [`SerieType::LargeListView`] | 64-bit, viewed | variable |
+//! | [`SerieType::Serie`] | 32-bit | variable |
+//! | [`SerieType::SerieView`] | 32-bit, viewed | variable |
+//! | [`SerieType::FixedSizeSerie`] | none | fixed |
+//! | [`SerieType::LargeSerie`] | 64-bit | variable |
+//! | [`SerieType::LargeSerieView`] | 64-bit, viewed | variable |
 //!
 //! The five differ in how the rows are laid out, never in what a row holds:
 //! one item field, the same for all of them. That is why [`Self::item`] is
@@ -43,10 +43,10 @@ use crate::datatype::validate_non_negative;
 use crate::value::DataTypeValue;
 use crate::value::Value;
 use crate::value::{Children, NestedValue};
-use crate::{DataType, DataTypeId, DataTypeKind, Field, Result, Serie};
+use crate::{DataType, DataTypeId, Field, Result, Serie};
 use serde::{Deserialize, Serialize};
 
-/// The serie family's datatype view.
+/// The typed field's payload over the five serie layouts.
 ///
 /// Each leaf holds the one item field its rows repeat; the fixed-size leaf
 /// also holds how many times.
@@ -54,15 +54,15 @@ use serde::{Deserialize, Serialize};
 #[non_exhaustive]
 pub enum SerieType {
     /// Variable length, 32-bit offsets.
-    List(Arc<Field>),
+    Serie(Arc<Field>),
     /// Variable length, 32-bit offsets, viewed.
-    ListView(Arc<Field>),
+    SerieView(Arc<Field>),
     /// Exactly `length` items per row.
-    FixedSizeList(Arc<Field>, i32),
+    FixedSizeSerie(Arc<Field>, i32),
     /// Variable length, 64-bit offsets.
-    LargeList(Arc<Field>),
+    LargeSerie(Arc<Field>),
     /// Variable length, 64-bit offsets, viewed.
-    LargeListView(Arc<Field>),
+    LargeSerieView(Arc<Field>),
 }
 
 impl SerieType {
@@ -73,63 +73,63 @@ impl SerieType {
     /// interchangeable to a reader walking children.
     pub fn item(&self) -> &Field {
         match self {
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => item,
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => item,
         }
     }
 
     /// Returns the shared item field without cloning the field itself.
     pub fn item_ref(&self) -> &Arc<Field> {
         match self {
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => item,
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => item,
         }
     }
 
     /// Returns how many items each row holds, or `None` when it varies.
     pub const fn fixed_length(&self) -> Option<i32> {
         match self {
-            Self::FixedSizeList(_, length) => Some(*length),
+            Self::FixedSizeSerie(_, length) => Some(*length),
             _ => None,
         }
     }
 
     /// Returns whether rows are stored as views into a shared buffer.
     pub const fn is_view(&self) -> bool {
-        matches!(self, Self::ListView(_) | Self::LargeListView(_))
+        matches!(self, Self::SerieView(_) | Self::LargeSerieView(_))
     }
 
     /// Returns whether rows carry 64-bit offsets.
     pub const fn is_large(&self) -> bool {
-        matches!(self, Self::LargeList(_) | Self::LargeListView(_))
+        matches!(self, Self::LargeSerie(_) | Self::LargeSerieView(_))
     }
 
     /// Returns this leaf with its item field replaced.
     pub fn with_item(&self, item: Field) -> Self {
         let item = Arc::new(item);
         match self {
-            Self::List(_) => Self::List(item),
-            Self::ListView(_) => Self::ListView(item),
-            Self::FixedSizeList(_, length) => Self::FixedSizeList(item, *length),
-            Self::LargeList(_) => Self::LargeList(item),
-            Self::LargeListView(_) => Self::LargeListView(item),
+            Self::Serie(_) => Self::Serie(item),
+            Self::SerieView(_) => Self::SerieView(item),
+            Self::FixedSizeSerie(_, length) => Self::FixedSizeSerie(item, *length),
+            Self::LargeSerie(_) => Self::LargeSerie(item),
+            Self::LargeSerieView(_) => Self::LargeSerieView(item),
         }
     }
 
     /// Returns whether both payloads are the same leaf over one allocation.
     pub fn shares_storage_with(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::List(left), Self::List(right))
-            | (Self::ListView(left), Self::ListView(right))
-            | (Self::LargeList(left), Self::LargeList(right))
-            | (Self::LargeListView(left), Self::LargeListView(right)) => Arc::ptr_eq(left, right),
-            (Self::FixedSizeList(left, left_len), Self::FixedSizeList(right, right_len)) => {
+            (Self::Serie(left), Self::Serie(right))
+            | (Self::SerieView(left), Self::SerieView(right))
+            | (Self::LargeSerie(left), Self::LargeSerie(right))
+            | (Self::LargeSerieView(left), Self::LargeSerieView(right)) => Arc::ptr_eq(left, right),
+            (Self::FixedSizeSerie(left, left_len), Self::FixedSizeSerie(right, right_len)) => {
                 left_len == right_len && Arc::ptr_eq(left, right)
             }
             _ => false,
@@ -144,32 +144,28 @@ impl DataTypeValue for SerieType {
 
     fn id(&self) -> DataTypeId {
         match self {
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Serie(_) => DataTypeId::Serie,
+            Self::SerieView(_) => DataTypeId::SerieView,
+            Self::FixedSizeSerie(..) => DataTypeId::FixedSizeSerie,
+            Self::LargeSerie(_) => DataTypeId::LargeSerie,
+            Self::LargeSerieView(_) => DataTypeId::LargeSerieView,
         }
     }
 
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Nested
-    }
-
     fn validate(&self) -> Result<()> {
-        if let Self::FixedSizeList(_, length) = self {
-            validate_non_negative("FixedSizeList", "length", *length)?;
+        if let Self::FixedSizeSerie(_, length) = self {
+            validate_non_negative("FixedSizeSerie", "length", *length)?;
         }
         self.item().validate()
     }
 
     fn into_dtype(self) -> DataType {
         match self {
-            Self::List(item) => DataType::List(item),
-            Self::ListView(item) => DataType::ListView(item),
-            Self::FixedSizeList(item, length) => DataType::FixedSizeList(item, length),
-            Self::LargeList(item) => DataType::LargeList(item),
-            Self::LargeListView(item) => DataType::LargeListView(item),
+            Self::Serie(item) => DataType::Serie(item),
+            Self::SerieView(item) => DataType::SerieView(item),
+            Self::FixedSizeSerie(item, length) => DataType::FixedSizeSerie(item, length),
+            Self::LargeSerie(item) => DataType::LargeSerie(item),
+            Self::LargeSerieView(item) => DataType::LargeSerieView(item),
         }
     }
 
@@ -191,65 +187,65 @@ impl From<SerieType> for DataType {
 }
 
 impl DataType {
-    /// Creates a 32-bit variable list.
-    pub fn list(item: Field) -> Self {
-        Self::List(Arc::new(item))
+    /// Creates a 32-bit variable serie.
+    pub fn serie(item: Field) -> Self {
+        Self::Serie(Arc::new(item))
     }
 
-    /// Creates a 32-bit variable list-view.
-    pub fn list_view(item: Field) -> Self {
-        Self::ListView(Arc::new(item))
+    /// Creates a 32-bit variable serie view.
+    pub fn serie_view(item: Field) -> Self {
+        Self::SerieView(Arc::new(item))
     }
 
-    /// Creates a fixed-size list after validating its element count.
-    pub fn fixed_size_list(item: Field, length: i32) -> Result<Self> {
-        validate_non_negative("FixedSizeList", "length", length)?;
-        Ok(Self::FixedSizeList(Arc::new(item), length))
+    /// Creates a fixed-size serie after validating its element count.
+    pub fn fixed_size_serie(item: Field, length: i32) -> Result<Self> {
+        validate_non_negative("FixedSizeSerie", "length", length)?;
+        Ok(Self::FixedSizeSerie(Arc::new(item), length))
     }
 
-    /// Creates a 64-bit variable list.
-    pub fn large_list(item: Field) -> Self {
-        Self::LargeList(Arc::new(item))
+    /// Creates a 64-bit variable serie.
+    pub fn large_serie(item: Field) -> Self {
+        Self::LargeSerie(Arc::new(item))
     }
 
-    /// Creates a 64-bit variable list-view.
-    pub fn large_list_view(item: Field) -> Self {
-        Self::LargeListView(Arc::new(item))
+    /// Creates a 64-bit variable serie view.
+    pub fn large_serie_view(item: Field) -> Self {
+        Self::LargeSerieView(Arc::new(item))
     }
 
-    /// The serie family's view of any of the five list layouts, `None`
+    /// The typed field's payload over any of the five serie layouts, `None`
     /// for every other datatype: a shared-pointer clone of the item field.
     #[must_use]
     pub fn as_serie_type(&self) -> Option<SerieType> {
         match self {
-            Self::List(item) => Some(SerieType::List(Arc::clone(item))),
-            Self::ListView(item) => Some(SerieType::ListView(Arc::clone(item))),
-            Self::FixedSizeList(item, length) => {
-                Some(SerieType::FixedSizeList(Arc::clone(item), *length))
+            Self::Serie(item) => Some(SerieType::Serie(Arc::clone(item))),
+            Self::SerieView(item) => Some(SerieType::SerieView(Arc::clone(item))),
+            Self::FixedSizeSerie(item, length) => {
+                Some(SerieType::FixedSizeSerie(Arc::clone(item), *length))
             }
-            Self::LargeList(item) => Some(SerieType::LargeList(Arc::clone(item))),
-            Self::LargeListView(item) => Some(SerieType::LargeListView(Arc::clone(item))),
+            Self::LargeSerie(item) => Some(SerieType::LargeSerie(Arc::clone(item))),
+            Self::LargeSerieView(item) => Some(SerieType::LargeSerieView(Arc::clone(item))),
             _ => None,
         }
     }
 
     /// Move a sequence or mapping `value` into the variant this datatype
-    /// declares: a `large_list` value is a [`Scalar::LargeList`], a sorted
+    /// declares: a `large_serie` value is a [`Scalar::LargeSerie`], a sorted
     /// map's a [`Scalar::SortedMap`]. The rows are untouched; any other
     /// value, or a value of another family, is answered as it is.
     #[must_use]
     pub fn declared_layout(&self, value: Scalar) -> Scalar {
         match value {
-            Scalar::List(serie)
-            | Scalar::ListView(serie)
-            | Scalar::FixedSizeList(serie)
-            | Scalar::LargeList(serie)
-            | Scalar::LargeListView(serie) => match self {
-                Self::ListView(_) => Scalar::ListView(serie),
-                Self::FixedSizeList(..) => Scalar::FixedSizeList(serie),
-                Self::LargeList(_) => Scalar::LargeList(serie),
-                Self::LargeListView(_) => Scalar::LargeListView(serie),
-                _ => Scalar::List(serie),
+            Scalar::Serie(serie)
+            | Scalar::SerieView(serie)
+            | Scalar::FixedSizeSerie(serie)
+            | Scalar::LargeSerie(serie)
+            | Scalar::LargeSerieView(serie) => match self {
+                Self::SerieView(_) => Scalar::SerieView(serie),
+                Self::FixedSizeSerie(..) => Scalar::FixedSizeSerie(serie),
+                Self::LargeSerie(_) => Scalar::LargeSerie(serie),
+                Self::LargeSerieView(_) => Scalar::LargeSerieView(serie),
+                _ => Scalar::Serie(serie),
             },
             Scalar::Map(entries) | Scalar::SortedMap(entries) => match self {
                 Self::SortedMap(_) => Scalar::SortedMap(entries),
@@ -259,15 +255,15 @@ impl DataType {
         }
     }
 
-    /// Returns the item field of any of the five list layouts, borrowed.
+    /// Returns the item field of any of the five serie layouts, borrowed.
     #[must_use]
-    pub fn list_item(&self) -> Option<&Field> {
+    pub fn serie_item(&self) -> Option<&Field> {
         match self {
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => Some(item),
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => Some(item),
             _ => None,
         }
     }
@@ -324,21 +320,21 @@ impl NestedValue for Run {
 
 impl Value for Run {
     fn dtype(&self) -> Result<DataType> {
-        Scalar::List(Serie::Run(self.clone())).dtype()
+        Scalar::Serie(Serie::Run(self.clone())).dtype()
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::List(Serie::Run(self))
+        Scalar::Serie(Serie::Run(self))
     }
 
     /// Answers only a run: a column is the same variant and not this leaf.
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::List(Serie::Run(value))
-            | Scalar::ListView(Serie::Run(value))
-            | Scalar::FixedSizeList(Serie::Run(value))
-            | Scalar::LargeList(Serie::Run(value))
-            | Scalar::LargeListView(Serie::Run(value)) => Some(value),
+            Scalar::Serie(Serie::Run(value))
+            | Scalar::SerieView(Serie::Run(value))
+            | Scalar::FixedSizeSerie(Serie::Run(value))
+            | Scalar::LargeSerie(Serie::Run(value))
+            | Scalar::LargeSerieView(Serie::Run(value)) => Some(value),
             _ => None,
         }
     }
@@ -369,23 +365,23 @@ mod arrow {
         /// has no Arrow projection.
         pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
             Ok(match self {
-                Self::List(item) => {
+                Self::Serie(item) => {
                     ArrowDataType::List(item.as_ref().clone().into_arrow_field_ref()?)
                 }
-                Self::ListView(item) => {
+                Self::SerieView(item) => {
                     ArrowDataType::ListView(item.as_ref().clone().into_arrow_field_ref()?)
                 }
-                Self::FixedSizeList(item, length) => {
-                    validate_non_negative("FixedSizeList", "length", *length)?;
+                Self::FixedSizeSerie(item, length) => {
+                    validate_non_negative("FixedSizeSerie", "length", *length)?;
                     ArrowDataType::FixedSizeList(
                         item.as_ref().clone().into_arrow_field_ref()?,
                         *length,
                     )
                 }
-                Self::LargeList(item) => {
+                Self::LargeSerie(item) => {
                     ArrowDataType::LargeList(item.as_ref().clone().into_arrow_field_ref()?)
                 }
-                Self::LargeListView(item) => {
+                Self::LargeSerieView(item) => {
                     ArrowDataType::LargeListView(item.as_ref().clone().into_arrow_field_ref()?)
                 }
             })
@@ -398,16 +394,18 @@ mod arrow {
         /// [`Self::arrow_storage`] carries the rule.
         pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
             Ok(match self {
-                Self::List(item) => ArrowDataType::List(arrow_field_ref_from_shared(item)?),
-                Self::ListView(item) => ArrowDataType::ListView(arrow_field_ref_from_shared(item)?),
-                Self::FixedSizeList(item, length) => {
-                    validate_non_negative("FixedSizeList", "length", length)?;
+                Self::Serie(item) => ArrowDataType::List(arrow_field_ref_from_shared(item)?),
+                Self::SerieView(item) => {
+                    ArrowDataType::ListView(arrow_field_ref_from_shared(item)?)
+                }
+                Self::FixedSizeSerie(item, length) => {
+                    validate_non_negative("FixedSizeSerie", "length", length)?;
                     ArrowDataType::FixedSizeList(arrow_field_ref_from_shared(item)?, length)
                 }
-                Self::LargeList(item) => {
+                Self::LargeSerie(item) => {
                     ArrowDataType::LargeList(arrow_field_ref_from_shared(item)?)
                 }
-                Self::LargeListView(item) => {
+                Self::LargeSerieView(item) => {
                     ArrowDataType::LargeListView(arrow_field_ref_from_shared(item)?)
                 }
             })
@@ -421,14 +419,14 @@ mod arrow {
         pub(crate) fn arrow_ffi_parts(&self) -> Result<ArrowFfiParts> {
             let child = vec![self.item().clone().into_arrow_field_ffi()?];
             Ok(match self {
-                Self::List(_) => ArrowFfiParts::nested("+l", child),
-                Self::ListView(_) => ArrowFfiParts::nested("+vl", child),
-                Self::FixedSizeList(_, length) => {
-                    validate_non_negative("FixedSizeList", "length", *length)?;
+                Self::Serie(_) => ArrowFfiParts::nested("+l", child),
+                Self::SerieView(_) => ArrowFfiParts::nested("+vl", child),
+                Self::FixedSizeSerie(_, length) => {
+                    validate_non_negative("FixedSizeSerie", "length", *length)?;
                     ArrowFfiParts::nested(format!("+w:{length}"), child)
                 }
-                Self::LargeList(_) => ArrowFfiParts::nested("+L", child),
-                Self::LargeListView(_) => ArrowFfiParts::nested("+vL", child),
+                Self::LargeSerie(_) => ArrowFfiParts::nested("+L", child),
+                Self::LargeSerieView(_) => ArrowFfiParts::nested("+vL", child),
             })
         }
 
@@ -444,20 +442,20 @@ mod arrow {
             depth: usize,
         ) -> Result<DataType> {
             match value {
-                ArrowDataType::List(item) => Ok(DataType::list(
+                ArrowDataType::List(item) => Ok(DataType::serie(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                 )),
-                ArrowDataType::ListView(item) => Ok(DataType::list_view(
+                ArrowDataType::ListView(item) => Ok(DataType::serie_view(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                 )),
-                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_list(
+                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_serie(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                     *length,
                 ),
-                ArrowDataType::LargeList(item) => Ok(DataType::large_list(
+                ArrowDataType::LargeList(item) => Ok(DataType::large_serie(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                 )),
-                ArrowDataType::LargeListView(item) => Ok(DataType::large_list_view(
+                ArrowDataType::LargeListView(item) => Ok(DataType::large_serie_view(
                     Field::from_arrow_field_ref_at_depth(Arc::clone(item), depth)?,
                 )),
                 other => Err(invalid(
@@ -477,20 +475,20 @@ mod arrow {
             depth: usize,
         ) -> Result<DataType> {
             match value {
-                ArrowDataType::List(item) => Ok(DataType::list(
+                ArrowDataType::List(item) => Ok(DataType::serie(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),
-                ArrowDataType::ListView(item) => Ok(DataType::list_view(
+                ArrowDataType::ListView(item) => Ok(DataType::serie_view(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),
-                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_list(
+                ArrowDataType::FixedSizeList(item, length) => DataType::fixed_size_serie(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                     length,
                 ),
-                ArrowDataType::LargeList(item) => Ok(DataType::large_list(
+                ArrowDataType::LargeList(item) => Ok(DataType::large_serie(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),
-                ArrowDataType::LargeListView(item) => Ok(DataType::large_list_view(
+                ArrowDataType::LargeListView(item) => Ok(DataType::large_serie_view(
                     Field::from_arrow_field_ref_at_depth(item, depth)?,
                 )),
                 other => Self::from_arrow_storage_at_depth(&other, depth),

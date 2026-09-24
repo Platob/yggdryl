@@ -6,11 +6,12 @@
 //! both questions - which layout, how long - and every byte column the crate
 //! has is one member of it.
 //!
-//! [`BytesType`] names the four layouts. [`BytesType`] is a layout
-//! beside the bound its values are held to. [`crate::DataType::bytes`] builds
-//! the one byte datatype, [`crate::DataType::Bytes`], from them; `binary`,
-//! `varbinary(16)` and `fixed_binary(16)` are spellings of it, never
-//! datatypes of their own. [`Bytes`] is the one byte value.
+//! [`BytesType`] names the six leaves: four layouts, a fixed width and a
+//! bounded one, and each leaf is a [`crate::DataType`] variant and a
+//! [`crate::Scalar`] variant of its own. [`crate::DataType::bytes`] builds the
+//! datatype a leaf names; `binary`, `varbinary(16)` and `fixed_binary(16)`
+//! are spellings of leaves, never datatypes of their own. [`Bytes`] is the
+//! payload every byte value holds.
 //!
 //! ```
 //! use yggdryl::BytesType;
@@ -620,9 +621,10 @@ pub(crate) mod casts {
 impl DataType {
     /// The byte datatype these parameters name.
     ///
-    /// This is the family's one constructor. Every byte column is
-    /// [`DataType::Bytes`]; what differs is what it declares, and the leaf
-    /// says all of it - the layout, and the number where the leaf carries one.
+    /// This is the family's one constructor. Every byte column is one of the
+    /// six leaf variants, [`DataType::Binary`] to [`DataType::SizedBinary`],
+    /// and the leaf says all of it - the layout, and the number where the
+    /// leaf carries one.
     ///
     /// ```
     /// use yggdryl::BytesType;
@@ -643,31 +645,31 @@ impl DataType {
     pub fn bytes(parameters: impl Into<BytesType>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
-        Ok(Self::Bytes(parameters))
+        Ok(Self::from(parameters))
     }
 
     /// Unbounded bytes with 32-bit offsets - Arrow's `Binary`.
     #[must_use]
     pub const fn binary() -> Self {
-        Self::Bytes(BytesType::Binary)
+        Self::Binary
     }
 
     /// Unbounded bytes with 64-bit offsets - Arrow's `LargeBinary`.
     #[must_use]
     pub const fn large_binary() -> Self {
-        Self::Bytes(BytesType::LargeBinary)
+        Self::LargeBinary
     }
 
     /// Unbounded bytes in the view layout - Arrow's `BinaryView`.
     #[must_use]
     pub const fn binary_view() -> Self {
-        Self::Bytes(BytesType::BinaryView)
+        Self::BinaryView
     }
 
     /// Any length in the viewed layout over 64-bit offsets.
     #[must_use]
     pub const fn large_binary_view() -> Self {
-        Self::Bytes(BytesType::LargeBinaryView)
+        Self::LargeBinaryView
     }
 
     /// At most `max` bytes per value, over 32-bit offsets.
@@ -706,7 +708,12 @@ impl DataType {
     #[must_use]
     pub const fn bytes_parameters(&self) -> Option<BytesType> {
         match self {
-            Self::Bytes(parameters) => Some(*parameters),
+            Self::Binary => Some(BytesType::Binary),
+            Self::LargeBinary => Some(BytesType::LargeBinary),
+            Self::BinaryView => Some(BytesType::BinaryView),
+            Self::LargeBinaryView => Some(BytesType::LargeBinaryView),
+            Self::FixedBinary(number) => Some(BytesType::FixedBinary(*number)),
+            Self::SizedBinary(number) => Some(BytesType::SizedBinary(*number)),
             _ => None,
         }
     }
@@ -875,11 +882,10 @@ impl BytesType {
         matches!(self, Self::LargeBinary | Self::LargeBinaryView)
     }
 
-    /// The leaf a *value* of this column carries.
+    /// The leaf whose storage this column fills.
     ///
-    /// A maximum is the column's rule and not the value's, so a value in a
-    /// sized column is the plain binary it fills; every other leaf is already
-    /// what a value is.
+    /// A maximum is a rule laid over plain storage, so a sized column stores
+    /// as plain binary; every other leaf is its own storage.
     #[must_use]
     pub const fn storage(self) -> Self {
         match self {
@@ -1198,20 +1204,17 @@ impl Parser<'_> {
 // behind them, a longer payload is one shared `Arc<[u8]>` that clones by
 // reference count, and a `&'static [u8]` costs nothing at all. Equality,
 // order and hashing read the payload alone - a value is one value whichever
-// column holds it - and the parameters ride beside it. A maximum is the
-// column's rule and never the value's: a value read out of `binary(32)` is
-// a `binary`, exactly as an integer read out of a bounded column is an
-// integer.
+// column holds it. The leaf a value is written under, the number a fixed or
+// sized one states included, is the [`Scalar`] variant that holds it.
 // ------------------------------------------------------------------------
 
 /// How many bytes a [`Bytes`] holds without reaching the heap.
 ///
-/// Thirty: the value has forty bytes to spend beside its parameters, and a
-/// digest, a key, a UUID's sixteen bytes or a WKB point all fit under it and
-/// never allocate.
+/// Thirty: the value has thirty-two bytes to spend, and a digest, a key, a
+/// UUID's sixteen bytes or a WKB point all fit under it and never allocate.
 pub const INLINE_BYTES: usize = 30;
 
-/// One byte value: its payload and the parameters it is stored under.
+/// One byte value's payload.
 ///
 /// ```
 /// use yggdryl::{Bytes, BytesType, INLINE_BYTES};
@@ -1224,21 +1227,21 @@ pub const INLINE_BYTES: usize = 30;
 /// let long = Bytes::new(vec![0_u8; INLINE_BYTES + 1]);
 /// assert!(!long.is_inline());
 ///
-/// // A value is one value whichever layout it is stored under.
-/// let large = BytesType::LargeBinary;
-/// let restated = short.clone().try_with_parameters(large)?;
-/// assert_eq!(restated, short);
-/// assert_eq!(restated.dtype()?, DataType::large_binary());
+/// // The leaf is the variant that holds the payload, and a value is one
+/// // value whichever leaf it is stored under.
+/// let large = BytesType::LargeBinary.scalar(short.clone())?;
+/// assert_eq!(large, Scalar::LargeBinary(short.clone()));
+/// assert_eq!(large, Scalar::from(vec![1_u8, 2, 3]));
+/// assert_eq!(large.dtype()?, DataType::large_binary());
 ///
 /// // It is the crate's byte string, so it is the `Scalar` bytes too.
-/// assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Bytes(short));
+/// assert_eq!(Scalar::from(vec![1_u8, 2, 3]), Scalar::Binary(short));
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Clone)]
 pub struct Bytes {
     repr: Repr,
-    parameters: BytesType,
 }
 
 /// Where the payload is.
@@ -1253,7 +1256,7 @@ enum Repr {
 }
 
 const _: () = assert!(std::mem::size_of::<Repr>() == 32);
-const _: () = assert!(std::mem::size_of::<Bytes>() == 40);
+const _: () = assert!(std::mem::size_of::<Bytes>() == 32);
 
 impl Repr {
     /// Copy a payload into the value where it fits, else share it.
@@ -1288,7 +1291,7 @@ impl Repr {
 }
 
 impl Bytes {
-    /// A payload the binary already holds, under the default parameters.
+    /// A payload the binary already holds.
     ///
     /// Costs nothing: no copy, no count, so a constant payload is a
     /// constant value.
@@ -1296,18 +1299,16 @@ impl Bytes {
     pub const fn new_static(payload: &'static [u8]) -> Self {
         Self {
             repr: Repr::Static(payload),
-            parameters: BytesType::Binary,
         }
     }
 
-    /// A byte value under the default parameters: the `binary` layout.
+    /// The bytes of `payload`.
     ///
     /// A payload up to [`INLINE_BYTES`] long is copied into the value and
     /// allocates nothing; a longer one is one shared `Arc<[u8]>`.
     pub fn new(payload: impl AsRef<[u8]>) -> Self {
         Self {
             repr: Repr::owned(payload.as_ref()),
-            parameters: BytesType::default(),
         }
     }
 
@@ -1321,79 +1322,13 @@ impl Bytes {
             Some(inline) => inline,
             None => Repr::Shared(payload),
         };
-        Self {
-            repr,
-            parameters: BytesType::default(),
-        }
-    }
-
-    /// The payload a column's own storage holds, under the parameters it
-    /// declares, checked when it was written and not again here.
-    pub(crate) fn from_storage(payload: &[u8], parameters: BytesType) -> Self {
-        Self {
-            repr: Repr::owned(payload),
-            parameters: parameters.storage(),
-        }
-    }
-
-    /// Restate the same payload under other parameters.
-    ///
-    /// The payload does not change and a shared handle is shared, not copied;
-    /// what changes is the datatype [`Self::dtype`] declares. The bound is
-    /// checked and, on a variable layout, not carried: it is the column's
-    /// rule, and the value answers the layout alone. Bytes are never padded,
-    /// so a fixed layout takes exactly its width and nothing shorter.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidDataType`] for the fixed layout with no width,
-    /// and [`Error::InvalidRecord`] naming the bound and the payload length
-    /// when the payload does not fit it.
-    pub fn try_with_parameters(mut self, parameters: BytesType) -> Result<Self> {
-        parameters.validate()?;
-        let held = self.len();
-        let refusal = |expected: std::fmt::Arguments<'_>| Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got(expected, format_smolstr!("{held} bytes")),
-        };
-        if let Some(width) = parameters.fixed() {
-            if held != width as usize {
-                return Err(refusal(format_args!("exactly {width} bytes")));
-            }
-        } else if let Some(max) = parameters.max() {
-            if held > max as usize {
-                return Err(refusal(format_args!("at most {max} bytes")));
-            }
-        }
-        self.parameters = parameters.storage();
-        Ok(self)
+        Self { repr }
     }
 
     /// Borrow the payload.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.repr.as_bytes()
-    }
-
-    /// The parameters this value is stored under.
-    ///
-    /// Never a maximum: that is the column's declaration, and a value read
-    /// out of a bounded column answers its layout alone.
-    #[must_use]
-    pub const fn parameters(&self) -> BytesType {
-        self.parameters
-    }
-
-    /// The layout this value is stored in.
-    #[must_use]
-    pub const fn layout(&self) -> BytesType {
-        self.parameters
-    }
-
-    /// The exact storage width, on the fixed layout alone.
-    #[must_use]
-    pub const fn fixed(&self) -> Option<u32> {
-        self.parameters.fixed()
     }
 
     /// Whether the payload lives inside the value with no heap behind it.
@@ -1422,16 +1357,6 @@ impl Bytes {
             Repr::Inline { .. } | Repr::Static(_) => Arc::from(self.as_bytes()),
         }
     }
-
-    /// The datatype this value materializes into.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidDataType`] only for parameters a constructor
-    /// would have refused, which no door here builds.
-    pub fn dtype(&self) -> Result<DataType> {
-        DataType::bytes(self.parameters)
-    }
 }
 
 impl Default for Bytes {
@@ -1455,7 +1380,7 @@ impl AsRef<[u8]> for Bytes {
 }
 
 /// Sound because [`Eq`], [`Ord`] and [`Hash`] read the payload alone, as a
-/// slice's do; folding the parameters into any of them would break every
+/// slice's do; folding anything else into any of them would break every
 /// keyed lookup by slice.
 impl Borrow<[u8]> for Bytes {
     fn borrow(&self) -> &[u8] {
@@ -1473,15 +1398,9 @@ impl fmt::Display for Bytes {
 }
 
 impl fmt::Debug for Bytes {
-    /// The payload in hex, and the parameters when they are not the default,
-    /// so two values that compare equal but declare different columns print
-    /// apart in a failing assertion.
+    /// The payload in hex.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "0x{self}")?;
-        if self.parameters != BytesType::default() {
-            write!(formatter, " as {}", self.parameters)?;
-        }
-        Ok(())
+        write!(formatter, "0x{self}")
     }
 }
 
@@ -1574,10 +1493,7 @@ impl<const N: usize> From<[u8; N]> for Bytes {
 impl From<Vec<u8>> for Bytes {
     fn from(value: Vec<u8>) -> Self {
         match Repr::inline(&value) {
-            Some(repr) => Self {
-                repr,
-                parameters: BytesType::default(),
-            },
+            Some(repr) => Self { repr },
             None => Self::from_shared(Arc::from(value)),
         }
     }
@@ -1586,10 +1502,7 @@ impl From<Vec<u8>> for Bytes {
 impl From<Box<[u8]>> for Bytes {
     fn from(value: Box<[u8]>) -> Self {
         match Repr::inline(&value) {
-            Some(repr) => Self {
-                repr,
-                parameters: BytesType::default(),
-            },
+            Some(repr) => Self { repr },
             None => Self::from_shared(Arc::from(value)),
         }
     }
@@ -1628,34 +1541,14 @@ impl FromIterator<u8> for Bytes {
     }
 }
 
-/// The serde representation of a byte value that declares more than its
-/// payload.
-///
-/// The ordinary value - the `binary` layout - serializes its payload and
-/// nothing else, exactly as it always has; a layout or a fixed width is what
-/// makes a value carry more than that.
-#[derive(Deserialize, Serialize)]
-struct Declared<'a> {
-    layout: SmolStr,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    fixed: Option<u32>,
-    bytes: Cow<'a, [u8]>,
-}
-
+/// The payload alone: the leaf a value is written under is the [`Scalar`]
+/// variant's, and the `Scalar` wire writes it.
 impl Serialize for Bytes {
     fn serialize<S: serde::Serializer>(
         &self,
         serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
-        if self.parameters == BytesType::default() {
-            return serializer.collect_seq(self.as_bytes());
-        }
-        Declared {
-            layout: SmolStr::new(self.parameters().as_str()),
-            fixed: self.fixed(),
-            bytes: Cow::Borrowed(self.as_bytes()),
-        }
-        .serialize(serializer)
+        serializer.collect_seq(self.as_bytes())
     }
 }
 
@@ -1663,74 +1556,245 @@ impl<'de> Deserialize<'de> for Bytes {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
+        Cow::<'de, [u8]>::deserialize(deserializer).map(Self::from)
+    }
+}
+
+/// A byte value as the `Scalar` wire writes it under the `bytes` tag.
+///
+/// The ordinary value - the `binary` leaf - writes its payload and nothing
+/// else, which is what it always wrote; any other leaf writes the whole
+/// declaration: its name, the number a fixed or sized leaf states under
+/// `fixed`, and the payload.
+pub(crate) struct BytesWire<'a> {
+    pub(crate) leaf: BytesType,
+    pub(crate) payload: &'a Bytes,
+}
+
+#[derive(Deserialize, Serialize)]
+struct DeclaredBytes<'a> {
+    layout: SmolStr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fixed: Option<u32>,
+    bytes: Cow<'a, [u8]>,
+}
+
+impl Serialize for BytesWire<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        if self.leaf == BytesType::Binary {
+            return serializer.collect_seq(self.payload.as_bytes());
+        }
+        DeclaredBytes {
+            layout: SmolStr::new_static(self.leaf.as_str()),
+            fixed: self.leaf.bound(),
+            bytes: Cow::Borrowed(self.payload.as_bytes()),
+        }
+        .serialize(serializer)
+    }
+}
+
+/// What the `bytes` tag reads back: the value, in the leaf its document
+/// names and checked against it.
+///
+/// The number is what the document stated, never the placeholder a numbered
+/// name carries, so a numbered layout with no `fixed` is refused; a number
+/// beside a leaf that states none is not read, as it never was.
+pub(crate) struct BytesDocument(pub(crate) Scalar);
+
+impl<'de> Deserialize<'de> for BytesDocument {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
         #[derive(Deserialize)]
         #[serde(untagged)]
         enum Representation<'a> {
             Plain(Cow<'a, [u8]>),
-            Declared(Declared<'a>),
+            Declared(DeclaredBytes<'a>),
         }
 
+        use serde::de::Error as _;
         match Representation::deserialize(deserializer)? {
-            Representation::Plain(bytes) => Ok(Self::from(bytes)),
+            Representation::Plain(bytes) => Ok(Self(Scalar::Binary(Bytes::from(bytes)))),
             Representation::Declared(declared) => {
-                let named =
-                    BytesType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
-                let parameters = match (named, declared.fixed) {
-                    (BytesType::FixedBinary(_), Some(width)) => BytesType::FixedBinary(width),
-                    (other, _) => other,
+                let named = BytesType::from_str(&declared.layout).map_err(D::Error::custom)?;
+                let leaf = match named.bound() {
+                    Some(_) => named
+                        .with_declared_bound(declared.fixed)
+                        .map_err(D::Error::custom)?,
+                    None => named,
                 };
-                Self::from(declared.bytes)
-                    .try_with_parameters(parameters)
-                    .map_err(serde::de::Error::custom)
+                leaf.scalar(Bytes::from(declared.bytes))
+                    .map(Self)
+                    .map_err(D::Error::custom)
             }
         }
     }
 }
 
-impl Value for Bytes {
-    fn dtype(&self) -> Result<DataType> {
-        Self::dtype(self)
+impl BytesType {
+    /// Hold `payload` as a value of this leaf, checked against it.
+    ///
+    /// Bytes are never padded, so a fixed leaf takes exactly its width and
+    /// nothing shorter, and a sized one at most its maximum.
+    ///
+    /// ```
+    /// use yggdryl::{BytesType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let digest = BytesType::FixedBinary(2).scalar(vec![1_u8, 2])?;
+    /// assert_eq!(digest, Scalar::from(vec![1_u8, 2]), "a value is one value in any column");
+    /// assert_eq!(digest.bytes_parameters(), Some(BytesType::FixedBinary(2)));
+    /// assert!(BytesType::FixedBinary(2).scalar(vec![1_u8]).is_err());
+    /// assert!(BytesType::SizedBinary(1).scalar(vec![1_u8, 2]).is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] for a numbered leaf stating zero,
+    /// and [`Error::InvalidRecord`] naming the number and the payload length
+    /// when the payload does not fit it.
+    pub fn scalar(self, payload: impl Into<Bytes>) -> Result<Scalar> {
+        Ok(self.adopt(self.admit(payload.into())?))
     }
 
-    fn into_scalar(self) -> Scalar {
-        Scalar::Bytes(self)
+    /// The value of this leaf holding `payload`, which is not checked again.
+    ///
+    /// The door for what was checked where it was written: a cell of a
+    /// column's own storage, and a payload [`Self::admit`] already answered.
+    pub(crate) fn adopt(self, payload: Bytes) -> Scalar {
+        match self {
+            Self::Binary => Scalar::Binary(payload),
+            Self::LargeBinary => Scalar::LargeBinary(payload),
+            Self::BinaryView => Scalar::BinaryView(payload),
+            Self::LargeBinaryView => Scalar::LargeBinaryView(payload),
+            Self::FixedBinary(number) => Scalar::FixedBinary(payload, number),
+            Self::SizedBinary(number) => Scalar::SizedBinary(payload, number),
+        }
     }
 
-    fn from_scalar(value: &Scalar) -> Option<&Self> {
-        match value {
-            Scalar::Bytes(value) => Some(value),
+    /// The payload of [`Self::scalar`], checked against this leaf and not yet
+    /// held as a value.
+    pub(crate) fn admit(self, payload: Bytes) -> Result<Bytes> {
+        self.validate()?;
+        let held = payload.len();
+        let refusal = |expected: std::fmt::Arguments<'_>| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: crate::text::expected_got(expected, format_smolstr!("{held} bytes")),
+        };
+        if let Some(width) = self.fixed() {
+            if held != width as usize {
+                return Err(refusal(format_args!("exactly {width} bytes")));
+            }
+        } else if let Some(max) = self.max() {
+            if held > max as usize {
+                return Err(refusal(format_args!("at most {max} bytes")));
+            }
+        }
+        Ok(payload)
+    }
+}
+
+// ------------------------------------------------------------------------
+// A byte value: the leaf is the variant, the payload its payload.
+// ------------------------------------------------------------------------
+impl Scalar {
+    /// The leaf a byte value is written under, `None` for every other value.
+    ///
+    /// The leaf is the variant, the number a fixed or sized one carries
+    /// included. A geospatial value and a UUID are bytes with an identity
+    /// rather than byte values, so they answer `None` here; [`Self::as_bytes`]
+    /// reads a geospatial payload.
+    ///
+    /// ```
+    /// use yggdryl::{BytesType, DataType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(Scalar::from(vec![1_u8]).bytes_parameters(), Some(BytesType::Binary));
+    /// let bounded = DataType::sized_binary(8)?.scalar(vec![1_u8])?;
+    /// assert_eq!(bounded.bytes_parameters(), Some(BytesType::SizedBinary(8)));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn bytes_parameters(&self) -> Option<BytesType> {
+        match self.bytes_leaf() {
+            Some((leaf, _)) => Some(leaf),
+            None => None,
+        }
+    }
+
+    /// The payload of a byte value of any leaf, `None` for every other value
+    /// - a geospatial one included, which [`Self::as_bytes`] reads.
+    #[must_use]
+    pub const fn as_binary(&self) -> Option<&Bytes> {
+        match self {
+            crate::bytes_scalars!(payload) => Some(payload),
+            _ => None,
+        }
+    }
+
+    /// The leaf and the payload of a byte value.
+    pub(crate) const fn bytes_leaf(&self) -> Option<(BytesType, &Bytes)> {
+        match self {
+            Self::Binary(payload) => Some((BytesType::Binary, payload)),
+            Self::LargeBinary(payload) => Some((BytesType::LargeBinary, payload)),
+            Self::BinaryView(payload) => Some((BytesType::BinaryView, payload)),
+            Self::LargeBinaryView(payload) => Some((BytesType::LargeBinaryView, payload)),
+            Self::FixedBinary(payload, number) => Some((BytesType::FixedBinary(*number), payload)),
+            Self::SizedBinary(payload, number) => Some((BytesType::SizedBinary(*number), payload)),
             _ => None,
         }
     }
 }
 
+/// The payload is a value of the plain `binary` leaf; a value of any byte
+/// leaf lends it.
+impl Value for Bytes {
+    fn dtype(&self) -> Result<DataType> {
+        Ok(DataType::Binary)
+    }
+
+    fn into_scalar(self) -> Scalar {
+        Scalar::Binary(self)
+    }
+
+    fn from_scalar(value: &Scalar) -> Option<&Self> {
+        value.as_binary()
+    }
+}
+
 impl From<Bytes> for Scalar {
     fn from(value: Bytes) -> Self {
-        Self::Bytes(value)
+        Self::Binary(value)
     }
 }
 
 impl From<Vec<u8>> for Scalar {
     fn from(value: Vec<u8>) -> Self {
-        Self::Bytes(Bytes::from(value))
+        Self::Binary(Bytes::from(value))
     }
 }
 
 impl From<&[u8]> for Scalar {
     fn from(value: &[u8]) -> Self {
-        Self::Bytes(Bytes::new(value))
+        Self::Binary(Bytes::new(value))
     }
 }
 
 impl<const N: usize> From<&[u8; N]> for Scalar {
     fn from(value: &[u8; N]) -> Self {
-        Self::Bytes(Bytes::new(value))
+        Self::Binary(Bytes::new(value))
     }
 }
 
 impl From<Arc<[u8]>> for Scalar {
     fn from(value: Arc<[u8]>) -> Self {
-        Self::Bytes(Bytes::from_shared(value))
+        Self::Binary(Bytes::from_shared(value))
     }
 }
 
@@ -1743,7 +1807,7 @@ impl From<Arc<[u8]>> for Scalar {
 /// that text's bytes.
 pub(crate) fn bytes_from_value(value: &Scalar) -> Option<Bytes> {
     match value {
-        Scalar::Bytes(bytes) => Some(bytes.clone()),
+        crate::bytes_scalars!(bytes) => Some(bytes.clone()),
         Scalar::Geometry(value) => Some(Bytes::from_shared(Arc::clone(value.storage()))),
         Scalar::Geography(value) => Some(Bytes::from_shared(Arc::clone(value.storage()))),
         Scalar::Uuid(uuid) => Some(Bytes::new(uuid.into_bytes())),
@@ -1757,25 +1821,47 @@ impl crate::DataTypeValue for BytesType {
     type Sidecar = ();
 
     fn id(&self) -> crate::DataTypeId {
-        DataType::Bytes(*self).id()
-    }
-
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Bytes
+        BytesType::id(*self)
     }
 
     fn validate(&self) -> Result<()> {
-        DataType::Bytes(*self).validate()
+        BytesType::validate(*self)
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::Bytes(self)
+        DataType::from(self)
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::Bytes(parameters) => Some(*parameters),
-            _ => None,
+        dtype.bytes_parameters()
+    }
+}
+
+/// The datatype a leaf names: each leaf is a variant of its own, the number
+/// carried as it stands. [`DataType::bytes`] is the door that also refuses a
+/// numbered leaf stating zero.
+impl From<BytesType> for DataType {
+    fn from(value: BytesType) -> Self {
+        match value {
+            BytesType::Binary => Self::Binary,
+            BytesType::LargeBinary => Self::LargeBinary,
+            BytesType::BinaryView => Self::BinaryView,
+            BytesType::LargeBinaryView => Self::LargeBinaryView,
+            BytesType::FixedBinary(number) => Self::FixedBinary(number),
+            BytesType::SizedBinary(number) => Self::SizedBinary(number),
         }
+    }
+}
+
+impl TryFrom<&DataType> for BytesType {
+    type Error = Error;
+
+    fn try_from(value: &DataType) -> Result<Self> {
+        value
+            .bytes_parameters()
+            .ok_or_else(|| Error::InvalidDataType {
+                kind: "bytes",
+                reason: format_smolstr!("expected a byte datatype, got {value}"),
+            })
     }
 }

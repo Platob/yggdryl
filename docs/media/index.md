@@ -46,18 +46,18 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     handle.append_records([Quote(3, "XLON")], &options)?;
     handle.merge_records([Quote(2, "XPAR")], &options.clone().with_merge_by(["id"])?)?;
 
-    // Rust reads Arrow, then crosses into the value model in one call: a stream
-    // answers a sequence of ordered row sequences.
-    let rows = handle.read_arrow(Some(&options.clone().with_field(field.clone())))?.into_scalar()?;
-    let venues = rows
-        .as_sequence()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|row| row.as_sequence().and_then(|row| row[1].as_str()))
-        .collect::<Vec<_>>();
+    // Rust reads Arrow as a stream of record columns, one per batch, and a
+    // record column lends each child column by name.
+    let mut venues = Vec::new();
+    for records in handle.read_arrow(Some(&options.clone().with_field(field.clone())))? {
+        let venue = records?.child("venue").cloned().expect("a venue column");
+        for row in 0..venue.len() {
+            venues.push(venue.scalar(row)?);
+        }
+    }
 
-    assert_eq!(rows.len(), 3);
-    assert!(venues.contains(&"XPAR") && !venues.contains(&"XNYS"));
+    assert_eq!(venues.len(), 3);
+    assert!(venues.contains(&Scalar::from("XPAR")) && !venues.contains(&Scalar::from("XNYS")));
     ```
 
 === "Python"

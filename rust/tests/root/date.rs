@@ -23,7 +23,7 @@ mod temporal {
             assert_eq!(leaf.as_str(), id.as_str());
             assert_eq!(leaf.unit(), unit);
             assert_eq!(leaf.bit_width(), bits);
-            assert_eq!(leaf.family(), "date");
+            assert_eq!(leaf.id().temporal_family(), Some("date"));
             assert_eq!(DateType::from_id(id), Some(leaf));
             assert!(leaf.validate().is_ok());
             assert_eq!(leaf.to_string(), id.as_str());

@@ -176,7 +176,7 @@ def test_a_subclass_lowers_as_the_type_it_subclasses() -> None:
 
 def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> None:
     values = [
-        DataType("list<int64>"),
+        DataType("serie<int64>"),
         Field("price", "decimal(18,4)", nullable=False),
         Uri("s3://warehouse/orders/data.parquet"),
         Url("https://example.com/orders?id=42"),
@@ -190,7 +190,7 @@ def test_schema_wrappers_lower_structurally_and_locations_lower_to_text() -> Non
                 "name": "item",
                 "nullable": True,
             },
-            "type": "list",
+            "type": "serie",
         },
         {
             "dtype": {"precision": 18, "scale": 4, "type": "decimal64"},

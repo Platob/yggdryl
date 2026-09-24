@@ -119,7 +119,7 @@
   {
     "name": "provisioncashsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -131,7 +131,7 @@
   {
     "name": "provisioncashsettlcurrency2",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1050,7 +1050,7 @@
   {
     "name": "protectiontermcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1182,7 +1182,7 @@
   {
     "name": "protectiontermeventcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

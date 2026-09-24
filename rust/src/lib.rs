@@ -31,12 +31,13 @@ pub mod boolean;
 pub(crate) mod budget;
 pub mod bytes;
 pub mod cast;
+pub mod ccy;
 pub mod cfi_code;
+pub mod chunked_serie;
 pub mod code;
 mod compatibility;
 pub mod country;
 pub mod cp1252;
-pub mod currency;
 pub mod cusip_code;
 mod datatype;
 pub mod date;
@@ -135,10 +136,10 @@ pub mod zstd;
 pub use crate::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
-pub use arrow::{ArrowScalar, ArrowShape};
 pub use bytestream::ByteStream;
 pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
 pub use charset::Charset;
+pub use chunked_serie::{ChunkedRows, ChunkedSerie};
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;
@@ -208,14 +209,14 @@ pub(crate) use ascii::{ascii_bytes, ascii_text, ascii_text_sized};
 pub use bloomberg_code::*;
 pub use boolean::*;
 pub use bytes::*;
+pub use ccy::*;
 pub use cfi_code::*;
-pub use code::*;
-pub(crate) use code::{code_cell_text, code_for_extension};
+pub(crate) use code::{code_cell_text, code_extension_name, code_for_extension};
 pub(crate) use code::{code_refusal, code_text};
 pub use country::*;
-pub use currency::*;
 pub use cusip_code::*;
 pub use datatype::{DataType, VariantType};
+pub(crate) use datatype::{bytes_dtypes, string_dtypes};
 pub(crate) use datatype::{invalid, validate_non_negative};
 pub use date::*;
 pub use datetime::*;
@@ -250,7 +251,7 @@ pub(crate) use parser::{folds_equal, normalized};
 pub use pretty::Pretty;
 pub use runend::*;
 pub use scalar::Scalar;
-pub(crate) use scalar::code_scalars;
+pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
 pub use sedol_code::*;
 pub use serie::*;
 pub use side::*;
@@ -259,7 +260,6 @@ pub(crate) use string::trim_padding;
 pub use string::*;
 pub use structure::*;
 pub(crate) use temporal::TemporalKind;
-pub use temporal::*;
 pub use time::*;
 pub use timeinforce::*;
 pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
@@ -272,9 +272,9 @@ pub(crate) use uuid::{
 };
 pub(crate) use value::dtype_scalar;
 pub use value::{
-    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FamilyValue,
-    FieldSidecar, FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue,
-    IntegerValue, Nested, NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
+    Children, CodeValue, ColumnRows, DataTypeValue, DecimalValue, DictionaryOptions, FieldSidecar,
+    FieldValue, FloatingValue, GeographyType, GeometryType, GeospatialValue, IntegerValue,
+    NestedValue, RunEndType, SerieValue, TemporalValue, UnionType, Value,
 };
 pub use valuestream::{COMPRESS_FROM, VALUE_STREAM_VERSION, ValueStream};
 pub use variant::{
@@ -386,6 +386,7 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
+    pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;
     pub use crate::text::display::internals as text_display;

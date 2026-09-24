@@ -1,12 +1,12 @@
 use yggdryl::graph::{Element, MarketColumn, MarketElement, MarketEventData};
-use yggdryl::{BloombergCode, Currency, Decimal18, Scalar, Side};
+use yggdryl::{BloombergCode, Ccy, Decimal18, Scalar, Side};
 
 #[test]
 fn market_columns_round_trip_every_optional_band() {
     let mut source = MarketEventData::at(10);
     source.set_marketoperationid(Some(14));
     source.set_price("101.25".parse().unwrap());
-    source.set_currency(Currency::new("USD").unwrap());
+    source.set_currency(Ccy::new("USD").unwrap());
     source.set_quantity(Decimal18::from_int(7));
     source.set_unit("share".to_owned());
     source.set_side(Side::read("Buy").unwrap());

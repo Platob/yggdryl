@@ -71,7 +71,7 @@ impl DataType {
     ///
     /// The result prefers a present value. [`DataType::Null`] and logical
     /// wrappers that contain only null values are the intrinsic exceptions.
-    /// Nested Struct and fixed-size-list children use [`Field::default_value`],
+    /// Nested Struct and fixed-size-serie children use [`Field::default_value`],
     /// so their own nullability remains authoritative.
     pub fn default_value(&self) -> Result<Scalar> {
         preflight_schema(self, "DefaultValue")?;
@@ -173,11 +173,11 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
         }
         let child_depth = depth + 1;
         match current {
-            DataType::List(field)
-            | DataType::ListView(field)
-            | DataType::FixedSizeList(field, _)
-            | DataType::LargeList(field)
-            | DataType::LargeListView(field) => {
+            DataType::Serie(field)
+            | DataType::SerieView(field)
+            | DataType::FixedSizeSerie(field, _)
+            | DataType::LargeSerie(field)
+            | DataType::LargeSerieView(field) => {
                 reserve_pending(&mut pending, visited, 1, kind)?;
                 pending.push((field.dtype(), child_depth));
             }
@@ -225,10 +225,10 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Time32(_) | DataType::Time64(_)
             | DataType::Duration32(_) | DataType::Duration64(_)
             | DataType::Interval(_)
-            | DataType::Bytes(_)
-            | DataType::String(_)
+            | crate::bytes_dtypes!()
+            | crate::string_dtypes!()
             | DataType::Country
-            | DataType::Currency
+            | DataType::Ccy
             | DataType::MicCode
             | DataType::CfiCode
             | DataType::IsinCode
@@ -318,7 +318,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         D::Interval(_) => fatal(path, "invalid interval layout"),
         // The empty payload, or on the fixed layout the zero-filled slot of
         // its width: bytes are never padded, so the width is the value.
-        D::Bytes(parameters) => {
+        crate::bytes_dtypes!() => {
+            let parameters = dtype.bytes_parameters().expect("a byte leaf");
             plan_bytes(parameters.fixed().map_or(0, |width| width as usize), path)
         }
         // The nil identifier: sixteen zero bytes, rendered as its hyphenated
@@ -340,9 +341,9 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // A string defaults to the empty one, restated under its parameters
         // by the value door; on a fixed layout storage pads it to all-NUL,
         // and a code, which stores as its text, holds the empty text itself.
-        D::String(_)
+        crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -353,12 +354,12 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::Side
         | D::State
         | D::TimeInForce => scalar(DefaultPlan::String, false),
-        D::List(_) | D::ListView(_) | D::LargeList(_) | D::LargeListView(_) => {
+        D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }
-        D::FixedSizeList(field, length) => {
+        D::FixedSizeSerie(field, length) => {
             let length = usize::try_from(*length)
-                .map_err(|_| fatal_error(path, "fixed-size-list length is negative"))?;
+                .map_err(|_| fatal_error(path, "fixed-size-serie length is negative"))?;
             if length == 0 {
                 return scalar(DefaultPlan::EmptySequence, false);
             }
@@ -370,11 +371,11 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
             let child = child?;
             let nodes = checked_add(
                 1,
-                checked_mul(child.nodes, length, path, "fixed-size-list node count")?,
+                checked_mul(child.nodes, length, path, "fixed-size-serie node count")?,
                 path,
-                "fixed-size-list node count",
+                "fixed-size-serie node count",
             )?;
-            let bytes = checked_mul(child.bytes, length, path, "fixed-size-list byte count")?;
+            let bytes = checked_mul(child.bytes, length, path, "fixed-size-serie byte count")?;
             ensure_budget(nodes, bytes, path)?;
             Ok(Planned {
                 plan: DefaultPlan::Repeated(Box::new(child.plan), length),
@@ -720,7 +721,7 @@ fn plan_matches_value(plan: &DefaultPlan, value: &Scalar) -> bool {
         // A length is constant for either leaf, so no row is built to
         // answer it.
         DefaultPlan::EmptySequence => {
-            matches!(value, Scalar::List(serie) | Scalar::ListView(serie) | Scalar::FixedSizeList(serie) | Scalar::LargeList(serie) | Scalar::LargeListView(serie) if serie.is_empty())
+            matches!(value, Scalar::Serie(serie) | Scalar::SerieView(serie) | Scalar::FixedSizeSerie(serie) | Scalar::LargeSerie(serie) | Scalar::LargeSerieView(serie) if serie.is_empty())
         }
         DefaultPlan::Sequence(plans) => value.as_serie().is_some_and(|values| {
             values.len() == plans.len()

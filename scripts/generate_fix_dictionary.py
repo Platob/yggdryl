@@ -1969,7 +1969,7 @@ def dtype_document(name: str) -> dict[str, Any]:
         "Tenor": {"type": "string", "layout": "fixed_ascii", "fixed": 8},
         "Language": {"type": "string", "layout": "fixed_ascii", "fixed": 2},
         "Country": {"type": "country"},
-        "Currency": {"type": "currency"},
+        "Currency": {"type": "ccy"},
         "Exchange": {"type": "mic"},
         "MultipleCharValue": {"type": "string"},
         "MultipleStringValue": {"type": "string"},

@@ -17,6 +17,15 @@ mod xxhash_arrow {
         DataType::from(StructType::from_fields(fields).unwrap()).required_field("row")
     }
 
+    /// Lay a run of rows out as the Arrow table of `root`'s column.
+    fn lay_out(root: &Field, rows: &Scalar) -> RecordBatch {
+        let rows = rows.as_sequence().expect("a run of rows").to_vec();
+        yggdryl::Serie::from_scalars(root.clone(), rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+    }
+
     fn holder(name: &str, dtype: DataType) -> Field {
         let mut field = Field::new(name, dtype, false);
         field.as_digest_mut().set_holder().unwrap();
@@ -137,7 +146,7 @@ mod xxhash_arrow {
             Scalar::from(0_u64),
             Scalar::from(0_u64),
         ])]);
-        let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+        let source = lay_out(&root, &rows);
         let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
 
         let expected_ordered = Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(7)])
@@ -179,7 +188,7 @@ mod xxhash_arrow {
             StructType::from_fields([source, DataType::Int64.nullable_field("other")]).unwrap(),
         );
         let root = root([
-            DataType::list(element.required_field("item")).nullable_field("events"),
+            DataType::serie(element.required_field("item")).nullable_field("events"),
             holder("row_digest", DataType::UInt64),
         ]);
 
@@ -315,7 +324,7 @@ mod xxhash_arrow {
             item_value.clone(),
             Scalar::from(0_u64),
         ])]);
-        let source = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+        let source = lay_out(&root, &rows);
         let filled = Xxh3::new().apply_arrow_batch(&root, source, false).unwrap();
         let expected = Scalar::from_sequence([Scalar::from(2), item_value])
             .digest(DigestAlgorithm::Xxh3)
@@ -379,8 +388,8 @@ mod xxhash_arrow {
         ])]);
         let starred_root = root([a.clone(), b.clone(), starred]);
         let implied_root = root([a, b, implied]);
-        let starred_source = yggdryl::arrow::batch_from_value(&starred_root, &rows).unwrap();
-        let implied_source = yggdryl::arrow::batch_from_value(&implied_root, &rows).unwrap();
+        let starred_source = lay_out(&starred_root, &rows);
+        let implied_source = lay_out(&implied_root, &rows);
 
         let starred_filled = starred_root
             .as_digest()

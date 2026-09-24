@@ -355,7 +355,7 @@
   {
     "name": "legpaymentstreamrateoramountcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -748,7 +748,7 @@
   {
     "name": "legpaymentstreamnondeliverablerefcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1040,7 +1040,7 @@
   {
     "name": "legpaymentschedulecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1130,7 +1130,7 @@
   {
     "name": "legpaymentschedulefixedcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

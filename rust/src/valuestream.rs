@@ -15,7 +15,7 @@
 //! little-endian bytes and nothing else, because the identifier already
 //! says how wide it is; a payload of no fixed width - text, bytes, a
 //! geometry - is a compression byte, a size and the bytes, compressed with
-//! zstd once it is past [`COMPRESS_FROM`]; a list, a map or a struct is a
+//! zstd once it is past [`COMPRESS_FROM`]; a serie, a map or a struct is a
 //! count and then each child as the same encoding without the version
 //! byte, which the whole stream stated once. What a datatype states
 //! beside its identifier travels where the value needs it - a decimal's
@@ -115,23 +115,9 @@ impl Iterator for ValueStream {
         }
         match frame {
             Frame::Name(name) => write_name(&mut chunk, &name),
-            // An Arrow-held value is the native value it holds, made here
-            // so its children are the stream's own frames.
-            Frame::Value(Scalar::Arrow(_)) => match frame_value(&frame).into_native() {
-                Ok(native) => self.push_children(&native, &mut chunk),
-                Err(_) => chunk.push(DataTypeId::Null.as_u8()),
-            },
             Frame::Value(value) => self.push_children(&value, &mut chunk),
         }
         Some(chunk)
-    }
-}
-
-/// The value one frame holds.
-fn frame_value(frame: &Frame) -> &Scalar {
-    match frame {
-        Frame::Value(value) => value,
-        Frame::Name(_) => unreachable!("a name frame holds no value"),
     }
 }
 
@@ -168,12 +154,6 @@ fn encode_whole(root: &Scalar, out: &mut Vec<u8>) {
     while let Some(frame) = pending.pop() {
         match frame {
             Child::Name(name) => write_name(out, name),
-            // An Arrow-held value is the native value it holds: made here,
-            // and encoded whole while it is in hand.
-            Child::Value(value @ Scalar::Arrow(_)) => match value.into_native() {
-                Ok(native) => encode_whole(&native, out),
-                Err(_) => out.push(DataTypeId::Null.as_u8()),
-            },
             Child::Value(value) => {
                 children.clear();
                 encode(value, out, &mut children);
@@ -238,12 +218,11 @@ fn write_clock(chunk: &mut Vec<u8>, id: DataTypeId, unit: TimeUnit, zone: Option
 }
 
 /// Appends one value's own bytes to `chunk`, and answers the children a
-/// nested value has in order - a list's values, a map's key then value per
+/// nested value has in order - a serie's values, a map's key then value per
 /// entry, a struct's name then value per entry - for the caller to write
-/// after it. An Arrow-held value is the caller's to make native first.
+/// after it.
 fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec<Child<'value>>) {
     match value {
-        Scalar::Arrow(_) => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Null => chunk.push(DataTypeId::Null.as_u8()),
         Scalar::Boolean(held) => {
             chunk.push(DataTypeId::Boolean.as_u8());
@@ -337,16 +316,16 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.extend_from_slice(&held.days().to_le_bytes());
             chunk.extend_from_slice(&held.nanoseconds().to_le_bytes());
         }
-        Scalar::String(held) => {
-            let parameters = held.parameters();
+        crate::string_scalars!(held) => {
+            let parameters = value.string_parameters().expect("a string leaf");
             chunk.push(parameters.id().as_u8());
             if let Some(width) = parameters.fixed().or(parameters.max()) {
                 write_size(chunk, width as usize);
             }
             write_variable(chunk, held.as_str().as_bytes());
         }
-        Scalar::Bytes(held) => {
-            let parameters = held.parameters();
+        crate::bytes_scalars!(held) => {
+            let parameters = value.bytes_parameters().expect("a byte leaf");
             chunk.push(parameters.id().as_u8());
             if let Some(width) = parameters.fixed().or(parameters.max()) {
                 write_size(chunk, width as usize);
@@ -368,12 +347,12 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             chunk.push(DataTypeId::Geography.as_u8());
             write_variable(chunk, held.as_bytes());
         }
-        Scalar::List(held)
-        | Scalar::ListView(held)
-        | Scalar::FixedSizeList(held)
-        | Scalar::LargeList(held)
-        | Scalar::LargeListView(held) => {
-            chunk.push(DataTypeId::List.as_u8());
+        Scalar::Serie(held)
+        | Scalar::SerieView(held)
+        | Scalar::FixedSizeSerie(held)
+        | Scalar::LargeSerie(held)
+        | Scalar::LargeSerieView(held) => {
+            chunk.push(DataTypeId::Serie.as_u8());
             write_size(chunk, held.len());
             match held.as_slice() {
                 Some(rows) => children.extend(rows.iter().map(Child::Value)),
@@ -625,7 +604,7 @@ impl<'a> Reader<'a> {
             DataTypeId::Geography => Scalar::Geography(crate::Geography::new(Arc::<[u8]>::from(
                 &*self.variable()?,
             ))?),
-            DataTypeId::List => {
+            DataTypeId::Serie => {
                 let count = self.size()?;
                 let mut values = Vec::with_capacity(count.min(1 << 16));
                 for _ in 0..count {
@@ -680,7 +659,9 @@ impl<'a> Reader<'a> {
                 let Some(parameters) = BytesType::from_id(other, width) else {
                     return Err(self.refuse(format_smolstr!("{other} is no bytes leaf")));
                 };
-                Scalar::Bytes(crate::Bytes::from_storage(&self.variable()?, parameters))
+                // The stream is input from outside, so the value crosses the
+                // leaf's own door rather than being trusted.
+                parameters.scalar(crate::Bytes::new(&*self.variable()?))?
             }
             other if StringType::from_id(other, 1).is_some() => {
                 let width = match StringType::from_id(other, 0) {
@@ -693,7 +674,7 @@ impl<'a> Reader<'a> {
                 let Some(parameters) = StringType::from_id(other, width) else {
                     return Err(self.refuse(format_smolstr!("{other} is no string leaf")));
                 };
-                Scalar::String(crate::Str::from_storage(&self.text()?, parameters))
+                parameters.scalar(crate::Str::new(&*self.text()?))?
             }
             // A code, a version, a location, a zone, a media type: the text
             // under the identifier, read through the datatype's own door.

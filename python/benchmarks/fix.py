@@ -223,10 +223,10 @@ def _catalog() -> FixRegistry:
     registry = FixRegistry.from_fields([counter, member])
     member.fix.field_ref = "PartyID"
     # One door files each definition by the shape it has: a Struct is a
-    # component, a List of Structs a group.
+    # component, a Serie of Structs a group.
     registry.insert(Field("Party", DataType.from_fields([member]), nullable=False))
     component = registry.field_by_name("Party")
-    group = yggdryl.list("Parties", component)
+    group = yggdryl.serie("Parties", component)
     group.fix.counter = 453
     group.fix.component = "Party"
     registry.insert(group)

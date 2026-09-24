@@ -4,33 +4,35 @@
 //! families - [`crate::date`], [`crate::time`], [`crate::datetime`],
 //! [`crate::duration`] and [`crate::interval`] - each holding its own datatype
 //! payload, its `DataType` constructors and its values, with its `Field` leaf
-//! declared beside the other families' in `field.rs`. This file holds what
-//! several of them read: [`Temporal`], the one value enum over the eight
-//! temporal leaves, which answers the family's name; the `temporal_leaf!`
-//! macro the family files build their count-unit-zone values with; the unit
-//! validators the constructors call; the classic ISO 8601 spellings every
-//! reader and writer of temporal text goes through; and the `Scalar`
-//! accessors that read across the families - [`crate::Scalar::as_temporal`],
-//! [`crate::Scalar::temporal_unit`], [`crate::Scalar::temporal_count`] - with
-//! the arithmetic that uses them. The contract every temporal value answers,
+//! declared beside the other families' in `field.rs`. Which one a value, a
+//! datatype or a column belongs to is its identifier's
+//! [`temporal_family`](crate::DataTypeId::temporal_family). This file holds
+//! what several of them read: the `temporal_leaf!` macro the family files
+//! build their count-unit-zone values with; the unit validators the
+//! constructors call; the classic ISO 8601 spellings every reader and writer
+//! of temporal text goes through; and the `Scalar` accessors that read across
+//! the families - [`crate::Scalar::temporal_unit`],
+//! [`crate::Scalar::temporal_count`] - with the arithmetic that uses them.
+//! The contract every temporal value answers,
 //! [`TemporalValue`](crate::TemporalValue), lives with the other value
 //! contracts in `value/`.
 //!
 //! ```
-//! use yggdryl::{DateType, TimeType};
-//! use yggdryl::{DataType, Scalar, Temporal, TimeUnit, Timezone};
+//! use yggdryl::{DataType, DataTypeId, DataTypeKind, Scalar, TimeUnit, Timezone};
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! // A value knows its family and its unit whichever width holds it.
 //! let day = Scalar::from_date(20_000, TimeUnit::Day, Timezone::NAIVE)?;
 //! let at = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
-//! assert_eq!(day.as_temporal().map(|held| held.family()), Some("date"));
-//! assert!(matches!(at.as_temporal(), Some(Temporal::DateTime64(_))));
+//! assert_eq!(day.id().temporal_family(), Some("date"));
+//! assert!(DataTypeKind::Temporal.contains(at.id()));
+//! assert!(matches!(at, Scalar::DateTime64(_)));
 //! assert_eq!(at.temporal_unit(), Some(TimeUnit::Microsecond));
 //! assert_eq!(at.temporal_timezone(), Some(Timezone::UTC));
 //!
-//! // So does a datatype: the family payload is what a leaf belongs to.
-//! assert_eq!(DateType::Date32.family(), "date");
+//! // So does a datatype: the family is its identifier's.
+//! assert_eq!(DataType::date32().id().temporal_family(), Some("date"));
+//! assert_eq!(DataTypeId::Interval.temporal_family(), Some("interval"));
 //! assert_eq!(DataType::time(TimeUnit::Second)?, DataType::Time32(TimeUnit::Second));
 //! # Ok(())
 //! # }
@@ -43,49 +45,7 @@ use smol_str::{SmolStr, ToSmolStr, format_smolstr};
 use crate::invalid;
 use crate::parser::{Parser, Token, TokenKind, is_closing_or_separator};
 use crate::timezone::{civil_from_days, days_from_civil};
-use crate::value::family_value;
-use crate::{Date32, Date64, DateTime64, Duration32, Duration64, Interval, Time32, Time64};
 use crate::{Error, Result, TimeUnit, Timezone};
-
-family_value!(
-    /// The temporal family as one value: any of the eight leaves, whichever
-    /// width, unit and zone holds it.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, FamilyValue, Scalar, Temporal, TimeUnit, Timezone};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// let value = Scalar::from_datetime(1, TimeUnit::Microsecond, Timezone::UTC)?;
-    /// let held = Temporal::from_scalar(&value).expect("a datetime");
-    /// assert_eq!(held.family(), "datetime");
-    /// assert_eq!(held.dtype()?, DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC)?);
-    /// assert_eq!(held.into_scalar(), value);
-    /// assert_eq!(Temporal::from_scalar(&Scalar::from(1_i64)), None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    Temporal, Temporal, [Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval]
-);
-
-impl Temporal {
-    /// The family's name: `date`, `time`, `datetime`, `duration` or
-    /// `interval`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(&self) -> &'static str {
-        self.kind().as_str()
-    }
-
-    /// The crate's own five-way tag for the held leaf.
-    pub(crate) const fn kind(&self) -> TemporalKind {
-        match self {
-            Self::Date32(_) | Self::Date64(_) => TemporalKind::Date,
-            Self::Time32(_) | Self::Time64(_) => TemporalKind::Time,
-            Self::DateTime64(_) => TemporalKind::DateTime,
-            Self::Duration32(_) | Self::Duration64(_) => TemporalKind::Duration,
-            Self::Interval(_) => TemporalKind::Interval,
-        }
-    }
-}
 
 /// Arrow casts every temporal family shares: they take any temporal.
 pub(crate) mod casts {
@@ -145,7 +105,7 @@ pub(crate) mod casts {
         let mut unspelled = false;
         for index in 0..rows {
             let text = if is_exposed(exposure, index) && array.is_valid(index) {
-                crate::arrow::value::value_from_array(&source_type, array.as_ref(), index)?
+                crate::serie::value::value_from_array(&source_type, array.as_ref(), index)?
                     .into_temporal_text()
             } else {
                 None
@@ -312,7 +272,7 @@ pub(crate) fn invalid_record_text(reason: SmolStr) -> Error {
 /// it states, and `$dtype` reads the family datatype back off a value.
 macro_rules! temporal_leaf {
     (
-        $name:ident, $count:ty, $family:ident, $bits:literal,
+        $name:ident, $count:ty, $bits:literal,
         valid = $valid:expr,
         dtype = $dtype:expr,
         $reason:literal $(,)?
@@ -399,7 +359,6 @@ macro_rules! temporal_leaf {
         }
 
         impl $crate::value::TemporalValue for $name {
-            const FAMILY: &'static str = $crate::temporal::TemporalKind::$family.as_str();
             const BIT_WIDTH: u8 = $bits;
 
             fn count(&self) -> i64 {
@@ -1269,8 +1228,8 @@ pub(crate) mod scalars {
     /// One logical temporal family, independent of its physical width: the
     /// crate's own five-way tag, which the arithmetic, the digests and the
     /// canonicalization branch on. A caller reads the name off
-    /// [`Temporal::family`](crate::Temporal::family) or a leaf datatype's
-    /// `family`; there is no public tag.
+    /// [`DataTypeId::temporal_family`](crate::DataTypeId::temporal_family);
+    /// there is no public tag.
     #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
     pub(crate) enum TemporalKind {
         /// Calendar dates.
@@ -1302,14 +1261,7 @@ pub(crate) mod scalars {
         /// The crate's five-way tag of any temporal, or `None` for a
         /// non-temporal.
         pub(crate) const fn temporal_kind(&self) -> Option<TemporalKind> {
-            match self {
-                Self::Date32(_) | Self::Date64(_) => Some(TemporalKind::Date),
-                Self::Time32(_) | Self::Time64(_) => Some(TemporalKind::Time),
-                Self::DateTime64(_) => Some(TemporalKind::DateTime),
-                Self::Duration32(_) | Self::Duration64(_) => Some(TemporalKind::Duration),
-                Self::Interval(_) => Some(TemporalKind::Interval),
-                _ => None,
-            }
+            self.id().temporal_kind()
         }
 
         /// Return the physical unit of any temporal, or an interval's layout;
@@ -1473,7 +1425,7 @@ pub(crate) mod scalars {
 
         /// Return whether this is a temporal value.
         pub const fn is_temporal(&self) -> bool {
-            self.temporal_kind().is_some()
+            crate::DataTypeKind::Temporal.contains(self.id())
         }
 
         /// Return the datatype this temporal materializes into.

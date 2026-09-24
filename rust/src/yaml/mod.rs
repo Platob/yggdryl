@@ -23,7 +23,7 @@ use crate::text::{
 use crate::{Error, Field, Result, Serie};
 
 use self::parser::YamlParser;
-use crate::code_scalars;
+use crate::{bytes_scalars, code_scalars, string_scalars};
 
 /// Maximum nesting accepted by Saphyr's YAML flow-collection grammar.
 ///
@@ -568,11 +568,11 @@ fn write_node<W: Write>(
         return write_node(writer, &held.scalar()?, columns, position, width);
     }
     match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values)
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
             if !values.is_empty() =>
         {
             if position == Position::AfterKey {
@@ -728,9 +728,9 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Float16(_)
             | Scalar::Float32(_)
             | Scalar::Float64(_)
-            | Scalar::String(_)
+            | string_scalars!(_)
             | Scalar::Country(_)
-            | Scalar::Currency(_)
+            | Scalar::Ccy(_)
             | Scalar::MicCode(_)
             | Scalar::CfiCode(_)
             | Scalar::Side(_)
@@ -766,14 +766,6 @@ fn write_indent<W: Write>(writer: &mut W, columns: usize) -> Result<()> {
 /// Write one scalar or empty collection as one token.
 fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::Arrow(_) => {
-            let native = value.into_native().map_err(|error| Error::Codec {
-                format: "yaml",
-                position: 0,
-                reason: error.to_string().into(),
-            })?;
-            return write_inline(writer, &native);
-        }
         // A variant reached `write_node` first, which wrote the value its
         // bytes hold; only an empty one can arrive here.
         Scalar::Variant(held) => {
@@ -800,7 +792,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
         Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
-        Scalar::String(value) => write_scalar_string(writer, value.as_str())?,
+        string_scalars!(value) => write_scalar_string(writer, value.as_str())?,
         code_scalars!() => {
             write_scalar_string(writer, value.as_str().expect("a code borrowed its text"))?;
         }
@@ -814,7 +806,7 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             let mut slot = [0_u8; crate::Uuid::TEXT_LEN];
             write_scalar_string(writer, value.render(&mut slot))?;
         }
-        Scalar::Bytes(value) => {
+        bytes_scalars!(value) => {
             // `!!binary` is YAML's standard tag, understood outside Yggdryl.
             writer.write_all(b"!!binary ")?;
             write_quoted(
@@ -908,11 +900,11 @@ fn write_inline<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
             )?,
             _ => return Err(codec_error(0, "invalid interval layout")),
         },
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             // Only an empty sequence reaches here.
             debug_assert!(values.is_empty());
             writer.write_all(b"[]")?;
@@ -993,11 +985,11 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
 /// grammar cannot spell plainly falls back to YAML's explicit-key form.
 fn write_flow<W: Write>(writer: &mut W, value: &Scalar) -> Result<()> {
     match value {
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values)
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
             if !values.is_empty() =>
         {
             writer.write_all(b"[")?;

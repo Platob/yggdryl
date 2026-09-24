@@ -153,7 +153,7 @@
   {
     "name": "underlyingadditionaltermbondcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -237,7 +237,7 @@
   {
     "name": "underlyingcomplexeventcrediteventcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

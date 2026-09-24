@@ -7,7 +7,7 @@ mod rows {
     use yggdryl::{DataType, DataTypeId, Field, Scalar, StringEnum, TimeUnit, Timezone};
 
     /// The declaration a FIX-fed writer would hand the schema, in FIX spellings.
-    const FIX_ROW: &str = "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, \
+    const FIX_ROW: &str = "struct<ccy: Ccy, venue: Exchange, px: Price, qty: Qty, \
                        at: UTCTimestamp, day: LocalMktDate, seq: SeqNum>";
 
     #[test]
@@ -22,7 +22,7 @@ mod rows {
         assert_eq!(
             arrow,
             [
-                // `Currency` and `Exchange` resolve to datatypes of their own,
+                // `Ccy` and `Exchange` resolve to datatypes of their own,
                 // each storing as the text it is under its own extension name.
                 ("ccy", &ArrowDataType::Utf8),
                 ("venue", &ArrowDataType::Utf8),
@@ -77,7 +77,7 @@ mod rows {
         let value = yggdryl::json::from_utf8_with_field(message, &row).unwrap();
         let columns = value.as_sequence().expect("a canonical row");
 
-        assert_eq!(columns[0].id(), DataTypeId::Currency);
+        assert_eq!(columns[0].id(), DataTypeId::Ccy);
         assert_eq!(columns[0].as_str(), Some("USD"));
         assert_eq!(columns[1].id(), DataTypeId::MicCode);
         assert_eq!(columns[1].as_str(), Some("XCME"));
@@ -175,7 +175,7 @@ mod logical {
     /// changes what a stored schema string means, so it changes here first.
     fn registered() -> Vec<(&'static str, DataType)> {
         vec![
-            ("currency", DataType::Currency),
+            ("ccy", DataType::Ccy),
             ("country", DataType::Country),
             ("mic", DataType::MicCode),
             ("exchange", DataType::MicCode),
@@ -335,10 +335,8 @@ mod logical {
         }
 
         // A name types a column wherever a datatype is accepted, and a
-        // postfix list still applies to it.
-        let row: DataType = "struct<ccy: Currency, px: Price, legs: Qty[]>"
-            .parse()
-            .unwrap();
+        // postfix serie still applies to it.
+        let row: DataType = "struct<ccy: Ccy, px: Price, legs: Qty[]>".parse().unwrap();
         assert_eq!(
             row.get_field_by_path("px")
                 .map(|field| field.dtype().clone()),
@@ -375,7 +373,7 @@ mod logical {
     #[test]
     fn an_unregistered_name_is_refused_by_both_entry_points() {
         let error = DataType::from_logical_name("figx").unwrap_err().to_string();
-        assert!(error.contains("currency"), "{error}");
+        assert!(error.contains("ccy"), "{error}");
         assert!(error.contains("\"figx\""), "{error}");
         // The grammar reports an unregistered word as unknown.
         let error = "figx".parse::<DataType>().unwrap_err().to_string();
@@ -389,7 +387,7 @@ mod logical {
         let price = DataType::from_logical_name("price").unwrap();
         assert_eq!(price.id(), DataType::Float64.id());
         assert_eq!(price.kind(), DataType::Float64.kind());
-        let union: DataType = "union(dense,0=px: Price,1=ccy: Currency)".parse().unwrap();
+        let union: DataType = "union(dense,0=px: Price,1=ccy: Ccy)".parse().unwrap();
         let DataType::Union(_, mode) = &union else {
             panic!("a union, got {union}");
         };

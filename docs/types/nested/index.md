@@ -1,32 +1,32 @@
 # Nested
 
-The datatypes that hold other datatypes: four layouts that carry child fields, two encodings that wrap a value, and one `Nested` value over what they store.
+The datatypes that hold other datatypes: four layouts that carry child fields, two encodings that wrap a value, and the values they store.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `DataType::List`, `ListView`, `LargeList`, `LargeListView`, `FixedSizeList` (the five leaves `SerieType` views), `Struct(StructType)`, `Union(UnionFields, UnionMode)`, `Dictionary(Arc<DictionaryType>)` (the leaf `EnumType` views), `Map(Arc<MapType>)` and `SortedMap(Arc<MapType>)` (the two leaves `MappingType` views), and `RunEndEncoded(Arc<RunEndEncodedType>)`; the values `Struct`, `Serie` - a schema-free `Run` or the buffers of one field, on its [own page](../serie.md) - and `Map`, and `Nested`, the one family value over them |
-| Validates | At construction, once: unique child names, non-negative and unique union type ids, a non-negative fixed list length, map entries that are a non-null struct of a key and a value, an integer dictionary key, and non-null `int16`/`int32`/`int64` run ends |
+| Owns | `DataType::Serie`, `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie` (the five leaves `SerieType` is the typed field's payload over), `Struct(StructType)`, `Union(UnionFields, UnionMode)`, `Dictionary(Arc<DictionaryType>)` (the leaf `EnumType` is the payload over), `Map(Arc<MapType>)` and `SortedMap(Arc<MapType>)` (the two leaves `MappingType` is the payload over), and `RunEndEncoded(Arc<RunEndEncodedType>)`; the values `Struct`, `Serie` - a schema-free `Run` or the buffers of one field, on its [own page](../serie.md) - and `Map`, each held by `Scalar` variants of its own and each a `NestedValue` |
+| Validates | At construction, once: unique child names, non-negative and unique union type ids, a non-negative fixed serie length, map entries that are a non-null struct of a key and a value, an integer dictionary key, and non-null `int16`/`int32`/`int64` run ends |
 | Lazy | Nothing - a layout is checked when it is built and never re-derived; the `validate` a hand-built payload meets is the same check |
 | Cached | The children of one layout live in one shared allocation, so a datatype clone shares them rather than walking them; the Arrow projection is cached on the [`Field`](../field.md) |
 | Refuses | A duplicate child name, a duplicate or negative union type id, more than 128 union members, a child count that is not the layout's arity, and a value whose shape is not the one the layout declares |
-| Kinds | `DataTypeKind::Nested` for every one of the twelve ids (`0x91`-`0x9c`); `is_nested()` resolves the two wrappers through the value they encode, so a `dictionary(int16,utf8)` answers `false` |
-| Bindings | `Nested`, `Serie`, `Map` and `Struct` are Rust only: Python and JavaScript read a stored value as a [`Scalar`](../scalar.md) whose `family` is `nested` |
+| Kinds | `DataTypeKind::Nested` for every one of the twelve ids (`0x91`-`0x9c`), in the family's range `0x90..=0xaf`; `is_nested()` resolves the two wrappers through the value they encode, so a `dictionary(int16,utf8)` answers `false` |
+| Bindings | `NestedValue`, `Serie`, `Map` and `Struct` are Rust only: Python and JavaScript read a stored value as a [`Scalar`](../scalar.md) whose `family` is `nested` |
 
 ## Pages
 
 | page | owns |
 | --- | --- |
 | [Struct](struct.md) | `StructType`: named children in declaration order, and the non-null struct field that is the row schema |
-| [List](list.md) | `SerieType`: the family view over the five `List`/`ListView`/`LargeList`/`LargeListView`/`FixedSizeList` leaves, each over one item field |
-| [Map](map.md) | `MappingType`: the family view over the `Map`/`SortedMap` leaves, the `entries` struct of a key and a value, and the leaf that promises sorted keys |
+| [Serie layouts](sequence.md) | `SerieType`: the typed field's payload over the five `Serie`/`SerieView`/`LargeSerie`/`LargeSerieView`/`FixedSizeSerie` leaves, each over one item field |
+| [Map](map.md) | `MappingType`: the typed field's payload over the `Map`/`SortedMap` leaves, the `entries` struct of a key and a value, and the leaf that promises sorted keys |
 | [Union](union.md) | `UnionFields` and `UnionMode`: one of several member fields per row, and the `variant(...)` sugar |
 | [Dictionary](dictionary.md) | `EnumType`: an integer key column over a value column, with Arrow's dictionary options on the field |
 | [Run-end](runend.md) | `RunEndEncodedType`: a run-ends column beside the values it repeats |
 
-Bare [`variant`](../variant.md) is a nested kind too, and a leaf of the `Nested`
-value, but it is not a layout over children: it is the Parquet Variant binary
+Bare [`variant`](../variant.md) is a nested kind too, its identifier in the
+nested range, but it is not a layout over children: it is the Parquet Variant binary
 encoding of a value that describes itself, so it has a page of its own.
 
 ## What a layout carries
@@ -38,7 +38,7 @@ all - it carries two datatypes, not two fields.
 
 | layout | children | named |
 | --- | ---: | --- |
-| `list`, `list_view`, `fixed_size_list(n)`, `large_list`, `large_list_view` | 1 | the item field |
+| `serie`, `serie_view`, `fixed_size_serie(n)`, `large_serie`, `large_serie_view` | 1 | the item field |
 | `struct` | as declared | each child's own name; `as_fields` borrows the slice |
 | `map`, `sorted_map` | 1 | `entries` |
 | `union` | one per member | each member's own name, beside its type id |
@@ -52,7 +52,7 @@ all - it carries two datatypes, not two fields.
 
     let quote = DataType::from(StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
-        Field::new("levels", DataType::list(DataType::Float64.nullable_field("item")), true),
+        Field::new("levels", DataType::serie(DataType::Float64.nullable_field("item")), true),
     ])?);
 
     assert_eq!(quote.field_len(), 2);
@@ -78,7 +78,7 @@ all - it carries two datatypes, not two fields.
 
     quote = DataType.from_fields([
         Field("symbol", "utf8", nullable=False),
-        yggdryl.list("levels", yggdryl.float64("item")),
+        yggdryl.serie("levels", yggdryl.float64("item")),
     ])
 
     assert len(quote) == 2
@@ -104,7 +104,7 @@ all - it carries two datatypes, not two fields.
 
     const quote = DataType.fromFields([
       fields.utf8('symbol'),
-      fields.list('levels', fields.float64('item'), { nullable: true }),
+      fields.serie('levels', fields.float64('item'), { nullable: true }),
     ])
 
     assert.equal(quote.length, 2)
@@ -122,39 +122,43 @@ all - it carries two datatypes, not two fields.
     assert.equal(fields.dictionary('codes', 'int16', 'utf8').dtype.length, 0)
     ```
 
-## The `Nested` value
+## The nested values
 
-`Nested` is the one value over the family: a `List` (or one of the four other
-sequence leaves), a `Map` (or `SortedMap`), a `Struct` or a
-[`Variant`](../variant.md). It answers the kind every leaf shares, the
-datatype the held leaf's children name, and the `Scalar` it widens back to.
-Each leaf answers `NestedValue`: how many direct children it has and an
-iterator over them - a sequence's values, a map's **keys**, and a record's
+The family is the nested range of identifiers, not a type
+([Scalar](../scalar.md#families)): a stored value is its leaf's own `Scalar`
+variant - a `Serie` under `Scalar::Serie` (or one of the four other serie leaves), a
+`Map` under `Map` (or `SortedMap`), a `Struct`, or a
+[`Variant`](../variant.md) - and the leaf's `from_scalar` borrows it back out.
+Each container leaf answers `NestedValue`: how many direct children it has and
+an iterator over them - a sequence's values, a map's **keys**, and a record's
 values in sorted name order.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, DataTypeKind, FamilyValue, Nested, NestedValue, Scalar, StructType};
+    use yggdryl::{DataType, DataTypeKind, Map, NestedValue, Scalar, Serie, Struct, StructType, Value};
 
     let sequence = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
     let mapping = Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))])?;
     let record = Scalar::from_struct([("id", Scalar::from(1_i64))])?;
 
-    assert_eq!(Nested::KIND, DataTypeKind::Nested);
-    let held = Nested::from_scalar(&sequence).expect("a sequence");
-    let Nested::List(leaf) = &held else { panic!("a sequence") };
+    // Every container is in the nested range, whichever leaf holds it.
+    assert!([&sequence, &mapping, &record].iter().all(|value| value.family() == DataTypeKind::Nested));
+    assert!(DataTypeKind::Nested.contains(record.id()));
+
+    // The value is its leaf's own variant, and the leaf borrows back out of it.
+    let leaf = <Serie as Value>::from_scalar(&sequence).expect("a sequence");
     assert_eq!(leaf.len(), 2);
     assert_eq!(leaf.iter().count(), 2);
-    assert_eq!(held.dtype()?, DataType::list(DataType::Int64.required_field("item")));
-    assert_eq!(held.into_scalar(), sequence);
+    assert_eq!(leaf.dtype()?, DataType::serie(DataType::Int64.required_field("item")));
+    assert_eq!(leaf.clone().into_scalar(), sequence);
 
-    // Every leaf narrows the same way, and no other family does.
-    assert!(matches!(mapping.as_nested(), Some(Nested::Map(_))));
-    assert!(matches!(record.as_nested(), Some(Nested::Struct(_))));
-    assert_eq!(Scalar::from(1_i64).as_nested(), None);
+    // Every leaf narrows the same way, and no other value does.
+    assert!(matches!(mapping, Scalar::Map(_)));
+    assert_eq!(NestedValue::len(<Map as Value>::from_scalar(&mapping).expect("a mapping")), 1);
+    assert_eq!(<Struct as Value>::from_scalar(&Scalar::from(1_i64)), None);
     assert_eq!(
-        Nested::from_scalar(&record).expect("a record").dtype()?,
+        Value::dtype(<Struct as Value>::from_scalar(&record).expect("a record"))?,
         DataType::from(StructType::from_fields([DataType::Int64.required_field("id")])?)
     );
     ```
@@ -164,7 +168,7 @@ values in sorted name order.
     ```python
     import yggdryl
 
-    levels = yggdryl.list("levels", yggdryl.float64("item")).scalar([1.5, 2.5])
+    levels = yggdryl.serie("levels", yggdryl.float64("item")).scalar([1.5, 2.5])
     lookup = yggdryl.map_of("lookup", "utf8", "int64").scalar({"a": 1})
 
     # The family is one word, and the length counts direct children.
@@ -184,7 +188,7 @@ values in sorted name order.
     const assert = require('node:assert/strict')
     const { fields } = require('yggdryl')
 
-    const levels = fields.list('levels', fields.float64('item')).scalar([1.5, 2.5])
+    const levels = fields.serie('levels', fields.float64('item')).scalar([1.5, 2.5])
     const lookup = fields.mapOf('lookup', 'utf8', 'int64').scalar(new Map([['a', 1n]]))
 
     // The family is one word, and the length counts direct children.
@@ -202,7 +206,7 @@ values in sorted name order.
 
 - Duplicate child names -> `duplicate field name` error; a struct and a union both refuse them, and `from_fields` fails rather than keeping the first.
 - An unknown child name -> `None`; `in` / `contains` answers false. A path that names no child reports the names that do exist.
-- A layout keeps its arity: `with_fields` refuses a child count that is not the layout's, and a list refuses a second child rather than becoming a struct.
+- A layout keeps its arity: `with_fields` refuses a child count that is not the layout's, and a serie refuses a second child rather than becoming a struct.
 - Python `yggdryl.*` and JavaScript `fields.*` factories answer a `Field`, not a bare datatype; `.dtype` reaches the type.
 - `as_fields` is a struct's alone: every other layout answers `None`, because its children are not a schema.
 - A wrapper is a storage decision: `kind()` is `nested`, and `is_nested()` follows the value it encodes.

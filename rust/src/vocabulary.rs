@@ -7,14 +7,14 @@
 //! front of the parser, and every path after it sees an ordinary
 //! [`DataType`].
 //!
-//! Some names resolve to their own datatype: `currency`, `country`, `mic`,
+//! Some names resolve to their own datatype: `ccy`, `country`, `mic`,
 //! `cfi`, `side`, `state`, and `timeinforce`. These registered codes carry an
 //! identity as well as their storage width.
 //!
-//! The vocabulary is the FIX Latest datatype table, so a FIX field
-//! declaration types a column directly, plus `mic` - ISO 10383's own name for
-//! what FIX calls `Exchange` - because a MIC column is a MIC column whatever
-//! protocol delivered it.
+//! The vocabulary follows the FIX Latest datatype table, plus `mic` -
+//! ISO 10383's name for what FIX calls `Exchange`. The dictionary generator
+//! resolves FIX's `Currency` source type to `ccy`; schema declarations use
+//! `ccy` directly.
 //!
 //! Five FIX base types already have a meaning in the Arrow/SQL grammar and
 //! keep it, because a schema string must not change meaning under a reader:
@@ -24,7 +24,7 @@
 //!
 //! | FIX | base | resolves to | why |
 //! | --- | --- | --- | --- |
-//! | `Currency` | String | `currency` | ISO 4217 alpha-3, its own three bytes |
+//! | `Currency` (dictionary source) | String | `ccy` | ISO 4217 alpha-3, its own three bytes |
 //! | `Country` | String | `country` | ISO 3166-1 alpha-2, its own two bytes |
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
@@ -100,7 +100,7 @@ use crate::parser::normalized;
 /// Every width in the listing is a literal above zero, so the leaf is built
 /// without the validation `DataType::fixed_ascii` runs.
 const fn fixed_ascii(width: u32) -> DataType {
-    DataType::String(crate::StringType::FixedAsciiString(width))
+    DataType::FixedAsciiString(width)
 }
 
 impl DataType {
@@ -115,7 +115,7 @@ impl DataType {
         // are datatypes of their own, so their names resolve to themselves
         // and display as themselves; `exchange` is FIX's name for the one
         // ISO 10383 calls `mic`.
-        ("currency", DataType::Currency),
+        ("ccy", DataType::Ccy),
         ("country", DataType::Country),
         ("mic", DataType::MicCode),
         ("exchange", DataType::MicCode),
@@ -266,9 +266,9 @@ impl DataType {
     ///
     /// // The same lookup backs the grammar, so a name types a column. Four
     /// // of the names answer a datatype of their own rather than a width.
-    /// let row: DataType = "struct<ccy: Currency, venue: MIC, px: Price, at: UTCTimestamp>".parse()?;
+    /// let row: DataType = "struct<ccy: Ccy, venue: MIC, px: Price, at: UTCTimestamp>".parse()?;
     /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::MicCode));
-    /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Currency));
+    /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Ccy));
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
     ///     Some(DataType::DateTime64 {

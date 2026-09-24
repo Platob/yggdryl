@@ -34,7 +34,7 @@ const quantity: number = itemValue[0]
 const sku: string | null = itemValue[1]
 const itemChildren: Field[] = [...item.dtype]
 
-const fixed = fields.fixedSizeList('items', item, 2, { nullable: false })
+const fixed = fields.fixedSizeSerie('items', item, 2, { nullable: false })
 const fixedDefault = fixed.defaultJSValue()
 const nestedQuantity: number = fixedDefault[0][0]
 

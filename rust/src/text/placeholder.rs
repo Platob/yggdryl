@@ -277,12 +277,12 @@ pub(crate) fn substitute(value: Scalar, placeholders: &Placeholders) -> Result<S
 /// Substitute through one node, tracking where it sits for diagnostics.
 fn walk(value: Scalar, placeholders: &Placeholders, path: &mut String) -> Result<Scalar> {
     match value {
-        Scalar::String(text) => scalar(text.as_str(), placeholders, path),
-        Scalar::List(values)
-        | Scalar::ListView(values)
-        | Scalar::FixedSizeList(values)
-        | Scalar::LargeList(values)
-        | Scalar::LargeListView(values) => {
+        crate::string_scalars!(text) => scalar(text.as_str(), placeholders, path),
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values) => {
             let mut replaced = Vec::with_capacity(values.len());
             for (index, held) in values.rows().iter().enumerate() {
                 let mark = path.len();
@@ -486,7 +486,7 @@ fn named(name: &str) -> bool {
 /// sensible text form inside a path, so it has none here.
 fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
     let owned = match value {
-        Scalar::String(text) => return Some(Cow::Borrowed(text.as_str())),
+        crate::string_scalars!(text) => return Some(Cow::Borrowed(text.as_str())),
         code if code.is_code() => return code.as_str().map(Cow::Borrowed),
         Scalar::Uuid(value) => value.to_string(),
         Scalar::Boolean(held) => held.to_string(),
@@ -541,7 +541,7 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         Scalar::Geography(value) => {
             crate::wkb::into_wkt(value.as_bytes()).unwrap_or_else(|_| hex_text(value.as_bytes()))
         }
-        Scalar::Bytes(value) => hex_text(value.as_bytes()),
+        crate::bytes_scalars!(value) => hex_text(value.as_bytes()),
         // Null included: rendering "nothing" into the middle of a path is how a
         // configuration silently points somewhere wrong.
         _ => return None,

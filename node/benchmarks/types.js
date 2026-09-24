@@ -3,6 +3,7 @@
 const { performance } = require('node:perf_hooks')
 const arrow = require('apache-arrow')
 const {
+  ChunkedSerie,
   DataType,
   Expression,
   Field,
@@ -81,7 +82,7 @@ intoField(BenchRow)
 
 // The prebuilt ISO 4217 listing: what a schema pays once when it declares a
 // currency column, and the members every reader of that schema computes.
-const currencies = StringEnum.fromLogicalName('currency')
+const ccys = StringEnum.fromLogicalName('ccy')
 // The one string datatype with everything declared, and a fixed width the
 // datatype answers for.
 const latin = DataType.string({ charset: 'windows-1252', max: 32 })
@@ -117,6 +118,26 @@ benchmark('schema/from_fields', () => DataType.fromFields([id, name]))
 benchmark('serie/from_arrow_array_bits', () =>
   Serie.fromArrowArray(unsignedDigest, digestBits, { representation: 'bits' }),
 )
+// A chunked column crosses as copied IPC, one batch per Data or per table
+// batch; the join, the cast and the way out are measured beside the doors.
+const chunkedInt64 = arrow.vectorFromArray([1n, 2n, 3n], new arrow.Int64())
+const chunkedVector = chunkedInt64.concat(arrow.vectorFromArray([4n, 5n], new arrow.Int64()))
+const chunkedTable = new arrow.Table([
+  new arrow.Table({ id: chunkedInt64 }).batches[0],
+  new arrow.Table({ id: arrow.vectorFromArray([4n, 5n], new arrow.Int64()) }).batches[0],
+])
+const heldChunked = ChunkedSerie.fromArrowArray(chunkedVector)
+const heldChunkedTable = ChunkedSerie.fromArrowBatch(chunkedTable)
+const chunkedWide = fields.float64('item', { nullable: false })
+benchmark('chunked_serie/from_arrow_array', () => ChunkedSerie.fromArrowArray(chunkedVector))
+benchmark('chunked_serie/from_arrow_batch_table', () =>
+  ChunkedSerie.fromArrowBatch(chunkedTable),
+)
+benchmark('chunked_serie/cast', () => heldChunked.cast(chunkedWide))
+benchmark('chunked_serie/into_serie', () => heldChunked.intoSerie())
+benchmark('chunked_serie/into_arrow_array', () => heldChunked.intoArrowArray())
+benchmark('chunked_serie/into_arrow_table', () => heldChunkedTable.intoArrowTable())
+benchmark('chunked_serie/child', () => heldChunkedTable.child('id'))
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))
@@ -128,8 +149,8 @@ benchmark('schema/string_parameters', () =>
 benchmark('schema/bytes_parameters', () => DataType.bytes({ max: 16 }))
 benchmark('schema/string_parameters_get', () => latin.stringParameters)
 benchmark('schema/fixed_byte_width', () => tenor.fixedByteWidth)
-benchmark('schema/currency', () => DataType.from('currency'))
-benchmark('schema/ascii_field', () => fields.currency('ccy'))
+benchmark('schema/ccy', () => DataType.from('ccy'))
+benchmark('schema/ccy_field', () => fields.ccy('ccy'))
 benchmark('schema/fixed_ascii_field', () => fields.fixedAscii('tenor', 8))
 benchmark('schema/string_field', () =>
   fields.string('note', { charset: 'windows-1252', max: 32 }),
@@ -177,9 +198,9 @@ benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
 )
 benchmark('schema/string_vocabulary_prebuilt', () =>
-  StringEnum.fromLogicalName('currency'),
+  StringEnum.fromLogicalName('ccy'),
 )
-benchmark('schema/string_vocabulary_enum', () => currencies.intoEnum('currency'))
+benchmark('schema/string_vocabulary_enum', () => ccys.intoEnum('ccy'))
 benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
 benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))
 benchmark('schema/media_compound_parse', () => MediaType.fromString(compoundMedia))

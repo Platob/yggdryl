@@ -34,7 +34,7 @@ ygg fix --root config/fix components read Party
 ygg fix --root config/fix components list Order
 ```
 
-`NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate List definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `FIX:msgtype` wire code.
+`NoPartyIDs(453)` is an `int32` scalar; `Parties` is a separate Serie definition whose occurrence component is `Party`. Message reads show the native non-null Struct and its full `FIX:msgtype` wire code.
 
 ## Install
 
@@ -73,7 +73,7 @@ A field key is a decimal tag or a name; named categories use their definition na
 | Flag | Applies to |
 | --- | --- |
 | `--tag N` | Scalar fields, including wire group counters; a crate Map group carries its own reserved tag |
-| `--counter N` | List/LargeList groups identify an existing `int32` scalar; a crate Map group uses its own reserved tag, with no scalar counter |
+| `--counter N` | Serie/LargeSerie groups identify an existing `int32` scalar; a crate Map group uses its own reserved tag, with no scalar counter |
 | `--component NAME` | Groups; identifies the existing occurrence component |
 | `--msgtype CODE` | Components; makes the component a message; full nonempty wire text, including spaces |
 | `--identifiers MEMBER` | Components; repeat for each direct scalar identifier. Canonical names, aliases and decimal tags resolve once; input order does not change member order |
@@ -89,7 +89,7 @@ A field key is a decimal tag or a name; named categories use their definition na
 ygg fix --root scratch/catalog fields create NoPartyIDs int32 --tag 453
 ygg fix --root scratch/catalog fields create PartyID utf8 --tag 448
 ygg fix --root scratch/catalog components create Party 'struct<PartyID: utf8>' --required
-ygg fix --root scratch/catalog groups create Parties 'list<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
+ygg fix --root scratch/catalog groups create Parties 'serie<Party: struct<PartyID: utf8> not null>' --counter 453 --component Party
 ygg fix --root scratch/catalog components create Order 'struct<ClOrdID: utf8>' --msgtype D --identifiers ClOrdID
 ygg fix --root scratch/catalog codesets write sidecodeset --codes '[{"value":"1","name":"Buy"},{"value":"2","name":"Sell"}]'
 ygg fix --root scratch/catalog fields create Side utf8 --tag 54 --codes sidecodeset

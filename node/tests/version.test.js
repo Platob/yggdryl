@@ -155,16 +155,19 @@ test('Version field defaults and hints expose the native value with Arrow string
   assert.equal(Serie.fromDefault(field).intoArrowScalar(), '0')
   const value = new Version(5, 0, 300)
   const scalar = Scalar.from(value)
-  assert.equal(scalar.intoArrowScalar(field), '5.0.300')
+  assert.equal(Serie.fromScalars(field, [scalar]).intoArrowScalar(), '5.0.300')
   const vector = arrow.vectorFromArray(['005.0.00300', '5.0', '255.255.65535'], new arrow.Utf8())
-  const native = Scalar.fromArrowArray(vector, field)
+  const native = Serie.fromArrowArray(vector, field).intoScalar()
   assert.deepEqual(native.asJs().map(String), ['5.0.300', '5', '255.255.65535'])
   assert.ok(native.asJs().every((item) => item instanceof Version))
-  assert.deepEqual([...native.intoArrowArray(field)], ['5.0.300', '5', '255.255.65535'])
+  assert.deepEqual(
+    [...Serie.fromScalars(field, native).intoArrowArray()],
+    ['5.0.300', '5', '255.255.65535'],
+  )
   const rows = Scalar.from([{ release: value }])
-  const inferred = rows.intoArrowBatch()
+  const inferred = Serie.fromScalars(rows.intoStructField(), rows).intoArrowBatch()
   assert.equal(inferred.schema.fields[0].metadata.get('ARROW:extension:name'), 'yggdryl.version')
-  assert.ok(Scalar.fromArrowBatch(inferred).asJs()[0][0].equals(value))
+  assert.ok(Serie.fromArrowBatch(inferred).intoScalar().asJs()[0][0].equals(value))
 })
 
 test('generic MsgType datatype and field helpers are retired', () => {

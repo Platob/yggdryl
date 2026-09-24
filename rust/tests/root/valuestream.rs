@@ -155,7 +155,7 @@ mod stream {
             text("fixed_ascii(4)", "USD "),
             text("large_cp1252_view", "café"),
             text("sized_utf8(8)", "bounded"),
-            text("currency", "USD"),
+            text("ccy", "USD"),
             text("country", "FR"),
             text("mic", "XPAR"),
             text("cfi", "ESVUFR"),
@@ -312,7 +312,7 @@ mod stream {
             value.into_value_bytes(),
             [
                 VALUE_STREAM_VERSION,
-                DataTypeId::List.as_u8(),
+                DataTypeId::Serie.as_u8(),
                 2,
                 DataTypeId::Int8.as_u8(),
                 1,
@@ -420,15 +420,30 @@ mod stream {
         // A placeholder is a valid tag for nothing, so a family gains a leaf
         // without a stream written before it moving.
         let position =
-            Scalar::decode_value_bytes(&[0, DataTypeId::List.as_u8(), 1, 0x2f]).unwrap_err();
+            Scalar::decode_value_bytes(&[0, DataTypeId::Serie.as_u8(), 1, 0x2f]).unwrap_err();
         assert!(position.to_string().contains("decimal"), "{position}");
     }
 
     #[test]
     fn the_identifiers_are_the_digest_tags_laid_out_by_family() {
-        for id in DataTypeId::ALL {
-            assert_eq!(DataTypeKind::of_u8(id.as_u8()), Some(id.kind()), "{id}");
-        }
+        // Each family's range is pinned against an independent listing in
+        // rust/tests/root/datatype_id.rs; here, the tag a value writes is the
+        // byte that range places it at.
+        assert_eq!(
+            (
+                DataTypeId::Utf8String.as_u8(),
+                DataTypeId::Utf8String.kind()
+            ),
+            (0x51, DataTypeKind::Text)
+        );
+        assert_eq!(
+            (DataTypeId::Int32.as_u8(), DataTypeId::Int32.kind()),
+            (0x13, DataTypeKind::Integer)
+        );
+        assert_eq!(
+            (DataTypeId::Geography.as_u8(), DataTypeId::Geography.kind()),
+            (0xb2, DataTypeKind::Geospatial)
+        );
         assert_eq!(DataTypeKind::Integer.id(), 0x10);
         assert_eq!(DataTypeKind::Text.id(), 0x50);
         assert_eq!(DataTypeKind::Nested.id(), 0x90);

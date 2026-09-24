@@ -7,7 +7,7 @@ const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
 const { pathToFileURL } = require('node:url')
 const arrow = require('apache-arrow')
-const { DataType, Field, Scalar, avro, codec, json, toml, yaml } = require('yggdryl')
+const { DataType, Field, Scalar, Serie, avro, codec, json, toml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({
@@ -220,9 +220,11 @@ async function main() {
     )
 
     const arrowVector = arrow.vectorFromArray(Int32Array.from({ length: 1_000 }, (_, i) => i))
-    const arrowValues = Scalar.fromArrowArray(arrowVector)
+    // Arrow crosses as a column, and a column is one value: the Serie door
+    // is the value's Arrow door too.
+    const arrowValues = Serie.fromArrowArray(arrowVector)
     measure('arrow/from_array_ipc', arrowVector.length * 4, 50, () =>
-      Scalar.fromArrowArray(arrowVector),
+      Serie.fromArrowArray(arrowVector).intoScalar(),
     )
     measure('arrow/into_array_ipc', arrowVector.length * 4, 50, () =>
       arrowValues.intoArrowArray(),

@@ -17,14 +17,14 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use arrow_array::{
-    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, RecordBatch, Scalar as ArrowScalar,
-    StringArray,
+    Array, ArrayRef, BooleanArray, Decimal128Array, Int64Array, RecordBatch,
+    Scalar as KernelScalar, StringArray,
 };
 use arrow_buffer::BooleanBuffer;
 use arrow_ord::cmp;
 use criterion::{Criterion, criterion_group, criterion_main};
 use yggdryl::expression::{Bound, Bounds};
-use yggdryl::{DataType, Expression, Field, Plan, Scalar, StructType, Term};
+use yggdryl::{DataType, Expression, Field, Plan, Scalar, Serie, StructType, Term};
 
 /// Rows enough to make a per-batch cost visible and small enough to stay warm.
 const ROWS: usize = bench_profile::corpus(65_536, 16_384);
@@ -245,10 +245,12 @@ fn apply_benchmarks(criterion: &mut Criterion) {
 /// The same predicates, written straight against Arrow with no expression.
 fn kernel_mask(batch: &RecordBatch, name: &str) -> BooleanArray {
     let column = |index: usize| batch.column(index).clone();
-    let text = |value: &str| ArrowScalar::new(Arc::new(StringArray::from(vec![value])) as ArrayRef);
-    let number = |value: i64| ArrowScalar::new(Arc::new(Int64Array::from(vec![value])) as ArrayRef);
+    let text =
+        |value: &str| KernelScalar::new(Arc::new(StringArray::from(vec![value])) as ArrayRef);
+    let number =
+        |value: i64| KernelScalar::new(Arc::new(Int64Array::from(vec![value])) as ArrayRef);
     let decimal = |value: i128| {
-        ArrowScalar::new(Arc::new(
+        KernelScalar::new(Arc::new(
             Decimal128Array::from(vec![value])
                 .with_precision_and_scale(9, 2)
                 .unwrap(),
@@ -324,7 +326,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
-/// A predicate segment: one predicate over every element of every list, one
+/// A predicate segment: one predicate over every element of every serie, one
 /// filter, and rebuilt offsets - against the row tier doing the same walk.
 fn predicate_path_benchmarks(criterion: &mut Criterion) {
     const LEGS: usize = 4;
@@ -332,7 +334,7 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
         "trades",
         StructType::from_fields([Field::new(
             "legs",
-            DataType::list(
+            DataType::serie(
                 StructType::from_fields([
                     Field::new("ccy", DataType::utf8(), true),
                     Field::new("size", DataType::Int64, true),
@@ -358,11 +360,10 @@ fn predicate_path_benchmarks(criterion: &mut Criterion) {
     let rows: Vec<Scalar> = (0..ROWS)
         .map(|row| Scalar::from_sequence([legs(row)]))
         .collect();
-    let column = yggdryl::arrow::array_from_value(
-        &schema.fields()[0],
-        &Scalar::from_sequence((0..ROWS).map(legs)),
-    )
-    .unwrap();
+    let column = Serie::from_scalars(schema.fields()[0].clone(), (0..ROWS).map(legs))
+        .unwrap()
+        .require_arrow_array()
+        .unwrap();
     let batch =
         RecordBatch::try_new(schema.clone().into_arrow_schema().unwrap(), vec![column]).unwrap();
     let bound = "legs[ccy = 'EUR' and size > 500][0].size"

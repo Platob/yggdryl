@@ -1034,7 +1034,7 @@
   {
     "name": "legpaymentstreamformulacurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

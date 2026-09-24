@@ -246,8 +246,7 @@ a column read there comes back as `uuid.UUID`.
     ```rust
     use arrow_array::{Array, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
-    use yggdryl::arrow::{scalar_array, scalar_value};
-    use yggdryl::{DataType, Field};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
     let text = "01912d68-783e-7c9a-b1f2-0123456789ab";
     let packed = 0x0191_2d68_783e_7c9a_b1f2_0123_4567_89ab_u128;
@@ -255,10 +254,11 @@ a column read there comes back as `uuid.UUID`.
     // Storage is the sixteen bytes, and the value reads back spelled out.
     let id = Field::new("id", DataType::uuid(), false);
     let value = id.scalar(text)?;
-    let stored = scalar_array(&id, &value)?;
+    let stored = Serie::from_scalars(id.clone(), [value.clone()])?.require_arrow_array()?;
     let bytes = stored.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap();
     assert_eq!(bytes.value(0), packed.to_be_bytes());
-    assert_eq!(scalar_value(&id, stored.as_ref())?, value);
+    let read = Serie::from_arrow_array(Some(&id), stored, ArrowCastOptions::new())?;
+    assert_eq!(read.scalar(0)?, value);
 
     // The column is recognized by the canonical extension name, and imports back.
     let arrow = id.clone().into_arrow_field()?;

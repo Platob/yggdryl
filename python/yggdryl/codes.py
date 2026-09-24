@@ -1,6 +1,6 @@
 """The registered code field factories: twelve identities, one width each.
 
-The registered codes - ``country``, ``currency``, ``mic``, ``cfi``, the five
+The registered codes - ``country``, ``ccy``, ``mic``, ``cfi``, the five
 securities identifiers ``isin``, ``cusip``, ``sedol``, ``bloomberg`` and ``figi``, and
 FIX's own ``side``, ``state`` and ``timeinforce`` - are datatypes of their own, each
 storing as the ASCII text it is and held to the width its standard fixes, so
@@ -24,7 +24,7 @@ from ._typing import TypedField
 
 if TYPE_CHECKING:
     CountryField: TypeAlias = TypedField[Literal["country"], str]
-    CurrencyField: TypeAlias = TypedField[Literal["currency"], str]
+    CcyField: TypeAlias = TypedField[Literal["ccy"], str]
     MicCodeField: TypeAlias = TypedField[Literal["mic"], str]
     CfiCodeField: TypeAlias = TypedField[Literal["cfi"], str]
     IsinCodeField: TypeAlias = TypedField[Literal["isin"], str]
@@ -36,12 +36,12 @@ if TYPE_CHECKING:
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
 else:
-    CountryField = CurrencyField = MicCodeField = CfiCodeField = IsinCodeField = CusipCodeField = (
+    CountryField = CcyField = MicCodeField = CfiCodeField = IsinCodeField = CusipCodeField = (
         SedolCodeField
     ) = BloombergCodeField = FIGICodeField = SideField = StateField = TimeInForceField = Field
 
 _COUNTRY = simple_dtype("country")
-_CURRENCY = simple_dtype("currency")
+_CCY = simple_dtype("ccy")
 _MIC = simple_dtype("mic")
 _CFI = simple_dtype("cfi")
 _ISIN = simple_dtype("isin")
@@ -60,10 +60,10 @@ def country(name: str, *, nullable: bool = True, metadata: MetadataInput = None)
     return new_field(CountryField, name, _COUNTRY, nullable, metadata)
 
 
-def currency(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CurrencyField:
+def ccy(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CcyField:
     """ISO 4217, the three-letter currency code."""
 
-    return new_field(CurrencyField, name, _CURRENCY, nullable, metadata)
+    return new_field(CcyField, name, _CCY, nullable, metadata)
 
 
 def mic(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> MicCodeField:
@@ -145,7 +145,7 @@ __all__ = [
     "CfiCodeField",
     "FIGICodeField",
     "CountryField",
-    "CurrencyField",
+    "CcyField",
     "CusipCodeField",
     "IsinCodeField",
     "MicCodeField",
@@ -156,7 +156,7 @@ __all__ = [
     "bloomberg",
     "cfi",
     "country",
-    "currency",
+    "ccy",
     "figi",
     "cusip",
     "isin",

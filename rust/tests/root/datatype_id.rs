@@ -24,6 +24,53 @@ fn names_are_unique() {
 }
 
 #[test]
+fn every_legacy_name_reads_as_its_identifier_and_is_never_written() {
+    let names = [
+        ("list", DataTypeId::Serie, "serie"),
+        ("list_view", DataTypeId::SerieView, "serie_view"),
+        (
+            "fixed_size_list",
+            DataTypeId::FixedSizeSerie,
+            "fixed_size_serie",
+        ),
+        ("large_list", DataTypeId::LargeSerie, "large_serie"),
+        (
+            "large_list_view",
+            DataTypeId::LargeSerieView,
+            "large_serie_view",
+        ),
+    ];
+    assert_eq!(DataTypeId::LEGACY_NAMES.len(), names.len());
+    for ((legacy, id), (name, expected, spelled)) in DataTypeId::LEGACY_NAMES.into_iter().zip(names)
+    {
+        assert_eq!((legacy, id), (name, expected));
+        let capitalized = format!("{}{}", legacy[..1].to_uppercase(), &legacy[1..]);
+        for text in [legacy.to_owned(), legacy.to_uppercase(), capitalized] {
+            assert_eq!(DataTypeId::from_str(&text).unwrap(), id, "{text}");
+            assert_eq!(text.parse::<DataTypeId>().unwrap(), id, "{text}");
+            assert_eq!(DataTypeId::from_legacy_name(&text), Some(id), "{text}");
+            let quoted = format!("\"{text}\"");
+            assert_eq!(
+                serde_json::from_str::<DataTypeId>(&quoted).unwrap(),
+                id,
+                "{text}"
+            );
+        }
+        // Read, never written: the identifier spells its own name, and no
+        // identifier's name is a legacy one.
+        assert_eq!(id.as_str(), spelled);
+        assert_eq!(id.to_string(), spelled);
+        assert_eq!(
+            serde_json::to_string(&id).unwrap(),
+            format!("\"{spelled}\"")
+        );
+        assert!(DataTypeId::ALL.iter().all(|other| other.as_str() != legacy));
+        assert_eq!(DataTypeId::from_legacy_name(spelled), None);
+    }
+    assert_eq!(DataTypeId::from_legacy_name("array"), None);
+}
+
+#[test]
 fn every_kind_is_reachable() {
     for kind in DataTypeKind::ALL {
         assert!(
@@ -58,9 +105,22 @@ fn the_strings_and_the_codes_are_text() {
     ] {
         assert_eq!(id.kind(), DataTypeKind::Text);
         assert!(id.is_string());
-        // Every string leaf is a parameter of `DataType::String`, so no
-        // identifier of the family is a complete datatype on its own.
-        assert!(id.is_parameterized());
+        // Every string leaf is a datatype variant of its own, so a leaf
+        // with no number is a complete datatype on its identifier, and only
+        // the fixed and sized ones carry a parameter.
+        assert_eq!(
+            id.is_parameterized(),
+            matches!(
+                id,
+                DataTypeId::FixedUtf8String
+                    | DataTypeId::SizedUtf8String
+                    | DataTypeId::FixedAsciiString
+                    | DataTypeId::SizedAsciiString
+                    | DataTypeId::FixedCp1252String
+                    | DataTypeId::SizedCp1252String
+            ),
+            "{id}"
+        );
         // A numbered leaf's width is that parameter, so the identifier
         // names no fixed width.
         assert_eq!(id.fixed_byte_width(), None);
@@ -90,10 +150,21 @@ fn the_strings_and_the_codes_are_text() {
     // The identifier is the canonical name alone; the grammar's other
     // spellings of a leaf belong to `DataType`.
     assert!(DataTypeId::from_str("string").is_err());
+    assert_eq!(DataTypeId::from_str("Ccy").unwrap(), DataTypeId::Ccy);
+    assert_eq!(DataTypeId::Ccy.as_str(), "ccy");
+    assert_eq!(serde_json::to_string(&DataTypeId::Ccy).unwrap(), "\"ccy\"");
     assert_eq!(
-        DataTypeId::from_str("Currency").unwrap(),
-        DataTypeId::Currency
+        serde_json::from_str::<DataTypeId>("\"ccy\"").unwrap(),
+        DataTypeId::Ccy
     );
+    for retired in ["currency", "Currency", "CURRENCY"] {
+        assert!(DataTypeId::from_str(retired).is_err(), "{retired}");
+        assert_eq!(DataTypeId::from_legacy_name(retired), None, "{retired}");
+        assert!(
+            serde_json::from_str::<DataTypeId>(&format!("\"{retired}\"")).is_err(),
+            "{retired}"
+        );
+    }
 }
 
 #[test]
@@ -186,7 +257,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::MimeType, 0x67),
         (DataTypeId::MediaType, 0x68),
         (DataTypeId::Country, 0x71),
-        (DataTypeId::Currency, 0x72),
+        (DataTypeId::Ccy, 0x72),
         (DataTypeId::MicCode, 0x73),
         (DataTypeId::CfiCode, 0x74),
         (DataTypeId::Side, 0x75),
@@ -198,11 +269,11 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::BloombergCode, 0x7b),
         (DataTypeId::FIGICode, 0x7c),
         (DataTypeId::Uuid, 0x81),
-        (DataTypeId::List, 0x91),
-        (DataTypeId::LargeList, 0x92),
-        (DataTypeId::ListView, 0x93),
-        (DataTypeId::LargeListView, 0x94),
-        (DataTypeId::FixedSizeList, 0x95),
+        (DataTypeId::Serie, 0x91),
+        (DataTypeId::LargeSerie, 0x92),
+        (DataTypeId::SerieView, 0x93),
+        (DataTypeId::LargeSerieView, 0x94),
+        (DataTypeId::FixedSizeSerie, 0x95),
         (DataTypeId::Struct, 0x96),
         (DataTypeId::Map, 0x97),
         (DataTypeId::SortedMap, 0x98),
@@ -266,6 +337,222 @@ fn every_leaf_sits_in_its_familys_range_and_no_leaf_takes_the_familys_number() {
 }
 
 #[test]
+fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() {
+    use yggdryl::DataTypeKind as K;
+
+    // Each family's range, stated here rather than read out of the crate, so
+    // a moved bound is a failure: the ranges are what `kind`, `contains` and
+    // `of_u8` all answer from.
+    let ranges = [
+        (K::Null, 0x00, 0x07),
+        (K::Boolean, 0x08, 0x0f),
+        (K::Integer, 0x10, 0x1f),
+        (K::Floating, 0x20, 0x27),
+        (K::Decimal, 0x28, 0x2f),
+        (K::Temporal, 0x30, 0x3f),
+        (K::Bytes, 0x40, 0x4f),
+        (K::Text, 0x50, 0x6f),
+        (K::Code, 0x70, 0x7f),
+        (K::Uuid, 0x80, 0x8f),
+        (K::Nested, 0x90, 0xaf),
+        (K::Geospatial, 0xb0, 0xbf),
+    ];
+    assert_eq!(ranges.len(), K::ALL.len());
+    for (kind, first, last) in ranges {
+        assert_eq!(kind.id(), first, "{kind}");
+        assert_eq!(kind.last(), last, "{kind}");
+        assert_eq!(kind.range(), first..=last, "{kind}");
+    }
+    // Every byte up to the last family's end belongs to exactly one family,
+    // and none past it.
+    for byte in 0_u8..=0xff {
+        let owners: Vec<K> = ranges
+            .iter()
+            .filter(|(_, first, last)| (*first..=*last).contains(&byte))
+            .map(|(kind, ..)| *kind)
+            .collect();
+        assert!(owners.len() <= 1, "{byte:#04x}: {owners:?}");
+        assert_eq!(
+            DataTypeKind::of_u8(byte),
+            owners.first().copied(),
+            "{byte:#04x}"
+        );
+        assert_eq!(owners.is_empty(), byte > 0xbf, "{byte:#04x}");
+    }
+
+    // Each identifier's family, listed independently of the byte table, so
+    // a bound typo that moved a leaf into its neighbour is caught.
+    let members: [(K, &[DataTypeId]); 12] = [
+        (K::Null, &[DataTypeId::Null]),
+        (K::Boolean, &[DataTypeId::Boolean]),
+        (
+            K::Integer,
+            &[
+                DataTypeId::Int8,
+                DataTypeId::Int16,
+                DataTypeId::Int32,
+                DataTypeId::Int64,
+                DataTypeId::Int128,
+                DataTypeId::UInt8,
+                DataTypeId::UInt16,
+                DataTypeId::UInt32,
+                DataTypeId::UInt64,
+                DataTypeId::UInt128,
+            ],
+        ),
+        (
+            K::Floating,
+            &[
+                DataTypeId::Float16,
+                DataTypeId::Float32,
+                DataTypeId::Float64,
+            ],
+        ),
+        (
+            K::Decimal,
+            &[
+                DataTypeId::Decimal32,
+                DataTypeId::Decimal64,
+                DataTypeId::Decimal128,
+                DataTypeId::Decimal256,
+            ],
+        ),
+        (
+            K::Temporal,
+            &[
+                DataTypeId::DateTime64,
+                DataTypeId::Date32,
+                DataTypeId::Date64,
+                DataTypeId::Time32,
+                DataTypeId::Time64,
+                DataTypeId::Duration32,
+                DataTypeId::Duration64,
+                DataTypeId::Interval,
+            ],
+        ),
+        (
+            K::Bytes,
+            &[
+                DataTypeId::Binary,
+                DataTypeId::LargeBinary,
+                DataTypeId::BinaryView,
+                DataTypeId::LargeBinaryView,
+                DataTypeId::FixedBinary,
+                DataTypeId::SizedBinary,
+            ],
+        ),
+        (
+            K::Text,
+            &[
+                DataTypeId::Utf8String,
+                DataTypeId::LargeUtf8String,
+                DataTypeId::Utf8StringView,
+                DataTypeId::LargeUtf8StringView,
+                DataTypeId::FixedUtf8String,
+                DataTypeId::SizedUtf8String,
+                DataTypeId::AsciiString,
+                DataTypeId::LargeAsciiString,
+                DataTypeId::AsciiStringView,
+                DataTypeId::LargeAsciiStringView,
+                DataTypeId::FixedAsciiString,
+                DataTypeId::SizedAsciiString,
+                DataTypeId::Cp1252String,
+                DataTypeId::LargeCp1252String,
+                DataTypeId::Cp1252StringView,
+                DataTypeId::LargeCp1252StringView,
+                DataTypeId::FixedCp1252String,
+                DataTypeId::SizedCp1252String,
+                DataTypeId::Version,
+                DataTypeId::Url,
+                DataTypeId::Urn,
+                DataTypeId::Timezone,
+                DataTypeId::MimeType,
+                DataTypeId::MediaType,
+            ],
+        ),
+        (
+            K::Code,
+            &[
+                DataTypeId::Country,
+                DataTypeId::Ccy,
+                DataTypeId::MicCode,
+                DataTypeId::CfiCode,
+                DataTypeId::Side,
+                DataTypeId::State,
+                DataTypeId::TimeInForce,
+                DataTypeId::IsinCode,
+                DataTypeId::CusipCode,
+                DataTypeId::SedolCode,
+                DataTypeId::BloombergCode,
+                DataTypeId::FIGICode,
+            ],
+        ),
+        (K::Uuid, &[DataTypeId::Uuid]),
+        (
+            K::Nested,
+            &[
+                DataTypeId::Serie,
+                DataTypeId::LargeSerie,
+                DataTypeId::SerieView,
+                DataTypeId::LargeSerieView,
+                DataTypeId::FixedSizeSerie,
+                DataTypeId::Struct,
+                DataTypeId::Map,
+                DataTypeId::SortedMap,
+                DataTypeId::Union,
+                DataTypeId::Dictionary,
+                DataTypeId::RunEndEncoded,
+                DataTypeId::Variant,
+            ],
+        ),
+        (
+            K::Geospatial,
+            &[DataTypeId::Geometry, DataTypeId::Geography],
+        ),
+    ];
+    let listed: usize = members.iter().map(|(_, ids)| ids.len()).sum();
+    assert_eq!(
+        listed,
+        DataTypeId::ALL.len(),
+        "every identifier is listed once"
+    );
+    for (kind, ids) in members {
+        for &id in ids {
+            assert_eq!(id.kind(), kind, "{id}");
+            for other in K::ALL {
+                assert_eq!(other.contains(id), other == kind, "{id} in {other}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_temporal_identifier_names_its_family_and_no_other_identifier_does() {
+    let families = [
+        (DataTypeId::Date32, "date"),
+        (DataTypeId::Date64, "date"),
+        (DataTypeId::Time32, "time"),
+        (DataTypeId::Time64, "time"),
+        (DataTypeId::DateTime64, "datetime"),
+        (DataTypeId::Duration32, "duration"),
+        (DataTypeId::Duration64, "duration"),
+        (DataTypeId::Interval, "interval"),
+    ];
+    for id in DataTypeId::ALL {
+        let expected = families
+            .iter()
+            .find(|(temporal, _)| *temporal == id)
+            .map(|(_, family)| *family);
+        assert_eq!(id.temporal_family(), expected, "{id}");
+        assert_eq!(
+            expected.is_some(),
+            yggdryl::DataTypeKind::Temporal.contains(id),
+            "{id}"
+        );
+    }
+}
+
+#[test]
 fn unknown_name_reports_the_input() {
     let error = DataTypeId::from_str("int33").unwrap_err();
     assert!(error.to_string().contains("\"int33\""), "{error}");
@@ -292,9 +579,9 @@ fn fixed_widths_match_their_layout() {
 
 #[test]
 fn a_code_width_is_a_bound_and_never_a_layout() {
-    assert_eq!(DataTypeId::Currency.code_width(), Some(3));
+    assert_eq!(DataTypeId::Ccy.code_width(), Some(3));
     assert_eq!(DataTypeId::CfiCode.code_width(), Some(6));
-    assert_eq!(DataTypeId::Currency.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::Ccy.fixed_byte_width(), None);
     assert_eq!(DataTypeId::CfiCode.fixed_byte_width(), None);
     // Only a code has one: a width that is a layout is not this fact.
     assert_eq!(DataTypeId::Uuid.code_width(), None);

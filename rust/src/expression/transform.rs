@@ -524,7 +524,7 @@ mod arrow {
             };
             let held = batch.schema().index_of(child.name()).ok();
             if let Some(index) = held {
-                if !is_unwritten(child, columns[index].as_ref(), rows)? {
+                if !is_unwritten(child, &columns[index], rows)? {
                     continue;
                 }
             }
@@ -567,16 +567,26 @@ mod arrow {
     /// holding anything else was.
     pub(crate) fn is_unwritten(
         field: &Field,
-        array: &dyn arrow_array::Array,
+        array: &arrow_array::ArrayRef,
         rows: usize,
     ) -> Result<bool> {
+        use arrow_array::Array as _;
+
         let default = field.default_value()?;
         if default.is_null() {
             // For the ordinary nullable declaration the null mask is the answer.
             return Ok(array.null_count() == rows);
         }
+        // The column lands once and each cell reads through its leaf. It
+        // lands admitting absence: an absent cell is not the default, so it
+        // was written, whatever the declaration says.
+        let column = crate::serie::land(
+            Arc::new(field.clone().with_nullable(true)),
+            Arc::clone(array),
+            &crate::serie::Proof::Unproven,
+        )?;
         for row in 0..rows {
-            if crate::arrow::value::value_from_array(field.dtype(), array, row)? != default {
+            if column.scalar(row)? != default {
                 return Ok(false);
             }
         }

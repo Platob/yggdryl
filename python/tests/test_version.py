@@ -11,7 +11,6 @@ import pytest
 
 import yggdryl
 from yggdryl import DataType, Field, Scalar, Serie, Version, enums, field, json, scalar
-from yggdryl.arrow import ArrowScalar
 
 
 @pytest.mark.parametrize(
@@ -159,8 +158,8 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     scalar = Scalar.from_(Version(5, 0, 300))
     assert scalar.into_arrow_scalar(field).as_py() == "5.0.300"
     batch = pa.record_batch([array], schema=pa.schema([arrow_field]))
-    native = ArrowScalar.from_(batch).into_scalar()
-    assert [row[0].as_py() for row in native] == [Version(5, 0, 300), Version(5), Version(255, 255, 65535)]
+    native = Serie.from_(batch)
+    assert native.child("release").as_py() == [Version(5, 0, 300), Version(5), Version(255, 255, 65535)]
 
 
 def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():

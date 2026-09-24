@@ -89,7 +89,7 @@ fn decoded_bounds_keep_the_declared_scalar_identity() {
         (Scalar::from("value"), DataType::large_utf8()),
         (Scalar::from("value"), DataType::utf8_view()),
         (Scalar::from("USD"), DataType::fixed_ascii(4).unwrap()),
-        (Scalar::from("USD"), DataType::Currency),
+        (Scalar::from("USD"), DataType::Ccy),
         (
             Scalar::from("00112233-4455-6677-8899-aabbccddeeff"),
             DataType::Uuid,

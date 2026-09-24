@@ -379,11 +379,11 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // four parts join to, and null where one of them is missing.
     assert_eq!(typed(yggdryl::MSGSESSEVENTID_TAG_NAME.1), &DataType::utf8());
     assert!(field(yggdryl::MSGSESSEVENTID_TAG_NAME.1).is_nullable());
-    // The identities a message was read from are a list of UUIDs, each item
+    // The identities a message was read from are a serie of UUIDs, each item
     // stated.
     assert_eq!(
         typed("srcuuids"),
-        &DataType::list(DataType::uuid().required_field("srcuuid"))
+        &DataType::serie(DataType::uuid().required_field("srcuuid"))
     );
     assert!(field("srcuuids").is_nullable());
     for name in ["currunix", "creaunix"] {

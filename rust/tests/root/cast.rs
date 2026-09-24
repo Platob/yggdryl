@@ -78,7 +78,7 @@ mod coverage {
     }
 
     #[test]
-    fn list_wrappers_change_layout_and_cast_their_children() {
+    fn serie_wrappers_change_layout_and_cast_their_children() {
         let mut builder = ListBuilder::new(Int32Builder::new());
         builder.values().append_value(1);
         builder.values().append_value(2);
@@ -89,7 +89,7 @@ mod coverage {
 
         // List<Int32> -> LargeList<Int64>: the offset width and the child change.
         let large = cast(
-            &DataType::from_str("large_list<int64>")
+            &DataType::from_str("large_serie<int64>")
                 .unwrap()
                 .nullable_field("xs"),
             Arc::clone(&list),
@@ -110,7 +110,7 @@ mod coverage {
             2,
         ));
         let unsized_list = cast(
-            &DataType::from_str("list<int32>")
+            &DataType::from_str("serie<int32>")
                 .unwrap()
                 .nullable_field("xs"),
             fixed,
@@ -123,7 +123,7 @@ mod coverage {
     }
 
     #[test]
-    fn structs_reconcile_by_name_inside_a_list() {
+    fn structs_reconcile_by_name_inside_a_serie() {
         // List<Struct{id, name}> -> List<Struct{ID: int64}>: the dedicated arms
         // recurse, select case-insensitively, and drop the extra column.
         let ids = Int32Array::from(vec![1, 2]);
@@ -154,7 +154,7 @@ mod coverage {
         ));
         let list: ArrayRef = Arc::new(ListArray::new(child, offsets, Arc::new(entries), None));
 
-        let target = DataType::from_str("list<struct<ID: int64>>")
+        let target = DataType::from_str("serie<struct<ID: int64>>")
             .unwrap()
             .nullable_field("rows");
         let narrowed = cast(&target, list).unwrap();
@@ -1804,7 +1804,7 @@ mod typed {
         assert!(refused.contains("Variant::scalar"), "{refused}");
     }
 
-    /// Every wrapper reads what the value inside it reads: a list layout is a
+    /// Every wrapper reads what the value inside it reads: a serie layout is a
     /// layout, an encoding is a layout, and a byte framing is a framing.
     mod layouts {
         use std::sync::Arc;
@@ -1828,7 +1828,7 @@ mod typed {
             ArrowCastOptions::new().with_safe(false)
         }
 
-        /// Two rows of two `{a: int32}` values, under every list layout in turn.
+        /// Two rows of two `{a: int32}` values, under every serie layout in turn.
         fn struct_items() -> (Arc<ArrowField>, ArrayRef) {
             let fields: ArrowFields =
                 vec![Arc::new(ArrowField::new("a", ArrowDataType::Int32, true))].into();
@@ -1842,7 +1842,7 @@ mod typed {
         }
 
         #[test]
-        fn every_list_layout_reads_every_other_one_through_a_struct_child() {
+        fn every_serie_layout_reads_every_other_one_through_a_struct_child() {
             let (item, values) = struct_items();
             let offsets = OffsetBuffer::new(vec![0, 2, 4].into());
             let sources: Vec<ArrayRef> = vec![
@@ -1870,11 +1870,11 @@ mod typed {
                 ),
             ];
             let targets = [
-                "list<struct<a: int32>>",
-                "large_list<struct<a: int32>>",
-                "list_view<struct<a: int32>>",
-                "large_list_view<struct<a: int32>>",
-                "fixed_size_list<struct<a: int32>, 2>",
+                "serie<struct<a: int32>>",
+                "large_serie<struct<a: int32>>",
+                "serie_view<struct<a: int32>>",
+                "large_serie_view<struct<a: int32>>",
+                "fixed_size_serie<struct<a: int32>, 2>",
             ];
             for source in sources {
                 for target in targets {
@@ -1894,7 +1894,7 @@ mod typed {
                 Arc::new(FixedSizeListArray::try_new(item, 2, values, None).unwrap());
 
             let refused = cast_dtype(
-                dtype("fixed_size_list<struct<a: int32>, 4>"),
+                dtype("fixed_size_serie<struct<a: int32>, 4>"),
                 source,
                 strict(),
             )
@@ -2098,14 +2098,14 @@ mod typed {
         #[test]
         fn a_code_answers_safe_and_strict_exactly_as_a_string_does() {
             let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EURO"), None]));
-            let refused = cast_dtype(DataType::Currency, Arc::clone(&text), strict())
+            let refused = cast_dtype(DataType::Ccy, Arc::clone(&text), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains("at most 3 bytes"), "{refused}");
 
             let lenient = cast_into(
-                &Field::new("ccy", DataType::Currency, true),
+                &Field::new("ccy", DataType::Ccy, true),
                 text,
                 ArrowCastOptions::new(),
             )
@@ -2124,7 +2124,7 @@ mod typed {
             // leaf as its own typed array, so the `Arc` around it is new; the
             // buffers under it are the caller's.
             let passing: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
-            let shared = cast_dtype(DataType::Currency, Arc::clone(&passing), strict()).unwrap();
+            let shared = cast_dtype(DataType::Ccy, Arc::clone(&passing), strict()).unwrap();
             assert!(shared.to_data().ptr_eq(&passing.to_data()));
 
             // A fixed binary source is trimmed of the padding its slot wrote and
@@ -2136,9 +2136,9 @@ mod typed {
                 )
                 .unwrap(),
             );
-            assert!(cast_dtype(DataType::Currency, Arc::clone(&stored), strict()).is_err());
+            assert!(cast_dtype(DataType::Ccy, Arc::clone(&stored), strict()).is_err());
             let lenient = cast_into(
-                &Field::new("ccy", DataType::Currency, true),
+                &Field::new("ccy", DataType::Ccy, true),
                 stored,
                 ArrowCastOptions::new(),
             )
@@ -2212,8 +2212,8 @@ mod typed {
         #[test]
         fn a_code_reads_into_a_string_and_bare_bytes_are_taken_as_the_target_charset() {
             let codes: ArrayRef = Arc::new(StringArray::from(vec!["USD"]));
-            let currency = cast_dtype(DataType::Currency, codes, strict()).unwrap();
-            let source = batch(Field::new("text", DataType::Currency, true), currency);
+            let currency = cast_dtype(DataType::Ccy, codes, strict()).unwrap();
+            let source = batch(Field::new("text", DataType::Ccy, true), currency);
             let back = cast_column(source, dtype("utf8(8)"), strict()).unwrap();
             assert_eq!(
                 back.as_ref()
@@ -2387,7 +2387,6 @@ mod typed {
         };
 
         use super::cast_into;
-        use yggdryl::arrow::scalar_value;
         use yggdryl::cast::ArrowCastOptions;
         use yggdryl::{DataType, Field, Nullability, Scalar, Serie, TimeUnit, Timezone};
 
@@ -2465,7 +2464,7 @@ mod typed {
         fn codes() -> Vec<DataType> {
             vec![
                 DataType::Country,
-                DataType::Currency,
+                DataType::Ccy,
                 DataType::MicCode,
                 DataType::CfiCode,
                 DataType::IsinCode,
@@ -2542,7 +2541,10 @@ mod typed {
         }
 
         fn cell(field: &Field, array: &ArrayRef) -> Scalar {
-            scalar_value(field, array.as_ref()).unwrap()
+            Serie::from_arrow_array(Some(field), Arc::clone(array), ArrowCastOptions::default())
+                .unwrap()
+                .scalar(0)
+                .unwrap()
         }
 
         /// Whether the one row is null as a reader sees it: a dictionary pair
@@ -2802,15 +2804,15 @@ mod typed {
             assert!(cast_into(&field, empty, conversion_error()).is_err());
         }
 
-        /// A list target reads a scalar source into its item, so the item is
+        /// A serie target reads a scalar source into its item, so the item is
         /// what answers: a text item keeps the empty cell, a numeric one does not.
         #[test]
-        fn a_list_target_answers_for_its_item() {
+        fn a_serie_target_answers_for_its_item() {
             let empty: ArrayRef = Arc::new(StringArray::from(vec![""]));
 
             let texts = Field::new(
                 "x",
-                DataType::list(DataType::utf8().nullable_field("item")),
+                DataType::serie(DataType::utf8().nullable_field("item")),
                 true,
             );
             let cast = cast_into(&texts, Arc::clone(&empty), conversion_error()).unwrap();
@@ -2828,7 +2830,7 @@ mod typed {
 
             let counts = Field::new(
                 "x",
-                DataType::list(DataType::Int32.nullable_field("item")),
+                DataType::serie(DataType::Int32.nullable_field("item")),
                 true,
             );
             let cast = cast_into(&counts, empty, conversion_error()).unwrap();
@@ -2849,7 +2851,6 @@ mod strict {
         StructArray,
     };
     use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields, Schema, SchemaRef};
-    use yggdryl::arrow::scalar_value;
     use yggdryl::{
         ArrowCastOptions, ArrowCastPlan, DataType, Field, Nullability, Serie, StructType,
     };
@@ -3043,7 +3044,7 @@ mod strict {
     }
 
     #[test]
-    fn a_required_list_item_is_named_under_its_list() {
+    fn a_required_serie_item_is_named_under_its_serie() {
         let mut builder = ListBuilder::new(Int32Builder::new());
         builder.values().append_value(1);
         builder.values().append_null();
@@ -3057,7 +3058,7 @@ mod strict {
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
 
         let target = root([
-            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+            DataType::Serie(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
         assert_eq!(
@@ -3199,7 +3200,7 @@ mod strict {
             "required Arrow field $.address.zip holds 1 null values"
         );
 
-        // A list item.
+        // A serie item.
         let mut builder = ListBuilder::new(StringBuilder::new());
         builder.values().append_value("7");
         builder.values().append_value("");
@@ -3212,7 +3213,7 @@ mod strict {
         )]);
         let batch = RecordBatch::try_new(source, vec![values]).unwrap();
         let target = root([
-            DataType::List(Arc::new(DataType::Int32.required_field("item")))
+            DataType::Serie(Arc::new(DataType::Int32.required_field("item")))
                 .nullable_field("counts"),
         ]);
         let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
@@ -3292,7 +3293,14 @@ mod strict {
         let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(repaired.column(0).null_count(), 0);
         assert_eq!(
-            scalar_value(&release, repaired.column(0).as_ref()).unwrap(),
+            Serie::from_arrow_array(
+                Some(&release),
+                Arc::clone(repaired.column(0)),
+                ArrowCastOptions::default()
+            )
+            .unwrap()
+            .scalar(0)
+            .unwrap(),
             release.default_value().unwrap()
         );
         assert_eq!(
@@ -3419,7 +3427,7 @@ mod certification {
     fn the_code_ingest_writes_only_registered_members() {
         let codes = text(&[Some("USD"), Some("usd"), Some("EURO"), Some(""), None]);
         for target in [
-            DataType::Currency,
+            DataType::Ccy,
             DataType::Country,
             DataType::Side,
             DataType::State,
@@ -3448,5 +3456,69 @@ mod certification {
         certified(DataType::Url, urls);
         let urns = text(&[Some("URN:isbn:0451450523"), None]);
         certified(DataType::Urn, urns);
+    }
+}
+
+mod chunked {
+    //! One plan over every chunk of a chunked column, the chunks kept apart.
+
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, ChunkedSerie, DataType, Field, Scalar, Serie};
+
+    fn prices() -> (Field, ChunkedSerie) {
+        let price = Field::new("price", DataType::Int32, false);
+        let column = |rows: &[i32]| {
+            Serie::from_scalars(price.clone(), rows.iter().copied().map(Scalar::from))
+                .expect("int32 rows")
+        };
+        let chunked = ChunkedSerie::from_series(
+            Some(&price),
+            [column(&[125, 126]), column(&[127])],
+            ArrowCastOptions::new(),
+        )
+        .expect("two chunks");
+        (price, chunked)
+    }
+
+    #[test]
+    fn a_plan_casts_every_chunk_and_keeps_them_apart() {
+        let (price, chunked) = prices();
+        let wide = Field::new("price", DataType::Int64, false);
+        let plan = ArrowCastPlan::compile(&price, &wide, ArrowCastOptions::new()).unwrap();
+        let cast = plan.apply_chunked(&chunked).unwrap();
+        assert_eq!((cast.num_chunks(), cast.field()), (2, &wide));
+        assert_eq!(cast.scalar(2).unwrap(), Scalar::from(127_i64));
+        assert!(cast == chunked);
+    }
+
+    #[test]
+    fn an_identity_plan_hands_the_chunked_column_back_and_a_foreign_layout_is_refused() {
+        let (price, chunked) = prices();
+        let same = ArrowCastPlan::compile(&price, &price, ArrowCastOptions::new()).unwrap();
+        let back = same.apply_chunked(&chunked).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            back.field_ref(),
+            chunked.field_ref()
+        ));
+        assert_eq!(back.num_chunks(), 2);
+
+        let text = ChunkedSerie::from_serie(
+            Serie::from_scalars(
+                Field::new("price", DataType::utf8(), false),
+                [Scalar::from("1")],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let refusal = same.apply_chunked(&text).unwrap_err();
+        assert!(refusal.to_string().contains("compiled for"), "{refusal}");
+
+        // No chunk is still judged by its field, and answered under the target.
+        let wide = Field::new("price", DataType::Int64, true);
+        let plan = ArrowCastPlan::compile(&price, &wide, ArrowCastOptions::new()).unwrap();
+        let empty = plan
+            .apply_chunked(&ChunkedSerie::empty(price.clone()).unwrap())
+            .unwrap();
+        assert_eq!((empty.num_chunks(), empty.field()), (0, &wide));
+        assert!(plan.apply_chunked(&text).is_err());
     }
 }

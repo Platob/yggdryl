@@ -4,7 +4,7 @@
 //! as Arrow's layouts are. [`DataType`] says what shape a value has,
 //! [`Field`] says whose it is and whether a row may be absent, [`Scalar`] is
 //! one value, and a [`Serie`] is many of them. It is what the sequence
-//! family holds: `Scalar::List(Serie)`, so there is one type for "many
+//! family holds: `Scalar::Serie(Serie)`, so there is one type for "many
 //! values" and not two.
 //!
 //! | side | root | trait | widen | narrow |
@@ -31,21 +31,26 @@
 //!
 //! # The rows are buffers, and the leaf names them
 //!
-//! The root is flat, one variant per [`DataType`] variant and spelled as
-//! it is - `Int8`, `Decimal128`, `Time32`, `List`, `Map`, `SortedMap` - so
-//! the four roots dispatch alike. A variant holds its leaf directly, or, where
-//! one datatype variant spans several layouts, the payload family that picks
-//! one:
+//! The root is flat, one variant per storage layout, spelled as the leaf that
+//! holds it - `Int8`, `Decimal128`, `Time32Second`, `DurationMillisecond`,
+//! `Utf8String`, `Serie`, `Map`, `SortedMap` - so a column's variant is the
+//! buffers it holds and nothing wraps them. A layout serves every datatype
+//! whose Arrow storage it is: `Utf8String` holds each string leaf laid out as
+//! UTF-8, `DurationSecond` both duration widths, so which datatype a column
+//! is is its field's [`id`](crate::SerieValue::id), never its variant. A code,
+//! a version, a URI, a zone, a MIME or media type, a UUID and a geospatial
+//! reading keep a variant of their own over the leaf they are stored in,
+//! because a digest, a text body and a FIX payload each tell them apart:
 //!
 //! | root variants | held | what a leaf lends |
 //! | --- | --- | --- |
 //! | `Int8` .. `Float64` | [`Int8Serie`] .. [`Float64Serie`] | `&[i32]` and its kind, straight off the buffer |
 //! | `Decimal32` .. `Decimal256` | [`Decimal32Serie`] .. [`Decimal256Serie`] | the coefficients, at the field's scale |
 //! | `Date32`, `Date64` | [`Date32Serie`], [`Date64Serie`] | the counts |
-//! | `Time32`, `Time64`, `DateTime64`, `Duration32`, `Duration64`, `Interval` | [`Time32Serie`], [`Time64Serie`], [`DateTime64Serie`], [`DurationSerie`], [`IntervalSerie`] | the counts, the unit picking the leaf |
-//! | `String` | [`StringSerie`]: [`Utf8StringSerie`] .. [`FixedStringSerie`] | the offsets and the character bytes |
-//! | `Bytes` | [`BytesSerie`]: [`BinarySerie`] .. [`FixedBytesSerie`] | the offsets and the payload bytes |
-//! | `List` .. `LargeListView`, `FixedSizeList` | [`ListSerie`] .. [`FixedSizeListSerie`] | the offsets, and the item column under them |
+//! | `Time32Second` .. `Time64Nanosecond`, `DateTimeSecond` .. `DateTimeNanosecond`, `DurationSecond` .. `DurationNanosecond`, `IntervalYearMonth` .. `IntervalMonthDayNano` | [`Time32SecondSerie`] .. [`IntervalMonthDayNanoSerie`] | the counts, at the unit the leaf is |
+//! | `Utf8String` .. `FixedString` | [`Utf8StringSerie`] .. [`FixedStringSerie`] | the offsets and the character bytes |
+//! | `Binary` .. `FixedBytes` | [`BinarySerie`] .. [`FixedBytesSerie`] | the offsets and the payload bytes |
+//! | `Serie` .. `LargeSerieView`, `FixedSizeSerie` | [`SerieSerie`] .. [`FixedSizeSerieSerie`] | the offsets, and the item column under them |
 //! | `Dictionary` | [`DictionarySerie`] | the key column and the values column |
 //! | `Struct` | [`StructSerie`] | one child [`Serie`] per child field |
 //! | `Map`, `SortedMap` | [`MapSerie`] | the offsets, and the entries column under them |
@@ -194,140 +199,26 @@ macro_rules! serie_leaf {
     };
 }
 
-/// Emit one family's column enum over its leaves, and the dispatch every one
-/// of them answers the same way.
-macro_rules! serie_family {
-    (
-        $(#[$meta:meta])*
-        $family:ident, [$($leaf:ident => $held:ty),+ $(,)?]
-    ) => {
-        $(#[$meta])*
-        #[derive(Clone)]
-        #[non_exhaustive]
-        pub enum $family {
-            $(
-                #[doc = concat!("A column of `", stringify!($leaf), "` rows.")]
-                $leaf($held),
-            )+
-        }
-
-        impl $family {
-            /// Refuse what a write of `rows` over `range` could not do.
-            pub(crate) fn check(
-                &self,
-                range: &::std::ops::Range<usize>,
-                rows: &[$crate::Scalar],
-            ) -> $crate::Result<()> {
-                match self { $(Self::$leaf(column) => column.check(range, rows),)+ }
-            }
-
-            /// Write canonical `rows` over a checked `range`.
-            pub(crate) fn write(
-                &mut self,
-                range: ::std::ops::Range<usize>,
-                rows: Vec<$crate::Scalar>,
-            ) {
-                match self { $(Self::$leaf(column) => column.write(range, rows),)+ }
-            }
-
-            /// Append `other`'s buffers, answering whether the two hold one
-            /// layout and the leaf's buffers reach the total; the root has
-            /// already agreed the fields, and `false` leaves the column as
-            /// it was.
-            pub(crate) fn append(&mut self, other: &Self) -> bool {
-                match (self, other) {
-                    $((Self::$leaf(column), Self::$leaf(more)) => column.append(more),)+
-                    // Unreachable for a family of one leaf.
-                    #[allow(unreachable_patterns)]
-                    _ => false,
-                }
-            }
-        }
-
-        impl $crate::value::SerieValue for $family {
-            fn field(&self) -> &$crate::Field {
-                match self { $(Self::$leaf(column) => column.field(),)+ }
-            }
-
-            fn field_ref(&self) -> &::std::sync::Arc<$crate::Field> {
-                match self { $(Self::$leaf(column) => column.field_ref(),)+ }
-            }
-
-            fn len(&self) -> usize {
-                match self { $(Self::$leaf(column) => column.len(),)+ }
-            }
-
-            fn null_count(&self) -> usize {
-                match self { $(Self::$leaf(column) => column.null_count(),)+ }
-            }
-
-            fn is_null(&self, index: usize) -> $crate::Result<bool> {
-                match self { $(Self::$leaf(column) => column.is_null(index),)+ }
-            }
-
-            fn scalar(&self, index: usize) -> $crate::Result<$crate::Scalar> {
-                match self { $(Self::$leaf(column) => column.scalar(index),)+ }
-            }
-
-            fn slice(&self, offset: usize, length: usize) -> $crate::Result<Self> {
-                match self {
-                    $(Self::$leaf(column) => column.slice(offset, length).map(Self::$leaf),)+
-                }
-            }
-
-            fn splice(
-                &mut self,
-                range: ::std::ops::Range<usize>,
-                rows: Vec<$crate::Scalar>,
-            ) -> $crate::Result<()> {
-                match self { $(Self::$leaf(column) => column.splice(range, rows),)+ }
-            }
-
-            fn into_arrow_array(&self) -> ::arrow_array::ArrayRef {
-                match self { $(Self::$leaf(column) => column.into_arrow_array(),)+ }
-            }
-
-            fn into_serie(self) -> Serie {
-                Leaf::root(self)
-            }
-
-            fn from_serie(value: &Serie) -> Option<&Self> {
-                Leaf::narrow(value)
-            }
-        }
-
-        impl ::std::fmt::Debug for $family {
-            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                match self { $(Self::$leaf(column) => ::std::fmt::Debug::fmt(column, formatter),)+ }
-            }
-        }
-
-        serie_leaf!($family);
-
-        impl From<$family> for Serie {
-            fn from(value: $family) -> Self {
-                Leaf::root(value)
-            }
-        }
-    };
-}
-
-mod arrow;
+pub(crate) mod arrow;
 pub use arrow::SerieReader;
-pub(crate) use arrow::{Proof, default_array, default_dtype_array, land};
+pub(crate) use arrow::{
+    Proof, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
+    land_batch, land_resolved, land_under, proven_cell,
+};
 mod boolean;
 mod bytes;
 mod datatype;
 mod enums;
 pub(crate) mod layout;
-mod list;
 mod mapping;
 mod null;
 mod primitive;
 mod runend;
+mod sequence;
 mod string;
 mod structure;
 mod union;
+pub(crate) mod value;
 mod variant;
 
 pub use boolean::BooleanSerie;
@@ -337,10 +228,6 @@ pub use bytes::{
 };
 pub use datatype::{Run, SerieType};
 pub use enums::DictionarySerie;
-pub use list::{
-    FixedSizeListSerie, LargeListSerie, LargeListViewSerie, ListLeaf, ListSerie, ListViewSerie,
-    OffsetListSerie, OffsetListViewSerie,
-};
 pub use mapping::MapSerie;
 pub use null::NullSerie;
 pub use primitive::{
@@ -354,6 +241,10 @@ pub use primitive::{
     UInt32Serie, UInt64Serie,
 };
 pub use runend::RunEndEncodedSerie;
+pub use sequence::{
+    FixedSizeSerieSerie, LargeSerieSerie, LargeSerieViewSerie, OffsetLeaf, OffsetSerie,
+    OffsetViewSerie, SerieSerie, SerieViewSerie,
+};
 pub use string::{
     BinaryStringSerie, BinaryViewStringSerie, FixedStringSerie, LargeBinaryStringSerie,
     LargeUtf8StringSerie, Utf8StringSerie, Utf8ViewStringSerie,
@@ -510,82 +401,6 @@ pub(crate) fn require_window(name: &str, offset: usize, length: usize, len: usiz
 }
 
 // ------------------------------------------------------------------------
-// The payload families: one enum over the Arrow layouts one datatype
-// variant's payload - its unit, its string or byte layout - picks between.
-// ------------------------------------------------------------------------
-serie_family!(
-    /// A 32-bit time-of-day column at one of the two units its field may declare.
-    Time32Serie,
-    [
-        Second => Time32SecondSerie,
-        Millisecond => Time32MillisecondSerie,
-    ]
-);
-serie_family!(
-    /// A 64-bit time-of-day column at one of the two units its field may declare.
-    Time64Serie,
-    [
-        Microsecond => Time64MicrosecondSerie,
-        Nanosecond => Time64NanosecondSerie,
-    ]
-);
-serie_family!(
-    /// A datetime column at one of the four units its field may declare.
-    DateTime64Serie,
-    [
-        Second => DateTimeSecondSerie,
-        Millisecond => DateTimeMillisecondSerie,
-        Microsecond => DateTimeMicrosecondSerie,
-        Nanosecond => DateTimeNanosecondSerie,
-    ]
-);
-serie_family!(
-    /// A duration column at one of the four units Arrow lays durations out in.
-    DurationSerie,
-    [
-        Second => DurationSecondSerie,
-        Millisecond => DurationMillisecondSerie,
-        Microsecond => DurationMicrosecondSerie,
-        Nanosecond => DurationNanosecondSerie,
-    ]
-);
-serie_family!(
-    /// A calendar-interval column in one of Arrow's three interval layouts.
-    IntervalSerie,
-    [
-        YearMonth => IntervalYearMonthSerie,
-        DayTime => IntervalDayTimeSerie,
-        MonthDayNano => IntervalMonthDayNanoSerie,
-    ]
-);
-serie_family!(
-    /// A text column, named by the buffers it holds.
-    ///
-    /// The field says which of the crate's eighteen string leaves the bytes under
-    /// it are; the leaf here says how they are laid out, because that is what a
-    /// reader of the offsets and the characters needs.
-    StringSerie,
-    [
-        Utf8 => Utf8StringSerie,
-        LargeUtf8 => LargeUtf8StringSerie,
-        Utf8View => Utf8ViewStringSerie,
-        Binary => BinaryStringSerie,
-        LargeBinary => LargeBinaryStringSerie,
-        BinaryView => BinaryViewStringSerie,
-        Fixed => FixedStringSerie,
-    ]
-);
-serie_family!(
-    /// A byte column, named by the buffers it holds.
-    BytesSerie,
-    [
-        Binary => BinarySerie,
-        LargeBinary => LargeBinarySerie,
-        BinaryView => BinaryViewSerie,
-        Fixed => FixedBytesSerie,
-    ]
-);
-// ------------------------------------------------------------------------
 // The root.
 // ------------------------------------------------------------------------
 
@@ -594,13 +409,17 @@ serie_family!(
 /// One type answers "many values" everywhere in the crate. A [`Serie::Run`]
 /// is a schema-free ordered run - what a row canonicalizes to, and what a
 /// document parses as. Every other leaf is a column: the Arrow buffers of
-/// one [`Field`], one variant per [`DataType`] variant - the same dispatch
-/// [`DataType`], [`Field`] and [`Scalar`] have - so a column's variant is
-/// read straight off its field's datatype. Where a variant's payload picks
-/// between Arrow layouts - a unit, a string or byte layout - the variant
-/// holds one small enum over them; a code, a version, a URI, a zone or a
-/// MIME or media type holds the UTF-8 column it is stored in, a UUID its
-/// sixteen fixed bytes and a geospatial reading its Well-Known Binary.
+/// one [`Field`], one variant per storage layout, named as the leaf that
+/// holds it. A variant names the layout, not the datatype: `Utf8String`
+/// holds every string leaf laid out as UTF-8 - `ascii` and `sized_utf8`
+/// among them - `Binary` a sized binary too, `BinaryView` a large view, and
+/// `DurationSecond` both duration widths, so a column's datatype is its
+/// field's, read through [`SerieValue::id`]. A code, a version, a URI, a
+/// zone or a MIME or media type holds the UTF-8 column it is stored in, a
+/// UUID its sixteen fixed bytes and a geospatial reading its Well-Known
+/// Binary, each under a variant of its own - which is why
+/// [`Self::as_utf8`], [`Self::as_fixed_bytes`] and [`Self::as_binary`]
+/// reach those variants too.
 ///
 /// The column leaves are shared behind one pointer each, so a [`Scalar`]
 /// carrying a serie is two words and a clone of one is a pointer bump. A
@@ -641,30 +460,66 @@ pub enum Serie {
     Float32(Arc<Float32Serie>),
     /// A column of `float64` values.
     Float64(Arc<Float64Serie>),
-    /// A column of datetimes, at the unit its field declares.
-    DateTime64(Arc<DateTime64Serie>),
+    /// A column of datetimes counted in seconds.
+    DateTimeSecond(Arc<DateTimeSecondSerie>),
+    /// A column of datetimes counted in milliseconds.
+    DateTimeMillisecond(Arc<DateTimeMillisecondSerie>),
+    /// A column of datetimes counted in microseconds.
+    DateTimeMicrosecond(Arc<DateTimeMicrosecondSerie>),
+    /// A column of datetimes counted in nanoseconds.
+    DateTimeNanosecond(Arc<DateTimeNanosecondSerie>),
     /// A column of day counts.
     Date32(Arc<Date32Serie>),
     /// A column of the milliseconds of midnights.
     Date64(Arc<Date64Serie>),
-    /// A column of 32-bit times of day, at the unit its field declares.
-    Time32(Arc<Time32Serie>),
-    /// A column of 64-bit times of day, at the unit its field declares.
-    Time64(Arc<Time64Serie>),
-    /// A column of `duration32` counts, at the unit its field declares.
-    Duration32(Arc<DurationSerie>),
-    /// A column of `duration64` counts, at the unit its field declares.
-    Duration64(Arc<DurationSerie>),
-    /// A column of calendar intervals, in the layout its field declares.
-    Interval(Arc<IntervalSerie>),
-    /// A column of bytes, named by the buffers that hold them.
-    Bytes(Arc<BytesSerie>),
-    /// A column of text, named by the buffers that hold it.
-    String(Arc<StringSerie>),
+    /// A column of 32-bit times of day in seconds.
+    Time32Second(Arc<Time32SecondSerie>),
+    /// A column of 32-bit times of day in milliseconds.
+    Time32Millisecond(Arc<Time32MillisecondSerie>),
+    /// A column of 64-bit times of day in microseconds.
+    Time64Microsecond(Arc<Time64MicrosecondSerie>),
+    /// A column of 64-bit times of day in nanoseconds.
+    Time64Nanosecond(Arc<Time64NanosecondSerie>),
+    /// A column of durations counted in seconds, at the width its field declares.
+    DurationSecond(Arc<DurationSecondSerie>),
+    /// A column of durations counted in milliseconds, at the width its field declares.
+    DurationMillisecond(Arc<DurationMillisecondSerie>),
+    /// A column of durations counted in microseconds, at the width its field declares.
+    DurationMicrosecond(Arc<DurationMicrosecondSerie>),
+    /// A column of durations counted in nanoseconds, at the width its field declares.
+    DurationNanosecond(Arc<DurationNanosecondSerie>),
+    /// A column of calendar intervals in months.
+    IntervalYearMonth(Arc<IntervalYearMonthSerie>),
+    /// A column of calendar intervals in days and milliseconds.
+    IntervalDayTime(Arc<IntervalDayTimeSerie>),
+    /// A column of calendar intervals in months, days and nanoseconds.
+    IntervalMonthDayNano(Arc<IntervalMonthDayNanoSerie>),
+    /// A column of bytes behind 32-bit offsets.
+    Binary(Arc<BinarySerie>),
+    /// A column of bytes behind 64-bit offsets.
+    LargeBinary(Arc<LargeBinarySerie>),
+    /// A column of bytes behind views.
+    BinaryView(Arc<BinaryViewSerie>),
+    /// A column of bytes at one fixed width.
+    FixedBytes(Arc<FixedBytesSerie>),
+    /// A column of text as UTF-8 behind 32-bit offsets.
+    Utf8String(Arc<Utf8StringSerie>),
+    /// A column of text as UTF-8 behind 64-bit offsets.
+    LargeUtf8String(Arc<LargeUtf8StringSerie>),
+    /// A column of text as UTF-8 behind views.
+    Utf8ViewString(Arc<Utf8ViewStringSerie>),
+    /// A column of text in its field's charset behind 32-bit offsets.
+    BinaryString(Arc<BinaryStringSerie>),
+    /// A column of text in its field's charset behind 64-bit offsets.
+    LargeBinaryString(Arc<LargeBinaryStringSerie>),
+    /// A column of text in its field's charset behind views.
+    BinaryViewString(Arc<BinaryViewStringSerie>),
+    /// A column of text in its field's charset, padded to one fixed width.
+    FixedString(Arc<FixedStringSerie>),
     /// A column of `Country` values, stored as their UTF-8 text.
     Country(Arc<Utf8StringSerie>),
-    /// A column of `Currency` values, stored as their UTF-8 text.
-    Currency(Arc<Utf8StringSerie>),
+    /// A column of `Ccy` values, stored as their UTF-8 text.
+    Ccy(Arc<Utf8StringSerie>),
     /// A column of `MicCode` values, stored as their UTF-8 text.
     MicCode(Arc<Utf8StringSerie>),
     /// A column of `CfiCode` values, stored as their UTF-8 text.
@@ -699,16 +554,16 @@ pub enum Serie {
     FIGICode(Arc<Utf8StringSerie>),
     /// A column of UUIDs, sixteen fixed bytes each.
     Uuid(Arc<FixedBytesSerie>),
-    /// A column of lists: 32-bit offsets over one item column.
-    List(Arc<ListSerie>),
-    /// A column of list views: 32-bit offsets and sizes over one item column.
-    ListView(Arc<ListViewSerie>),
-    /// A column of fixed-size lists: `width` items per row.
-    FixedSizeList(Arc<FixedSizeListSerie>),
-    /// A column of large lists: 64-bit offsets over one item column.
-    LargeList(Arc<LargeListSerie>),
-    /// A column of large list views: 64-bit offsets and sizes over one item column.
-    LargeListView(Arc<LargeListViewSerie>),
+    /// A column of series: 32-bit offsets over one item column.
+    Serie(Arc<SerieSerie>),
+    /// A column of serie views: 32-bit offsets and sizes over one item column.
+    SerieView(Arc<SerieViewSerie>),
+    /// A column of fixed-size series: `width` items per row.
+    FixedSizeSerie(Arc<FixedSizeSerieSerie>),
+    /// A column of large series: 64-bit offsets over one item column.
+    LargeSerie(Arc<LargeSerieSerie>),
+    /// A column of large serie views: 64-bit offsets and sizes over one item column.
+    LargeSerieView(Arc<LargeSerieViewSerie>),
     /// A column of records, each child a serie of its own.
     Struct(Arc<StructSerie>),
     /// A column of union rows, one child column per member.
@@ -763,18 +618,36 @@ macro_rules! column {
             Serie::Float16($column) => $answer,
             Serie::Float32($column) => $answer,
             Serie::Float64($column) => $answer,
-            Serie::DateTime64($column) => $answer,
+            Serie::DateTimeSecond($column) => $answer,
+            Serie::DateTimeMillisecond($column) => $answer,
+            Serie::DateTimeMicrosecond($column) => $answer,
+            Serie::DateTimeNanosecond($column) => $answer,
             Serie::Date32($column) => $answer,
             Serie::Date64($column) => $answer,
-            Serie::Time32($column) => $answer,
-            Serie::Time64($column) => $answer,
-            Serie::Duration32($column) => $answer,
-            Serie::Duration64($column) => $answer,
-            Serie::Interval($column) => $answer,
-            Serie::Bytes($column) => $answer,
-            Serie::String($column) => $answer,
+            Serie::Time32Second($column) => $answer,
+            Serie::Time32Millisecond($column) => $answer,
+            Serie::Time64Microsecond($column) => $answer,
+            Serie::Time64Nanosecond($column) => $answer,
+            Serie::DurationSecond($column) => $answer,
+            Serie::DurationMillisecond($column) => $answer,
+            Serie::DurationMicrosecond($column) => $answer,
+            Serie::DurationNanosecond($column) => $answer,
+            Serie::IntervalYearMonth($column) => $answer,
+            Serie::IntervalDayTime($column) => $answer,
+            Serie::IntervalMonthDayNano($column) => $answer,
+            Serie::Binary($column) => $answer,
+            Serie::LargeBinary($column) => $answer,
+            Serie::BinaryView($column) => $answer,
+            Serie::FixedBytes($column) => $answer,
+            Serie::Utf8String($column) => $answer,
+            Serie::LargeUtf8String($column) => $answer,
+            Serie::Utf8ViewString($column) => $answer,
+            Serie::BinaryString($column) => $answer,
+            Serie::LargeBinaryString($column) => $answer,
+            Serie::BinaryViewString($column) => $answer,
+            Serie::FixedString($column) => $answer,
             Serie::Country($column) => $answer,
-            Serie::Currency($column) => $answer,
+            Serie::Ccy($column) => $answer,
             Serie::MicCode($column) => $answer,
             Serie::CfiCode($column) => $answer,
             Serie::IsinCode($column) => $answer,
@@ -792,11 +665,11 @@ macro_rules! column {
             Serie::BloombergCode($column) => $answer,
             Serie::FIGICode($column) => $answer,
             Serie::Uuid($column) => $answer,
-            Serie::List($column) => $answer,
-            Serie::ListView($column) => $answer,
-            Serie::FixedSizeList($column) => $answer,
-            Serie::LargeList($column) => $answer,
-            Serie::LargeListView($column) => $answer,
+            Serie::Serie($column) => $answer,
+            Serie::SerieView($column) => $answer,
+            Serie::FixedSizeSerie($column) => $answer,
+            Serie::LargeSerie($column) => $answer,
+            Serie::LargeSerieView($column) => $answer,
             Serie::Struct($column) => $answer,
             Serie::Union($column) => $answer,
             Serie::Dictionary($column) => $answer,
@@ -875,7 +748,19 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::DateTime64(held) => {
+            Serie::DateTimeSecond(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::DateTimeMillisecond(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::DateTimeMicrosecond(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::DateTimeNanosecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -887,31 +772,91 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Time32(held) => {
+            Serie::Time32Second(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Time64(held) => {
+            Serie::Time32Millisecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Duration32(held) => {
+            Serie::Time64Microsecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Duration64(held) => {
+            Serie::Time64Nanosecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Interval(held) => {
+            Serie::DurationSecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Bytes(held) => {
+            Serie::DurationMillisecond(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::String(held) => {
+            Serie::DurationMicrosecond(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::DurationNanosecond(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::IntervalYearMonth(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::IntervalDayTime(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::IntervalMonthDayNano(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Binary(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::LargeBinary(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::BinaryView(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::FixedBytes(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Utf8String(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::LargeUtf8String(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Utf8ViewString(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::BinaryString(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::LargeBinaryString(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::BinaryViewString(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::FixedString(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -919,7 +864,7 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Currency(held) => {
+            Serie::Ccy(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -991,23 +936,23 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::List(held) => {
+            Serie::Serie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::ListView(held) => {
+            Serie::SerieView(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::FixedSizeList(held) => {
+            Serie::FixedSizeSerie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::LargeList(held) => {
+            Serie::LargeSerie(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::LargeListView(held) => {
+            Serie::LargeSerieView(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1070,8 +1015,8 @@ macro_rules! column_mut {
 /// Where one column type sits in the root: rooting a leaf and narrowing the
 /// root back to it read the one table this is generated from, so a leaf
 /// that more than one variant holds - the UTF-8 column behind every code,
-/// the duration column behind both widths - roots by its field's datatype
-/// and narrows from any of them.
+/// the fixed bytes behind a UUID, the binary behind a geospatial reading -
+/// roots by its field's datatype and narrows from any of them.
 pub(crate) trait Leaf: Sized {
     /// Widen this column to the root variant its field's datatype names.
     fn root(self) -> Serie;
@@ -1342,31 +1287,6 @@ impl Leaf for Float64Serie {
     }
 }
 
-impl Leaf for DateTime64Serie {
-    fn root(self) -> Serie {
-        match self {
-            DateTime64Serie::Second(column) => Leaf::root(column),
-            DateTime64Serie::Millisecond(column) => Leaf::root(column),
-            DateTime64Serie::Microsecond(column) => Leaf::root(column),
-            DateTime64Serie::Nanosecond(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::DateTime64(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::DateTime64(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
 impl Leaf for Date32Serie {
     fn root(self) -> Serie {
         Serie::Date32(Arc::new(self))
@@ -1407,159 +1327,11 @@ impl Leaf for Date64Serie {
     }
 }
 
-impl Leaf for Time32Serie {
-    fn root(self) -> Serie {
-        match self {
-            Time32Serie::Second(column) => Leaf::root(column),
-            Time32Serie::Millisecond(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::Time32(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::Time32(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
-impl Leaf for Time64Serie {
-    fn root(self) -> Serie {
-        match self {
-            Time64Serie::Microsecond(column) => Leaf::root(column),
-            Time64Serie::Nanosecond(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::Time64(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::Time64(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
-impl Leaf for DurationSerie {
-    fn root(self) -> Serie {
-        match self {
-            DurationSerie::Second(column) => Leaf::root(column),
-            DurationSerie::Millisecond(column) => Leaf::root(column),
-            DurationSerie::Microsecond(column) => Leaf::root(column),
-            DurationSerie::Nanosecond(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
-impl Leaf for IntervalSerie {
-    fn root(self) -> Serie {
-        match self {
-            IntervalSerie::YearMonth(column) => Leaf::root(column),
-            IntervalSerie::DayTime(column) => Leaf::root(column),
-            IntervalSerie::MonthDayNano(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::Interval(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::Interval(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
-impl Leaf for BytesSerie {
-    fn root(self) -> Serie {
-        match self {
-            BytesSerie::Binary(column) => Leaf::root(column),
-            BytesSerie::LargeBinary(column) => Leaf::root(column),
-            BytesSerie::BinaryView(column) => Leaf::root(column),
-            BytesSerie::Fixed(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::Bytes(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::Bytes(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
-impl Leaf for StringSerie {
-    fn root(self) -> Serie {
-        match self {
-            StringSerie::Utf8(column) => Leaf::root(column),
-            StringSerie::LargeUtf8(column) => Leaf::root(column),
-            StringSerie::Utf8View(column) => Leaf::root(column),
-            StringSerie::Binary(column) => Leaf::root(column),
-            StringSerie::LargeBinary(column) => Leaf::root(column),
-            StringSerie::BinaryView(column) => Leaf::root(column),
-            StringSerie::Fixed(column) => Leaf::root(column),
-        }
-    }
-
-    fn narrow(serie: &Serie) -> Option<&Self> {
-        match serie {
-            Serie::String(held) => Some(held.as_ref()),
-            _ => None,
-        }
-    }
-
-    fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
-        match serie {
-            Serie::String(held) => Some(Arc::make_mut(held)),
-            _ => None,
-        }
-    }
-}
-
 impl Leaf for Utf8StringSerie {
     fn root(self) -> Serie {
         match SerieValue::field(&self).dtype() {
             DataType::Country => Serie::Country(Arc::new(self)),
-            DataType::Currency => Serie::Currency(Arc::new(self)),
+            DataType::Ccy => Serie::Ccy(Arc::new(self)),
             DataType::MicCode => Serie::MicCode(Arc::new(self)),
             DataType::CfiCode => Serie::CfiCode(Arc::new(self)),
             DataType::IsinCode => Serie::IsinCode(Arc::new(self)),
@@ -1576,18 +1348,15 @@ impl Leaf for Utf8StringSerie {
             DataType::SedolCode => Serie::SedolCode(Arc::new(self)),
             DataType::BloombergCode => Serie::BloombergCode(Arc::new(self)),
             DataType::FIGICode => Serie::FIGICode(Arc::new(self)),
-            _ => Serie::String(Arc::new(StringSerie::Utf8(self))),
+            _ => Serie::Utf8String(Arc::new(self)),
         }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::Utf8(column) => Some(column),
-                _ => None,
-            },
-            Serie::Country(held)
-            | Serie::Currency(held)
+            Serie::Utf8String(held)
+            | Serie::Country(held)
+            | Serie::Ccy(held)
             | Serie::MicCode(held)
             | Serie::CfiCode(held)
             | Serie::IsinCode(held)
@@ -1610,12 +1379,9 @@ impl Leaf for Utf8StringSerie {
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::Utf8(column) => Some(column),
-                _ => None,
-            },
-            Serie::Country(held)
-            | Serie::Currency(held)
+            Serie::Utf8String(held)
+            | Serie::Country(held)
+            | Serie::Ccy(held)
             | Serie::MicCode(held)
             | Serie::CfiCode(held)
             | Serie::IsinCode(held)
@@ -1641,128 +1407,120 @@ impl Leaf for FixedBytesSerie {
     fn root(self) -> Serie {
         match SerieValue::field(&self).dtype() {
             DataType::Uuid => Serie::Uuid(Arc::new(self)),
-            _ => Serie::Bytes(Arc::new(BytesSerie::Fixed(self))),
+            _ => Serie::FixedBytes(Arc::new(self)),
         }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Bytes(held) => match held.as_ref() {
-                BytesSerie::Fixed(column) => Some(column),
-                _ => None,
-            },
-            Serie::Uuid(held) => Some(held.as_ref()),
+            Serie::FixedBytes(held) | Serie::Uuid(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Bytes(held) => match Arc::make_mut(held) {
-                BytesSerie::Fixed(column) => Some(column),
-                _ => None,
-            },
-            Serie::Uuid(held) => Some(Arc::make_mut(held)),
+            Serie::FixedBytes(held) | Serie::Uuid(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for ListSerie {
+impl Leaf for SerieSerie {
     fn root(self) -> Serie {
-        Serie::List(Arc::new(self))
+        Serie::Serie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::List(held) => Some(held.as_ref()),
+            Serie::Serie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::List(held) => Some(Arc::make_mut(held)),
+            Serie::Serie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for ListViewSerie {
+impl Leaf for SerieViewSerie {
     fn root(self) -> Serie {
-        Serie::ListView(Arc::new(self))
+        Serie::SerieView(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::ListView(held) => Some(held.as_ref()),
+            Serie::SerieView(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::ListView(held) => Some(Arc::make_mut(held)),
+            Serie::SerieView(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for FixedSizeListSerie {
+impl Leaf for FixedSizeSerieSerie {
     fn root(self) -> Serie {
-        Serie::FixedSizeList(Arc::new(self))
+        Serie::FixedSizeSerie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::FixedSizeList(held) => Some(held.as_ref()),
+            Serie::FixedSizeSerie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::FixedSizeList(held) => Some(Arc::make_mut(held)),
+            Serie::FixedSizeSerie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for LargeListSerie {
+impl Leaf for LargeSerieSerie {
     fn root(self) -> Serie {
-        Serie::LargeList(Arc::new(self))
+        Serie::LargeSerie(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::LargeList(held) => Some(held.as_ref()),
+            Serie::LargeSerie(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::LargeList(held) => Some(Arc::make_mut(held)),
+            Serie::LargeSerie(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
 }
 
-impl Leaf for LargeListViewSerie {
+impl Leaf for LargeSerieViewSerie {
     fn root(self) -> Serie {
-        Serie::LargeListView(Arc::new(self))
+        Serie::LargeSerieView(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::LargeListView(held) => Some(held.as_ref()),
+            Serie::LargeSerieView(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::LargeListView(held) => Some(Arc::make_mut(held)),
+            Serie::LargeSerieView(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -1976,28 +1734,24 @@ impl Leaf for BinarySerie {
         match SerieValue::field(&self).dtype() {
             DataType::Geometry { .. } => Serie::Geometry(Arc::new(self)),
             DataType::Geography { .. } => Serie::Geography(Arc::new(self)),
-            _ => Serie::Bytes(Arc::new(BytesSerie::Binary(self))),
+            _ => Serie::Binary(Arc::new(self)),
         }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Bytes(held) => match held.as_ref() {
-                BytesSerie::Binary(column) => Some(column),
-                _ => None,
-            },
-            Serie::Geometry(held) | Serie::Geography(held) => Some(held.as_ref()),
+            Serie::Binary(held) | Serie::Geometry(held) | Serie::Geography(held) => {
+                Some(held.as_ref())
+            }
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Bytes(held) => match Arc::make_mut(held) {
-                BytesSerie::Binary(column) => Some(column),
-                _ => None,
-            },
-            Serie::Geometry(held) | Serie::Geography(held) => Some(Arc::make_mut(held)),
+            Serie::Binary(held) | Serie::Geometry(held) | Serie::Geography(held) => {
+                Some(Arc::make_mut(held))
+            }
             _ => None,
         }
     }
@@ -2005,25 +1759,19 @@ impl Leaf for BinarySerie {
 
 impl Leaf for Time32SecondSerie {
     fn root(self) -> Serie {
-        Serie::Time32(Arc::new(Time32Serie::Second(self)))
+        Serie::Time32Second(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Time32(held) => match held.as_ref() {
-                Time32Serie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time32Second(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Time32(held) => match Arc::make_mut(held) {
-                Time32Serie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time32Second(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2031,25 +1779,19 @@ impl Leaf for Time32SecondSerie {
 
 impl Leaf for Time32MillisecondSerie {
     fn root(self) -> Serie {
-        Serie::Time32(Arc::new(Time32Serie::Millisecond(self)))
+        Serie::Time32Millisecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Time32(held) => match held.as_ref() {
-                Time32Serie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time32Millisecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Time32(held) => match Arc::make_mut(held) {
-                Time32Serie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time32Millisecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2057,25 +1799,19 @@ impl Leaf for Time32MillisecondSerie {
 
 impl Leaf for Time64MicrosecondSerie {
     fn root(self) -> Serie {
-        Serie::Time64(Arc::new(Time64Serie::Microsecond(self)))
+        Serie::Time64Microsecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Time64(held) => match held.as_ref() {
-                Time64Serie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time64Microsecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Time64(held) => match Arc::make_mut(held) {
-                Time64Serie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time64Microsecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2083,25 +1819,19 @@ impl Leaf for Time64MicrosecondSerie {
 
 impl Leaf for Time64NanosecondSerie {
     fn root(self) -> Serie {
-        Serie::Time64(Arc::new(Time64Serie::Nanosecond(self)))
+        Serie::Time64Nanosecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Time64(held) => match held.as_ref() {
-                Time64Serie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time64Nanosecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Time64(held) => match Arc::make_mut(held) {
-                Time64Serie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::Time64Nanosecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2109,25 +1839,19 @@ impl Leaf for Time64NanosecondSerie {
 
 impl Leaf for DateTimeSecondSerie {
     fn root(self) -> Serie {
-        Serie::DateTime64(Arc::new(DateTime64Serie::Second(self)))
+        Serie::DateTimeSecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::DateTime64(held) => match held.as_ref() {
-                DateTime64Serie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeSecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::DateTime64(held) => match Arc::make_mut(held) {
-                DateTime64Serie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeSecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2135,25 +1859,19 @@ impl Leaf for DateTimeSecondSerie {
 
 impl Leaf for DateTimeMillisecondSerie {
     fn root(self) -> Serie {
-        Serie::DateTime64(Arc::new(DateTime64Serie::Millisecond(self)))
+        Serie::DateTimeMillisecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::DateTime64(held) => match held.as_ref() {
-                DateTime64Serie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeMillisecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::DateTime64(held) => match Arc::make_mut(held) {
-                DateTime64Serie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeMillisecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2161,25 +1879,19 @@ impl Leaf for DateTimeMillisecondSerie {
 
 impl Leaf for DateTimeMicrosecondSerie {
     fn root(self) -> Serie {
-        Serie::DateTime64(Arc::new(DateTime64Serie::Microsecond(self)))
+        Serie::DateTimeMicrosecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::DateTime64(held) => match held.as_ref() {
-                DateTime64Serie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeMicrosecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::DateTime64(held) => match Arc::make_mut(held) {
-                DateTime64Serie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeMicrosecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2187,25 +1899,19 @@ impl Leaf for DateTimeMicrosecondSerie {
 
 impl Leaf for DateTimeNanosecondSerie {
     fn root(self) -> Serie {
-        Serie::DateTime64(Arc::new(DateTime64Serie::Nanosecond(self)))
+        Serie::DateTimeNanosecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::DateTime64(held) => match held.as_ref() {
-                DateTime64Serie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeNanosecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::DateTime64(held) => match Arc::make_mut(held) {
-                DateTime64Serie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DateTimeNanosecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2213,28 +1919,19 @@ impl Leaf for DateTimeNanosecondSerie {
 
 impl Leaf for DurationSecondSerie {
     fn root(self) -> Serie {
-        match SerieValue::field(&self).dtype() {
-            DataType::Duration64 { .. } => Serie::Duration64(Arc::new(DurationSerie::Second(self))),
-            _ => Serie::Duration32(Arc::new(DurationSerie::Second(self))),
-        }
+        Serie::DurationSecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match held.as_ref() {
-                DurationSerie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationSecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match Arc::make_mut(held) {
-                DurationSerie::Second(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationSecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2242,30 +1939,19 @@ impl Leaf for DurationSecondSerie {
 
 impl Leaf for DurationMillisecondSerie {
     fn root(self) -> Serie {
-        match SerieValue::field(&self).dtype() {
-            DataType::Duration64 { .. } => {
-                Serie::Duration64(Arc::new(DurationSerie::Millisecond(self)))
-            }
-            _ => Serie::Duration32(Arc::new(DurationSerie::Millisecond(self))),
-        }
+        Serie::DurationMillisecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match held.as_ref() {
-                DurationSerie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationMillisecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match Arc::make_mut(held) {
-                DurationSerie::Millisecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationMillisecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2273,30 +1959,19 @@ impl Leaf for DurationMillisecondSerie {
 
 impl Leaf for DurationMicrosecondSerie {
     fn root(self) -> Serie {
-        match SerieValue::field(&self).dtype() {
-            DataType::Duration64 { .. } => {
-                Serie::Duration64(Arc::new(DurationSerie::Microsecond(self)))
-            }
-            _ => Serie::Duration32(Arc::new(DurationSerie::Microsecond(self))),
-        }
+        Serie::DurationMicrosecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match held.as_ref() {
-                DurationSerie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationMicrosecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match Arc::make_mut(held) {
-                DurationSerie::Microsecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationMicrosecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2304,30 +1979,19 @@ impl Leaf for DurationMicrosecondSerie {
 
 impl Leaf for DurationNanosecondSerie {
     fn root(self) -> Serie {
-        match SerieValue::field(&self).dtype() {
-            DataType::Duration64 { .. } => {
-                Serie::Duration64(Arc::new(DurationSerie::Nanosecond(self)))
-            }
-            _ => Serie::Duration32(Arc::new(DurationSerie::Nanosecond(self))),
-        }
+        Serie::DurationNanosecond(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match held.as_ref() {
-                DurationSerie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationNanosecond(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Duration32(held) | Serie::Duration64(held) => match Arc::make_mut(held) {
-                DurationSerie::Nanosecond(column) => Some(column),
-                _ => None,
-            },
+            Serie::DurationNanosecond(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2335,25 +1999,19 @@ impl Leaf for DurationNanosecondSerie {
 
 impl Leaf for IntervalYearMonthSerie {
     fn root(self) -> Serie {
-        Serie::Interval(Arc::new(IntervalSerie::YearMonth(self)))
+        Serie::IntervalYearMonth(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Interval(held) => match held.as_ref() {
-                IntervalSerie::YearMonth(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalYearMonth(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Interval(held) => match Arc::make_mut(held) {
-                IntervalSerie::YearMonth(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalYearMonth(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2361,25 +2019,19 @@ impl Leaf for IntervalYearMonthSerie {
 
 impl Leaf for IntervalDayTimeSerie {
     fn root(self) -> Serie {
-        Serie::Interval(Arc::new(IntervalSerie::DayTime(self)))
+        Serie::IntervalDayTime(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Interval(held) => match held.as_ref() {
-                IntervalSerie::DayTime(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalDayTime(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Interval(held) => match Arc::make_mut(held) {
-                IntervalSerie::DayTime(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalDayTime(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2387,25 +2039,19 @@ impl Leaf for IntervalDayTimeSerie {
 
 impl Leaf for IntervalMonthDayNanoSerie {
     fn root(self) -> Serie {
-        Serie::Interval(Arc::new(IntervalSerie::MonthDayNano(self)))
+        Serie::IntervalMonthDayNano(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Interval(held) => match held.as_ref() {
-                IntervalSerie::MonthDayNano(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalMonthDayNano(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Interval(held) => match Arc::make_mut(held) {
-                IntervalSerie::MonthDayNano(column) => Some(column),
-                _ => None,
-            },
+            Serie::IntervalMonthDayNano(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2413,25 +2059,19 @@ impl Leaf for IntervalMonthDayNanoSerie {
 
 impl Leaf for LargeUtf8StringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::LargeUtf8(self)))
+        Serie::LargeUtf8String(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::LargeUtf8(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeUtf8String(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::LargeUtf8(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeUtf8String(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2439,25 +2079,19 @@ impl Leaf for LargeUtf8StringSerie {
 
 impl Leaf for Utf8ViewStringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::Utf8View(self)))
+        Serie::Utf8ViewString(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::Utf8View(column) => Some(column),
-                _ => None,
-            },
+            Serie::Utf8ViewString(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::Utf8View(column) => Some(column),
-                _ => None,
-            },
+            Serie::Utf8ViewString(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2465,25 +2099,19 @@ impl Leaf for Utf8ViewStringSerie {
 
 impl Leaf for BinaryStringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::Binary(self)))
+        Serie::BinaryString(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::Binary(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryString(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::Binary(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryString(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2491,25 +2119,19 @@ impl Leaf for BinaryStringSerie {
 
 impl Leaf for LargeBinaryStringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::LargeBinary(self)))
+        Serie::LargeBinaryString(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::LargeBinary(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeBinaryString(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::LargeBinary(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeBinaryString(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2517,25 +2139,19 @@ impl Leaf for LargeBinaryStringSerie {
 
 impl Leaf for BinaryViewStringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::BinaryView(self)))
+        Serie::BinaryViewString(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::BinaryView(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryViewString(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::BinaryView(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryViewString(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2543,25 +2159,19 @@ impl Leaf for BinaryViewStringSerie {
 
 impl Leaf for FixedStringSerie {
     fn root(self) -> Serie {
-        Serie::String(Arc::new(StringSerie::Fixed(self)))
+        Serie::FixedString(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::String(held) => match held.as_ref() {
-                StringSerie::Fixed(column) => Some(column),
-                _ => None,
-            },
+            Serie::FixedString(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::String(held) => match Arc::make_mut(held) {
-                StringSerie::Fixed(column) => Some(column),
-                _ => None,
-            },
+            Serie::FixedString(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2569,25 +2179,19 @@ impl Leaf for FixedStringSerie {
 
 impl Leaf for LargeBinarySerie {
     fn root(self) -> Serie {
-        Serie::Bytes(Arc::new(BytesSerie::LargeBinary(self)))
+        Serie::LargeBinary(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Bytes(held) => match held.as_ref() {
-                BytesSerie::LargeBinary(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeBinary(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Bytes(held) => match Arc::make_mut(held) {
-                BytesSerie::LargeBinary(column) => Some(column),
-                _ => None,
-            },
+            Serie::LargeBinary(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2595,25 +2199,19 @@ impl Leaf for LargeBinarySerie {
 
 impl Leaf for BinaryViewSerie {
     fn root(self) -> Serie {
-        Serie::Bytes(Arc::new(BytesSerie::BinaryView(self)))
+        Serie::BinaryView(Arc::new(self))
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Bytes(held) => match held.as_ref() {
-                BytesSerie::BinaryView(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryView(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Bytes(held) => match Arc::make_mut(held) {
-                BytesSerie::BinaryView(column) => Some(column),
-                _ => None,
-            },
+            Serie::BinaryView(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2802,7 +2400,7 @@ impl Serie {
 
     /// Return the datatype this serie materializes into.
     ///
-    /// A column carries its field, so this is a read: a list of the item
+    /// A column carries its field, so this is a read: a serie of the item
     /// field, named `item` exactly as a held array spells it, with the
     /// field's declared nullability. A run has its item agreed back out of
     /// its rows, and an empty run names a nullable null item.
@@ -2813,8 +2411,8 @@ impl Serie {
     /// datatype.
     pub fn dtype(&self) -> Result<DataType> {
         match self.field() {
-            Some(field) => Ok(DataType::list(field.clone().with_name("item"))),
-            None => Scalar::List(self.clone()).dtype(),
+            Some(field) => Ok(DataType::serie(field.clone().with_name("item"))),
+            None => Scalar::Serie(self.clone()).dtype(),
         }
     }
 
@@ -2840,6 +2438,61 @@ impl Serie {
         !matches!(self, Self::Run(_))
     }
 
+    /// Whether this is one of the seven text storage layouts, whichever
+    /// string leaf its field declares - never a code, a version, a URI, a
+    /// zone or a MIME or media type, which hold the same buffers under a
+    /// variant of their own.
+    pub(crate) const fn is_string_storage(&self) -> bool {
+        matches!(
+            self,
+            Self::Utf8String(_)
+                | Self::LargeUtf8String(_)
+                | Self::Utf8ViewString(_)
+                | Self::BinaryString(_)
+                | Self::LargeBinaryString(_)
+                | Self::BinaryViewString(_)
+                | Self::FixedString(_)
+        )
+    }
+
+    /// Whether this is one of the four byte storage layouts - never a UUID
+    /// or a geospatial reading, which hold the same buffers under a variant
+    /// of their own.
+    pub(crate) const fn is_byte_storage(&self) -> bool {
+        matches!(
+            self,
+            Self::Binary(_) | Self::LargeBinary(_) | Self::BinaryView(_) | Self::FixedBytes(_)
+        )
+    }
+
+    /// Borrow row `index`'s bytes where a text or byte storage leaf holds
+    /// them - in the payload an offset run points into, in a view's buffer,
+    /// or in a fixed slot - with no value built: `None` where the row is
+    /// absent or past the end, and for every other variant.
+    ///
+    /// The bytes are the storage as it stands: text in the charset its field
+    /// declares, and a fixed slot with its padding - not what
+    /// [`Scalar::as_value_bytes`] answers, which decodes them. A caller
+    /// first knows the variant is a text or byte storage leaf - through
+    /// [`Self::is_string_storage`] / [`Self::is_byte_storage`] or by matching
+    /// those variants - because a `None` here does not say which it was.
+    pub(crate) fn value_bytes(&self, index: usize) -> Option<&[u8]> {
+        match self {
+            Self::Utf8String(column) => column.value(index).map(str::as_bytes),
+            Self::LargeUtf8String(column) => column.value(index).map(str::as_bytes),
+            Self::Utf8ViewString(column) => column.value(index).map(str::as_bytes),
+            Self::BinaryString(column) => column.value(index),
+            Self::LargeBinaryString(column) => column.value(index),
+            Self::BinaryViewString(column) => column.value(index),
+            Self::FixedString(column) => column.value(index),
+            Self::Binary(column) => column.value(index),
+            Self::LargeBinary(column) => column.value(index),
+            Self::BinaryView(column) => column.value(index),
+            Self::FixedBytes(column) => column.value(index),
+            _ => None,
+        }
+    }
+
     /// Return the rows as the schema-free run they are.
     ///
     /// The field is what a column has that a run has not, so this is the one
@@ -2855,8 +2508,8 @@ impl Serie {
     /// Return every row's buffers as one Arrow array, or `None` for a run.
     ///
     /// The buffers are shared, never copied. A run declares no field, so it
-    /// names no Arrow layout; lay one out with
-    /// [`crate::arrow::array_from_value`] under the field it should have.
+    /// names no Arrow layout; lay one out with [`Self::from_scalars`] under
+    /// the field it should have.
     pub fn into_arrow_array(&self) -> Option<ArrayRef> {
         column!(
             self,
@@ -2927,11 +2580,11 @@ impl Serie {
     /// mapping column's entries, an encoding's values; `None` elsewhere.
     pub fn items(&self) -> Option<&Self> {
         match self {
-            Self::List(column) => Some(column.items()),
-            Self::ListView(column) => Some(column.items()),
-            Self::FixedSizeList(column) => Some(column.items()),
-            Self::LargeList(column) => Some(column.items()),
-            Self::LargeListView(column) => Some(column.items()),
+            Self::Serie(column) => Some(column.items()),
+            Self::SerieView(column) => Some(column.items()),
+            Self::FixedSizeSerie(column) => Some(column.items()),
+            Self::LargeSerie(column) => Some(column.items()),
+            Self::LargeSerieView(column) => Some(column.items()),
             Self::Map(column) | Self::SortedMap(column) => Some(column.entries()),
             Self::Dictionary(column) => Some(column.values()),
             Self::RunEndEncoded(column) => Some(column.values()),
@@ -2971,16 +2624,16 @@ impl Serie {
                 let entries = column.entries();
                 (entries.field()?.name() == name).then_some(entries)?
             }
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_) => {
+            Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_) => {
                 let items = self.items()?;
                 if items.field()?.name() == name {
                     items
                 } else {
-                    // Reading sees through a list item, the way the schema
+                    // Reading sees through a serie item, the way the schema
                     // walk does.
                     return items.walk(segments);
                 }
@@ -3146,6 +2799,11 @@ impl Serie {
     /// Append `other`'s buffers where the two hold one layout and the
     /// layout reaches the total, answering whether they did; the caller has
     /// agreed the fields, and `false` leaves this column as it was.
+    ///
+    /// A variant is a layout, not a datatype - both duration widths share
+    /// one leaf per unit - so the agreed fields are what keep a `duration32`
+    /// column from taking a `duration64` one's counts: this pairs variants
+    /// only.
     pub(crate) fn append(&mut self, other: &Self) -> bool {
         match (self, other) {
             (Self::Null(mine), Self::Null(theirs)) => Arc::make_mut(mine).append(theirs),
@@ -3161,24 +2819,86 @@ impl Serie {
             (Self::Float16(mine), Self::Float16(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Float32(mine), Self::Float32(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Float64(mine), Self::Float64(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::DateTime64(mine), Self::DateTime64(theirs)) => {
+            (Self::DateTimeSecond(mine), Self::DateTimeSecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DateTimeMillisecond(mine), Self::DateTimeMillisecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DateTimeMicrosecond(mine), Self::DateTimeMicrosecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DateTimeNanosecond(mine), Self::DateTimeNanosecond(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::Date32(mine), Self::Date32(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Date64(mine), Self::Date64(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Time32(mine), Self::Time32(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Time64(mine), Self::Time64(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Duration32(mine), Self::Duration32(theirs)) => {
+            (Self::Time32Second(mine), Self::Time32Second(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
-            (Self::Duration64(mine), Self::Duration64(theirs)) => {
+            (Self::Time32Millisecond(mine), Self::Time32Millisecond(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
-            (Self::Interval(mine), Self::Interval(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Bytes(mine), Self::Bytes(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::String(mine), Self::String(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Time64Microsecond(mine), Self::Time64Microsecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::Time64Nanosecond(mine), Self::Time64Nanosecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DurationSecond(mine), Self::DurationSecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DurationMillisecond(mine), Self::DurationMillisecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DurationMicrosecond(mine), Self::DurationMicrosecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::DurationNanosecond(mine), Self::DurationNanosecond(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::IntervalYearMonth(mine), Self::IntervalYearMonth(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::IntervalDayTime(mine), Self::IntervalDayTime(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::IntervalMonthDayNano(mine), Self::IntervalMonthDayNano(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::Binary(mine), Self::Binary(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::LargeBinary(mine), Self::LargeBinary(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::BinaryView(mine), Self::BinaryView(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::FixedBytes(mine), Self::FixedBytes(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::Utf8String(mine), Self::Utf8String(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::LargeUtf8String(mine), Self::LargeUtf8String(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::Utf8ViewString(mine), Self::Utf8ViewString(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::BinaryString(mine), Self::BinaryString(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::LargeBinaryString(mine), Self::LargeBinaryString(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::BinaryViewString(mine), Self::BinaryViewString(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::FixedString(mine), Self::FixedString(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
             (Self::Country(mine), Self::Country(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Currency(mine), Self::Currency(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Ccy(mine), Self::Ccy(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::MicCode(mine), Self::MicCode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::CfiCode(mine), Self::CfiCode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::IsinCode(mine), Self::IsinCode(theirs)) => Arc::make_mut(mine).append(theirs),
@@ -3200,13 +2920,15 @@ impl Serie {
             }
             (Self::FIGICode(mine), Self::FIGICode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Uuid(mine), Self::Uuid(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::List(mine), Self::List(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::ListView(mine), Self::ListView(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::FixedSizeList(mine), Self::FixedSizeList(theirs)) => {
+            (Self::Serie(mine), Self::Serie(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::SerieView(mine), Self::SerieView(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::FixedSizeSerie(mine), Self::FixedSizeSerie(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
-            (Self::LargeList(mine), Self::LargeList(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::LargeListView(mine), Self::LargeListView(theirs)) => {
+            (Self::LargeSerie(mine), Self::LargeSerie(theirs)) => {
+                Arc::make_mut(mine).append(theirs)
+            }
+            (Self::LargeSerieView(mine), Self::LargeSerieView(theirs)) => {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::Struct(mine), Self::Struct(theirs)) => Arc::make_mut(mine).append(theirs),
@@ -3546,20 +3268,6 @@ impl Serie {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`DateTime64Serie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_datetime64(&self) -> Option<&DateTime64Serie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`DateTime64Serie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_datetime64_mut(&mut self) -> Option<&mut DateTime64Serie> {
-        Leaf::narrow_mut(self)
-    }
-
     /// Borrow the [`Date32Serie`] this is, `None` for any other leaf.
     #[must_use]
     pub fn as_date32(&self) -> Option<&Date32Serie> {
@@ -3585,90 +3293,6 @@ impl Serie {
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
     pub fn get_date64_mut(&mut self) -> Option<&mut Date64Serie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`Time32Serie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_time32(&self) -> Option<&Time32Serie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`Time32Serie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_time32_mut(&mut self) -> Option<&mut Time32Serie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`Time64Serie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_time64(&self) -> Option<&Time64Serie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`Time64Serie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_time64_mut(&mut self) -> Option<&mut Time64Serie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`DurationSerie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_duration(&self) -> Option<&DurationSerie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`DurationSerie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_duration_mut(&mut self) -> Option<&mut DurationSerie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`IntervalSerie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_interval(&self) -> Option<&IntervalSerie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`IntervalSerie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_interval_mut(&mut self) -> Option<&mut IntervalSerie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`BytesSerie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_bytes(&self) -> Option<&BytesSerie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`BytesSerie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_bytes_mut(&mut self) -> Option<&mut BytesSerie> {
-        Leaf::narrow_mut(self)
-    }
-
-    /// Borrow the [`StringSerie`] this is, `None` for any other leaf.
-    #[must_use]
-    pub fn as_string(&self) -> Option<&StringSerie> {
-        Leaf::narrow(self)
-    }
-
-    /// Borrow the [`StringSerie`] this is to write, through `Arc::make_mut`: the
-    /// leaf struct is copied once when the column is shared, and its typed
-    /// writers validate what remains - nullability - so no write bypasses
-    /// the contract.
-    pub fn get_string_mut(&mut self) -> Option<&mut StringSerie> {
         Leaf::narrow_mut(self)
     }
 
@@ -3700,73 +3324,73 @@ impl Serie {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`ListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`SerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_list(&self) -> Option<&ListSerie> {
+    pub fn as_serie(&self) -> Option<&SerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`ListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`SerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_list_mut(&mut self) -> Option<&mut ListSerie> {
+    pub fn get_serie_mut(&mut self) -> Option<&mut SerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`ListViewSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`SerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_list_view(&self) -> Option<&ListViewSerie> {
+    pub fn as_serie_view(&self) -> Option<&SerieViewSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`ListViewSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`SerieViewSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_list_view_mut(&mut self) -> Option<&mut ListViewSerie> {
+    pub fn get_serie_view_mut(&mut self) -> Option<&mut SerieViewSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`FixedSizeListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`FixedSizeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_fixed_size_list(&self) -> Option<&FixedSizeListSerie> {
+    pub fn as_fixed_size_serie(&self) -> Option<&FixedSizeSerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`FixedSizeListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`FixedSizeSerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_fixed_size_list_mut(&mut self) -> Option<&mut FixedSizeListSerie> {
+    pub fn get_fixed_size_serie_mut(&mut self) -> Option<&mut FixedSizeSerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`LargeListSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`LargeSerieSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_large_list(&self) -> Option<&LargeListSerie> {
+    pub fn as_large_serie(&self) -> Option<&LargeSerieSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`LargeListSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`LargeSerieSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_large_list_mut(&mut self) -> Option<&mut LargeListSerie> {
+    pub fn get_large_serie_mut(&mut self) -> Option<&mut LargeSerieSerie> {
         Leaf::narrow_mut(self)
     }
 
-    /// Borrow the [`LargeListViewSerie`] this is, `None` for any other leaf.
+    /// Borrow the [`LargeSerieViewSerie`] this is, `None` for any other leaf.
     #[must_use]
-    pub fn as_large_list_view(&self) -> Option<&LargeListViewSerie> {
+    pub fn as_large_serie_view(&self) -> Option<&LargeSerieViewSerie> {
         Leaf::narrow(self)
     }
 
-    /// Borrow the [`LargeListViewSerie`] this is to write, through `Arc::make_mut`: the
+    /// Borrow the [`LargeSerieViewSerie`] this is to write, through `Arc::make_mut`: the
     /// leaf struct is copied once when the column is shared, and its typed
     /// writers validate what remains - nullability - so no write bypasses
     /// the contract.
-    pub fn get_large_list_view_mut(&mut self) -> Option<&mut LargeListViewSerie> {
+    pub fn get_large_serie_view_mut(&mut self) -> Option<&mut LargeSerieViewSerie> {
         Leaf::narrow_mut(self)
     }
 
@@ -4278,8 +3902,8 @@ impl Serialize for Serie {
 }
 
 impl<'de> Deserialize<'de> for Serie {
-    /// The column wire alone: a run is never spelled through this type's own
-    /// serde, so a list here is refused naming the wire.
+    /// The column wire alone: a run is never read through this type's own
+    /// serde, so an array here is refused naming the wire.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
         use serde::de::{Error as _, MapAccess, SeqAccess, Visitor};
 
@@ -4300,7 +3924,7 @@ impl<'de> Deserialize<'de> for Serie {
 
             fn visit_seq<A: SeqAccess<'de>>(self, _: A) -> std::result::Result<Serie, A::Error> {
                 Err(A::Error::custom(
-                    "a `serie` is a column, its field beside its rows: a list of values is a run, spelled under `sequence`",
+                    "a `serie` column is its field beside its rows: bare rows are a run, read through a scalar's `serie` tag",
                 ))
             }
         }
@@ -4315,16 +3939,16 @@ impl Value for Serie {
     }
 
     fn into_scalar(self) -> Scalar {
-        Scalar::List(self)
+        Scalar::Serie(self)
     }
 
     fn from_scalar(value: &Scalar) -> Option<&Self> {
         match value {
-            Scalar::List(value)
-            | Scalar::ListView(value)
-            | Scalar::FixedSizeList(value)
-            | Scalar::LargeList(value)
-            | Scalar::LargeListView(value) => Some(value),
+            Scalar::Serie(value)
+            | Scalar::SerieView(value)
+            | Scalar::FixedSizeSerie(value)
+            | Scalar::LargeSerie(value)
+            | Scalar::LargeSerieView(value) => Some(value),
             _ => None,
         }
     }
@@ -4344,11 +3968,11 @@ impl NestedValue for Serie {
 }
 
 impl From<Serie> for Scalar {
-    /// A serie is the value a `list` holds: a run, or a column of the item
+    /// A serie is the value a `serie` holds: a run, or a column of the item
     /// its field names. The other four layouts are declared by their own
     /// variant, never inferred from the rows.
     fn from(value: Serie) -> Self {
-        Self::List(value)
+        Self::Serie(value)
     }
 }
 

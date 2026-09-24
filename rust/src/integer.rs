@@ -8,101 +8,17 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::arithmetic::{Arithmetic, ArithmeticTarget, invalid_binary};
 use crate::typed::define_field_types;
-use crate::value::{IntegerValue, ValidationFailure, canonical_error, expected, family_value};
-use crate::{DataType, DataTypeId, Error, FieldSegment, Result, Scalar, TimeUnit, Value};
+use crate::value::{IntegerValue, ValidationFailure, canonical_error, expected};
+use crate::{DataType, Error, FieldSegment, Result, Scalar, TimeUnit, Value};
 
 // ------------------------------------------------------------------------
-// Integer datatype family and predicates used by run-end validation.
+// Integer datatype predicates used by run-end validation.
 // ------------------------------------------------------------------------
-
-/// One Arrow integer datatype.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-#[non_exhaustive]
-pub enum IntegerType {
-    /// Signed 8-bit integer.
-    Int8,
-    /// Signed 16-bit integer.
-    Int16,
-    /// Signed 32-bit integer.
-    Int32,
-    /// Signed 64-bit integer.
-    Int64,
-    /// Unsigned 8-bit integer.
-    UInt8,
-    /// Unsigned 16-bit integer.
-    UInt16,
-    /// Unsigned 32-bit integer.
-    UInt32,
-    /// Unsigned 64-bit integer.
-    UInt64,
-}
-
-impl IntegerType {
-    /// Return the exact datatype identifier.
-    pub const fn id(self) -> DataTypeId {
-        match self {
-            Self::Int8 => DataTypeId::Int8,
-            Self::Int16 => DataTypeId::Int16,
-            Self::Int32 => DataTypeId::Int32,
-            Self::Int64 => DataTypeId::Int64,
-            Self::UInt8 => DataTypeId::UInt8,
-            Self::UInt16 => DataTypeId::UInt16,
-            Self::UInt32 => DataTypeId::UInt32,
-            Self::UInt64 => DataTypeId::UInt64,
-        }
-    }
-}
-
-impl From<IntegerType> for DataType {
-    fn from(value: IntegerType) -> Self {
-        match value {
-            IntegerType::Int8 => Self::Int8,
-            IntegerType::Int16 => Self::Int16,
-            IntegerType::Int32 => Self::Int32,
-            IntegerType::Int64 => Self::Int64,
-            IntegerType::UInt8 => Self::UInt8,
-            IntegerType::UInt16 => Self::UInt16,
-            IntegerType::UInt32 => Self::UInt32,
-            IntegerType::UInt64 => Self::UInt64,
-        }
-    }
-}
-
-impl TryFrom<&DataType> for IntegerType {
-    type Error = Error;
-
-    fn try_from(value: &DataType) -> std::result::Result<Self, Self::Error> {
-        match value {
-            DataType::Int8 => Ok(Self::Int8),
-            DataType::Int16 => Ok(Self::Int16),
-            DataType::Int32 => Ok(Self::Int32),
-            DataType::Int64 => Ok(Self::Int64),
-            DataType::UInt8 => Ok(Self::UInt8),
-            DataType::UInt16 => Ok(Self::UInt16),
-            DataType::UInt32 => Ok(Self::UInt32),
-            DataType::UInt64 => Ok(Self::UInt64),
-            other => Err(Error::InvalidDataType {
-                kind: "integer",
-                reason: format_smolstr!("expected an integer datatype, got {other}"),
-            }),
-        }
-    }
-}
 
 impl DataType {
     /// Returns whether this is a signed or unsigned integer type.
     pub const fn is_integer(&self) -> bool {
-        matches!(
-            self,
-            Self::Int8
-                | Self::Int16
-                | Self::Int32
-                | Self::Int64
-                | Self::UInt8
-                | Self::UInt16
-                | Self::UInt32
-                | Self::UInt64
-        )
+        crate::DataTypeKind::Integer.contains(self.id())
     }
 
     pub(crate) const fn is_run_ends_type(&self) -> bool {
@@ -189,21 +105,6 @@ integer_leaf!(UInt32, u32);
 integer_leaf!(UInt64, u64);
 integer_leaf!(Int128, i128);
 integer_leaf!(UInt128, u128);
-
-family_value!(
-    /// The integer family as one value: any of the ten widths.
-    ///
-    /// ```
-    /// use yggdryl::{DataType, FamilyValue, Int32, Integer, Scalar};
-    ///
-    /// let held = Integer::from(Int32::new(7));
-    /// assert_eq!(held.dtype().unwrap(), DataType::Int32);
-    /// assert_eq!(held.clone().into_scalar(), Scalar::Int32(Int32::new(7)));
-    /// assert_eq!(Integer::from_scalar(&Scalar::Int32(Int32::new(7))), Some(held));
-    /// assert_eq!(Integer::from_scalar(&Scalar::from(1.5_f64)), None);
-    /// ```
-    Integer, Integer, [Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128]
-);
 
 const _: () = assert!(std::mem::size_of::<Int32>() == 4);
 
@@ -323,7 +224,7 @@ pub(crate) fn validate_integer_tuple(
 
 // Each width is its own family, as `Boolean` is: the `Scalar` variant holds
 // the leaf directly, so there is no grouping enum to widen into.
-macro_rules! integer_scalar_value {
+macro_rules! integer_leaf_value {
     ($leaf:ident, $dtype:expr) => {
         impl Value for $leaf {
             fn dtype(&self) -> Result<DataType> {
@@ -344,18 +245,18 @@ macro_rules! integer_scalar_value {
     };
 }
 
-integer_scalar_value!(Int8, |_: &Int8| DataType::Int8);
-integer_scalar_value!(Int16, |_: &Int16| { DataType::Int16 });
-integer_scalar_value!(Int32, |_: &Int32| { DataType::Int32 });
-integer_scalar_value!(Int64, |_: &Int64| { DataType::Int64 });
-integer_scalar_value!(UInt8, |_: &UInt8| { DataType::UInt8 });
-integer_scalar_value!(UInt16, |_: &UInt16| { DataType::UInt16 });
-integer_scalar_value!(UInt32, |_: &UInt32| { DataType::UInt32 });
-integer_scalar_value!(UInt64, |_: &UInt64| { DataType::UInt64 });
-integer_scalar_value!(Int128, |value: &Int128| {
+integer_leaf_value!(Int8, |_: &Int8| DataType::Int8);
+integer_leaf_value!(Int16, |_: &Int16| { DataType::Int16 });
+integer_leaf_value!(Int32, |_: &Int32| { DataType::Int32 });
+integer_leaf_value!(Int64, |_: &Int64| { DataType::Int64 });
+integer_leaf_value!(UInt8, |_: &UInt8| { DataType::UInt8 });
+integer_leaf_value!(UInt16, |_: &UInt16| { DataType::UInt16 });
+integer_leaf_value!(UInt32, |_: &UInt32| { DataType::UInt32 });
+integer_leaf_value!(UInt64, |_: &UInt64| { DataType::UInt64 });
+integer_leaf_value!(Int128, |value: &Int128| {
     wide_integer_dtype(value.get().unsigned_abs())
 });
-integer_scalar_value!(UInt128, |value: &UInt128| {
+integer_leaf_value!(UInt128, |value: &UInt128| {
     wide_integer_dtype(value.get())
 });
 
@@ -546,19 +447,7 @@ impl Scalar {
 impl Scalar {
     /// Return whether this is any integer, signed or unsigned, at any width.
     pub const fn is_integer(&self) -> bool {
-        matches!(
-            self,
-            Self::Int8(_)
-                | Self::Int16(_)
-                | Self::Int32(_)
-                | Self::Int64(_)
-                | Self::UInt8(_)
-                | Self::UInt16(_)
-                | Self::UInt32(_)
-                | Self::UInt64(_)
-                | Self::Int128(_)
-                | Self::UInt128(_)
-        )
+        crate::DataTypeKind::Integer.contains(self.id())
     }
 }
 
@@ -798,48 +687,32 @@ mod arrow {
     use arrow_schema::DataType as ArrowDataType;
     use smol_str::format_smolstr;
 
-    use super::IntegerType;
     use crate::invalid;
-    use crate::{DataType, Result};
+    use crate::{DataType, Error, Result};
 
-    impl IntegerType {
-        /// The Arrow storage this width lays out.
-        pub(crate) const fn arrow_storage(self) -> ArrowDataType {
-            match self {
-                Self::Int8 => ArrowDataType::Int8,
-                Self::Int16 => ArrowDataType::Int16,
-                Self::Int32 => ArrowDataType::Int32,
-                Self::Int64 => ArrowDataType::Int64,
-                Self::UInt8 => ArrowDataType::UInt8,
-                Self::UInt16 => ArrowDataType::UInt16,
-                Self::UInt32 => ArrowDataType::UInt32,
-                Self::UInt64 => ArrowDataType::UInt64,
-            }
-        }
-
-        /// The width one Arrow integer storage names, `None` for anything else.
-        pub(crate) const fn from_arrow_storage(value: &ArrowDataType) -> Option<Self> {
-            match value {
-                ArrowDataType::Int8 => Some(Self::Int8),
-                ArrowDataType::Int16 => Some(Self::Int16),
-                ArrowDataType::Int32 => Some(Self::Int32),
-                ArrowDataType::Int64 => Some(Self::Int64),
-                ArrowDataType::UInt8 => Some(Self::UInt8),
-                ArrowDataType::UInt16 => Some(Self::UInt16),
-                ArrowDataType::UInt32 => Some(Self::UInt32),
-                ArrowDataType::UInt64 => Some(Self::UInt64),
-                _ => None,
-            }
-        }
-    }
-
-    /// The Arrow storage one integer datatype lays out.
+    /// The Arrow storage one integer datatype lays out: every width is one
+    /// of Arrow's own.
     ///
     /// # Errors
     ///
     /// Returns an error when the datatype belongs to another family.
     pub(crate) fn arrow_storage(dtype: &DataType) -> Result<ArrowDataType> {
-        Ok(IntegerType::try_from(dtype)?.arrow_storage())
+        Ok(match dtype {
+            DataType::Int8 => ArrowDataType::Int8,
+            DataType::Int16 => ArrowDataType::Int16,
+            DataType::Int32 => ArrowDataType::Int32,
+            DataType::Int64 => ArrowDataType::Int64,
+            DataType::UInt8 => ArrowDataType::UInt8,
+            DataType::UInt16 => ArrowDataType::UInt16,
+            DataType::UInt32 => ArrowDataType::UInt32,
+            DataType::UInt64 => ArrowDataType::UInt64,
+            other => {
+                return Err(Error::InvalidDataType {
+                    kind: "integer",
+                    reason: format_smolstr!("expected an integer datatype, got {other}"),
+                });
+            }
+        })
     }
 
     /// The integer datatype one Arrow storage imports as.
@@ -848,14 +721,22 @@ mod arrow {
     ///
     /// Returns an error when the storage belongs to another family.
     pub(crate) fn from_arrow_storage(value: &ArrowDataType) -> Result<DataType> {
-        IntegerType::from_arrow_storage(value)
-            .map(DataType::from)
-            .ok_or_else(|| {
-                invalid(
+        Ok(match value {
+            ArrowDataType::Int8 => DataType::Int8,
+            ArrowDataType::Int16 => DataType::Int16,
+            ArrowDataType::Int32 => DataType::Int32,
+            ArrowDataType::Int64 => DataType::Int64,
+            ArrowDataType::UInt8 => DataType::UInt8,
+            ArrowDataType::UInt16 => DataType::UInt16,
+            ArrowDataType::UInt32 => DataType::UInt32,
+            ArrowDataType::UInt64 => DataType::UInt64,
+            _ => {
+                return Err(invalid(
                     "integer",
                     format_smolstr!("expected an integer storage, got {value}"),
-                )
-            })
+                ));
+            }
+        })
     }
 }
 

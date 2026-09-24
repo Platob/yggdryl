@@ -1,41 +1,38 @@
 //! What a datatype, a field and a value each owe the root that holds them,
-//! and what a family owes its leaves.
+//! and what the leaves of one family share.
 //!
 //! [`DataType`], [`Field`] and [`Scalar`] are redirectors: each holds one
-//! variant per family, and the family answers which leaf it is. The traits
-//! here are the same verbs on the three sides, so a family reads the same
-//! whichever side is being asked:
+//! variant per leaf - the eighteen string and six byte leaves included, which
+//! a string or byte field holds through its [`crate::StringType`] or
+//! [`crate::BytesType`] view - and the traits here are the same verbs on the
+//! three sides, so a leaf reads the same whichever side is being asked:
 //!
 //! | side | trait | widen | narrow |
 //! | --- | --- | --- | --- |
 //! | datatype | [`DataTypeValue`] | `into_dtype` | `from_dtype` |
 //! | field | [`FieldValue`] | `into_field` | `from_field` |
 //! | value | [`Value`] | `into_scalar` | `from_scalar` |
-//! | family value | [`FamilyValue`] | `into_scalar` | `from_scalar` |
 //! | column | [`SerieValue`] | `into_serie` | `from_serie` |
 //!
 //! The roots implement their own trait too - [`DataType`] is a
 //! [`DataTypeValue`] and [`Field`] is a `FieldValue<DataType>` - so code that
-//! is generic over a family works unchanged on the root that redirects to it.
+//! is generic over a payload works unchanged on the root that redirects to
+//! it.
 //!
-//! On the value side a family with several leaves is an enum over them -
-//! [`Integer`], [`Floating`], [`Decimal`], [`Temporal`], [`Code`],
-//! [`Geospatial`] and [`Nested`] - each a [`FamilyValue`]: it stands for any
-//! one leaf, answers that leaf's datatype, widens to the scalar the leaf
-//! widens to and narrows a scalar whose variant is one of its leaves. A kind
-//! with one leaf value - a boolean, a string, a byte value, a UUID, and the
-//! self-families a version, a URL, a time zone, a MIME type and a media type
-//! are - has no enum: the leaf is the family. What the leaves of one family
-//! share beyond that is the family's own trait - [`IntegerValue`],
-//! [`FloatingValue`], [`DecimalValue`], [`TemporalValue`],
-//! [`GeospatialValue`], [`CodeValue`] and [`NestedValue`] - declared here
-//! and implemented beside each leaf.
+//! A family is no type of its own: it is the range of
+//! [`DataTypeId`] bytes its [`DataTypeKind`] owns, so "is this an integer"
+//! is [`DataTypeKind::contains`] over a value's, a field's or a column's
+//! [`id`](crate::Scalar::id), and the value itself is the leaf the
+//! [`Scalar`] variant holds. What the leaves of one family share is a leaf
+//! contract - [`IntegerValue`], [`FloatingValue`], [`DecimalValue`],
+//! [`TemporalValue`], [`GeospatialValue`], [`CodeValue`] and
+//! [`NestedValue`] - declared here and implemented beside each leaf.
 //!
 //! A fourth side stands beside the three: many values of one field, which is
-//! a column. The root is [`Serie`] - one column leaf per family, beside the
-//! schema-free [`Run`] a row canonicalizes to - and [`SerieValue`] is what
-//! each column leaf and each family enum owes it. A serie is a value as well,
-//! because it *is* the serie family's value, `Scalar::List(Serie)`:
+//! a column. The root is [`Serie`] - one column leaf per storage layout,
+//! beside the schema-free [`Run`] a row canonicalizes to - and
+//! [`SerieValue`] is what each column leaf owes it. A serie is a value as
+//! well, because it *is* the value a serie holds, `Scalar::Serie(Serie)`:
 //! [`Serie`] implements [`Value`] and [`NestedValue`], and nothing about a
 //! column is a second value model. It does not implement [`SerieValue`],
 //! whose every method answers from a field, because the run leaf declares
@@ -53,12 +50,6 @@
 //! [`Run`]: crate::Run
 //! [`Serie`]: crate::Serie
 //! [`Scalar`]: crate::Scalar
-//! [`Integer`]: crate::Integer
-//! [`Floating`]: crate::Floating
-//! [`Decimal`]: crate::Decimal
-//! [`Temporal`]: crate::Temporal
-//! [`Code`]: crate::Code
-//! [`Geospatial`]: crate::Geospatial
 
 mod canonical;
 
@@ -73,12 +64,10 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use smol_str::SmolStr;
 
-use crate::mapping::Map;
 use crate::{
     DataType, DataTypeId, DataTypeKind, Field, Metadata, Result, Scalar, Serie, TimeUnit, Timezone,
     i256,
 };
-use crate::{Struct, Variant};
 
 /// One concrete scalar representation.
 ///
@@ -130,110 +119,6 @@ pub trait Value:
     }
 }
 
-/// What a family's value enum owes: it stands for any one leaf of the family,
-/// so it answers the leaf's datatype, widens to the scalar the leaf widens to,
-/// and narrows a scalar whose variant is one of its leaves - by value, because
-/// the scalar holds the leaf and not the family, and every leaf is `Copy` or one
-/// shared pointer.
-pub trait FamilyValue:
-    Sized + Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + 'static
-{
-    /// The kind every leaf of this family shares.
-    const KIND: DataTypeKind;
-
-    /// Return the datatype the held leaf materializes into.
-    ///
-    /// # Errors
-    ///
-    /// Returns the leaf's own refusal when its physical parameters cannot be
-    /// represented by a valid [`DataType`].
-    fn dtype(&self) -> Result<DataType>;
-    /// Widen the held leaf to the dynamic scalar root.
-    fn into_scalar(self) -> Scalar;
-    /// Narrow a dynamic scalar to this family when its variant is one of the
-    /// family's leaves.
-    fn from_scalar(value: &Scalar) -> Option<Self>;
-}
-
-/// Emit one family's value enum over its leaves.
-///
-/// Every variant is named for the leaf it wraps, which is also the [`Scalar`]
-/// variant that leaf widens to, so the enum, the scalar and the leaf share
-/// one spelling: `Integer::Int32(Int32)` is `Scalar::Int32(Int32)`.
-macro_rules! family_value {
-    // A family whose variant names are its leaf types: the common shape.
-    (
-        $(#[$meta:meta])*
-        $family:ident, $kind:ident, [$($leaf:ident),+ $(,)?]
-    ) => {
-        family_value!($(#[$meta])* $family, $kind, [$($leaf => $leaf),+]);
-
-        $(
-            impl From<$leaf> for $family {
-                fn from(value: $leaf) -> Self {
-                    Self::$leaf(value)
-                }
-            }
-        )+
-    };
-    // A family where a variant is spelled as the `Scalar` variant it carries
-    // rather than as the type it holds - the nested family, whose five list
-    // layouts each hold a `Serie` and whose two maps each hold a `Map`. A held
-    // type may repeat, so the value is typed through the `Scalar` it is.
-    (
-        $(#[$meta:meta])*
-        $family:ident, $kind:ident, [$($leaf:ident => $held:ty),+ $(,)?]
-    ) => {
-        $(#[$meta])*
-        #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-        pub enum $family {
-            $(
-                #[doc = concat!("One `", stringify!($held), "`.")]
-                $leaf($held),
-            )+
-        }
-
-        impl ::std::fmt::Display for $family {
-            fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                match self {
-                    $(Self::$leaf(value) => ::std::fmt::Display::fmt(value, formatter),)+
-                }
-            }
-        }
-
-        impl $crate::FamilyValue for $family {
-            const KIND: $crate::DataTypeKind = $crate::DataTypeKind::$kind;
-
-            fn dtype(&self) -> $crate::Result<$crate::DataType> {
-                match self {
-                    $(Self::$leaf(value) => $crate::Scalar::$leaf(value.clone()).dtype(),)+
-                }
-            }
-
-            fn into_scalar(self) -> $crate::Scalar {
-                match self {
-                    $(Self::$leaf(value) => $crate::Scalar::$leaf(value),)+
-                }
-            }
-
-            fn from_scalar(value: &$crate::Scalar) -> Option<Self> {
-                match value {
-                    $($crate::Scalar::$leaf(value) => Some(Self::$leaf(value.clone())),)+
-                    _ => None,
-                }
-            }
-        }
-
-        impl From<$family> for $crate::Scalar {
-            fn from(value: $family) -> Self {
-                $crate::FamilyValue::into_scalar(value)
-            }
-        }
-    };
-}
-
-pub(crate) use family_value;
-
 /// Operations shared by every signed and unsigned integer representation.
 pub trait IntegerValue: Value {
     /// Whether this representation is signed.
@@ -270,9 +155,6 @@ pub trait DecimalValue: Value {
 
 /// Operations shared by every temporal representation.
 pub trait TemporalValue: Value {
-    /// The family's name: `date`, `time`, `datetime`, `duration` or
-    /// `interval`, as a datatype spells it.
-    const FAMILY: &'static str;
     /// The physical count width in bits.
     const BIT_WIDTH: u8;
 
@@ -320,7 +202,7 @@ pub trait CodeValue: Value {
     /// where the two describe one instrument; a
     /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
     /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
-    /// [`Currency`](crate::Currency) `XXX` and a [`MicCode`](crate::MicCode) `XXXX` take the other. Every other
+    /// [`Ccy`](crate::Ccy) `XXX` and a [`MicCode`](crate::MicCode) `XXXX` take the other. Every other
     /// code is an identifier with nothing partial about it, so this one
     /// stands as it is. This is what a graph element folds two statements
     /// of one fact with.
@@ -343,7 +225,7 @@ pub trait NestedValue: Value {
     fn children(&self) -> Children<'_>;
 }
 
-/// One column: a family's leaf column, or the family enum over its leaves.
+/// One column: the leaf that holds one storage layout's buffers.
 ///
 /// A column is many values of one field, and it holds them the way Arrow
 /// lays them out - a values buffer, offsets where the layout has them, a
@@ -367,8 +249,8 @@ pub trait NestedValue: Value {
 /// [`Serie`] itself does *not* implement this, because its
 /// [`Run`](crate::Serie::Run) leaf is a schema-free run with no field to
 /// answer `field` with. The root answers the same verbs inherently, with
-/// [`Serie::field`] returning `Option`; this trait is what a column - a
-/// leaf, or the family enum over leaves - owes.
+/// [`Serie::field`] returning `Option`; this trait is what a column leaf
+/// owes.
 ///
 /// ```
 /// use yggdryl::{DataType, Field, Int64Serie, Scalar, Serie, SerieValue};
@@ -407,6 +289,34 @@ pub trait SerieValue:
 
     /// Return the shared field, without cloning it.
     fn field_ref(&self) -> &Arc<Field>;
+
+    /// Return the identifier of the datatype every row is typed by: the
+    /// field's, because one layout holds several - a UTF-8 column holds
+    /// every string leaf laid out as UTF-8, a duration column both widths -
+    /// so the leaf alone never says which. A dictionary or run-end column
+    /// answers its encoding, not the rows it yields.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, DataTypeId, DataTypeKind, Field, Serie, SerieValue, TimeUnit};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let dtype = DataType::duration32(TimeUnit::Millisecond)?;
+    /// let serie = Serie::empty(Field::new("at", dtype, true))?;
+    /// let column = serie.as_duration_millisecond().expect("a millisecond duration column");
+    /// assert_eq!(column.id(), DataTypeId::Duration32);
+    /// assert_eq!(column.kind(), DataTypeKind::Temporal);
+    /// # Ok(())
+    /// # }
+    /// ```
+    fn id(&self) -> DataTypeId {
+        self.field().id()
+    }
+
+    /// Return the family the column's datatype belongs to: the one whose
+    /// [range](DataTypeKind::range) [`Self::id`] is in.
+    fn kind(&self) -> DataTypeKind {
+        self.id().kind()
+    }
 
     /// Return the number of rows.
     ///
@@ -592,35 +502,6 @@ pub trait SerieValue:
     }
 }
 
-family_value!(
-    /// The nested family as one value: a sequence, a mapping, a record or
-    /// one semi-structured [`Variant`](crate::Variant).
-    ///
-    /// ```
-    /// use yggdryl::{DataType, FamilyValue, Nested, Scalar};
-    ///
-    /// let value = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(2_i64)]);
-    /// let held = Nested::from_scalar(&value).expect("a sequence");
-    /// assert!(matches!(held, Nested::List(_)));
-    /// assert_eq!(held.dtype().unwrap(), DataType::list(DataType::Int64.required_field("item")));
-    /// assert_eq!(held.into_scalar(), value);
-    /// assert_eq!(Nested::from_scalar(&Scalar::from(1_i64)), None);
-    /// ```
-    Nested,
-    Nested,
-    [
-        List => Serie,
-        ListView => Serie,
-        FixedSizeList => Serie,
-        LargeList => Serie,
-        LargeListView => Serie,
-        Map => Map,
-        SortedMap => Map,
-        Struct => Struct,
-        Variant => Variant,
-    ]
-);
-
 /// The per-column facts a field carries that only one datatype has.
 ///
 /// Almost every datatype answers `()`: a field's name, nullability, metadata
@@ -690,11 +571,12 @@ impl FieldSidecar for DictionaryOptions {
 
 /// One datatype: a family's payload, or the root that redirects to it.
 ///
-/// The implementor is what a [`DataType`] variant holds - an enum over the
-/// family's leaves when it has several, one leaf's parameters when it has one,
-/// and a parameter-free marker for the variants that carry nothing. Either way
-/// [`Self::id`] names the exact leaf, which is what a caller branching on the
-/// variant actually wants.
+/// The implementor is the view a field leaf holds of its [`DataType`]
+/// variants - an enum over the family's leaves when it has several, such as
+/// [`crate::StringType`] over the eighteen string variants, one leaf's
+/// parameters when it has one, and a parameter-free marker for the variants
+/// that carry nothing. Either way [`Self::id`] names the exact leaf, which is
+/// what a caller branching on the variant actually wants.
 pub trait DataTypeValue:
     Clone + fmt::Debug + fmt::Display + Eq + Ord + Hash + Send + Sync + Sized + 'static
 {
@@ -709,8 +591,11 @@ pub trait DataTypeValue:
     /// Return the exact identifier of the leaf this payload holds.
     fn id(&self) -> DataTypeId;
 
-    /// Return the category every leaf in this family belongs to.
-    fn kind(&self) -> DataTypeKind;
+    /// Return the family the leaf this payload holds belongs to: the one
+    /// whose [range](DataTypeKind::range) its identifier is in.
+    fn kind(&self) -> DataTypeKind {
+        self.id().kind()
+    }
 
     /// Reject a payload whose parameters cannot describe a column.
     ///
@@ -878,10 +763,6 @@ impl DataTypeValue for DataType {
         Self::id(self)
     }
 
-    fn kind(&self) -> DataTypeKind {
-        Self::kind(self)
-    }
-
     fn validate(&self) -> Result<()> {
         Self::validate(self)
     }
@@ -1025,7 +906,7 @@ impl std::iter::FusedIterator for Children<'_> {}
 macro_rules! payload_datatype {
     (
         $(#[$meta:meta])*
-        $name:ident, $variant:ident, $kind:ident,
+        $name:ident, $variant:ident,
         fields { $($field:ident : $ty:ty),+ $(,)? },
         read $read:pat => $build:expr,
         write $write:expr $(,)?
@@ -1072,10 +953,6 @@ macro_rules! payload_datatype {
                 DataTypeId::$variant
             }
 
-            fn kind(&self) -> DataTypeKind {
-                DataTypeKind::$kind
-            }
-
             fn validate(&self) -> Result<()> {
                 self.clone().into_dtype().validate()
             }
@@ -1096,28 +973,28 @@ macro_rules! payload_datatype {
 }
 
 payload_datatype!(
-    UnionType, Union, Nested,
+    UnionType, Union,
     fields { fields: crate::UnionFields, mode: crate::UnionMode },
     read DataType::Union(fields, mode) => Self::new(fields.clone(), *mode),
     write DataType::Union(fields, mode),
 );
 
 payload_datatype!(
-    RunEndType, RunEndEncoded, Nested,
+    RunEndType, RunEndEncoded,
     fields { encoding: std::sync::Arc<crate::RunEndEncodedType> },
     read DataType::RunEndEncoded(encoding) => Self::new(std::sync::Arc::clone(encoding)),
     write DataType::RunEndEncoded(encoding),
 );
 
 payload_datatype!(
-    GeometryType, Geometry, Geospatial,
+    GeometryType, Geometry,
     fields { parameters: std::sync::Arc<crate::GeospatialParameters> },
     read DataType::Geometry(parameters) => Self::new(std::sync::Arc::clone(parameters)),
     write DataType::Geometry(parameters),
 );
 
 payload_datatype!(
-    GeographyType, Geography, Geospatial,
+    GeographyType, Geography,
     fields { parameters: std::sync::Arc<crate::GeospatialParameters> },
     read DataType::Geography(parameters) => Self::new(std::sync::Arc::clone(parameters)),
     write DataType::Geography(parameters),

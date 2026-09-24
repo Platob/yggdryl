@@ -11,9 +11,8 @@ const {
   arrowBatchFromIPC,
   arrowBatchIntoIPC,
   arrowScalarFromIPC,
-  arrowScalarIntoIPC,
-  arrowTableFromIPC,
   arrowTableIntoIPC,
+  arrowVectorChunksIntoIPC,
   arrowVectorFromIPC,
   arrowVectorIntoIPC,
 } = require('./values.js')
@@ -213,22 +212,6 @@ const nativeTermArithmetic = Object.freeze({
   divide: NativeTerm.prototype._divideNative,
   remainder: NativeTerm.prototype._remainderNative,
 })
-const nativeScalarFromArrowScalar =
-  NativeScalar._fromArrowScalarIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowArray =
-  NativeScalar._fromArrowArrayIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowBatch =
-  NativeScalar._fromArrowBatchIpcNative.bind(NativeScalar)
-const nativeScalarFromArrowTable =
-  NativeScalar._fromArrowTableIpcNative.bind(NativeScalar)
-const nativeScalarIntoArrowScalar =
-  NativeScalar.prototype._intoArrowScalarIpcNative
-const nativeScalarIntoArrowArray =
-  NativeScalar.prototype._intoArrowArrayIpcNative
-const nativeScalarIntoArrowBatch =
-  NativeScalar.prototype._intoArrowBatchIpcNative
-const nativeScalarIntoArrowTable =
-  NativeScalar.prototype._intoArrowTableIpcNative
 const nativeAvroSchemaFromValue =
   NativeAvroSchema._fromScalarNative.bind(NativeAvroSchema)
 const nativeAvroSchemaFromUtf8 =
@@ -276,10 +259,6 @@ for (const nativeName of [
 ]) {
   delete NativeTerm.prototype[nativeName]
 }
-delete NativeScalar.prototype._intoArrowScalarIpcNative
-delete NativeScalar.prototype._intoArrowArrayIpcNative
-delete NativeScalar.prototype._intoArrowBatchIpcNative
-delete NativeScalar.prototype._intoArrowTableIpcNative
 delete NativeAvroSchema.prototype._intoScalarNative
 delete NativeAvroSchema.prototype._intoSingleObjectNative
 delete NativeAvroSchema.prototype._fromSingleObjectNative
@@ -333,7 +312,7 @@ const internalDtypeNames = new Set([
   '_simple',
   '_temporal',
   '_decimal',
-  '_list',
+  '_serie',
   '_fromFields',
   '_union',
   '_variant',
@@ -382,10 +361,6 @@ const Scalar = publicNativeClass(
     '_fromJsNative',
     '_fromDecimalPartsNative',
     '_fromTemporalPartsNative',
-    '_fromArrowScalarIpcNative',
-    '_fromArrowArrayIpcNative',
-    '_fromArrowBatchIpcNative',
-    '_fromArrowTableIpcNative',
   ]),
 )
 const PartitionSpec = publicNativeClass(
@@ -582,7 +557,7 @@ const internalDtype = Object.freeze({
   simple: NativeDataType._simple.bind(NativeDataType),
   temporal: NativeDataType._temporal.bind(NativeDataType),
   decimal: NativeDataType._decimal.bind(NativeDataType),
-  list: NativeDataType._list.bind(NativeDataType),
+  serie: NativeDataType._serie.bind(NativeDataType),
   fromFields: NativeDataType._fromFields.bind(NativeDataType),
   union: NativeDataType._union.bind(NativeDataType),
   variant: NativeDataType._variant.bind(NativeDataType),
@@ -1249,52 +1224,13 @@ function nativeBatchReader(reader, label) {
   )
 }
 
-Object.defineProperties(Scalar, {
-  fromArrowScalar: {
-    value(value, field, options) {
-      return nativeScalarFromArrowScalar(
-        arrowScalarIntoIPC(value),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowArray: {
-    value(value, field, options) {
-      return nativeScalarFromArrowArray(
-        arrowVectorIntoIPC(value, 'Scalar.fromArrowArray input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowBatch: {
-    value(value, field, options) {
-      return nativeScalarFromArrowBatch(
-        arrowBatchIntoIPC(value, 'Scalar.fromArrowBatch input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-  fromArrowTable: {
-    value(value, field, options) {
-      return nativeScalarFromArrowTable(
-        arrowTableIntoIPC(value, 'Scalar.fromArrowTable input'),
-        optionalField(field),
-        ...castOptionArgs(options),
-      )
-    },
-  },
-})
-
-// The scalar kinds a list layout reports, each read by position.
-const LIST_KINDS = new Set([
-  'list',
-  'list_view',
-  'fixed_size_list',
-  'large_list',
-  'large_list_view',
+// The scalar kinds a serie layout reports, each read by position.
+const SERIE_KINDS = new Set([
+  'serie',
+  'serie_view',
+  'fixed_size_serie',
+  'large_serie',
+  'large_serie_view',
 ])
 
 Object.defineProperties(Scalar.prototype, {
@@ -1323,7 +1259,7 @@ Object.defineProperties(Scalar.prototype, {
   get: {
     configurable: true,
     value(key) {
-      if (LIST_KINDS.has(this.kind)) {
+      if (SERIE_KINDS.has(this.kind)) {
         if (!Number.isSafeInteger(key) || key < 0) {
           throw new TypeError(
             'sequence keys must be non-negative safe integers',
@@ -1364,38 +1300,6 @@ Object.defineProperties(Scalar.prototype, {
       return Reflect.apply(nativeScalarRemove, this, [Scalar.from(key)])
     },
   },
-  intoArrowScalar: {
-    value(field) {
-      return arrowScalarFromIPC(
-        Reflect.apply(nativeScalarIntoArrowScalar, this, [field]),
-        'Scalar.intoArrowScalar output',
-      )
-    },
-  },
-  intoArrowArray: {
-    value(field) {
-      return arrowVectorFromIPC(
-        Reflect.apply(nativeScalarIntoArrowArray, this, [field]),
-        'Scalar.intoArrowArray output',
-      )
-    },
-  },
-  intoArrowBatch: {
-    value(field) {
-      return arrowBatchFromIPC(
-        Reflect.apply(nativeScalarIntoArrowBatch, this, [field]),
-        'Scalar.intoArrowBatch output',
-      )
-    },
-  },
-  intoArrowTable: {
-    value(field) {
-      return arrowTableFromIPC(
-        Reflect.apply(nativeScalarIntoArrowTable, this, [field]),
-        'Scalar.intoArrowTable output',
-      )
-    },
-  },
   toJSON: {
     value() {
       return JSON.parse(this.intoJson())
@@ -1426,6 +1330,8 @@ const nativeSerie = Object.freeze({
   intoArrowScalar: NativeSerie.prototype._intoArrowScalarIpcNative,
   intoArrowArray: NativeSerie.prototype._intoArrowArrayIpcNative,
   intoArrowBatch: NativeSerie.prototype._intoArrowBatchIpcNative,
+  equals: NativeSerie.prototype._equalsNative,
+  compare: NativeSerie.prototype._compareNative,
   offsets: NativeSerie.prototype._offsetsNative,
   sizes: NativeSerie.prototype._sizesNative,
   width: NativeSerie.prototype._widthNative,
@@ -1468,6 +1374,8 @@ for (const name of [
   '_intoArrowScalarIpcNative',
   '_intoArrowArrayIpcNative',
   '_intoArrowBatchIpcNative',
+  '_equalsNative',
+  '_compareNative',
   '_offsetsNative',
   '_sizesNative',
   '_widthNative',
@@ -1548,19 +1456,19 @@ function serieLeafClass(name) {
   return LeafClass
 }
 
-const ListSerie = serieLeafClass('ListSerie')
-const LargeListSerie = serieLeafClass('LargeListSerie')
-const ListViewSerie = serieLeafClass('ListViewSerie')
-const LargeListViewSerie = serieLeafClass('LargeListViewSerie')
-const FixedSizeListSerie = serieLeafClass('FixedSizeListSerie')
+const SerieSerie = serieLeafClass('SerieSerie')
+const LargeSerieSerie = serieLeafClass('LargeSerieSerie')
+const SerieViewSerie = serieLeafClass('SerieViewSerie')
+const LargeSerieViewSerie = serieLeafClass('LargeSerieViewSerie')
+const FixedSizeSerieSerie = serieLeafClass('FixedSizeSerieSerie')
 const MapSerie = serieLeafClass('MapSerie')
 const StructSerie = serieLeafClass('StructSerie')
 const serieLeafPrototypes = Object.freeze({
-  list: ListSerie.prototype,
-  largeList: LargeListSerie.prototype,
-  listView: ListViewSerie.prototype,
-  largeListView: LargeListViewSerie.prototype,
-  fixedSizeList: FixedSizeListSerie.prototype,
+  serie: SerieSerie.prototype,
+  largeSerie: LargeSerieSerie.prototype,
+  serieView: SerieViewSerie.prototype,
+  largeSerieView: LargeSerieViewSerie.prototype,
+  fixedSizeSerie: FixedSizeSerieSerie.prototype,
   map: MapSerie.prototype,
   struct: StructSerie.prototype,
 })
@@ -1621,17 +1529,17 @@ function leafVerb(name) {
   }
 }
 
-Object.defineProperties(ListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
-Object.defineProperties(LargeListSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(SerieSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
+Object.defineProperties(LargeSerieSerie.prototype, leafVerbs(['offsets', 'range', 'row']))
 Object.defineProperties(
-  ListViewSerie.prototype,
+  SerieViewSerie.prototype,
   leafVerbs(['offsets', 'sizes', 'range', 'row']),
 )
 Object.defineProperties(
-  LargeListViewSerie.prototype,
+  LargeSerieViewSerie.prototype,
   leafVerbs(['offsets', 'sizes', 'range', 'row']),
 )
-Object.defineProperties(FixedSizeListSerie.prototype, leafVerbs(['width', 'range', 'row']))
+Object.defineProperties(FixedSizeSerieSerie.prototype, leafVerbs(['width', 'range', 'row']))
 Object.defineProperties(
   MapSerie.prototype,
   leafVerbs(['entries', 'keys', 'values', 'offsets', 'keysSorted', 'range', 'row']),
@@ -1839,6 +1747,19 @@ Object.defineProperties(Serie.prototype, {
       )
     },
   },
+  // The rows compare against a serie's or a chunked serie's, however cut.
+  equals: {
+    configurable: true,
+    value(other) {
+      return Reflect.apply(nativeSerie.equals, this, [comparedRows(other, 'Serie.equals')])
+    },
+  },
+  compare: {
+    configurable: true,
+    value(other) {
+      return Reflect.apply(nativeSerie.compare, this, [comparedRows(other, 'Serie.compare')])
+    },
+  },
 })
 
 // A sequence value holds a serie: the pivot hands it out as its leaf's class.
@@ -1854,13 +1775,15 @@ Object.defineProperty(Scalar.prototype, 'asSerie', {
 const NativeSerieReader = binding.SerieReader
 const nativeSerieReader = Object.freeze({
   fromArrowReader: NativeSerieReader._fromArrowReaderNative.bind(NativeSerieReader),
+  fromSerie: NativeSerieReader._fromSerieNative.bind(NativeSerieReader),
+  fromChunked: NativeSerieReader._fromChunkedNative.bind(NativeSerieReader),
   next: NativeSerieReader.prototype._nextNative,
 })
 delete NativeSerieReader.prototype._nextNative
 const SerieReader = publicNativeClass(
   NativeSerieReader,
   'SerieReader',
-  new Set(['_fromArrowReaderNative']),
+  new Set(['_fromArrowReaderNative', '_fromSerieNative', '_fromChunkedNative']),
 )
 Object.defineProperty(SerieReader, 'fromArrowReader', {
   configurable: true,
@@ -1872,12 +1795,250 @@ Object.defineProperty(SerieReader, 'fromArrowReader', {
     )
   },
 })
+// A held column is a stream of the one record serie it is.
+Object.defineProperty(SerieReader, 'fromSerie', {
+  configurable: true,
+  value(serie) {
+    if (!(serie instanceof NativeSerie)) {
+      throw new TypeError('SerieReader.fromSerie takes a Serie')
+    }
+    return nativeSerieReader.fromSerie(serie)
+  },
+})
 Object.defineProperty(SerieReader.prototype, Symbol.iterator, {
   configurable: true,
   value: function* series() {
     for (let serie; (serie = Reflect.apply(nativeSerieReader.next, this, [])) !== null; ) {
       yield describedSerie(serie)
     }
+  },
+})
+
+// Many columns under one field, held apart: what an Arrow JS vector of
+// several Data is, and a table of one batch per chunk. The natives answering
+// a serie are kept here, so every chunk and the join are handed out as their
+// leaf's class; Arrow crosses as copied IPC, one batch per chunk.
+const NativeChunkedSerie = binding.ChunkedSerie
+const nativeChunkedSerie = Object.freeze({
+  empty: NativeChunkedSerie._emptyNative.bind(NativeChunkedSerie),
+  fromSerie: NativeChunkedSerie._fromSerieNative.bind(NativeChunkedSerie),
+  fromSeries: NativeChunkedSerie._fromSeriesNative.bind(NativeChunkedSerie),
+  fromArrowArray: NativeChunkedSerie._fromArrowArrayIpcNative.bind(NativeChunkedSerie),
+  fromArrowBatch: NativeChunkedSerie._fromArrowBatchIpcNative.bind(NativeChunkedSerie),
+  fromArrowReader: NativeChunkedSerie._fromArrowReaderNative.bind(NativeChunkedSerie),
+  chunks: NativeChunkedSerie.prototype._chunksNative,
+  chunk: NativeChunkedSerie.prototype._chunkNative,
+  asJs: NativeChunkedSerie.prototype._asJsNative,
+  iter: NativeChunkedSerie.prototype._iterNative,
+  pushChunk: NativeChunkedSerie.prototype._pushChunkNative,
+  intoSerie: NativeChunkedSerie.prototype._intoSerieNative,
+  cast: NativeChunkedSerie.prototype._castNative,
+  intoArrowArray: NativeChunkedSerie.prototype._intoArrowArrayIpcNative,
+  equals: NativeChunkedSerie.prototype._equalsNative,
+  compare: NativeChunkedSerie.prototype._compareNative,
+})
+for (const name of [
+  '_chunksNative',
+  '_chunkNative',
+  '_asJsNative',
+  '_iterNative',
+  '_pushChunkNative',
+  '_intoSerieNative',
+  '_castNative',
+  '_intoArrowArrayIpcNative',
+  '_equalsNative',
+  '_compareNative',
+]) {
+  delete NativeChunkedSerie.prototype[name]
+}
+const ChunkedSerie = publicNativeClass(
+  NativeChunkedSerie,
+  'ChunkedSerie',
+  new Set([
+    '_emptyNative',
+    '_fromSerieNative',
+    '_fromSeriesNative',
+    '_fromArrowArrayIpcNative',
+    '_fromArrowBatchIpcNative',
+    '_fromArrowReaderNative',
+  ]),
+)
+
+// A chunk is a held column, never a JavaScript value converted on the way.
+function chunkSerie(chunk, label) {
+  if (chunk instanceof NativeSerie) return chunk
+  throw new TypeError(`${label} takes a Serie`)
+}
+
+// The rows compare against a chunked serie's or a serie's, however cut.
+function comparedRows(other, label) {
+  if (other instanceof NativeChunkedSerie || other instanceof NativeSerie) return other
+  throw new TypeError(`${label} takes a ChunkedSerie or a Serie`)
+}
+
+Object.defineProperties(ChunkedSerie, {
+  empty: {
+    configurable: true,
+    value(field) {
+      return nativeChunkedSerie.empty(field instanceof NativeField ? field : Field.from(field))
+    },
+  },
+  fromSerie: {
+    configurable: true,
+    value(serie) {
+      return nativeChunkedSerie.fromSerie(chunkSerie(serie, 'ChunkedSerie.fromSerie'))
+    },
+  },
+  fromSeries: {
+    configurable: true,
+    value(chunks, field, options) {
+      if (chunks == null || typeof chunks[Symbol.iterator] !== 'function') {
+        throw new TypeError('ChunkedSerie.fromSeries takes an iterable of Serie')
+      }
+      return nativeChunkedSerie.fromSeries(
+        Array.from(chunks, (chunk) => chunkSerie(chunk, 'ChunkedSerie.fromSeries')),
+        optionalField(field),
+        ...castOptionArgs(options),
+      )
+    },
+  },
+  // A vector is one chunk per Data it holds, an empty one included: it
+  // crosses as a one-column stream of one batch per Data.
+  fromArrowArray: {
+    configurable: true,
+    value(vector, field, options) {
+      return nativeChunkedSerie.fromArrowArray(
+        arrowVectorChunksIntoIPC(vector, 'ChunkedSerie.fromArrowArray input'),
+        optionalField(field),
+        ...castOptionArgs(options),
+      )
+    },
+  },
+  // A table is one chunk per batch, and one batch is one chunk.
+  fromArrowBatch: {
+    configurable: true,
+    value(batch, root, options) {
+      const bytes = arrow().isArrowTable(batch)
+        ? arrowTableIntoIPC(batch, 'ChunkedSerie.fromArrowBatch input')
+        : arrowBatchIntoIPC(batch, 'ChunkedSerie.fromArrowBatch input')
+      return nativeChunkedSerie.fromArrowBatch(
+        bytes,
+        optionalField(root),
+        ...castOptionArgs(options),
+      )
+    },
+  },
+  fromArrowReader: {
+    configurable: true,
+    value(reader, root, options) {
+      return nativeChunkedSerie.fromArrowReader(
+        nativeBatchReader(reader, 'ChunkedSerie.fromArrowReader'),
+        optionalField(root),
+        ...castOptionArgs(options),
+      )
+    },
+  },
+})
+
+Object.defineProperties(ChunkedSerie.prototype, {
+  chunks: {
+    configurable: true,
+    get() {
+      return Reflect.apply(nativeChunkedSerie.chunks, this, []).map(describedSerie)
+    },
+  },
+  chunk: {
+    configurable: true,
+    writable: true,
+    value(index) {
+      return describedSerie(Reflect.apply(nativeChunkedSerie.chunk, this, [index]))
+    },
+  },
+  [Symbol.iterator]: {
+    configurable: true,
+    value() {
+      return Reflect.apply(nativeChunkedSerie.iter, this, [])
+    },
+  },
+  asJs: {
+    configurable: true,
+    value(options) {
+      const maxDepth = options == null ? undefined : checkedOptions(options).maxDepth
+      return fromTransport(Reflect.apply(nativeChunkedSerie.asJs, this, [maxDepth]))
+    },
+  },
+  toJSON: {
+    configurable: true,
+    value() {
+      return this.asJs()
+    },
+  },
+  pushChunk: {
+    configurable: true,
+    value(chunk, options) {
+      Reflect.apply(nativeChunkedSerie.pushChunk, this, [
+        chunkSerie(chunk, 'ChunkedSerie.pushChunk'),
+        ...castOptionArgs(options),
+      ])
+    },
+  },
+  intoSerie: {
+    configurable: true,
+    writable: true,
+    value() {
+      return describedSerie(Reflect.apply(nativeChunkedSerie.intoSerie, this, []))
+    },
+  },
+  cast: {
+    configurable: true,
+    value(field, options) {
+      return Reflect.apply(nativeChunkedSerie.cast, this, [
+        field instanceof NativeField || field instanceof NativeDataType ? field : Field.from(field),
+        ...castOptionArgs(options),
+      ])
+    },
+  },
+  intoArrowArray: {
+    configurable: true,
+    value() {
+      return arrowVectorFromIPC(
+        Reflect.apply(nativeChunkedSerie.intoArrowArray, this, []),
+        'ChunkedSerie.intoArrowArray output',
+      )
+    },
+  },
+  intoArrowTable: {
+    configurable: true,
+    value() {
+      return this.intoArrowReader().intoTable()
+    },
+  },
+  equals: {
+    configurable: true,
+    value(other) {
+      return Reflect.apply(nativeChunkedSerie.equals, this, [
+        comparedRows(other, 'ChunkedSerie.equals'),
+      ])
+    },
+  },
+  compare: {
+    configurable: true,
+    value(other) {
+      return Reflect.apply(nativeChunkedSerie.compare, this, [
+        comparedRows(other, 'ChunkedSerie.compare'),
+      ])
+    },
+  },
+})
+
+// A held chunked column is a stream of one record serie per chunk.
+Object.defineProperty(SerieReader, 'fromChunked', {
+  configurable: true,
+  value(chunked) {
+    if (!(chunked instanceof NativeChunkedSerie)) {
+      throw new TypeError('SerieReader.fromChunked takes a ChunkedSerie')
+    }
+    return nativeSerieReader.fromChunked(chunked)
   },
 })
 
@@ -1888,8 +2049,10 @@ const NativeArrowCastPlan = binding.ArrowCastPlan
 const nativeArrowCastPlan = Object.freeze({
   compile: NativeArrowCastPlan._compileNative.bind(NativeArrowCastPlan),
   apply: NativeArrowCastPlan.prototype._applyNative,
+  applyChunked: NativeArrowCastPlan.prototype._applyChunkedNative,
 })
 delete NativeArrowCastPlan.prototype._applyNative
+delete NativeArrowCastPlan.prototype._applyChunkedNative
 const ArrowCastPlan = publicNativeClass(
   NativeArrowCastPlan,
   'ArrowCastPlan',
@@ -1918,11 +2081,15 @@ Object.defineProperty(ArrowCastPlan, 'compile', {
     )
   },
 })
+// A serie is cast as it is; a chunked serie chunk by chunk, kept apart.
 Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
   configurable: true,
   value(serie) {
+    if (serie instanceof NativeChunkedSerie) {
+      return Reflect.apply(nativeArrowCastPlan.applyChunked, this, [serie])
+    }
     if (!(serie instanceof NativeSerie)) {
-      throw new TypeError('ArrowCastPlan.apply takes a Serie')
+      throw new TypeError('ArrowCastPlan.apply takes a Serie or a ChunkedSerie')
     }
     return describedSerie(Reflect.apply(nativeArrowCastPlan.apply, this, [serie]))
   },
@@ -1930,12 +2097,13 @@ Object.defineProperty(ArrowCastPlan.prototype, 'apply', {
 
 binding.Serie = Serie
 binding.SerieReader = SerieReader
+binding.ChunkedSerie = ChunkedSerie
 binding.ArrowCastPlan = ArrowCastPlan
-binding.ListSerie = ListSerie
-binding.LargeListSerie = LargeListSerie
-binding.ListViewSerie = ListViewSerie
-binding.LargeListViewSerie = LargeListViewSerie
-binding.FixedSizeListSerie = FixedSizeListSerie
+binding.SerieSerie = SerieSerie
+binding.LargeSerieSerie = LargeSerieSerie
+binding.SerieViewSerie = SerieViewSerie
+binding.LargeSerieViewSerie = LargeSerieViewSerie
+binding.FixedSizeSerieSerie = FixedSizeSerieSerie
 binding.MapSerie = MapSerie
 binding.StructSerie = StructSerie
 

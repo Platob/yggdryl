@@ -65,16 +65,15 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
-    Side, State, TimeInForce, decimal,
+    BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
+    State, TimeInForce, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
 };
 use std::ops::Index;
 
-use crate::value::{FamilyValue, Nested};
-use crate::{Code, Floating, Geospatial, Integer, Serie, Temporal};
+use crate::Serie;
 
 /// Make one canonical text value a scalar leaf of its own.
 ///
@@ -83,7 +82,7 @@ use crate::{Code, Floating, Geospatial, Integer, Serie, Temporal};
 /// wider one holds it, so every method here is the same four lines under a
 /// different name. The wrapping variant is named because a value wider than
 /// the enum rides behind a shared pointer instead.
-macro_rules! text_scalar_value {
+macro_rules! text_leaf_value {
     ($leaf:ty, $variant:ident, $id:expr, $dtype:expr) => {
         impl Value for $leaf {
             fn dtype(&self) -> Result<DataType> {
@@ -168,13 +167,48 @@ pub enum Scalar {
     Duration64(Duration64),
     /// A calendar interval in one of its three layouts.
     Interval(Interval),
-    /// A string: its characters, and the layout and charset it is stored
-    /// under.
-    String(Str),
+    // The string leaves, one variant per leaf in identifier order: the
+    // characters, and the number a fixed or sized leaf states.
+    /// UTF-8 text, 32-bit offsets.
+    Utf8String(Str),
+    /// UTF-8 text, 64-bit offsets.
+    LargeUtf8String(Str),
+    /// UTF-8 text, viewed.
+    Utf8StringView(Str),
+    /// UTF-8 text, viewed over 64-bit offsets.
+    LargeUtf8StringView(Str),
+    /// UTF-8 text in a padded slot of the width it carries.
+    FixedUtf8String(Str, u32),
+    /// UTF-8 text under the maximum, in stored bytes, it carries.
+    SizedUtf8String(Str, u32),
+    /// US-ASCII text, 32-bit offsets.
+    AsciiString(Str),
+    /// US-ASCII text, 64-bit offsets.
+    LargeAsciiString(Str),
+    /// US-ASCII text, viewed.
+    AsciiStringView(Str),
+    /// US-ASCII text, viewed over 64-bit offsets.
+    LargeAsciiStringView(Str),
+    /// US-ASCII text in a padded slot of the width it carries.
+    FixedAsciiString(Str, u32),
+    /// US-ASCII text under the maximum, in stored bytes, it carries.
+    SizedAsciiString(Str, u32),
+    /// Windows-1252 text, 32-bit offsets.
+    Cp1252String(Str),
+    /// Windows-1252 text, 64-bit offsets.
+    LargeCp1252String(Str),
+    /// Windows-1252 text, viewed.
+    Cp1252StringView(Str),
+    /// Windows-1252 text, viewed over 64-bit offsets.
+    LargeCp1252StringView(Str),
+    /// Windows-1252 text in a padded slot of the width it carries.
+    FixedCp1252String(Str, u32),
+    /// Windows-1252 text under the maximum, in stored bytes, it carries.
+    SizedCp1252String(Str, u32),
     /// ISO 3166-1 alpha-2 country code.
     Country(Country),
     /// ISO 4217 currency code.
-    Currency(Currency),
+    Ccy(Ccy),
     /// ISO 10383 market identifier code.
     MicCode(MicCode),
     /// ISO 10962 classification code.
@@ -215,27 +249,39 @@ pub enum Scalar {
     /// coding list, which is wider than this enum, and a column of them is
     /// cloned once per row.
     MediaType(Arc<MediaType>),
-    /// Opaque bytes retaining their storage representation.
-    Bytes(Bytes),
+    // The byte leaves, one variant per leaf in identifier order: the payload,
+    // and the number a fixed or sized leaf states.
+    /// Bytes, 32-bit offsets.
+    Binary(Bytes),
+    /// Bytes, 64-bit offsets.
+    LargeBinary(Bytes),
+    /// Bytes, viewed.
+    BinaryView(Bytes),
+    /// Bytes, viewed over 64-bit offsets.
+    LargeBinaryView(Bytes),
+    /// Bytes of exactly the width they carry.
+    FixedBinary(Bytes, u32),
+    /// Bytes under the maximum they carry.
+    SizedBinary(Bytes, u32),
     /// Planar geometry as validated Well-Known Binary.
     Geometry(Geometry),
     /// Geographic coordinates as validated Well-Known Binary.
     Geography(Geography),
     /// Many values under 32-bit offsets: a run, or a column of its item.
     ///
-    /// Each of the five sequence variants is the list layout the value
+    /// Each of the five sequence variants is the serie layout the value
     /// declares - what [`Scalar::dtype`] answers and what a column crossing
     /// Arrow is laid out as. The rows are its identity: two sequences of
     /// equal rows are equal whichever layout declares them.
-    List(Serie),
+    Serie(Serie),
     /// Many values under 32-bit offsets and sizes.
-    ListView(Serie),
+    SerieView(Serie),
     /// Exactly as many values per row as the declaring field fixes.
-    FixedSizeList(Serie),
+    FixedSizeSerie(Serie),
     /// Many values under 64-bit offsets.
-    LargeList(Serie),
+    LargeSerie(Serie),
     /// Many values under 64-bit offsets and sizes.
-    LargeListView(Serie),
+    LargeSerieView(Serie),
     /// An insertion-ordered mapping of arbitrary keys.
     Map(Map),
     /// A mapping whose keys are held sorted.
@@ -252,17 +298,6 @@ pub enum Scalar {
     /// their bytes are, which is why a value cast into a variant is
     /// canonically encoded - keys sorted, sizes narrowest.
     Variant(crate::Variant),
-    /// An Arrow payload - one pinned row, a column, a table, or a stream -
-    /// carrying the exact field that types it, behind one shared pointer so
-    /// a clone shares the buffers rather than the rows.
-    ///
-    /// This is how a columnar value crosses a boundary as the scalar it is:
-    /// a frame, a table or a reader handed to a binding lands here and reaches
-    /// the record surface without becoming rows first. Reading it as a
-    /// native value - [`as_sequence`](Self::as_sequence) and every other
-    /// narrowing accessor - answers `None`; [`into_native`](Self::into_native)
-    /// is the one crossing into the native tree, and it drains a stream.
-    Arrow(Arc<crate::arrow::ArrowScalar>),
     /// ANSI X9.145 Financial Instrument Global Identifier.
     FIGICode(FIGICode),
 }
@@ -360,12 +395,17 @@ impl Serialize for Scalar {
                 "d256",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
-            // One tag for every string. The ordinary value - UTF-8, the
-            // `string` layout - writes its characters and nothing else, which
-            // is what it always wrote; a layout, a charset or a fixed width
-            // is what makes a value carry more than that, and `Str` writes
-            // the whole declaration rather than half of it.
-            Self::String(value) => tagged(serializer, "string", value),
+            // One tag for every string. The ordinary value - the `utf8`
+            // leaf - writes its characters and nothing else, which is what
+            // it always wrote; any other leaf writes the whole declaration.
+            string_scalars!(_) => {
+                let (leaf, text) = self.string_leaf().expect("a string leaf");
+                tagged(
+                    serializer,
+                    "string",
+                    &crate::string::StringWire { leaf, text },
+                )
+            }
             // A code writes its text under its own datatype's name.
             code_scalars!() => tagged(
                 serializer,
@@ -386,9 +426,16 @@ impl Serialize for Scalar {
             Self::Url(value) => tagged(serializer, "url", &value.to_string()),
             Self::Urn(value) => tagged(serializer, "urn", &value.to_string()),
             // One tag for every byte value: the ordinary payload writes its
-            // bytes and nothing else, and a layout or a fixed width is what
-            // makes a value carry more than that.
-            Self::Bytes(value) => tagged(serializer, "bytes", value),
+            // bytes and nothing else, and any other leaf writes the whole
+            // declaration.
+            bytes_scalars!(_) => {
+                let (leaf, payload) = self.bytes_leaf().expect("a byte leaf");
+                tagged(
+                    serializer,
+                    "bytes",
+                    &crate::bytes::BytesWire { leaf, payload },
+                )
+            }
             Self::Geometry(value) => tagged(serializer, "geometry", &value.as_bytes()),
             Self::Geography(value) => tagged(serializer, "geography", &value.as_bytes()),
             // A temporal is its classic ISO spelling wherever it has one; a
@@ -476,25 +523,15 @@ impl Serialize for Scalar {
                 }
             }
             Self::Interval(value) => tagged(serializer, "interval", value),
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => {
-                // A column carries the field that types it, which its rows
-                // alone cannot say, so it writes under its layout's column tag.
-                let (rows_tag, column_tag) = match self {
-                    Self::ListView(_) => ("list_view", "list_view_serie"),
-                    Self::FixedSizeList(_) => ("fixed_size_list", "fixed_size_list_serie"),
-                    Self::LargeList(_) => ("large_list", "large_list_serie"),
-                    Self::LargeListView(_) => ("large_list_view", "large_list_view_serie"),
-                    _ => ("list", "serie"),
-                };
-                match values.as_slice() {
-                    Some(rows) => tagged(serializer, rows_tag, &rows),
-                    None => tagged(serializer, column_tag, values),
-                }
-            }
+            // One tag per layout, the layout's own name. A run writes its
+            // rows; a column writes the field that types them beside them,
+            // which its rows alone cannot say - and the payload's shape says
+            // which of the two it is.
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => tagged(serializer, self.kind(), values),
             Self::Map(entries) => tagged(serializer, "map", &entries.as_slice()),
             Self::SortedMap(entries) => tagged(serializer, "sorted_map", &entries.as_slice()),
             Self::Struct(entries) => tagged(serializer, "struct", &entries.as_map()),
@@ -504,12 +541,6 @@ impl Serialize for Scalar {
             Self::Variant(value) => {
                 tagged(serializer, "variant", &(value.metadata(), value.value()))
             }
-            // A stream is drained to be written, which is what serializing a
-            // one-shot value means; a held shape is shared and stays readable.
-            Self::Arrow(value) => match (**value).clone().into_scalar() {
-                Ok(native) => native.serialize(serializer),
-                Err(error) => Err(serde::ser::Error::custom(error)),
-            },
         }
     }
 }
@@ -569,6 +600,57 @@ impl<'de> Deserialize<'de> for Scalar {
             }
         }
 
+        /// A serie's payload in either shape the wire holds it: a run's rows,
+        /// or a column's field beside its rows.
+        enum Held {
+            Rows(Vec<Scalar>),
+            Column(Serie),
+        }
+
+        impl<'de> Deserialize<'de> for Held {
+            fn deserialize<D: Deserializer<'de>>(
+                deserializer: D,
+            ) -> std::result::Result<Self, D::Error> {
+                struct Visitor;
+
+                impl<'de> serde::de::Visitor<'de> for Visitor {
+                    type Value = Held;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                        formatter.write_str("a serie's rows, or its field beside its rows")
+                    }
+
+                    fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                        self,
+                        seq: A,
+                    ) -> std::result::Result<Held, A::Error> {
+                        Vec::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+                            .map(Held::Rows)
+                    }
+
+                    fn visit_map<A: serde::de::MapAccess<'de>>(
+                        self,
+                        map: A,
+                    ) -> std::result::Result<Held, A::Error> {
+                        Serie::deserialize(serde::de::value::MapAccessDeserializer::new(map))
+                            .map(Held::Column)
+                    }
+                }
+
+                deserializer.deserialize_any(Visitor)
+            }
+        }
+
+        impl Held {
+            /// The serie either shape holds.
+            fn into_serie(self) -> Serie {
+                match self {
+                    Self::Rows(values) => Serie::new(values),
+                    Self::Column(column) => column,
+                }
+            }
+        }
+
         // This mirror must cover every `Scalar` variant: one missing here is
         // not a compile error, it is a variant serde silently refuses to read
         // back. Its names are the wire tags, snake-cased, so they spell the
@@ -595,9 +677,9 @@ impl<'de> Deserialize<'de> for Scalar {
             D64(i64, i8),
             D128(i128, i8),
             D256(i256, i8),
-            String(Str),
+            String(crate::string::StringDocument),
             Country(SmolStr),
-            Currency(SmolStr),
+            Ccy(SmolStr),
             #[serde(rename = "mic")]
             MicCode(SmolStr),
             #[serde(rename = "cfi")]
@@ -623,7 +705,7 @@ impl<'de> Deserialize<'de> for Scalar {
             MediaType(SmolStr),
             Url(SmolStr),
             Urn(SmolStr),
-            Bytes(Bytes),
+            Bytes(crate::bytes::BytesDocument),
             Geometry(Arc<[u8]>),
             Geography(Arc<[u8]>),
             Date32(Temporal32),
@@ -635,16 +717,19 @@ impl<'de> Deserialize<'de> for Scalar {
             Duration32(Temporal32),
             Duration64(Temporal64),
             Interval(crate::interval::Interval),
-            List(Vec<Scalar>),
-            ListView(Vec<Scalar>),
-            FixedSizeList(Vec<Scalar>),
-            LargeList(Vec<Scalar>),
-            LargeListView(Vec<Scalar>),
-            Serie(Serie),
-            ListViewSerie(Serie),
-            FixedSizeListSerie(Serie),
-            LargeListSerie(Serie),
-            LargeListViewSerie(Serie),
+            // The serie family's tags before it took its own names - the rows
+            // under `list`, a column under `serie` or `<layout>_serie` - each
+            // still read, whichever shape the payload has.
+            #[serde(alias = "list")]
+            Serie(Held),
+            #[serde(alias = "list_view", alias = "list_view_serie")]
+            SerieView(Held),
+            #[serde(alias = "fixed_size_list", alias = "fixed_size_list_serie")]
+            FixedSizeSerie(Held),
+            #[serde(alias = "large_list", alias = "large_list_serie")]
+            LargeSerie(Held),
+            #[serde(alias = "large_list_view", alias = "large_list_view_serie")]
+            LargeSerieView(Held),
             Map(Vec<(Scalar, Scalar)>),
             SortedMap(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
@@ -677,12 +762,12 @@ impl<'de> Deserialize<'de> for Scalar {
             )),
             StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
-            StructuralWire::String(value) => Ok(Self::String(value)),
+            StructuralWire::String(value) => Ok(value.0),
             StructuralWire::Country(value) => crate::Country::new(value)
                 .map(Self::Country)
                 .map_err(D::Error::custom),
-            StructuralWire::Currency(value) => crate::Currency::new(value)
-                .map(Self::Currency)
+            StructuralWire::Ccy(value) => crate::Ccy::new(value)
+                .map(Self::Ccy)
                 .map_err(D::Error::custom),
             StructuralWire::MicCode(value) => crate::MicCode::new(value)
                 .map(Self::MicCode)
@@ -735,7 +820,7 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Urn(value) => crate::Urn::from_str(value.as_str())
                 .map(|value| Self::Urn(Arc::new(value)))
                 .map_err(D::Error::custom),
-            StructuralWire::Bytes(value) => Ok(Self::Bytes(value)),
+            StructuralWire::Bytes(value) => Ok(value.0),
             StructuralWire::Geometry(value) => crate::geospatial::Geometry::new(value)
                 .map(Self::Geometry)
                 .map_err(D::Error::custom),
@@ -830,16 +915,12 @@ impl<'de> Deserialize<'de> for Scalar {
                     .map_err(D::Error::custom)
             }
             StructuralWire::Interval(value) => Ok(Self::Interval(value)),
-            StructuralWire::List(values) => Ok(Self::from_sequence(values)),
-            StructuralWire::ListView(values) => Ok(Self::ListView(Serie::new(values))),
-            StructuralWire::FixedSizeList(values) => Ok(Self::FixedSizeList(Serie::new(values))),
-            StructuralWire::LargeList(values) => Ok(Self::LargeList(Serie::new(values))),
-            StructuralWire::LargeListView(values) => Ok(Self::LargeListView(Serie::new(values))),
-            StructuralWire::Serie(column) => Ok(Self::List(column)),
-            StructuralWire::ListViewSerie(column) => Ok(Self::ListView(column)),
-            StructuralWire::FixedSizeListSerie(column) => Ok(Self::FixedSizeList(column)),
-            StructuralWire::LargeListSerie(column) => Ok(Self::LargeList(column)),
-            StructuralWire::LargeListViewSerie(column) => Ok(Self::LargeListView(column)),
+            StructuralWire::Serie(Held::Rows(values)) => Ok(Self::from_sequence(values)),
+            StructuralWire::Serie(Held::Column(column)) => Ok(Self::Serie(column)),
+            StructuralWire::SerieView(held) => Ok(Self::SerieView(held.into_serie())),
+            StructuralWire::FixedSizeSerie(held) => Ok(Self::FixedSizeSerie(held.into_serie())),
+            StructuralWire::LargeSerie(held) => Ok(Self::LargeSerie(held.into_serie())),
+            StructuralWire::LargeSerieView(held) => Ok(Self::LargeSerieView(held.into_serie())),
             StructuralWire::Map(entries) => Self::from_mapping(entries).map_err(D::Error::custom),
             StructuralWire::SortedMap(entries) => Self::from_mapping(entries)
                 .map(|mapping| match mapping {
@@ -943,9 +1024,11 @@ impl Ord for Scalar {
             | Self::Duration32(_)
             | Self::Duration64(_) => unreachable!("every temporal width returned above"),
             Self::Interval(left) => same_kind!(Self::Interval(right) => left.cmp(right)),
-            Self::String(left) => same_kind!(Self::String(right) => left.cmp(right)),
+            // A value is one value whichever leaf holds it: every string
+            // compares its characters, every byte value its payload.
+            string_scalars!(left) => same_kind!(string_scalars!(right) => left.cmp(right)),
             Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)
@@ -963,16 +1046,16 @@ impl Ord for Scalar {
             Self::MediaType(left) => same_kind!(Self::MediaType(right) => left.cmp(right)),
             Self::Url(left) => same_kind!(Self::Url(right) => left.cmp(right)),
             Self::Urn(left) => same_kind!(Self::Urn(right) => left.cmp(right)),
-            Self::Bytes(left) => same_kind!(Self::Bytes(right) => left.cmp(right)),
+            bytes_scalars!(left) => same_kind!(bytes_scalars!(right) => left.cmp(right)),
             Self::Geometry(_) | Self::Geography(_) => {
                 unreachable!("both geospatial readings returned above")
             }
-            Self::List(left)
-            | Self::ListView(left)
-            | Self::FixedSizeList(left)
-            | Self::LargeList(left)
-            | Self::LargeListView(left) => {
-                same_kind!((Self::List(right) | Self::ListView(right) | Self::FixedSizeList(right) | Self::LargeList(right) | Self::LargeListView(right)) => left.cmp(right))
+            Self::Serie(left)
+            | Self::SerieView(left)
+            | Self::FixedSizeSerie(left)
+            | Self::LargeSerie(left)
+            | Self::LargeSerieView(left) => {
+                same_kind!((Self::Serie(right) | Self::SerieView(right) | Self::FixedSizeSerie(right) | Self::LargeSerie(right) | Self::LargeSerieView(right)) => left.cmp(right))
             }
             Self::Map(left) | Self::SortedMap(left) => {
                 same_kind!((Self::Map(right) | Self::SortedMap(right)) => left.cmp(right))
@@ -982,7 +1065,6 @@ impl Ord for Scalar {
             // not one this comparison decodes, and two encodings of one
             // value are one value only when their bytes agree.
             Self::Variant(left) => same_kind!(Self::Variant(right) => left.cmp(right)),
-            Self::Arrow(left) => same_kind!(Self::Arrow(right) => left.cmp(right)),
         }
     }
 }
@@ -1010,7 +1092,6 @@ impl Hash for Scalar {
             return;
         }
         match self {
-            Self::Arrow(value) => value.hash(state),
             Self::Null => {}
             Self::Boolean(value) => value.hash(state),
             Self::Int8(_)
@@ -1043,9 +1124,9 @@ impl Hash for Scalar {
                 7_isize.hash(state);
                 value.hash(state);
             }
-            Self::String(value) => value.hash(state),
+            string_scalars!(value) => value.hash(state),
             Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)
@@ -1063,14 +1144,14 @@ impl Hash for Scalar {
             Self::MediaType(value) => value.hash(state),
             Self::Url(value) => value.hash(state),
             Self::Urn(value) => value.hash(state),
-            Self::Bytes(value) => value.hash(state),
+            bytes_scalars!(value) => value.hash(state),
             Self::Geometry(value) => value.hash(state),
             Self::Geography(value) => value.hash(state),
-            Self::List(value)
-            | Self::ListView(value)
-            | Self::FixedSizeList(value)
-            | Self::LargeList(value)
-            | Self::LargeListView(value) => {
+            Self::Serie(value)
+            | Self::SerieView(value)
+            | Self::FixedSizeSerie(value)
+            | Self::LargeSerie(value)
+            | Self::LargeSerieView(value) => {
                 0_isize.hash(state);
                 value.hash(state);
             }
@@ -1131,7 +1212,7 @@ fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Ti
 macro_rules! code_scalars {
     () => {
         $crate::Scalar::Country(_)
-            | $crate::Scalar::Currency(_)
+            | $crate::Scalar::Ccy(_)
             | $crate::Scalar::MicCode(_)
             | $crate::Scalar::CfiCode(_)
             | $crate::Scalar::Side(_)
@@ -1142,6 +1223,47 @@ macro_rules! code_scalars {
             | $crate::Scalar::SedolCode(_)
             | $crate::Scalar::BloombergCode(_)
             | $crate::Scalar::FIGICode(_)
+    };
+}
+
+/// The eighteen string leaves as one pattern, each binding its characters to
+/// `$text`; the number a fixed or sized leaf states is not bound.
+///
+/// [`Scalar::as_string`] is the same list in value position, and
+/// [`Scalar::string_parameters`] the leaf.
+macro_rules! string_scalars {
+    ($text:pat) => {
+        $crate::Scalar::Utf8String($text)
+            | $crate::Scalar::LargeUtf8String($text)
+            | $crate::Scalar::Utf8StringView($text)
+            | $crate::Scalar::LargeUtf8StringView($text)
+            | $crate::Scalar::FixedUtf8String($text, _)
+            | $crate::Scalar::SizedUtf8String($text, _)
+            | $crate::Scalar::AsciiString($text)
+            | $crate::Scalar::LargeAsciiString($text)
+            | $crate::Scalar::AsciiStringView($text)
+            | $crate::Scalar::LargeAsciiStringView($text)
+            | $crate::Scalar::FixedAsciiString($text, _)
+            | $crate::Scalar::SizedAsciiString($text, _)
+            | $crate::Scalar::Cp1252String($text)
+            | $crate::Scalar::LargeCp1252String($text)
+            | $crate::Scalar::Cp1252StringView($text)
+            | $crate::Scalar::LargeCp1252StringView($text)
+            | $crate::Scalar::FixedCp1252String($text, _)
+            | $crate::Scalar::SizedCp1252String($text, _)
+    };
+}
+
+/// The six byte leaves as one pattern, each binding its payload to
+/// `$payload`; the number a fixed or sized leaf states is not bound.
+macro_rules! bytes_scalars {
+    ($payload:pat) => {
+        $crate::Scalar::Binary($payload)
+            | $crate::Scalar::LargeBinary($payload)
+            | $crate::Scalar::BinaryView($payload)
+            | $crate::Scalar::LargeBinaryView($payload)
+            | $crate::Scalar::FixedBinary($payload, _)
+            | $crate::Scalar::SizedBinary($payload, _)
     };
 }
 
@@ -1185,17 +1307,17 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => 4,
-        Scalar::String(_) => 5,
-        Scalar::Bytes(_) => 6,
+        string_scalars!(_) => 5,
+        bytes_scalars!(_) => 6,
         Scalar::Date32(_) | Scalar::Date64(_) => 7,
         Scalar::Time32(_) | Scalar::Time64(_) => 8,
         Scalar::DateTime64(_) => 9,
         Scalar::Duration32(_) | Scalar::Duration64(_) => 10,
-        Scalar::List(_)
-        | Scalar::ListView(_)
-        | Scalar::FixedSizeList(_)
-        | Scalar::LargeList(_)
-        | Scalar::LargeListView(_) => 11,
+        Scalar::Serie(_)
+        | Scalar::SerieView(_)
+        | Scalar::FixedSizeSerie(_)
+        | Scalar::LargeSerie(_)
+        | Scalar::LargeSerieView(_) => 11,
         Scalar::Map(_) | Scalar::SortedMap(_) => 12,
         Scalar::Struct(_) => 13,
         Scalar::Geometry(_) | Scalar::Geography(_) => 14,
@@ -1206,7 +1328,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Interval(_) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Country(_)
-        | Scalar::Currency(_)
+        | Scalar::Ccy(_)
         | Scalar::MicCode(_)
         | Scalar::CfiCode(_)
         | Scalar::Side(_)
@@ -1222,7 +1344,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Timezone(_) => 21,
         Scalar::MimeType(_) => 22,
         Scalar::MediaType(_) => 23,
-        Scalar::Arrow(_) => 24,
+        // 24 was the Arrow payload, since retired: a held column is the
+        // serie it is, and ranks at 11.
         Scalar::Urn(_) => 25,
         // A variant is its own kind, ranked after the containers it can
         // hold: the bytes say what is inside, and nothing else orders by
@@ -1235,20 +1358,11 @@ impl Scalar {
     /// Return the most specific datatype identifier the value itself proves.
     ///
     /// Nested values report their most-general shape; a [`Field`](crate::Field)
-    /// narrows a sequence to a list, fixed-size list, struct, or union. Static
+    /// narrows a sequence to a serie, fixed-size serie, struct, or union. Static
     /// enum members report UTF-8 because their column representation remains a
     /// field-level choice.
-    pub fn id(&self) -> DataTypeId {
+    pub const fn id(&self) -> DataTypeId {
         match self {
-            // One pinned row is the value it holds; every wider shape is a
-            // sequence of them.
-            Self::Arrow(value) => {
-                if value.is_scalar() {
-                    value.dtype().id()
-                } else {
-                    DataTypeId::List
-                }
-            }
             Self::Null => DataTypeId::Null,
             Self::Boolean(_) => DataTypeId::Boolean,
             Self::Int8(_) => DataTypeId::Int8,
@@ -1277,9 +1391,26 @@ impl Scalar {
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
             // A string names the leaf it is stored in.
-            Self::String(text) => text.parameters().id(),
+            Self::Utf8String(_) => DataTypeId::Utf8String,
+            Self::LargeUtf8String(_) => DataTypeId::LargeUtf8String,
+            Self::Utf8StringView(_) => DataTypeId::Utf8StringView,
+            Self::LargeUtf8StringView(_) => DataTypeId::LargeUtf8StringView,
+            Self::FixedUtf8String(_, _) => DataTypeId::FixedUtf8String,
+            Self::SizedUtf8String(_, _) => DataTypeId::SizedUtf8String,
+            Self::AsciiString(_) => DataTypeId::AsciiString,
+            Self::LargeAsciiString(_) => DataTypeId::LargeAsciiString,
+            Self::AsciiStringView(_) => DataTypeId::AsciiStringView,
+            Self::LargeAsciiStringView(_) => DataTypeId::LargeAsciiStringView,
+            Self::FixedAsciiString(_, _) => DataTypeId::FixedAsciiString,
+            Self::SizedAsciiString(_, _) => DataTypeId::SizedAsciiString,
+            Self::Cp1252String(_) => DataTypeId::Cp1252String,
+            Self::LargeCp1252String(_) => DataTypeId::LargeCp1252String,
+            Self::Cp1252StringView(_) => DataTypeId::Cp1252StringView,
+            Self::LargeCp1252StringView(_) => DataTypeId::LargeCp1252StringView,
+            Self::FixedCp1252String(_, _) => DataTypeId::FixedCp1252String,
+            Self::SizedCp1252String(_, _) => DataTypeId::SizedCp1252String,
             Self::Country(_) => DataTypeId::Country,
-            Self::Currency(_) => DataTypeId::Currency,
+            Self::Ccy(_) => DataTypeId::Ccy,
             Self::MicCode(_) => DataTypeId::MicCode,
             Self::CfiCode(_) => DataTypeId::CfiCode,
             Self::Side(_) => DataTypeId::Side,
@@ -1297,14 +1428,19 @@ impl Scalar {
             Self::MediaType(_) => DataTypeId::MediaType,
             Self::Url(_) => DataTypeId::Url,
             Self::Urn(_) => DataTypeId::Urn,
-            Self::Bytes(bytes) => bytes.parameters().id(),
+            Self::Binary(_) => DataTypeId::Binary,
+            Self::LargeBinary(_) => DataTypeId::LargeBinary,
+            Self::BinaryView(_) => DataTypeId::BinaryView,
+            Self::LargeBinaryView(_) => DataTypeId::LargeBinaryView,
+            Self::FixedBinary(_, _) => DataTypeId::FixedBinary,
+            Self::SizedBinary(_, _) => DataTypeId::SizedBinary,
             Self::Geometry(_) => DataTypeId::Geometry,
             Self::Geography(_) => DataTypeId::Geography,
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(_) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Serie(_) => DataTypeId::Serie,
+            Self::SerieView(_) => DataTypeId::SerieView,
+            Self::FixedSizeSerie(_) => DataTypeId::FixedSizeSerie,
+            Self::LargeSerie(_) => DataTypeId::LargeSerie,
+            Self::LargeSerieView(_) => DataTypeId::LargeSerieView,
             Self::Map(_) => DataTypeId::Map,
             Self::SortedMap(_) => DataTypeId::SortedMap,
             Self::Struct(_) => DataTypeId::Struct,
@@ -1312,8 +1448,9 @@ impl Scalar {
         }
     }
 
-    /// Return the datatype family the value itself proves.
-    pub fn family(&self) -> DataTypeKind {
+    /// Return the datatype family the value itself proves: the one whose
+    /// [range](DataTypeKind::range) [`Self::id`] is in.
+    pub const fn family(&self) -> DataTypeKind {
         self.id().kind()
     }
 
@@ -1324,7 +1461,6 @@ impl Scalar {
     /// documentation and the bindings use.
     pub const fn kind(&self) -> &'static str {
         match self {
-            Self::Arrow(_) => "arrow",
             Self::Null => "null",
             Self::Boolean(_) => "boolean",
             Self::Int8(_) => "i8",
@@ -1344,12 +1480,14 @@ impl Scalar {
             Self::Decimal64(_) => "d64",
             Self::Decimal128(_) => "d128",
             Self::Decimal256(_) => "d256",
-            Self::String(text) => match text.parameters() {
-                crate::string::StringType::Utf8String => "string",
-                other => other.as_str(),
+            // The plain leaf keeps the family's own word; every other leaf
+            // is its name.
+            string_scalars!(_) => match self {
+                Self::Utf8String(_) => "string",
+                _ => self.id().as_str(),
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
-            Self::Currency(_) => DataTypeId::Currency.as_str(),
+            Self::Ccy(_) => DataTypeId::Ccy.as_str(),
             Self::MicCode(_) => DataTypeId::MicCode.as_str(),
             Self::CfiCode(_) => DataTypeId::CfiCode.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
@@ -1367,9 +1505,9 @@ impl Scalar {
             Self::MediaType(_) => "mediatype",
             Self::Url(_) => "url",
             Self::Urn(_) => "urn",
-            Self::Bytes(bytes) => match bytes.parameters() {
-                crate::bytes::BytesType::Binary => "bytes",
-                other => other.as_str(),
+            bytes_scalars!(_) => match self {
+                Self::Binary(_) => "bytes",
+                _ => self.id().as_str(),
             },
             Self::Geometry(_) => "geometry",
             Self::Geography(_) => "geography",
@@ -1381,11 +1519,11 @@ impl Scalar {
             Self::Duration32(_) => "duration32",
             Self::Duration64(_) => "duration64",
             Self::Interval(_) => "interval",
-            Self::List(_) => "list",
-            Self::ListView(_) => "list_view",
-            Self::FixedSizeList(_) => "fixed_size_list",
-            Self::LargeList(_) => "large_list",
-            Self::LargeListView(_) => "large_list_view",
+            Self::Serie(_) => "serie",
+            Self::SerieView(_) => "serie_view",
+            Self::FixedSizeSerie(_) => "fixed_size_serie",
+            Self::LargeSerie(_) => "large_serie",
+            Self::LargeSerieView(_) => "large_serie_view",
             Self::Map(_) => "map",
             Self::SortedMap(_) => "sorted_map",
             Self::Struct(_) => "struct",
@@ -1396,7 +1534,7 @@ impl Scalar {
     /// The one shared empty sequence, which every empty run answers with.
     fn empty_sequence() -> Self {
         static EMPTY: OnceLock<Arc<[Scalar]>> = OnceLock::new();
-        Self::List(Serie::Run(Run::new(Arc::clone(
+        Self::Serie(Serie::Run(Run::new(Arc::clone(
             EMPTY.get_or_init(|| Arc::from([])),
         ))))
     }
@@ -1414,7 +1552,7 @@ impl Scalar {
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
         shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::List(Serie::Run(Run::new(values)))
+            Self::Serie(Serie::Run(Run::new(values)))
         })
     }
 
@@ -1436,7 +1574,7 @@ impl Scalar {
         for (index, value) in unique.iter_mut().enumerate() {
             *value = at(index)?;
         }
-        Ok(Self::List(Serie::Run(Run::new(values))))
+        Ok(Self::Serie(Serie::Run(Run::new(values))))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
@@ -1590,10 +1728,10 @@ impl Scalar {
         true
     }
 
-    /// Return a string slice when this is a string.
+    /// The text of a string value of any leaf, or of a registered code.
     pub fn as_str(&self) -> Option<&str> {
         match self {
-            Self::String(value) => Some(value.as_str()),
+            string_scalars!(value) => Some(value.as_str()),
             value => value.code_storage().map(SmolStr::as_str),
         }
     }
@@ -1609,7 +1747,7 @@ impl Scalar {
     pub const fn code_storage(&self) -> Option<&SmolStr> {
         match self {
             Self::Country(value) => Some(value.storage()),
-            Self::Currency(value) => Some(value.storage()),
+            Self::Ccy(value) => Some(value.storage()),
             Self::MicCode(value) => Some(value.storage()),
             Self::CfiCode(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
@@ -1627,13 +1765,13 @@ impl Scalar {
     /// Whether this value is a code drawn from a published registry.
     #[must_use]
     pub const fn is_code(&self) -> bool {
-        self.code_storage().is_some()
+        DataTypeKind::Code.contains(self.id())
     }
 
-    /// Return bytes when this is a byte value.
+    /// The payload of a byte value of any leaf, or of a geospatial value.
     pub fn as_bytes(&self) -> Option<&[u8]> {
         match self {
-            Self::Bytes(value) => Some(value.as_bytes()),
+            bytes_scalars!(value) => Some(value.as_bytes()),
             Self::Geometry(value) => Some(value.as_bytes()),
             Self::Geography(value) => Some(value.as_bytes()),
             _ => None,
@@ -1652,7 +1790,7 @@ impl Scalar {
 
     /// Return the Well-Known Binary payload without allocating.
     ///
-    /// A geospatial column also accepts plain [`Self::Bytes`] on the way in -
+    /// A geospatial column also accepts plain bytes on the way in -
     /// canonicalization is what rewrites it - so this reads both spellings.
     pub fn as_wkb(&self) -> Option<&[u8]> {
         self.as_bytes()
@@ -1662,11 +1800,11 @@ impl Scalar {
     /// which stores no value to lend.
     pub fn as_sequence(&self) -> Option<&[Self]> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.as_slice(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.as_slice(),
             _ => None,
         }
     }
@@ -1674,11 +1812,11 @@ impl Scalar {
     /// Return any sequence - a run or a column - without allocating.
     pub fn as_serie(&self) -> Option<&Serie> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => Some(values),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => Some(values),
             _ => None,
         }
     }
@@ -1689,11 +1827,11 @@ impl Scalar {
     /// field accepts, so building them cannot refuse.
     pub fn sequence_rows(&self) -> Option<Cow<'_, [Self]>> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => Some(values.rows()),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => Some(values.rows()),
             _ => None,
         }
     }
@@ -1717,11 +1855,11 @@ impl Scalar {
     /// Return the number of direct children or mapping entries.
     pub fn len(&self) -> usize {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.len(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.len(),
             Self::Map(entries) | Self::SortedMap(entries) => entries.as_slice().len(),
             Self::Struct(entries) => entries.as_map().len(),
             _ => 0,
@@ -1758,58 +1896,17 @@ impl Scalar {
             .find_map(|(candidate, value)| (candidate.as_str() == Some(key)).then_some(value))
     }
 
-    /// The integer family's value, when this scalar holds one of its widths.
-    ///
-    /// By value, as every family accessor here is: the scalar holds the leaf
-    /// and not the family, and every leaf is `Copy` or one shared pointer.
-    #[must_use]
-    pub fn as_integer(&self) -> Option<Integer> {
-        Integer::from_scalar(self)
-    }
-
-    /// The floating family's value, when this scalar holds one of its widths.
-    #[must_use]
-    pub fn as_floating(&self) -> Option<Floating> {
-        Floating::from_scalar(self)
-    }
-
-    /// The temporal family's value, when this scalar holds one of its leaves.
-    #[must_use]
-    pub fn as_temporal(&self) -> Option<Temporal> {
-        Temporal::from_scalar(self)
-    }
-
-    /// The code family's value, when this scalar holds a registered code.
-    #[must_use]
-    pub fn as_code(&self) -> Option<Code> {
-        Code::from_scalar(self)
-    }
-
-    /// The geospatial family's value, when this scalar holds a geometry or a
-    /// geography.
-    #[must_use]
-    pub fn as_geospatial(&self) -> Option<Geospatial> {
-        Geospatial::from_scalar(self)
-    }
-
-    /// The nested family's value, when this scalar holds a sequence, a
-    /// mapping or a record.
-    #[must_use]
-    pub fn as_nested(&self) -> Option<Nested> {
-        Nested::from_scalar(self)
-    }
-
     /// Iterate over sequence values, mapping keys, or record field values.
     ///
     /// Use [`Self::record_iter`] when both a record field's name and value are
     /// needed.
     pub fn iter(&self) -> Children<'_> {
         match self {
-            Self::List(values)
-            | Self::ListView(values)
-            | Self::FixedSizeList(values)
-            | Self::LargeList(values)
-            | Self::LargeListView(values) => values.iter(),
+            Self::Serie(values)
+            | Self::SerieView(values)
+            | Self::FixedSizeSerie(values)
+            | Self::LargeSerie(values)
+            | Self::LargeSerieView(values) => values.iter(),
             Self::Map(entries) | Self::SortedMap(entries) => {
                 Children::Mapping(entries.as_slice().iter())
             }
@@ -1840,30 +1937,21 @@ impl Scalar {
     pub const fn is_container(&self) -> bool {
         matches!(
             self,
-            Self::List(_)
-                | Self::ListView(_)
-                | Self::FixedSizeList(_)
-                | Self::LargeList(_)
-                | Self::LargeListView(_)
+            Self::Serie(_)
+                | Self::SerieView(_)
+                | Self::FixedSizeSerie(_)
+                | Self::LargeSerie(_)
+                | Self::LargeSerieView(_)
                 | Self::Map(_)
                 | Self::SortedMap(_)
                 | Self::Struct(_)
         )
     }
 
-    /// Return whether this is a number of any width.
+    /// Return whether this is a number of any width: an integer, a float or
+    /// a decimal.
     pub const fn is_number(&self) -> bool {
-        self.is_integer()
-            || matches!(
-                self,
-                Self::Float16(_)
-                    | Self::Float32(_)
-                    | Self::Float64(_)
-                    | Self::Decimal32(_)
-                    | Self::Decimal64(_)
-                    | Self::Decimal128(_)
-                    | Self::Decimal256(_)
-            )
+        self.family().is_numeric()
     }
 
     /// Borrow the width leaf's own [`fmt::Display`], for a variant that holds
@@ -1900,19 +1988,18 @@ impl Scalar {
             Self::Duration32(value) => value,
             Self::Duration64(value) => value,
             Self::Interval(value) => value,
-            Self::List(value)
-            | Self::ListView(value)
-            | Self::FixedSizeList(value)
-            | Self::LargeList(value)
-            | Self::LargeListView(value) => value,
+            Self::Serie(value)
+            | Self::SerieView(value)
+            | Self::FixedSizeSerie(value)
+            | Self::LargeSerie(value)
+            | Self::LargeSerieView(value) => value,
             Self::Map(value) | Self::SortedMap(value) => value,
             Self::Struct(value) => value,
-            Self::Arrow(_) => return None,
             Self::Null
             | Self::Boolean(_)
-            | Self::String(_)
+            | string_scalars!(_)
             | Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)
@@ -1927,7 +2014,7 @@ impl Scalar {
             | Self::Version(_)
             | Self::Url(_)
             | Self::Urn(_)
-            | Self::Bytes(_)
+            | bytes_scalars!(_)
             | Self::Geometry(_)
             | Self::Geography(_)
             | Self::Timezone(_)
@@ -1980,11 +2067,11 @@ impl Scalar {
             Self::Map(_) | Self::SortedMap(_) | Self::Struct(_) => {
                 self.get_key_str(segment).map(Cow::Borrowed)
             }
-            Self::List(_)
-            | Self::ListView(_)
-            | Self::FixedSizeList(_)
-            | Self::LargeList(_)
-            | Self::LargeListView(_) => self.get(segment.parse::<usize>().ok()?),
+            Self::Serie(_)
+            | Self::SerieView(_)
+            | Self::FixedSizeSerie(_)
+            | Self::LargeSerie(_)
+            | Self::LargeSerieView(_) => self.get(segment.parse::<usize>().ok()?),
             _ => None,
         }
     }
@@ -2142,44 +2229,10 @@ fn duplicate_key_error(index: usize) -> Error {
     }
 }
 
-impl Scalar {
-    /// The native value an Arrow payload holds: the row of a pinned scalar, a
-    /// sequence of items for a column, a sequence of rows for a table or a
-    /// stream. Every other value is itself.
-    ///
-    /// This is the one crossing from the shared buffers into the native tree,
-    /// so it is where a stream is drained; a held shape is shared and stays
-    /// readable behind the value it came from.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error when a value cannot be represented natively, when the
-    /// stream was already read, or whatever the stream raised.
-    pub fn into_native(&self) -> Result<Self> {
-        match self {
-            Self::Arrow(value) => Ok((**value).clone().into_scalar()?),
-            other => Ok(other.clone()),
-        }
-    }
-
-    /// Wrap one Arrow payload as the scalar it is.
-    #[must_use]
-    pub fn from_arrow_scalar(value: crate::arrow::ArrowScalar) -> Self {
-        Self::Arrow(Arc::new(value))
-    }
-
-    /// Borrow the Arrow payload, if this value is one.
-    #[must_use]
-    pub fn as_arrow_scalar(&self) -> Option<&crate::arrow::ArrowScalar> {
-        match self {
-            Self::Arrow(value) => Some(value),
-            _ => None,
-        }
-    }
-}
-
+pub(crate) use bytes_scalars;
 pub(crate) use code_scalars;
-pub(crate) use text_scalar_value;
+pub(crate) use string_scalars;
+pub(crate) use text_leaf_value;
 
 impl From<Vec<Scalar>> for Scalar {
     fn from(value: Vec<Scalar>) -> Self {

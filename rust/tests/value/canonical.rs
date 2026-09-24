@@ -260,7 +260,7 @@ mod value {
             );
             assert_eq!(
                 DataType::utf8()
-                    .scalar(DataType::Currency.scalar("USD").unwrap())
+                    .scalar(DataType::Ccy.scalar("USD").unwrap())
                     .unwrap(),
                 Scalar::from("USD")
             );
@@ -458,9 +458,9 @@ mod value {
             );
         }
 
-        // A list column whose item field is not the one the list declares.
+        // A serie column whose item field is not the one the serie declares.
         let list =
-            root([DataType::list(DataType::Int8.required_field("item")).required_field("xs")]);
+            root([DataType::serie(DataType::Int8.required_field("item")).required_field("xs")]);
         assert_eq!(
             refusal(&list, &Scalar::from_sequence([int64_column(&[1, 300])])),
             refusal(&list, &Scalar::from_sequence([int64_run(&[1, 300])]))

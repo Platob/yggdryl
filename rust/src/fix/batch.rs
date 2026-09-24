@@ -51,18 +51,16 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use arrow_array::types::{GenericBinaryType, GenericStringType};
-use arrow_array::{Array, ArrayRef, GenericByteArray, RecordBatch, StructArray};
-use arrow_schema::DataType as ArrowDataType;
+use arrow_array::RecordBatch;
 
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
-use crate::arrow::value::value_from_array;
 use crate::graph::EventColumn;
+use crate::serie::{Proof, land_batch};
 use crate::text::TextOptions;
-use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar};
+use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
 use super::build::{BEGINSTRING_COLUMN, DIRECTION_COLUMN, version_of};
 use super::build::{Fill, RowExtras};
@@ -114,10 +112,10 @@ impl FixCodec {
         let rows = if self.threads() == 1 {
             Spread::Sequential(
                 crate::parallel::ordered(
-                    BatchRows::over(source),
+                    BatchRows::over(source, Arc::clone(&reader)),
                     1,
                     self.chunk(),
-                    move |held: Result<(Arc<RecordBatch>, usize)>| -> Vec<Result<Charged>> {
+                    move |held: Result<(Arc<Landed>, usize)>| -> Vec<Result<Charged>> {
                         carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
                             .map(|message| charged(message, &schema))
                             .collect()
@@ -132,11 +130,11 @@ impl FixCodec {
                     self.threads(),
                     1,
                     move |held| -> Vec<Result<Charged>> {
-                        match held {
+                        match held.and_then(|batch| reader.land(&batch)) {
                             Err(error) => vec![Err(error)],
                             Ok(batch) => {
-                                let mut rows = Vec::with_capacity(batch.num_rows());
-                                for row in 0..batch.num_rows() {
+                                let mut rows = Vec::with_capacity(batch.records.len());
+                                for row in 0..batch.records.len() {
                                     rows.extend(
                                         carried_messages(reader.row(&batch, row))
                                             .map(|message| charged(message, &schema)),
@@ -214,20 +212,21 @@ impl FixCodec {
         let reader = self.row_reader(&carrier, &read)?;
         let threads = self.threads();
         if threads == 1 {
-            return Ok(Spread::Sequential(BatchRows::over(source).flat_map(
-                move |held| carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row))),
-            )));
+            let rows = BatchRows::over(source, Arc::clone(&reader));
+            return Ok(Spread::Sequential(rows.flat_map(move |held| {
+                carried_messages(held.and_then(|(batch, row)| reader.row(&batch, row)))
+            })));
         }
         let rows = crate::parallel::ordered(
             CaptureBatches::over(source),
             threads,
             1,
             move |held| -> Vec<Result<FixMsg>> {
-                match held {
+                match held.and_then(|batch| reader.land(&batch)) {
                     Err(error) => vec![Err(error)],
                     Ok(batch) => {
-                        let mut messages = Vec::with_capacity(batch.num_rows());
-                        for row in 0..batch.num_rows() {
+                        let mut messages = Vec::with_capacity(batch.records.len());
+                        for row in 0..batch.records.len() {
                             messages.extend(carried_messages(reader.row(&batch, row)));
                         }
                         messages
@@ -258,6 +257,7 @@ impl FixCodec {
         let kept = super::schema::carried(carrier, read);
         let columns = Columns::resolve(carrier, self.payload_column(), &kept, self)?;
         Ok(Arc::new(RowReader {
+            root: Arc::new(carrier.clone()),
             columns,
             codec: self.clone(),
             options: Arc::new(TextOptions::new()),
@@ -321,15 +321,15 @@ impl FixCodec {
             Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
         };
         let registry = Arc::clone(self.registry());
+        let root = Arc::new(schema.clone());
         let read = crate::parallel::ordered(
-            StructRows::over(source, refused),
+            StructRows::over(source, root, refused),
             self.threads(),
             self.chunk(),
-            move |held: Result<(Arc<StructArray>, usize)>| {
-                let (batch, row) = held?;
-                value_from_array(schema.dtype(), batch.as_ref(), row)
-                    .map_err(Error::from)
-                    .and_then(|row| FixMsg::from_arrow_row(Arc::clone(&registry), &schema, &row))
+            move |held: Result<(Arc<Serie>, usize)>| {
+                let (records, row) = held?;
+                let row = records.scalar(row)?;
+                FixMsg::from_landed_row(Arc::clone(&registry), &schema, &row)
             },
         );
         // An error among the rows ends the stream where it stands, as it
@@ -631,70 +631,57 @@ fn payload_column_of(carrier: &Field, payload: &str, at: Option<usize>) -> Resul
     })
 }
 
-/// One payload column as the byte slices it holds.
+/// The payload column of one landed batch, narrowed once to where its bytes
+/// are borrowed from.
 ///
-/// The four layouts text and binary arrive in, downcast once and read per
-/// row as a borrowed slice: a payload is read by the codec and copied only
-/// into what the message keeps of it.
-enum Payloads<'batch> {
-    Binary(&'batch GenericByteArray<GenericBinaryType<i32>>),
-    LargeBinary(&'batch GenericByteArray<GenericBinaryType<i64>>),
-    Utf8(&'batch GenericByteArray<GenericStringType<i32>>),
-    LargeUtf8(&'batch GenericByteArray<GenericStringType<i64>>),
+/// Text and bytes in an offsets, view or fixed layout lend each row's run
+/// where it lies, and a code its characters; a fixed-width string reads
+/// through its field, which trims the padding, and so do the encodings - a
+/// dictionary, a run-end - which hold no run of their own. A payload is read
+/// by the codec and copied only into what the message keeps of it.
+enum Payload {
+    /// A text or byte storage leaf, proven one once.
+    Stored(Serie),
+    Code(Utf8StringSerie),
+    Cell(Serie),
 }
 
-impl<'batch> Payloads<'batch> {
-    /// The column's slices, or nothing where its layout is none of the four.
-    fn over(column: &'batch ArrayRef) -> Option<Self> {
-        use arrow_array::cast::AsArray;
-
-        Some(match column.data_type() {
-            ArrowDataType::Binary => Self::Binary(column.as_bytes::<GenericBinaryType<i32>>()),
-            ArrowDataType::LargeBinary => {
-                Self::LargeBinary(column.as_bytes::<GenericBinaryType<i64>>())
-            }
-            ArrowDataType::Utf8 => Self::Utf8(column.as_bytes::<GenericStringType<i32>>()),
-            ArrowDataType::LargeUtf8 => {
-                Self::LargeUtf8(column.as_bytes::<GenericStringType<i64>>())
-            }
-            _ => return None,
-        })
+impl Payload {
+    fn of(column: &Serie) -> Self {
+        if matches!(column, Serie::FixedString(_)) {
+            return Self::Cell(column.clone());
+        }
+        if column.is_string_storage() || column.is_byte_storage() {
+            return Self::Stored(column.clone());
+        }
+        match column.as_utf8() {
+            Some(code) => Self::Code(code.clone()),
+            None => Self::Cell(column.clone()),
+        }
     }
 
     /// The bytes one row carries, empty where it carries none.
-    fn get(&self, row: usize) -> &'batch [u8] {
-        match self {
-            Self::Binary(held) if !held.is_null(row) => held.value(row),
-            Self::LargeBinary(held) if !held.is_null(row) => held.value(row),
-            Self::Utf8(held) if !held.is_null(row) => held.value(row).as_bytes(),
-            Self::LargeUtf8(held) if !held.is_null(row) => held.value(row).as_bytes(),
-            _ => &[],
-        }
+    fn get(&self, row: usize) -> Result<Cow<'_, [u8]>> {
+        Ok(match self {
+            Self::Stored(held) => Cow::Borrowed(held.value_bytes(row).unwrap_or_default()),
+            Self::Code(held) => Cow::Borrowed(held.value(row).map_or(&[][..], str::as_bytes)),
+            Self::Cell(held) => {
+                let value = held.scalar(row)?;
+                value
+                    .as_bytes()
+                    .map(<[u8]>::to_vec)
+                    .or_else(|| value.as_str().map(|text| text.as_bytes().to_vec()))
+                    .map_or(Cow::Borrowed(&[][..]), Cow::Owned)
+            }
+        })
     }
 }
 
-/// One row's payload as the bytes it is.
-///
-/// Borrowed from the column where the layout is one of the four, and read
-/// out of the cell where it is another: a column of any text or byte layout
-/// still carries a payload, and a null carries none.
-fn payload_bytes<'batch>(
-    dtype: &DataType,
-    column: &'batch ArrayRef,
-    row: usize,
-) -> Result<Cow<'batch, [u8]>> {
-    if column.is_null(row) {
-        return Ok(Cow::Borrowed(&[]));
-    }
-    if let Some(held) = Payloads::over(column) {
-        return Ok(Cow::Borrowed(held.get(row)));
-    }
-    let held = value_from_array(dtype, column.as_ref(), row)?;
-    Ok(held
-        .as_bytes()
-        .map(<[u8]>::to_vec)
-        .or_else(|| held.as_str().map(|text| text.as_bytes().to_vec()))
-        .map_or(Cow::Borrowed(&[]), Cow::Owned))
+/// One capture batch landed under its carrier, the rows it states proven
+/// once, and its payload column narrowed once.
+struct Landed {
+    records: Serie,
+    payload: Payload,
 }
 
 /// Where each column a row is read from sits, decided once per stream.
@@ -741,8 +728,6 @@ struct Columns {
     /// identity of the line each row is, which every message the row
     /// answers for states as its one source.
     source: Option<usize>,
-    /// Each source column's datatype, so a cell is read under its own.
-    dtypes: Vec<DataType>,
 }
 
 impl Columns {
@@ -799,7 +784,6 @@ impl Columns {
             source: named(EventColumn::CurrUuid.name()),
             fills,
             carried,
-            dtypes: fields.iter().map(|held| held.dtype().clone()).collect(),
         })
     }
 }
@@ -837,12 +821,16 @@ fn carried_messages(held: Result<(FixMessages, Cells)>) -> impl Iterator<Item = 
 /// What every row of one carrier is read through, shared by every thread
 /// the codec reads on.
 ///
-/// A row is read cell by cell, straight out of its arrays: the payload as
-/// the bytes it is, a parameter column as the text it holds, a carried
-/// column as the value it becomes. Nothing converts a batch whole and
-/// nothing is copied that the message does not keep, so a row costs its
-/// parse and the few cells the row actually reads.
+/// A batch lands once under the carrier, which proves the rows its layout
+/// does not - a code no registry holds is refused there, naming its row -
+/// and a row is then read cell by cell through the columns' own leaves:
+/// the payload as the bytes it is, a parameter column as the text it
+/// holds, a carried column as the value it becomes. Nothing is copied that
+/// the message does not keep, so a row costs its parse and the few cells
+/// the row actually reads.
 struct RowReader {
+    /// The carrier every batch lands under, resolved once off the source.
+    root: Arc<Field>,
     columns: Columns,
     codec: FixCodec,
     /// The options every row's line is read under, shared once: a row
@@ -851,25 +839,29 @@ struct RowReader {
 }
 
 impl RowReader {
-    /// One row of one batch as the messages it carries and the capture's
-    /// own cells, each under the column it was read from.
+    /// Land one batch under the carrier, narrowing its payload column once.
+    fn land(&self, batch: &RecordBatch) -> Result<Landed> {
+        let records = land_batch(&self.root, batch, &Proof::Unproven)?;
+        let payload = Payload::of(&records.children()[self.columns.payload]);
+        Ok(Landed { records, payload })
+    }
+
+    /// One row of one landed batch as the messages it carries and the
+    /// capture's own cells, each under the column it was read from.
     ///
     /// An ordinary line is one message; a bulk configuration document is one
     /// per configuration, and the row's own cells are carried by each.
-    fn row(&self, batch: &RecordBatch, row: usize) -> Result<(FixMessages, Cells)> {
+    fn row(&self, batch: &Landed, row: usize) -> Result<(FixMessages, Cells)> {
         let (columns, codec, options) = (&self.columns, &self.codec, &self.options);
-        let cell = |at: usize| {
-            value_from_array(&columns.dtypes[at], batch.column(at).as_ref(), row)
-                .map_err(Error::from)
-        };
+        let cells = batch.records.children();
+        let cell = |at: usize| cells[at].scalar(row);
         // A column absent, null or empty is silence.
         let stated = |at: Option<usize>| -> Result<Option<Scalar>> {
             at.map(cell)
                 .transpose()
                 .map(|held| held.filter(|value| !value.is_null()))
         };
-        let at = columns.payload;
-        let payload = payload_bytes(&columns.dtypes[at], batch.column(at), row)?;
+        let payload = batch.payload.get(row)?;
         let beginstring = stated(columns.beginstring)?;
         // When the row's line was written, in the clock the line counts in:
         // the instant the line states as the event it is. The epoch is
@@ -966,43 +958,46 @@ impl Iterator for CaptureBatches {
 }
 
 /// The rows of a stream of validated capture batches, each beside the batch
-/// it is a row of, in row order.
+/// it is a row of, landed once, in row order.
 ///
 /// Every cell is read by the position the declared schema gave it, so a
-/// batch of another schema than the first is a conflict item; the source
-/// reader's own failure is an error item; the stream goes on past either
-/// to the next batch. The puller holds one batch, and a row keeps its own
-/// alive until it is read.
+/// batch of another schema than the first is a conflict item; a batch whose
+/// rows the carrier refuses at the landing, and the source reader's own
+/// failure, are error items; the stream goes on past each to the next
+/// batch. The puller holds one batch, and a row keeps its own alive until it
+/// is read.
 struct BatchRows {
     source: CaptureBatches,
+    reader: Arc<RowReader>,
     /// The batch being read, and the row the next pull reads.
-    held: Option<(Arc<RecordBatch>, usize)>,
+    held: Option<(Arc<Landed>, usize)>,
 }
 
 impl BatchRows {
-    const fn over(source: BatchReader) -> Self {
+    const fn over(source: BatchReader, reader: Arc<RowReader>) -> Self {
         Self {
             source: CaptureBatches::over(source),
+            reader,
             held: None,
         }
     }
 }
 
 impl Iterator for BatchRows {
-    type Item = Result<(Arc<RecordBatch>, usize)>;
+    type Item = Result<(Arc<Landed>, usize)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some((batch, at)) = &mut self.held {
-                if *at < batch.num_rows() {
+                if *at < batch.records.len() {
                     let row = *at;
                     *at += 1;
                     return Some(Ok((Arc::clone(batch), row)));
                 }
             }
             // The batch is spent, or none is held yet: the next validated one
-            // is pulled and the spent one dropped.
-            match self.source.next() {
+            // is pulled, landed, and the spent one dropped.
+            match self.source.next().map(|batch| self.reader.land(&batch?)) {
                 Some(Ok(batch)) => self.held = Some((Arc::new(batch), 0)),
                 Some(Err(error)) => {
                     self.held = None;
@@ -1019,17 +1014,20 @@ impl Iterator for BatchRows {
 /// batch of another schema than the first, or the source reader's failure.
 struct StructRows {
     source: BatchReader,
+    /// The root every batch lands under, resolved once off the source.
+    root: Arc<Field>,
     /// The refusal the source's schema earned, yielded once and first.
     refused: Option<Error>,
-    /// The batch being read, beside the row the next pull reads.
-    held: Option<(Arc<StructArray>, usize)>,
+    /// The record column being read, beside the row the next pull reads.
+    held: Option<(Arc<Serie>, usize)>,
     done: bool,
 }
 
 impl StructRows {
-    const fn over(source: BatchReader, refused: Option<Error>) -> Self {
+    const fn over(source: BatchReader, root: Arc<Field>, refused: Option<Error>) -> Self {
         Self {
             source,
+            root,
             refused,
             held: None,
             done: false,
@@ -1038,7 +1036,7 @@ impl StructRows {
 }
 
 impl Iterator for StructRows {
-    type Item = Result<(Arc<StructArray>, usize)>;
+    type Item = Result<(Arc<Serie>, usize)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -1065,7 +1063,15 @@ impl Iterator for StructRows {
                         "FIX rows",
                     )));
                 }
-                Some(Ok(batch)) => self.held = Some((Arc::new(StructArray::from(batch)), 0)),
+                // Each batch lands once, proving the rows its schema's
+                // layout does not: a row it refuses is named here.
+                Some(Ok(batch)) => match land_batch(&self.root, &batch, &Proof::Unproven) {
+                    Ok(records) => self.held = Some((Arc::new(records), 0)),
+                    Err(error) => {
+                        self.done = true;
+                        return Some(Err(error.into()));
+                    }
+                },
                 Some(Err(error)) => {
                     self.done = true;
                     return Some(Err(crate::arrow::from_reader_error(error).into()));

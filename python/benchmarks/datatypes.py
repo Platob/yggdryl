@@ -187,11 +187,11 @@ def _read_bytes_parameters() -> object:
 
 
 def _build_code_datatype() -> DataType:
-    return DataType("currency")
+    return DataType("ccy")
 
 
 def _build_code_field() -> Field:
-    return yggdryl.currency("ccy", nullable=False)
+    return yggdryl.ccy("ccy", nullable=False)
 
 
 def _build_figi_scalar() -> object:
@@ -371,25 +371,25 @@ def _write_python_class_metadata() -> None:
     PYTHON_FIELD.python.class_metadata = PYTHON_DECLARATION
 
 
-CURRENCY = DataType("currency")
-CURRENCIES = StringEnum.from_logical_name("currency")
+CCY = DataType("ccy")
+CCYS = StringEnum.from_logical_name("ccy")
 LATIN = DataType.string("string", "windows-1252", 32)
 BOUNDED_BYTES = DataType.bytes("binary", 16)
 
 
 def _ascii_prebuilt_vocabulary() -> object:
     # What a schema pays once when it declares a currency column.
-    return StringEnum.from_logical_name("currency")
+    return StringEnum.from_logical_name("ccy")
 
 
 def _ascii_vocabulary_members() -> object:
     # The packed code of every declared value, which is what a reader of the
     # schema computes once.
-    return CURRENCIES.into_members(CURRENCY)
+    return CCYS.into_members(CCY)
 
 
 def _ascii_vocabulary_intenum() -> object:
-    return CURRENCIES.into_intenum(CURRENCY)
+    return CCYS.into_intenum(CCY)
 
 
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:

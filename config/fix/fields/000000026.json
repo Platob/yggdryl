@@ -190,7 +190,7 @@
   {
     "name": "underlyingnotionalcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -541,7 +541,7 @@
   {
     "name": "commissioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -566,7 +566,7 @@
   {
     "name": "commissionunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -716,7 +716,7 @@
   {
     "name": "alloccommissioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -741,7 +741,7 @@
   {
     "name": "alloccommissionunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1189,7 +1189,7 @@
   {
     "name": "sidecollateralcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

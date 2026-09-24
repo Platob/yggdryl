@@ -260,7 +260,7 @@
   {
     "name": "settlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -503,7 +503,7 @@
   {
     "name": "miscfeecurr",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

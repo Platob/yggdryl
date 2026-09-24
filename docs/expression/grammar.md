@@ -58,7 +58,7 @@ atom        := literal | "(" expr ")" | column | ":" parameter
 
 A lone `select ...` is a `Selector` and a lone `where ...` a `Filter`; either keyword is optional when the text is read as that clause alone. `Plan::from_str` reads one plan, `Expression::from_str` one plan or a `;` sequence.
 
-Inside `[...]` a whole number is a position, a text constant a key, a `:` form a run, and anything else - a bare boolean column included - a predicate over the elements of a list of structs, read against the element's own fields ([Terms](terms.md#predicate-segments)).
+Inside `[...]` a whole number is a position, a text constant a key, a `:` form a run, and anything else - a bare boolean column included - a predicate over the elements of a serie of structs, read against the element's own fields ([Terms](terms.md#predicate-segments)).
 
 ## Spellings
 
@@ -73,7 +73,7 @@ Inside `[...]` a whole number is a position, a text constant a key, a `:` form a
 | path | `a.b`, `a[0]`, `a[-1]`, `a['key']`, `a[1:3]`, `a[:-1]`, `a[ccy = 'EUR']`, `a[active]`, `a[ccy = 'EUR'][0].price` |
 | identifier | `name`, `"odd name"`, `` `odd name` `` |
 | literal | `1`, `1.5`, `'text'`, `true`, `null`, `decimal128(9,2) '1.50'`, `date32 '2024-01-01'`, `utf8 null` |
-| constructor | `[1, 2]` a list, `{'k': 1}` a map, `struct(1 as a)` a struct |
+| constructor | `[1, 2]` a serie, `{'k': 1}` a map, `struct(1 as a)` a struct |
 | conditional | `case when c then v else w end` |
 | conversion | `cast(x as int32)`, `try_cast(x as int32)` |
 | parameter | `:since` |
@@ -103,7 +103,7 @@ Settled against Iceberg's bound/unbound split, Substrait's reference model, Arro
 | --- | --- |
 | `is distinct from` | two-valued, the operator that answers about a null |
 | indices | 0-based, and negative from the end; a slice is `[start:end)` with either bound optional |
-| predicate segment | JSONPath's `[?(...)]` without the `?`: `list[filter]` keeps the elements a boolean over the element's own fields answers exactly true for, a null element is dropped, a null list stays null, and the answer is a list of the same item type |
+| predicate segment | JSONPath's `[?(...)]` without the `?`: `serie[filter]` keeps the elements a boolean over the element's own fields answers exactly true for, a null element is dropped, a null serie stays null, and the answer is a serie of the same item type |
 | `substring` | 1-based, window `[start, start + length)` intersected with the characters that exist, a negative start counting back from the end |
 | text order | code point, no collation, so every statistics bound stays valid |
 | names | ASCII case-insensitive, and a genuine collision is an error |
@@ -146,7 +146,7 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 - `'2' > 1` -> the text reads as the number it names, `2 > 1`; text that reads as no number compares as text.
 - An index past the end, or a missing map key -> null.
 - A predicate segment after a computed value (`lower(name)[x = 1]`) -> refused at parse naming the bracket; a bare constant no predicate can be (`a[1.5]`) -> refused at parse.
-- A predicate segment on a column that is no list of structs, or a predicate that answers no boolean -> a bind error naming the datatype; a name inside it the element lacks -> the unknown-column error listing the element's fields, never the row's.
+- A predicate segment on a column that is no serie of structs, or a predicate that answers no boolean -> a bind error naming the datatype; a name inside it the element lacks -> the unknown-column error listing the element's fields, never the row's.
 - A struct child reached by a missing name -> a bind error.
 - One column named twice under case-insensitive resolution -> an ambiguity error.
 - A failed `cast` -> an error, where `try_cast` -> null.

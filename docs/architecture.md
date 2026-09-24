@@ -23,7 +23,7 @@ fix ── protocol vocabulary over types + holder
 
 ## Root files, root folders and tabs
 
-Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`, `currency.rs` owns the `currency` datatype, its field marker and its value). Each implementation - a medium, a codec, a storage backend, a digest, a charset with string leaves - is a root folder or file of its own name (`parquet/`, `gzip.rs`, `zip/`, `xxhash/`, `utf8.rs`), and a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`) holds only what its implementations share. The site's top bar groups those files by the vocabulary they answer to, with one join: every encoding, coding and charset - `ipc/`, `parquet/`, `avro/`, `text/`, `json/`, `toml/`, `yaml/`, `iceberg/`, the codecs and the charsets - documents as one section of the single [Media](media/index.md) page, because a reader picks all three by the name a handle carries, not by which crate module answers it. Storage is joined the same way: `iobase.rs`, the `io*.rs` roles, `holder/` and every backend folder document as sections of the single [Holder](holder/index.md) page, because every backend answers the one `IOBase` contract.
+Each `rust/src/<name>.rs` owns one shared trait, enum, value or type (`iobase.rs` owns `IOBase`, `codec.rs` owns `Codec`, `media_type.rs` owns `MediaType`, `ccy.rs` owns the `ccy` datatype, its field marker and its value). Each implementation - a medium, a codec, a storage backend, a digest, a charset with string leaves - is a root folder or file of its own name (`parquet/`, `gzip.rs`, `zip/`, `xxhash/`, `utf8.rs`), and a parent folder (`media/`, `text/`, `coding/`, `holder/`, `hashing/`, `charset/`) holds only what its implementations share. The site's top bar groups those files by the vocabulary they answer to, with one join: every encoding, coding and charset - `ipc/`, `parquet/`, `avro/`, `text/`, `json/`, `toml/`, `yaml/`, `iceberg/`, the codecs and the charsets - documents as one section of the single [Media](media/index.md) page, because a reader picks all three by the name a handle carries, not by which crate module answers it. Storage is joined the same way: `iobase.rs`, the `io*.rs` roles, `holder/` and every backend folder document as sections of the single [Holder](holder/index.md) page, because every backend answers the one `IOBase` contract.
 
 | Tab | Root files and folders |
 | --- | --- |
@@ -46,7 +46,7 @@ Documentation is grouped by these tab names - `docs/<tab>/` for a tab of several
 
 | Rule | Consequence |
 | --- | --- |
-| A schema is a field | A non-null Struct [`Field`](types/field.md) is the only row schema; `Scalar::Struct` is named input that canonicalizes to an ordered `Scalar::List`. |
+| A schema is a field | A non-null Struct [`Field`](types/field.md) is the only row schema; `Scalar::Struct` is named input that canonicalizes to an ordered `Scalar::Serie`. |
 | Protocol metadata is a view | `field.as_fix()` and `field.as_iceberg()` borrow the same field, `field.as_digest()` names row-digest roles, `field.as_identity()` and `field.as_partition()` give generic metadata; none copies state. |
 | Storage is one trait | [`IOBase`](holder/index.md) is positional (`pread`, `pwrite`); construction touches nothing, absent reads are empty, writes create. |
 | Listings are iterators | `ls`, `glob`, and predicate listings yield `Result` items lazily and fuse at the first failure. |

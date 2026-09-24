@@ -105,12 +105,13 @@ assert price.parquet_field_id == 7
 ```python
 from __future__ import annotations
 
-from yggdryl import Field, Int32Field, ListField, integer, nested, utf8
+from yggdryl import Field, Int32Field, SerieField, integer, serie, utf8
 
 trade_id: Int32Field = integer.int32("trade_id", nullable=False)
-tags: ListField[str] = nested.list("tags", utf8("item"))
+tags: SerieField[str] = serie("tags", utf8("item"))
 
 assert type(trade_id) is Field
+assert tags.dtype.id == "serie"
 assert tags.dtype.kind == "nested"
 assert trade_id.show_diff(trade_id) == "✓ equal"
 ```

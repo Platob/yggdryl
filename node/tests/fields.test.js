@@ -18,7 +18,7 @@ test('internal typed-factory bridges stay outside the public package surface', (
     '_temporal',
     '_fixedSizeBinary',
     '_decimal',
-    '_list',
+    '_serie',
     '_fromFields',
     '_union',
     '_variant',
@@ -38,6 +38,11 @@ test('internal typed-factory bridges stay outside the public package surface', (
   }
   assert.equal(new DataType('int32').constructor, DataType)
   assert.equal(new Field('id', 'int32').constructor, Field)
+  // The serie factories carry the layouts' own names; the list names are
+  // retired, with no alias.
+  for (const name of ['list', 'listView', 'fixedSizeList', 'largeList', 'largeListView']) {
+    assert.equal(name in fields, false, name)
+  }
   assert.equal(Object.hasOwn(new DataType('int32').constructor, '_simple'), false)
 })
 
@@ -247,7 +252,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['fixed_cp1252', fields.fixedCp1252('value', 8)],
     ['sized_cp1252', fields.sizedCp1252('value', 32)],
     ['country', fields.country('value')],
-    ['currency', fields.currency('value')],
+    ['ccy', fields.ccy('value')],
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['isin', fields.isin('value')],
@@ -265,11 +270,11 @@ test('typed field factories cover every native datatype variant', () => {
     ['timezone', fields.timezone('value')],
     ['mimetype', fields.mimetype('value')],
     ['mediatype', fields.mediatype('value')],
-    ['list', fields.list('value', item)],
-    ['list_view', fields.listView('value', item)],
-    ['fixed_size_list', fields.fixedSizeList('value', item, 3)],
-    ['large_list', fields.largeList('value', item)],
-    ['large_list_view', fields.largeListView('value', item)],
+    ['serie', fields.serie('value', item)],
+    ['serie_view', fields.serieView('value', item)],
+    ['fixed_size_serie', fields.fixedSizeSerie('value', item, 3)],
+    ['large_serie', fields.largeSerie('value', item)],
+    ['large_serie_view', fields.largeSerieView('value', item)],
     ['struct', fields.struct('value', [item])],
     ['union', fields.union('value', [[3, item]], 'dense')],
     ['dictionary', fields.dictionary('value', 'int16', 'utf8')],
@@ -516,7 +521,7 @@ test('the registered codes build their own datatype at their own width', () => {
   // text without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
-    ['currency', [fields.currency('settlement_ccy'), 3]],
+    ['ccy', [fields.ccy('settlement_ccy'), 3]],
     ['mic', [fields.mic('venue'), 4]],
     ['cfi', [fields.cfi('classification'), 6]],
     ['isin', [fields.isin('instrument'), 12]],
@@ -536,7 +541,7 @@ test('the registered codes build their own datatype at their own width', () => {
     assert.equal(value.nullable, true, name)
   }
 
-  assert.ok(!fields.currency('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
+  assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
   // A securities identifier is closed by its own check digit, and a column
   // of them holds the canonical spelling: a cast lets in an identifier the
   // check digit closes, in upper case; a typo or a lower-case spelling is
@@ -568,8 +573,19 @@ test('the registered codes build their own datatype at their own width', () => {
     /canonical spelling/,
   )
   assert.equal(declared.get('country')[0].name, 'venue_country')
-  assert.equal(fields.currency('ccy', { nullable: false }).nullable, false)
+  assert.equal(fields.ccy('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')
+  assert.equal('currency' in fields, false)
+
+  const root = fields.struct('row', [fields.ccy('settlement_ccy')], { nullable: false })
+  const table = new arrow.Table({
+    settlement_ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()),
+  })
+  const batch = Serie.fromArrowBatch(table, root).intoArrowBatch()
+  assert.equal(
+    batch.schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.ccy',
+  )
 })
 
 test('nested factories preserve exact child metadata and dictionary state', () => {
@@ -579,7 +595,7 @@ test('nested factories preserve exact child metadata and dictionary state', () =
   })
   item.setDictionaryOptions(42n, true)
 
-  const values = fields.list('values', item, {
+  const values = fields.serie('values', item, {
     metadata: new Map([['owner', 'events']]),
   })
   const child = values.dtype.getFieldAt(0)

@@ -9,9 +9,7 @@ use std::sync::Arc;
 
 use crate::Field;
 use crate::metadata::write_json_string as write_quoted;
-use crate::{
-    DataType, Metadata, RunEndEncodedType, StructType, UnionFields, hashing::stable_hash_display,
-};
+use crate::{DataType, Metadata, StructType, UnionFields, hashing::stable_hash_display};
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -105,11 +103,11 @@ fn dtype_snapshots_identical(left: &DataType, right: &DataType) -> bool {
         return true;
     }
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => Arc::ptr_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => Arc::ptr_eq(left, right),
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
             left_size == right_size && Arc::ptr_eq(left, right)
         }
         (D::Struct(left), D::Struct(right)) => left.shares_storage_with(right),
@@ -134,6 +132,21 @@ fn field_snapshots_identical(left: &Field, right: &Field, with_metadata: bool) -
             && left.dictionary_is_ordered() == right.dictionary_is_ordered()
             && dtype_snapshots_identical(left.dtype(), right.dtype())
             && (!with_metadata || left.as_metadata().shares_storage_with(right.as_metadata()))
+}
+
+/// The bounds two string leaves, or two byte leaves, of one shape state.
+///
+/// `None` is anything else: two shapes, two families, or a datatype that is
+/// neither, each of which differs in kind rather than in bound.
+fn shared_shape_bounds(left: &DataType, right: &DataType) -> Option<(Option<u32>, Option<u32>)> {
+    if let (Some(left), Some(right)) = (left.string_parameters(), right.string_parameters()) {
+        return left
+            .same_shape_as(right)
+            .then_some((left.bound(), right.bound()));
+    }
+    let (left, right) = (left.bytes_parameters()?, right.bytes_parameters()?);
+    left.same_shape_as(right)
+        .then_some((left.bound(), right.bound()))
 }
 
 impl DiffEngine {
@@ -288,6 +301,19 @@ impl DiffEngine {
         if dtype_snapshots_identical(&left, &right) {
             return;
         }
+        // The shape is the identifier - and for a string the charset is part
+        // of it - so two shapes are two kinds below; one shape leaves the
+        // bound to compare.
+        if let Some((left_bound, right_bound)) = shared_shape_bounds(&left, &right) {
+            if left_bound != right_bound {
+                self.pending.push_back(changed_debug(
+                    &property_path(&path, "bound"),
+                    left_bound,
+                    right_bound,
+                ));
+            }
+            return;
+        }
         use DataType as D;
         match (&left, &right) {
             (
@@ -328,34 +354,13 @@ impl DiffEngine {
                     ));
                 }
             }
-            // The shape is the identifier - and for a string the charset is
-            // part of it - so two shapes are two kinds below; one shape
-            // leaves the bound to compare.
-            (D::Bytes(left), D::Bytes(right)) if left.same_shape_as(*right) => {
-                if left.bound() != right.bound() {
-                    self.pending.push_back(changed_debug(
-                        &property_path(&path, "bound"),
-                        left.bound(),
-                        right.bound(),
-                    ));
-                }
-            }
-            (D::String(left), D::String(right)) if left.same_shape_as(*right) => {
-                if left.bound() != right.bound() {
-                    self.pending.push_back(changed_debug(
-                        &property_path(&path, "bound"),
-                        left.bound(),
-                        right.bound(),
-                    ));
-                }
-            }
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => {
+            (D::Serie(left), D::Serie(right))
+            | (D::SerieView(left), D::SerieView(right))
+            | (D::LargeSerie(left), D::LargeSerie(right))
+            | (D::LargeSerieView(left), D::LargeSerieView(right)) => {
                 self.push_field_property(left, right, &path, "item");
             }
-            (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+            (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
                 if left_size != right_size {
                     self.pending.push_back(changed_display(
                         &property_path(&path, "length"),
@@ -920,11 +925,11 @@ pub(crate) fn dtypes_equal(left: &DataType, right: &DataType, with_metadata: boo
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => fields_equal(left, right, false),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => fields_equal(left, right, false),
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
             left_size == right_size && fields_equal(left, right, false)
         }
         (D::Struct(left), D::Struct(right)) => {
@@ -1098,30 +1103,44 @@ impl fmt::Display for FieldLayoutDisplay<'_> {
     }
 }
 
-fn field_layout_eq(left: &Field, right: &Field) -> bool {
-    left.layout_eq(right)
+/// Whether two datatypes are one datatype as Arrow counts one: every nested
+/// name, nullability and parameter equal, metadata aside, and the names of
+/// a serie's item and of a mapping's entries aside too - Arrow's format says
+/// neither is part of the type, and a reader names them as it likes
+/// (`item`, `element`, `entries`, `key_value`). It is what the chunks of
+/// one column share, where no field was declared to cast them into.
+pub(crate) fn one_datatype(left: &DataType, right: &DataType) -> bool {
+    dtype_eq(left, right, false)
 }
 
-#[allow(clippy::too_many_lines)]
 fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
+    dtype_eq(left, right, true)
+}
+
+/// Nested equality with metadata aside; `named` says whether the name of a
+/// serie's item and of a mapping's entries counts, as every other nested
+/// name always does.
+fn dtype_eq(left: &DataType, right: &DataType, named: bool) -> bool {
     if std::ptr::eq(left, right) {
         return true;
     }
     use DataType as D;
     match (left, right) {
-        (D::List(left), D::List(right))
-        | (D::ListView(left), D::ListView(right))
-        | (D::LargeList(left), D::LargeList(right))
-        | (D::LargeListView(left), D::LargeListView(right)) => field_layout_eq(left, right),
-        (D::FixedSizeList(left, left_size), D::FixedSizeList(right, right_size)) => {
-            left_size == right_size && field_layout_eq(left, right)
+        (D::Serie(left), D::Serie(right))
+        | (D::SerieView(left), D::SerieView(right))
+        | (D::LargeSerie(left), D::LargeSerie(right))
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => {
+            field_eq(left, right, named, named)
+        }
+        (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
+            left_size == right_size && field_eq(left, right, named, named)
         }
         (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
                     .zip(right.iter())
-                    .all(|(left, right)| field_layout_eq(left, right))
+                    .all(|(left, right)| field_eq(left, right, true, named))
         }
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode
@@ -1130,23 +1149,29 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
                     .iter()
                     .zip(right.iter())
                     .all(|((left_id, left), (right_id, right))| {
-                        left_id == right_id && field_layout_eq(left, right)
+                        left_id == right_id && field_eq(left, right, true, named)
                     })
         }
         (D::Dictionary(left), D::Dictionary(right)) => {
-            dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
+            dtype_eq(left.key(), right.key(), named) && dtype_eq(left.value(), right.value(), named)
         }
         (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
-            field_layout_eq(left.entries(), right.entries())
+            field_eq(left.entries(), right.entries(), named, named)
         }
-        (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),
+        (D::RunEndEncoded(left), D::RunEndEncoded(right)) => {
+            field_eq(left.run_ends(), right.run_ends(), true, named)
+                && field_eq(left.values(), right.values(), true, named)
+        }
         _ => left == right,
     }
 }
 
-fn run_layout_eq(left: &RunEndEncodedType, right: &RunEndEncodedType) -> bool {
-    field_layout_eq(left.run_ends(), right.run_ends())
-        && field_layout_eq(left.values(), right.values())
+/// [`dtype_eq`] over two fields, their own name counting where `own_name`.
+fn field_eq(left: &Field, right: &Field, own_name: bool, named: bool) -> bool {
+    std::ptr::eq(left, right)
+        || (!own_name || left.name() == right.name())
+            && left.is_nullable() == right.is_nullable()
+            && dtype_eq(left.dtype(), right.dtype(), named)
 }
 
 impl DataType {

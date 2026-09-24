@@ -864,7 +864,7 @@ impl fmt::Display for DataType {
             | D::Float32
             | D::Float64
             | D::Country
-            | D::Currency
+            | D::Ccy
             | D::MicCode
             | D::CfiCode
             | D::IsinCode
@@ -911,17 +911,27 @@ impl fmt::Display for DataType {
             D::Interval(unit) => {
                 fmt::Display::fmt(&crate::IntervalType::Interval(*unit), formatter)
             }
-            D::Bytes(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::String(parameters) => fmt::Display::fmt(parameters, formatter),
-            D::List(field) => fmt_single_field_type(formatter, "list", field),
-            D::ListView(field) => fmt_single_field_type(formatter, "list_view", field),
-            D::FixedSizeList(field, length) => {
-                formatter.write_str("fixed_size_list(")?;
+            leaf_dtype @ crate::bytes_dtypes!() => {
+                let leaf = leaf_dtype
+                    .bytes_parameters()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(&leaf, formatter)
+            }
+            leaf_dtype @ crate::string_dtypes!() => {
+                let leaf = leaf_dtype
+                    .string_parameters()
+                    .expect("the variant was just matched");
+                fmt::Display::fmt(&leaf, formatter)
+            }
+            D::Serie(field) => fmt_single_field_type(formatter, "serie", field),
+            D::SerieView(field) => fmt_single_field_type(formatter, "serie_view", field),
+            D::FixedSizeSerie(field, length) => {
+                formatter.write_str("fixed_size_serie(")?;
                 fmt_field(formatter, field)?;
                 write!(formatter, ",{length})")
             }
-            D::LargeList(field) => fmt_single_field_type(formatter, "large_list", field),
-            D::LargeListView(field) => fmt_single_field_type(formatter, "large_list_view", field),
+            D::LargeSerie(field) => fmt_single_field_type(formatter, "large_serie", field),
+            D::LargeSerieView(field) => fmt_single_field_type(formatter, "large_serie_view", field),
             D::Struct(fields) => {
                 formatter.write_str("struct(")?;
                 for (index, field) in fields.iter().enumerate() {
@@ -1085,7 +1095,7 @@ impl<'a> Parser<'a> {
                 self.index += 1;
                 let value = self.parse_type(depth + 1)?;
                 self.expect_symbol(close)?;
-                return self.parse_postfix_lists(value, depth);
+                return self.parse_postfix_series(value, depth);
             }
         }
 
@@ -1115,7 +1125,7 @@ impl<'a> Parser<'a> {
                 if !nested.is_done() {
                     return Err(self.error_at(token.start, "quoted datatype has trailing tokens"));
                 }
-                return self.parse_postfix_lists(dtype, depth);
+                return self.parse_postfix_series(dtype, depth);
             }
             _ => return Err(self.error_at(token.start, "expected a datatype name")),
         };
@@ -1211,12 +1221,20 @@ impl<'a> Parser<'a> {
             "mediatype" | "contenttype" => DataType::MediaType,
             "url" => DataType::url(),
             "urn" => DataType::urn(),
-            "list" | "array" => self.parse_list(ListKind::List, depth + 1)?,
-            "listview" | "arrayview" => self.parse_list(ListKind::ListView, depth + 1)?,
-            "fixedsizelist" | "fixedarray" => self.parse_fixed_size_list(depth + 1)?,
-            "largelist" | "largearray" => self.parse_list(ListKind::LargeList, depth + 1)?,
-            "largelistview" | "largearrayview" => {
-                self.parse_list(ListKind::LargeListView, depth + 1)?
+            // Each layout's own word first, then the list spellings the family
+            // took before it had its own name, and Arrow's `array` synonyms.
+            "serie" | "list" | "array" => self.parse_serie(SerieLayout::Serie, depth + 1)?,
+            "serieview" | "listview" | "arrayview" => {
+                self.parse_serie(SerieLayout::SerieView, depth + 1)?
+            }
+            "fixedsizeserie" | "fixedsizelist" | "fixedarray" => {
+                self.parse_fixed_size_serie(depth + 1)?
+            }
+            "largeserie" | "largelist" | "largearray" => {
+                self.parse_serie(SerieLayout::LargeSerie, depth + 1)?
+            }
+            "largeserieview" | "largelistview" | "largearrayview" => {
+                self.parse_serie(SerieLayout::LargeSerieView, depth + 1)?
             }
             "struct" | "row" => self.parse_struct(depth + 1)?,
             "union" | "denseunion" | "sparseunion" => self.parse_union(&keyword, depth + 1)?,
@@ -1268,10 +1286,10 @@ impl<'a> Parser<'a> {
             },
         };
 
-        self.parse_postfix_lists(value, depth)
+        self.parse_postfix_series(value, depth)
     }
 
-    pub(crate) fn parse_postfix_lists(
+    pub(crate) fn parse_postfix_series(
         &mut self,
         mut value: DataType,
         depth: usize,
@@ -1285,7 +1303,7 @@ impl<'a> Parser<'a> {
         {
             self.check_depth(nesting + 1)?;
             self.index += 2;
-            value = DataType::list(Field::new("item", value, true));
+            value = DataType::serie(Field::new("item", value, true));
             nesting += 1;
         }
         Ok(value)
@@ -1343,7 +1361,7 @@ impl<'a> Parser<'a> {
         let dtype = self.parse_type(depth)?;
         // Nullability is an argument like the others: a field spelled without
         // it is nullable, which is what the standalone reading of this same
-        // form answers, so `list(field("a",int32))` is a field either way.
+        // form answers, so `serie(field("a",int32))` is a field either way.
         let mut nullable = true;
         let mut saw_nullable = false;
         let mut metadata = Vec::new();
@@ -1767,12 +1785,13 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Which of the four offset layouts a serie keyword names.
 #[derive(Clone, Copy)]
-pub(crate) enum ListKind {
-    List,
-    ListView,
-    LargeList,
-    LargeListView,
+pub(crate) enum SerieLayout {
+    Serie,
+    SerieView,
+    LargeSerie,
+    LargeSerieView,
 }
 
 fn tokenize(source: &str) -> Result<Vec<Token>> {
@@ -2041,30 +2060,30 @@ pub(crate) fn precision_to_unit(precision: i64, position: usize) -> Result<TimeU
 // Nested datatype grammar.
 // ------------------------------------------------------------------------
 impl Parser<'_> {
-    pub(crate) fn parse_list(&mut self, kind: ListKind, depth: usize) -> Result<DataType> {
+    pub(crate) fn parse_serie(&mut self, layout: SerieLayout, depth: usize) -> Result<DataType> {
         let close = self
             .consume_opening()
-            .ok_or_else(|| self.error_here("expected a list child in (), [], {}, or <>"))?;
+            .ok_or_else(|| self.error_here("expected a serie item in (), [], {}, or <>"))?;
         let field = self.parse_field_or_type("item", true, depth)?;
         self.expect_symbol(close)?;
-        Ok(match kind {
-            ListKind::List => DataType::list(field),
-            ListKind::ListView => DataType::list_view(field),
-            ListKind::LargeList => DataType::large_list(field),
-            ListKind::LargeListView => DataType::large_list_view(field),
+        Ok(match layout {
+            SerieLayout::Serie => DataType::serie(field),
+            SerieLayout::SerieView => DataType::serie_view(field),
+            SerieLayout::LargeSerie => DataType::large_serie(field),
+            SerieLayout::LargeSerieView => DataType::large_serie_view(field),
         })
     }
 
-    pub(crate) fn parse_fixed_size_list(&mut self, depth: usize) -> Result<DataType> {
+    pub(crate) fn parse_fixed_size_serie(&mut self, depth: usize) -> Result<DataType> {
         let close = self
             .consume_opening()
-            .ok_or_else(|| self.error_here("expected fixed-size-list parameters"))?;
+            .ok_or_else(|| self.error_here("expected fixed-size-serie parameters"))?;
         let field = self.parse_field_or_type("item", true, depth)?;
-        self.expect_separator("expected a list length after the child")?;
+        self.expect_separator("expected a serie length after the item")?;
         self.consume_label("length");
-        let length = self.parse_i32("list length")?;
+        let length = self.parse_i32("serie length")?;
         self.expect_symbol(close)?;
-        DataType::fixed_size_list(field, length)
+        DataType::fixed_size_serie(field, length)
     }
 
     pub(crate) fn parse_struct(&mut self, depth: usize) -> Result<DataType> {

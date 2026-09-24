@@ -34,7 +34,8 @@ pub(crate) mod casts {
     /// Validates every exposed, non-null value entering a UUID and stores it as
     /// its sixteen bytes.
     ///
-    /// Sixteen-byte storage is the same array once validated. Any other fixed
+    /// Sixteen-byte storage is the same array: every sixteen bytes are one
+    /// identifier, so there is nothing to read. Any other fixed
     /// width is a slot holding one of the two text spellings, so the padding is
     /// taken off and the spelling read; variable bytes are read as they are; and
     /// anything else first renders as Utf8 through Arrow's kernel, exactly as an
@@ -51,15 +52,10 @@ pub(crate) mod casts {
             return Err(internal_target_error("uuid"));
         }
         if let ArrowDataType::FixedSizeBinary(width) = array.data_type() {
-            let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
             if *width == 16 {
-                for index in 0..source.len() {
-                    if is_exposed(exposure, index) && source.is_valid(index) {
-                        uuid_cell(field, index, source.value(index))?;
-                    }
-                }
                 return Ok(Arc::clone(array));
             }
+            let source = downcast::<FixedSizeBinaryArray>(array.as_ref())?;
             // Sixteen bytes are an identifier, in which every byte carries
             // identity and a trailing NUL is one of them. Any other width is a
             // text slot, so its trailing NUL is the slot's padding.
@@ -144,9 +140,9 @@ pub(crate) mod casts {
 // is what storage holds (Arrow `FixedSizeBinary(16)` under the canonical
 // `arrow.uuid` extension). Every string rendering is the 36-character
 // lowercase hyphenated form RFC 9562 spells, so storage reads back as the
-// identifier that went in. The canonical value is [`Scalar::Uuid`]; text in
-// hyphenated or bare-hex form and [`Scalar::Bytes`] of sixteen bytes are
-// accepted on the way in and canonicalize to that exact leaf.
+// identifier that went in. The canonical value is [`Scalar::Uuid`]; text of
+// any string leaf in hyphenated or bare-hex form and sixteen bytes of any
+// byte leaf are accepted on the way in and canonicalize to that exact leaf.
 //
 // A UUID is the ASCII widths' sibling: one fixed-width value whose integer
 // is its own storage bytes read big-endian, so it is the same integer in
@@ -251,8 +247,8 @@ impl DataType {
 /// The bytes a UUID value carries, in either accepted spelling.
 pub(crate) fn uuid_bytes(value: &Scalar) -> Option<&[u8]> {
     match value {
-        Scalar::String(text) => Some(text.as_str().as_bytes()),
-        Scalar::Bytes(bytes) => Some(bytes.as_bytes()),
+        crate::string_scalars!(text) => Some(text.as_str().as_bytes()),
+        crate::bytes_scalars!(bytes) => Some(bytes.as_bytes()),
         _ => None,
     }
 }

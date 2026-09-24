@@ -365,7 +365,7 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     use std::sync::Arc;
 
     use yggdryl::local::LocalFolder;
-    use yggdryl::{FixCodec, FixMsg, FixRegistry, Scalar, fix_schema};
+    use yggdryl::{ArrowCastOptions, FixCodec, FixMsg, FixRegistry, Scalar, Serie, fix_schema};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
@@ -380,20 +380,15 @@ The walk is a [stage](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call), and a s
     let read = codec.lifecycle_arrow_reader(codec.arrow_reader(schema.clone(), parsed)?)?;
     let batch = read.into_iter().next().expect("one batch")?;
     assert_eq!(batch.num_rows(), 2);
-    let rows = yggdryl::arrow::batch_to_value(&batch)?;
-    let rows = rows.as_sequence().expect("rows");
-    let (seqnum, prevuuid, crossuuid) = (
-        schema.index_of("seqnum").expect("a column"),
-        schema.index_of("prevuuid").expect("a column"),
-        schema.index_of("crossuuid").expect("a column"),
-    );
+    let rows = Serie::from_arrow_batch(Some(&schema), &batch, ArrowCastOptions::new())?;
+    let column = |name: &str| rows.child(name).expect("a column");
     // One order, one chain: the fill is the second in it and names the
     // order before it.
-    assert_eq!(rows[0].get(crossuuid), rows[1].get(crossuuid));
-    assert_eq!(rows[0].get(seqnum).as_deref(), Some(&Scalar::Null), "a first message states no place");
-    assert_eq!(rows[1].get(seqnum).as_deref(), Some(&Scalar::from(1_u64)));
-    assert!(rows[0].get(prevuuid).is_some_and(|value| value.is_null()));
-    assert!(rows[1].get(prevuuid).is_some_and(|held| !held.is_null()));
+    assert_eq!(column("crossuuid").scalar(0)?, column("crossuuid").scalar(1)?);
+    assert_eq!(column("seqnum").scalar(0)?, Scalar::Null, "a first message states no place");
+    assert_eq!(column("seqnum").scalar(1)?, Scalar::from(1_u64));
+    assert!(column("prevuuid").is_null(0)?);
+    assert!(!column("prevuuid").is_null(1)?);
     ```
 
 ## Edges

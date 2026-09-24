@@ -182,15 +182,15 @@ mod nested {
 
     #[test]
     fn merging_reaches_into_every_nested_layout() {
-        // Lists merge their item.
+        // Series merge their item.
         assert_eq!(
-            DataType::list(DataType::Int32.nullable_field("item"))
+            DataType::serie(DataType::Int32.nullable_field("item"))
                 .merge_with(
-                    &DataType::list(DataType::Int64.nullable_field("item")),
+                    &DataType::serie(DataType::Int64.nullable_field("item")),
                     true
                 )
                 .unwrap(),
-            DataType::list(DataType::Int64.nullable_field("item")),
+            DataType::serie(DataType::Int64.nullable_field("item")),
         );
 
         // Maps merge through their entries.
@@ -383,7 +383,7 @@ mod lattice {
         // variable text, so bytes beside it are variable bytes either way.
         for how in [true, false] {
             assert_eq!(
-                DataType::Currency
+                DataType::Ccy
                     .merge_with(&DataType::fixed_binary(3).unwrap(), how)
                     .unwrap(),
                 DataType::binary()
@@ -404,9 +404,9 @@ mod lattice {
             DataType::utf8(),
             DataType::large_utf8(),
         ] {
-            assert_eq!(down(&DataType::Currency, &other), DataType::Currency);
-            assert_eq!(down(&other, &DataType::Currency), DataType::Currency);
-            assert_ne!(up(&DataType::Currency, &other), DataType::Currency);
+            assert_eq!(down(&DataType::Ccy, &other), DataType::Ccy);
+            assert_eq!(down(&other, &DataType::Ccy), DataType::Ccy);
+            assert_ne!(up(&DataType::Ccy, &other), DataType::Ccy);
         }
         assert_eq!(
             down(&DataType::CfiCode, &DataType::fixed_ascii(6).unwrap()),
@@ -416,7 +416,7 @@ mod lattice {
         // A side narrower than the code still outranks it: narrowing is the
         // tightest type that names both, not the most specific one.
         assert_eq!(
-            down(&DataType::Currency, &DataType::fixed_ascii(2).unwrap()),
+            down(&DataType::Ccy, &DataType::fixed_ascii(2).unwrap()),
             DataType::fixed_ascii(2).unwrap()
         );
 
@@ -424,20 +424,17 @@ mod lattice {
         // code: neither standard names the other's values, so the answer is
         // the bounded ASCII text both store as.
         assert_eq!(
-            down(&DataType::Currency, &DataType::Country),
+            down(&DataType::Ccy, &DataType::Country),
             DataType::from_str("ascii(2)").unwrap()
         );
         assert_eq!(
-            up(&DataType::Currency, &DataType::Country),
+            up(&DataType::Ccy, &DataType::Country),
             DataType::from_str("ascii(3)").unwrap()
         );
 
         // A number's rendering does not fit a code, so absorbing one is still
         // no less than `utf8`.
-        assert_eq!(
-            down(&DataType::Currency, &DataType::Int32),
-            DataType::utf8()
-        );
+        assert_eq!(down(&DataType::Ccy, &DataType::Int32), DataType::utf8());
     }
 
     #[test]

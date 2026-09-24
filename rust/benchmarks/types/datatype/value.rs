@@ -125,14 +125,16 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     group.bench_function("as_decimal", |bencher| {
         bencher.iter(|| black_box(&decimal_scalar).as_decimal());
     });
+    // The family a temporal belongs to is its identifier's: one read of the
+    // variant, no value built.
     group.bench_function("as_temporal", |bencher| {
-        bencher.iter(|| black_box(&instant).as_temporal());
+        bencher.iter(|| black_box(&instant).id().temporal_family());
     });
     group.bench_function("temporal_readers", |bencher| {
         bencher.iter(|| {
             let value = black_box(&instant);
             black_box((
-                value.as_temporal().map(|held| held.family()),
+                value.id().temporal_family(),
                 value.temporal_count(),
                 value.temporal_unit(),
                 value.temporal_timezone(),

@@ -116,8 +116,8 @@ fn a_byte_column_lends_its_offsets_and_its_payload_where_they_lie() {
     assert_eq!(leaf.slice(1, 2).unwrap().value(1), Some(b"cde".as_slice()));
     assert!(column.as_binary_string().is_none());
     assert!(column.as_large_binary().is_none());
-    assert!(column.as_bytes().is_some());
-    assert!(column.as_string().is_none());
+    assert!(matches!(column, Serie::Binary(_)));
+    assert_eq!(leaf.id(), yggdryl::DataTypeId::Binary);
 }
 
 #[test]

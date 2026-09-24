@@ -174,10 +174,10 @@ Each lookup exists by position, by path, or either:
         DataType::Int64.required_field("id"),
         DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?)
             .nullable_field("line"),
-        DataType::list(DataType::Float64.nullable_field("item")).nullable_field("levels"),
+        DataType::serie(DataType::Float64.nullable_field("item")).nullable_field("levels"),
     ])?);
 
-    // Structs flatten to leaves; the list stays one column.
+    // Structs flatten to leaves; the serie stays one column.
     let leaves = row.unnest_fields();
     let names: Vec<&str> = leaves.iter().map(|field| field.name()).collect();
     assert_eq!(names, ["id", "line.px", "levels"]);
@@ -197,7 +197,7 @@ Each lookup exists by position, by path, or either:
     ```python
     from yggdryl import DataType
 
-    row = DataType("struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>")
+    row = DataType("struct<id:int64 not null,line:struct<px:float64 not null>,levels:serie<float64>>")
 
     leaves = row.unnest_fields()
     assert [leaf.name for leaf in leaves] == ["id", "line.px", "levels"]
@@ -215,7 +215,7 @@ Each lookup exists by position, by path, or either:
     const assert = require('node:assert/strict')
     const { DataType } = require('yggdryl')
 
-    const row = DataType.from('struct<id:int64 not null,line:struct<px:float64 not null>,levels:list<float64>>')
+    const row = DataType.from('struct<id:int64 not null,line:struct<px:float64 not null>,levels:serie<float64>>')
 
     const leaves = row.unnestFields()
     assert.deepEqual(leaves.map((leaf) => leaf.name), ['id', 'line.px', 'levels'])
@@ -234,7 +234,7 @@ Each lookup exists by position, by path, or either:
 1. equal types are that type;
 2. `null` yields to the defined side;
 3. same-family nesting recurses; a struct takes the union of its fields;
-4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes, and neither does a code, whose width bounds variable text: `int32` beside `fixed_size_binary(4)`, and `currency` beside `fixed_size_binary(3)`, are variable bytes;
+4. bytes win; two byte types meet parameter by parameter - the wider offsets, the variable layout over a fixed one, no bound over a bound when widening, and the mirror when narrowing. A type storing a fixed width beside fixed bytes of that same width - a fixed string, `uuid` - keeps the storage both have: the plain bytes when widening, the side constraining them when narrowing. A numeric width never shares fixed bytes, and neither does a code, whose width bounds variable text: `int32` beside `fixed_size_binary(4)`, and `ccy` beside `fixed_size_binary(3)`, are variable bytes;
 5. text wins next; two strings meet leaf by leaf - the wider offsets, the variable shape over a fixed one, UTF-8 over two different charsets, no maximum over a maximum when widening, and the narrower shape, repertoire and bound when narrowing. A registered code is the `sized_ascii(n)` it stores when widening and the code itself when narrowing; text absorbing a non-text side is at least `utf8`;
 6. numbers meet by width, temporals by unit; widening keeps the widest decimal backing either side declared.
 
@@ -304,8 +304,8 @@ Anything left is refused. Every rule answers in Python and JavaScript too; the p
     );
 
     // Narrowing keeps the tighter type: the code over the width it stores in.
-    assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), true)?, DataType::utf8());
-    assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), false)?, DataType::Currency);
+    assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+    assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), false)?, DataType::Ccy);
 
     // Widening never re-encodes a decimal's storage to fit the precision.
     assert_eq!(
@@ -623,11 +623,11 @@ Keys and values are strings in lexical key order, so equal entries compare and h
     assert.equal(at.dtype.toString(), 'datetime64(us)')
     ```
 
-`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contracts `Value` and `FamilyValue` in `rust/src/value/` and re-exported at the crate root.
+`Int64Field` and its siblings are `FieldOf<D>`: one field carrying its family's own datatype. There is no marker to check, because `Field` is an enum over exactly these leaves - the variant *is* the proof, and the payload holds whatever parameters the family declares. `FieldValue` and `DataTypeValue` are the contracts a leaf and its payload answer - `Field` and `DataType` answer them too - declared beside the value contract `Value` and the leaf contracts (`IntegerValue`, `TemporalValue`, ...) in `rust/src/value/` and re-exported at the crate root; a payload's `kind` is the family whose range its `id` is in.
 
 | alias | constructors |
 | --- | --- |
-| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CurrencyField`, `MicCodeField`, `CfiCodeField`, `IsinCodeField`, `CusipCodeField`, `SedolCodeField`, `BloombergCodeField`, `FIGICodeField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
+| a datatype that carries no parameters (`Int64Field`, `VariantField`, `VersionField`, `CountryField`, `CcyField`, `MicCodeField`, `CfiCodeField`, `IsinCodeField`, `CusipCodeField`, `SedolCodeField`, `BloombergCodeField`, `FIGICodeField`, `SideField`, `StateField`, `TimeInForceField`) | `unit(name, nullable)`: there is nothing to pass, so naming the datatype again would say it twice |
 | a family with leaves or parameters (`StringField`, `BytesField`, `UuidField`, `DecimalField`, `UriField`, `DateField`, `TimeField`, `DateTimeField`, `DurationField`, `IntervalField`, `SerieField`, `GeometryField`, `GeographyField`) | `new(name, dtype, nullable)`, taking that family's own payload |
 | from a `Field` | `FieldValue::from_field` borrows the leaf, `None` for another variant; `into_field` widens back to the root |
 | bindings | `yggdryl.int64` / `fields.int64` return the native `Field`, typed for a checker only; `yggdryl.string(name, layout=, charset=, fixed=, max=)` / `fields.string(name, { layout, charset, fixed, max })`, `yggdryl.bytes` / `fields.bytes`, `yggdryl.fixed_ascii(name, width)` / `fields.fixedAscii(name, width)`, `yggdryl.version` / `fields.version`, `yggdryl.figi` / `fields.figi` |
@@ -966,9 +966,9 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - nullable root -> `validate_struct_root` refuses.
 - Python `field(x, idx=..., path=...)` naming more than one -> refused.
 - an optional lookup -> `Option` in Rust, `None` in Python, `null` in JavaScript.
-- `unnest_fields` -> a list or map stays one leaf column; a leaf under a nullable ancestor is nullable.
+- `unnest_fields` -> a serie or map stays one leaf column; a leaf under a nullable ancestor is nullable.
 - `unnest_fields` names -> each one resolves through `field_by_path`.
-- `explode_fields` -> a list gives its item, a map its entries, a dictionary or run-end its values.
+- `explode_fields` -> a serie gives its item, a map its entries, a dictionary or run-end its values.
 - `explode_fields` -> one level per call; the column keeps its name and place; nullable when the collection or its element is.
 - both projections -> a list of fields, not a node; `DataType::from(StructType::from_fields(..)?)` rebuilds one.
 - `merge_with(other, upscale)` -> `upscale` widens by default and loses nothing; `false` meets at the tightest type naming both, keeping a code, a `uuid`, or a fixed string over the plainer shape storing it.
@@ -977,7 +977,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - merged struct -> a one-sided child becomes nullable; receiver order, additions appended.
 - boolean beside datetime, decimal beside float -> refused.
 - `order["a.b"]` -> a child literally named `a.b` wins over `a` then `b`.
-- list or run-end node -> exactly one or two children; grow and shrink refuse.
+- serie or run-end node -> exactly one or two children; grow and shrink refuse.
 - Python `DataType[...] = ...` -> refused; it points at the owning `Field`.
 - Python first `hash(field)` -> locks mutation on that wrapper; `copy.copy` unlocks; `stable_hash()` never locks.
 - binding metadata and protocol views -> unhashable; Rust's borrowed protocol view is not `Borrow<Field>`.

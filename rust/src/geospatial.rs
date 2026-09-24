@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::parser::Parser;
-use crate::value::{GeospatialValue, family_value};
-use crate::{DataType, DataTypeId, EdgeAlgorithm, Error, Result, Scalar, Value};
+use crate::value::GeospatialValue;
+use crate::{DataType, EdgeAlgorithm, Error, Result, Scalar, Value};
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
@@ -135,50 +135,6 @@ pub(crate) mod casts {
 /// `GEOMETRY`/`GEOGRAPHY` logical types and Iceberg v3's geospatial types
 /// share, so it is the one this workspace fills too.
 pub(crate) const DEFAULT_CRS: &str = "OGC:CRS84";
-
-/// One geospatial datatype and its validated parameters.
-#[derive(Clone, Debug, Eq, PartialEq, Hash, PartialOrd, Ord)]
-#[non_exhaustive]
-pub enum GeospatialType {
-    /// Planar geometry.
-    Geometry(Arc<GeospatialParameters>),
-    /// Spherical or spheroidal geography.
-    Geography(Arc<GeospatialParameters>),
-}
-
-impl GeospatialType {
-    /// Return the exact datatype identifier.
-    pub const fn id(&self) -> DataTypeId {
-        match self {
-            Self::Geometry(_) => DataTypeId::Geometry,
-            Self::Geography(_) => DataTypeId::Geography,
-        }
-    }
-}
-
-impl From<GeospatialType> for DataType {
-    fn from(value: GeospatialType) -> Self {
-        match value {
-            GeospatialType::Geometry(parameters) => Self::Geometry(parameters),
-            GeospatialType::Geography(parameters) => Self::Geography(parameters),
-        }
-    }
-}
-
-impl TryFrom<&DataType> for GeospatialType {
-    type Error = Error;
-
-    fn try_from(value: &DataType) -> Result<Self> {
-        match value {
-            DataType::Geometry(parameters) => Ok(Self::Geometry(Arc::clone(parameters))),
-            DataType::Geography(parameters) => Ok(Self::Geography(Arc::clone(parameters))),
-            other => Err(Error::InvalidDataType {
-                kind: "geospatial",
-                reason: SmolStr::new(format!("expected a geospatial datatype, got {other}")),
-            }),
-        }
-    }
-}
 
 /// The parameters a geometry or geography column carries.
 ///
@@ -431,27 +387,6 @@ impl Parser<'_> {
 // ------------------------------------------------------------------------
 // Geospatial values and typed scalar aliases.
 // ------------------------------------------------------------------------
-
-family_value!(
-    /// The geospatial family as one value: a geometry or a geography, each
-    /// validated Well-Known Binary.
-    ///
-    /// ```
-    /// use yggdryl::{DataTypeKind, FamilyValue, Geometry, Geospatial, Scalar};
-    ///
-    /// # fn main() -> yggdryl::Result<()> {
-    /// // A little-endian WKB point at the origin.
-    /// let point = Geometry::new([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])?;
-    /// let held = Geospatial::from(point.clone());
-    /// assert_eq!(held.dtype()?.kind(), DataTypeKind::Geospatial);
-    /// assert_eq!(held.clone().into_scalar(), Scalar::Geometry(point));
-    /// assert_eq!(Geospatial::from_scalar(&held.clone().into_scalar()), Some(held));
-    /// assert_eq!(Geospatial::from_scalar(&Scalar::from(1_i64)), None);
-    /// # Ok(())
-    /// # }
-    /// ```
-    Geospatial, Geospatial, [Geometry, Geography]
-);
 
 macro_rules! geospatial_leaf {
     ($name:ident) => {

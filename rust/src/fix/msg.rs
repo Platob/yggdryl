@@ -16,7 +16,7 @@ use super::{FixId, FixKey, FixRegistry};
 use crate::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
 use crate::xxhash;
 use crate::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
     Side, State, StructType, Uuid,
 };
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
@@ -1298,7 +1298,7 @@ impl FixMsg {
         let side = word(54).and_then(|held| Side::read(&held).ok());
         let currency = word(15)
             .or_else(|| word(120))
-            .and_then(|held| Currency::new(&held).ok());
+            .and_then(|held| Ccy::new(&held).ok());
         let unit = word(996);
         let tif = word(identity::TIMEINFORCE_TAG);
         // The instrument: what it is classified as, what it is called, and
@@ -1395,7 +1395,7 @@ impl FixMsg {
         }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or_else(Side::unknown));
-        event.set_currency(currency.unwrap_or_else(Currency::none));
+        event.set_currency(currency.unwrap_or_else(Ccy::none));
         event.set_unit(unit.unwrap_or_default());
         event.set_tif(tif);
         event.set_symbolticker(symbolticker);
@@ -2537,7 +2537,7 @@ impl FixMsg {
     /// resolves the path once. A named segment resolves as
     /// [`Self::get_by_name`] does - the registry's canonical spelling first,
     /// then an exact match - and an indexed segment takes one occurrence of
-    /// the List a repeating group is, which is what reaching a member
+    /// the Serie a repeating group is, which is what reaching a member
     /// needs: `Parties[0].PartyID`.
     ///
     /// A bare decimal is a name and not a position, exactly as it is one
@@ -2663,7 +2663,7 @@ impl FixMsg {
     }
 
     /// One step of a path: into a Struct child by name, or into one
-    /// occupancy of the List a repeating group is.
+    /// occupancy of the Serie a repeating group is.
     fn descend(
         &self,
         field: &Field,
@@ -2678,11 +2678,11 @@ impl FixMsg {
                     value.get(index)?.into_owned(),
                 ))
             }
-            DataType::List(item)
-            | DataType::LargeList(item)
-            | DataType::FixedSizeList(item, _)
-            | DataType::ListView(item)
-            | DataType::LargeListView(item) => {
+            DataType::Serie(item)
+            | DataType::LargeSerie(item)
+            | DataType::FixedSizeSerie(item, _)
+            | DataType::SerieView(item)
+            | DataType::LargeSerieView(item) => {
                 let FieldSegment::Index(position) = segment else {
                     return None;
                 };
@@ -2821,7 +2821,7 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     let (tag, counter) = super::schema::tag_and_counter(registry, field);
     let tag = tag.unwrap_or(0);
     match field.dtype() {
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             let occurrences = value.as_serie()?;
             // The item is one field for every occurrence, so its facts are
             // read once for all of them.
@@ -3218,11 +3218,11 @@ impl MarketElement for FixMsg {
         self.event.set_price(px);
     }
 
-    fn get_currency(&self) -> &Currency {
+    fn get_currency(&self) -> &Ccy {
         self.event.get_currency()
     }
 
-    fn set_currency(&mut self, currency: Currency) {
+    fn set_currency(&mut self, currency: Ccy) {
         self.forced = true;
         self.event.set_currency(currency);
     }
@@ -3431,11 +3431,11 @@ impl MarketElement for FixMsg {
         self.event.set_bidpx(px);
     }
 
-    fn get_bidcurrency(&self) -> Option<&Currency> {
+    fn get_bidcurrency(&self) -> Option<&Ccy> {
         self.event.get_bidcurrency()
     }
 
-    fn set_bidcurrency(&mut self, currency: Option<Currency>) {
+    fn set_bidcurrency(&mut self, currency: Option<Ccy>) {
         self.forced = true;
         self.event.set_bidcurrency(currency);
     }
@@ -3467,11 +3467,11 @@ impl MarketElement for FixMsg {
         self.event.set_askpx(px);
     }
 
-    fn get_askcurrency(&self) -> Option<&Currency> {
+    fn get_askcurrency(&self) -> Option<&Ccy> {
         self.event.get_askcurrency()
     }
 
-    fn set_askcurrency(&mut self, currency: Option<Currency>) {
+    fn set_askcurrency(&mut self, currency: Option<Ccy>) {
         self.forced = true;
         self.event.set_askcurrency(currency);
     }

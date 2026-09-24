@@ -10,7 +10,7 @@ use napi::bindgen_prelude::{
     BigInt, Buffer, Env, FnArgs, Function, JsObjectValue, JsValue, Null, Object, Result,
     ToNapiValue, Unknown,
 };
-use yggdryl::{DataType, Field as CoreField, Scalar, TimeUnit, i256};
+use yggdryl::{DataType, DataTypeId, Field as CoreField, Scalar, TimeUnit, i256};
 
 use crate::napi_error;
 use crate::version::JsVersion;
@@ -86,12 +86,13 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Decimal256 { .. } => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
-        D::Bytes(_) | D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
+        bytes if bytes.bytes_parameters().is_some() => JsValueHint::Buffer,
+        D::Geometry(_) | D::Geography(_) => JsValueHint::Buffer,
         // A code reads back as the text it stores and a UUID as its
         // hyphenated spelling, so both project as the string family does.
-        D::String(_)
-        | D::Country
-        | D::Currency
+        string if string.is_string() => JsValueHint::String,
+        D::Country
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -110,13 +111,13 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::MediaType => JsValueHint::String,
         D::Version => JsValueHint::Version,
         // Day-time and month-day-nano intervals are integer tuples, and a
-        // struct projects positionally, exactly like a list.
+        // struct projects positionally, exactly like a serie.
         D::Interval(TimeUnit::DayTime | TimeUnit::MonthDayNano)
-        | D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)
+        | D::Serie(_)
+        | D::SerieView(_)
+        | D::FixedSizeSerie(..)
+        | D::LargeSerie(_)
+        | D::LargeSerieView(_)
         | D::Struct(_) => JsValueHint::Array,
         // A union carries its selected type id, so `union_to_js` builds a
         // `{ typeId, value }` object rather than a positional sequence.
@@ -169,11 +170,11 @@ fn dtype_to_js<'env>(env: &'env Env, dtype: &DataType, value: &Scalar) -> Result
     }
     match dtype {
         D::Null => Null.into_unknown(env),
-        sequence_dtype @ (D::List(_)
-        | D::ListView(_)
-        | D::FixedSizeList(..)
-        | D::LargeList(_)
-        | D::LargeListView(_)) => {
+        sequence_dtype @ (D::Serie(_)
+        | D::SerieView(_)
+        | D::FixedSizeSerie(..)
+        | D::LargeSerie(_)
+        | D::LargeSerieView(_)) => {
             let sequence = &sequence_dtype
                 .as_serie_type()
                 .expect("the variant was just matched");
@@ -278,25 +279,25 @@ fn temporal_to_js<'env>(
             let leaf = &leaf_dtype
                 .date_type()
                 .expect("the variant was just matched");
-            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
+            temporal_value_to_js(env, value, leaf_dtype.id(), leaf.unit(), leaf.bit_width())?
         }
         leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
             let leaf = &leaf_dtype
                 .time_type()
                 .expect("the variant was just matched");
-            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
+            temporal_value_to_js(env, value, leaf_dtype.id(), leaf.unit(), leaf.bit_width())?
         }
         leaf_dtype @ D::DateTime64 { .. } => {
             let leaf = &leaf_dtype
                 .datetime_type()
                 .expect("the variant was just matched");
-            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
+            temporal_value_to_js(env, value, leaf_dtype.id(), leaf.unit(), leaf.bit_width())?
         }
         leaf_dtype @ (D::Duration32(_) | D::Duration64(_)) => {
             let leaf = &leaf_dtype
                 .duration_type()
                 .expect("the variant was just matched");
-            temporal_value_to_js(env, value, leaf.family(), leaf.unit(), leaf.bit_width())?
+            temporal_value_to_js(env, value, leaf_dtype.id(), leaf.unit(), leaf.bit_width())?
         }
         D::Interval(unit) => interval_to_js(env, value, *unit)?,
         _ => return Ok(None),
@@ -307,12 +308,14 @@ fn temporal_to_js<'env>(
 fn temporal_value_to_js<'env>(
     env: &'env Env,
     value: &Scalar,
-    family: &'static str,
+    id: DataTypeId,
     unit: TimeUnit,
     bit_width: u8,
 ) -> Result<Unknown<'env>> {
-    let temporal = value.as_temporal().map(|held| held.family());
-    if temporal.is_some_and(|held| held != family) {
+    // Both sides name their temporal family by identifier, so a date read
+    // under a datetime column is refused whichever width either is.
+    let temporal = value.id().temporal_family();
+    if temporal.is_some_and(|held| Some(held) != id.temporal_family()) {
         return Err(napi_error("invalid native temporal family"));
     }
     let count = temporal
@@ -335,16 +338,20 @@ fn text_or_binary_to_js<'env>(
     use DataType as D;
 
     let output = match dtype {
-        D::Bytes(_) => Buffer::from(
+        bytes if bytes.bytes_parameters().is_some() => Buffer::from(
             value
-                .as_bytes()
+                .as_binary()
                 .ok_or_else(|| napi_error("invalid native binary record value"))?
                 .to_vec(),
         )
         .into_unknown(env)?,
-        D::String(_)
-        | D::Country
-        | D::Currency
+        string if string.is_string() => value
+            .as_str()
+            .ok_or_else(|| napi_error("invalid native string record value"))?
+            .to_owned()
+            .into_unknown(env)?,
+        D::Country
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -445,11 +452,11 @@ fn sequence_to_js<'env>(
 ) -> Result<Unknown<'env>> {
     let values = value
         .as_serie()
-        .ok_or_else(|| napi_error("invalid native list record value"))?;
+        .ok_or_else(|| napi_error("invalid native serie record value"))?;
     let mut output = env.create_array(u32::try_from(values.len()).unwrap_or(u32::MAX))?;
     for (index, value) in values.iter().enumerate() {
         let js_index = u32::try_from(index)
-            .map_err(|_| napi_error("list index exceeds the JavaScript array limit"))?;
+            .map_err(|_| napi_error("serie index exceeds the JavaScript array limit"))?;
         output.set(js_index, projected_value_to_js(env, field, &value)?)?;
     }
     output.into_unknown(env)

@@ -29,7 +29,7 @@
 //! `vocabulary` builds the dictionary; `grammar-binding` builds the message
 //! roots out of it. A constraint borrows its resolved field and records its
 //! own nullability. A nested grammar resolves its opening counter to int32,
-//! retains that field, and adds a separately named List of components.
+//! retains that field, and adds a separately named Serie of components.
 //!
 //! # Only repeating groups are structure
 //!
@@ -291,7 +291,7 @@ impl FixRegistry {
     /// The registry holds scalar wire fields under their tags and message
     /// roots as components carrying `FIX:msgtype`. Nested grammars contribute
     /// Groups and Components definitions, with `FIX:counter` linking each
-    /// list to its ordinary int32 field. Enumerations name the registry set in `FIX:codeset`
+    /// serie to its ordinary int32 field. Enumerations name the registry set in `FIX:codeset`
     /// metadata. Named definitions carry no `FIX:tag`.
     ///
     /// No seed is taken: this answers what one file says. Folding it into a
@@ -1732,7 +1732,7 @@ impl<'doc> Parse<'doc> {
 
     /// One nested grammar's children as a repeating-group field.
     ///
-    /// The scalar count precedes the named list; its item holds the members.
+    /// The scalar count precedes the named serie; its item holds the members.
     fn grouped(
         &mut self,
         mut children: Vec<Field>,
@@ -1746,7 +1746,10 @@ impl<'doc> Parse<'doc> {
         let mut counter = children.remove(0);
         // A group whose first child is another grammar has no counter to name
         // it, so it is dropped while the parent keeps the rest.
-        if matches!(counter.dtype(), DataType::List(_) | DataType::LargeList(_)) {
+        if matches!(
+            counter.dtype(),
+            DataType::Serie(_) | DataType::LargeSerie(_)
+        ) {
             self.dropped(&self.refused(
                 "a nested grammar opening with its counter",
                 format_args!(
@@ -1820,7 +1823,7 @@ impl<'doc> Parse<'doc> {
                 DataType::from(StructType::from_fields(children)?).required_field(entry.clone());
             item.set_display(&entry_display)?;
             self.stamp(&mut item)?;
-            let mut group = DataType::list(item).nullable_field(name);
+            let mut group = DataType::serie(item).nullable_field(name);
             group.set_display(&display)?;
             group.set_nullable(counter.is_nullable());
             self.stamp(&mut group)?;
@@ -2219,12 +2222,12 @@ fn catalog_members(registry: &mut FixRegistry, mut field: Field, scope: &str) ->
                 .collect::<Result<Vec<_>>>()?;
             field.set_dtype(DataType::from(StructType::from_fields(children)?))?;
         }
-        DataType::List(item) => {
+        DataType::Serie(item) => {
             let item = catalog_members(registry, item.as_ref().clone(), scope)?;
             let mut item = catalog_entry(registry, crate::FixCategory::Components, item, scope)?;
             let component = item.name().to_owned();
             item.as_fix_mut().set_component(&component)?;
-            field.set_dtype(DataType::list(item))?;
+            field.set_dtype(DataType::serie(item))?;
             field.as_fix_mut().set_component(&component)?;
             field = catalog_entry(registry, crate::FixCategory::Groups, field, scope)?;
             let name = field.name().to_owned();

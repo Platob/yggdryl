@@ -325,3 +325,294 @@ fn a_mapping_column_holds_its_entries_as_a_record_column_and_pairs_them_back() {
     assert_eq!(leaf.slice(1, 1).unwrap().entries().len(), 0);
     assert_eq!(leaf.into_arrow_array().len(), 2);
 }
+
+#[test]
+fn inferred_arrow_doors_refuse_map_rows_that_break_their_key_contract() {
+    fn map(keys: &[&str], keys_sorted: bool) -> MapArray {
+        let entries = StructArray::new(
+            entry_fields(),
+            vec![
+                Arc::new(StringArray::from(keys.to_vec())),
+                Arc::new(Int64Array::from(vec![1_i64; keys.len()])),
+            ],
+            None,
+        );
+        MapArray::new(
+            entries_field()
+                .into_arrow_field_ref()
+                .expect("the entries field projects"),
+            OffsetBuffer::new(vec![0, i32::try_from(keys.len()).expect("a test-sized map")].into()),
+            entries,
+            None,
+            keys_sorted,
+        )
+    }
+
+    fn assert_row_zero(error: yggdryl::arrow::Error) {
+        let message = error.to_string();
+        assert!(
+            message.contains("row 0") || message.contains("$[0]"),
+            "the refusal names its map row: {message}"
+        );
+    }
+
+    for (keys, keys_sorted) in [(["b", "a"], true), (["a", "a"], false)] {
+        let refusal = Serie::from_arrow_array(
+            None,
+            Arc::new(map(&keys, keys_sorted)),
+            ArrowCastOptions::new(),
+        )
+        .expect_err("inference does not waive map row invariants");
+        assert_row_zero(refusal);
+
+        let declared = Field::new(
+            "tags",
+            DataType::map(entries_field(), keys_sorted).expect("a map field"),
+            true,
+        );
+        let refusal = Serie::from_arrow_array(
+            Some(&declared),
+            Arc::new(map(&keys, keys_sorted)),
+            ArrowCastOptions::new(),
+        )
+        .expect_err("an exact declared map still proves its rows");
+        assert_row_zero(refusal);
+
+        let array = map(&keys, keys_sorted);
+        let schema = Arc::new(arrow_schema::Schema::new(vec![ArrowField::new(
+            "tags",
+            array.data_type().clone(),
+            true,
+        )]));
+        let batch = arrow_array::RecordBatch::try_new(schema, vec![Arc::new(array)])
+            .expect("one map column");
+        let refusal = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+            .expect_err("batch inference does not waive map row invariants");
+        assert_row_zero(refusal);
+    }
+}
+
+#[test]
+fn null_map_rows_and_null_struct_ancestors_mask_their_physical_entries() {
+    fn map(nulls: Option<NullBuffer>) -> MapArray {
+        let fields: Fields = vec![
+            Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+            DataType::IsinCode
+                .required_field("value")
+                .into_arrow_field_ref()
+                .expect("ISIN projects"),
+        ]
+        .into();
+        let entries = StructArray::new(
+            fields.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["first", "hidden", "third"])),
+                Arc::new(StringArray::from(vec![
+                    "US0378331005",
+                    "BAD",
+                    "GB0002634946",
+                ])),
+            ],
+            None,
+        );
+        MapArray::new(
+            Arc::new(ArrowField::new(
+                "entries",
+                ArrowDataType::Struct(fields),
+                false,
+            )),
+            OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+            entries,
+            nulls,
+            false,
+        )
+    }
+
+    fn assert_visible_neighbors(column: &Serie) {
+        for (row, expected) in [(0, "US0378331005"), (2, "GB0002634946")] {
+            let value = column.scalar(row).expect("a visible map row");
+            assert_eq!(
+                value.as_mapping().and_then(|entries| entries[0].1.as_str()),
+                Some(expected)
+            );
+        }
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+    }
+
+    let direct: ArrayRef = Arc::new(map(Some(NullBuffer::from(vec![true, false, true]))));
+    let nested = map(None);
+    let wrapped_fields: Fields = vec![Arc::new(ArrowField::new(
+        "codes",
+        nested.data_type().clone(),
+        false,
+    ))]
+    .into();
+    let wrapped: ArrayRef = Arc::new(StructArray::new(
+        wrapped_fields,
+        vec![Arc::new(nested)],
+        Some(NullBuffer::from(vec![true, false, true])),
+    ));
+    let schema = Arc::new(arrow_schema::Schema::new(vec![
+        ArrowField::new("direct", direct.data_type().clone(), true),
+        ArrowField::new("wrapped", wrapped.data_type().clone(), true),
+    ]));
+    let batch =
+        arrow_array::RecordBatch::try_new(schema, vec![direct, wrapped]).expect("two map columns");
+    let root = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+        .expect("null ancestors hide their physical map entries");
+
+    assert_visible_neighbors(root.child("direct").expect("the direct map"));
+    let wrapped = root.child("wrapped").expect("the wrapped map");
+    assert_eq!(wrapped.scalar(1).unwrap(), Scalar::Null);
+    for (row, expected) in [(0, "US0378331005"), (2, "GB0002634946")] {
+        let record = wrapped.scalar(row).expect("a visible wrapper row");
+        assert_eq!(
+            record
+                .as_sequence()
+                .and_then(|record| record[0].as_mapping())
+                .and_then(|entries| entries[0].1.as_str()),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn hidden_narrow_map_spans_are_compacted_and_visible_bad_values_are_refused() {
+    fn physical(nulls: Option<NullBuffer>) -> MapArray {
+        let fields: Fields = vec![
+            Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+            DataType::IsinCode
+                .required_field("value")
+                .into_arrow_field_ref()
+                .expect("ISIN projects"),
+        ]
+        .into();
+        MapArray::new(
+            Arc::new(ArrowField::new(
+                "entries",
+                ArrowDataType::Struct(fields.clone()),
+                false,
+            )),
+            OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+            StructArray::new(
+                fields,
+                vec![
+                    Arc::new(StringArray::from(vec!["first", "hidden", "third"])),
+                    Arc::new(StringArray::from(vec![
+                        "US0378331005",
+                        "BAD",
+                        "GB0002634946",
+                    ])),
+                ],
+                None,
+            ),
+            nulls,
+            false,
+        )
+    }
+
+    let input: ArrayRef = Arc::new(physical(Some(NullBuffer::from(vec![true, false, true]))));
+    let mut column = Serie::from_arrow_array(None, Arc::clone(&input), ArrowCastOptions::new())
+        .expect("the null row hides its physical entry");
+    let leaf = column.as_map().expect("a map column");
+    assert_eq!(leaf.offsets().as_ref(), &[0, 1, 1, 2]);
+    assert_eq!(leaf.entries().len(), 2);
+    assert_eq!(leaf.values().rows().len(), 2);
+    column
+        .require_arrow_array()
+        .unwrap()
+        .to_data()
+        .validate_full()
+        .unwrap();
+
+    let before = column.clone();
+    let refusal = column
+        .set(
+            0,
+            Scalar::from_mapping([(Scalar::from("bad"), Scalar::from("BAD"))]).unwrap(),
+        )
+        .expect_err("a write cannot make an invalid ISIN visible");
+    assert!(refusal.to_string().contains("value"), "{refusal}");
+    assert_eq!(column, before, "the refused write is atomic");
+
+    column
+        .push(
+            Scalar::from_mapping([(Scalar::from("fourth"), Scalar::from("US5949181045"))]).unwrap(),
+        )
+        .expect("a valid write does not revalidate the hidden entry");
+    assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+    assert_eq!(
+        column.as_map().unwrap().offsets().as_ref(),
+        &[0, 1, 1, 2, 3]
+    );
+
+    let visible: ArrayRef = Arc::new(physical(None));
+    let refusal = Serie::from_arrow_array(None, visible, ArrowCastOptions::new())
+        .expect_err("the same bad value is refused when its map row is visible");
+    let message = refusal.to_string();
+    assert!(
+        message.contains("row 1") || message.contains("$[1]"),
+        "the refusal locates the visible map row: {message}"
+    );
+}
+
+#[test]
+fn a_null_struct_ancestor_compacts_its_hidden_narrow_map_span() {
+    let fields: Fields = vec![
+        Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+        DataType::IsinCode
+            .required_field("value")
+            .into_arrow_field_ref()
+            .expect("ISIN projects"),
+    ]
+    .into();
+    let map = MapArray::new(
+        Arc::new(ArrowField::new(
+            "entries",
+            ArrowDataType::Struct(fields.clone()),
+            false,
+        )),
+        OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+        StructArray::new(
+            fields,
+            vec![
+                Arc::new(StringArray::from(vec!["first", "hidden", "third"])),
+                Arc::new(StringArray::from(vec![
+                    "US0378331005",
+                    "BAD",
+                    "GB0002634946",
+                ])),
+            ],
+            None,
+        ),
+        None,
+        false,
+    );
+    let struct_fields: Fields = vec![Arc::new(ArrowField::new(
+        "codes",
+        map.data_type().clone(),
+        false,
+    ))]
+    .into();
+    let input: ArrayRef = Arc::new(StructArray::new(
+        struct_fields,
+        vec![Arc::new(map)],
+        Some(NullBuffer::from(vec![true, false, true])),
+    ));
+
+    let column = Serie::from_arrow_array(None, Arc::clone(&input), ArrowCastOptions::new())
+        .expect("the null record hides its map entry");
+    let map = column
+        .child("codes")
+        .and_then(Serie::as_map)
+        .expect("the map child");
+    assert_eq!(map.offsets().as_ref(), &[0, 1, 1, 2]);
+    assert_eq!(map.entries().len(), 2);
+    assert_eq!(map.values().rows().len(), 2);
+    column
+        .require_arrow_array()
+        .unwrap()
+        .to_data()
+        .validate_full()
+        .unwrap();
+}

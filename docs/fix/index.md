@@ -53,7 +53,7 @@ resolved integer in both bindings.
 | List properties | `FIX:names` and `FIX:tags` are compact JSON arrays, `["Qty","Quantity"]` and `[1088]`, crossed by a store as the arrays they are; `names()` walks the array lazily and `tags()` parses it to a `Vec`. `FIX:branches`, `FIX:identifiers` and `FIX:nulls` stay comma-separated text, `branches()`, `identifiers()` and `nulls()` lazy slices of it. An empty list removes the key |
 | Identifiers | A component declares its own direct scalar members through `FIX:identifiers`; names, aliases and decimal tags resolve once to canonical names in component order, never by flattening a group |
 | Errors | `InvalidMetadataValue` naming the full key; the field stays unchanged |
-| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `FIX:msgtype`; `groups/` List/LargeList occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors). `codesets/` is beside them and is no category: it holds the [vocabularies](registry.md#a-field-names-the-code-set-it-reads-by) the fields read by, each under its own name, reached through the registry's code set doors |
+| Categories | `fields/` stores tagged scalar fields; `components/` named Structs, a message being the one that carries `FIX:msgtype`; `groups/` Serie/LargeSerie occurrences and Map entries. Every one is reached through the registry's [field doors](registry.md#accessors). `codesets/` is beside them and is no category: it holds the [vocabularies](registry.md#a-field-names-the-code-set-it-reads-by) the fields read by, each under its own name, reached through the registry's code set doors |
 | Bindings | Python `field.fix` and `yggdryl.fix`; JavaScript `field.fix` and its `fix` namespace; the id crosses as an integer, membership as a list of strings |
 
 ## Use
@@ -202,7 +202,7 @@ The namespace adds only what FIX states beyond a field, and a caller never spell
 | `identifiers` | `FIX:identifiers` | canonical member names, in component order | the component's direct scalar identifiers; [declaration and compiled selection](registry.md#component-identifiers) |
 | `description` | `description` | text | the specification's wording, on the generic key every catalog reads |
 | `codeset` | `FIX:codeset` | one name | the [code set](registry.md#a-field-names-the-code-set-it-reads-by) this field draws its values from; the dictionary holds the members under that name, and a registry refuses a field naming a set it does not hold |
-| `counter` | `FIX:counter` | `i32` | on a List/LargeList group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
+| `counter` | `FIX:counter` | `i32` | on a Serie/LargeSerie group, the separate scalar count field's tag; on a crate Map group, its own tag, without a scalar counter |
 | `component` | `FIX:component` | name | component reference, including a group's occurrence |
 | `field_ref` / `fieldRef` | `FIX:field` | name | scalar field reference in a definition |
 | `group` | `FIX:group` | name | group reference in a definition |
@@ -383,7 +383,7 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 
 ## Nesting needs no second type
 
-`NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate List of the
+`NoPartyIDs` is an `int32` field at tag 453. `Parties` is a separate Serie of the
 `Party` Struct, linked to that count through `FIX:counter`. Fields, components
 and groups are the three registry categories, a message being a component that
 carries `FIX:msgtype`.
@@ -394,7 +394,7 @@ entries Struct, with no separate scalar counter and no invented numeric tags
 for its key or value. A parse fills the first from the message's
 [declared identifiers](registry.md#component-identifiers) and the second from
 the [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
-a bridge wrote, while ordinary List/LargeList groups keep their existing
+a bridge wrote, while ordinary Serie/LargeSerie groups keep their existing
 counter rules.
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)

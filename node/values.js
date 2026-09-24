@@ -89,20 +89,33 @@ function arrowTableFromIPC(input, label = 'Arrow table') {
   }
 }
 
-function arrowScalarIntoIPC(value) {
-  const runtime = arrow()
-  if (!runtime.isArrowVector(value) || value.length !== 1) {
-    throw new TypeError('Scalar.fromArrowScalar expects a one-item Arrow Vector')
-  }
-  return arrowVectorIntoIPC(value, 'Scalar.fromArrowScalar input')
-}
-
 function arrowVectorIntoIPC(value, label = 'Arrow array input') {
   const runtime = arrow()
   if (!runtime.isArrowVector(value)) {
     throw new TypeError(`${label} must be an Apache Arrow Vector`)
   }
   return Buffer.from(runtime.tableToIPC(runtime.makeTable({ value }), 'stream'))
+}
+
+function arrowVectorChunksIntoIPC(value, label = 'Arrow array input') {
+  const runtime = arrow()
+  if (!runtime.isArrowVector(value)) {
+    throw new TypeError(`${label} must be an Apache Arrow Vector`)
+  }
+  // One batch per Data, the empty ones kept: makeTable drops a zero-length
+  // Data wherever the vector holds rows, and a chunk may hold none. An empty
+  // Data is built again by Arrow JS's builder for its type, because the one
+  // it pads a vector of no rows with carries no nested children to write.
+  const schema = new runtime.Schema([new runtime.Field('value', value.type, true)])
+  const record = new runtime.Struct(schema.fields)
+  const batches = value.data.map((data) => {
+    const chunk = data.length === 0 ? runtime.vectorFromArray([], data.type).data[0] : data
+    return new runtime.RecordBatch(
+      schema,
+      runtime.makeData({ type: record, length: chunk.length, nullCount: 0, children: [chunk] }),
+    )
+  })
+  return Buffer.from(runtime.RecordBatchStreamWriter.writeAll(batches).toUint8Array(true))
 }
 
 function arrowBatchIntoIPC(value, label = 'Arrow record batch input') {
@@ -126,9 +139,8 @@ module.exports = {
   arrowBatchFromIPC,
   arrowBatchIntoIPC,
   arrowScalarFromIPC,
-  arrowScalarIntoIPC,
-  arrowTableFromIPC,
   arrowTableIntoIPC,
+  arrowVectorChunksIntoIPC,
   arrowVectorFromIPC,
   arrowVectorIntoIPC,
   ipcBytes,

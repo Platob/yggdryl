@@ -6,7 +6,7 @@ use yggdryl::graph::{
     Book, BookIterator, BookSide, Element, Event, Execution, GLOBAL_SYMBOL, MarketElement,
     MarketEventData, MarketOperation, Order, Quote, Trade,
 };
-use yggdryl::{Currency, Decimal18, Side, State};
+use yggdryl::{Ccy, Decimal18, Side, State};
 
 #[allow(clippy::too_many_arguments)]
 fn operation(
@@ -25,7 +25,7 @@ fn operation(
     event.set_side(Side::read(side).unwrap());
     event.set_price(price.parse().unwrap());
     event.set_quantity(Decimal18::from_int(quantity));
-    event.set_currency(Currency::new("USD").unwrap());
+    event.set_currency(Ccy::new("USD").unwrap());
     event.set_unit("share".to_owned());
     event.set_state(State::read(state).unwrap());
     event.set_identifiers(BTreeMap::from([(

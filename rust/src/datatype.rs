@@ -1,6 +1,7 @@
 //! The shared logical datatype enum and its cross-family value contract.
 
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use smol_str::{SmolStr, format_smolstr};
@@ -35,7 +36,7 @@ use std::ops::Index;
 /// as [`Self::time`], [`Self::decimal`], and [`Self::map`]. Arrow
 /// projection, structural serialization, and [`Self::validate`] reject every
 /// invalid state before it crosses an interoperability boundary.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum DataType {
     /// Null values.
@@ -67,7 +68,7 @@ pub enum DataType {
     /// An instant or a wall-clock reading: a 64-bit count at `unit`, in
     /// `timezone` (`TimeZone::Naive` for a wall clock).
     ///
-    /// [`DateTimeType`](crate::DateTimeType) is the family's view: [`Self::datetime_type`].
+    /// [`DateTimeType`](crate::DateTimeType) is the typed field's payload: [`Self::datetime_type`].
     DateTime64 {
         /// The resolution the count is in.
         unit: TimeUnit,
@@ -76,49 +77,88 @@ pub enum DataType {
     },
     /// A calendar day as a 32-bit count of days.
     ///
-    /// [`DateType`](crate::DateType) is the family's view: [`Self::date_type`].
+    /// [`DateType`](crate::DateType) is the typed field's payload: [`Self::date_type`].
     Date32,
     /// A calendar day as the 64-bit milliseconds of its midnight.
     Date64,
     /// A time of day as a 32-bit count at `unit`: seconds or milliseconds.
     ///
-    /// [`TimeType`](crate::TimeType) is the family's view: [`Self::time_type`].
+    /// [`TimeType`](crate::TimeType) is the typed field's payload: [`Self::time_type`].
     Time32(TimeUnit),
     /// A time of day as a 64-bit count at `unit`: micro- or nanoseconds.
     Time64(TimeUnit),
     /// An elapsed 32-bit count at `unit`.
     ///
-    /// [`DurationType`](crate::DurationType) is the family's view: [`Self::duration_type`].
+    /// [`DurationType`](crate::DurationType) is the typed field's payload: [`Self::duration_type`].
     Duration32(TimeUnit),
     /// An elapsed 64-bit count at `unit`.
     Duration64(TimeUnit),
     /// A calendar span in one of Arrow's three interval layouts, named by
     /// its unit.
     ///
-    /// [`IntervalType`](crate::IntervalType) is the family's view: [`Self::interval_type`].
+    /// [`IntervalType`](crate::IntervalType) is the typed field's payload: [`Self::interval_type`].
     Interval(TimeUnit),
-    /// Bytes: one layout, one optional byte bound.
-    ///
-    /// Every byte column the crate has, `binary`, `varbinary(16)` and
-    /// `fixed_binary(16)` alike; [`Self::bytes`] builds one and the
-    /// sugar beside it - [`Self::binary`], [`Self::large_binary`],
-    /// [`Self::binary_view`], [`Self::fixed_binary`] - names the common
-    /// ones.
-    Bytes(crate::bytes::BytesType),
-    /// A string: one of eighteen leaves, each a shape in a charset with the
-    /// number the shape carries.
-    ///
-    /// Every string the crate has, `utf8` and `sized_ascii(4)` and
-    /// `fixed_cp1252(8)` alike; [`Self::string`] builds one and the sugar
-    /// beside it - one constructor per leaf, [`Self::utf8`] to
-    /// [`Self::sized_cp1252`] - names each once. The leaf rides inline: a
-    /// discriminant and one number, which is cheaper to carry than to point
-    /// at.
-    String(crate::string::StringType),
+    // The byte leaves, one variant per leaf in identifier order. Every byte
+    // column the crate has is one of them; [`Self::bytes`] builds one from
+    // its `BytesType` and the sugar beside it - [`Self::binary`],
+    // [`Self::fixed_binary`] and the rest - names each.
+    /// Bytes, any length, 32-bit offsets - Arrow's `Binary`.
+    Binary,
+    /// Bytes, any length, 64-bit offsets - Arrow's `LargeBinary`.
+    LargeBinary,
+    /// Bytes, any length, viewed - Arrow's `BinaryView`.
+    BinaryView,
+    /// Bytes, any length, viewed over 64-bit offsets.
+    LargeBinaryView,
+    /// Exactly this many bytes - Arrow's `FixedSizeBinary`.
+    FixedBinary(u32),
+    /// At most this many bytes, over 32-bit offsets.
+    SizedBinary(u32),
+    // The string leaves, one variant per leaf in identifier order: a shape in
+    // a charset, with the number a fixed or sized shape carries. Every string
+    // the crate has is one of them; [`Self::string`] builds one from its
+    // `StringType` and the sugar beside it - one constructor per leaf,
+    // [`Self::utf8`] to [`Self::sized_cp1252`] - names each once.
+    /// UTF-8 text, any length, 32-bit offsets - Arrow's `Utf8`.
+    Utf8String,
+    /// UTF-8 text, any length, 64-bit offsets - Arrow's `LargeUtf8`.
+    LargeUtf8String,
+    /// UTF-8 text, any length, viewed - Arrow's `Utf8View`.
+    Utf8StringView,
+    /// UTF-8 text, any length, viewed over 64-bit offsets.
+    LargeUtf8StringView,
+    /// UTF-8 text padded to exactly this many stored bytes.
+    FixedUtf8String(u32),
+    /// UTF-8 text of at most this many stored bytes.
+    SizedUtf8String(u32),
+    /// US-ASCII text, any length, 32-bit offsets.
+    AsciiString,
+    /// US-ASCII text, any length, 64-bit offsets.
+    LargeAsciiString,
+    /// US-ASCII text, any length, viewed.
+    AsciiStringView,
+    /// US-ASCII text, any length, viewed over 64-bit offsets.
+    LargeAsciiStringView,
+    /// US-ASCII text padded to exactly this many stored bytes.
+    FixedAsciiString(u32),
+    /// US-ASCII text of at most this many stored bytes.
+    SizedAsciiString(u32),
+    /// Windows-1252 text, any length, 32-bit offsets.
+    Cp1252String,
+    /// Windows-1252 text, any length, 64-bit offsets.
+    LargeCp1252String,
+    /// Windows-1252 text, any length, viewed.
+    Cp1252StringView,
+    /// Windows-1252 text, any length, viewed over 64-bit offsets.
+    LargeCp1252StringView,
+    /// Windows-1252 text padded to exactly this many stored bytes.
+    FixedCp1252String(u32),
+    /// Windows-1252 text of at most this many stored bytes.
+    SizedCp1252String(u32),
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
-    Currency,
+    Ccy,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     MicCode,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
@@ -145,23 +185,23 @@ pub enum DataType {
     /// A location - hierarchical, with a host unless `file:` - stored as its
     /// canonical text.
     ///
-    /// [`UriType`](crate::UriType) is the family's view: [`Self::uri_type`].
+    /// [`UriType`](crate::UriType) is the typed field's payload: [`Self::uri_type`].
     Url,
     /// A name - `urn:<namespace>:<specific>` - stored as its canonical text.
     Urn,
     /// Many of one item field under 32-bit offsets.
     ///
-    /// [`SerieType`](crate::SerieType) is the family's view: [`Self::as_serie_type`], and
-    /// [`Self::list_item`] reads the item of any of the five layouts.
-    List(Arc<Field>),
+    /// [`SerieType`](crate::SerieType) is the typed field's payload: [`Self::as_serie_type`], and
+    /// [`Self::serie_item`] reads the item of any of the five layouts.
+    Serie(Arc<Field>),
     /// Many of one item field under 32-bit offsets and sizes.
-    ListView(Arc<Field>),
+    SerieView(Arc<Field>),
     /// Exactly `size` of one item field per row.
-    FixedSizeList(Arc<Field>, i32),
+    FixedSizeSerie(Arc<Field>, i32),
     /// Many of one item field under 64-bit offsets.
-    LargeList(Arc<Field>),
+    LargeSerie(Arc<Field>),
     /// Many of one item field under 64-bit offsets and sizes.
-    LargeListView(Arc<Field>),
+    LargeSerieView(Arc<Field>),
     /// Named children in declaration order: a row, a group occurrence, a
     /// mapping's key and value.
     Struct(StructType),
@@ -169,11 +209,11 @@ pub enum DataType {
     Union(UnionFields, UnionMode),
     /// A value stored as a key into a vocabulary of values.
     ///
-    /// [`EnumType`](crate::EnumType) is the family's view: [`Self::enum_type`].
+    /// [`EnumType`](crate::EnumType) is the typed field's payload: [`Self::enum_type`].
     Dictionary(Arc<DictionaryType>),
     /// An exact number whose coefficient is a 32-bit integer.
     ///
-    /// [`DecimalType`](crate::DecimalType) is the family's view: [`Self::decimal_type`].
+    /// [`DecimalType`](crate::DecimalType) is the typed field's payload: [`Self::decimal_type`].
     Decimal32 {
         /// The digits the coefficient holds.
         precision: u8,
@@ -222,9 +262,10 @@ pub enum DataType {
     Geometry(Arc<GeospatialParameters>),
     /// Geospatial features on a sphere or spheroid, carried as WKB.
     Geography(Arc<GeospatialParameters>),
-    // Appended rather than grouped with the text datatypes: `Hash` is derived
-    // here and a derived discriminant is what a stored digest of a schema is
-    // over, so a variant inserted in the middle would move every one after it.
+    // Appended rather than grouped with the text datatypes: a datatype hashes
+    // as its `Shape`, whose derived discriminant is what a stored digest of a
+    // schema is over, so a variant is appended there and, to keep the two
+    // enums read side by side, here.
     /// A canonical time zone name, a fixed offset, or the zone-free marker,
     /// stored as its canonical text.
     Timezone,
@@ -234,8 +275,7 @@ pub enum DataType {
     /// canonical text that spells all three.
     MediaType,
     // Appended after the text datatypes rather than beside `IsinCode` for the
-    // same reason: the derived discriminant is what a stored digest of a
-    // schema is over.
+    // same reason.
     /// CUSIP: a North American securities identifier, nine ASCII bytes
     /// closed by a check digit.
     CusipCode,
@@ -267,8 +307,8 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // Every spelling a code is written in becomes the exact code leaf.
-    /// let currency = DataType::Currency.scalar("USD\0")?;
-    /// assert_eq!(currency.id(), DataTypeId::Currency);
+    /// let currency = DataType::Ccy.scalar("USD\0")?;
+    /// assert_eq!(currency.id(), DataTypeId::Ccy);
     /// assert_eq!(currency.as_str(), Some("USD"));
     /// // A decimal is restated at the scale the column declares.
     /// let decimal = DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?;
@@ -278,7 +318,7 @@ impl DataType {
     /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
     /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);
     ///
-    /// assert!(DataType::Currency.scalar("EURO").is_err());
+    /// assert!(DataType::Ccy.scalar("EURO").is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -323,10 +363,32 @@ impl DataType {
             Self::Duration32(_) => DataTypeId::Duration32,
             Self::Duration64(_) => DataTypeId::Duration64,
             Self::Interval(_) => DataTypeId::Interval,
-            Self::Bytes(parameters) => parameters.id(),
-            Self::String(parameters) => parameters.id(),
+            Self::Binary => DataTypeId::Binary,
+            Self::LargeBinary => DataTypeId::LargeBinary,
+            Self::BinaryView => DataTypeId::BinaryView,
+            Self::LargeBinaryView => DataTypeId::LargeBinaryView,
+            Self::FixedBinary(_) => DataTypeId::FixedBinary,
+            Self::SizedBinary(_) => DataTypeId::SizedBinary,
+            Self::Utf8String => DataTypeId::Utf8String,
+            Self::LargeUtf8String => DataTypeId::LargeUtf8String,
+            Self::Utf8StringView => DataTypeId::Utf8StringView,
+            Self::LargeUtf8StringView => DataTypeId::LargeUtf8StringView,
+            Self::FixedUtf8String(_) => DataTypeId::FixedUtf8String,
+            Self::SizedUtf8String(_) => DataTypeId::SizedUtf8String,
+            Self::AsciiString => DataTypeId::AsciiString,
+            Self::LargeAsciiString => DataTypeId::LargeAsciiString,
+            Self::AsciiStringView => DataTypeId::AsciiStringView,
+            Self::LargeAsciiStringView => DataTypeId::LargeAsciiStringView,
+            Self::FixedAsciiString(_) => DataTypeId::FixedAsciiString,
+            Self::SizedAsciiString(_) => DataTypeId::SizedAsciiString,
+            Self::Cp1252String => DataTypeId::Cp1252String,
+            Self::LargeCp1252String => DataTypeId::LargeCp1252String,
+            Self::Cp1252StringView => DataTypeId::Cp1252StringView,
+            Self::LargeCp1252StringView => DataTypeId::LargeCp1252StringView,
+            Self::FixedCp1252String(_) => DataTypeId::FixedCp1252String,
+            Self::SizedCp1252String(_) => DataTypeId::SizedCp1252String,
             Self::Country => DataTypeId::Country,
-            Self::Currency => DataTypeId::Currency,
+            Self::Ccy => DataTypeId::Ccy,
             Self::MicCode => DataTypeId::MicCode,
             Self::CfiCode => DataTypeId::CfiCode,
             Self::IsinCode => DataTypeId::IsinCode,
@@ -344,11 +406,11 @@ impl DataType {
             Self::Timezone => DataTypeId::Timezone,
             Self::MimeType => DataTypeId::MimeType,
             Self::MediaType => DataTypeId::MediaType,
-            Self::List(_) => DataTypeId::List,
-            Self::ListView(_) => DataTypeId::ListView,
-            Self::FixedSizeList(..) => DataTypeId::FixedSizeList,
-            Self::LargeList(_) => DataTypeId::LargeList,
-            Self::LargeListView(_) => DataTypeId::LargeListView,
+            Self::Serie(_) => DataTypeId::Serie,
+            Self::SerieView(_) => DataTypeId::SerieView,
+            Self::FixedSizeSerie(..) => DataTypeId::FixedSizeSerie,
+            Self::LargeSerie(_) => DataTypeId::LargeSerie,
+            Self::LargeSerieView(_) => DataTypeId::LargeSerieView,
             Self::Struct(_) => DataTypeId::Struct,
             Self::Union(..) => DataTypeId::Union,
             Self::Dictionary(_) => DataTypeId::Dictionary,
@@ -399,7 +461,7 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let id = DataType::Int64.named_field("id", false);
-    /// let tags = DataType::list(DataType::utf8().named_field("item", true))
+    /// let tags = DataType::serie(DataType::utf8().named_field("item", true))
     ///     .named_field("tags", true);
     ///
     /// assert_eq!(id.name(), "id");
@@ -477,19 +539,21 @@ impl DataType {
                 self.duration_type().map_or(Ok(()), |leaf| leaf.validate())
             }
             Self::Interval(_) => self.interval_type().map_or(Ok(()), |leaf| leaf.validate()),
-            // The variant is public, so a caller can build a fixed layout
-            // without the width that makes it fixed. This is where it stops.
-            Self::Bytes(parameters) => parameters.validate(),
-            // The variant is public, so a caller can build a fixed string
-            // the constructor would have refused for want of a width. This
-            // is where it stops, before it reaches a boundary.
-            Self::String(parameters) => parameters.validate(),
-            Self::List(field)
-            | Self::ListView(field)
-            | Self::LargeList(field)
-            | Self::LargeListView(field) => field.validate(),
-            Self::FixedSizeList(field, length) => {
-                validate_non_negative("FixedSizeList", "length", *length)?;
+            // The variants are public, so a caller can build a fixed or
+            // sized leaf stating zero, which the constructor would have
+            // refused. This is where it stops, before it reaches a boundary.
+            crate::bytes_dtypes!() => self
+                .bytes_parameters()
+                .map_or(Ok(()), |leaf| leaf.validate()),
+            crate::string_dtypes!() => self
+                .string_parameters()
+                .map_or(Ok(()), |leaf| leaf.validate()),
+            Self::Serie(field)
+            | Self::SerieView(field)
+            | Self::LargeSerie(field)
+            | Self::LargeSerieView(field) => field.validate(),
+            Self::FixedSizeSerie(field, length) => {
+                validate_non_negative("FixedSizeSerie", "length", *length)?;
                 field.validate()
             }
             Self::Struct(fields) => validate_fields(fields.as_fields(), "Struct"),
@@ -531,6 +595,15 @@ impl Ord for DataType {
         if rank != Ordering::Equal {
             return rank;
         }
+        // The byte leaves share one rank and the string leaves another, the
+        // ranks the one variant of each held, and their leaves order as the
+        // leaf enum declares them - so the order is the one that variant had.
+        if let (Some(left), Some(right)) = (self.bytes_parameters(), other.bytes_parameters()) {
+            return left.cmp(&right);
+        }
+        if let (Some(left), Some(right)) = (self.string_parameters(), other.string_parameters()) {
+            return left.cmp(&right);
+        }
 
         use DataType as D;
         match (self, other) {
@@ -552,14 +625,13 @@ impl Ord for DataType {
             | (D::Duration32(left), D::Duration32(right))
             | (D::Duration64(left), D::Duration64(right))
             | (D::Interval(left), D::Interval(right)) => left.cmp(right),
-            (D::Bytes(left), D::Bytes(right)) => left.cmp(right),
-            (D::List(left), D::List(right))
-            | (D::ListView(left), D::ListView(right))
-            | (D::LargeList(left), D::LargeList(right))
-            | (D::LargeListView(left), D::LargeListView(right)) => cmp_fields(left, right),
+            (D::Serie(left), D::Serie(right))
+            | (D::SerieView(left), D::SerieView(right))
+            | (D::LargeSerie(left), D::LargeSerie(right))
+            | (D::LargeSerieView(left), D::LargeSerieView(right)) => cmp_fields(left, right),
             (
-                D::FixedSizeList(left_field, left_size),
-                D::FixedSizeList(right_field, right_size),
+                D::FixedSizeSerie(left_field, left_size),
+                D::FixedSizeSerie(right_field, right_size),
             ) => cmp_fields(left_field, right_field).then_with(|| left_size.cmp(right_size)),
             (D::Struct(left), D::Struct(right)) => left.cmp(right),
             (D::Union(left_fields, left_mode), D::Union(right_fields, right_mode)) => left_mode
@@ -606,7 +678,6 @@ impl Ord for DataType {
                     scale: right_scale,
                 },
             ) => (left_precision, left_scale).cmp(&(right_precision, right_scale)),
-            (D::String(left), D::String(right)) => left.cmp(right),
             (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
                 left.cmp(right)
             }
@@ -618,6 +689,203 @@ impl Ord for DataType {
         }
     }
 }
+
+// A datatype hashes as the shape it had before the text and byte leaves each
+// took a variant of their own: `Hash` used to be derived over that enum, and
+// a derived hash writes the variant's position, so a stored digest over a
+// datatype - a dictionary's value type, a message's - is over those positions.
+// Every byte leaf writes the one byte variant's position and its `BytesType`,
+// every string leaf the one string variant's and its `StringType`, and every
+// other variant its own old position and payload, so no digest moves.
+impl Hash for DataType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Shape::of(self).hash(state);
+    }
+}
+
+/// [`DataType`] as it was declared before its leaves split, borrowed: the
+/// derived `Hash` of this enum is the hash every datatype has always had.
+/// Keep the order; append a new datatype at the end of both enums.
+#[derive(Hash)]
+enum Shape<'a> {
+    Null,
+    Boolean,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+    Float16,
+    Float32,
+    Float64,
+    DateTime64(&'a TimeUnit, &'a Timezone),
+    Date32,
+    Date64,
+    Time32(&'a TimeUnit),
+    Time64(&'a TimeUnit),
+    Duration32(&'a TimeUnit),
+    Duration64(&'a TimeUnit),
+    Interval(&'a TimeUnit),
+    Bytes(crate::bytes::BytesType),
+    String(crate::string::StringType),
+    Country,
+    Ccy,
+    MicCode,
+    CfiCode,
+    IsinCode,
+    Side,
+    State,
+    TimeInForce,
+    Uuid,
+    Version,
+    Url,
+    Urn,
+    Serie(&'a Arc<Field>),
+    SerieView(&'a Arc<Field>),
+    FixedSizeSerie(&'a Arc<Field>, &'a i32),
+    LargeSerie(&'a Arc<Field>),
+    LargeSerieView(&'a Arc<Field>),
+    Struct(&'a StructType),
+    Union(&'a UnionFields, &'a UnionMode),
+    Dictionary(&'a Arc<DictionaryType>),
+    Decimal32(&'a u8, &'a i8),
+    Decimal64(&'a u8, &'a i8),
+    Decimal128(&'a u8, &'a i8),
+    Decimal256(&'a u8, &'a i8),
+    Map(&'a Arc<MapType>),
+    SortedMap(&'a Arc<MapType>),
+    RunEndEncoded(&'a Arc<RunEndEncodedType>),
+    Variant,
+    Geometry(&'a Arc<GeospatialParameters>),
+    Geography(&'a Arc<GeospatialParameters>),
+    Timezone,
+    MimeType,
+    MediaType,
+    CusipCode,
+    SedolCode,
+    BloombergCode,
+    FIGICode,
+}
+
+impl<'a> Shape<'a> {
+    /// The shape a datatype had, borrowing its payload as it stands.
+    ///
+    /// Exhaustive on purpose: a new datatype is a compile error here until it
+    /// is appended to both enums.
+    fn of(dtype: &'a DataType) -> Self {
+        use DataType as D;
+        match dtype {
+            D::DateTime64 { unit, timezone } => Self::DateTime64(unit, timezone),
+            D::Time32(unit) => Self::Time32(unit),
+            D::Time64(unit) => Self::Time64(unit),
+            D::Duration32(unit) => Self::Duration32(unit),
+            D::Duration64(unit) => Self::Duration64(unit),
+            D::Interval(unit) => Self::Interval(unit),
+            crate::bytes_dtypes!() => Self::Bytes(dtype.bytes_parameters().expect("a byte leaf")),
+            crate::string_dtypes!() => {
+                Self::String(dtype.string_parameters().expect("a string leaf"))
+            }
+            D::Serie(item) => Self::Serie(item),
+            D::SerieView(item) => Self::SerieView(item),
+            D::LargeSerie(item) => Self::LargeSerie(item),
+            D::LargeSerieView(item) => Self::LargeSerieView(item),
+            D::FixedSizeSerie(item, size) => Self::FixedSizeSerie(item, size),
+            D::Struct(fields) => Self::Struct(fields),
+            D::Union(fields, mode) => Self::Union(fields, mode),
+            D::Dictionary(encoding) => Self::Dictionary(encoding),
+            D::Decimal32 { precision, scale } => Self::Decimal32(precision, scale),
+            D::Decimal64 { precision, scale } => Self::Decimal64(precision, scale),
+            D::Decimal128 { precision, scale } => Self::Decimal128(precision, scale),
+            D::Decimal256 { precision, scale } => Self::Decimal256(precision, scale),
+            D::Map(payload) => Self::Map(payload),
+            D::SortedMap(payload) => Self::SortedMap(payload),
+            D::RunEndEncoded(payload) => Self::RunEndEncoded(payload),
+            D::Geometry(payload) => Self::Geometry(payload),
+            D::Geography(payload) => Self::Geography(payload),
+            D::Null => Self::Null,
+            D::Boolean => Self::Boolean,
+            D::Int8 => Self::Int8,
+            D::Int16 => Self::Int16,
+            D::Int32 => Self::Int32,
+            D::Int64 => Self::Int64,
+            D::UInt8 => Self::UInt8,
+            D::UInt16 => Self::UInt16,
+            D::UInt32 => Self::UInt32,
+            D::UInt64 => Self::UInt64,
+            D::Float16 => Self::Float16,
+            D::Float32 => Self::Float32,
+            D::Float64 => Self::Float64,
+            D::Date32 => Self::Date32,
+            D::Date64 => Self::Date64,
+            D::Country => Self::Country,
+            D::Ccy => Self::Ccy,
+            D::MicCode => Self::MicCode,
+            D::CfiCode => Self::CfiCode,
+            D::IsinCode => Self::IsinCode,
+            D::Side => Self::Side,
+            D::State => Self::State,
+            D::TimeInForce => Self::TimeInForce,
+            D::Uuid => Self::Uuid,
+            D::Version => Self::Version,
+            D::Url => Self::Url,
+            D::Urn => Self::Urn,
+            D::Variant => Self::Variant,
+            D::Timezone => Self::Timezone,
+            D::MimeType => Self::MimeType,
+            D::MediaType => Self::MediaType,
+            D::CusipCode => Self::CusipCode,
+            D::SedolCode => Self::SedolCode,
+            D::BloombergCode => Self::BloombergCode,
+            D::FIGICode => Self::FIGICode,
+        }
+    }
+}
+
+/// The eighteen string leaves as one pattern over [`DataType`].
+///
+/// [`DataType::string_parameters`] is the same list in value position.
+macro_rules! string_dtypes {
+    () => {
+        $crate::DataType::Utf8String
+            | $crate::DataType::LargeUtf8String
+            | $crate::DataType::Utf8StringView
+            | $crate::DataType::LargeUtf8StringView
+            | $crate::DataType::FixedUtf8String(_)
+            | $crate::DataType::SizedUtf8String(_)
+            | $crate::DataType::AsciiString
+            | $crate::DataType::LargeAsciiString
+            | $crate::DataType::AsciiStringView
+            | $crate::DataType::LargeAsciiStringView
+            | $crate::DataType::FixedAsciiString(_)
+            | $crate::DataType::SizedAsciiString(_)
+            | $crate::DataType::Cp1252String
+            | $crate::DataType::LargeCp1252String
+            | $crate::DataType::Cp1252StringView
+            | $crate::DataType::LargeCp1252StringView
+            | $crate::DataType::FixedCp1252String(_)
+            | $crate::DataType::SizedCp1252String(_)
+    };
+}
+
+/// The six byte leaves as one pattern over [`DataType`].
+///
+/// [`DataType::bytes_parameters`] is the same list in value position.
+macro_rules! bytes_dtypes {
+    () => {
+        $crate::DataType::Binary
+            | $crate::DataType::LargeBinary
+            | $crate::DataType::BinaryView
+            | $crate::DataType::LargeBinaryView
+            | $crate::DataType::FixedBinary(_)
+            | $crate::DataType::SizedBinary(_)
+    };
+}
+
+pub(crate) use bytes_dtypes;
+pub(crate) use string_dtypes;
 
 impl PartialOrd for DataType {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -651,23 +919,23 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Duration32(_) => 18,
         DataType::Duration64(_) => 19,
         DataType::Interval(_) => 20,
-        // The one byte variant takes the first of the four ranks the binary
-        // variants it replaced held, so nothing after it moves.
-        DataType::Bytes(_) => 21,
-        // The one string variant takes the first of the five ranks the text
-        // variants it replaced held, so nothing after it moves.
-        DataType::String(_) => 25,
+        // The byte leaves take the first of the four ranks the binary
+        // variants they replaced held, so nothing after them moves.
+        crate::bytes_dtypes!() => 21,
+        // The string leaves take the first of the five ranks the text
+        // variants they replaced held, so nothing after them moves.
+        crate::string_dtypes!() => 25,
         DataType::Country => 30,
-        DataType::Currency => 31,
+        DataType::Ccy => 31,
         DataType::MicCode => 32,
         DataType::CfiCode => 33,
         DataType::Uuid => 34,
         DataType::Version => 35,
-        DataType::List(_) => 36,
-        DataType::ListView(_) => 37,
-        DataType::FixedSizeList(..) => 38,
-        DataType::LargeList(_) => 39,
-        DataType::LargeListView(_) => 40,
+        DataType::Serie(_) => 36,
+        DataType::SerieView(_) => 37,
+        DataType::FixedSizeSerie(..) => 38,
+        DataType::LargeSerie(_) => 39,
+        DataType::LargeSerieView(_) => 40,
         DataType::Struct(_) => 41,
         DataType::Union(..) => 42,
         DataType::Dictionary(_) => 43,
@@ -731,34 +999,31 @@ impl DataType {
             | Self::Float32
             | Self::Float64
             | Self::DateTime64 { .. }
-            | Self::Duration32(_)
             | Self::Duration64(_)
             | Self::Interval(_)
             | Self::Date32
             | Self::Uuid => true,
-            Self::String(string) => matches!(
-                string,
-                crate::string::StringType::Utf8String
-                    | crate::string::StringType::LargeUtf8String
-                    | crate::string::StringType::Utf8StringView
-            ),
-            Self::Bytes(bytes) => matches!(
-                bytes,
-                crate::bytes::BytesType::Binary
-                    | crate::bytes::BytesType::LargeBinary
-                    | crate::bytes::BytesType::BinaryView
-                    | crate::bytes::BytesType::FixedBinary(_)
-            ),
+            // Arrow lays out one duration width, so a `duration32` count is
+            // stored wider than its contract and read once where it lands.
+            Self::Duration32(_) => false,
+            Self::Utf8String
+            | Self::LargeUtf8String
+            | Self::Utf8StringView
+            | Self::Binary
+            | Self::LargeBinary
+            | Self::BinaryView
+            | Self::FixedBinary(_) => true,
             Self::Struct(fields) => fields
                 .as_fields()
                 .iter()
                 .all(|field| field.dtype().layout_is_contract()),
-            Self::List(item)
-            | Self::ListView(item)
-            | Self::FixedSizeList(item, _)
-            | Self::LargeList(item)
-            | Self::LargeListView(item) => item.dtype().layout_is_contract(),
-            Self::Map(map) | Self::SortedMap(map) => map.entries.dtype().layout_is_contract(),
+            Self::Serie(item)
+            | Self::SerieView(item)
+            | Self::FixedSizeSerie(item, _)
+            | Self::LargeSerie(item)
+            | Self::LargeSerieView(item) => item.dtype().layout_is_contract(),
+            // Arrow does not prove key uniqueness or the declared ordering.
+            Self::Map(_) | Self::SortedMap(_) => false,
             Self::Union(members, _) => members
                 .iter()
                 .all(|(_, field)| field.dtype().layout_is_contract()),
@@ -852,7 +1117,7 @@ impl Index<&str> for DataType {
 /// use yggdryl::DataType;
 ///
 /// # fn main() -> yggdryl::Result<()> {
-/// let items = DataType::list(DataType::utf8().nullable_field("item"));
+/// let items = DataType::serie(DataType::utf8().nullable_field("item"));
 /// assert_eq!(items[0].name(), "item");
 /// # Ok(())
 /// # }
@@ -944,10 +1209,14 @@ mod arrow {
                 R::Time32(_) | R::Time64(_) => time::arrow_storage(self)?,
                 R::Duration32(_) | R::Duration64(_) => duration::arrow_storage(self)?,
                 R::Interval(_) => interval::arrow_storage(self)?,
-                R::Bytes(parameters) => bytes::arrow_storage(*parameters)?,
-                R::String(parameters) => string::arrow_storage(*parameters)?,
+                crate::bytes_dtypes!() => {
+                    bytes::arrow_storage(self.bytes_parameters().expect("a byte leaf"))?
+                }
+                crate::string_dtypes!() => {
+                    string::arrow_storage(self.string_parameters().expect("a string leaf"))?
+                }
                 R::Country
-                | R::Currency
+                | R::Ccy
                 | R::MicCode
                 | R::CfiCode
                 | R::IsinCode
@@ -968,11 +1237,11 @@ mod arrow {
                 | R::Decimal64 { .. }
                 | R::Decimal128 { .. }
                 | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = &sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1011,11 +1280,11 @@ mod arrow {
             use DataType as R;
             match self {
                 R::DateTime64 { .. } => datetime::into_arrow_storage(self),
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1044,7 +1313,7 @@ mod arrow {
         ///
         /// An Arrow datatype carries no metadata, so an extension type arrives
         /// as the storage it is written over: `fixed_binary(3)` and not
-        /// `currency`, `binary` and not `geometry`. The identity lives on the
+        /// `ccy`, `binary` and not `geometry`. The identity lives on the
         /// field - [`Field::from_arrow_field`](crate::Field::from_arrow_field)
         /// reads it, and [`Self::into_arrow_datatype_ffi`] projects a node that
         /// carries it - so a schema round trip keeps every first-class datatype
@@ -1176,11 +1445,11 @@ mod arrow {
         pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema> {
             use DataType as R;
             let parts = match &self {
-                sequence_dtype @ (R::List(_)
-                | R::ListView(_)
-                | R::FixedSizeList(..)
-                | R::LargeList(_)
-                | R::LargeListView(_)) => {
+                sequence_dtype @ (R::Serie(_)
+                | R::SerieView(_)
+                | R::FixedSizeSerie(..)
+                | R::LargeSerie(_)
+                | R::LargeSerieView(_)) => {
                     let sequence = &sequence_dtype
                         .as_serie_type()
                         .expect("the variant was just matched");
@@ -1253,15 +1522,17 @@ mod arrow {
                 // this is: three facts Arrow has nowhere to put, so they ride
                 // here when the string declares any of them; plain UTF-8 is
                 // Arrow's own.
-                Self::String(parameters) if string::needs_extension(*parameters) => {
-                    Some((crate::STRING_EXTENSION_NAME, parameters.extension_json()))
-                }
+                crate::string_dtypes!() => self
+                    .string_parameters()
+                    .filter(|parameters| string::needs_extension(*parameters))
+                    .map(|parameters| (crate::STRING_EXTENSION_NAME, parameters.extension_json())),
                 // A maximum on a variable layout is the one fact about bytes
                 // Arrow has nowhere to put; the four layouts and a fixed width
                 // are its own.
-                Self::Bytes(parameters) if bytes::needs_extension(*parameters) => {
-                    Some((crate::BYTES_EXTENSION_NAME, parameters.extension_json()))
-                }
+                crate::bytes_dtypes!() => self
+                    .bytes_parameters()
+                    .filter(|parameters| bytes::needs_extension(*parameters))
+                    .map(|parameters| (crate::BYTES_EXTENSION_NAME, parameters.extension_json())),
                 // Every identifier is Arrow's own sixteen bytes.
                 Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
                 Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),
@@ -1271,7 +1542,7 @@ mod arrow {
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
                 // A code carries its own name, so the identity survives Arrow:
-                // three bytes under `yggdryl.currency` read back a currency.
+                // three bytes under `yggdryl.ccy` read back a currency.
                 code => crate::code_extension_name(code).map(|name| (name, String::new())),
             }
         }
@@ -1298,11 +1569,11 @@ mod arrow {
         /// allocating an Arrow copy.
         pub(crate) fn arrow_import_is_projection_equivalent(&self) -> bool {
             match self {
-                Self::List(item)
-                | Self::ListView(item)
-                | Self::FixedSizeList(item, _)
-                | Self::LargeList(item)
-                | Self::LargeListView(item) => item.arrow_import_is_projection_equivalent(),
+                Self::Serie(item)
+                | Self::SerieView(item)
+                | Self::FixedSizeSerie(item, _)
+                | Self::LargeSerie(item)
+                | Self::LargeSerieView(item) => item.arrow_import_is_projection_equivalent(),
                 Self::Struct(fields) => fields
                     .iter()
                     .all(Field::arrow_import_is_projection_equivalent),

@@ -47,7 +47,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
 use yggdryl::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
@@ -610,7 +610,7 @@ impl JsFixRegistry {
     /// Add a field, answering the one it replaced.
     ///
     /// A definition is filed by the shape it has: a Struct inserts as a
-    /// component - a message when it carries `FIX:msgtype` - a List of
+    /// component - a message when it carries `FIX:msgtype` - a Serie of
     /// Structs or a Map as a group, and anything else as a scalar field.
     #[napi]
     pub fn insert(&mut self, field: &JsField) -> Result<Option<JsField>> {
@@ -1192,11 +1192,11 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         miccode: text(event.get_miccode().map(MicCode::as_str)),
         bidpx: decimal(event.get_bidpx()),
         bidqty: decimal(event.get_bidqty()),
-        bidcurrency: text(event.get_bidcurrency().map(Currency::as_str)),
+        bidcurrency: text(event.get_bidcurrency().map(Ccy::as_str)),
         bidunit: text(event.get_bidunit()),
         askpx: decimal(event.get_askpx()),
         askqty: decimal(event.get_askqty()),
-        askcurrency: text(event.get_askcurrency().map(Currency::as_str)),
+        askcurrency: text(event.get_askcurrency().map(Ccy::as_str)),
         askunit: text(event.get_askunit()),
     })
 }
@@ -1339,7 +1339,7 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
 /// graph traits' facts - the standard header, what the line said about the
 /// capture it was written for, the `Text(58)` and the metadata a bridge
 /// spelled under its own namespaces. The row holds everything else the message states: the
-/// dictionary fields, groups as lists beside their counter, components as
+/// dictionary fields, groups as series beside their counter, components as
 /// structs. The schema is one non-null Struct `Field` - the only row schema -
 /// and a plain object crosses as the record the core canonicalizes into that
 /// order exactly as every other row is; a child stating a typed fact fills
@@ -2946,7 +2946,7 @@ fn sending_time_from_js(value: Either<ClassInstance<'_, JsScalar>, JsDate<'_>>) 
 /// The crate's own columns lead - its clocks, then its identities, then the
 /// rest it knows - then the header, the fields a consumer reads, the groups
 /// worth persisting whole, the trailer, `MsgDirection` (385), and the one
-/// list that closes every row: `fixentries`, the whole content record,
+/// serie that closes every row: `fixentries`, the whole content record,
 /// unresolved keys at tag 0. Columns are spelled by the dictionary's folded
 /// canonical names - `msgtype`, never `35` - so a row reads the way a
 /// message reads; the tag stays each column's identity, on its `FIX:tag`,

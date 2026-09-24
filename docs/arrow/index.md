@@ -1,13 +1,12 @@
 # Arrow
 
-`yggdryl::arrow` is where a Field meets Apache Arrow: one-row scalars, projected schemas, streamed batches.
+`yggdryl::arrow` is where a Field meets Apache Arrow: projected schemas and streamed batches. Every value crossing Arrow - one row, a column, a table - is a [`Serie`](../types/serie.md), columns of one field kept apart - a chunked array, a table of several batches - a [`ChunkedSerie`](../types/chunked-serie.md), and a stream of them a `SerieReader`.
 
 ## Pages
 
 | Page | Purpose |
 | --- | --- |
-| [Scalars](scalars.md) | One value across the array boundary, with materialization budgets. |
-| [Values](values.md) | `ArrowScalar`: one scalar, column, table, or stream, and the one entry from every columnar runtime. |
+| [Serie](../types/serie.md#arrow-the-door-and-what-it-proves) | One row, a column, a table or a stream across the Arrow boundary, the [materialization budgets](../types/serie.md#materialization-budgets), and the [one entry from every columnar runtime](../types/serie.md#arrow-every-columnar-runtime-in). |
 | [Readers](readers.md) | `BatchReader`, the one shape of a record read or write. |
 | [Schema](schema.md) | A non-null Struct root to an Arrow `Schema` and back. |
 
@@ -16,9 +15,8 @@
 | | |
 | --- | --- |
 | Units | Exactly two: a `RecordBatch` and a one-row array; no row objects. |
-| Shapes | `ArrowScalar` regroups both plus a column and a stream ([Values](values.md)). |
-| Columns | A column, a table or a stream reconciled to a field is a [`Serie`](../types/serie.md), and a cast is [`Serie`'s](../types/cast.md). |
-| Owns | `scalar_value` decodes the row under its Field; `Serie::from_default` lays out a field's default and `into_arrow_scalar` hands one row over. |
+| Columns | One row, a column, a table or a stream reconciled to a field is a [`Serie`](../types/serie.md), a [`ChunkedSerie`](../types/chunked-serie.md) where its arrays or batches stay apart, or a `SerieReader`, and a cast is [`Serie`'s](../types/cast.md). There is no Arrow wrapper beside them. |
+| Owns | `Serie::from_default` lays out a field's default, `into_arrow_scalar` hands one row over, and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads the row back under its Field. |
 | `DataType` default | A bare datatype is the required `value` field it declares, so its default is the datatype's present value; never null. |
 | `Field` default | `Field::default_value`, repeated: logical null when nullable; carries name, dictionary options, metadata, extension identity. |
 | Struct root | The schema ([../types/field.md](../types/field.md)); its default is one row, and `into_arrow_batch` makes it a table. |
@@ -34,8 +32,7 @@ Nullability picks the default: a required field answers its datatype's present v
 
     ```rust
     use arrow_array::{Array, Datum};
-    use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field, Scalar, Serie};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie};
 
     // A default is a column of the field's canonical value; one row is one
     // Arrow scalar, and the exact Field beside it says what it means.
@@ -43,12 +40,14 @@ Nullability picks the default: a required field answers its datatype's present v
     let datum = Serie::from_default(field.clone(), 1)?.into_arrow_scalar()?;
     let (array, is_scalar) = datum.get();
     assert!(is_scalar);
-    assert_eq!(scalar_value(&field, array)?.as_str(), Some(""));
+    let row = Serie::from_arrow_array(Some(&field), array.slice(0, 1), ArrowCastOptions::new())?;
+    assert_eq!(row.scalar(0)?.as_str(), Some(""));
 
     // A bare DataType is the required `value` field it declares.
     let value = DataType::Int64.required_field("value");
     let array = Serie::from_default(value.clone(), 1)?.require_arrow_array()?;
-    assert_eq!(scalar_value(&value, array.as_ref())?.as_i128(), Some(0));
+    let row = Serie::from_arrow_array(Some(&value), array, ArrowCastOptions::new())?;
+    assert_eq!(row.scalar(0)?.as_i128(), Some(0));
 
     // A nullable Field defaults to a logical null under its own identity.
     let optional = Field::new("symbol", DataType::utf8(), true);
@@ -117,8 +116,7 @@ A Rust struct row is positional; Python and JavaScript key it by name. Asked for
 === "Rust"
 
     ```rust
-    use yggdryl::arrow::scalar_value;
-    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+    use yggdryl::{ArrowCastOptions, DataType, Field, Scalar, Serie, StructType};
 
     let schema = Field::new(
         "row",
@@ -130,8 +128,8 @@ A Rust struct row is positional; Python and JavaScript key it by name. Asked for
     );
 
     let array = Serie::from_default(schema.clone(), 1)?.require_arrow_array()?;
-    let row = scalar_value(&schema, array.as_ref())?;
-    let values = row.as_sequence().ok_or("a struct row is an ordered sequence")?;
+    let row = Serie::from_arrow_array(Some(&schema), array, ArrowCastOptions::new())?.scalar(0)?;
+    let values = row.sequence_rows().ok_or("a struct row is its values")?;
     assert_eq!(values.len(), 2);
     assert_eq!(values[0].as_i128(), Some(0));
     assert_eq!(values[1], Scalar::Null);

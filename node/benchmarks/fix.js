@@ -136,7 +136,7 @@ catalog.insert(partyId)
 partyId.fix.fieldRef = 'PartyID'
 const party = fields.struct('Party', [partyId], { nullable: false })
 catalog.insert(party)
-const parties = fields.list('Parties', party)
+const parties = fields.serie('Parties', party)
 parties.fix.counter = 453
 parties.fix.component = 'Party'
 catalog.insert(parties)

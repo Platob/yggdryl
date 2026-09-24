@@ -8,7 +8,7 @@ mod xxhash {
 
         use yggdryl::xxhash::{Xxh3, xxh3};
         use yggdryl::{
-            Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
+            Bytes, BytesType, Ccy, Decimal32, Decimal64, Geography, Interval, Side, Str,
             StringType, TimeInForce,
         };
         use yggdryl::{
@@ -42,14 +42,14 @@ mod xxhash {
             }
         }
 
-        /// The text, restated under the parameters a column stores it in.
-        fn stored(text: &str, parameters: StringType) -> Str {
-            Str::new(text).try_with_parameters(parameters).unwrap()
+        /// The text as a value of the leaf a column stores it in.
+        fn stored(text: &str, leaf: StringType) -> Scalar {
+            leaf.scalar(Str::new(text)).unwrap()
         }
 
         /// `AAPL` as a byte value stored under one leaf.
         fn stored_bytes(leaf: BytesType) -> Scalar {
-            Scalar::Bytes(Bytes::new(b"AAPL").try_with_parameters(leaf).unwrap())
+            leaf.scalar(Bytes::new(b"AAPL")).unwrap()
         }
 
         /// Return one value's canonical feed.
@@ -91,11 +91,12 @@ mod xxhash {
                 Scalar::from(""),
                 Scalar::from("1"),
                 Scalar::from("AAPL"),
-                Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
-                Scalar::String(stored("AAPL", StringType::Utf8StringView)),
-                Scalar::String(stored("USD", StringType::AsciiString)),
-                Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
-                Scalar::Currency(Currency::new("USD").unwrap()),
+                stored("AAPL", StringType::LargeUtf8String),
+                stored("AAPL", StringType::Utf8StringView),
+                stored("USD", StringType::AsciiString),
+                stored("USD", StringType::FixedAsciiString(4)),
+                stored("AAPL", StringType::SizedCp1252String(8)),
+                Scalar::Ccy(Ccy::new("USD").unwrap()),
                 Scalar::Side(Side::new("BUY").unwrap()),
                 Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
                 Scalar::from(Codec::Gzip),
@@ -107,6 +108,7 @@ mod xxhash {
                 stored_bytes(BytesType::FixedBinary(4)),
                 stored_bytes(BytesType::LargeBinary),
                 stored_bytes(BytesType::BinaryView),
+                stored_bytes(BytesType::SizedBinary(8)),
                 geometry(),
                 geography(),
                 Scalar::date32_in(1, TimeUnit::Day, Timezone::NAIVE).unwrap(),
@@ -155,11 +157,11 @@ mod xxhash {
                     Scalar::d256(i256::from_i128(1), 0),
                 ),
                 (
-                    Scalar::String(stored("AAPL", StringType::LargeUtf8String)),
+                    stored("AAPL", StringType::LargeUtf8String),
                     Scalar::from("AAPL"),
                 ),
                 (
-                    Scalar::String(stored("AAPL", StringType::Utf8StringView)),
+                    stored("AAPL", StringType::Utf8StringView),
                     Scalar::from("AAPL"),
                 ),
                 (
@@ -175,8 +177,16 @@ mod xxhash {
                     Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
                 ),
                 (
-                    Scalar::String(stored("USD", StringType::FixedAsciiString(4))),
-                    Scalar::String(stored("USD", StringType::AsciiString)),
+                    stored("USD", StringType::FixedAsciiString(4)),
+                    stored("USD", StringType::AsciiString),
+                ),
+                (
+                    stored("AAPL", StringType::SizedCp1252String(8)),
+                    Scalar::from("AAPL"),
+                ),
+                (
+                    stored_bytes(BytesType::SizedBinary(8)),
+                    Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())),
                 ),
                 (geometry(), geography()),
                 (
@@ -281,7 +291,7 @@ mod xxhash {
                     Scalar::duration32_in(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
                     DataTypeId::Duration64,
                 ),
-                (Scalar::from_sequence([]), DataTypeId::List),
+                (Scalar::from_sequence([]), DataTypeId::Serie),
                 (
                     Scalar::from_struct([] as [(&str, Scalar); 0]).unwrap(),
                     DataTypeId::Struct,
@@ -310,19 +320,28 @@ mod xxhash {
             // A string feeds one tag whatever leaf stores it, and a code feeds
             // its own: the identity is part of the value.
             assert_eq!(
-                feed(&Scalar::String(stored(
-                    "AAPL",
-                    StringType::FixedAsciiString(8)
-                ))),
+                feed(&stored("AAPL", StringType::FixedAsciiString(8))),
                 expected
             );
-            let mut expected = vec![DataTypeId::Currency.as_u8()];
+            for leaf in StringType::ALL {
+                let leaf = match leaf.bound() {
+                    Some(_) => leaf.with_bound(8).unwrap(),
+                    None => leaf,
+                };
+                assert_eq!(feed(&stored("AAPL", leaf)), expected, "{leaf:?}");
+            }
+            let binary = feed(&Scalar::from(Arc::<[u8]>::from(b"AAPL".as_slice())));
+            for leaf in BytesType::ALL {
+                let leaf = match leaf.bound() {
+                    Some(_) => leaf.with_bound(4).unwrap(),
+                    None => leaf,
+                };
+                assert_eq!(feed(&stored_bytes(leaf)), binary, "{leaf:?}");
+            }
+            let mut expected = vec![DataTypeId::Ccy.as_u8()];
             expected.extend_from_slice(&3_u64.to_le_bytes());
             expected.extend_from_slice(b"USD");
-            assert_eq!(
-                feed(&Scalar::Currency(Currency::new("USD").unwrap())),
-                expected
-            );
+            assert_eq!(feed(&Scalar::Ccy(Ccy::new("USD").unwrap())), expected);
         }
 
         #[test]
@@ -377,7 +396,7 @@ mod xxhash {
                 yggdryl::Field::new("symbol", yggdryl::DataType::utf8(), true),
                 yggdryl::Field::new(
                     "legs",
-                    yggdryl::DataType::list(yggdryl::Field::new(
+                    yggdryl::DataType::serie(yggdryl::Field::new(
                         "item",
                         yggdryl::DataType::Int32,
                         true,

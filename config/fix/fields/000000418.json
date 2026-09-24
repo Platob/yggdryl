@@ -944,7 +944,7 @@
   {
     "name": "underlyingmarketdisruptionfallbackbasketcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1029,7 +1029,7 @@
   {
     "name": "underlyingpaymentscheduleratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1093,7 +1093,7 @@
   {
     "name": "underlyingpaymentschedulesettlperiodpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1232,7 +1232,7 @@
   {
     "name": "underlyingpaymentstreamflatratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

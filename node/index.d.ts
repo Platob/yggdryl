@@ -419,6 +419,74 @@ export declare class Catalog {
 export type JsCatalog = Catalog
 
 /**
+ * Many columns under one field, held apart: a chunked array, or a table.
+ *
+ * Every chunk is a column of exactly this field. A row is read out of the
+ * chunk that holds it, and two chunked series - or a chunked serie and a
+ * serie - are equal when their rows are, however the rows are cut.
+ */
+export declare class ChunkedSerie {
+  /** The field every chunk is typed by. */
+  get field(): JsField
+  /** `serie(<the field named item>)`: what a column of this field answers. */
+  get dtype(): JsDataType
+  /** How many chunks the rows are cut into. */
+  get numChunks(): number
+  /** The row count across every chunk. */
+  get length(): number
+  /** The rows that are absent, one read per chunk. */
+  nullCount(): number
+  /** Whether no chunk holds a row. */
+  isEmpty(): boolean
+  /** Whether row `index` is absent. */
+  isNull(index: number): boolean
+  /** Row `index`, built as one value out of the chunk holding it. */
+  scalar(index: number): JsScalar
+  /** Row `index`, or `null` past the end. */
+  at(index: number): JsScalar | null
+  /** Every row, chunk after chunk, each built once. */
+  rows(): Array<JsScalar>
+  /**
+   * The window `offset..offset + length`: the chunks it reaches, the two
+   * at its edges sliced, nothing copied.
+   */
+  slice(offset: number, length: number): ChunkedSerie
+  /**
+   * A record's child named `name` in every chunk - a table's column - or
+   * `null`.
+   */
+  child(name: string): ChunkedSerie | null
+  /** A record's child, or a union's member, at `index` in every chunk. */
+  childAt(index: number): ChunkedSerie | null
+  /** Every child of a record, or member of a union, chunk by chunk. */
+  children(): Array<ChunkedSerie>
+  /**
+   * A sequence's items, a mapping's entries, an encoding's values, in
+   * every chunk; `null` elsewhere.
+   */
+  items(): ChunkedSerie | null
+  /**
+   * The chunked column `path` reaches in every chunk, spelled as a field
+   * path.
+   */
+  getChildByPath(path: string): ChunkedSerie | null
+  /**
+   * Every chunk as one batch of a native `BatchReader`: a record's chunks
+   * the batches they are, any other field's the one column of a `row`
+   * root. A record chunk holding an absent row is refused.
+   */
+  intoArrowReader(): JsBatchReader
+  /** A copy sharing every chunk's buffers. */
+  clone(): ChunkedSerie
+  /**
+   * The rows, rendered behind the field's name as the column of them
+   * would be.
+   */
+  toString(): string
+}
+export type JsChunkedSerie = ChunkedSerie
+
+/**
  * What one `compact` call rewrote.
  *
  * The sizes cross as numbers because a data file already reports
@@ -572,7 +640,7 @@ export declare class DataType {
   /** Exactly `byteWidth` bytes per value - Arrow's `FixedSizeBinary`. */
   static fixedSizeBinary(byteWidth: number): DataType
   /**
-   * Resolves a registered logical name such as `currency` or `Price` to
+   * Resolves a registered logical name such as `ccy` or `Price` to
    * the datatype it spells, folding case, `_`, `-`, and spaces.
    */
   static fromLogicalName(name: string): DataType
@@ -682,7 +750,7 @@ export declare class DataType {
    * Every leaf under this node, named by its dotted path.
    *
    * Struct nesting flattens all the way down, and a leaf under a nullable
-   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * ancestor is nullable. Collections are leaves: a serie or a map is one
    * column, and `explodeFields` is what reaches inside one. Every name this
    * answers is one `fieldByPath` resolves.
    */
@@ -690,7 +758,7 @@ export declare class DataType {
   /**
    * This node's children with every collection replaced by what it holds.
    *
-   * A list answers its item, a map its entries, a dictionary or run-end
+   * A serie answers its item, a map its entries, a dictionary or run-end
    * node the values it encodes, and anything else itself - so the result
    * names the same columns in the same order. One level only, so the depth
    * is the caller's decision.
@@ -925,7 +993,7 @@ export declare class Field {
    * Every leaf under this node, named by its dotted path.
    *
    * Struct nesting flattens all the way down, and a leaf under a nullable
-   * ancestor is nullable. Collections are leaves: a list or a map is one
+   * ancestor is nullable. Collections are leaves: a serie or a map is one
    * column, and `explodeFields` is what reaches inside one. Every name this
    * answers is one `fieldByPath` resolves.
    */
@@ -933,7 +1001,7 @@ export declare class Field {
   /**
    * This node's children with every collection replaced by what it holds.
    *
-   * A list answers its item, a map its entries, a dictionary or run-end
+   * A serie answers its item, a map its entries, a dictionary or run-end
    * node the values it encodes, and anything else itself - so the result
    * names the same columns in the same order. One level only, so the depth
    * is the caller's decision.
@@ -1721,7 +1789,7 @@ export type JsFixMessages = FixMessages
  * graph traits' facts - the standard header, what the line said about the
  * capture it was written for, the `Text(58)` and the metadata a bridge
  * spelled under its own namespaces. The row holds everything else the message states: the
- * dictionary fields, groups as lists beside their counter, components as
+ * dictionary fields, groups as series beside their counter, components as
  * structs. The schema is one non-null Struct `Field` - the only row schema -
  * and a plain object crosses as the record the core canonicalizes into that
  * order exactly as every other row is; a child stating a typed fact fills
@@ -2289,7 +2357,7 @@ export declare class FixRegistry {
    * Add a field, answering the one it replaced.
    *
    * A definition is filed by the shape it has: a Struct inserts as a
-   * component - a message when it carries `FIX:msgtype` - a List of
+   * component - a message when it carries `FIX:msgtype` - a Serie of
    * Structs or a Map as a group, and anything else as a scalar field.
    */
   insert(field: Field): Field | null
@@ -4408,7 +4476,7 @@ export declare class Serie {
   constructor(rows?: Array<Scalar> | undefined | null)
   /** The field a column carries, or `null` for a run. */
   get field(): Field | null
-  /** `list(<the field named item>)` for a column; agreed out of a run's rows. */
+  /** `serie(<the field named item>)` for a column; agreed out of a run's rows. */
   get dtype(): DataType
   /** Whether this is a column rather than a schema-free run. */
   get isColumn(): boolean
@@ -4442,10 +4510,6 @@ export declare class Serie {
   setChild(child: Serie): void
   /** This record column as a native `BatchReader` of one batch. */
   intoArrowReader(): BatchReader
-  /** Whether two series hold equal rows, whichever leaf holds them. */
-  equals(other: Serie): boolean
-  /** Order two series by their rows, as the core defines it. */
-  compare(other: Serie): number
   /** The rows, rendered behind the field's name. */
   toString(): string
 }
@@ -4467,7 +4531,8 @@ export type JsSerieIterator = SerieIterator
 
 /**
  * One record serie per batch of a native `BatchReader`, each cast by the
- * one plan the core compiled from the stream's schema.
+ * one plan the core compiled from the stream's schema, or the one record
+ * serie a held column is.
  *
  * The reader is a stream, read once: iterating it and `intoArrowReader`
  * both consume it, and a batch's failure surfaces at the pull that read it.
@@ -5100,14 +5165,14 @@ export declare class Term {
   /** Read a struct child by name, resolved case-insensitively. */
   child(name: string): Term
   /**
-   * Read a list element by position, counting back from the end when
+   * Read a serie element by position, counting back from the end when
    * negative.
    */
   at(index: number): Term
   /**
-   * Read a run of list elements, `start` inclusive and `end` exclusive;
+   * Read a run of serie elements, `start` inclusive and `end` exclusive;
    * either bound counts back from the end when negative, and an absent
-   * one is the list's own edge.
+   * one is the serie's own edge.
    */
   slice(start?: number | undefined | null, end?: number | undefined | null): Term
   /** Read a map value by key. */
@@ -6769,7 +6834,7 @@ export interface FixHeaderView {
  * The crate's own columns lead - its clocks, then its identities, then the
  * rest it knows - then the header, the fields a consumer reads, the groups
  * worth persisting whole, the trailer, `MsgDirection` (385), and the one
- * list that closes every row: `fixentries`, the whole content record,
+ * serie that closes every row: `fixentries`, the whole content record,
  * unresolved keys at tag 0. Columns are spelled by the dictionary's folded
  * canonical names - `msgtype`, never `35` - so a row reads the way a
  * message reads; the tag stays each column's identity, on its `FIX:tag`,

@@ -33,6 +33,7 @@ use arrow_array::{Array, ArrayRef, ArrowPrimitiveType, PrimitiveArray};
 use arrow_buffer::NullBuffer;
 
 use super::{Serie, require_range, require_row, require_window};
+use crate::serie::value::Reading;
 use crate::value::SerieValue;
 use crate::{Field, Result, Scalar};
 
@@ -71,12 +72,24 @@ pub trait NativeLeaf: PrimitiveLeaf {}
 pub struct PrimitiveSerie<T: PrimitiveLeaf> {
     field: Arc<Field>,
     values: PrimitiveArray<T>,
+    /// How a slot reads as the field's value, resolved from the field once
+    /// where the column landed.
+    reading: Reading<T::Native>,
 }
 
 impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
-    /// Pair a field with the buffers that hold its rows.
-    pub(crate) const fn new(field: Arc<Field>, values: PrimitiveArray<T>) -> Self {
-        Self { field, values }
+    /// Pair a field with the buffers that hold its rows and the reading its
+    /// datatype resolved to.
+    pub(crate) const fn new(
+        field: Arc<Field>,
+        values: PrimitiveArray<T>,
+        reading: Reading<T::Native>,
+    ) -> Self {
+        Self {
+            field,
+            values,
+            reading,
+        }
     }
 
     /// Borrow the values buffer, without copying it.
@@ -169,7 +182,7 @@ impl<T: PrimitiveLeaf> PrimitiveSerie<T> {
     /// layout cannot refuse them.
     fn laid_out(&self, rows: &[Scalar]) -> PrimitiveArray<T> {
         let borrowed: Vec<&Scalar> = rows.iter().collect();
-        let array = crate::arrow::value::array_from_values(&self.field, &borrowed).expect(LAID_OUT);
+        let array = crate::serie::value::array_of_rows(&self.field, &borrowed).expect(LAID_OUT);
         array
             .as_any()
             .downcast_ref::<PrimitiveArray<T>>()
@@ -258,6 +271,14 @@ impl<T: NativeLeaf> PrimitiveSerie<T> {
     ) -> Result<()> {
         require_range(self.field.name(), &range, self.values.len())?;
         self.require_present(&values)?;
+        // A width shared with a narrower datatype - a `duration32` count in
+        // Arrow's one duration width - holds only what the field's own
+        // reading accepts.
+        if !self.field.dtype().layout_is_contract() {
+            for value in values.iter().flatten() {
+                (self.reading)(self.field.dtype(), *value)?;
+            }
+        }
         let mut replacement = PrimitiveBuilder::<T>::with_capacity(values.len())
             .with_data_type(self.values.data_type().clone());
         for value in values {
@@ -302,10 +323,12 @@ impl<T: PrimitiveLeaf> SerieValue for PrimitiveSerie<T> {
 
     fn scalar(&self, index: usize) -> Result<Scalar> {
         require_row(self.field.name(), index, self.values.len())?;
-        Ok(crate::arrow::value::value_from_array(
+        if self.values.is_null(index) {
+            return Ok(Scalar::Null);
+        }
+        Ok((self.reading)(
             self.field.dtype(),
-            &self.values,
-            index,
+            self.values.value(index),
         )?)
     }
 
@@ -314,6 +337,7 @@ impl<T: PrimitiveLeaf> SerieValue for PrimitiveSerie<T> {
         Ok(Self {
             field: Arc::clone(&self.field),
             values: self.values.slice(offset, length),
+            reading: self.reading,
         })
     }
 
@@ -346,6 +370,7 @@ impl<T: PrimitiveLeaf> Clone for PrimitiveSerie<T> {
         Self {
             field: Arc::clone(&self.field),
             values: self.values.clone(),
+            reading: self.reading,
         }
     }
 }
@@ -368,66 +393,94 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    _budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
     use arrow_schema::{DataType as ArrowDataType, IntervalUnit, TimeUnit as ArrowTimeUnit};
 
+    use crate::serie::value::{
+        duration_reading, read_date32, read_date64, read_datetime, read_day_time, read_decimal32,
+        read_decimal64, read_decimal128, read_decimal256, read_month_day_nano, read_native,
+        read_time32, read_time64, read_year_month,
+    };
+
     let _ = (parent, proof);
+    // The width is the array's; the reading is the field's, resolved here
+    // once so a cell read is one buffer read and one constructor.
     macro_rules! primitive {
-        ($arrow:ty) => {
+        ($arrow:ty, $reading:expr) => {
             Ok(Some(
                 PrimitiveSerie::<$arrow>::new(
-                    field,
+                    Arc::clone(&field),
                     super::arrow::held::<PrimitiveArray<$arrow>>(&array)?,
+                    $reading,
                 )
                 .into_serie(),
             ))
         };
     }
     match array.data_type() {
-        ArrowDataType::Int8 => primitive!(Int8Type),
-        ArrowDataType::Int16 => primitive!(Int16Type),
-        ArrowDataType::Int32 => primitive!(Int32Type),
-        ArrowDataType::Int64 => primitive!(Int64Type),
-        ArrowDataType::UInt8 => primitive!(UInt8Type),
-        ArrowDataType::UInt16 => primitive!(UInt16Type),
-        ArrowDataType::UInt32 => primitive!(UInt32Type),
-        ArrowDataType::UInt64 => primitive!(UInt64Type),
-        ArrowDataType::Float16 => primitive!(Float16Type),
-        ArrowDataType::Float32 => primitive!(Float32Type),
-        ArrowDataType::Float64 => primitive!(Float64Type),
-        ArrowDataType::Decimal32(..) => primitive!(Decimal32Type),
-        ArrowDataType::Decimal64(..) => primitive!(Decimal64Type),
-        ArrowDataType::Decimal128(..) => primitive!(Decimal128Type),
-        ArrowDataType::Decimal256(..) => primitive!(Decimal256Type),
-        ArrowDataType::Date32 => primitive!(Date32Type),
-        ArrowDataType::Date64 => primitive!(Date64Type),
-        ArrowDataType::Time32(ArrowTimeUnit::Second) => primitive!(Time32SecondType),
-        ArrowDataType::Time32(_) => primitive!(Time32MillisecondType),
-        ArrowDataType::Time64(ArrowTimeUnit::Microsecond) => primitive!(Time64MicrosecondType),
-        ArrowDataType::Time64(_) => primitive!(Time64NanosecondType),
-        ArrowDataType::Timestamp(ArrowTimeUnit::Second, _) => primitive!(TimestampSecondType),
+        ArrowDataType::Int8 => primitive!(Int8Type, read_native),
+        ArrowDataType::Int16 => primitive!(Int16Type, read_native),
+        ArrowDataType::Int32 => primitive!(Int32Type, read_native),
+        ArrowDataType::Int64 => primitive!(Int64Type, read_native),
+        ArrowDataType::UInt8 => primitive!(UInt8Type, read_native),
+        ArrowDataType::UInt16 => primitive!(UInt16Type, read_native),
+        ArrowDataType::UInt32 => primitive!(UInt32Type, read_native),
+        ArrowDataType::UInt64 => primitive!(UInt64Type, read_native),
+        ArrowDataType::Float16 => primitive!(Float16Type, read_native),
+        ArrowDataType::Float32 => primitive!(Float32Type, read_native),
+        ArrowDataType::Float64 => primitive!(Float64Type, read_native),
+        ArrowDataType::Decimal32(..) => primitive!(Decimal32Type, read_decimal32),
+        ArrowDataType::Decimal64(..) => primitive!(Decimal64Type, read_decimal64),
+        ArrowDataType::Decimal128(..) => primitive!(Decimal128Type, read_decimal128),
+        ArrowDataType::Decimal256(..) => primitive!(Decimal256Type, read_decimal256),
+        ArrowDataType::Date32 => primitive!(Date32Type, read_date32),
+        ArrowDataType::Date64 => primitive!(Date64Type, read_date64),
+        ArrowDataType::Time32(ArrowTimeUnit::Second) => primitive!(Time32SecondType, read_time32),
+        ArrowDataType::Time32(_) => primitive!(Time32MillisecondType, read_time32),
+        ArrowDataType::Time64(ArrowTimeUnit::Microsecond) => {
+            primitive!(Time64MicrosecondType, read_time64)
+        }
+        ArrowDataType::Time64(_) => primitive!(Time64NanosecondType, read_time64),
+        ArrowDataType::Timestamp(ArrowTimeUnit::Second, _) => {
+            primitive!(TimestampSecondType, read_datetime)
+        }
         ArrowDataType::Timestamp(ArrowTimeUnit::Millisecond, _) => {
-            primitive!(TimestampMillisecondType)
+            primitive!(TimestampMillisecondType, read_datetime)
         }
         ArrowDataType::Timestamp(ArrowTimeUnit::Microsecond, _) => {
-            primitive!(TimestampMicrosecondType)
+            primitive!(TimestampMicrosecondType, read_datetime)
         }
         ArrowDataType::Timestamp(ArrowTimeUnit::Nanosecond, _) => {
-            primitive!(TimestampNanosecondType)
+            primitive!(TimestampNanosecondType, read_datetime)
         }
-        ArrowDataType::Duration(ArrowTimeUnit::Second) => primitive!(DurationSecondType),
-        ArrowDataType::Duration(ArrowTimeUnit::Millisecond) => primitive!(DurationMillisecondType),
-        ArrowDataType::Duration(ArrowTimeUnit::Microsecond) => primitive!(DurationMicrosecondType),
-        ArrowDataType::Duration(ArrowTimeUnit::Nanosecond) => primitive!(DurationNanosecondType),
-        ArrowDataType::Interval(IntervalUnit::YearMonth) => primitive!(IntervalYearMonthType),
-        ArrowDataType::Interval(IntervalUnit::DayTime) => primitive!(IntervalDayTimeType),
-        ArrowDataType::Interval(IntervalUnit::MonthDayNano) => primitive!(IntervalMonthDayNanoType),
+        ArrowDataType::Duration(ArrowTimeUnit::Second) => {
+            primitive!(DurationSecondType, duration_reading(field.dtype())?)
+        }
+        ArrowDataType::Duration(ArrowTimeUnit::Millisecond) => {
+            primitive!(DurationMillisecondType, duration_reading(field.dtype())?)
+        }
+        ArrowDataType::Duration(ArrowTimeUnit::Microsecond) => {
+            primitive!(DurationMicrosecondType, duration_reading(field.dtype())?)
+        }
+        ArrowDataType::Duration(ArrowTimeUnit::Nanosecond) => {
+            primitive!(DurationNanosecondType, duration_reading(field.dtype())?)
+        }
+        ArrowDataType::Interval(IntervalUnit::YearMonth) => {
+            primitive!(IntervalYearMonthType, read_year_month)
+        }
+        ArrowDataType::Interval(IntervalUnit::DayTime) => {
+            primitive!(IntervalDayTimeType, read_day_time)
+        }
+        ArrowDataType::Interval(IntervalUnit::MonthDayNano) => {
+            primitive!(IntervalMonthDayNanoType, read_month_day_nano)
+        }
         _ => Ok(None),
     }
 }
 
 /// Name one primitive width as a leaf of the root, and tie Arrow's type
-/// parameter to the family variant it widens through.
+/// parameter to the root variant it widens to.
 macro_rules! primitive_leaf {
     ($(#[$meta:meta])* $name:ident, $arrow:ty) => {
         $(#[$meta])*

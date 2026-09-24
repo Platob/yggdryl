@@ -6,7 +6,7 @@
 
 use yggdryl::{DataType, Field, Scalar, Serie};
 
-/// A `list<int64>` value held as a column, and the run of its rows.
+/// A `serie<int64>` value held as a column, and the run of its rows.
 fn int64s() -> (Scalar, Scalar) {
     let item = Field::new("item", DataType::Int64, false);
     let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
@@ -14,12 +14,12 @@ fn int64s() -> (Scalar, Scalar) {
     (Scalar::from(column), Scalar::from_sequence(rows))
 }
 
-/// A `list<list<int64>>` value held as a column, and the run of its rows.
+/// A `serie<serie<int64>>` value held as a column, and the run of its rows.
 fn nested() -> (Scalar, Scalar) {
     let (column, run) = int64s();
     let item = Field::new(
         "item",
-        DataType::list(Field::new("item", DataType::Int64, false)),
+        DataType::serie(Field::new("item", DataType::Int64, false)),
         false,
     );
     let outer = Serie::from_scalars(item, [column.clone(), column]).unwrap();
@@ -30,7 +30,7 @@ fn nested() -> (Scalar, Scalar) {
 }
 
 #[test]
-fn a_list_column_writes_as_the_run_of_its_rows() {
+fn a_serie_column_writes_as_the_run_of_its_rows() {
     for (column, run) in [int64s(), nested()] {
         assert_eq!(
             yggdryl::json::into_utf8(&column).unwrap(),

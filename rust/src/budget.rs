@@ -70,6 +70,15 @@ mod limits {
             self.fixed_bytes = mark.fixed_bytes;
         }
 
+        /// A zero-capacity Arrow range builder can hold old and grown buffers
+        /// during reallocation. Reserve their upper bound beside final storage;
+        /// the mark also includes headers and scratch for small-buffer rounding.
+        pub(crate) fn add_growth_since(&mut self, mark: MaterializationMark) -> Result<()> {
+            let bytes = self.fixed_bytes - mark.fixed_bytes;
+            // Both totals were already limited to 64 MiB.
+            self.add_bytes(bytes * 2)
+        }
+
         pub(crate) fn add_bitmap(&mut self, rows: usize) -> Result<()> {
             self.add_bytes(bitmap_bytes(rows)?)
         }
@@ -96,14 +105,14 @@ mod limits {
                 return Ok(());
             }
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeSerie(child, size) => {
                     self.add_array_layout(dtype, rows)?;
                     let size = usize::try_from(*size)
-                        .map_err(|_| invalid_value("a fixed list size within usize", size))?;
+                        .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
                     let child_rows = checked_physical_mul(
                         rows,
                         size,
-                        "fixed-size-list slots",
+                        "fixed-size-serie slots",
                         MAX_PHYSICAL_SLOTS,
                     )?;
                     self.add_repeated_field_default(child, child_rows, include_dictionary_values)
@@ -171,10 +180,10 @@ mod limits {
         /// still charged because a deeply nested scalar can itself reach a cap.
         pub(crate) fn add_default_scalar_scratch(&mut self, dtype: &DataType) -> Result<()> {
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeSerie(child, size) => {
                     self.add_array_layout_without_slots(dtype, 1)?;
                     let size = usize::try_from(*size)
-                        .map_err(|_| invalid_value("a fixed list size within usize", size))?;
+                        .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
                     self.add_repeated_field_default(child, size, true)
                 }
                 DataType::Struct(fields) => {
@@ -234,13 +243,13 @@ mod limits {
             }
             self.add_array_layout_impl(dtype, rows, count_root_slots)?;
             match dtype {
-                DataType::FixedSizeList(child, size) => {
+                DataType::FixedSizeSerie(child, size) => {
                     let size = usize::try_from(*size)
-                        .map_err(|_| invalid_value("a fixed list size within usize", size))?;
+                        .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
                     let child_rows = checked_physical_mul(
                         rows,
                         size,
-                        "fixed-size-list slots",
+                        "fixed-size-serie slots",
                         MAX_PHYSICAL_SLOTS,
                     )?;
                     self.add_array(child.dtype(), child_rows)?;
@@ -333,7 +342,7 @@ mod limits {
                 // the number they charge is read from `code_width`, which owns
                 // it, rather than restated here.
                 DataType::Country
-                | DataType::Currency
+                | DataType::Ccy
                 | DataType::MicCode
                 | DataType::CfiCode
                 | DataType::IsinCode
@@ -356,11 +365,11 @@ mod limits {
                 | DataType::Duration32(_) | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
                 | DataType::Decimal64 { .. }
-                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                | DataType::SerieView(_) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::LargeListView(_) => {
+                | DataType::LargeSerieView(_) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
                 DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
@@ -372,7 +381,7 @@ mod limits {
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::List(_)
+                | DataType::Serie(_)
                 | DataType::Map(_) | DataType::SortedMap(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
@@ -385,14 +394,18 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+                DataType::LargeSerie(_) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
-                DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
-                DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
+                crate::bytes_dtypes!() => {
+                    self.add_bytes_rows(rows, dtype.bytes_parameters().expect("a byte leaf"))?;
+                }
+                crate::string_dtypes!() => {
+                    self.add_string_rows(rows, dtype.string_parameters().expect("a string leaf"))?;
+                }
                 DataType::Null
-                | DataType::FixedSizeList(..)
+                | DataType::FixedSizeSerie(..)
                 | DataType::Struct(_)
                 | DataType::RunEndEncoded(_) => {}
                 DataType::Union(_, mode) => self.add_union_buffers(rows, *mode)?,
@@ -449,7 +462,7 @@ mod limits {
                 // the number they charge is read from `code_width`, which owns
                 // it, rather than restated here.
                 DataType::Country
-                | DataType::Currency
+                | DataType::Ccy
                 | DataType::MicCode
                 | DataType::CfiCode
                 | DataType::IsinCode
@@ -472,11 +485,11 @@ mod limits {
                 | DataType::Duration32(_) | DataType::Duration64(_)
                 | DataType::Interval(TimeUnit::DayTime)
                 | DataType::Decimal64 { .. }
-                | DataType::ListView(_) => self.add_fixed_rows(rows, 8)?,
+                | DataType::SerieView(_) => self.add_fixed_rows(rows, 8)?,
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
-                | DataType::LargeListView(_) => self.add_fixed_rows(rows, 16)?,
+                | DataType::LargeSerieView(_) => self.add_fixed_rows(rows, 16)?,
                 DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
@@ -486,7 +499,7 @@ mod limits {
                 | DataType::Timezone
                 | DataType::MimeType
                 | DataType::MediaType
-                | DataType::List(_)
+                | DataType::Serie(_)
                 | DataType::Map(_) | DataType::SortedMap(_)
                 // A geospatial column is one binary column of WKB payloads.
                 | DataType::Geometry(_)
@@ -499,17 +512,25 @@ mod limits {
                     self.add_offsets(rows, 4)?;
                     self.add_offsets(rows, 4)?;
                 }
-                DataType::LargeList(_) => self.add_offsets(rows, 8)?,
+                DataType::LargeSerie(_) => self.add_offsets(rows, 8)?,
                 // A byte or string column's cost is its storage's: a fixed width
                 // is that width per row, a view is one sixteen-byte descriptor,
                 // and the two variable layouts are their offset runs.
-                DataType::Bytes(parameters) => self.add_bytes_rows(rows, *parameters)?,
-                DataType::String(parameters) => self.add_string_rows(rows, *parameters)?,
-                DataType::FixedSizeList(child, size) => {
+                crate::bytes_dtypes!() => {
+                    self.add_bytes_rows(rows, dtype.bytes_parameters().expect("a byte leaf"))?;
+                }
+                crate::string_dtypes!() => {
+                    self.add_string_rows(rows, dtype.string_parameters().expect("a string leaf"))?;
+                }
+                DataType::FixedSizeSerie(child, size) => {
                     let size = usize::try_from(*size)
-                        .map_err(|_| invalid_value("a fixed list size within usize", size))?;
-                    let child_rows =
-                        checked_physical_mul(rows, size, "fixed-size-list slots", MAX_PHYSICAL_SLOTS)?;
+                        .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
+                    let child_rows = checked_physical_mul(
+                        rows,
+                        size,
+                        "fixed-size-serie slots",
+                        MAX_PHYSICAL_SLOTS,
+                    )?;
                     self.add_null_array(child.dtype(), child_rows)?;
                 }
                 DataType::Struct(fields) => {
@@ -726,6 +747,12 @@ mod limits {
 // Bounded selections over source-array rows.
 // ------------------------------------------------------------------------
 
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum SelectionKind {
+    Take,
+    Extend,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum SourceSelection<'a> {
     Indices(&'a [u32]),
@@ -733,10 +760,45 @@ pub(crate) enum SourceSelection<'a> {
 }
 
 impl SourceSelection<'_> {
+    fn try_for_each_span(
+        self,
+        upper_bound: usize,
+        mut visit: impl FnMut(usize, usize) -> Result<()>,
+    ) -> Result<()> {
+        match self {
+            Self::Indices(indices) => {
+                for &index in indices {
+                    let index = usize::try_from(index).map_err(|_| {
+                        Error::IncompatibleSchema("source index exceeds usize".to_owned())
+                    })?;
+                    if index >= upper_bound {
+                        return Err(Error::IncompatibleSchema(
+                            "source index exceeds its array".to_owned(),
+                        ));
+                    }
+                    visit(index, index + 1)?;
+                }
+            }
+            Self::Ranges(ranges) => {
+                for &(start, end) in ranges {
+                    if start > end || end > upper_bound {
+                        return Err(Error::IncompatibleSchema(
+                            "source range exceeds its array".to_owned(),
+                        ));
+                    }
+                    if start != end {
+                        visit(start, end)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn row_count(self, upper_bound: usize) -> Result<usize> {
         let mut rows = 0usize;
-        self.try_for_each(upper_bound, |_| {
-            rows = rows.checked_add(1).ok_or_else(|| {
+        self.try_for_each_span(upper_bound, |start, end| {
+            rows = rows.checked_add(end - start).ok_or_else(|| {
                 Error::IncompatibleSchema(
                     "masked Arrow source selection length exceeds usize".to_owned(),
                 )
@@ -751,36 +813,12 @@ impl SourceSelection<'_> {
         upper_bound: usize,
         mut visit: impl FnMut(usize) -> Result<()>,
     ) -> Result<()> {
-        match self {
-            Self::Indices(indices) => {
-                for index in indices {
-                    let index = usize::try_from(*index).map_err(|_| {
-                        Error::IncompatibleSchema(
-                            "masked Arrow source index exceeds usize".to_owned(),
-                        )
-                    })?;
-                    if index >= upper_bound {
-                        return Err(Error::IncompatibleSchema(
-                            "masked Arrow source index exceeds its array length".to_owned(),
-                        ));
-                    }
-                    visit(index)?;
-                }
+        self.try_for_each_span(upper_bound, |start, end| {
+            for index in start..end {
+                visit(index)?;
             }
-            Self::Ranges(ranges) => {
-                for &(start, end) in ranges {
-                    if start > end || end > upper_bound {
-                        return Err(Error::IncompatibleSchema(
-                            "masked Arrow source range exceeds its array length".to_owned(),
-                        ));
-                    }
-                    for index in start..end {
-                        visit(index)?;
-                    }
-                }
-            }
-        }
-        Ok(())
+            Ok(())
+        })
     }
 }
 
@@ -869,6 +907,79 @@ where
     Ok(ranges)
 }
 
+/// The exact child spans each range-extension call copies, retaining call
+/// boundaries: adjacent calls can create separate physical encoded values.
+fn extended_child_ranges(
+    selection: SourceSelection<'_>,
+    parent_len: usize,
+    child_len: usize,
+    per_row: bool,
+    range: impl Fn(usize, usize) -> Result<(usize, usize)>,
+    budget: &mut MaterializationBudget,
+) -> Result<Vec<(usize, usize)>> {
+    let visit = |emit: &mut dyn FnMut((usize, usize)) -> Result<()>| {
+        let mut append = |start, end| {
+            let (start, end) = range(start, end)?;
+            if start > end || end > child_len {
+                return Err(Error::IncompatibleSchema(
+                    "extended source range exceeds its child".to_owned(),
+                ));
+            }
+            if start != end {
+                emit((start, end))?;
+            }
+            Ok(())
+        };
+        selection.try_for_each_span(parent_len, |start, end| {
+            if per_row {
+                for row in start..end {
+                    append(row, row + 1)?;
+                }
+                Ok(())
+            } else {
+                append(start, end)
+            }
+        })
+    };
+    let mut count = 0_usize;
+    visit(&mut |_| {
+        count = count.checked_add(1).ok_or_else(|| {
+            Error::IncompatibleSchema("extended range count exceeds usize".to_owned())
+        })?;
+        Ok(())
+    })?;
+    let mut ranges = scratch_vec(budget, count, "extended child ranges")?;
+    visit(&mut |range| {
+        ranges.push(range);
+        Ok(())
+    })?;
+    Ok(ranges)
+}
+
+fn source_child_ranges(
+    kind: SelectionKind,
+    selection: SourceSelection<'_>,
+    parent_len: usize,
+    child_len: usize,
+    is_valid: impl Fn(usize) -> bool,
+    range: impl Fn(usize, usize) -> Result<(usize, usize)>,
+    budget: &mut MaterializationBudget,
+) -> Result<Vec<(usize, usize)>> {
+    match kind {
+        SelectionKind::Take => selected_child_ranges(
+            selection,
+            parent_len,
+            child_len,
+            is_valid,
+            |row| range(row, row + 1),
+            budget,
+        ),
+        SelectionKind::Extend => {
+            extended_child_ranges(selection, parent_len, child_len, false, range, budget)
+        }
+    }
+}
+
 fn reserve_byte_payload(
     selection: SourceSelection<'_>,
     array_len: usize,
@@ -891,6 +1002,7 @@ fn reserve_byte_payload(
 fn reserve_selected_bytes<T: ByteArrayType>(
     array: &dyn Array,
     selection: SourceSelection<'_>,
+    kind: SelectionKind,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     let array = downcast::<GenericByteArray<T>>(array)?;
@@ -898,7 +1010,7 @@ fn reserve_selected_bytes<T: ByteArrayType>(
         selection,
         array.len(),
         |index| {
-            if array.is_valid(index) {
+            if kind == SelectionKind::Extend || array.is_valid(index) {
                 AsRef::<[u8]>::as_ref(array.value(index)).len()
             } else {
                 0
@@ -924,16 +1036,19 @@ fn reserve_storage_source_payload(
     array: &dyn Array,
     storage: ArrowDataType,
     selection: SourceSelection<'_>,
+    kind: SelectionKind,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match storage {
-        ArrowDataType::Utf8 => reserve_selected_bytes::<Utf8Type>(array, selection, budget),
+        ArrowDataType::Utf8 => reserve_selected_bytes::<Utf8Type>(array, selection, kind, budget),
         ArrowDataType::LargeUtf8 => {
-            reserve_selected_bytes::<LargeUtf8Type>(array, selection, budget)
+            reserve_selected_bytes::<LargeUtf8Type>(array, selection, kind, budget)
         }
-        ArrowDataType::Binary => reserve_selected_bytes::<BinaryType>(array, selection, budget),
+        ArrowDataType::Binary => {
+            reserve_selected_bytes::<BinaryType>(array, selection, kind, budget)
+        }
         ArrowDataType::LargeBinary => {
-            reserve_selected_bytes::<LargeBinaryType>(array, selection, budget)
+            reserve_selected_bytes::<LargeBinaryType>(array, selection, kind, budget)
         }
         ArrowDataType::Utf8View => reserve_view_buffers::<StringViewType>(array, budget),
         ArrowDataType::BinaryView => reserve_view_buffers::<BinaryViewType>(array, budget),
@@ -941,14 +1056,61 @@ fn reserve_storage_source_payload(
     }
 }
 
-fn reserve_run_source_take<R: RunEndIndexType>(
+fn reserve_run_source_selection<R: RunEndIndexType>(
     source: &RunArray<R>,
     encoded: &crate::RunEndEncodedType,
     selection: SourceSelection<'_>,
+    kind: SelectionKind,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     let selected_count = selection.row_count(source.len())?;
-    // Arrow's run take first expands every selected logical index to usize.
+    {
+        let maximum = match encoded.run_ends().dtype() {
+            DataType::Int16 => {
+                usize::try_from(i16::MAX).expect("a positive Int16 bound fits usize")
+            }
+            DataType::Int32 => {
+                usize::try_from(i32::MAX).expect("a positive Int32 bound fits usize")
+            }
+            _ => usize::MAX,
+        };
+        if selected_count > maximum {
+            return Err(physical_limit_error(
+                "run-end value",
+                selected_count,
+                maximum,
+            ));
+        }
+    }
+    if kind == SelectionKind::Extend {
+        let ranges = extended_child_ranges(
+            selection,
+            source.len(),
+            source.values().len(),
+            false,
+            |start, end| {
+                Ok((
+                    source.get_physical_index(start),
+                    source.get_physical_index(end - 1) + 1,
+                ))
+            },
+            budget,
+        )?;
+        let values = SourceSelection::Ranges(&ranges);
+        let count = values.row_count(source.values().len())?;
+        budget.add_array(encoded.run_ends().dtype(), count)?;
+        // The range kernel constructs temporary run-end bytes before append.
+        reserve_vec_bytes::<R::Native>(budget, count)?;
+        return reserve_source_selection_for(
+            source.values().as_ref(),
+            encoded.values().dtype(),
+            values,
+            kind,
+            budget,
+        );
+    }
+    // Arrow sorts logical indices and retains their physical indices beside them.
+    reserve_vec_bytes::<usize>(budget, selected_count)?;
     reserve_vec_bytes::<usize>(budget, selected_count)?;
 
     let mut run_count = 0usize;
@@ -962,7 +1124,8 @@ fn reserve_run_source_take<R: RunEndIndexType>(
         Ok(())
     })?;
     budget.add_array(encoded.run_ends().dtype(), run_count)?;
-    budget.add_array_layout(&DataType::UInt32, run_count)?;
+    // The caller's take index can be UInt64 even when physical indices fit UInt32.
+    budget.add_array_layout(&DataType::UInt64, run_count)?;
 
     let mut value_indices = Vec::new();
     value_indices
@@ -998,9 +1161,49 @@ pub(crate) fn reserve_source_selection(
     selection: SourceSelection<'_>,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
+    reserve_source_selection_for(array, source_type, selection, SelectionKind::Take, budget)
+}
+
+pub(crate) fn reserve_source_extend(
+    array: &dyn Array,
+    source_type: &DataType,
+    selection: SourceSelection<'_>,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
+    reserve_source_selection_for(array, source_type, selection, SelectionKind::Extend, budget)
+}
+
+fn reserve_source_selection_for(
+    array: &dyn Array,
+    source_type: &DataType,
+    selection: SourceSelection<'_>,
+    kind: SelectionKind,
+    budget: &mut MaterializationBudget,
+) -> Result<()> {
     let selected_count = selection.row_count(array.len())?;
+    // A selection can precede logical proof. Reserve the actual storage payload,
+    // not a declared code width; Extend also copies physical bytes under nulls.
+    {
+        let storage = match array.data_type() {
+            ArrowDataType::Utf8 => Some(DataType::Utf8String),
+            ArrowDataType::LargeUtf8 => Some(DataType::LargeUtf8String),
+            ArrowDataType::Binary => Some(DataType::Binary),
+            ArrowDataType::LargeBinary => Some(DataType::LargeBinary),
+            _ => None,
+        };
+        if let Some(storage) = storage {
+            budget.add_array_layout(&storage, selected_count)?;
+            return reserve_storage_source_payload(
+                array,
+                array.data_type().clone(),
+                selection,
+                kind,
+                budget,
+            );
+        }
+    }
     budget.add_array_layout(source_type, selected_count)?;
-    reserve_source_children_and_payload(array, source_type, selection, budget)
+    reserve_source_children_and_payload(array, source_type, selection, kind, budget)
 }
 
 #[allow(clippy::too_many_lines)] // Mirrors Arrow's exhaustive take dispatch and sharing rules.
@@ -1008,77 +1211,117 @@ fn reserve_source_children_and_payload(
     array: &dyn Array,
     source_type: &DataType,
     selection: SourceSelection<'_>,
+    kind: SelectionKind,
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     let selected_count = selection.row_count(array.len())?;
     match source_type {
-        DataType::Bytes(parameters) => reserve_storage_source_payload(
+        crate::bytes_dtypes!() => reserve_storage_source_payload(
             array,
-            bytes::arrow_storage(*parameters)?,
+            bytes::arrow_storage(source_type.bytes_parameters().expect("a byte leaf"))?,
             selection,
+            kind,
             budget,
         )?,
-        DataType::String(parameters) => reserve_storage_source_payload(
+        crate::string_dtypes!() => reserve_storage_source_payload(
             array,
-            string::arrow_storage(*parameters)?,
+            string::arrow_storage(source_type.string_parameters().expect("a string leaf"))?,
             selection,
+            kind,
             budget,
         )?,
-        DataType::List(child) => {
+        DataType::Serie(child) => {
             let array = downcast::<ListArray>(array)?;
             let offsets = array.value_offsets();
-            let ranges = selected_child_ranges(
+            let ranges = source_child_ranges(
+                kind,
                 selection,
                 array.len(),
                 array.values().len(),
                 |row| array.is_valid(row),
-                |row| offset_pair(i64::from(offsets[row]), i64::from(offsets[row + 1])),
+                |start, end| offset_pair(i64::from(offsets[start]), i64::from(offsets[end])),
                 budget,
             )?;
-            reserve_source_selection(
+            reserve_source_selection_for(
                 array.values().as_ref(),
                 child.dtype(),
                 SourceSelection::Ranges(&ranges),
+                kind,
                 budget,
             )?;
         }
-        DataType::LargeList(child) => {
+        DataType::LargeSerie(child) => {
             let array = downcast::<LargeListArray>(array)?;
             let offsets = array.value_offsets();
-            let ranges = selected_child_ranges(
+            let ranges = source_child_ranges(
+                kind,
                 selection,
                 array.len(),
                 array.values().len(),
                 |row| array.is_valid(row),
-                |row| offset_pair(offsets[row], offsets[row + 1]),
+                |start, end| offset_pair(offsets[start], offsets[end]),
                 budget,
             )?;
-            reserve_source_selection(
+            reserve_source_selection_for(
                 array.values().as_ref(),
                 child.dtype(),
                 SourceSelection::Ranges(&ranges),
+                kind,
                 budget,
             )?;
         }
-        DataType::FixedSizeList(child, size) => {
+        DataType::SerieView(child) | DataType::LargeSerieView(child)
+            if kind == SelectionKind::Extend =>
+        {
+            macro_rules! reserve_views {
+                ($layout:ty) => {{
+                    let array = downcast::<$layout>(array)?;
+                    let ranges = extended_child_ranges(
+                        selection,
+                        array.len(),
+                        array.values().len(),
+                        true,
+                        |row, _| {
+                            let start = array.offsets()[row].as_usize();
+                            Ok((start, start + array.sizes()[row].as_usize()))
+                        },
+                        budget,
+                    )?;
+                    reserve_source_selection_for(
+                        array.values().as_ref(),
+                        child.dtype(),
+                        SourceSelection::Ranges(&ranges),
+                        kind,
+                        budget,
+                    )?;
+                }};
+            }
+            if matches!(source_type, DataType::SerieView(_)) {
+                reserve_views!(ListViewArray);
+            } else {
+                reserve_views!(LargeListViewArray);
+            }
+        }
+        DataType::FixedSizeSerie(child, size) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             let size = usize::try_from(*size).map_err(|_| {
                 Error::IncompatibleSchema(
                     "masked Arrow fixed-size-list width is negative".to_owned(),
                 )
             })?;
-            let ranges = selected_child_ranges(
+            let ranges = source_child_ranges(
+                kind,
                 selection,
                 array.len(),
                 array.values().len(),
                 |_| true,
-                |row| {
-                    let start = row.checked_mul(size).ok_or_else(|| {
+                |start, end| {
+                    let start = start.checked_mul(size).ok_or_else(|| {
                         Error::IncompatibleSchema(
                             "masked Arrow fixed-size-list offset exceeds usize".to_owned(),
                         )
                     })?;
-                    let end = start.checked_add(size).ok_or_else(|| {
+                    let end = end.checked_mul(size).ok_or_else(|| {
                         Error::IncompatibleSchema(
                             "masked Arrow fixed-size-list range exceeds usize".to_owned(),
                         )
@@ -1088,12 +1331,15 @@ fn reserve_source_children_and_payload(
                 budget,
             )?;
             let child_count = SourceSelection::Ranges(&ranges).row_count(array.values().len())?;
-            // Arrow expands fixed-list rows into a UInt32 child-index buffer.
-            budget.add_array_layout(&DataType::UInt32, child_count)?;
-            reserve_source_selection(
+            if kind == SelectionKind::Take {
+                // Take expands fixed-list rows into a UInt32 child-index buffer.
+                budget.add_array_layout(&DataType::UInt32, child_count)?;
+            }
+            reserve_source_selection_for(
                 array.values().as_ref(),
                 child.dtype(),
                 SourceSelection::Ranges(&ranges),
+                kind,
                 budget,
             )?;
         }
@@ -1105,7 +1351,13 @@ fn reserve_source_children_and_payload(
                 ));
             }
             for (field, child) in fields.iter().zip(array.columns()) {
-                reserve_source_selection(child.as_ref(), field.dtype(), selection, budget)?;
+                reserve_source_selection_for(
+                    child.as_ref(),
+                    field.dtype(),
+                    selection,
+                    kind,
+                    budget,
+                )?;
             }
         }
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
@@ -1114,28 +1366,31 @@ fn reserve_source_children_and_payload(
                 .expect("the variant was just matched");
             let array = downcast::<MapArray>(array)?;
             let offsets = array.value_offsets();
-            let ranges = selected_child_ranges(
+            let ranges = source_child_ranges(
+                kind,
                 selection,
                 array.len(),
                 array.entries().len(),
                 |row| array.is_valid(row),
-                |row| offset_pair(i64::from(offsets[row]), i64::from(offsets[row + 1])),
+                |start, end| offset_pair(i64::from(offsets[start]), i64::from(offsets[end])),
                 budget,
             )?;
-            reserve_source_selection(
+            reserve_source_selection_for(
                 array.entries(),
                 map.entries().dtype(),
                 SourceSelection::Ranges(&ranges),
+                kind,
                 budget,
             )?;
         }
         DataType::Union(fields, UnionMode::Sparse) => {
             let array = downcast::<UnionArray>(array)?;
             for (type_id, field) in fields {
-                reserve_source_selection(
+                reserve_source_selection_for(
                     array.child(type_id).as_ref(),
                     field.dtype(),
                     selection,
+                    kind,
                     budget,
                 )?;
             }
@@ -1144,7 +1399,9 @@ fn reserve_source_children_and_payload(
             let array = downcast::<UnionArray>(array)?;
             // Dense take keeps one row-sized mask and filtered-offset scratch
             // alive at a time while retaining every already-built child.
-            budget.add_bitmap(selected_count)?;
+            if kind == SelectionKind::Take {
+                budget.add_bitmap(selected_count)?;
+            }
             budget.add_array_layout(&DataType::UInt32, selected_count)?;
             let mut branch = Vec::new();
             branch.try_reserve_exact(selected_count).map_err(|error| {
@@ -1164,31 +1421,35 @@ fn reserve_source_children_and_payload(
                     }
                     Ok(())
                 })?;
-                reserve_source_selection(
+                reserve_source_selection_for(
                     array.child(type_id).as_ref(),
                     field.dtype(),
                     SourceSelection::Indices(&branch),
+                    kind,
                     budget,
                 )?;
             }
         }
         DataType::RunEndEncoded(encoded) => match encoded.run_ends().dtype() {
-            DataType::Int16 => reserve_run_source_take(
+            DataType::Int16 => reserve_run_source_selection(
                 downcast::<Int16RunArray>(array)?,
                 encoded,
                 selection,
+                kind,
                 budget,
             )?,
-            DataType::Int32 => reserve_run_source_take(
+            DataType::Int32 => reserve_run_source_selection(
                 downcast::<Int32RunArray>(array)?,
                 encoded,
                 selection,
+                kind,
                 budget,
             )?,
-            DataType::Int64 => reserve_run_source_take(
+            DataType::Int64 => reserve_run_source_selection(
                 downcast::<Int64RunArray>(array)?,
                 encoded,
                 selection,
+                kind,
                 budget,
             )?,
             _ => {
@@ -1305,39 +1566,46 @@ pub(crate) fn reserve_cast_output_payload(
         // A string's payload is its characters whatever charset writes them:
         // every charset here is at most one byte per scalar above US-ASCII,
         // so the UTF-8 rendering is the reservation's upper bound.
-        DataType::String(parameters) => {
+        crate::string_dtypes!() => {
+            let parameters = target_type.string_parameters().expect("a string leaf");
             reserve_formatted_payload(array, selection, parameters.is_view(), budget)
         }
         // Offset storage copies every projected payload; a view shares its
         // buffers and a fixed width was charged by the layout.
-        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
-            ArrowDataType::Binary | ArrowDataType::LargeBinary => {
-                let mut bytes = 0usize;
-                selection.try_for_each(array.len(), |index| {
-                    bytes = bytes
-                        .checked_add(projected_byte_len(array, source_type, index)?)
-                        .ok_or_else(|| {
-                            Error::IncompatibleSchema(
-                                "Arrow cast output payload exceeds usize".to_owned(),
-                            )
-                        })?;
-                    Ok(())
-                })?;
-                budget.add_bytes(bytes)
+        crate::bytes_dtypes!() => {
+            match bytes::arrow_storage(target_type.bytes_parameters().expect("a byte leaf"))? {
+                ArrowDataType::Binary | ArrowDataType::LargeBinary => {
+                    let mut bytes = 0usize;
+                    selection.try_for_each(array.len(), |index| {
+                        bytes = bytes
+                            .checked_add(projected_byte_len(array, source_type, index)?)
+                            .ok_or_else(|| {
+                                Error::IncompatibleSchema(
+                                    "Arrow cast output payload exceeds usize".to_owned(),
+                                )
+                            })?;
+                        Ok(())
+                    })?;
+                    budget.add_bytes(bytes)
+                }
+                _ => Ok(()),
             }
-            _ => Ok(()),
-        },
-        DataType::List(_)
-        | DataType::LargeList(_)
-        | DataType::FixedSizeList(..)
+        }
+        DataType::Serie(_)
+        | DataType::LargeSerie(_)
+        | DataType::FixedSizeSerie(..)
         | DataType::Struct(_)
         | DataType::Map(_)
         | DataType::SortedMap(_)
         | DataType::Union(..)
         | DataType::Dictionary(_)
-        | DataType::RunEndEncoded(_) => {
-            reserve_source_children_and_payload(array, source_type, selection, budget)
-        }
+        | DataType::RunEndEncoded(_) => reserve_source_children_and_payload(
+            array,
+            source_type,
+            selection,
+            SelectionKind::Take,
+            budget,
+        ),
         _ => Ok(()),
     }
 }
@@ -1365,7 +1633,7 @@ pub(crate) fn reserve_concat_copy(
     budget: &mut MaterializationBudget,
 ) -> Result<()> {
     match dtype {
-        DataType::Bytes(parameters) if parameters.is_view() => {
+        DataType::BinaryView | DataType::LargeBinaryView => {
             let array = downcast::<BinaryViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_vec_bytes::<arrow_buffer::Buffer>(budget, array.data_buffers().len())?;
@@ -1373,7 +1641,7 @@ pub(crate) fn reserve_concat_copy(
         // Dictionary inputs are vocabulary-aligned before concat, so Arrow
         // allocates only the concatenated key array and retains one vocab Arc.
         DataType::Dictionary(_) => budget.add_array_layout(dtype, array.len())?,
-        DataType::List(child) => {
+        DataType::Serie(child) => {
             let array = downcast::<ListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1381,7 +1649,7 @@ pub(crate) fn reserve_concat_copy(
             let values = array.values().slice(start, end - start);
             reserve_concat_copy(values.as_ref(), child.dtype(), budget)?;
         }
-        DataType::LargeList(child) => {
+        DataType::LargeSerie(child) => {
             let array = downcast::<LargeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             let start = array.offsets()[0].as_usize();
@@ -1391,17 +1659,17 @@ pub(crate) fn reserve_concat_copy(
         }
         // Arrow concat preserves every ListView backing child, including
         // ranges not referenced by a logical view.
-        DataType::ListView(child) => {
+        DataType::SerieView(child) => {
             let array = downcast::<ListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::LargeListView(child) => {
+        DataType::LargeSerieView(child) => {
             let array = downcast::<LargeListViewArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
         }
-        DataType::FixedSizeList(child, _) => {
+        DataType::FixedSizeSerie(child, _) => {
             let array = downcast::<FixedSizeListArray>(array)?;
             budget.add_array_layout(dtype, array.len())?;
             reserve_concat_copy(array.values().as_ref(), child.dtype(), budget)?;
@@ -1475,46 +1743,52 @@ fn reserve_new_materialized_array_without_dictionary_values(
         budget.add_array_layout(dtype, output.len())?;
     }
     match dtype {
-        DataType::Bytes(parameters) => match bytes::arrow_storage(*parameters)? {
-            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
-            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
-            ArrowDataType::BinaryView => {
-                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+        crate::bytes_dtypes!() => {
+            match bytes::arrow_storage(dtype.bytes_parameters().expect("a byte leaf"))? {
+                ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+                ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+                ArrowDataType::BinaryView => {
+                    reserve_new_views::<BinaryViewType>(output, source, budget)?;
+                }
+                // A fixed width was charged by the layout.
+                _ => {}
             }
-            // A fixed width was charged by the layout.
-            _ => {}
-        },
-        DataType::String(parameters) => match string::arrow_storage(*parameters)? {
-            ArrowDataType::Utf8 => reserve_new_bytes::<Utf8Type>(output, budget)?,
-            ArrowDataType::LargeUtf8 => reserve_new_bytes::<LargeUtf8Type>(output, budget)?,
-            ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
-            ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
-            ArrowDataType::Utf8View => reserve_new_views::<StringViewType>(output, source, budget)?,
-            ArrowDataType::BinaryView => {
-                reserve_new_views::<BinaryViewType>(output, source, budget)?;
+        }
+        crate::string_dtypes!() => {
+            match string::arrow_storage(dtype.string_parameters().expect("a string leaf"))? {
+                ArrowDataType::Utf8 => reserve_new_bytes::<Utf8Type>(output, budget)?,
+                ArrowDataType::LargeUtf8 => reserve_new_bytes::<LargeUtf8Type>(output, budget)?,
+                ArrowDataType::Binary => reserve_new_bytes::<BinaryType>(output, budget)?,
+                ArrowDataType::LargeBinary => reserve_new_bytes::<LargeBinaryType>(output, budget)?,
+                ArrowDataType::Utf8View => {
+                    reserve_new_views::<StringViewType>(output, source, budget)?
+                }
+                ArrowDataType::BinaryView => {
+                    reserve_new_views::<BinaryViewType>(output, source, budget)?;
+                }
+                // A fixed width was charged by the layout.
+                _ => {}
             }
-            // A fixed width was charged by the layout.
-            _ => {}
-        },
-        DataType::List(child) => reserve_new_materialized_array_without_dictionary_values(
+        }
+        DataType::Serie(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeList(child) => reserve_new_materialized_array_without_dictionary_values(
+        DataType::LargeSerie(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::ListView(child) => reserve_new_materialized_array_without_dictionary_values(
+        DataType::SerieView(child) => reserve_new_materialized_array_without_dictionary_values(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeListView(child) => {
+        DataType::LargeSerieView(child) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<LargeListViewArray>(output.as_ref())?.values(),
                 downcast::<LargeListViewArray>(source.as_ref())?.values(),
@@ -1522,7 +1796,7 @@ fn reserve_new_materialized_array_without_dictionary_values(
                 budget,
             )?;
         }
-        DataType::FixedSizeList(child, _) => {
+        DataType::FixedSizeSerie(child, _) => {
             reserve_new_materialized_array_without_dictionary_values(
                 downcast::<FixedSizeListArray>(output.as_ref())?.values(),
                 downcast::<FixedSizeListArray>(source.as_ref())?.values(),
@@ -1723,31 +1997,31 @@ pub(crate) fn reserve_new_dictionary_vocabularies(
                 reserve_new_dictionary_vocabularies(output, source, field.dtype(), budget)?;
             }
         }
-        DataType::List(child) => reserve_new_dictionary_vocabularies(
+        DataType::Serie(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListArray>(output.as_ref())?.values(),
             downcast::<ListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeList(child) => reserve_new_dictionary_vocabularies(
+        DataType::LargeSerie(child) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListArray>(output.as_ref())?.values(),
             downcast::<LargeListArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::ListView(child) => reserve_new_dictionary_vocabularies(
+        DataType::SerieView(child) => reserve_new_dictionary_vocabularies(
             downcast::<ListViewArray>(output.as_ref())?.values(),
             downcast::<ListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::LargeListView(child) => reserve_new_dictionary_vocabularies(
+        DataType::LargeSerieView(child) => reserve_new_dictionary_vocabularies(
             downcast::<LargeListViewArray>(output.as_ref())?.values(),
             downcast::<LargeListViewArray>(source.as_ref())?.values(),
             child.dtype(),
             budget,
         )?,
-        DataType::FixedSizeList(child, _) => reserve_new_dictionary_vocabularies(
+        DataType::FixedSizeSerie(child, _) => reserve_new_dictionary_vocabularies(
             downcast::<FixedSizeListArray>(output.as_ref())?.values(),
             downcast::<FixedSizeListArray>(source.as_ref())?.values(),
             child.dtype(),

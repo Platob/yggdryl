@@ -252,7 +252,7 @@ fn a_string_naming_an_existing_file_is_a_yaml_string_not_a_path() {
     assert_eq!(value, yaml::from_bytes(path.as_bytes()).unwrap());
 }
 
-/// A `list<int64>` value held as a column, and the run of its rows.
+/// A `serie<int64>` value held as a column, and the run of its rows.
 fn int64s() -> (Scalar, Scalar) {
     let item = Field::new("item", DataType::Int64, false);
     let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
@@ -261,7 +261,7 @@ fn int64s() -> (Scalar, Scalar) {
 }
 
 #[test]
-fn a_list_column_writes_as_the_run_of_its_rows_in_block_and_flow() {
+fn a_serie_column_writes_as_the_run_of_its_rows_in_block_and_flow() {
     let (column, run) = int64s();
     let value = |xs: Scalar| Scalar::from_struct([("xs", xs)]).unwrap();
     let keyed = |key: Scalar| Scalar::from_mapping([(key, Scalar::from(1_i64))]).unwrap();

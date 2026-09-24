@@ -8,7 +8,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::{BytesType as CoreBytesType, StringType as CoreStringType, StructType};
 use yggdryl::{
-    DataType as CoreDataType, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
+    DataType as CoreDataType, DataTypeId, EdgeAlgorithm as CoreEdgeAlgorithm, Field as CoreField,
     Scheme as CoreScheme, StringEnum as CoreStringEnum, TimeUnit as CoreTimeUnit,
     UnionMode as CoreUnionMode,
 };
@@ -121,7 +121,7 @@ impl JsDataType {
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
-            "currency" => CoreDataType::Currency,
+            "ccy" => CoreDataType::Ccy,
             "mic" => CoreDataType::MicCode,
             "cfi" => CoreDataType::CfiCode,
             "isin" => CoreDataType::IsinCode,
@@ -304,7 +304,7 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Resolves a registered logical name such as `currency` or `Price` to
+    /// Resolves a registered logical name such as `ccy` or `Price` to
     /// the datatype it spells, folding case, `_`, `-`, and spaces.
     #[napi(factory)]
     pub fn from_logical_name(name: String) -> Result<Self> {
@@ -344,22 +344,25 @@ impl JsDataType {
         value.map(Self::from_core).map_err(napi_error)
     }
 
-    /// Internal direct list-layout constructor preserving the child Field.
-    #[napi(factory, js_name = "_list", skip_typescript)]
-    pub fn list_kind(kind: String, item: &JsField, length: Option<f64>) -> Result<Self> {
+    /// Internal direct serie-layout constructor preserving the child Field.
+    ///
+    /// `kind` is read as a datatype identifier, so a legacy spelling
+    /// (`list`, `large_list_view`, ...) names the layout it always did.
+    #[napi(factory, js_name = "_serie", skip_typescript)]
+    pub fn serie_kind(kind: String, item: &JsField, length: Option<f64>) -> Result<Self> {
         let item = item.inner.clone();
-        let inner = match (kind.as_str(), length) {
-            ("list", None) => CoreDataType::list(item),
-            ("list_view", None) => CoreDataType::list_view(item),
-            ("fixed_size_list", Some(length)) => {
-                CoreDataType::fixed_size_list(item, exact_i32(length, "length")?)
+        let inner = match (kind.parse::<DataTypeId>().ok(), length) {
+            (Some(DataTypeId::Serie), None) => CoreDataType::serie(item),
+            (Some(DataTypeId::SerieView), None) => CoreDataType::serie_view(item),
+            (Some(DataTypeId::FixedSizeSerie), Some(length)) => {
+                CoreDataType::fixed_size_serie(item, exact_i32(length, "length")?)
                     .map_err(napi_error)?
             }
-            ("large_list", None) => CoreDataType::large_list(item),
-            ("large_list_view", None) => CoreDataType::large_list_view(item),
+            (Some(DataTypeId::LargeSerie), None) => CoreDataType::large_serie(item),
+            (Some(DataTypeId::LargeSerieView), None) => CoreDataType::large_serie_view(item),
             _ => {
                 return Err(Error::from_reason(format!(
-                    "invalid list kind/length combination: {kind:?}"
+                    "invalid serie kind/length combination: {kind:?}"
                 )));
             }
         };
@@ -661,7 +664,7 @@ impl JsDataType {
     /// Every leaf under this node, named by its dotted path.
     ///
     /// Struct nesting flattens all the way down, and a leaf under a nullable
-    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// ancestor is nullable. Collections are leaves: a serie or a map is one
     /// column, and `explodeFields` is what reaches inside one. Every name this
     /// answers is one `fieldByPath` resolves.
     #[napi]
@@ -675,7 +678,7 @@ impl JsDataType {
 
     /// This node's children with every collection replaced by what it holds.
     ///
-    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// A serie answers its item, a map its entries, a dictionary or run-end
     /// node the values it encodes, and anything else itself - so the result
     /// names the same columns in the same order. One level only, so the depth
     /// is the caller's decision.

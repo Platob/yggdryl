@@ -57,7 +57,7 @@ the only one Arrow has.
     assert_eq!(leaf, DurationType::Duration32(TimeUnit::Second));
     assert_eq!(leaf.unit(), TimeUnit::Second);
     assert_eq!(leaf.bit_width(), 32);
-    assert_eq!(leaf.family(), "duration");
+    assert_eq!(leaf.id().temporal_family(), Some("duration"));
     assert_eq!(leaf.id(), DataTypeId::Duration32);
     assert_eq!(DataTypeId::Duration32.as_u8(), 0x36);
     assert_eq!(DataType::duration64(TimeUnit::Second)?.kind(), DataTypeKind::Temporal);

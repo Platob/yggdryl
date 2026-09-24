@@ -1057,23 +1057,28 @@ impl ParquetSource {
             // A declared non-null column over a stored nullable one reads each
             // stored null as the type's default, which no statistic describes.
             let fills_nulls = !declared.is_nullable() && stored.field(index).is_nullable();
+            // Each statistic column lands once under the field the filter
+            // reads, and a group's bound is one cell of it; a column that
+            // does not land - another layout, a value the field refuses -
+            // bounds nothing.
+            let field = Arc::new(declared.with_nullable(true));
+            let landed = |values: arrow_array::ArrayRef| {
+                crate::serie::land(Arc::clone(&field), values, &crate::serie::Proof::Unproven).ok()
+            };
             columns.push(StoredBounds {
-                field: declared.with_nullable(true),
+                minimums: landed(minimums),
+                maximums: landed(maximums),
+                field,
                 leaf,
                 use_extremes,
                 fills_nulls,
-                minimums,
-                maximums,
                 nulls,
             });
         }
 
-        let bound_at = |field: &Field, values: &arrow_array::ArrayRef, position: usize| {
-            use arrow_array::Array as _;
-            if values.is_null(position) {
-                return None;
-            }
-            crate::arrow::scalar_value(field, values.slice(position, 1).as_ref())
+        let bound_at = |values: Option<&crate::Serie>, position: usize| {
+            values?
+                .scalar(position)
                 .ok()
                 .filter(|value| !value.is_null())
         };
@@ -1101,8 +1106,8 @@ impl ParquetSource {
                 });
                 let (minimum, maximum) = if column.use_extremes && !legacy {
                     (
-                        bound_at(&column.field, &column.minimums, position),
-                        bound_at(&column.field, &column.maximums, position),
+                        bound_at(column.minimums.as_ref(), position),
+                        bound_at(column.maximums.as_ref(), position),
                     )
                 } else {
                     (None, None)
@@ -1226,17 +1231,18 @@ impl ParquetSource {
 /// One stored column's footer statistics, across the kept row groups.
 struct StoredBounds {
     /// The field the filter reads the column as.
-    field: Field,
+    field: Arc<Field>,
     /// The column's leaf in the Parquet schema.
     leaf: usize,
     /// Whether the minimums and maximums bound the values the filter reads.
     use_extremes: bool,
     /// Whether the read turns the stored nulls into the type's default.
     fills_nulls: bool,
-    /// Each kept group's minimum.
-    minimums: arrow_array::ArrayRef,
-    /// Each kept group's maximum.
-    maximums: arrow_array::ArrayRef,
+    /// Each kept group's minimum, or `None` where the statistics do not
+    /// land under the field.
+    minimums: Option<crate::Serie>,
+    /// Each kept group's maximum, likewise.
+    maximums: Option<crate::Serie>,
     /// Each kept group's null count; a null entry is a count not recorded.
     nulls: arrow_array::UInt64Array,
 }

@@ -247,7 +247,10 @@ fn window<R: RunEndIndexType + PrimitiveLeaf>(
     field: Arc<Field>,
     offset: usize,
     length: usize,
-) -> (Serie, Range<usize>) {
+) -> (Serie, Range<usize>)
+where
+    R::Native: Into<Scalar>,
+{
     let runs = if length == 0 {
         0..0
     } else {
@@ -260,7 +263,12 @@ fn window<R: RunEndIndexType + PrimitiveLeaf>(
             .iter()
             .map(|end| R::Native::usize_as((end.as_usize() - offset).min(length))),
     );
-    (PrimitiveSerie::<R>::new(field, rebased).into_serie(), runs)
+    // Run ends are plain integers, read as they are stored.
+    let reading = crate::serie::value::read_native::<R::Native>;
+    (
+        PrimitiveSerie::<R>::new(field, rebased, reading).into_serie(),
+        runs,
+    )
 }
 
 impl RunEndEncodedSerie {
@@ -491,18 +499,31 @@ serie_leaf!(RunEndEncodedSerie);
 /// the offset and its values run past the end. An unsliced array shares
 /// both buffers untouched; a sliced one copies the run ends it touches and
 /// shares the values through Arrow's own slice.
-fn rebased<R: RunEndIndexType>(held: &RunArray<R>) -> (ArrayRef, ArrayRef, usize) {
+fn rebased<R: RunEndIndexType>(
+    held: &RunArray<R>,
+    parent: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> crate::arrow::Result<(ArrayRef, ArrayRef, usize, Option<NullBuffer>)> {
     let ends = held.run_ends();
     let len = ends.len();
+    let hidden = if parent.is_some_and(|above| above.null_count() != 0) {
+        crate::cast::columns::run_value_exposure(held, parent.map(NullBuffer::inner), budget)?
+            .map(NullBuffer::new)
+    } else {
+        None
+    };
     if ends.offset() == 0 && ends.max_value() == len {
-        return (
+        return Ok((
             Arc::new(PrimitiveArray::<R>::new(ends.inner().clone(), None)),
             Arc::clone(held.values()),
             len,
-        );
+            hidden,
+        ));
     }
     let rebased = PrimitiveArray::<R>::from_iter_values(ends.sliced_values());
-    (Arc::new(rebased), held.values_slice(), len)
+    let values = held.values_slice();
+    let hidden = hidden.map(|mask| mask.slice(held.get_start_physical_index(), values.len()));
+    Ok((Arc::new(rebased), values, len, hidden))
 }
 
 /// Build the column `field` types out of a run-end-encoded array, or answer
@@ -516,8 +537,8 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::RunEndEncoded(..)) {
         return Ok(None);
     }
@@ -529,26 +550,32 @@ pub(crate) fn column_of(
     };
     macro_rules! parts {
         ($arrow:ty) => {
-            rebased(&super::arrow::held::<RunArray<$arrow>>(&array)?)
+            rebased(
+                &super::arrow::held::<RunArray<$arrow>>(&array)?,
+                parent,
+                budget,
+            )?
         };
     }
-    let (run_ends, values, len) = match encoded.run_ends().dtype() {
+    let (run_ends, values, len, hidden) = match encoded.run_ends().dtype() {
         DataType::Int16 => parts!(Int16Type),
         DataType::Int32 => parts!(Int32Type),
         DataType::Int64 => parts!(Int64Type),
         _ => return Err(internal()),
     };
-    let run_ends = super::arrow::column_of(
+    let run_ends = super::arrow::child_of(
         Arc::new(encoded.run_ends().clone()),
         run_ends,
         None,
         &super::arrow::Proof::Proven,
+        budget,
     )?;
-    let values = super::arrow::column_of(
+    let values = super::arrow::child_of(
         Arc::new(encoded.values().clone()),
         values,
-        None,
+        hidden.as_ref(),
         proof.child(0),
+        budget,
     )?;
     Ok(Some(
         RunEndEncodedSerie::new(field, run_ends, values, len).into_serie(),

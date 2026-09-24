@@ -20,8 +20,6 @@ mod enums;
 #[cfg(feature = "internals")]
 #[path = "serie/layout.rs"]
 mod layout;
-#[path = "serie/list.rs"]
-mod list;
 #[path = "serie/mapping.rs"]
 mod mapping;
 #[path = "serie/null.rs"]
@@ -30,11 +28,15 @@ mod null;
 mod primitive;
 #[path = "serie/runend.rs"]
 mod runend;
+#[path = "serie/sequence.rs"]
+mod sequence;
 #[path = "serie/string.rs"]
 mod string;
 #[path = "serie/structure.rs"]
 mod structure;
 #[path = "serie/union.rs"]
 mod union;
+#[path = "serie/value.rs"]
+mod value;
 #[path = "serie/variant.rs"]
 mod variant;

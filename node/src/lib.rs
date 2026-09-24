@@ -15,6 +15,7 @@
 mod avro;
 mod cast;
 pub mod charset;
+mod chunked_serie;
 pub mod coding;
 mod datatype;
 // Discovered through NAPI's generated registration inventory rather than
@@ -53,6 +54,7 @@ pub use avro::{
     avro_dumps_native, avro_loads_native,
 };
 pub use cast::JsArrowCastPlan;
+pub use chunked_serie::JsChunkedSerie;
 pub use datatype::JsDataType;
 pub use enums::{JsMediaType, JsMimeType};
 pub use expression::{

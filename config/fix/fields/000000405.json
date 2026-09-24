@@ -581,7 +581,7 @@
   {
     "name": "underlyingstreamcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -896,7 +896,7 @@
   {
     "name": "underlyingpaymentstreamsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

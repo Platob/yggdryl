@@ -144,8 +144,8 @@ mod encoding {
     use std::sync::Arc;
 
     use yggdryl::{
-        DataType, DataTypeId, DataTypeKind, DigestAlgorithm, FamilyValue, Field, Nested, Scalar,
-        VARIANT_EXTENSION_NAME, VARIANT_VERSION, Value, Variant,
+        ArrowCastOptions, DataType, DataTypeId, DataTypeKind, DigestAlgorithm, Field, Scalar,
+        Serie, VARIANT_EXTENSION_NAME, VARIANT_VERSION, Value, Variant,
     };
 
     /// The value most of these tests exchange: one object, two leaves.
@@ -203,11 +203,10 @@ mod encoding {
         assert_eq!(Variant::from_scalar(&quote()), None);
         assert_eq!(Scalar::from(variant.clone()), value);
 
-        // It is one leaf of the nested family, beside the three containers.
-        let held = Nested::from_scalar(&value).expect("a nested value");
-        assert!(matches!(held, Nested::Variant(_)));
-        assert_eq!(FamilyValue::dtype(&held).unwrap(), DataType::Variant);
-        assert_eq!(held.into_scalar(), value);
+        // It is one leaf of the nested family, beside the three containers:
+        // its identifier sits in the range the nested kind owns.
+        assert!(DataTypeKind::Nested.contains(value.id()));
+        assert_eq!(value.dtype().unwrap(), DataType::Variant);
 
         // Equality is the bytes, and the display is the JSON the value spells.
         assert_eq!(value, variant.clone().into_scalar());
@@ -283,15 +282,22 @@ mod encoding {
             DataType::from(yggdryl::StructType::from_fields([field]).unwrap()),
             false,
         );
-        let rows = Scalar::from_sequence([
+        let rows = [
             Scalar::from_struct([("payload", quote())]).unwrap(),
             Scalar::from_struct([("payload", Scalar::from(7_i64))]).unwrap(),
-        ]);
-        let batch = yggdryl::arrow::batch_from_value(&root, &rows).unwrap();
+        ];
+        let batch = Serie::from_scalars(root, rows)
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
         assert_eq!(batch.num_rows(), 2);
 
-        let read = yggdryl::arrow::batch_to_value(&batch).unwrap();
-        let read = read.as_sequence().unwrap();
+        // The table read back is one record column; each row is the sequence
+        // of its cells.
+        let read = Scalar::from(
+            Serie::from_arrow_batch(None, &batch, ArrowCastOptions::default()).unwrap(),
+        );
+        let read = read.sequence_rows().unwrap();
         let held: Vec<Scalar> = read
             .iter()
             .map(|row| row.as_sequence().unwrap()[0].clone())
@@ -325,26 +331,49 @@ mod encoding {
     fn variant_arrow_nulls_keep_their_outer_validity_when_rematerialized() {
         use arrow_array::Array;
         let field = DataType::Variant.nullable_field("payload");
-        let values = Scalar::from_sequence([
+        let values = [
             Scalar::Null,
             Scalar::Variant(Scalar::Null.into_variant().unwrap()),
             Scalar::Variant(Scalar::from(7_i64).into_variant().unwrap()),
-        ]);
-        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+        ];
+        let array = Serie::from_scalars(field.clone(), values.clone())
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert!(array.is_null(0));
         assert!(array.is_valid(1));
         assert!(array.is_valid(2));
-        let decoded = yggdryl::arrow::array_to_value(&field, array.as_ref()).unwrap();
-        assert_eq!(decoded, values);
-        let restored = yggdryl::arrow::array_from_value(&field, &decoded).unwrap();
+        let decoded = Scalar::from(
+            Serie::from_arrow_array(
+                Some(&field),
+                Arc::clone(&array),
+                ArrowCastOptions::default(),
+            )
+            .unwrap(),
+        );
+        assert_eq!(decoded, Scalar::from_sequence(values));
+        // The decoded rows, laid out again, are the same array, outer validity
+        // included.
+        let restored =
+            Serie::from_scalars(field.clone(), decoded.sequence_rows().unwrap().to_vec())
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
         assert_eq!(restored.to_data(), array.to_data());
 
-        let single = yggdryl::arrow::scalar_array(&field, &Scalar::Null).unwrap();
+        let single = Serie::from_scalars(field.clone(), [Scalar::Null])
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         assert!(single.is_null(0));
         let root = DataType::from(yggdryl::StructType::from_fields([field]).unwrap())
             .required_field("row");
         let row = yggdryl::FieldRecord::new(&root, Scalar::from_sequence([Scalar::Null])).unwrap();
-        assert!(row.into_arrow_batch().unwrap().column(0).is_null(0));
+        let batch = Serie::from_scalars(root.clone(), [row.into_scalar()])
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap();
+        assert!(batch.column(0).is_null(0));
     }
 
     #[test]
@@ -552,7 +581,7 @@ mod encoding {
     }
 
     #[test]
-    fn a_list_column_encodes_as_the_run_of_its_rows() {
+    fn a_serie_column_encodes_as_the_run_of_its_rows() {
         let object = Scalar::from_mapping([(Scalar::from("k"), Scalar::from(1_i64))]).unwrap();
         let cases = [
             (

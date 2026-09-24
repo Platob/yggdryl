@@ -27,172 +27,185 @@ mod scalars {
         assert_eq!(long.len(), INLINE_CAPACITY + 1);
         assert!(Str::new_static("held").is_inline());
         assert_eq!(Str::default(), "");
-        assert_eq!(std::mem::size_of::<Str>(), 32);
+        assert_eq!(std::mem::size_of::<Str>(), 24);
+        assert_eq!(std::mem::size_of::<Scalar>(), 48);
     }
 
     #[test]
     fn equality_order_and_hash_read_the_characters_only() {
         use std::collections::HashSet;
 
-        let plain = Str::new("Grüße");
-        let latin = Str::new("Grüße")
-            .try_with_parameters(StringType::LargeCp1252String)
-            .unwrap();
+        let plain = Scalar::from("Grüße");
+        let latin = StringType::LargeCp1252String.scalar("Grüße").unwrap();
         assert_eq!(plain, latin);
         assert_eq!(plain.cmp(&latin), std::cmp::Ordering::Equal);
         assert_eq!(HashSet::from([plain.clone(), latin.clone()]).len(), 1);
-        assert_ne!(plain.parameters(), latin.parameters());
+        assert_ne!(plain.string_parameters(), latin.string_parameters());
         assert!(Str::new("b") > Str::new("a"));
-        assert_eq!(format!("{latin:?}"), "\"Grüße\" as large_cp1252");
-        assert_eq!(format!("{plain:?}"), "\"Grüße\"");
+        // The leaf is the variant, so a failing assertion prints it.
+        assert_eq!(format!("{latin:?}"), "LargeCp1252String(\"Grüße\")");
+        assert_eq!(format!("{plain:?}"), "Utf8String(\"Grüße\")");
+        assert_eq!(format!("{:?}", Str::new("Grüße")), "\"Grüße\"");
     }
 
     #[test]
-    fn restating_shares_the_storage_and_checks_but_never_carries_a_maximum() {
+    fn restating_shares_the_storage_and_carries_the_maximum() {
         let text = "x".repeat(INLINE_CAPACITY + 22);
         let shared = Str::new(&text);
-        let restated = shared
-            .clone()
-            .try_with_parameters(StringType::SizedUtf8String(64))
+        let restated = StringType::SizedUtf8String(64)
+            .scalar(shared.clone())
             .unwrap();
-        assert!(std::ptr::eq(shared.as_str(), restated.as_str()));
-        assert_eq!(restated.parameters(), StringType::default());
-        assert_eq!(restated.dtype().unwrap(), DataType::utf8());
+        assert!(std::ptr::eq(
+            shared.as_str(),
+            restated.as_str().expect("a string")
+        ));
+        assert_eq!(
+            restated.string_parameters(),
+            Some(StringType::SizedUtf8String(64))
+        );
+        assert_eq!(restated.dtype().unwrap(), DataType::sized_utf8(64).unwrap());
 
-        let refused = shared
-            .try_with_parameters(StringType::SizedUtf8String(8))
+        let refused = StringType::SizedUtf8String(8)
+            .scalar(shared)
             .unwrap_err()
             .to_string();
         assert!(refused.contains("at most 8 bytes"), "{refused}");
 
         // The bound counts stored bytes, so five scalars are five bytes in
         // windows-1252 and seven in UTF-8.
-        assert!(
-            Str::new("Grüße")
-                .try_with_parameters(StringType::SizedCp1252String(5))
-                .is_ok()
-        );
-        assert!(
-            Str::new("Grüße")
-                .try_with_parameters(StringType::SizedUtf8String(5))
-                .is_err()
-        );
+        assert!(StringType::SizedCp1252String(5).scalar("Grüße").is_ok());
+        assert!(StringType::SizedUtf8String(5).scalar("Grüße").is_err());
     }
 
     #[test]
     fn us_ascii_is_a_repertoire_and_every_other_charset_is_counted() {
         let ascii = StringType::AsciiString;
-        assert!(Str::new("plain").try_with_parameters(ascii).is_ok());
-        let refused = Str::new("café")
-            .try_with_parameters(ascii)
-            .unwrap_err()
-            .to_string();
+        assert!(ascii.scalar("plain").is_ok());
+        let refused = ascii.scalar("café").unwrap_err().to_string();
         assert!(refused.contains("non-ASCII byte"), "{refused}");
-        assert!(Str::new("a\0b").try_with_parameters(ascii).is_err());
+        assert!(ascii.scalar("a\0b").is_err());
         // `U+0081` has no windows-1252 byte, and the value door only counts.
-        let recovered = Str::new("ok\u{0081}")
-            .try_with_parameters(StringType::Cp1252String)
-            .unwrap();
-        assert!(recovered.encode().is_err());
-        assert_eq!(recovered.encoded_len(), 3);
+        let latin = StringType::Cp1252String;
+        let recovered = latin.scalar("ok\u{0081}").unwrap();
+        assert!(latin.encode("ok\u{0081}").is_err());
+        assert_eq!(latin.encoded_len(recovered.as_str().unwrap()), 3);
     }
 
     #[test]
     fn a_fixed_leaf_trims_its_padding_and_pads_on_the_way_out() {
         let fixed = StringType::FixedAsciiString(4);
-        let value = Str::new("USD\0").try_with_parameters(fixed).unwrap();
-        assert_eq!(value, "USD");
-        assert_eq!(value.fixed(), Some(4));
-        assert_eq!(value.parameters(), fixed);
-        assert_eq!(value.encode().unwrap().as_ref(), b"USD\0");
-        assert_eq!(value.encoded_len(), 4);
-        assert!(Str::new("EURO!").try_with_parameters(fixed).is_err());
-        assert!(
-            Str::new("x")
-                .try_with_parameters(StringType::FixedUtf8String(0))
-                .is_err()
-        );
+        let value = fixed.scalar("USD\0").unwrap();
+        assert_eq!(value.as_str(), Some("USD"));
+        assert_eq!(value.string_parameters(), Some(fixed));
+        assert_eq!(value, Scalar::FixedAsciiString(Str::new("USD"), 4));
+        assert_eq!(fixed.encode("USD").unwrap().as_ref(), b"USD\0");
+        assert_eq!(fixed.encoded_len("USD"), 4);
+        assert!(fixed.scalar("EURO!").is_err());
+        // A slot never truncates what it cannot hold.
+        assert!(fixed.encode("EURO!").is_err());
+        assert!(StringType::FixedUtf8String(0).scalar("x").is_err());
     }
 
     #[test]
     fn bytes_are_read_strictly_or_transcribed_by_their_charset() {
         let latin = StringType::Cp1252String;
-        let value = Str::from_bytes(b"Gr\xFC\xDFe", latin).unwrap();
-        assert_eq!(value, "Grüße");
-        assert_eq!(value.charset(), Charset::Cp1252);
-        assert_eq!(value.encode().unwrap().as_ref(), b"Gr\xFC\xDFe");
-        // `0x81` is unassigned in windows-1252 and still reads.
-        assert_eq!(Str::from_bytes(b"ok\x81", latin).unwrap(), "ok\u{0081}");
-        // UTF-8 and US-ASCII are validated, not transcribed.
-        assert!(Str::from_bytes(b"caf\xe9", StringType::default()).is_err());
-        assert!(Str::from_bytes(b"caf\xc3\xa9", StringType::AsciiString).is_err());
+        let value = latin.scalar_from_bytes(b"Gr\xFC\xDFe").unwrap();
+        assert_eq!(value.as_str(), Some("Grüße"));
         assert_eq!(
-            Str::from_bytes(b"caf\xc3\xa9", StringType::default()).unwrap(),
-            "café"
+            value.string_parameters().map(StringType::charset),
+            Some(Charset::Cp1252)
+        );
+        assert_eq!(latin.encode("Grüße").unwrap().as_ref(), b"Gr\xFC\xDFe");
+        // `0x81` is unassigned in windows-1252 and still reads.
+        assert_eq!(
+            latin.scalar_from_bytes(b"ok\x81").unwrap().as_str(),
+            Some("ok\u{0081}")
+        );
+        // UTF-8 and US-ASCII are validated, not transcribed.
+        assert!(StringType::default().scalar_from_bytes(b"caf\xe9").is_err());
+        assert!(
+            StringType::AsciiString
+                .scalar_from_bytes(b"caf\xc3\xa9")
+                .is_err()
+        );
+        assert_eq!(
+            StringType::default()
+                .scalar_from_bytes(b"caf\xc3\xa9")
+                .unwrap()
+                .as_str(),
+            Some("café")
         );
         // A padded slot comes back trimmed and carries its width.
-        let padded = Str::from_bytes(b"ab\0\0\0\0", StringType::FixedUtf8String(6)).unwrap();
-        assert_eq!(padded, "ab");
-        assert_eq!(padded.fixed(), Some(6));
+        let padded = StringType::FixedUtf8String(6)
+            .scalar_from_bytes(b"ab\0\0\0\0")
+            .unwrap();
+        assert_eq!(padded, Scalar::FixedUtf8String(Str::new("ab"), 6));
     }
 
     #[test]
     fn serde_writes_the_text_alone_unless_the_value_declares_more() {
+        // `Str` alone is its characters; the leaf is the `Scalar` variant's,
+        // and the `Scalar` wire writes it.
         let plain = Str::new("plain");
         assert_eq!(serde_json::to_string(&plain).unwrap(), "\"plain\"");
         assert_eq!(serde_json::from_str::<Str>("\"plain\"").unwrap(), plain);
-        let latin = Str::new("Grüße")
-            .try_with_parameters(StringType::FixedCp1252String(8))
-            .unwrap();
+        assert_eq!(
+            serde_json::to_string(&Scalar::from(plain.clone())).unwrap(),
+            r#"{"type":"string","value":"plain"}"#
+        );
+        let wire = |value: &str| {
+            serde_json::from_str::<Scalar>(&format!(r#"{{"type":"string","value":{value}}}"#))
+        };
+        let latin = StringType::FixedCp1252String(8).scalar("Grüße").unwrap();
         let document = serde_json::to_string(&latin).unwrap();
         assert_eq!(
             document,
-            r#"{"layout":"fixed_cp1252","fixed":8,"text":"Grüße"}"#
+            r#"{"type":"string","value":{"layout":"fixed_cp1252","fixed":8,"text":"Grüße"}}"#
         );
-        let back = serde_json::from_str::<Str>(&document).unwrap();
-        assert_eq!(back.parameters(), latin.parameters());
+        let back = serde_json::from_str::<Scalar>(&document).unwrap();
+        assert_eq!(back.string_parameters(), latin.string_parameters());
         assert_eq!(back, latin);
         // A charset beside a charset-free layout restates the leaf.
-        let restated = serde_json::from_str::<Str>(
-            r#"{"layout":"large_string","charset":"windows-1252","text":"x"}"#,
-        )
-        .unwrap();
-        assert_eq!(restated.parameters(), StringType::LargeCp1252String);
-        // A maximum is never part of a value, so it never reaches the
-        // wire: the value answers the plain leaf its storage is.
-        let bounded = Str::new("x")
-            .try_with_parameters(StringType::SizedCp1252String(8))
-            .unwrap();
-        assert_eq!(bounded.parameters(), StringType::Cp1252String);
+        let restated =
+            wire(r#"{"layout":"large_string","charset":"windows-1252","text":"x"}"#).unwrap();
+        assert_eq!(
+            restated.string_parameters(),
+            Some(StringType::LargeCp1252String)
+        );
+        // A value keeps its column's maximum, so the wire writes it under
+        // `fixed`, the one number key a value document has.
+        let bounded = StringType::SizedCp1252String(8).scalar("x").unwrap();
         assert_eq!(
             serde_json::to_string(&bounded).unwrap(),
-            r#"{"layout":"cp1252","text":"x"}"#
+            r#"{"type":"string","value":{"layout":"sized_cp1252","fixed":8,"text":"x"}}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<Scalar>(&serde_json::to_string(&bounded).unwrap())
+                .unwrap()
+                .string_parameters(),
+            Some(StringType::SizedCp1252String(8))
         );
         // A numbered layout with no number is refused, never read as the
         // placeholder width its name carries.
-        let missing = serde_json::from_str::<Str>(r#"{"layout":"fixed_utf8","text":"a"}"#)
+        let missing = wire(r#"{"layout":"fixed_utf8","text":"a"}"#)
             .unwrap_err()
             .to_string();
         assert!(
             missing.contains("expected fixed_utf8(number), got none"),
             "{missing}"
         );
-        assert!(serde_json::from_str::<Str>(r#"{"layout":"sized_utf8","text":"xx"}"#).is_err());
+        assert!(wire(r#"{"layout":"sized_utf8","text":"xx"}"#).is_err());
         // A width on a leaf that takes none is refused as `with_bound` refuses it.
-        assert!(
-            serde_json::from_str::<Str>(r#"{"layout":"large_utf8","fixed":4,"text":"x"}"#).is_err()
-        );
+        assert!(wire(r#"{"layout":"large_utf8","fixed":4,"text":"x"}"#).is_err());
     }
 
     #[test]
     fn a_string_scalar_names_its_own_datatype() {
         assert_eq!(Scalar::from("x").as_str(), Some("x"));
         assert_eq!(Scalar::from("x").dtype().unwrap(), DataType::utf8());
-        let latin = Str::new("x")
-            .try_with_parameters(StringType::Cp1252StringView)
-            .unwrap();
+        let latin = StringType::Cp1252StringView.scalar("x").unwrap();
         assert_eq!(
-            Scalar::String(latin).dtype().unwrap(),
+            latin.dtype().unwrap(),
             DataType::from_str("string_view(windows-1252)").unwrap()
         );
     }
@@ -222,10 +235,8 @@ mod codes {
 
     #[test]
     fn only_a_registered_name_is_a_code() {
-        assert_eq!(
-            code_for_extension("yggdryl.currency"),
-            Some(DataType::Currency)
-        );
+        assert_eq!(code_for_extension("yggdryl.ccy"), Some(DataType::Ccy));
+        assert_eq!(code_for_extension("yggdryl.currency"), None);
         assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::CfiCode));
         assert_eq!(
             code_for_extension("yggdryl.cusip"),
@@ -243,11 +254,8 @@ mod codes {
     fn a_code_packs_at_the_width_its_standard_fixes() {
         // The packing pads; the column does not. Both codes and fixed ASCII
         // widths answer, and nothing else does.
-        assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
-            0x0055_5344
-        );
-        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
+        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
         assert_eq!(
             DataType::fixed_ascii(4)
@@ -256,7 +264,7 @@ mod codes {
                 .unwrap(),
             0x5553_4400
         );
-        assert!(DataType::Currency.ascii_packed(b"EURO").is_err());
+        assert!(DataType::Ccy.ascii_packed(b"EURO").is_err());
         assert!(DataType::utf8().ascii_packed(b"USD").is_err());
     }
 
@@ -271,7 +279,7 @@ mod codes {
 
     #[test]
     fn a_cell_is_validated_at_the_code_width() {
-        assert_eq!(code_cell_text(&DataType::Currency, b"USD").unwrap(), "USD");
+        assert_eq!(code_cell_text(&DataType::Ccy, b"USD").unwrap(), "USD");
         assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
         assert_eq!(
             code_cell_text(&DataType::CfiCode, b"ESVUFR").unwrap(),
@@ -438,10 +446,10 @@ mod leaves {
                     .id(),
                 id
             );
-            // Every string identifier is parameterized: the leaf is the datatype
-            // and the identifier alone is not one, and the width is the leaf's
-            // rather than the identifier's.
-            assert!(id.is_parameterized(), "{id}");
+            // A leaf with no number is its identifier, so only the fixed and
+            // sized ones are parameterized; the width is the leaf's rather
+            // than the identifier's.
+            assert_eq!(id.is_parameterized(), leaf.bound().is_some(), "{id}");
             assert!(id.is_string(), "{id}");
             assert_eq!(id.fixed_byte_width(), None, "{id}");
 
@@ -458,7 +466,8 @@ mod leaves {
 
         // The sugar constructors are the same datatypes, and `utf8` is the
         // family's default.
-        assert_eq!(DataType::utf8(), DataType::String(StringType::default()));
+        assert_eq!(DataType::utf8(), DataType::from(StringType::default()));
+        assert_eq!(DataType::utf8(), DataType::Utf8String);
         for (sugar, leaf) in [
             (DataType::utf8(), StringType::Utf8String),
             (DataType::large_utf8(), StringType::LargeUtf8String),
@@ -657,8 +666,8 @@ mod leaves {
         assert_eq!(fixed.to_string(), "fixed_cp1252(8)");
         assert_ne!(bounded, fixed);
 
-        // The value a sized column holds is the plain leaf of its charset: the
-        // maximum is the column's rule and never the value's.
+        // A sized column stores as the plain leaf of its charset: the maximum
+        // is a rule laid over that storage, which the value carries beside it.
         assert_eq!(
             StringType::SizedUtf8String(16).storage(),
             StringType::Utf8String
@@ -696,11 +705,7 @@ mod leaves {
             refusal.contains("expected a width of at least one byte, got 0"),
             "{refusal}"
         );
-        assert!(
-            DataType::String(StringType::FixedCp1252String(0))
-                .validate()
-                .is_err()
-        );
+        assert!(DataType::FixedCp1252String(0).validate().is_err());
 
         // A bare numbered spelling is a question rather than a declaration.
         for spelling in [
@@ -947,8 +952,8 @@ mod leaves {
 
         // A code is an identity over a registry, not a string with a charset:
         // it stores as text without declaring one.
-        assert_eq!(DataType::Currency.charset(), None);
-        assert!(!DataType::Currency.is_string());
+        assert_eq!(DataType::Ccy.charset(), None);
+        assert!(!DataType::Ccy.is_string());
         assert!(DataType::utf8().is_string());
     }
 
@@ -1259,10 +1264,13 @@ mod leaves {
                 "{spelling}"
             );
         }
-        assert!(Str::from_bytes(&damaged, StringType::default()).is_err());
+        assert!(StringType::default().scalar_from_bytes(&damaged).is_err());
         assert_eq!(
-            Str::from_bytes(&damaged, StringType::Cp1252String).unwrap(),
-            "ok\u{0081}"
+            StringType::Cp1252String
+                .scalar_from_bytes(&damaged)
+                .unwrap()
+                .as_str(),
+            Some("ok\u{0081}")
         );
     }
 
@@ -1330,29 +1338,36 @@ mod leaves {
         assert!(short.is_inline());
         assert!(Str::new("a".repeat(INLINE_CAPACITY)).is_inline());
         assert!(!Str::new("a".repeat(INLINE_CAPACITY + 1)).is_inline());
-        assert_eq!(std::mem::size_of::<Str>(), 32);
+        assert_eq!(std::mem::size_of::<Str>(), 24);
         assert_eq!(Str::new_static("AAPL"), short);
         assert_eq!(Str::default(), "");
-        assert_eq!(short.parameters(), StringType::Utf8String);
+        assert_eq!(
+            Scalar::from(short.clone()).string_parameters(),
+            Some(StringType::Utf8String)
+        );
 
         // Equality, order and hash read the characters alone, so a value is one
-        // value whichever column holds it.
-        let latin = short
-            .clone()
-            .try_with_parameters(StringType::LargeCp1252String)
-            .unwrap();
-        assert_eq!(latin, short);
-        assert_eq!(latin, "AAPL");
-        assert_eq!("AAPL", latin);
-        assert_eq!(latin, String::from("AAPL"));
-        assert_eq!(latin.charset(), Charset::Cp1252);
-        assert_eq!(latin.parameters(), StringType::LargeCp1252String);
-        assert!(latin.parameters().is_large());
+        // value whichever leaf holds it.
+        let latin = StringType::LargeCp1252String.scalar(short.clone()).unwrap();
+        assert_eq!(latin, Scalar::from(short.clone()));
+        assert_eq!(latin.as_str(), Some("AAPL"));
+        let leaf = latin.string_parameters().expect("a string value");
+        assert_eq!(leaf.charset(), Charset::Cp1252);
+        assert_eq!(leaf, StringType::LargeCp1252String);
+        assert!(leaf.is_large());
         assert_eq!(latin.dtype().unwrap(), DataType::large_cp1252());
-        assert_ne!(format!("{latin:?}"), format!("{short:?}"));
-        assert_eq!(latin.to_string(), "AAPL");
+        assert_ne!(
+            format!("{latin:?}"),
+            format!("{:?}", Scalar::from(short.clone()))
+        );
+        let text = latin.as_string().expect("a string value").clone();
+        assert_eq!(text, short);
+        assert_eq!(text, "AAPL");
+        assert_eq!("AAPL", text);
+        assert_eq!(text, String::from("AAPL"));
+        assert_eq!(text.to_string(), "AAPL");
         let mut members = std::collections::BTreeMap::new();
-        members.insert(latin, 1);
+        members.insert(text, 1);
         assert_eq!(members.get("AAPL"), Some(&1));
 
         // The conversions every string API leans on.
@@ -1362,33 +1377,27 @@ mod leaves {
         assert_eq!("a b".parse::<Str>().unwrap(), "a b");
         assert_eq!(["a", "b"].into_iter().collect::<Str>(), "ab");
         assert_eq!(&*Str::new("deref"), "deref");
-        assert_eq!(Scalar::from("x"), Scalar::String(Str::new("x")));
+        assert_eq!(Scalar::from("x"), Scalar::Utf8String(Str::new("x")));
 
-        // A maximum is never carried: the value answers the plain leaf its
-        // storage is.
-        let bounded = Str::new("USD")
-            .try_with_parameters(StringType::SizedUtf8String(4))
-            .unwrap();
-        assert_eq!(bounded.parameters(), StringType::default());
-        assert!(
-            Str::new("EURO!")
-                .try_with_parameters(StringType::SizedUtf8String(4))
-                .is_err()
+        // A maximum is carried with the value, and checked.
+        let bounded = StringType::SizedUtf8String(4).scalar("USD").unwrap();
+        assert_eq!(
+            bounded.string_parameters(),
+            Some(StringType::SizedUtf8String(4))
         );
-        // A fixed width is: the value pads to it on the way out.
-        let fixed = Str::new("USD\0")
-            .try_with_parameters(StringType::FixedUtf8String(4))
-            .unwrap();
-        assert_eq!(fixed, "USD");
-        assert_eq!(fixed.fixed(), Some(4));
-        assert_eq!(fixed.encode().unwrap().as_ref(), b"USD\0");
-        assert_eq!(fixed.encoded_len(), 4);
+        assert!(StringType::SizedUtf8String(4).scalar("EURO!").is_err());
+        // So is a fixed width: the leaf pads to it on the way out.
+        let leaf = StringType::FixedUtf8String(4);
+        let fixed = leaf.scalar("USD\0").unwrap();
+        assert_eq!(fixed.as_str(), Some("USD"));
+        assert_eq!(
+            fixed.string_parameters().and_then(StringType::fixed),
+            Some(4)
+        );
+        assert_eq!(leaf.encode("USD").unwrap().as_ref(), b"USD\0");
+        assert_eq!(leaf.encoded_len("USD"), 4);
         assert_eq!(fixed.dtype().unwrap(), DataType::fixed_utf8(4).unwrap());
-        assert!(
-            Str::new("x")
-                .try_with_parameters(StringType::FixedUtf8String(0))
-                .is_err()
-        );
+        assert!(StringType::FixedUtf8String(0).scalar("x").is_err());
     }
 
     #[test]
@@ -1546,15 +1555,19 @@ mod leaves {
             let json = serde_json::to_string(&value).unwrap();
             let read: Scalar = serde_json::from_str(&json).unwrap();
             assert_eq!(read, value, "{spelling}");
-            // A value declares the leaf it is stored in; the maximum is the
-            // column's rule about values, not part of one.
+            // A value declares the leaf it is stored in, its number included.
             assert_eq!(read.id(), value.id(), "{spelling}");
+            assert_eq!(
+                read.string_parameters(),
+                value.string_parameters(),
+                "{spelling}"
+            );
             assert_eq!(dtype.scalar(read).unwrap(), value, "{spelling}");
         }
 
         // The ordinary string still writes its characters and nothing else; a
-        // value that declares more writes the leaf and a width, never a
-        // maximum and never a charset - the leaf's name says it.
+        // value that declares more writes the leaf and its number, never a
+        // charset - the leaf's name says it.
         assert_eq!(
             serde_json::to_string(&Scalar::from("AAPL")).unwrap(),
             r#"{"type":"string","value":"AAPL"}"#
@@ -1567,7 +1580,7 @@ mod leaves {
                     .unwrap()
             )
             .unwrap(),
-            r#"{"type":"string","value":"AAPL"}"#
+            r#"{"type":"string","value":{"layout":"sized_utf8","fixed":32,"text":"AAPL"}}"#
         );
         assert_eq!(
             serde_json::to_string(&DataType::fixed_ascii(4).unwrap().scalar("USD").unwrap())
@@ -1581,7 +1594,7 @@ mod leaves {
         assert_eq!(
             serde_json::to_string(&DataType::sized_cp1252(8).unwrap().scalar("x").unwrap())
                 .unwrap(),
-            r#"{"type":"string","value":{"layout":"cp1252","text":"x"}}"#
+            r#"{"type":"string","value":{"layout":"sized_cp1252","fixed":8,"text":"x"}}"#
         );
 
         // An older value document spelled a shape beside a charset, and reads
@@ -1628,7 +1641,7 @@ mod leaves {
     fn a_hand_built_string_with_no_width_is_refused_before_a_boundary() {
         // The variant is public, so a caller can build what the constructor would
         // have refused; `validate` is where that stops.
-        let unwidened = DataType::String(StringType::FixedCp1252String(0));
+        let unwidened = DataType::FixedCp1252String(0);
         assert!(unwidened.validate().is_err());
         assert!(unwidened.clone().into_arrow_datatype().is_err());
         assert!(
@@ -1702,9 +1715,8 @@ mod leaves {
         assert_eq!(value.as_str(), Some("東京"));
 
         let field = dtype.nullable_field("value");
-        let refusal = yggdryl::FieldScalar::new(&field, value)
-            .unwrap()
-            .into_arrow_array()
+        let paired = yggdryl::FieldScalar::new(&field, value).unwrap();
+        let refusal = Serie::from_scalars(field.clone(), [paired.into_value()])
             .unwrap_err()
             .to_string();
         assert!(refusal.contains("windows-1252"), "{refusal}");
@@ -1994,11 +2006,11 @@ mod enumerated {
 mod widths {
     use std::cmp::Ordering;
 
-    use arrow_array::{Array, FixedSizeBinaryArray};
+    use arrow_array::{Array, ArrayRef, FixedSizeBinaryArray};
     use arrow_schema::DataType as ArrowDataType;
 
-    use yggdryl::{Charset, DataTypeId, DataTypeKind, StructType};
-    use yggdryl::{DataType, Serie, Str, StringType};
+    use yggdryl::{ArrowCastOptions, Charset, DataTypeId, DataTypeKind, StructType};
+    use yggdryl::{DataType, Serie, StringType};
     use yggdryl::{Error, Field, Scalar, Scheme};
 
     fn hash_of(value: &DataType) -> u64 {
@@ -2013,6 +2025,16 @@ mod widths {
             .as_any()
             .downcast_ref::<FixedSizeBinaryArray>()
             .expect("fixed-width string storage")
+    }
+
+    /// Lay one value out as the one-row column `field` types.
+    fn lay_out(field: &Field, value: &Scalar) -> yggdryl::Result<ArrayRef> {
+        Serie::from_scalars(field.clone(), [value.clone()])?.require_arrow_array()
+    }
+
+    /// Read row 0 of an Arrow array back as the value `field` types.
+    fn read_back(field: &Field, array: ArrayRef) -> yggdryl::arrow::Result<Scalar> {
+        Ok(Serie::from_arrow_array(Some(field), array, ArrowCastOptions::default())?.scalar(0)?)
     }
 
     /// A US-ASCII string bounded to `max` bytes: the sized leaf.
@@ -2048,8 +2070,8 @@ mod widths {
             ("char(8)", DataType::fixed_utf8(8).unwrap()),
             ("country", DataType::Country),
             ("Country", DataType::Country),
-            ("currency", DataType::Currency),
-            ("Currency", DataType::Currency),
+            ("ccy", DataType::Ccy),
+            ("Ccy", DataType::Ccy),
             ("mic", DataType::MicCode),
             ("MIC", DataType::MicCode),
             ("Exchange", DataType::MicCode),
@@ -2066,12 +2088,12 @@ mod widths {
             assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
         }
         let row: DataType =
-            "struct<ccy: currency, isin: fixed_ascii(12), code: cfi, iso: country, name: utf8(32)>"
+            "struct<ccy: ccy, isin: fixed_ascii(12), code: cfi, iso: country, name: utf8(32)>"
                 .parse()
                 .unwrap();
         assert_eq!(
             row.get_field_by_path("ccy").map(Field::dtype),
-            Some(&DataType::Currency)
+            Some(&DataType::Ccy)
         );
         assert_eq!(
             row.get_field_by_path("isin").map(Field::dtype),
@@ -2121,11 +2143,7 @@ mod widths {
             "fixed_ascii()".parse::<DataType>(),
             Err(Error::Parse { .. })
         ));
-        assert!(
-            DataType::String(StringType::FixedAsciiString(0))
-                .validate()
-                .is_err()
-        );
+        assert!(DataType::FixedAsciiString(0).validate().is_err());
 
         // A width above the packed limit is a legal column and simply has no
         // packed integer.
@@ -2160,8 +2178,11 @@ mod widths {
             assert!(!dtype.is_string());
             assert_eq!(dtype.string_parameters(), None);
         }
-        assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
-        assert_ne!(DataType::Currency, DataType::fixed_ascii(3).unwrap());
+        assert_eq!("ccy".parse::<DataType>().unwrap(), DataType::Ccy);
+        for retired in ["currency", "Currency", "CURRENCY"] {
+            assert!(retired.parse::<DataType>().is_err(), "{retired}");
+        }
+        assert_ne!(DataType::Ccy, DataType::fixed_ascii(3).unwrap());
         // ISO 10962 is six characters, and `cfi` holds at most those six.
         assert_eq!(DataType::CfiCode.code_width(), Some(6));
         // A width of six bytes is spellable, and it is still not a CFI code.
@@ -2183,10 +2204,8 @@ mod widths {
 
         // A code name is a grammar keyword like every other, so the parser
         // reads it case-insensitively and trimmed.
-        assert_eq!(
-            " CURRENCY ".parse::<DataType>().unwrap(),
-            DataType::Currency
-        );
+        assert_eq!(" CCY ".parse::<DataType>().unwrap(), DataType::Ccy);
+        assert!(" CURRENCY ".parse::<DataType>().is_err());
         // FIGI is its own checked twelve-character code, not a Bloomberg alias.
         assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::FIGICode);
         // The grammar still reports words that name nothing as unknown.
@@ -2198,13 +2217,10 @@ mod widths {
     fn a_code_packs_and_merges_by_the_ascii_rules() {
         // The packed integer is the value's own storage bytes, exactly as it
         // is for a width: the code is a datatype, not a second encoding.
+        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
+        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
-            0x0055_5344
-        );
-        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
-        assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            DataType::Ccy.ascii_packed(b"USD").unwrap(),
             DataType::fixed_ascii(3)
                 .unwrap()
                 .ascii_packed(b"USD")
@@ -2233,27 +2249,21 @@ mod widths {
         // Two schemas that agree on a code keep it; a code reconciled with
         // anything else answers the plain text both fit in.
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::Currency, true)
-                .unwrap(),
-            DataType::Currency
+            DataType::Ccy.merge_with(&DataType::Ccy, true).unwrap(),
+            DataType::Ccy
         );
         assert_eq!(
-            DataType::Currency
+            DataType::Ccy
                 .merge_with(&DataType::fixed_ascii(3).unwrap(), true)
                 .unwrap(),
             DataType::from_str("ascii(3)").unwrap()
         );
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::Country, true)
-                .unwrap(),
+            DataType::Ccy.merge_with(&DataType::Country, true).unwrap(),
             DataType::from_str("ascii(3)").unwrap()
         );
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::utf8(), true)
-                .unwrap(),
+            DataType::Ccy.merge_with(&DataType::utf8(), true).unwrap(),
             DataType::utf8()
         );
     }
@@ -2393,7 +2403,7 @@ mod widths {
         assert!(DataType::fixed_ascii(16).unwrap() < bounded_ascii(3));
         assert!(bounded_ascii(3) < DataType::cp1252());
         assert!(DataType::cp1252() < DataType::Country);
-        assert!(DataType::Country < DataType::list(DataType::utf8().nullable_field("item")));
+        assert!(DataType::Country < DataType::serie(DataType::utf8().nullable_field("item")));
         assert_eq!(
             DataType::fixed_ascii(8)
                 .unwrap()
@@ -2412,7 +2422,7 @@ mod widths {
         // same characters, and the hash is what tells them apart.
         for (code, width) in [
             (DataType::Country, DataType::fixed_ascii(2).unwrap()),
-            (DataType::Currency, DataType::fixed_ascii(3).unwrap()),
+            (DataType::Ccy, DataType::fixed_ascii(3).unwrap()),
             (DataType::MicCode, DataType::fixed_ascii(4).unwrap()),
             (DataType::CfiCode, DataType::fixed_ascii(6).unwrap()),
         ] {
@@ -2438,12 +2448,13 @@ mod widths {
             assert!(!dtype.is_default_value(&Scalar::from("USD")).unwrap());
             // The default is the empty text under the column's own parameters,
             // and its stored bytes are the padded slot.
-            let Scalar::String(text) = &exact_empty else {
-                panic!("a string default");
-            };
-            assert_eq!(text.parameters(), dtype.string_parameters().unwrap());
+            let leaf = exact_empty.string_parameters().expect("a string default");
+            assert_eq!(leaf, dtype.string_parameters().unwrap());
             let width = dtype.fixed_byte_width().unwrap();
-            assert_eq!(text.encode().unwrap().len(), width);
+            assert_eq!(
+                leaf.encode(exact_empty.as_str().unwrap()).unwrap().len(),
+                width
+            );
 
             let field = dtype.required_field("ccy");
             assert_eq!(field.default_value().unwrap(), exact_empty);
@@ -2462,10 +2473,8 @@ mod widths {
         // A variable string defaults to the empty text under its charset.
         let empty = DataType::ascii().default_value().unwrap();
         assert_eq!(empty, Scalar::from(""));
-        let Scalar::String(text) = &empty else {
-            panic!("a string default");
-        };
-        assert_eq!(text.charset(), Charset::Ascii);
+        let leaf = empty.string_parameters().expect("a string default");
+        assert_eq!(leaf.charset(), Charset::Ascii);
     }
 
     #[test]
@@ -2477,13 +2486,7 @@ mod widths {
             .required_field("row");
         let row = |value: Scalar| Scalar::from_sequence([value]);
         let canonical = |value: Scalar| root.canonicalize_value(row(value)).unwrap();
-        let fixed = |value: &str| {
-            Scalar::String(
-                Str::new(value)
-                    .try_with_parameters(dtype.string_parameters().unwrap())
-                    .unwrap(),
-            )
-        };
+        let fixed = |value: &str| dtype.string_parameters().unwrap().scalar(value).unwrap();
 
         // Text inputs canonicalize to the fixed-width US-ASCII value.
         assert_eq!(canonical(Scalar::from("USD")), row(fixed("USD")));
@@ -2503,9 +2506,7 @@ mod widths {
         let Some(cell) = restated.get(0) else {
             panic!("a string cell");
         };
-        let Scalar::String(held) = cell.as_ref() else {
-            panic!("a string cell");
-        };
+        let held = cell.string_parameters().expect("a string cell");
         assert_eq!(held.fixed(), Some(4));
         assert_eq!(held.charset(), Charset::Ascii);
 
@@ -2534,16 +2535,7 @@ mod widths {
         // A fixed value carries its own padded width, so one written at another
         // width is restated at the column's rather than kept as it arrived: the
         // column declares the storage, and the value must name the same one.
-        let wider = Scalar::String(
-            Str::new("USD")
-                .try_with_parameters(
-                    DataType::fixed_ascii(8)
-                        .unwrap()
-                        .string_parameters()
-                        .unwrap(),
-                )
-                .unwrap(),
-        );
+        let wider = StringType::FixedAsciiString(8).scalar("USD").unwrap();
         root.validate_value(&row(wider.clone())).unwrap();
         assert_eq!(canonical(wider), row(fixed("USD")));
 
@@ -2554,46 +2546,52 @@ mod widths {
         assert!(ascii.scalar("\u{20AC}").is_err());
         assert!(ascii.scalar("U\0D").is_err());
         assert!(bounded_ascii(3).scalar("EURO").is_err());
-        assert_eq!(bounded_ascii(3).scalar("USD").unwrap(), Scalar::from("USD"));
+        let bounded = bounded_ascii(3).scalar("USD").unwrap();
+        assert_eq!(bounded, Scalar::from("USD"));
+        assert_eq!(
+            bounded.string_parameters(),
+            Some(StringType::SizedAsciiString(3))
+        );
     }
 
     #[test]
     fn arrow_storage_is_padded_and_reads_back_trimmed() {
         let field = DataType::fixed_ascii(8).unwrap().nullable_field("code");
-        let array = yggdryl::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
+        let array = lay_out(&field, &Scalar::from("ABC")).unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::FixedSizeBinary(8));
         assert_eq!(stored(array.as_ref()).value(0), b"ABC\0\0\0\0\0");
         assert_eq!(
-            yggdryl::arrow::scalar_value(&field, array.as_ref()).unwrap(),
+            read_back(&field, array).unwrap(),
             field.dtype().scalar(Scalar::from("ABC")).unwrap()
         );
 
         // Padded bytes, a null, and the empty string, through the array boundary.
-        let values = Scalar::from_sequence([
+        let values = [
             Scalar::from(b"XY\0\0\0\0\0\0".to_vec()),
             Scalar::Null,
             Scalar::from(""),
-        ]);
-        let array = yggdryl::arrow::array_from_value(&field, &values).unwrap();
+        ];
+        let array = Serie::from_scalars(field.clone(), values)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
         let fixed = stored(array.as_ref());
         assert_eq!(fixed.len(), 3);
         assert_eq!(fixed.value(0), b"XY\0\0\0\0\0\0");
         assert!(fixed.is_null(1));
         assert_eq!(fixed.value(2), &[0; 8]);
-        // One row at a time through the public boundary: a one-element slice is
-        // what `scalar_value` reads, and slicing costs no copy.
-        let read = |index: usize| {
-            yggdryl::arrow::scalar_value(&field, array.slice(index, 1).as_ref()).unwrap()
-        };
+        // One row at a time through the public boundary: a one-row slice read
+        // under the field, and slicing costs no copy.
+        let read = |index: usize| read_back(&field, array.slice(index, 1)).unwrap();
         assert_eq!(read(0), field.dtype().scalar(Scalar::from("XY")).unwrap());
         assert_eq!(read(2), field.dtype().scalar(Scalar::from("")).unwrap());
 
         // What does not fit is refused at this boundary too.
-        assert!(yggdryl::arrow::scalar_array(&field, &Scalar::from("ABCDEFGHI")).is_err());
+        assert!(lay_out(&field, &Scalar::from("ABCDEFGHI")).is_err());
 
         // The variable US-ASCII layout rides Arrow's own text storage.
         let field = DataType::ascii().nullable_field("code");
-        let array = yggdryl::arrow::scalar_array(&field, &Scalar::from("ABC")).unwrap();
+        let array = lay_out(&field, &Scalar::from("ABC")).unwrap();
         assert_eq!(array.data_type(), &ArrowDataType::Utf8);
     }
 
@@ -2648,7 +2646,7 @@ mod listings {
 
     fn lists() -> [(&'static str, &'static [&'static str]); 3] {
         [
-            ("currency", StringEnum::CURRENCIES),
+            ("ccy", StringEnum::CURRENCIES),
             ("country", StringEnum::COUNTRIES),
             ("mic", StringEnum::MICS),
         ]
@@ -2733,6 +2731,282 @@ mod listings {
         let refused = StringEnum::from_logical_name("unregistered_code")
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("currency"), "{refused}");
+        assert!(refused.contains("ccy"), "{refused}");
+    }
+}
+
+/// Every string and byte leaf is a variant of its own on `DataType`, `Field`
+/// and `Scalar`, one to one with its identifier, and every door a value
+/// crosses - the value door, the wire, the value stream, the order - keeps
+/// the leaf, its number included.
+mod leaf_variants {
+    use std::cmp::Ordering;
+
+    use yggdryl::{Bytes, BytesType, DataType, Field, Scalar, Str, StringType};
+
+    fn strings() -> Vec<StringType> {
+        [4_u32, 9]
+            .into_iter()
+            .flat_map(|number| {
+                StringType::ALL.map(|leaf| {
+                    leaf.with_declared_bound(leaf.bound().map(|_| number))
+                        .unwrap()
+                })
+            })
+            .collect()
+    }
+
+    fn bytes() -> Vec<BytesType> {
+        [3_u32, 9]
+            .into_iter()
+            .flat_map(|number| {
+                BytesType::ALL.map(|leaf| {
+                    leaf.with_declared_bound(leaf.bound().map(|_| number))
+                        .unwrap()
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_string_leaf_is_one_variant_on_every_root() {
+        for leaf in strings() {
+            let dtype = DataType::from(leaf);
+            assert_eq!(DataType::string(leaf).unwrap(), dtype);
+            assert_eq!(dtype.id(), leaf.id(), "{leaf}");
+            assert_eq!(dtype.string_parameters(), Some(leaf));
+            assert_eq!(StringType::try_from(&dtype).unwrap(), leaf);
+            assert_eq!(DataType::from_str(&dtype.to_string()).unwrap(), dtype);
+            let field = Field::new("x", dtype.clone(), true);
+            assert_eq!(field.dtype(), &dtype);
+            assert_eq!(field.id(), leaf.id());
+
+            let value = leaf.scalar("ab").unwrap();
+            assert_eq!(value.id(), leaf.id(), "{leaf}");
+            assert_eq!(value.string_parameters(), Some(leaf));
+            assert_eq!(value.dtype().unwrap(), dtype, "the value keeps its number");
+            assert_eq!(value.as_str(), Some("ab"));
+            assert_eq!(value.as_string().map(Str::as_str), Some("ab"));
+            assert_eq!(value.bytes_parameters(), None);
+            assert_eq!(
+                value,
+                Scalar::from("ab"),
+                "a value is one value in any leaf"
+            );
+            assert_eq!(dtype.scalar("ab").unwrap().string_parameters(), Some(leaf));
+            assert_eq!(field.scalar("ab").unwrap().string_parameters(), Some(leaf));
+        }
+    }
+
+    #[test]
+    fn every_byte_leaf_is_one_variant_on_every_root() {
+        for leaf in bytes() {
+            let dtype = DataType::from(leaf);
+            assert_eq!(DataType::bytes(leaf).unwrap(), dtype);
+            assert_eq!(dtype.id(), leaf.id(), "{leaf}");
+            assert_eq!(dtype.bytes_parameters(), Some(leaf));
+            assert_eq!(BytesType::try_from(&dtype).unwrap(), leaf);
+            assert_eq!(DataType::from_str(&dtype.to_string()).unwrap(), dtype);
+
+            let payload = vec![1_u8; leaf.fixed().map_or(2, |width| width as usize)];
+            let value = leaf.scalar(payload.clone()).unwrap();
+            assert_eq!(value.id(), leaf.id(), "{leaf}");
+            assert_eq!(value.bytes_parameters(), Some(leaf));
+            assert_eq!(value.dtype().unwrap(), dtype, "the value keeps its number");
+            assert_eq!(value.as_bytes(), Some(payload.as_slice()));
+            assert_eq!(
+                value.as_binary().map(Bytes::as_bytes),
+                Some(payload.as_slice())
+            );
+            assert_eq!(value.string_parameters(), None);
+            assert_eq!(value, Scalar::from(payload.clone()));
+        }
+    }
+
+    #[test]
+    fn the_wire_and_the_value_stream_keep_the_leaf_and_its_number() {
+        let values = strings()
+            .into_iter()
+            .map(|leaf| leaf.scalar("ab").unwrap())
+            .chain(bytes().into_iter().map(|leaf| {
+                leaf.scalar(vec![7_u8; leaf.fixed().map_or(2, |width| width as usize)])
+                    .unwrap()
+            }));
+        for value in values {
+            let json = serde_json::to_string(&value).unwrap();
+            let read = serde_json::from_str::<Scalar>(&json).unwrap();
+            assert_eq!(read, value, "{json}");
+            assert_eq!(read.id(), value.id(), "{json}");
+            assert_eq!(read.dtype().unwrap(), value.dtype().unwrap(), "{json}");
+
+            let stream = value.into_value_bytes();
+            let read = Scalar::decode_value_bytes(&stream).unwrap();
+            assert_eq!(read, value);
+            assert_eq!(read.dtype().unwrap(), value.dtype().unwrap(), "{value:?}");
+        }
+        // The plain leaves write their text or payload alone, as they always
+        // did; a numbered one writes its number under `fixed`.
+        assert_eq!(
+            serde_json::to_string(&Scalar::from("ab")).unwrap(),
+            r#"{"type":"string","value":"ab"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&StringType::SizedUtf8String(32).scalar("ab").unwrap()).unwrap(),
+            r#"{"type":"string","value":{"layout":"sized_utf8","fixed":32,"text":"ab"}}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&BytesType::SizedBinary(16).scalar(vec![1_u8]).unwrap()).unwrap(),
+            r#"{"type":"bytes","value":{"layout":"sized_binary","fixed":16,"bytes":[1]}}"#
+        );
+    }
+
+    #[test]
+    fn a_value_from_outside_crosses_the_leaf_door() {
+        // A sized value whose text is past its maximum, a fixed one past its
+        // width and a US-ASCII one holding a scalar above 0x7F are refused
+        // whether they arrive on the wire or in the value stream.
+        for json in [
+            r#"{"type":"string","value":{"layout":"sized_utf8","fixed":2,"text":"abc"}}"#,
+            r#"{"type":"string","value":{"layout":"fixed_ascii","fixed":1,"text":"ab"}}"#,
+            r#"{"type":"string","value":{"layout":"ascii","text":"é"}}"#,
+            r#"{"type":"string","value":{"layout":"sized_utf8","text":"a"}}"#,
+            r#"{"type":"bytes","value":{"layout":"sized_binary","fixed":1,"bytes":[1,2]}}"#,
+            r#"{"type":"bytes","value":{"layout":"fixed_binary","bytes":[1]}}"#,
+        ] {
+            assert!(serde_json::from_str::<Scalar>(json).is_err(), "{json}");
+        }
+        let over = StringType::SizedUtf8String(8)
+            .scalar("abc")
+            .unwrap()
+            .into_value_bytes();
+        let mut tampered = over.clone();
+        // The byte after the identifier is the number, as one LEB128 byte.
+        tampered[2] = 2;
+        assert!(Scalar::decode_value_bytes(&over).is_ok());
+        assert!(Scalar::decode_value_bytes(&tampered).is_err());
+    }
+
+    #[test]
+    fn a_stray_number_on_the_wire_reads_as_it_always_did() {
+        let read = |json: &str| serde_json::from_str::<Scalar>(json);
+        // A number beside a byte leaf that states none is not read.
+        for layout in ["large_binary", "binary_view", "large_binary_view"] {
+            let value = read(&format!(
+                r#"{{"type":"bytes","value":{{"layout":"{layout}","fixed":4,"bytes":[1]}}}}"#
+            ))
+            .unwrap();
+            assert_eq!(value.bytes_parameters().unwrap().as_str(), layout);
+        }
+        let plain =
+            read(r#"{"type":"bytes","value":{"layout":"binary","fixed":4,"bytes":[1,2,3,4,5]}}"#)
+                .unwrap();
+        assert_eq!(plain.bytes_parameters(), Some(BytesType::Binary));
+        // Beside a plain string it is a maximum the text is checked against,
+        // and the value is the leaf the document names; the large and viewed
+        // leaves refuse one.
+        let text =
+            read(r#"{"type":"string","value":{"layout":"utf8","fixed":8,"text":"abc"}}"#).unwrap();
+        assert_eq!(text.string_parameters(), Some(StringType::Utf8String));
+        assert!(
+            read(r#"{"type":"string","value":{"layout":"utf8","fixed":2,"text":"abc"}}"#).is_err()
+        );
+        assert!(
+            read(r#"{"type":"string","value":{"layout":"large_utf8","fixed":8,"text":"abc"}}"#)
+                .is_err()
+        );
+        // A leaf that is its number still needs one.
+        assert!(read(r#"{"type":"bytes","value":{"layout":"sized_binary","bytes":[1]}}"#).is_err());
+    }
+
+    #[test]
+    fn values_of_sized_and_plain_leaves_infer_one_column() {
+        let item = |values: [Scalar; 2]| {
+            let DataType::Serie(item) = Scalar::from_sequence(values).dtype().unwrap() else {
+                panic!("a run infers a serie");
+            };
+            item.dtype().clone()
+        };
+        let sized = |max: u32, text: &str| StringType::SizedUtf8String(max).scalar(text).unwrap();
+        // A plain value beside a sized one widens to the plain leaf, in
+        // either order; two maxima keep the larger.
+        assert_eq!(
+            item([sized(32, "abc"), Scalar::from("d")]),
+            DataType::utf8()
+        );
+        assert_eq!(
+            item([Scalar::from("d"), sized(32, "abc")]),
+            DataType::utf8()
+        );
+        assert_eq!(
+            item([sized(32, "abc"), sized(8, "d")]),
+            DataType::sized_utf8(32).unwrap()
+        );
+        let bytes = BytesType::SizedBinary(16).scalar(vec![1_u8]).unwrap();
+        assert_eq!(item([bytes, Scalar::from(vec![2_u8])]), DataType::binary());
+    }
+
+    #[test]
+    fn a_canonical_value_holds_its_columns_exact_leaf() {
+        let sized = DataType::sized_utf8(8).unwrap();
+        // A plain value is restated under the column's leaf, number included.
+        let landed = sized.scalar(Scalar::from("abc")).unwrap();
+        assert_eq!(
+            landed.string_parameters(),
+            Some(StringType::SizedUtf8String(8))
+        );
+        // A value of the same leaf under another number is restated too, and
+        // judged by the column's number, never its own.
+        let wider = StringType::SizedUtf8String(32)
+            .scalar("abcdefghij")
+            .unwrap();
+        assert!(sized.scalar(wider).is_err());
+        let narrower = StringType::SizedUtf8String(4).scalar("abc").unwrap();
+        assert_eq!(
+            sized.scalar(narrower).unwrap().string_parameters(),
+            Some(StringType::SizedUtf8String(8))
+        );
+        // A hand-built variant is judged the same way.
+        let forged = Scalar::FixedAsciiString(Str::new("é"), 4);
+        assert!(DataType::fixed_ascii(4).unwrap().scalar(forged).is_err());
+        let padded = Scalar::FixedUtf8String(Str::new("ab\0\0"), 4);
+        assert_eq!(
+            DataType::fixed_utf8(4).unwrap().scalar(padded).unwrap(),
+            Scalar::FixedUtf8String(Str::new("ab"), 4)
+        );
+        assert_eq!(
+            DataType::fixed_utf8(4)
+                .unwrap()
+                .scalar(Scalar::FixedUtf8String(Str::new("ab\0\0"), 4))
+                .unwrap()
+                .as_str(),
+            Some("ab"),
+            "the padding is the slot's, not the value's"
+        );
+    }
+
+    #[test]
+    fn leaves_order_as_their_view_and_equal_only_themselves() {
+        let dtypes: Vec<DataType> = strings()
+            .into_iter()
+            .map(DataType::from)
+            .chain(bytes().into_iter().map(DataType::from))
+            .collect();
+        for left in &dtypes {
+            for right in &dtypes {
+                assert_eq!(
+                    left.cmp(right) == Ordering::Equal,
+                    left == right,
+                    "{left} {right}"
+                );
+                if let (Some(l), Some(r)) = (left.string_parameters(), right.string_parameters()) {
+                    assert_eq!(left.cmp(right), l.cmp(&r), "{left} {right}");
+                }
+                if let (Some(l), Some(r)) = (left.bytes_parameters(), right.bytes_parameters()) {
+                    assert_eq!(left.cmp(right), l.cmp(&r), "{left} {right}");
+                }
+                let named = |dtype: &DataType| Field::new("x", dtype.clone(), true);
+                assert_eq!(named(left) == named(right), left == right, "{left} {right}");
+            }
+        }
     }
 }

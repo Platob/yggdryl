@@ -3,7 +3,7 @@
 //! There is exactly one parser in this module and exactly one in the workspace
 //! that reads a path, a term, a filter or a selector. It is recursive descent
 //! with explicit precedence, it re-enters itself for every operand - a `case`
-//! arm holds a full term, a list element holds a full term, a cast target
+//! arm holds a full term, a serie element holds a full term, a cast target
 //! holds a full datatype through the crate's own datatype grammar - and it
 //! refuses past [`RECURSION_LIMIT`](super::RECURSION_LIMIT) with a typed error
 //! rather than by overflowing a stack.
@@ -1183,7 +1183,7 @@ impl<'input> Parser<'input> {
                     return Err(parse_error(
                         position,
                         "expected a column path before a predicate segment, got a computed \
-                         value; a predicate keeps the elements of the list a column holds",
+                         value; a predicate keeps the elements of the serie a column holds",
                     ));
                 }
                 base = base.path([segment])?;
@@ -1231,7 +1231,7 @@ impl<'input> Parser<'input> {
                 return Err(parse_error(
                     position,
                     format_smolstr!(
-                        "expected a whole list position, a text key, or a predicate, got {held}"
+                        "expected a whole serie position, a text key, or a predicate, got {held}"
                     ),
                 ));
             }
@@ -1259,7 +1259,7 @@ impl<'input> Parser<'input> {
         let magnitude = text.parse::<i64>().map_err(|_| {
             parse_error(
                 position,
-                format_smolstr!("expected a list position that fits in 64 bits, got {text}"),
+                format_smolstr!("expected a serie position that fits in 64 bits, got {text}"),
             )
         })?;
         Ok(Some(if negative { -magnitude } else { magnitude }))
@@ -1339,7 +1339,7 @@ impl<'input> Parser<'input> {
                 }
             }
             self.expect_symbol("]")?;
-            return Ok(Term::List(Arc::from(items)));
+            return Ok(Term::Serie(Arc::from(items)));
         }
         if self.eat_symbol("{") {
             let mut entries = Vec::new();
@@ -1758,9 +1758,9 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             })?),
             *scale,
         ),
-        D::String(_) | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
+        crate::string_dtypes!() | D::Uuid | D::Version => Scalar::from(SmolStr::new(text)),
         code if code.is_code() => Scalar::from(SmolStr::new(text)),
-        D::Bytes(_) => Scalar::from(
+        crate::bytes_dtypes!() => Scalar::from(
             bytes_from_hex(text).ok_or_else(|| fail("an even-length run of hex digits"))?,
         ),
         other => {

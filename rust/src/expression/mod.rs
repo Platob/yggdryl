@@ -372,7 +372,7 @@ pub enum Function {
     /// `if_null(value, fallback)` - two-argument [`Self::Coalesce`], the
     /// spelling several dialects use.
     IfNull,
-    /// How many items a list or a map holds.
+    /// How many items a serie or a map holds.
     Size,
     /// `get(container, key_or_index)` - the functional spelling of a
     /// [`FieldSegment`], for when the key is computed rather than written.
@@ -382,9 +382,9 @@ pub enum Function {
     /// 0-based or 1-based, so the familiar name cannot be used without
     /// inheriting an argument about what it means.
     Get,
-    /// `slice(list, start [, end])` - the functional spelling of a
+    /// `slice(serie, start [, end])` - the functional spelling of a
     /// [`FieldSegment::Range`], 0-based and half-open, a null bound meaning
-    /// the list's own end.
+    /// the serie's own end.
     Slice,
     /// A registered [user-defined function](UserFunction), by qualified name.
     User(UserRef),

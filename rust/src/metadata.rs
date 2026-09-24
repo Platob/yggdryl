@@ -346,6 +346,18 @@ impl Metadata {
         self.get(key).is_some()
     }
 
+    /// Whether an `ARROW:extension:*` entry may be stored here: the pair an
+    /// Arrow projection refuses beside a datatype that states its own. One
+    /// seek into the ordered keys, where two lookups would each read the
+    /// key's scheme first; a `true` only sends the caller the long way.
+    pub(crate) fn may_hold_arrow_extension(&self) -> bool {
+        const PREFIX: &str = "ARROW:extension:";
+        self.0
+            .range::<str, _>((Bound::Included(PREFIX), Bound::Unbounded))
+            .next()
+            .is_some_and(|(key, _)| key.starts_with(PREFIX))
+    }
+
     /// Iterates in lexical key order without allocating.
     pub fn iter(&self) -> MetadataIter<'_> {
         MetadataIter(self.0.iter())

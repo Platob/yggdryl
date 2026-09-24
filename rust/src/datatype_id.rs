@@ -16,10 +16,11 @@ use crate::{Error, Result};
 /// is the value bindings use for type names and annotations.
 ///
 /// The number each variant states is one byte laid out by family: every
-/// [`DataTypeKind`] owns a range that starts at the family's own number -
-/// [`DataTypeKind::id`], a placeholder no leaf takes - and its leaves follow
-/// in that range, so the high bits of a leaf's byte say its family and a
-/// family has room for the leaves it does not have yet. The byte is what
+/// [`DataTypeKind`] owns a [range](DataTypeKind::range) that starts at the
+/// family's own number - [`DataTypeKind::id`], a placeholder no leaf takes,
+/// but for `null`, whose one leaf states it - and its leaves follow in that
+/// range, so the byte says its family and a family has room for the leaves
+/// it does not have yet. The byte is what
 /// [the variant encoding](crate::Scalar::into_value_bytes) and
 /// [`crate::Scalar::write_bytes`] write as a value's tag, and
 /// [`Self::from_u8`] reads it back.
@@ -162,7 +163,7 @@ pub enum DataTypeId {
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 0x71,
     /// ISO 4217: a currency code, three ASCII bytes.
-    Currency = 0x72,
+    Ccy = 0x72,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     MicCode = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
@@ -189,16 +190,16 @@ pub enum DataTypeId {
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
     // Nested: 0x90..0xaf
-    /// Variable list with 32-bit offsets.
-    List = 0x91,
-    /// Variable list with 64-bit offsets.
-    LargeList = 0x92,
-    /// Variable list-view with 32-bit offsets.
-    ListView = 0x93,
-    /// Variable list-view with 64-bit offsets.
-    LargeListView = 0x94,
-    /// Fixed-length list.
-    FixedSizeList = 0x95,
+    /// A serie of items behind 32-bit offsets.
+    Serie = 0x91,
+    /// A serie of items behind 64-bit offsets.
+    LargeSerie = 0x92,
+    /// A serie of items behind 32-bit offsets and sizes.
+    SerieView = 0x93,
+    /// A serie of items behind 64-bit offsets and sizes.
+    LargeSerieView = 0x94,
+    /// A serie of exactly one length of items.
+    FixedSizeSerie = 0x95,
     /// Ordered struct fields.
     Struct = 0x96,
     /// Arrow map entries.
@@ -281,7 +282,7 @@ impl DataTypeId {
         Self::MimeType,
         Self::MediaType,
         Self::Country,
-        Self::Currency,
+        Self::Ccy,
         Self::MicCode,
         Self::CfiCode,
         Self::Side,
@@ -293,11 +294,11 @@ impl DataTypeId {
         Self::BloombergCode,
         Self::FIGICode,
         Self::Uuid,
-        Self::List,
-        Self::LargeList,
-        Self::ListView,
-        Self::LargeListView,
-        Self::FixedSizeList,
+        Self::Serie,
+        Self::LargeSerie,
+        Self::SerieView,
+        Self::LargeSerieView,
+        Self::FixedSizeSerie,
         Self::Struct,
         Self::Map,
         Self::SortedMap,
@@ -354,7 +355,7 @@ impl DataTypeId {
             Self::LargeBinary => "large_binary",
             Self::BinaryView => "binary_view",
             Self::Country => "country",
-            Self::Currency => "currency",
+            Self::Ccy => "ccy",
             Self::MicCode => "mic",
             Self::CfiCode => "cfi",
             Self::IsinCode => "isin",
@@ -368,11 +369,11 @@ impl DataTypeId {
             Self::Uuid => "uuid",
             Self::LargeBinaryView => "large_binary_view",
             Self::SizedBinary => "sized_binary",
-            Self::List => "list",
-            Self::ListView => "list_view",
-            Self::FixedSizeList => "fixed_size_list",
-            Self::LargeList => "large_list",
-            Self::LargeListView => "large_list_view",
+            Self::Serie => "serie",
+            Self::SerieView => "serie_view",
+            Self::FixedSizeSerie => "fixed_size_serie",
+            Self::LargeSerie => "large_serie",
+            Self::LargeSerieView => "large_serie_view",
             Self::Struct => "struct",
             Self::Union => "union",
             Self::Dictionary => "dictionary",
@@ -445,92 +446,53 @@ impl DataTypeId {
         FROM_U8[byte as usize]
     }
 
-    /// Return the coarse family this identifier belongs to.
+    /// Return the coarse family this identifier belongs to: the family whose
+    /// [range](DataTypeKind::range) its byte is in.
+    ///
+    /// ```
+    /// use yggdryl::{DataTypeId, DataTypeKind};
+    ///
+    /// assert_eq!(DataTypeId::UInt128.kind(), DataTypeKind::Integer);
+    /// assert_eq!(DataTypeId::Url.kind(), DataTypeKind::Text);
+    /// assert!(DataTypeId::Url.kind().contains(DataTypeId::Url));
+    /// ```
     pub const fn kind(self) -> DataTypeKind {
+        match DataTypeKind::of_u8(self.as_u8()) {
+            Some(kind) => kind,
+            None => panic!("every identifier sits in a family's range"),
+        }
+    }
+
+    /// The temporal family this identifier is a leaf of - a date, a time of
+    /// day, a datetime, a duration or a calendar interval - and `None`
+    /// outside [`DataTypeKind::Temporal`]. The widths of one family share it.
+    pub(crate) const fn temporal_kind(self) -> Option<crate::TemporalKind> {
+        use crate::TemporalKind as T;
         match self {
-            Self::Null => DataTypeKind::Null,
-            Self::Boolean => DataTypeKind::Boolean,
-            Self::Int8
-            | Self::Int16
-            | Self::Int32
-            | Self::Int64
-            | Self::UInt8
-            | Self::UInt16
-            | Self::UInt32
-            | Self::UInt64
-            | Self::Int128
-            | Self::UInt128 => DataTypeKind::Integer,
-            Self::Float16 | Self::Float32 | Self::Float64 => DataTypeKind::Floating,
-            Self::Decimal32 | Self::Decimal64 | Self::Decimal128 | Self::Decimal256 => {
-                DataTypeKind::Decimal
-            }
-            Self::DateTime64
-            | Self::Date32
-            | Self::Date64
-            | Self::Time32
-            | Self::Time64
-            | Self::Duration32
-            | Self::Duration64
-            | Self::Interval => DataTypeKind::Temporal,
-            Self::Binary
-            | Self::FixedBinary
-            | Self::LargeBinary
-            | Self::BinaryView
-            | Self::LargeBinaryView
-            | Self::SizedBinary => DataTypeKind::Bytes,
-            Self::Utf8String
-            | Self::FixedUtf8String
-            | Self::Utf8StringView
-            | Self::LargeUtf8String
-            | Self::LargeUtf8StringView
-            | Self::SizedUtf8String
-            | Self::AsciiString
-            | Self::LargeAsciiString
-            | Self::AsciiStringView
-            | Self::LargeAsciiStringView
-            | Self::FixedAsciiString
-            | Self::SizedAsciiString
-            | Self::Cp1252String
-            | Self::LargeCp1252String
-            | Self::Cp1252StringView
-            | Self::LargeCp1252StringView
-            | Self::FixedCp1252String
-            | Self::SizedCp1252String
-            | Self::Version
-            | Self::Url
-            | Self::Urn
-            | Self::Timezone
-            | Self::MimeType
-            | Self::MediaType => DataTypeKind::Text,
-            // A registered code is fixed-width ASCII text with an identity;
-            // the family is the identity, and every text behaviour - comparison,
-            // casting to a variable layout, merging - is uniform over it too.
-            Self::Country
-            | Self::Currency
-            | Self::MicCode
-            | Self::CfiCode
-            | Self::IsinCode
-            | Self::CusipCode
-            | Self::SedolCode
-            | Self::BloombergCode
-            | Self::FIGICode
-            | Self::Side
-            | Self::State
-            | Self::TimeInForce => DataTypeKind::Code,
-            Self::Uuid => DataTypeKind::Uuid,
-            Self::List
-            | Self::ListView
-            | Self::FixedSizeList
-            | Self::LargeList
-            | Self::LargeListView
-            | Self::Struct
-            | Self::Union
-            | Self::Map
-            | Self::SortedMap
-            | Self::Dictionary
-            | Self::RunEndEncoded
-            | Self::Variant => DataTypeKind::Nested,
-            Self::Geometry | Self::Geography => DataTypeKind::Geospatial,
+            Self::Date32 | Self::Date64 => Some(T::Date),
+            Self::Time32 | Self::Time64 => Some(T::Time),
+            Self::DateTime64 => Some(T::DateTime),
+            Self::Duration32 | Self::Duration64 => Some(T::Duration),
+            Self::Interval => Some(T::Interval),
+            _ => None,
+        }
+    }
+
+    /// The name of the temporal family this identifier is a leaf of -
+    /// `date`, `time`, `datetime`, `duration` or `interval` - and `None`
+    /// outside [`DataTypeKind::Temporal`].
+    ///
+    /// ```
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::Date64.temporal_family(), Some("date"));
+    /// assert_eq!(DataTypeId::Duration32.temporal_family(), Some("duration"));
+    /// assert_eq!(DataTypeId::Int64.temporal_family(), None);
+    /// ```
+    pub const fn temporal_family(self) -> Option<&'static str> {
+        match self.temporal_kind() {
+            Some(kind) => Some(kind.as_str()),
+            None => None,
         }
     }
 
@@ -547,35 +509,19 @@ impl DataTypeId {
                 | Self::Duration32
                 | Self::Duration64
                 | Self::Interval
-                | Self::Binary
                 | Self::FixedBinary
-                | Self::LargeBinaryView
                 | Self::SizedBinary
-                | Self::LargeBinary
-                | Self::BinaryView
-                | Self::Utf8String
                 | Self::FixedUtf8String
-                | Self::Utf8StringView
-                | Self::LargeUtf8String
-                | Self::LargeUtf8StringView
                 | Self::SizedUtf8String
-                | Self::AsciiString
-                | Self::LargeAsciiString
-                | Self::AsciiStringView
-                | Self::LargeAsciiStringView
                 | Self::FixedAsciiString
                 | Self::SizedAsciiString
-                | Self::Cp1252String
-                | Self::LargeCp1252String
-                | Self::Cp1252StringView
-                | Self::LargeCp1252StringView
                 | Self::FixedCp1252String
                 | Self::SizedCp1252String
-                | Self::List
-                | Self::ListView
-                | Self::FixedSizeList
-                | Self::LargeList
-                | Self::LargeListView
+                | Self::Serie
+                | Self::SerieView
+                | Self::FixedSizeSerie
+                | Self::LargeSerie
+                | Self::LargeSerieView
                 | Self::Struct
                 | Self::Union
                 | Self::Dictionary
@@ -593,7 +539,7 @@ impl DataTypeId {
 
     /// Return whether the variant is a signed or unsigned integer.
     pub const fn is_integer(self) -> bool {
-        matches!(self.kind(), DataTypeKind::Integer)
+        DataTypeKind::Integer.contains(self)
     }
 
     /// Return whether the variant is a signed integer.
@@ -645,11 +591,11 @@ impl DataTypeId {
     pub const fn is_nested(self) -> bool {
         matches!(
             self,
-            Self::List
-                | Self::ListView
-                | Self::FixedSizeList
-                | Self::LargeList
-                | Self::LargeListView
+            Self::Serie
+                | Self::SerieView
+                | Self::FixedSizeSerie
+                | Self::LargeSerie
+                | Self::LargeSerieView
                 | Self::Struct
                 | Self::Union
                 | Self::Map
@@ -705,7 +651,7 @@ impl DataTypeId {
     pub const fn code_width(self) -> Option<usize> {
         match self {
             Self::Country => Some(2),
-            Self::Currency => Some(3),
+            Self::Ccy => Some(3),
             Self::MicCode => Some(4),
             Self::CfiCode => Some(6),
             Self::SedolCode => Some(7),
@@ -719,6 +665,19 @@ impl DataTypeId {
     }
 }
 
+// Every identifier sits in one family's range, so `kind` never reaches its
+// panic: a new identifier placed past every range fails to compile.
+const _: () = {
+    let mut index = 0;
+    while index < DataTypeId::ALL.len() {
+        assert!(
+            DataTypeKind::of_u8(DataTypeId::ALL[index].as_u8()).is_some(),
+            "an identifier sits past every family's range"
+        );
+        index += 1;
+    }
+};
+
 /// Every byte's identifier, built once from [`DataTypeId::ALL`].
 const FROM_U8: [Option<DataTypeId>; 256] = {
     let mut table = [None; 256];
@@ -731,13 +690,52 @@ const FROM_U8: [Option<DataTypeId>; 256] = {
     table
 };
 
+impl DataTypeId {
+    /// The names the serie family was spelled with before it took its own,
+    /// each still read as the identifier it names.
+    ///
+    /// Written by nothing - [`Self::as_str`] spells every identifier - and
+    /// read by every door that reads a datatype's name: [`FromStr`], the type
+    /// grammar, the serde tags and both bindings, so a schema, a document or
+    /// a pickle written before the rename still reads.
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    ///
+    /// use yggdryl::DataTypeId;
+    ///
+    /// assert_eq!(DataTypeId::from_str("large_list")?, DataTypeId::LargeSerie);
+    /// assert_eq!(DataTypeId::LargeSerie.as_str(), "large_serie");
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
+    pub const LEGACY_NAMES: [(&'static str, Self); 5] = [
+        ("list", Self::Serie),
+        ("list_view", Self::SerieView),
+        ("fixed_size_list", Self::FixedSizeSerie),
+        ("large_list", Self::LargeSerie),
+        ("large_list_view", Self::LargeSerieView),
+    ];
+
+    /// The identifier one of [`Self::LEGACY_NAMES`] names, ignoring case, or
+    /// nothing for any other word.
+    pub fn from_legacy_name(value: &str) -> Option<Self> {
+        Self::LEGACY_NAMES
+            .into_iter()
+            .find(|(name, _)| value.eq_ignore_ascii_case(name))
+            .map(|(_, id)| id)
+    }
+}
+
 impl FromStr for DataTypeId {
     type Err = Error;
 
+    /// An identifier's name, or one of its [legacy names](Self::LEGACY_NAMES),
+    /// ignoring case.
     fn from_str(value: &str) -> Result<Self> {
         Self::ALL
             .into_iter()
             .find(|id| value.eq_ignore_ascii_case(id.as_str()))
+            .or_else(|| Self::from_legacy_name(value))
             .ok_or_else(|| Error::UnknownDataType(format_smolstr!("{value}")))
     }
 }

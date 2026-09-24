@@ -41,7 +41,7 @@ SQL, Hive and Spark spellings parse into the same canonical `struct(...)`.
     assert_eq!(row.as_fields().map(<[Field]>::len), Some(2));
 
     // `as_fields` is the struct's alone; no other layout has a schema.
-    assert!(DataType::list(DataType::Int64.nullable_field("item")).as_fields().is_none());
+    assert!(DataType::serie(DataType::Int64.nullable_field("item")).as_fields().is_none());
 
     // Two children of one name are refused where the collection is built.
     assert!(StructType::from_fields([
@@ -217,7 +217,7 @@ positional and path accessors.
 
 Two spellings of one row. `Scalar::Struct` is named input - the children by
 name, sorted, so two statements of one row in two orders are one value - and
-the ordered `Scalar::List` is what a row **is** once a struct field has
+the ordered `Scalar::Serie` is what a row **is** once a struct field has
 canonicalized it. The field decides: `Field::scalar` takes either spelling and
 answers the sequence in the schema's declared order, filling a child the input
 did not name with that child's default.
@@ -475,7 +475,7 @@ where it is owned rather than restated here:
 
 - Two children of one name -> `duplicate field name` error, at `StructType::from_fields` and at every import that would build one, Arrow's own schema included.
 - An empty struct is legal and holds no allocation: `StructType::new()` is `struct()`, and it is the default a builder starts from.
-- `as_fields` answers a struct alone; a list, a map, a union and the two wrappers answer `None`.
+- `as_fields` answers a struct alone; a serie, a map, a union and the two wrappers answer `None`.
 - A child is borrowed, never `&mut`: `set_field_*` replaces and `remove_field_*` removes, and a refusal leaves the datatype exactly as it was.
 - `with_fields` keeps the arity: a count that is not the declared one is refused rather than resized.
 - A row value is a record or a sequence of the declared length; a record's extra name, or a sequence of the wrong length, is refused with the path that failed.

@@ -91,7 +91,7 @@ fn dtype_from(
         Node::Array(items) => {
             let (item_type, nullable) = dtype_from(items, schema, visiting)?;
             (
-                DataType::list(Field::new("item", item_type, nullable)),
+                DataType::serie(Field::new("item", item_type, nullable)),
                 false,
             )
         }
@@ -215,7 +215,11 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
         DataType::Uuid => logical("string", "uuid"),
         // Avro's `bytes` has no maximum, so a bound is dropped here; the cast
         // on the way in already held every value to it.
-        DataType::Bytes(parameters) if !parameters.is_fixed() => plain("bytes"),
+        DataType::Binary
+        | DataType::LargeBinary
+        | DataType::BinaryView
+        | DataType::LargeBinaryView
+        | DataType::SizedBinary(_) => plain("bytes"),
         DataType::Date32 => logical("int", "date"),
         DataType::Time32(TimeUnit::Millisecond) => logical("int", "time-millis"),
         DataType::Time64(TimeUnit::Microsecond) => logical("long", "time-micros"),
@@ -240,13 +244,12 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("logicalType", Scalar::from("duration")),
             ])
         }
-        DataType::Bytes(parameters) => {
-            let width = parameters.fixed().ok_or_else(|| unspellable(dtype))?;
+        DataType::FixedBinary(width) => {
             *counter += 1;
             Scalar::from_struct([
                 ("type", Scalar::from("fixed")),
                 ("name", Scalar::from(unique_name(name, counter))),
-                ("size", Scalar::from(i64::from(width))),
+                ("size", Scalar::from(i64::from(*width))),
             ])
         }
         DataType::Decimal32 { precision, scale }
@@ -294,7 +297,7 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ),
             ])
         }
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             let mut items = node_json(item.dtype(), item.name(), counter)?;
             if item.is_nullable() && items.as_str() != Some("null") {
                 items = Scalar::from_sequence([Scalar::from("null"), items]);
@@ -350,11 +353,11 @@ fn unique_name(name: &str, counter: &usize) -> SmolStr {
 /// the encoder sees a value - and a code is the text it is. A string in any
 /// other charset is not: its bytes are not UTF-8, and it is refused by name.
 fn spells_string(dtype: &DataType) -> bool {
-    match dtype {
-        DataType::String(parameters) => is_text_storage(*parameters),
+    match dtype.string_parameters() {
+        Some(parameters) => is_text_storage(parameters),
         // Every registered code, asked through the accessor that knows which
         // they are rather than named five at a time here.
-        code => code.is_code(),
+        None => dtype.is_code(),
     }
 }
 

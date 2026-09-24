@@ -67,7 +67,7 @@ fn all_dispatch_paths_share_exact_document_limits() {
 }
 
 #[test]
-fn a_list_column_writes_one_json_line_per_row_as_its_run_does() {
+fn a_serie_column_writes_one_json_line_per_row_as_its_run_does() {
     let item = yggdryl::Field::new("item", yggdryl::DataType::Int64, false);
     let rows = [Scalar::from(1_i64), Scalar::from(2_i64)];
     let column = Scalar::from(yggdryl::Serie::from_scalars(item, rows.clone()).unwrap());

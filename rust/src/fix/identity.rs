@@ -846,7 +846,7 @@ pub(super) fn validate_value(name: &str, dtype: &DataType, value: &Scalar) -> Re
         dtype if dtype == &CLOCK_DATATYPE => {
             matches!(value.as_datetime64(), Some((_, TimeUnit::Nanosecond, zone)) if *zone == Timezone::UTC)
         }
-        _ => matches!(value, Scalar::String(_)),
+        _ => matches!(value, crate::string_scalars!(_)),
     };
     if exact {
         Ok(())

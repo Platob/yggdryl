@@ -10,7 +10,7 @@ import pyarrow as pa  # type: ignore[import-untyped]
 
 import yggdryl
 from yggdryl import (
-    CurrencyField,
+    CcyField,
     DataType,
     Field,
     MediaTypeField,
@@ -72,8 +72,8 @@ imported: Field = Field.from_arrow_schema(arrow_schema, name=root.name)
 dynamic_class: type[object] = imported.into_dataclass(
     name="DynamicTypedOrder"
 )
-currency: CurrencyField = yggdryl.currency("currency", nullable=False)
-currency_default_scalar: Scalar = currency.default_scalar()
+ccy: CcyField = yggdryl.ccy("currency", nullable=False)
+ccy_default_scalar: Scalar = ccy.default_scalar()
 version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = yggdryl.url("url")
@@ -101,7 +101,7 @@ assert datatype.is_nested
 assert optional.nullable
 assert from_yaml == from_toml == from_json == order
 assert dynamic_class.into_field() is imported  # type: ignore[attr-defined]
-assert currency_default_scalar.as_py() == ""
+assert ccy_default_scalar.as_py() == ""
 assert version_default_scalar.as_py() == Version(0)
 assert location_dtype == DataType("url")
 assert name_dtype == DataType("urn")

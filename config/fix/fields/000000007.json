@@ -464,7 +464,7 @@
   {
     "name": "allocsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -861,7 +861,7 @@
   {
     "name": "allowableonesidednesscurr",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

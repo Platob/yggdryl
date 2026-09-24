@@ -121,7 +121,7 @@ At bind, a literal meets the column it is compared with and is converted once in
 
 ## Predicate segments
 
-`list[filter]` keeps the elements of a list of structs for which `filter`, a boolean over the element's own fields, answers exactly true; the answer is a list of the same item type, so `[0]`, `[-1]`, `.name` and further predicates compose after it. The predicate is typed and bound against the element struct - a name inside it is the element's field, never the row's - and a parameter inside it is supplied at bind like any other. A null element is dropped, an element the predicate answers false or unknown for is dropped, no match is the empty list, and a null list stays null. The vectorized tier runs the predicate once over the flattened elements, filters them, and rebuilds the offsets; the statistics tier treats the segment as a column decode that proves nothing.
+`serie[filter]` keeps the elements of a serie of structs for which `filter`, a boolean over the element's own fields, answers exactly true; the answer is a serie of the same item type, so `[0]`, `[-1]`, `.name` and further predicates compose after it. The predicate is typed and bound against the element struct - a name inside it is the element's field, never the row's - and a parameter inside it is supplied at bind like any other. A null element is dropped, an element the predicate answers false or unknown for is dropped, no match is the empty serie, and a null serie stays null. The vectorized tier runs the predicate once over the flattened elements, filters them, and rebuilds the offsets; the statistics tier treats the segment as a column decode that proves nothing.
 
 === "Rust"
 
@@ -129,11 +129,11 @@ At bind, a literal meets the column it is compared with and is converted once in
     use yggdryl::expression::Term;
     use yggdryl::{Field, Scalar};
 
-    let schema: Field = "trades:struct<legs:list<struct<ccy:utf8,size:bigint>>>".parse()?;
+    let schema: Field = "trades:struct<legs:serie<struct<ccy:utf8,size:bigint>>>".parse()?;
     let leg = |ccy: &str, size: i64| Scalar::from_sequence([Scalar::from(ccy), Scalar::from(size)]);
     let row = Scalar::from_sequence([Scalar::from_sequence([leg("EUR", 1), leg("USD", 2), leg("EUR", 3)])]);
 
-    // The predicate reads the element's fields and the answer keeps the list's item type.
+    // The predicate reads the element's fields and the answer keeps the serie's item type.
     let eur: Term = "legs[ccy = 'EUR']".parse()?;
     assert_eq!(eur.to_string(), "legs[ccy = 'EUR']");
     assert_eq!(eur.columns(), vec!["legs".to_owned()]);
@@ -147,7 +147,7 @@ At bind, a literal meets the column it is compared with and is converted once in
     assert_eq!(bound.term().to_string(), "legs[ccy = 'EUR' and size > 1][-1].size");
     assert_eq!(bound.eval(&row)?, Scalar::from(3_i64));
 
-    // No match is the empty list; a null list stays null.
+    // No match is the empty serie; a null serie stays null.
     assert_eq!("legs[ccy = 'JPY']".parse::<Term>()?.bind(&schema)?.eval(&row)?, Scalar::from_sequence([]));
     let missing = Scalar::from_sequence([Scalar::Null]);
     assert_eq!("legs[true]".parse::<Term>()?.bind(&schema)?.eval(&missing)?, Scalar::Null);
@@ -158,10 +158,10 @@ At bind, a literal meets the column it is compared with and is converted once in
     ```python
     from yggdryl import Field, Term
 
-    schema = Field("trades", "struct<legs:list<struct<ccy:utf8,size:bigint>>>", False)
+    schema = Field("trades", "struct<legs:serie<struct<ccy:utf8,size:bigint>>>", False)
     row = {"legs": [{"ccy": "EUR", "size": 1}, {"ccy": "USD", "size": 2}, {"ccy": "EUR", "size": 3}]}
 
-    # The predicate reads the element's fields and the answer keeps the list's item type.
+    # The predicate reads the element's fields and the answer keeps the serie's item type.
     eur = Term("legs[ccy = 'EUR']")
     assert str(eur) == "legs[ccy = 'EUR']"
     assert eur.columns() == ["legs"]
@@ -175,7 +175,7 @@ At bind, a literal meets the column it is compared with and is converted once in
     assert str(bound.term) == "legs[ccy = 'EUR' and size > 1][-1].size"
     assert bound.eval(row) == 3
 
-    # No match is the empty list; a null list stays null.
+    # No match is the empty serie; a null serie stays null.
     assert Term("legs[ccy = 'JPY']").bind(schema).eval(row) == []
     assert Term("legs[true]").bind(schema).eval({"legs": None}) is None
     ```
@@ -186,11 +186,11 @@ At bind, a literal meets the column it is compared with and is converted once in
     const assert = require('node:assert/strict')
     const { Field, Scalar, Term } = require('yggdryl')
 
-    const schema = new Field('trades', 'struct<legs:list<struct<ccy:utf8,size:bigint>>>', false)
+    const schema = new Field('trades', 'struct<legs:serie<struct<ccy:utf8,size:bigint>>>', false)
     const leg = (ccy, size) => [ccy, BigInt(size)]
     const row = Scalar.from([[leg('EUR', 1), leg('USD', 2), leg('EUR', 3)]])
 
-    // The predicate reads the element's fields and the answer keeps the list's item type.
+    // The predicate reads the element's fields and the answer keeps the serie's item type.
     const eur = new Term("legs[ccy = 'EUR']")
     assert.equal(eur.toString(), "legs[ccy = 'EUR']")
     assert.deepEqual(eur.columns, ['legs'])
@@ -204,7 +204,7 @@ At bind, a literal meets the column it is compared with and is converted once in
     assert.equal(bound.term.toString(), "legs[ccy = 'EUR' and size > 1][-1].size")
     assert.ok(bound.eval(row).equals(Scalar.from(3n)))
 
-    // No match is the empty list; a null list stays null.
+    // No match is the empty serie; a null serie stays null.
     assert.ok(new Term("legs[ccy = 'JPY']").bind(schema).eval(row).equals(Scalar.from([])))
     assert.ok(new Term('legs[true]').bind(schema).eval(Scalar.from([null])).equals(Scalar.from(null)))
     ```
@@ -229,7 +229,7 @@ At bind, a literal meets the column it is compared with and is converted once in
 - `simplify` -> a fixed point: simplifying twice changes nothing.
 - `explain` on a `Bound` -> the cheapest-first order, which is the order the tree runs in.
 - A term that reads no column, bound against an empty struct -> binds; `reads_rows` is false.
-- A predicate segment on a computed value -> refused at parse; on anything but a list of structs, or with a predicate that answers no boolean -> refused at bind naming the datatype.
+- A predicate segment on a computed value -> refused at parse; on anything but a serie of structs, or with a predicate that answers no boolean -> refused at bind naming the datatype.
 
 ## Commands
 

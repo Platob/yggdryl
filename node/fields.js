@@ -109,9 +109,9 @@ function createFields(DataType, Field, native) {
       field(name, DataType.string({ layout, max }), value)
   }
 
-  function list(kind) {
+  function serie(kind) {
     return (name, item, value) =>
-      field(name, native.list(kind, item), value)
+      field(name, native.serie(kind, item), value)
   }
 
   // A factory whose options carry the datatype's own parameters beside the
@@ -240,7 +240,7 @@ function createFields(DataType, Field, native) {
     // is, held to the width its standard fixes, and carrying that identity
     // across Arrow under its own extension name.
     country: simple('country'),
-    currency: simple('currency'),
+    ccy: simple('ccy'),
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),
@@ -252,17 +252,17 @@ function createFields(DataType, Field, native) {
     state: simple('state'),
     timeinforce: simple('timeinforce'),
 
-    list: list('list'),
-    listView: list('list_view'),
-    fixedSizeList(name, item, length, value) {
+    serie: serie('serie'),
+    serieView: serie('serie_view'),
+    fixedSizeSerie(name, item, length, value) {
       return field(
         name,
-        native.list('fixed_size_list', item, length),
+        native.serie('fixed_size_serie', item, length),
         value,
       )
     },
-    largeList: list('large_list'),
-    largeListView: list('large_list_view'),
+    largeSerie: serie('large_serie'),
+    largeSerieView: serie('large_serie_view'),
     struct(name, children, value) {
       return field(name, DataType.fromFields(children), value)
     },

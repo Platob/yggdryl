@@ -544,7 +544,7 @@
   {
     "name": "legextraordinarydividendcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

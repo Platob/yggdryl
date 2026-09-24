@@ -217,7 +217,7 @@
   {
     "name": "underlyingpaymentstreamrateoramountcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -610,7 +610,7 @@
   {
     "name": "underlyingpaymentstreamnondeliverablerefcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -913,7 +913,7 @@
   {
     "name": "underlyingpaymentschedulecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1003,7 +1003,7 @@
   {
     "name": "underlyingpaymentschedulefixedcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

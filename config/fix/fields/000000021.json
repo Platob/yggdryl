@@ -273,7 +273,7 @@
   {
     "name": "complexoptpayoutcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -297,7 +297,7 @@
   {
     "name": "complexeventcurrencyone",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -309,7 +309,7 @@
   {
     "name": "complexeventcurrencytwo",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

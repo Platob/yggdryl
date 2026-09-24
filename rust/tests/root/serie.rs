@@ -70,7 +70,7 @@ fn quotes() -> Serie {
     .expect("two quote rows")
 }
 
-/// A record column of two orders, each a list of legs (records of a price)
+/// A record column of two orders, each a serie of legs (records of a price)
 /// and a mapping of tags, so a schema path crosses all three nestings.
 fn orders() -> Serie {
     let leg = Field::new(
@@ -96,7 +96,7 @@ fn orders() -> Serie {
         DataType::from(
             StructType::from_fields([
                 Field::new("id", DataType::Int64, false),
-                Field::new("legs", DataType::list(leg), false),
+                Field::new("legs", DataType::serie(leg), false),
                 Field::new("tags", DataType::map(entries, false).unwrap(), true),
             ])
             .unwrap(),
@@ -193,7 +193,7 @@ fn every_constructor_answers_the_leaf_it_names() {
     assert!(refusal.to_string().contains("price"), "{refusal}");
 
     // The root widens into a scalar.
-    assert_eq!(Scalar::from(laid_out.clone()), Scalar::List(laid_out));
+    assert_eq!(Scalar::from(laid_out.clone()), Scalar::Serie(laid_out));
 }
 
 #[test]
@@ -221,7 +221,7 @@ fn both_leaves_answer_the_same_reads_at_different_costs() {
         );
         assert_eq!(
             serie.dtype().unwrap(),
-            DataType::list(Field::new("item", DataType::Int64, false))
+            DataType::serie(Field::new("item", DataType::Int64, false))
         );
         assert_eq!(serie.clone().into_run().as_slice().len(), 3);
         assert!(serie.children().is_empty());
@@ -253,14 +253,14 @@ fn both_leaves_answer_the_same_reads_at_different_costs() {
     // An empty run names a null item; an empty column names its field's.
     assert_eq!(
         Serie::new(Vec::<Scalar>::new()).dtype().unwrap(),
-        DataType::list(Field::new("item", DataType::Null, true))
+        DataType::serie(Field::new("item", DataType::Null, true))
     );
     assert_eq!(
         Serie::empty(Field::new("price", DataType::Int64, true))
             .unwrap()
             .dtype()
             .unwrap(),
-        DataType::list(Field::new("item", DataType::Int64, true))
+        DataType::serie(Field::new("item", DataType::Int64, true))
     );
 }
 
@@ -307,10 +307,10 @@ fn a_run_and_a_column_of_equal_rows_are_one_value_and_hash_alike() {
     let larger = Serie::new(vec![Scalar::from(126_i64)]);
     assert!(larger > column);
     assert_eq!(
-        Scalar::List(column.clone()),
+        Scalar::Serie(column.clone()),
         Scalar::from_sequence(run.rows().iter().cloned())
     );
-    assert_eq!(hashed(&Scalar::List(column)), hashed(&Scalar::List(run)));
+    assert_eq!(hashed(&Scalar::Serie(column)), hashed(&Scalar::Serie(run)));
 }
 
 #[test]
@@ -505,6 +505,200 @@ fn extending_from_another_serie_appends_buffers_where_the_fields_agree() {
 }
 
 #[test]
+fn every_storage_layout_is_one_variant_and_its_field_names_the_datatype() {
+    use yggdryl::{DataTypeKind, SerieValue, TimeUnit, Timezone};
+
+    fn empty(dtype: DataType) -> Serie {
+        Serie::empty(Field::new("column", dtype, true)).expect("an empty column")
+    }
+    // What a column of `dtype` is: the variant its layout lands in, the
+    // accessor that reaches it, and the field's identifier and family - never
+    // the variant's, which one layout shares across several datatypes.
+    macro_rules! lands_as {
+        ($dtype:expr, $variant:ident, $accessor:ident) => {{
+            let dtype: DataType = $dtype;
+            let serie = empty(dtype.clone());
+            assert!(matches!(serie, Serie::$variant(_)), "{dtype}: {serie:?}");
+            let leaf = serie.$accessor().expect(stringify!($accessor));
+            assert_eq!(SerieValue::id(leaf), dtype.id(), "{dtype}");
+            assert_eq!(SerieValue::kind(leaf), dtype.kind(), "{dtype}");
+            assert!(SerieValue::kind(leaf).contains(dtype.id()), "{dtype}");
+        }};
+    }
+
+    lands_as!(DataType::utf8(), Utf8String, as_utf8);
+    lands_as!(DataType::ascii(), Utf8String, as_utf8);
+    lands_as!(DataType::large_utf8(), LargeUtf8String, as_large_utf8);
+    lands_as!(DataType::utf8_view(), Utf8ViewString, as_utf8_view);
+    lands_as!(DataType::sized_utf8(8).unwrap(), Utf8String, as_utf8);
+    lands_as!(DataType::cp1252(), BinaryString, as_binary_string);
+    lands_as!(
+        DataType::large_cp1252(),
+        LargeBinaryString,
+        as_large_binary_string
+    );
+    lands_as!(
+        DataType::cp1252_view(),
+        BinaryViewString,
+        as_binary_view_string
+    );
+    lands_as!(
+        DataType::fixed_ascii(7).unwrap(),
+        FixedString,
+        as_fixed_string
+    );
+    lands_as!(DataType::binary(), Binary, as_binary);
+    lands_as!(DataType::large_binary(), LargeBinary, as_large_binary);
+    lands_as!(DataType::binary_view(), BinaryView, as_binary_view);
+    lands_as!(DataType::large_binary_view(), BinaryView, as_binary_view);
+    lands_as!(DataType::sized_binary(8).unwrap(), Binary, as_binary);
+    lands_as!(
+        DataType::fixed_binary(16).unwrap(),
+        FixedBytes,
+        as_fixed_bytes
+    );
+    lands_as!(
+        DataType::time32(TimeUnit::Second).unwrap(),
+        Time32Second,
+        as_time32_second
+    );
+    lands_as!(
+        DataType::time32(TimeUnit::Millisecond).unwrap(),
+        Time32Millisecond,
+        as_time32_millisecond
+    );
+    lands_as!(
+        DataType::time64(TimeUnit::Microsecond).unwrap(),
+        Time64Microsecond,
+        as_time64_microsecond
+    );
+    lands_as!(
+        DataType::time64(TimeUnit::Nanosecond).unwrap(),
+        Time64Nanosecond,
+        as_time64_nanosecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        DateTimeSecond,
+        as_datetime_second
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Millisecond, Timezone::UTC).unwrap(),
+        DateTimeMillisecond,
+        as_datetime_millisecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+        DateTimeMicrosecond,
+        as_datetime_microsecond
+    );
+    lands_as!(
+        DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap(),
+        DateTimeNanosecond,
+        as_datetime_nanosecond
+    );
+    // Both duration widths share each unit's leaf; the field says which.
+    for unit in [
+        TimeUnit::Second,
+        TimeUnit::Millisecond,
+        TimeUnit::Microsecond,
+        TimeUnit::Nanosecond,
+    ] {
+        for dtype in [
+            DataType::duration32(unit).unwrap(),
+            DataType::duration64(unit).unwrap(),
+        ] {
+            let serie = empty(dtype.clone());
+            let id = match &serie {
+                Serie::DurationSecond(leaf) => leaf.id(),
+                Serie::DurationMillisecond(leaf) => leaf.id(),
+                Serie::DurationMicrosecond(leaf) => leaf.id(),
+                Serie::DurationNanosecond(leaf) => leaf.id(),
+                other => panic!("{dtype}: {other:?}"),
+            };
+            assert_eq!(id, dtype.id(), "{dtype}");
+        }
+    }
+    lands_as!(
+        DataType::duration64(TimeUnit::Second).unwrap(),
+        DurationSecond,
+        as_duration_second
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::YearMonth).unwrap(),
+        IntervalYearMonth,
+        as_interval_year_month
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::DayTime).unwrap(),
+        IntervalDayTime,
+        as_interval_day_time
+    );
+    lands_as!(
+        DataType::interval(TimeUnit::MonthDayNano).unwrap(),
+        IntervalMonthDayNano,
+        as_interval_month_day_nano
+    );
+
+    // A code, a URL and a UUID keep a variant of their own over the leaf
+    // they are stored in, which the leaf's accessor still reaches.
+    lands_as!(DataType::Ccy, Ccy, as_utf8);
+    lands_as!(DataType::Url, Url, as_utf8);
+    lands_as!(DataType::Uuid, Uuid, as_fixed_bytes);
+    lands_as!(DataType::geometry(None).unwrap(), Geometry, as_binary);
+
+    // A column's identifier is its field's; a run has no field to name one.
+    let prices = column();
+    assert_eq!(
+        prices.as_int64().map(SerieValue::id),
+        Some(yggdryl::DataTypeId::Int64)
+    );
+    assert_eq!(
+        prices.as_int64().map(SerieValue::kind),
+        Some(DataTypeKind::Integer)
+    );
+    assert_eq!(run().field(), None);
+}
+
+#[test]
+fn a_duration_of_one_width_is_read_into_the_other_never_appended() {
+    use yggdryl::TimeUnit;
+
+    // Both widths hold the same leaf, so only the fields' datatypes keep one
+    // column's buffers off the other: a duration64 count past 32 bits is
+    // read through the duration32 field's contract and refused.
+    let narrow = Field::new(
+        "elapsed",
+        DataType::duration32(TimeUnit::Second).unwrap(),
+        true,
+    );
+    let wide = Field::new(
+        "elapsed",
+        DataType::duration64(TimeUnit::Second).unwrap(),
+        true,
+    );
+    let mut short =
+        Serie::from_scalars(narrow, [Scalar::duration32(5, TimeUnit::Second).unwrap()]).unwrap();
+    let long = Serie::from_scalars(
+        wide.clone(),
+        [Scalar::duration64(i64::from(i32::MAX) + 1, TimeUnit::Second).unwrap()],
+    )
+    .unwrap();
+    assert!(matches!(short, Serie::DurationSecond(_)));
+    assert!(matches!(long, Serie::DurationSecond(_)));
+    assert!(short.extend_from_serie(&long).is_err());
+    assert_eq!(short.len(), 1);
+
+    // The other way the rows fit, and are read as the wider width.
+    let mut widened = Serie::empty(wide).unwrap();
+    widened.extend_from_serie(&short).unwrap();
+    assert_eq!(
+        widened.scalar(0).unwrap(),
+        Scalar::duration64(5, TimeUnit::Second).unwrap()
+    );
+}
+
+#[test]
 fn a_record_column_lends_its_children_by_name_position_and_path() {
     let quotes = quotes();
     assert_eq!(quotes.children().len(), 2);
@@ -547,10 +741,10 @@ fn a_record_column_lends_its_children_by_name_position_and_path() {
 }
 
 #[test]
-fn a_schema_path_sees_through_a_list_and_addresses_a_mapping_through_its_entries() {
+fn a_schema_path_sees_through_a_serie_and_addresses_a_mapping_through_its_entries() {
     let orders = orders();
-    let legs = orders.child("legs").expect("a list child");
-    let legs_items = legs.items().expect("a list column has items");
+    let legs = orders.child("legs").expect("a serie child");
+    let legs_items = legs.items().expect("a serie column has items");
     assert_eq!(legs_items.len(), 3);
     assert_eq!(
         legs_items.field().map(Field::name),
@@ -558,11 +752,11 @@ fn a_schema_path_sees_through_a_list_and_addresses_a_mapping_through_its_entries
         "the item column carries the item field"
     );
 
-    // A list is transparent to its item: `legs.price` and `legs.item.price`
+    // A serie is transparent to its item: `legs.price` and `legs.item.price`
     // reach the one price column under the item record.
     let prices = orders
         .get_child_by_path(&FieldPath::from_str("legs.price").unwrap())
-        .expect("through the list");
+        .expect("through the serie");
     assert_eq!(prices.as_int64().unwrap().values(), &[10, 11, 20]);
     let spelled = orders
         .get_child_by_path(&FieldPath::from_str("legs.item.price").unwrap())
@@ -740,7 +934,7 @@ fn a_sliced_column_grows_on_its_own_once_the_original_is_dropped() {
 
 #[test]
 fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
-    // The root's own serde: a run is a list, a column is the wire.
+    // The root's own serde: a run is an array, a column is the wire.
     let listed = serde_json::to_string(&run()).unwrap();
     assert!(listed.starts_with('['), "{listed}");
     let wire = serde_json::to_string(&column()).unwrap();
@@ -751,30 +945,28 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
     assert_eq!(back.field().map(Field::name), Some("price"));
     assert!(back.is_column());
 
-    // A list is not a column wire: a run is never spelled through the
+    // An array is not a column wire: a run is never spelled through the
     // root's own serde, and the refusal names the tag.
-    let refusal = serde_json::from_str::<Serie>(&listed).expect_err("a list is a run");
+    let refusal = serde_json::from_str::<Serie>(&listed).expect_err("an array is a run");
     assert!(refusal.to_string().contains("`serie`"), "{refusal}");
     assert!(serde_json::from_str::<Serie>("[]").is_err());
-    let refusal = serde_json::from_str::<Scalar>(r#"{"type":"serie","value":[125,126]}"#)
-        .expect_err("a list under the column tag");
-    assert!(refusal.to_string().contains("`serie`"), "{refusal}");
 
-    // Under a scalar, the tag tells the two apart both ways.
-    let run = Scalar::List(run());
+    // Under a scalar, one `serie` tag carries both, and the payload's shape
+    // tells them apart both ways: the run's rows, or the column's document.
+    let run = Scalar::Serie(run());
     let document = serde_json::to_string(&run).unwrap();
-    assert!(document.contains("\"list\""), "{document}");
+    assert_eq!(document, format!(r#"{{"type":"serie","value":{listed}}}"#));
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, run);
     assert!(back.as_serie().is_some_and(|serie| !serie.is_column()));
 
-    let column = Scalar::List(column());
+    let column = Scalar::Serie(column());
     let document = serde_json::to_string(&column).unwrap();
-    assert!(document.contains("\"serie\""), "{document}");
+    assert_eq!(document, format!(r#"{{"type":"serie","value":{wire}}}"#));
     let back: Scalar = serde_json::from_str(&document).unwrap();
     assert_eq!(back, column);
     assert!(back.as_serie().is_some_and(Serie::is_column));
-    assert_eq!(back.kind(), "list");
+    assert_eq!(back.kind(), "serie");
     assert!(serde_json::from_str::<Scalar>(r#"{"serie":[125,126]}"#).is_err());
 
     // The wire carries the field's contract: a row it refuses does not read.
@@ -788,16 +980,16 @@ fn a_run_serializes_as_its_values_and_a_column_as_its_field_beside_its_rows() {
 fn the_root_is_a_value_and_converts_from_and_into_its_neighbours() {
     let serie = column();
     assert_eq!(Value::dtype(&serie).unwrap(), serie.dtype().unwrap());
-    assert_eq!(Scalar::from(serie.clone()), Scalar::List(serie.clone()));
+    assert_eq!(Scalar::from(serie.clone()), Scalar::Serie(serie.clone()));
     assert_eq!(
-        <Serie as Value>::from_scalar(&Scalar::List(serie.clone())),
+        <Serie as Value>::from_scalar(&Scalar::Serie(serie.clone())),
         Some(&serie)
     );
     assert_eq!(<Serie as Value>::from_scalar(&Scalar::Null), None);
-    assert_eq!(Scalar::List(serie.clone()).as_serie(), Some(&serie));
-    assert_eq!(Scalar::List(serie.clone()).len(), 3);
+    assert_eq!(Scalar::Serie(serie.clone()).as_serie(), Some(&serie));
+    assert_eq!(Scalar::Serie(serie.clone()).len(), 3);
     assert_eq!(
-        Scalar::List(serie.clone()).get(2).as_deref(),
+        Scalar::Serie(serie.clone()).get(2).as_deref(),
         Some(&Scalar::from(127_i64))
     );
 

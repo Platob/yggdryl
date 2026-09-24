@@ -109,7 +109,7 @@ pub const GROUP_TAGS: [i32; 4] = [453, 454, 768, 1907];
 
 /// The group holding the arrival record.
 ///
-/// Named as a group is named, because it is one: a List of `fixentry`
+/// Named as a group is named, because it is one: a Serie of `fixentry`
 /// occurrences counted by [`NOFIXENTRIES_TAG_NAME`](super::NOFIXENTRIES_TAG_NAME),
 /// exactly as `Parties` holds `Party` occurrences counted by `NoPartyIDs`. A
 /// group spelled after its own counter was the one place this crate named a
@@ -618,11 +618,14 @@ pub(super) struct Column {
     pub(super) tag: Option<i32>,
     pub(super) counter: Option<i32>,
     /// Whether the column is the crate's own arrival record, declared
-    /// exactly as [`entries_field`] declares it: [`entry_scalar`] writes
-    /// what [`entry_item`] declares, leaf for leaf, so the value it builds
-    /// is canonical under the column as built and is not walked twice
-    /// more to prove it. A caller's own `fixentries` column of another
-    /// shape is fitted as every column is.
+    /// exactly as [`entries_field`] declares it, of leaves whose layout is
+    /// their contract: [`entry_scalar`] writes what [`entry_item`]
+    /// declares, leaf for leaf, and the landing still checks every level's
+    /// projection and absence, so the field contract has nothing left to
+    /// read and the value is not walked twice more to prove it. A caller's
+    /// own `fixentries` column of another shape, or an arrival record that
+    /// ever grows a leaf narrower than its storage, is fitted as every
+    /// column is.
     pub(super) entries: bool,
     /// Whether another column of the plan carries the same tag. A holder
     /// keeps one fact per tag, so a row stating one tag twice is left where
@@ -659,7 +662,9 @@ pub(super) fn column_plan(schema: &Field, registry: &FixRegistry) -> Result<Colu
             None => column.as_fix().counter()?,
         };
         let entries = column.name() == FIXENTRIES_COLUMN
-            && entries_field().is_ok_and(|declared| declared.dtype() == column.dtype());
+            && entries_field().is_ok_and(|declared| {
+                declared.dtype() == column.dtype() && declared.dtype().layout_is_contract()
+            });
         columns.push(Column {
             tag,
             counter,
@@ -837,7 +842,7 @@ fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::M
         }
         match field.dtype() {
             DataType::Struct(children) => digest_shape(children.as_fields(), metadata, state),
-            DataType::List(item) | DataType::LargeList(item) => {
+            DataType::Serie(item) | DataType::LargeSerie(item) => {
                 digest_shape(std::slice::from_ref(&**item), metadata, state);
             }
             _ => {}
@@ -860,7 +865,7 @@ pub(super) fn same_shape(left: &Field, right: &Field) -> bool {
 
 /// How many `fixentry` structs any root-to-leaf path materializes.
 ///
-/// The column's List is level 0; the `fixentry` it contains is level 1; a
+/// The column's Serie is level 0; the `fixentry` it contains is level 1; a
 /// child of that entry is level 2; a child of that entry is level 3; there is
 /// no level-4 struct. "Three levels deep" means three `fixentry` structs on
 /// any root-to-leaf path, and everything deeper folds into the binary leaf.
@@ -872,7 +877,7 @@ const ENTRY_DEPTH: usize = 3;
 
 /// The one group of arrival records, under the counter that counts them.
 fn entries_field() -> Result<Field> {
-    let mut field = DataType::list(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
+    let mut field = DataType::serie(entry_item(1)?).nullable_field(FIXENTRIES_COLUMN);
     field.set_display("FixEntries")?;
     field.set_description(
         "Content not represented by another column, in arrival order, beside what the dictionary made of it.",
@@ -903,16 +908,16 @@ const VALUE_COLUMN: (&str, &str) = ("value", "Value");
 /// One `fixentry` struct at one materialization level.
 ///
 /// The fourth member is `fixentries` at every level and the meaning is
-/// invariant; the type alone says where materialization stops - a list of
+/// invariant; the type alone says where materialization stops - a serie of
 /// deeper entries above [`ENTRY_DEPTH`], the folded text leaf at it. Every
-/// entry and every inner list is non-null: an empty list means nothing
+/// entry and every inner serie is non-null: an empty serie means nothing
 /// nested, and it needs no validity bitmap to say so. The leaf is nullable
 /// instead, because "nothing was truncated" is an absence and a column that
 /// spells it as the empty string cannot be told from one that folded an empty
 /// subtree.
 fn entry_item(level: usize) -> Result<Field> {
     let tail = if level < ENTRY_DEPTH {
-        DataType::list(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
+        DataType::serie(entry_item(level + 1)?).required_field(FIXENTRIES_COLUMN)
     } else {
         DataType::utf8().nullable_field(FIXENTRIES_COLUMN)
     };
@@ -997,7 +1002,7 @@ pub(super) fn item_fields(field: &Field) -> Option<&[Field]> {
 /// One arrival entry read back out of the row value its level holds.
 ///
 /// The inverse of [`entry_scalar`], level by level: the five members in the
-/// order it wrote them, the children walked as the materialized List where
+/// order it wrote them, the children walked as the materialized Serie where
 /// the level holds one and as the leaf's JSON - decoded through the crate's
 /// one parser - where the level folded them. A leaf that cannot be decoded is
 /// a refusal rather than a hole, because a message rebuilt with a pair
@@ -1246,7 +1251,7 @@ fn covers_entry(
                     entry.entries(),
                 )
         }
-        DataType::List(item) | DataType::LargeList(item) => {
+        DataType::Serie(item) | DataType::LargeSerie(item) => {
             let Some(occurrences) = value.as_serie() else {
                 return false;
             };
@@ -1283,9 +1288,9 @@ fn covers_entry(
         }
         DataType::Map(_)
         | DataType::SortedMap(_)
-        | DataType::ListView(_)
-        | DataType::FixedSizeList(..)
-        | DataType::LargeListView(_) => false,
+        | DataType::SerieView(_)
+        | DataType::FixedSizeSerie(..)
+        | DataType::LargeSerieView(_) => false,
         _ => {
             entry.entries().is_empty()
                 && super::entry::wire_text_under(registry, field, value).as_deref() == entry.value()
@@ -1333,7 +1338,7 @@ fn covers_members(
                 return true;
             }
             // A group's scalar counter is represented by the same entry
-            // as its List. It is covered only when both fitted values say
+            // as its Serie. It is covered only when both fitted values say
             // the same occurrence count.
             let Some(tag) = tag.filter(|_| counter.is_none()) else {
                 return false;
@@ -1438,15 +1443,15 @@ fn ordered_group_union(
         .collect())
 }
 
-/// One group entry as the list it states: an occurrence per entry under it,
+/// One group entry as the serie it states: an occurrence per entry under it,
 /// each holding the members that occurrence stated, laid out on the union of
 /// every occurrence's members in their consistent relative order.
 ///
 /// `item` is the occurrence the dictionary declares, where it declares one:
-/// a member it names types through its own field, and the list keeps the
+/// a member it names types through its own field, and the serie keeps the
 /// group's storage. A group no dictionary declares - what a bridge packs
 /// under a counter's own name - takes its occurrence name from the entries
-/// and lands as a plain `List`, which is what the builder made of it.
+/// and lands as a plain `Serie`, which is what the builder made of it.
 fn group_from_entry(
     registry: &FixRegistry,
     entry: &super::FixEntry,
@@ -1515,14 +1520,14 @@ fn group_from_entry(
     );
     let occurrence = DataType::from(StructType::from_fields(union)?).required_field(name);
     let dtype = match known.dtype() {
-        DataType::LargeList(_) => DataType::large_list(occurrence),
+        DataType::LargeSerie(_) => DataType::large_serie(occurrence),
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()
                 .expect("the variant was just matched");
             DataType::map(occurrence, map.keys_sorted())?
         }
-        _ => DataType::list(occurrence),
+        _ => DataType::serie(occurrence),
     };
     // A group the dictionary does not declare stands under the counter's own
     // name and states no counter of its own: the builder left the count to
@@ -1532,11 +1537,11 @@ fn group_from_entry(
     Ok((field, crate::Scalar::from_sequence(rows)))
 }
 
-/// A scalar stated at indexed positions as the List the builder made of it.
+/// A scalar stated at indexed positions as the Serie the builder made of it.
 /// If every spelling types, the dictionary's scalar remains the item; if one
 /// does not, every raw spelling stays under UTF-8 so no sibling changes type
 /// or disappears on a later write.
-fn scalar_list_from_entry(
+fn scalar_serie_from_entry(
     registry: &FixRegistry,
     entry: &super::FixEntry,
     known: &Field,
@@ -1586,7 +1591,7 @@ fn scalar_list_from_entry(
     };
     let field = Field::new_with_metadata(
         entry.held_name().clone(),
-        DataType::list(item),
+        DataType::serie(item),
         true,
         known.as_metadata().clone(),
     );
@@ -1594,7 +1599,7 @@ fn scalar_list_from_entry(
 }
 
 /// An unexplained nested entry as the shape its children state. Repeated
-/// tagless occurrence names identify a List; otherwise the children are the
+/// tagless occurrence names identify a Serie; otherwise the children are the
 /// members of one Struct component.
 fn unknown_nested_from_entry(
     registry: &FixRegistry,
@@ -1619,7 +1624,7 @@ fn unknown_nested_from_entry(
             .iter()
             .all(|occurrence| occurrence.entries().is_empty())
         {
-            return scalar_list_from_entry(registry, entry, &known);
+            return scalar_serie_from_entry(registry, entry, &known);
         }
         return group_from_entry(registry, entry, &known, None);
     }
@@ -1694,7 +1699,7 @@ fn child_from_entry(
     // A scalar the entries state occurrences under is a group no dictionary
     // declares - a bridge packs `NOTRADINGSESSIONS[0]=...` under the
     // counter's own name - and the entries are the only statement of its
-    // shape. It rebuilds as the list it is rather than as the scalar the
+    // shape. It rebuilds as the serie it is rather than as the scalar the
     // name reaches, which would answer null and lose the occurrences.
     if !known.dtype().is_nested() && !entry.entries().is_empty() {
         if entry
@@ -1702,12 +1707,15 @@ fn child_from_entry(
             .iter()
             .all(|occurrence| occurrence.entries().is_empty())
         {
-            return scalar_list_from_entry(registry, entry, known);
+            return scalar_serie_from_entry(registry, entry, known);
         }
         return group_from_entry(registry, entry, known, None);
     }
     match known.dtype() {
-        DataType::List(_) | DataType::LargeList(_) | DataType::Map(_) | DataType::SortedMap(_) => {
+        DataType::Serie(_)
+        | DataType::LargeSerie(_)
+        | DataType::Map(_)
+        | DataType::SortedMap(_) => {
             let Some(item) = super::catalog::occurrence_of(known) else {
                 return Ok((known.clone(), crate::Scalar::Null));
             };
@@ -1843,18 +1851,17 @@ impl super::FixMsg {
         Self::rebuilt(registry, schema, &value)
     }
 
-    /// [`Self::from_row`] for a row read straight out of an Arrow batch
-    /// under `schema`: the array reader answered it in the schema's own
-    /// canonical form, so it is validated against the schema - a null
+    /// [`Self::from_row`] for a row of a record column landed under
+    /// `schema`: the landing proved every row against the schema - a null
     /// where the schema requires a value, a text past the bound a column
-    /// states, which Arrow does not police below the root - and rebuilt as
-    /// it stands rather than canonicalized a second time.
-    pub(super) fn from_arrow_row(
+    /// states, a code no registry holds - and the column answers it in the
+    /// schema's own canonical form, so it is rebuilt as it stands, neither
+    /// validated nor canonicalized a second time.
+    pub(super) fn from_landed_row(
         registry: Arc<FixRegistry>,
         schema: &Field,
         row: &crate::Scalar,
     ) -> Result<Self> {
-        crate::value::validate_row(schema, row)?;
         Self::rebuilt(registry, schema, row)
     }
 
@@ -2121,9 +2128,9 @@ impl super::FixMsg {
         for index in 0..columns.len() {
             values.push(fitted_cell(index)?);
         }
-        // A group occurrence none of the fixed List's members can represent
+        // A group occurrence none of the fixed Serie's members can represent
         // belongs wholly to the residual record. Its scalar counter must stay
-        // there with it: projecting the count beside a null List would claim
+        // there with it: projecting the count beside a null Serie would claim
         // that the fixed group represented occurrences it cannot describe.
         // A bare scalar counter with no group still stands as stated.
         for (group_index, group) in plan.iter().enumerate() {
@@ -2441,7 +2448,7 @@ impl super::FixMsg {
 /// so one unreadable `PartyID` costs that member, not the party around it and
 /// not the parties beside it. An occurrence that cannot be formed at all,
 /// because a member can hold neither its value nor a null, is dropped from
-/// the list rather than taking the list with it.
+/// the serie rather than taking the serie with it.
 ///
 /// Every null this puts in a value's place is reported through `log` at warn
 /// level, naming the column and what the value could not be read as: a null
@@ -2529,11 +2536,11 @@ fn refit(field: &Field, value: crate::Scalar) -> Option<crate::Scalar> {
                 .collect();
             held.map(crate::Scalar::from_sequence)
         }),
-        DataType::List(item)
-        | DataType::LargeList(item)
-        | DataType::ListView(item)
-        | DataType::LargeListView(item)
-        | DataType::FixedSizeList(item, _) => value.as_serie().map(|stated| {
+        DataType::Serie(item)
+        | DataType::LargeSerie(item)
+        | DataType::SerieView(item)
+        | DataType::LargeSerieView(item)
+        | DataType::FixedSizeSerie(item, _) => value.as_serie().map(|stated| {
             Some(crate::Scalar::from_sequence(
                 stated
                     .iter()

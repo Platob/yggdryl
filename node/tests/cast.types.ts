@@ -1,4 +1,4 @@
-import { ArrowCastPlan, Field, Serie, fields, type ArrowCastOptions } from '..'
+import { ArrowCastPlan, ChunkedSerie, Field, Serie, fields, type ArrowCastOptions } from '..'
 import type { Schema as ArrowSchema, Table as ArrowTable } from 'apache-arrow'
 
 declare const schema: ArrowSchema
@@ -13,6 +13,9 @@ const plan: ArrowCastPlan = ArrowCastPlan.compile(
 const fromSchema: ArrowCastPlan = ArrowCastPlan.compile(schema, root)
 const fromTable: ArrowCastPlan = ArrowCastPlan.compile(table, 'row: struct<id: int64> not null')
 const cast: Serie = plan.apply(Serie.fromScalars(fields.int32('id'), [1]))
+const chunked: ChunkedSerie = plan.apply(
+  ChunkedSerie.fromSerie(Serie.fromScalars(fields.int32('id'), [1])),
+)
 const source: Field = plan.source
 const target: Field = plan.target
 const options: Readonly<Required<ArrowCastOptions>> = plan.options
@@ -29,6 +32,7 @@ ArrowCastPlan._compileNative
 void fromSchema
 void fromTable
 void cast
+void chunked
 void source
 void target
 void options

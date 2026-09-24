@@ -6,7 +6,7 @@
 //! stray `String` in an accessor hides easily inside a map lookup. So this
 //! counts them, and pins the three places a protocol read does allocate - a
 //! key handed back to the caller, a lookup key too long for `SmolStr`'s inline
-//! buffer, and a value that is a list.
+//! buffer, and a value that is a serie.
 //!
 //! It also pins the no-op write. A rewrite of a value a field already carries
 //! must cost the same however much metadata surrounds it, because it stops
@@ -35,10 +35,10 @@ use yggdryl::graph::{
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord,
-    FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType,
-    PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit, Timezone, Value, Variant,
-    Version,
+    ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal18, Field,
+    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64,
+    MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit,
+    Timezone, Value, Variant, Version,
 };
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
@@ -495,7 +495,7 @@ fn fix_registry(extra: usize) -> FixRegistry {
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
-    let mut parties = DataType::list(item).nullable_field("Parties");
+    let mut parties = DataType::serie(item).nullable_field("Parties");
     parties
         .as_fix_mut()
         .set_counter(453)
@@ -1352,7 +1352,7 @@ fn payload_row() -> (Field, Scalar) {
     let root = StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
         Field::new("venue", DataType::ascii(), false),
     ])
     .map(DataType::from)
@@ -1472,8 +1472,8 @@ fn rewriting_a_layout_shares_the_storage_it_rewrites() {
 fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
     // `Str` wraps the compact string, so its threshold is that string's: a
     // value of `INLINE_CAPACITY` bytes lives in the value and one byte more
-    // costs exactly the shared handle. Restating a value under other
-    // parameters retags the handle, so the characters are never copied.
+    // costs exactly the shared handle. Restating the text as a value of
+    // another leaf moves the handle, so the characters are never copied.
     let inline = "s".repeat(INLINE_CAPACITY);
     free("building a string value at the inline capacity", || {
         let value = Str::new(black_box(inline.as_str()));
@@ -1489,11 +1489,13 @@ fn a_string_value_is_inline_to_its_capacity_and_one_handle_past_it() {
     let source = Str::new(&shared);
     let large = StringType::LargeUtf8String;
     free("restating a shared string value under another leaf", || {
-        let restated = black_box(&source)
-            .clone()
-            .try_with_parameters(large)
+        let restated = large
+            .scalar(black_box(&source).clone())
             .expect("the leaf holds it");
-        assert!(std::ptr::eq(source.as_str(), restated.as_str()));
+        assert!(std::ptr::eq(
+            source.as_str(),
+            restated.as_str().expect("a string value")
+        ));
         black_box(restated);
     });
 }
@@ -1647,7 +1649,7 @@ fn cloning_a_column_allocates_nothing() {
             }),
         )
         .expect("a record column");
-        let held = Scalar::List(counts.clone());
+        let held = Scalar::Serie(counts.clone());
 
         free(&format!("cloning {rows} int64 rows"), || {
             black_box(black_box(&counts).clone());
@@ -1668,6 +1670,295 @@ fn cloning_a_column_allocates_nothing() {
             black_box(black_box(&held).clone());
         });
     }
+}
+
+/// The int64 column of [`leaf_columns`] at `rows` rows, held as `cuts`
+/// chunks of equal length sliced out of it.
+fn chunked_counts(rows: usize, cuts: usize) -> ChunkedSerie {
+    let (counts, _) = leaf_columns(rows);
+    let size = rows / cuts;
+    let chunked = ChunkedSerie::from_series(
+        None,
+        (0..cuts).map(|chunk| counts.slice(chunk * size, size).expect("a chunk")),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field");
+    assert_eq!((chunked.len(), chunked.num_chunks()), (rows, cuts));
+    chunked
+}
+
+#[test]
+fn reading_through_a_chunked_leaf_allocates_nothing() {
+    // A row is found by a binary search over the chunk ends and read out of
+    // the chunk that holds it, so a chunked read costs exactly what the
+    // same read on the chunk costs - nothing, for a leaf - however many
+    // rows and chunks there are.
+    for (rows, cuts) in [(4_usize, 2_usize), (16_384, 8)] {
+        let chunked = chunked_counts(rows, cuts);
+        let size = rows / cuts;
+        let middle = rows / 2;
+        let absent = 1;
+        let expected = Scalar::from(i64::try_from(middle).expect("a row count"));
+
+        let chunk = &chunked.chunks()[middle / size];
+        free(&format!("a cell of one of {cuts} chunks"), || {
+            assert_eq!(
+                black_box(chunk)
+                    .scalar(black_box(middle % size))
+                    .expect("in range"),
+                expected
+            );
+        });
+        free(
+            &format!("len and null_count on {rows} rows in {cuts} chunks"),
+            || {
+                assert_eq!(black_box(&chunked).len(), rows);
+                assert!(!black_box(&chunked).is_empty());
+                assert_eq!(black_box(&chunked).num_chunks(), cuts);
+                assert_eq!(black_box(&chunked).null_count(), (rows + 1) / 3);
+                black_box(black_box(&chunked).field());
+            },
+        );
+        free(&format!("is_null on {rows} rows in {cuts} chunks"), || {
+            assert!(
+                !black_box(&chunked)
+                    .is_null(black_box(middle))
+                    .expect("in range")
+            );
+            assert!(
+                black_box(&chunked)
+                    .is_null(black_box(absent))
+                    .expect("in range")
+            );
+        });
+        free(&format!("scalar on {rows} rows in {cuts} chunks"), || {
+            assert_eq!(
+                black_box(&chunked)
+                    .scalar(black_box(middle))
+                    .expect("in range"),
+                expected
+            );
+            assert_eq!(
+                black_box(&chunked)
+                    .scalar(black_box(absent))
+                    .expect("in range"),
+                Scalar::Null
+            );
+        });
+        free(&format!("get on {rows} rows in {cuts} chunks"), || {
+            assert_eq!(
+                black_box(&chunked).get(black_box(middle)).as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(black_box(&chunked).get(black_box(rows)), None);
+        });
+        free(
+            &format!("the first row of a walk over {cuts} chunks"),
+            || {
+                assert_eq!(black_box(&chunked).iter().next(), Some(Scalar::from(0_i64)));
+            },
+        );
+    }
+}
+
+#[test]
+fn cloning_or_slicing_a_chunked_leaf_costs_its_two_vectors_and_nothing_per_row() {
+    // A chunked serie is its chunks and their ends, two vectors beside one
+    // shared field: a clone copies the two and bumps a pointer per chunk.
+    // A window keeps the chunks it reaches in two new vectors, sliced where
+    // it cuts one - the leaf's own one handle - and whole, a pointer bump,
+    // where it does not. Every count is the same at four rows and at sixteen
+    // thousand; a count that followed the rows would be a copy.
+    for (rows, cuts) in [(4_usize, 2_usize), (16_384, 8)] {
+        let chunked = chunked_counts(rows, cuts);
+        let size = rows / cuts;
+
+        costs(&format!("cloning {rows} rows in {cuts} chunks"), 2, || {
+            black_box(black_box(&chunked).clone());
+        });
+        costs(&format!("slicing a chunk of {size} rows"), 1, || {
+            black_box(
+                black_box(&chunked.chunks()[0])
+                    .slice(1, size - 1)
+                    .expect("inside the chunk"),
+            );
+        });
+        costs(
+            &format!("slicing inside one of {cuts} chunks of {size} rows"),
+            3,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .slice(1, size - 1)
+                        .expect("inside the first chunk"),
+                );
+            },
+        );
+        costs(
+            &format!("a window of one whole chunk of {size} rows"),
+            2,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .slice(size, size)
+                        .expect("the second chunk"),
+                );
+            },
+        );
+        // The chunks a window reaches are counted before they are kept, so
+        // the whole window costs the two vectors however many chunks it
+        // spans: two at two chunks, and two at eight.
+        costs(
+            &format!("a window of every one of {cuts} chunks of {size} rows"),
+            2,
+            || {
+                black_box(black_box(&chunked).slice(0, rows).expect("the whole"));
+            },
+        );
+        // One array handle per chunk, beside the vector that holds them.
+        costs(
+            &format!("the arrays of {cuts} chunks of {size} rows"),
+            1 + cuts,
+            || {
+                black_box(black_box(&chunked).into_arrow_arrays());
+            },
+        );
+    }
+}
+
+/// The record column of [`leaf_columns`] at `rows` rows, held as `cuts`
+/// chunks of equal length sliced out of it.
+fn chunked_records(rows: usize, cuts: usize) -> ChunkedSerie {
+    let (counts, symbols) = leaf_columns(rows);
+    let root = Field::new(
+        "row",
+        DataType::from(
+            StructType::from_fields([
+                counts.field().expect("a column").clone(),
+                symbols.field().expect("a column").clone(),
+            ])
+            .expect("two named children"),
+        ),
+        false,
+    );
+    let records = Serie::from_scalars(
+        root,
+        (0..rows).map(|index| {
+            Scalar::from_sequence([
+                counts.scalar(index).expect("in range"),
+                symbols.scalar(index).expect("in range"),
+            ])
+        }),
+    )
+    .expect("a record column");
+    let size = rows / cuts;
+    ChunkedSerie::from_series(
+        None,
+        (0..cuts).map(|chunk| records.slice(chunk * size, size).expect("a chunk")),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field")
+}
+
+#[test]
+fn a_chunked_child_is_its_two_vectors_whatever_the_rows_or_chunks() {
+    // A child is the child of every chunk - a pointer bump each - moved
+    // into one vector of chunks sized up front and one of their ends, so it
+    // costs two at two chunks and at eight, at ninety-six rows and at
+    // sixteen thousand. `children` is that per child, beside the one
+    // vector holding them.
+    for (rows, cuts) in [(96_usize, 2_usize), (96, 8), (16_384, 2), (16_384, 8)] {
+        let chunked = chunked_records(rows, cuts);
+        let path = FieldPath::from_str("symbol").expect("a path");
+        costs(
+            &format!("a child of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(black_box(&chunked).child("count").expect("a child"));
+            },
+        );
+        costs(
+            &format!("a child at of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(black_box(&chunked).child_at(1).expect("a child"));
+            },
+        );
+        costs(
+            &format!("a path of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .get_child_by_path(&path)
+                        .expect("a child"),
+                );
+            },
+        );
+        costs(
+            &format!("the children of {rows} rows in {cuts} chunks"),
+            5,
+            || {
+                black_box(black_box(&chunked).children());
+            },
+        );
+    }
+}
+
+#[test]
+fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
+    // A cast compiles its plan once and applies it to every chunk, so eight
+    // chunks cost six applications more than two - never six compilations.
+    // The same holds for chunks cast in by `from_series`, whose one plan
+    // serves the run of chunks under one source field. An identity plan
+    // hands a chunked serie under its own field back as the two vectors of
+    // a clone, and a held chunked column crosses into a stream without a
+    // row read: the same count at ninety-six rows as at sixteen thousand.
+    let wide = Field::new("count", DataType::Float64, true);
+    let options = ArrowCastOptions::new();
+    let mut streamed = Vec::new();
+    for rows in [96_usize, 16_384] {
+        let two = chunked_counts(rows, 2);
+        let eight = chunked_counts(rows, 8);
+        let plan = ArrowCastPlan::compile(two.field(), &wide, options).expect("int64 widens");
+        let (apply, _) = counted(|| plan.apply(&eight.chunks()[0]).expect("a chunk casts"));
+        let (casting_two, _) = counted(|| two.cast(&wide, options).expect("two chunks cast"));
+        let (casting_eight, _) = counted(|| eight.cast(&wide, options).expect("eight chunks cast"));
+        assert_eq!(
+            casting_eight - casting_two,
+            6 * apply,
+            "a cast of {rows} rows compiled per chunk"
+        );
+
+        let (from_two, _) = counted(|| {
+            ChunkedSerie::from_series(Some(&wide), two.chunks().to_vec(), options)
+                .expect("two chunks cast in")
+        });
+        let (from_eight, _) = counted(|| {
+            ChunkedSerie::from_series(Some(&wide), eight.chunks().to_vec(), options)
+                .expect("eight chunks cast in")
+        });
+        assert_eq!(
+            from_eight - from_two,
+            6 * apply,
+            "chunks of {rows} rows cast in compiled per chunk"
+        );
+
+        let identity =
+            ArrowCastPlan::compile(two.field(), two.field(), options).expect("an identity");
+        costs(&format!("an identity plan over {rows} rows"), 2, || {
+            black_box(identity.apply_chunked(black_box(&eight)).expect("itself"));
+        });
+
+        let records = chunked_records(rows, 8);
+        let (stream, _) =
+            counted(|| yggdryl::SerieReader::from_chunked(records.clone()).expect("a stream"));
+        streamed.push(stream);
+    }
+    assert_eq!(
+        streamed[0], streamed[1],
+        "a held chunked column read a row on its way into a stream"
+    );
 }
 
 #[test]
@@ -2111,7 +2402,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 36] = [
+    let seeds: [(DataTypeId, Scalar); 46] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2130,11 +2421,21 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Binary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::LargeBinary, Scalar::from(&b"ABC"[..])),
         (DataTypeId::BinaryView, Scalar::from(&b"ABC"[..])),
+        (DataTypeId::LargeBinaryView, Scalar::from(&b"ABC"[..])),
         (DataTypeId::Utf8String, Scalar::from("AAPL")),
         (DataTypeId::LargeUtf8String, Scalar::from("AAPL")),
         (DataTypeId::Utf8StringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeUtf8StringView, Scalar::from("AAPL")),
+        (DataTypeId::AsciiString, Scalar::from("AAPL")),
+        (DataTypeId::LargeAsciiString, Scalar::from("AAPL")),
+        (DataTypeId::AsciiStringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeAsciiStringView, Scalar::from("AAPL")),
+        (DataTypeId::Cp1252String, Scalar::from("AAPL")),
+        (DataTypeId::LargeCp1252String, Scalar::from("AAPL")),
+        (DataTypeId::Cp1252StringView, Scalar::from("AAPL")),
+        (DataTypeId::LargeCp1252StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
-        (DataTypeId::Currency, Scalar::from("USD")),
+        (DataTypeId::Ccy, Scalar::from("USD")),
         (DataTypeId::MicCode, Scalar::from("XNAS")),
         (DataTypeId::CfiCode, Scalar::from("ESVUFR")),
         (DataTypeId::IsinCode, Scalar::from("US0378331005")),
@@ -2321,24 +2622,405 @@ fn reading_a_typed_row_costs_one_allocation_and_its_accessors_none() {
     }
 }
 
+#[cfg(feature = "internals")]
 #[test]
-fn a_typed_row_projects_without_general_row_staging() {
-    for width in [4, 64] {
-        let (field, row) = wide_row(width);
-        let record = FieldRecord::new(&field, row.clone()).unwrap();
-        let rows = Scalar::from_sequence([row]);
-        // Warm Arrow field projection caches before comparing the two doors.
-        drop(yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
-        drop(record.clone().into_arrow_batch().unwrap());
-        let (general_cost, expected) =
-            counted(|| yggdryl::arrow::batch_from_value(&field, &rows).unwrap());
-        let prepared = record.clone();
-        let (typed_cost, actual) = counted(|| prepared.into_arrow_batch().unwrap());
-        assert_eq!(actual, expected);
-        eprintln!("{width}-column Arrow row: general={general_cost}, typed={typed_cost}");
-        assert!(
-            typed_cost < general_cost,
-            "a proven row must skip general row staging"
+fn canonical_rows_lay_out_without_a_second_proof() {
+    // A bounded string's layout is not its datatype's contract, so a landing
+    // that proves it reads every row - and a row longer than a cell holds
+    // inline is a value built. Rows that already went through the field's
+    // contract are laid out and landed proven: the cost is the buffers,
+    // whatever the row count.
+    let field = Arc::new(Field::new(
+        "note",
+        DataType::sized_utf8(64).expect("a bounded string"),
+        false,
+    ));
+    let mut counts = Vec::new();
+    for rows in [1_024_usize, 16_384] {
+        let canonical: Vec<Scalar> = (0..rows)
+            .map(|index| {
+                field
+                    .scalar(Scalar::from(format!(
+                        "a note longer than any inline cell {index:08}"
+                    )))
+                    .expect("the field's contract")
+            })
+            .collect();
+        let borrowed: Vec<&Scalar> = canonical.iter().collect();
+        let lay_out =
+            || yggdryl::internals::serie_arrow::from_canonical_rows(Arc::clone(&field), &borrowed);
+        drop(lay_out().expect("canonical rows lay out"));
+        let (allocations, column) = counted(lay_out);
+        assert_eq!(column.expect("canonical rows lay out").len(), rows);
+        counts.push(allocations);
+    }
+    assert_eq!(
+        counts[0], counts[1],
+        "laying out canonical rows cost {counts:?} at 1024 and 16384 rows: a row read again"
+    );
+}
+
+#[test]
+fn an_arrow_column_is_one_value_without_a_row() {
+    // The column is the value: wrapping it reads no row and copies no
+    // buffer, so a string column of any length costs the same.
+    let field = DataType::utf8().nullable_field("symbol");
+    let mut counts = Vec::new();
+    for rows in [4_usize, 1_024, 16_384] {
+        let array: arrow_array::ArrayRef = Arc::new(arrow_array::StringArray::from(
+            (0..rows)
+                .map(|index| format!("a symbol long enough to live off the stack {index:08}"))
+                .collect::<Vec<_>>(),
+        ));
+        let wrap = || {
+            Scalar::from(
+                Serie::from_arrow_array(
+                    Some(&field),
+                    Arc::clone(&array),
+                    ArrowCastOptions::default(),
+                )
+                .expect("the column lands"),
+            )
+        };
+        drop(wrap());
+        let (allocations, value) = counted(wrap);
+        assert_eq!(value.as_serie().map(Serie::len), Some(rows));
+        counts.push(allocations);
+    }
+    assert!(
+        counts.windows(2).all(|pair| pair[0] == pair[1]),
+        "an Arrow column became a value for {counts:?} allocations at 4, 1024 and 16384 rows"
+    );
+}
+
+#[test]
+fn proving_exact_arrow_maps_allocates_per_column_not_per_row() {
+    // Long keys make a materialized Scalar visible to the allocator. Two
+    // entries need no sorting scratch: each map is proved over its buffers,
+    // and an exact landing shares those buffers at either corpus size.
+    use arrow_array::{ArrayRef, Int64Array, MapArray, StringArray, StructArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
+
+    let fields: Fields = vec![
+        Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+        Arc::new(ArrowField::new("value", ArrowDataType::Int64, true)),
+    ]
+    .into();
+    let entries = Field::new(
+        "entries",
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("key"),
+                DataType::Int64.nullable_field("value"),
+            ])
+            .expect("two map children"),
+        ),
+        false,
+    );
+    for sorted in [false, true] {
+        let field = Field::new(
+            "item",
+            DataType::map(entries.clone(), sorted).expect("a map"),
+            false,
+        );
+        for declared in [false, true] {
+            let mut counts = Vec::new();
+            for rows in [1_024_usize, 16_384] {
+                let keys = if sorted {
+                    [
+                        "a map key longer than inline storage",
+                        "b map key longer than inline storage",
+                    ]
+                } else {
+                    [
+                        "b map key longer than inline storage",
+                        "a map key longer than inline storage",
+                    ]
+                };
+                let keys = StringArray::from_iter_values((0..rows).flat_map(|_| keys));
+                let payload = keys.value_data().as_ptr();
+                let records = StructArray::new(
+                    fields.clone(),
+                    vec![
+                        Arc::new(keys),
+                        Arc::new(Int64Array::from_iter_values(
+                            (0..rows).flat_map(|_| [1_i64, 2]),
+                        )),
+                    ],
+                    None,
+                );
+                let array: ArrayRef = Arc::new(MapArray::new(
+                    Arc::new(ArrowField::new(
+                        "entries",
+                        ArrowDataType::Struct(fields.clone()),
+                        false,
+                    )),
+                    OffsetBuffer::new(
+                        (0..=rows)
+                            .map(|row| i32::try_from(row * 2).expect("the corpus fits"))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    ),
+                    records,
+                    None,
+                    sorted,
+                ));
+                let land = || {
+                    Serie::from_arrow_array(
+                        declared.then_some(&field),
+                        Arc::clone(&array),
+                        ArrowCastOptions::default(),
+                    )
+                    .expect("the exact map lands")
+                };
+                drop(land());
+                let (allocations, column) = counted(land);
+                assert_eq!(column.len(), rows);
+                assert_eq!(
+                    column
+                        .as_map()
+                        .expect("a map")
+                        .keys()
+                        .as_utf8()
+                        .expect("text keys")
+                        .payload()
+                        .as_ptr(),
+                    payload,
+                    "an exact map shares its key payload"
+                );
+                counts.push(allocations);
+            }
+            assert_eq!(
+                counts[0], counts[1],
+                "exact map proof cost {counts:?} at 1024 and 16384 rows \
+                 (sorted={sorted}, declared={declared})"
+            );
+        }
+    }
+}
+
+#[test]
+fn proving_hidden_list_spans_allocates_per_column_not_per_row() {
+    use arrow_array::{ArrayRef, ListArray, StringArray};
+    use arrow_buffer::{NullBuffer, OffsetBuffer};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+
+    let mut counts = Vec::new();
+    for rows in [1_024_usize, 16_384] {
+        let values = StringArray::from_iter_values(std::iter::repeat_n(
+            "a physical item longer than inline storage",
+            rows,
+        ));
+        let payload = values.value_data().as_ptr();
+        let offsets = OffsetBuffer::new(
+            (0..=rows)
+                .map(|row| i32::try_from(row).expect("the corpus fits"))
+                .collect::<Vec<_>>()
+                .into(),
+        );
+        let offset_buffer = offsets.as_ptr();
+        let array: ArrayRef = Arc::new(ListArray::new(
+            Arc::new(ArrowField::new("item", ArrowDataType::Utf8, false)),
+            offsets,
+            Arc::new(values),
+            Some(NullBuffer::from_iter((0..rows).map(|row| row % 2 == 0))),
+        ));
+        let land = || {
+            Serie::from_arrow_array(None, Arc::clone(&array), ArrowCastOptions::default())
+                .expect("hidden physical spans remain borrowed")
+        };
+        drop(land());
+        let (allocations, column) = counted(land);
+        let lists = column.as_serie().expect("the list column");
+        assert_eq!(lists.items().len(), rows);
+        assert_eq!(lists.offsets().as_ptr(), offset_buffer);
+        assert_eq!(lists.items().as_utf8().unwrap().payload().as_ptr(), payload);
+        counts.push(allocations);
+    }
+    assert_eq!(counts[0], counts[1], "hidden-span proof cost {counts:?}");
+}
+
+#[test]
+fn proving_a_decimal_or_date64_intake_builds_nothing() {
+    // A decimal's precision and a date64's whole days are narrower than the
+    // storage, so the landing reads each row once - through the column's
+    // own reading, into a value that needs no allocation.
+    let decimal = DataType::decimal(10, 2)
+        .expect("a decimal")
+        .nullable_field("price");
+    let date = DataType::Date64.nullable_field("day");
+    for (field, build) in [
+        (
+            &decimal,
+            (|rows: usize| {
+                // The decimal's own layout, so the landing proves it and casts
+                // nothing.
+                Arc::new(
+                    arrow_array::Decimal64Array::from_iter_values(
+                        (0..rows).map(|index| i64::try_from(index).expect("fits") * 100 + 25),
+                    )
+                    .with_precision_and_scale(10, 2)
+                    .expect("a decimal column"),
+                ) as arrow_array::ArrayRef
+            }) as fn(usize) -> arrow_array::ArrayRef,
+        ),
+        (
+            &date,
+            (|rows: usize| {
+                Arc::new(arrow_array::Date64Array::from_iter_values(
+                    (0..rows).map(|index| i64::try_from(index).expect("fits") * 86_400_000),
+                )) as arrow_array::ArrayRef
+            }) as fn(usize) -> arrow_array::ArrayRef,
+        ),
+    ] {
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            let array = build(rows);
+            let land = || {
+                Serie::from_arrow_array(
+                    Some(field),
+                    Arc::clone(&array),
+                    ArrowCastOptions::default(),
+                )
+                .expect("the column lands")
+            };
+            drop(land());
+            let (allocations, column) = counted(land);
+            assert_eq!(column.len(), rows);
+            counts.push(allocations);
+        }
+        assert_eq!(
+            counts[0],
+            counts[1],
+            "proving a {} intake cost {counts:?} at 1024 and 16384 rows",
+            field.dtype()
+        );
+    }
+}
+
+/// One column per leaf a cell read must build nothing for.
+fn typed_leaf_columns() -> Vec<Serie> {
+    let zone = Timezone::from_str("Europe/Paris").expect("a zone");
+    let at = DataType::DateTime64 {
+        unit: TimeUnit::Microsecond,
+        timezone: zone,
+    };
+    [
+        (DataType::Int64, Scalar::from(42_i64)),
+        (DataType::Boolean, Scalar::from(true)),
+        (DataType::Float64, Scalar::from(1.5_f64)),
+        (
+            DataType::decimal(10, 2).expect("a decimal"),
+            Scalar::d128(1_025, 2),
+        ),
+        (DataType::Date64, Scalar::date64(86_400_000)),
+        (
+            at,
+            Scalar::datetime64(1_700_000_000_000_000, TimeUnit::Microsecond, zone)
+                .expect("an instant"),
+        ),
+        (
+            DataType::Duration32(TimeUnit::Second),
+            Scalar::duration32(90, TimeUnit::Second).expect("a duration"),
+        ),
+        (DataType::utf8(), Scalar::from("AAPL")),
+    ]
+    .into_iter()
+    .map(|(dtype, value)| {
+        Serie::from_scalars(dtype.nullable_field("cell"), [value, Scalar::Null])
+            .expect("a leaf column")
+    })
+    .collect()
+}
+
+#[test]
+fn a_leaf_cell_read_allocates_nothing() {
+    // A leaf reads its own typed buffer through the reading its field
+    // resolved where it landed: one buffer read and one constructor, no
+    // downcast and no value that owns memory.
+    for column in typed_leaf_columns() {
+        let dtype = column.field().expect("a column").dtype().clone();
+        free(&format!("reading a {dtype} cell"), || {
+            black_box(black_box(&column).scalar(0).expect("a cell"));
+        });
+        free(&format!("reading an absent {dtype} cell"), || {
+            black_box(black_box(&column).scalar(1).expect("a cell"));
+        });
+    }
+}
+
+#[test]
+fn a_record_row_costs_its_run_and_nothing_per_cell() {
+    // A record row is one run of its cells: the run's storage is the one
+    // allocation, and every cell under it is read without one.
+    let columns = typed_leaf_columns();
+    let root = StructType::from_fields(columns.iter().enumerate().map(|(index, column)| {
+        column
+            .field()
+            .expect("a column")
+            .clone()
+            .with_name(format!("cell_{index}"))
+    }))
+    .map(DataType::from)
+    .expect("a record")
+    .required_field("row");
+    let rows = [0_usize, 1].map(|row| {
+        Scalar::from_sequence(
+            columns
+                .iter()
+                .map(|column| column.scalar(row).expect("a cell")),
+        )
+    });
+    let records = Serie::from_scalars(root, rows).expect("a record column");
+    costs("reading a record row", 1, || {
+        black_box(black_box(&records).scalar(0).expect("a row"));
+    });
+}
+
+#[test]
+fn digesting_a_column_allocates_nothing_per_row() {
+    // Each cell is fed from the leaf it lands in, so a column's digests cost
+    // their output and nothing per row, whatever the leaf.
+    for (dtype, cell) in [
+        (
+            DataType::Int64,
+            (|index: usize| Scalar::from(i64::try_from(index).expect("fits")))
+                as fn(usize) -> Scalar,
+        ),
+        (DataType::utf8(), |index| {
+            Scalar::from(format!("{index:032}"))
+        }),
+        (DataType::decimal(18, 4).expect("a decimal"), |index| {
+            Scalar::d128(i128::try_from(index).expect("fits"), 4)
+        }),
+        (DataType::Country, |index| {
+            Scalar::from(if index % 2 == 0 { "FR" } else { "US" })
+        }),
+    ] {
+        let field = dtype.clone().nullable_field("value");
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            let array = Serie::from_scalars(field.clone(), (0..rows).map(cell))
+                .expect("a column")
+                .require_arrow_array()
+                .expect("its buffers");
+            let digest = || {
+                yggdryl::xxhash::arrow::column_digests(
+                    Arc::clone(&array),
+                    &field,
+                    yggdryl::DigestAlgorithm::Xxh3,
+                )
+                .expect("digests")
+            };
+            drop(digest());
+            let (allocations, digests) = counted(digest);
+            assert_eq!(digests.len(), rows);
+            counts.push(allocations);
+        }
+        assert_eq!(
+            counts[0], counts[1],
+            "digesting a {dtype} column cost {counts:?} at 1024 and 16384 rows"
         );
     }
 }
@@ -2480,7 +3162,7 @@ fn fix_group_registry(members: usize) -> FixRegistry {
         .map(DataType::from)
         .expect("a struct item")
         .required_field("item");
-    let mut parties = DataType::list(item).nullable_field("Parties");
+    let mut parties = DataType::serie(item).nullable_field("Parties");
     parties
         .as_fix_mut()
         .set_counter(453)
@@ -2685,9 +3367,13 @@ fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
     use arrow_array::RecordBatchIterator;
     use yggdryl::text::{from_arrow_reader, into_arrow_batch};
 
+    // The first pull lands the batch - each column the plan locates, once -
+    // and reads its first row; no other row is read, so the pull costs the
+    // same whatever the batch holds. Every row after it reads through the
+    // landed leaves and owns only its bounded text state.
     let options = TextOptions::new();
     let mut first_cost = None;
-    for rows in [1, 64, 1024] {
+    for rows in [2, 64, 1024] {
         let lines = (0..rows).map(|index| {
             TextLine::from_bytes(
                 index,
@@ -2720,6 +3406,8 @@ fn first_text_line_from_arrow_does_not_decode_the_rest_of_its_batch() {
             *first_cost.get_or_insert(allocations),
             "first-row work grew with {rows} source rows"
         );
+        let (allocations, line) = counted(|| reader.next().unwrap().unwrap());
+        assert_eq!(line.index(), 1);
         assert!(
             allocations <= 8,
             "one decoded body owns bounded text state, got {allocations}"
@@ -2802,15 +3490,15 @@ fn located_lines_render_and_project_one_shared_crosscode() {
         let (allocations, projected) = counted(|| {
             let mut projected = 0;
             for line in &held {
-                match line
+                let fact = line
                     .event_fact(EventColumn::CrossCode)
-                    .expect("a crosscode reading")
-                {
-                    Some(Scalar::String(code)) => {
+                    .expect("a crosscode reading");
+                match fact.as_ref().and_then(Scalar::as_string) {
+                    Some(code) => {
                         black_box(code);
                         projected += 1;
                     }
-                    _ => panic!("a located line has a string crosscode"),
+                    None => panic!("a located line has a string crosscode"),
                 }
             }
             projected
@@ -3114,8 +3802,14 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
         for rows in [16_usize, 1_024, 16_384] {
             let column = ascii_cells(rows, 32);
             let (allocations, _) = counted(|| {
-                yggdryl::arrow::array_from_value(black_box(&field), black_box(&column))
-                    .expect("a string column")
+                Serie::from_scalars(
+                    black_box(&field).clone(),
+                    black_box(&column)
+                        .sequence_rows()
+                        .expect("rows")
+                        .into_owned(),
+                )
+                .expect("a string column")
             });
             counts.push(allocations);
         }
@@ -3128,13 +3822,62 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
 }
 
 #[test]
+fn cp1252_write_preflight_adds_no_per_row_allocation() {
+    // A non-ASCII encoding preflight must inspect the repertoire without
+    // encoding into a temporary Vec for each row. Both spellings occupy
+    // four wire bytes and fit a Scalar inline, so the only allocations are
+    // the same replacement buffers, whatever the text or corpus size.
+    for dtype in [
+        DataType::cp1252(),
+        DataType::large_cp1252(),
+        DataType::cp1252_view(),
+        DataType::large_cp1252_view(),
+        DataType::fixed_cp1252(4).expect("a fixed width"),
+        DataType::sized_cp1252(4).expect("a bounded width"),
+    ] {
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            for text in ["cafe", "caf\u{00e9}"] {
+                let field = dtype.clone().required_field("note");
+                let canonical = field
+                    .scalar(Scalar::from(text))
+                    .expect("an encodable value");
+                let incoming = vec![canonical; rows];
+                let mut column = Serie::with_capacity(field, rows).expect("reserved buffers");
+                let (allocations, ()) = counted(|| {
+                    column
+                        .splice(0..0, incoming)
+                        .expect("encodable rows append");
+                });
+                assert_eq!(column.len(), rows);
+                assert_eq!(
+                    column.scalar(rows - 1).expect("the last row").as_str(),
+                    Some(text)
+                );
+                counts.push(allocations);
+            }
+        }
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{dtype} writes cost {counts:?} for ASCII/non-ASCII at 1024/16384 rows; \
+             repertoire preflight must not allocate per row"
+        );
+    }
+}
+
+#[test]
 fn encoded_variants_build_arrow_columns_without_per_row_allocations() {
     let field = DataType::Variant.nullable_field("value");
     let encoded = Scalar::Variant(variant_object(4).into_variant().unwrap());
     let mut counts = Vec::new();
     for rows in [16_usize, 1_024, 16_384] {
         let column = Scalar::from_sequence((0..rows).map(|_| encoded.clone()));
-        let build = || yggdryl::arrow::array_from_value(&field, &column).unwrap();
+        let build = || {
+            Serie::from_scalars(field.clone(), column.sequence_rows().unwrap().into_owned())
+                .unwrap()
+                .require_arrow_array()
+                .unwrap()
+        };
         drop(build());
         let (allocations, array) = counted(build);
         assert_eq!(array.len(), rows);

@@ -52,7 +52,7 @@ the value is whatever the column decodes to, a nested datatype included.
     assert_eq!(DataType::from_str("dict<int16,string>")?, codes);
     assert!(DataType::dictionary(
         DataType::Int32,
-        DataType::list(DataType::utf8().nullable_field("item")),
+        DataType::serie(DataType::utf8().nullable_field("item")),
     )?.is_nested());
     ```
 
@@ -401,7 +401,7 @@ the column's name and its metadata.
 
 - A non-integer key -> `expected an integer key datatype (int8, int16, int32, int64, uint8, uint16, uint32, or uint64), got <type>`, at construction and again at `validate`.
 - A dictionary carries two datatypes, not two fields: `field_len()` is `0`, `as_fields()` is `None`, and there is nothing for a path to descend into.
-- `kind()` is `nested` and `is_nested()` is not: the encoding is nested storage, and the shape is the value's. `dictionary(int16,list(...))` answers `true`.
+- `kind()` is `nested` and `is_nested()` is not: the encoding is nested storage, and the shape is the value's. `dictionary(int16,serie(...))` answers `true`.
 - Dictionary options on any other field -> `dictionary options require a dictionary datatype`; every other field answers `None` rather than a default.
 - The ordering flag survives every Arrow round trip; the IPC dictionary identifier survives only `arrow_schema::Field`, and a field imported through the C Data Interface or pyarrow reads `0` - it is the writer's transport id, not part of the schema two readers agree on.
 - Two dictionary fields with different identifiers have the same datatype, which is exactly why the identifier is on the field.

@@ -41,9 +41,9 @@ pub(crate) use arrow::{arrow_storage, from_arrow_storage};
 use smol_str::format_smolstr;
 
 use crate::temporal::scalars::require;
-use crate::temporal::{TemporalKind, temporal_leaf, validate_duration_unit};
+use crate::temporal::{temporal_leaf, validate_duration_unit};
 use crate::value::DataTypeValue;
-use crate::{DataType, DataTypeId, DataTypeKind, Error, Result, Scalar, TimeUnit, Timezone};
+use crate::{DataType, DataTypeId, Error, Result, Scalar, TimeUnit, Timezone};
 
 // ------------------------------------------------------------------------
 // The duration payload: two widths over the fixed-length units.
@@ -127,12 +127,6 @@ impl DurationType {
         }
     }
 
-    /// The family's name, `duration`, as a datatype spells it.
-    #[must_use]
-    pub const fn family(self) -> &'static str {
-        TemporalKind::Duration.as_str()
-    }
-
     /// The name this width states its own refusals under.
     const fn refusal_kind(self) -> &'static str {
         match self {
@@ -159,10 +153,6 @@ impl DataTypeValue for DurationType {
 
     fn id(&self) -> DataTypeId {
         Self::id(*self)
-    }
-
-    fn kind(&self) -> DataTypeKind {
-        DataTypeKind::Temporal
     }
 
     fn validate(&self) -> Result<()> {
@@ -311,7 +301,6 @@ mod arrow {
 temporal_leaf!(
     Duration32,
     i32,
-    Duration,
     32,
     valid = |unit: TimeUnit, timezone: Timezone| unit.is_temporal() && timezone.is_naive(),
     dtype = |value: &Duration32| DataType::duration32(value.unit()),
@@ -320,7 +309,6 @@ temporal_leaf!(
 temporal_leaf!(
     Duration64,
     i64,
-    Duration,
     64,
     valid = |unit: TimeUnit, timezone: Timezone| unit.is_temporal() && timezone.is_naive(),
     dtype = |value: &Duration64| DataType::duration64(value.unit()),

@@ -25,7 +25,7 @@
 //! | component | `FIX:component` | name | the component defining a group occurrence |
 //!
 //! The categories are scalar wire fields, components and groups. A message
-//! is a component carrying `FIX:msgtype`. List groups hold non-null Struct
+//! is a component carrying `FIX:msgtype`. Serie groups hold non-null Struct
 //! occurrences and reference a separate int32 counter: `NoPartyIDs` is tag
 //! 453, while `Parties` contains `Party` values, and `NoFixEntries` is the
 //! crate's own 65027 while `FixEntries` contains `FixEntry` values. A

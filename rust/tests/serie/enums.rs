@@ -292,3 +292,105 @@ fn a_required_dictionary_child_hidden_under_an_absent_record_crosses_and_is_writ
         laid_out.into_arrow_array().unwrap().as_ref()
     );
 }
+
+/// A required dictionary of ISIN values whose vocabulary includes one invalid
+/// value. Arrow permits the extension storage; landing decides which values
+/// are referenced and therefore need proving.
+fn isin_dictionary_column(keys: Vec<i8>) -> (arrow_schema::FieldRef, ArrayRef) {
+    let isin = Field::new(
+        "isin",
+        DataType::dictionary(DataType::Int8, DataType::IsinCode).expect("an int8 key"),
+        false,
+    )
+    .into_arrow_field_ref()
+    .expect("the dictionary projects");
+    let dictionary: ArrayRef = Arc::new(
+        DictionaryArray::<Int8Type>::try_new(
+            Int8Array::from(keys),
+            Arc::new(StringArray::from(vec![
+                "US0378331005",
+                "BAD",
+                "US5949181045",
+            ])),
+        )
+        .expect("keys within the vocabulary"),
+    );
+    (isin, dictionary)
+}
+
+/// The dictionary as a top-level inferred batch column, with no parent
+/// validity handed to its landing.
+fn flat_isin_dictionary_batch(keys: Vec<i8>) -> arrow_array::RecordBatch {
+    let (isin, dictionary) = isin_dictionary_column(keys);
+    let schema = Arc::new(arrow_schema::Schema::new(vec![isin]));
+    arrow_array::RecordBatch::try_new(schema, vec![dictionary]).expect("one dictionary column")
+}
+
+/// One inferred batch column whose nullable records contain the required
+/// dictionary.
+fn isin_dictionary_batch(keys: Vec<i8>, present: Vec<bool>) -> arrow_array::RecordBatch {
+    let (isin, dictionary) = isin_dictionary_column(keys);
+    let records = arrow_array::StructArray::new(
+        vec![isin].into(),
+        vec![dictionary],
+        Some(arrow_buffer::NullBuffer::from(present)),
+    );
+    let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+        "wrapped",
+        records.data_type().clone(),
+        true,
+    )]));
+    arrow_array::RecordBatch::try_new(schema, vec![Arc::new(records)])
+        .expect("one nullable record column")
+}
+
+#[test]
+fn unreferenced_invalid_dictionary_values_are_not_proved() {
+    // Slicing away the only key keeps Arrow's shared vocabulary, including
+    // BAD. With no logical row referencing it, that storage is not a value.
+    let source = flat_isin_dictionary_batch(vec![1]);
+    let empty = source.slice(0, 0);
+    let dictionary = empty
+        .column(0)
+        .as_any()
+        .downcast_ref::<DictionaryArray<Int8Type>>()
+        .expect("the sliced dictionary");
+    let vocabulary = dictionary
+        .values()
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .expect("the string vocabulary");
+    assert_eq!(vocabulary.value(1), "BAD");
+    let landed = Serie::from_arrow_batch(None, &empty, ArrowCastOptions::new())
+        .expect("an empty dictionary references no vocabulary value");
+    assert_eq!(landed.len(), 0);
+    assert_eq!(landed.child("isin").map(Serie::len), Some(0));
+
+    // A nonempty dictionary proves only the vocabulary entries its keys use.
+    let used = flat_isin_dictionary_batch(vec![0, 2, 0]);
+    let landed = Serie::from_arrow_batch(None, &used, ArrowCastOptions::new())
+        .expect("the unreferenced invalid value is not a row");
+    let values = landed.child("isin").expect("the dictionary column");
+    assert_eq!(values.scalar(0).unwrap().as_str(), Some("US0378331005"));
+    assert_eq!(values.scalar(1).unwrap().as_str(), Some("US5949181045"));
+}
+
+#[test]
+fn an_invalid_dictionary_value_is_ignored_only_when_every_key_is_under_a_null_struct() {
+    let hidden = isin_dictionary_batch(vec![0, 1, 2], vec![true, false, true]);
+    let landed = Serie::from_arrow_batch(None, &hidden, ArrowCastOptions::new())
+        .expect("the invalid value is referenced only by an absent record");
+    let records = landed.child("wrapped").expect("the nullable records");
+    assert!(records.is_null(1).unwrap());
+    assert_eq!(records.scalar(1).unwrap(), Scalar::Null);
+    let values = records.child("isin").expect("the dictionary child");
+    assert_eq!(values.scalar(0).unwrap().as_str(), Some("US0378331005"));
+    assert_eq!(values.scalar(2).unwrap().as_str(), Some("US5949181045"));
+
+    // Both rows use the same invalid vocabulary entry. The null record hides
+    // one key, but the visible key still makes that shared value observable.
+    let exposed = isin_dictionary_batch(vec![0, 1, 1, 2], vec![true, false, true, true]);
+    let refusal = Serie::from_arrow_batch(None, &exposed, ArrowCastOptions::new())
+        .expect_err("one visible reference must prove the shared value");
+    assert!(refusal.to_string().contains("isin"), "{refusal}");
+}

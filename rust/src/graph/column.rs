@@ -213,7 +213,7 @@ impl EventColumn {
     /// The one datatype the column is built and read at.
     ///
     /// The clocks are nanoseconds UTC, the identities the crate's own
-    /// [`Uuid`], the codes `uint64`, the lists `list<uuid>` with the item
+    /// [`Uuid`], the codes `uint64`, the series `serie<uuid>` with the item
     /// named by the fact, the names a sorted `map<utf8, utf8>`, the state a
     /// [`State`] code.
     ///
@@ -238,14 +238,14 @@ impl EventColumn {
             Self::CurrUuid | Self::CrossUuid | Self::PrevUuid => DataType::Uuid,
             Self::CrossCode => DataType::utf8(),
             Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
-            Self::SrcUuids => DataType::list(DataType::Uuid.required_field("srcuuid")),
+            Self::SrcUuids => DataType::serie(DataType::Uuid.required_field("srcuuid")),
             Self::Identifiers => DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
             Self::State => DataType::State,
         })
     }
 
     /// Whether the column may hold a null: the facts the traits answer as
-    /// an option or as nothing - an empty code, list or map, a place of
+    /// an option or as nothing - an empty code, serie or map, a place of
     /// zero - may, and so may the state, which an event always answers -
     /// `00UNKNOWN` where nothing states one - but a row may leave unstated,
     /// a state having no neutral member for an empty cell to read as; the
@@ -294,7 +294,7 @@ impl EventColumn {
 
     /// What an event states under this column, as the raw value the
     /// column's datatype types, or nothing where it states no fact: an
-    /// absent instant, identity or place, an empty code, list or map.
+    /// absent instant, identity or place, an empty code, serie or map.
     pub fn fact<E: Event + ?Sized>(self, event: &E) -> Option<Scalar> {
         let instant =
             |unix: i64| Scalar::datetime64(unix, TimeUnit::Nanosecond, Timezone::UTC).ok();
@@ -395,14 +395,14 @@ impl EventColumn {
     }
 }
 
-/// One list of identities as the raw value its `list<uuid>` column types,
-/// or nothing where the list is empty.
+/// One run of identities as the raw value its `serie<uuid>` column types,
+/// or nothing where the serie is empty.
 fn uuids_fact(uuids: &[Uuid]) -> Option<Scalar> {
     (!uuids.is_empty()).then(|| Scalar::from_sequence(uuids.iter().copied().map(Scalar::Uuid)))
 }
 
-/// The identities one `list<uuid>` cell states, every other item passed
-/// over; none for a cell stating no list.
+/// The identities one `serie<uuid>` cell states, every other item passed
+/// over; none for a cell stating no serie.
 fn uuids_of(value: &Scalar) -> Vec<Uuid> {
     value
         .as_serie()

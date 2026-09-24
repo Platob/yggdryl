@@ -130,8 +130,11 @@ pub enum Term {
     },
     /// Build a struct value from named children.
     Struct(Arc<[(SmolStr, Term)]>),
-    /// Build a list value from its elements.
-    List(Arc<[Term]>),
+    /// Build a serie value from its elements.
+    ///
+    /// A document written before the rename names it `list`, and still reads.
+    #[serde(alias = "list")]
+    Serie(Arc<[Term]>),
     /// Build a map value from its entries.
     Map(Arc<[(Term, Term)]>),
 }
@@ -222,7 +225,7 @@ impl Term {
     /// # Errors
     ///
     /// Returns [`Error::Parse`] on a predicate step after a computed value: a
-    /// [`FieldSegment::Where`] keeps the elements of the list a column holds,
+    /// [`FieldSegment::Where`] keeps the elements of the serie a column holds,
     /// and no call in the closed function set reads a predicate, so there is
     /// no term to build. [`Self::filter_elements`] is the same refusal for one
     /// step.
@@ -247,7 +250,7 @@ impl Term {
                         position: 0,
                         reason: format_smolstr!(
                             "expected a column path to keep elements of by [{predicate}], got \
-                             the computed value {base}; a predicate segment reads the list a \
+                             the computed value {base}; a predicate segment reads the serie a \
                              column holds"
                         ),
                     });
@@ -280,7 +283,7 @@ impl Term {
         })
     }
 
-    /// Reach one list element by position, 0-based.
+    /// Reach one serie element by position, 0-based.
     #[must_use]
     pub fn at(self, index: i64) -> Self {
         self.extend_or(FieldSegment::Index(index), |base| {
@@ -288,7 +291,7 @@ impl Term {
         })
     }
 
-    /// Reach a half-open run of list elements.
+    /// Reach a half-open run of serie elements.
     #[must_use]
     pub fn slice(self, start: Option<i64>, end: Option<i64>) -> Self {
         self.extend_or(FieldSegment::Range { start, end }, |base| {
@@ -303,13 +306,13 @@ impl Term {
         })
     }
 
-    /// Keep the elements of the list this path reaches that `predicate`
+    /// Keep the elements of the serie this path reaches that `predicate`
     /// answers true for, the predicate reading the element's own fields.
     ///
     /// # Errors
     ///
     /// Returns an error when this term is a computed value rather than a
-    /// path: a predicate segment reads the list a column holds.
+    /// path: a predicate segment reads the serie a column holds.
     pub fn filter_elements(self, predicate: Self) -> Result<Self> {
         self.step(FieldSegment::filter(predicate))
     }
@@ -661,7 +664,7 @@ impl Term {
                 .iter()
                 .filter_map(FieldSegment::as_predicate)
                 .for_each(visit),
-            Self::And(operands) | Self::Or(operands) | Self::List(operands) => {
+            Self::And(operands) | Self::Or(operands) | Self::Serie(operands) => {
                 operands.iter().for_each(visit);
             }
             Self::Not(inner)
@@ -963,7 +966,7 @@ impl Term {
                 }
                 Self::Struct(Arc::from(mapped_children))
             }
-            Self::List(items) => Self::List(map_slice(items, replace)?),
+            Self::Serie(items) => Self::Serie(map_slice(items, replace)?),
             Self::Map(entries) => {
                 let mut mapped_entries = Vec::with_capacity(entries.len());
                 for (key, value) in entries.iter() {
@@ -1070,7 +1073,7 @@ impl Term {
                     .map(|(name, value)| (name.clone(), value.simplify()))
                     .collect(),
             ),
-            Self::List(items) => Self::List(items.iter().map(Self::simplify).collect()),
+            Self::Serie(items) => Self::Serie(items.iter().map(Self::simplify).collect()),
             Self::Map(entries) => Self::Map(
                 entries
                     .iter()
@@ -1313,7 +1316,7 @@ impl Ord for Term {
             (Self::Path(left), Self::Path(right)) => left.iter().cmp(right.iter()),
             (Self::And(left), Self::And(right))
             | (Self::Or(left), Self::Or(right))
-            | (Self::List(left), Self::List(right)) => left.iter().cmp(right.iter()),
+            | (Self::Serie(left), Self::Serie(right)) => left.iter().cmp(right.iter()),
             (Self::Not(left), Self::Not(right))
             | (Self::IsNull(left), Self::IsNull(right))
             | (Self::IsNotNull(left), Self::IsNotNull(right))
@@ -1420,7 +1423,7 @@ const fn variant_rank(term: &Term) -> u8 {
         Term::Cast(_, _, _) => 17,
         Term::Case { .. } => 18,
         Term::Struct(_) => 19,
-        Term::List(_) => 20,
+        Term::Serie(_) => 20,
         Term::Map(_) => 21,
     }
 }

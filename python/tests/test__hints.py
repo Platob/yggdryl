@@ -117,7 +117,7 @@ def test_ordinary_inference_does_not_touch_pyarrow_override_boundary(
 
     _hints._pyarrow_module.cache_clear()
     monkeypatch.setattr(_hints, "_pyarrow_module", unavailable)
-    assert DataType.from_pyhint(list[dict[str, int]]).id == "list"
+    assert DataType.from_pyhint(list[dict[str, int]]).id == "serie"
     assert Field.from_pyhint("value", int).dtype.id == "int64"
 
 
@@ -571,7 +571,7 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     fixed = DataType.from_pyhint(tuple[int, str | None])
     mapping = DataType.from_pyhint(dict[str, int | None])
 
-    assert listed.id == "list"
+    assert listed.id == "serie"
     assert listed[0].name == "item"
     assert listed[0].nullable
     assert [field.name for field in fixed] == ["_1", "_2"]
@@ -584,8 +584,8 @@ def test_collection_hints_preserve_nested_nullability_and_order() -> None:
     assert entries[1].nullable
     assert DataType.from_arrow(mapping.into_arrow()) == mapping
 
-    assert DataType.from_pyhint(cabc.Iterable).id == "list"
-    assert DataType.from_pyhint(typing.Tuple).id == "list"
+    assert DataType.from_pyhint(cabc.Iterable).id == "serie"
+    assert DataType.from_pyhint(typing.Tuple).id == "serie"
     assert DataType.from_pyhint(tuple[()]).id == "struct"
     assert DataType.from_pyhint(cabc.Generator[str, None, None])[0].dtype.id == "utf8"
     items = DataType.from_pyhint(cabc.ItemsView[str, int])
@@ -625,7 +625,7 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     dimensions = inferred["dimensions"].dtype
 
     assert inferred.id == "struct"
-    assert labels.id == "list"
+    assert labels.id == "serie"
     assert labels[0].nullable
     assert labels[0].metadata["unit"] == "ticks"
     assert dimensions.id == "map"
@@ -637,7 +637,7 @@ def test_nested_hint_inference_uses_native_builders_without_pyarrow_round_trips(
     current = DataType.from_pyhint(deep)
     leaf: Field | None = None
     for _ in range(16):
-        assert current.id == "list"
+        assert current.id == "serie"
         leaf = current[0]
         current = leaf.dtype
     assert leaf is not None
@@ -652,7 +652,7 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
     pair = items[0].dtype
     union = DataType.from_pyhint(Annotated[int, {"source": "integer"}] | str)
 
-    assert items.id == "list"
+    assert items.id == "serie"
     assert pair.id == "struct"
     assert pair[0].metadata["role"] == "key"
     assert pair[1].nullable
@@ -674,7 +674,7 @@ def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> N
     mapping = outer[0].dtype
     mapping_value = mapping[0].dtype[1].dtype
 
-    assert inferred.id == "list"
+    assert inferred.id == "serie"
     assert outer.id == "union"
     assert outer.into_arrow().mode == "dense"
     assert tuple(outer.into_arrow().type_codes) == (0, 1)

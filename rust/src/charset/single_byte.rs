@@ -129,9 +129,12 @@ impl SingleByte {
 
     /// Encode text into a byte target.
     pub(crate) fn encode_into(&self, input: &str, target: &mut Vec<u8>) -> Result<()> {
-        // One byte per scalar is the whole charset, so the output is never
-        // longer than the input and is usually shorter.
-        target.reserve(input.len());
+        // A caller may already have reserved the exact encoded payload.
+        // UTF-8 length is only an upper bound; reserving it unconditionally
+        // would grow that buffer again for its final non-ASCII cell.
+        if target.capacity() - target.len() < input.len() {
+            target.reserve(input.chars().count());
+        }
         let bytes = input.as_bytes();
         let mut index = 0;
         while index < bytes.len() {

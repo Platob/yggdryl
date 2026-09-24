@@ -321,7 +321,7 @@
   {
     "name": "benchmarkcurvecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

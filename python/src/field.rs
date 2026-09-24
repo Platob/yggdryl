@@ -923,7 +923,7 @@ impl PyField {
     /// The field anywhere in this tree carrying one Parquet identifier.
     ///
     /// The walk descends every child a datatype has: struct and union
-    /// members, a list's item, a map's entries, and a run-end layout's two.
+    /// members, a serie's item, a map's entries, and a run-end layout's two.
     fn field_by_parquet_field_id(&self, id: FieldId) -> Option<Self> {
         self.inner
             .field_by_parquet_field_id(id.0)
@@ -1740,7 +1740,7 @@ impl PyField {
     /// Every leaf under this node, named by its dotted path.
     ///
     /// Struct nesting flattens all the way down, and a leaf under a nullable
-    /// ancestor is nullable. Collections are leaves: a list or a map is one
+    /// ancestor is nullable. Collections are leaves: a serie or a map is one
     /// column, and `explode_fields` is what reaches inside one. Every name
     /// this answers is one `field_by_path` resolves.
     fn unnest_fields(&self) -> Vec<Self> {
@@ -1753,7 +1753,7 @@ impl PyField {
 
     /// This node's children with every collection replaced by what it holds.
     ///
-    /// A list answers its item, a map its entries, a dictionary or run-end
+    /// A serie answers its item, a map its entries, a dictionary or run-end
     /// node the values it encodes, and anything else itself - so the result
     /// names the same columns in the same order. One level only, so the depth
     /// is the caller's decision.

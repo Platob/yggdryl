@@ -188,7 +188,7 @@ mod lenient {
             .required_field("Party");
         registry.insert(component).unwrap();
         let component = registry.field_by_name("Party").unwrap().clone();
-        let mut group = DataType::list(component).nullable_field("Parties");
+        let mut group = DataType::serie(component).nullable_field("Parties");
         group.as_fix_mut().set_counter(453).unwrap();
         group.as_fix_mut().set_component("Party").unwrap();
         registry.insert(group).unwrap();
@@ -214,10 +214,10 @@ mod lenient {
         field.fields().iter().map(Field::name).collect()
     }
 
-    /// The occurrence a group's list holds.
+    /// The occurrence a group's serie holds.
     fn occurrence(group: &Field) -> &Field {
-        let (DataType::List(item) | DataType::LargeList(item)) = group.dtype() else {
-            panic!("a group list")
+        let (DataType::Serie(item) | DataType::LargeSerie(item)) = group.dtype() else {
+            panic!("a group serie")
         };
         item
     }
@@ -394,10 +394,10 @@ mod lenient {
         assert!(registry.add_field(item.clone()).unwrap());
         assert_eq!(registry.field_by_name("Party").unwrap().field_len(), 1);
 
-        let mut group = DataType::list(item.clone()).nullable_field("Parties");
+        let mut group = DataType::serie(item.clone()).nullable_field("Parties");
         group.as_fix_mut().set_counter(453).unwrap();
         assert!(registry.add_field(group).unwrap());
-        let mut hops = DataType::large_list(item.clone()).nullable_field("Hops");
+        let mut hops = DataType::large_serie(item.clone()).nullable_field("Hops");
         hops.as_fix_mut().set_counter(453).unwrap();
         assert!(registry.add_field(hops).unwrap());
         for name in ["Parties", "Hops"] {
@@ -426,8 +426,8 @@ mod lenient {
         let before = registry.clone();
         let nullable = DataType::from(StructType::from_fields([]).unwrap()).nullable_field("Loose");
         for refused in [
-            DataType::list(nullable).nullable_field("Occurrences"),
-            DataType::list(DataType::utf8().nullable_field("Text")).nullable_field("Texts"),
+            DataType::serie(nullable).nullable_field("Occurrences"),
+            DataType::serie(DataType::utf8().nullable_field("Text")).nullable_field("Texts"),
         ] {
             let error = registry.add_field(refused).unwrap_err();
             assert!(matches!(error, Error::InvalidRecord { .. }), "{error}");
@@ -525,7 +525,7 @@ mod lenient {
             .map(DataType::from)
             .unwrap()
             .required_field("party");
-        let mut group = DataType::list(member).nullable_field("parties");
+        let mut group = DataType::serie(member).nullable_field("parties");
         group.as_fix_mut().set_counter(453).unwrap();
         assert!(!registry.add_field(group).unwrap());
         let party = registry.field_by_name("Party").unwrap();
@@ -551,7 +551,7 @@ mod lenient {
             .map(DataType::from)
             .unwrap()
             .required_field("Hop");
-        let mut hops = DataType::list(hop).nullable_field("Hops");
+        let mut hops = DataType::serie(hop).nullable_field("Hops");
         hops.as_fix_mut().set_counter(627).unwrap();
         assert!(registry.add_field(hops.clone()).unwrap());
         let more = StructType::from_fields([
@@ -561,7 +561,7 @@ mod lenient {
         .map(DataType::from)
         .unwrap()
         .required_field("Hop");
-        hops.set_dtype(DataType::list(more)).unwrap();
+        hops.set_dtype(DataType::serie(more)).unwrap();
         assert!(!registry.add_field(hops).unwrap());
         let hops = registry.field_by_name("Hops").unwrap();
         assert_eq!(names(occurrence(hops)), ["HopID", "HopNote"]);
@@ -994,7 +994,7 @@ mod lenient {
             .as_fix_mut()
             .set_description("occurrence wording")
             .unwrap();
-        let mut group = DataType::list(member).nullable_field("parties");
+        let mut group = DataType::serie(member).nullable_field("parties");
         group.as_fix_mut().set_counter(453).unwrap();
         group.as_fix_mut().set_description("group wording").unwrap();
         assert!(!registry.add_field(group).unwrap());
@@ -1027,7 +1027,7 @@ mod lenient {
         let mut target = FixRegistry::from_fields(fields.clone()).unwrap();
         target
             .insert(
-                StructType::from_fields([DataType::list(hop.clone()).nullable_field("Hops")])
+                StructType::from_fields([DataType::serie(hop.clone()).nullable_field("Hops")])
                     .map(DataType::from)
                     .unwrap()
                     .required_field("Route"),
@@ -1035,7 +1035,7 @@ mod lenient {
             .unwrap();
 
         let mut source = FixRegistry::from_fields(fields).unwrap();
-        let mut hops = DataType::list(hop).nullable_field("Hops");
+        let mut hops = DataType::serie(hop).nullable_field("Hops");
         hops.as_fix_mut().set_counter(627).unwrap();
         source.insert(hops).unwrap();
         let mut restated = source.field_by_name("Hops").unwrap().clone();

@@ -460,20 +460,17 @@ mod exact {
     }
 
     mod family {
-        use yggdryl::{DataType, DataTypeKind, FamilyValue, Scalar, i256};
-        use yggdryl::{Decimal, Decimal18, Decimal32, Decimal64, Decimal128, Decimal256};
+        use yggdryl::{DataType, DataTypeKind, Scalar, i256};
+        use yggdryl::{Decimal18, Decimal32, Decimal64, Decimal128, Decimal256};
 
         #[test]
         fn the_decimal_family_stands_for_every_width() {
             crate::scalar::assert_family_round_trip(
                 vec![
-                    crate::family_leaf!(Decimal::Decimal32, Decimal32::new(1_250, 2)),
-                    crate::family_leaf!(Decimal::Decimal64, Decimal64::new(-7, 1)),
-                    crate::family_leaf!(Decimal::Decimal128, Decimal128::new(125, 1)),
-                    crate::family_leaf!(
-                        Decimal::Decimal256,
-                        Decimal256::new(i256::from_i128(-125), 3)
-                    ),
+                    crate::family_leaf!(Decimal32, Decimal32::new(1_250, 2)),
+                    crate::family_leaf!(Decimal64, Decimal64::new(-7, 1)),
+                    crate::family_leaf!(Decimal128, Decimal128::new(125, 1)),
+                    crate::family_leaf!(Decimal256, Decimal256::new(i256::from_i128(-125), 3)),
                 ],
                 DataTypeKind::Decimal,
                 &Scalar::from(3_i64),
@@ -485,9 +482,12 @@ mod exact {
             // column a `Decimal18` declares, `DataType::DECIMAL`, is the wider
             // decimal128 it is stored in.
             let money = Scalar::from(Decimal18::from_int(3));
-            let held = Decimal::from_scalar(&money).unwrap();
-            assert!(matches!(held, Decimal::Decimal128(_)), "{held:?}");
-            assert_eq!(held.dtype().unwrap(), DataType::decimal128(19, 18).unwrap());
+            assert!(matches!(money, Scalar::Decimal128(_)), "{money:?}");
+            assert!(DataTypeKind::Decimal.contains(money.id()));
+            assert_eq!(
+                money.dtype().unwrap(),
+                DataType::decimal128(19, 18).unwrap()
+            );
             assert_eq!(
                 money.as_decimal(),
                 Some((i256::from_i128(3_000_000_000_000_000_000), 18))

@@ -9,10 +9,11 @@
 //! iterator borrows encoded values; the native decode materializes a Scalar.
 
 use std::hint::black_box;
+use std::sync::Arc;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use parquet_variant::{Variant as Reference, VariantBuilder};
-use yggdryl::{DataType, Int64, Scalar, Value, Variant};
+use yggdryl::{DataType, Int64, Scalar, Serie, Value, Variant};
 
 use crate::bench_profile::corpus;
 
@@ -111,17 +112,22 @@ pub(crate) fn variant_benchmarks(criterion: &mut Criterion) {
     });
 
     let rows = corpus(1024, 16);
-    let encoded_rows =
-        Scalar::from_sequence((0..rows).map(|_| Scalar::Variant(primitive_variant.clone())));
-    let variant_field = DataType::Variant.required_field("payload");
+    let encoded_rows: Vec<Scalar> = (0..rows)
+        .map(|_| Scalar::Variant(primitive_variant.clone()))
+        .collect();
+    let variant_field = Arc::new(DataType::Variant.required_field("payload"));
     group.throughput(Throughput::Elements(rows as u64));
     group.bench_with_input(
         BenchmarkId::new("arrow_column", rows),
         &encoded_rows,
         |bencher, values| {
             bencher.iter(|| {
-                yggdryl::arrow::array_from_value(black_box(&variant_field), black_box(values))
-                    .expect("the fixture builds an Arrow column")
+                Serie::from_scalars(
+                    Arc::clone(black_box(&variant_field)),
+                    black_box(values).iter().cloned(),
+                )
+                .and_then(|serie| serie.require_arrow_array())
+                .expect("the fixture builds an Arrow column")
             });
         },
     );

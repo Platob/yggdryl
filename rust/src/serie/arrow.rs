@@ -4,8 +4,10 @@
 //! happens and nowhere else: the layout is proven against the field's own
 //! Arrow projection, absence is judged on the validity words, the values are
 //! proven by the layout where the layout is the contract and read once
-//! where it is not, the array is taken as it is - no buffer copied - and a
-//! nested layout recurses into the columns under it with each child field.
+//! where it is not, and a nested layout recurses with each child field.
+//! Value buffers are shared where their physical rows are readable. Hidden
+//! narrow values become null placeholders; variable spans containing them
+//! are compacted where Arrow requires present children.
 //!
 //! Inline because this section reads `crate::arrow::{Error, Result}` while
 //! the rest of the file reads `crate::{Error, Result}`, and one scope cannot
@@ -15,13 +17,14 @@ use std::sync::Arc;
 
 use arrow_array::builder::make_builder;
 use arrow_array::{
-    Array, ArrayRef, OffsetSizeTrait, RecordBatch, RecordBatchOptions, RecordBatchReader,
-    StructArray, new_empty_array,
+    Array, ArrayRef, OffsetSizeTrait, RecordBatch, RecordBatchIterator, RecordBatchOptions,
+    RecordBatchReader, StructArray, new_empty_array,
 };
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 
 use super::{
-    Serie, boolean, bytes, enums, list, mapping, null, primitive, runend, structure, union, variant,
+    Serie, boolean, bytes, enums, mapping, null, primitive, runend, sequence, structure, union,
+    variant,
 };
 use arrow_schema::{ArrowError, Field as ArrowField, SchemaRef};
 
@@ -64,13 +67,16 @@ fn absent_rows(dtype: &DataType, array: &dyn Array, parent: Option<&NullBuffer>)
 /// nulls - so such a column holds its nulls under a required field. That
 /// is decided once per level, never per row.
 fn require_present(field: &Field, array: &dyn Array, parent: Option<&NullBuffer>) -> Result<()> {
-    // A datatype with no default at all - a record whose required child can
-    // hold nothing - has no null default either, so the question is `false`.
-    if field.is_nullable() || matches!(field.dtype().is_default_value(&Scalar::Null), Ok(true)) {
+    if field.is_nullable() {
         return Ok(());
     }
+    // Counting is a read of the validity words; whether a null is the
+    // datatype's own default is a question about the datatype, asked only
+    // of a level that holds one. A datatype with no default at all - a
+    // record whose required child can hold nothing - has no null default
+    // either, so the question is `false`.
     let absent = absent_rows(field.dtype(), array, parent);
-    if absent == 0 {
+    if absent == 0 || matches!(field.dtype().is_default_value(&Scalar::Null), Ok(true)) {
         return Ok(());
     }
     Err(Error::IncompatibleSchema(format!(
@@ -78,6 +84,30 @@ fn require_present(field: &Field, array: &dyn Array, parent: Option<&NullBuffer>
         field.name(),
         array.len(),
     )))
+}
+
+/// Whether an exact layout of this datatype lands as its identity plan
+/// would answer it.
+///
+/// Every level's layout is its datatype's contract, so the plan neither
+/// rewrites nor reads a value, and no union or encoding sits anywhere below,
+/// whose logical nulls the plan repairs where the landing takes a null
+/// default.
+fn lands_as_is(dtype: &DataType) -> bool {
+    match dtype {
+        DataType::Union(..) | DataType::Dictionary(_) | DataType::RunEndEncoded(_) => false,
+        DataType::Struct(fields) => fields
+            .as_fields()
+            .iter()
+            .all(|field| lands_as_is(field.dtype())),
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => lands_as_is(item.dtype()),
+        DataType::Map(map) | DataType::SortedMap(map) => lands_as_is(map.entries.dtype()),
+        leaf => leaf.layout_is_contract(),
+    }
 }
 
 /// Whether the door reads this level's rows to prove them.
@@ -92,29 +122,50 @@ fn reads_rows(dtype: &DataType) -> bool {
         && !matches!(dtype, DataType::Dictionary(_))
 }
 
-/// Read every row this level holds once, refusing the first one the field's
-/// own contract refuses, naming the column and the row.
+/// Read every row the leaf just built holds once, refusing the first one the
+/// field's own contract refuses, naming the column and the row.
 ///
-/// A row hidden under an absent parent record is not read: Arrow leaves its
-/// slot unspecified.
-fn prove_rows(field: &Field, array: &dyn Array, parent: Option<&NullBuffer>) -> Result<()> {
-    let refused = |index: usize, refusal: &dyn std::fmt::Display| {
-        Error::IncompatibleSchema(format!(
-            "column {:?} row {index} is not one its field accepts: {refusal}",
-            field.name()
-        ))
+/// Each row is read off the leaf's own typed buffer through the reading its
+/// landing resolved, so the proof pays no per-row dispatch on the datatype
+/// or downcast of the array; the field's contract is then asked of the value
+/// that reading answers. A row hidden under an absent parent record is not
+/// read: Arrow leaves its slot unspecified. The refusal names the row as this
+/// level counts it; [`land`] and [`land_batch`] restate it in the rows they
+/// were handed.
+fn prove_rows(field: &Field, serie: &Serie, parent: Option<&NullBuffer>) -> Result<()> {
+    let refused = |index: usize, refusal: &dyn std::fmt::Display| Error::InvalidValue {
+        path: smol_str::format_smolstr!("$.{}[{index}]", field.name()),
+        expected: smol_str::SmolStr::new_static("a value its field accepts"),
+        actual: smol_str::format_smolstr!("{refusal}"),
     };
-    for index in 0..array.len() {
-        if parent.is_some_and(|above| above.len() == array.len() && above.is_null(index)) {
+    let rows = serie.len();
+    for index in 0..rows {
+        if parent.is_some_and(|above| above.len() == rows && above.is_null(index)) {
             continue;
         }
-        let value = crate::arrow::value::value_from_array(field.dtype(), array, index)
+        let value = serie
+            .scalar(index)
             .map_err(|refusal| refused(index, &refusal))?;
         field
             .scalar(value)
             .map_err(|refusal| refused(index, &refusal))?;
     }
     Ok(())
+}
+
+/// Row `index` of a column landed [`Proof::OnRead`], under the contract of
+/// `field`: a value whose layout is not the field's whole contract is asked
+/// of it here, once, as the landing would have asked it.
+///
+/// # Errors
+///
+/// Returns the reading's refusal, or the field's.
+pub(crate) fn proven_cell(field: &Field, serie: &Serie, index: usize) -> crate::Result<Scalar> {
+    let value = serie.scalar(index)?;
+    if value.is_null() || field.dtype().layout_is_contract() {
+        return Ok(value);
+    }
+    field.scalar(value)
 }
 
 /// Downcast one array to the concrete layout its field proved it is.
@@ -157,6 +208,231 @@ pub(crate) fn rebased<O: OffsetSizeTrait>(
     )
 }
 
+/// Combine the two contextual masks without changing stored row validity.
+pub(super) fn parent_nulls(
+    parent: Option<&NullBuffer>,
+    own: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Option<NullBuffer>> {
+    let parent = parent.filter(|nulls| nulls.null_count() != 0);
+    let own = own.filter(|nulls| nulls.null_count() != 0);
+    if let (Some(parent), Some(_)) = (parent, own) {
+        budget.add_bitmap(parent.len())?;
+    }
+    Ok(NullBuffer::union(parent, own))
+}
+
+/// The entries a present offset row reaches. Hidden physical spans stay shared.
+pub(super) fn offset_parent<O: OffsetSizeTrait>(
+    offsets: &OffsetBuffer<O>,
+    len: usize,
+    nulls: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Option<NullBuffer>> {
+    if nulls.is_none_or(|nulls| nulls.null_count() == 0) {
+        return Ok(None);
+    }
+    crate::cast::columns::range_exposure(
+        len,
+        offsets.len() - 1,
+        nulls.map(NullBuffer::inner),
+        |_| true,
+        |row| Ok((offsets[row].as_usize(), offsets[row + 1].as_usize())),
+        budget,
+    )
+    .map(|mask| mask.map(NullBuffer::new))
+}
+
+/// Copy selected physical spans through Arrow, after reserving bounded
+/// buffers and scratch. One contiguous span remains a shared slice.
+pub(super) fn gather_ranges(
+    values: &ArrayRef,
+    dtype: &DataType,
+    ranges: &[(usize, usize)],
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<ArrayRef> {
+    match ranges {
+        [] => return Ok(values.slice(0, 0)),
+        &[(start, end)] => return Ok(values.slice(start, end - start)),
+        _ => {}
+    }
+    if let DataType::RunEndEncoded(encoded) = dtype {
+        use arrow_array::types::{Int16Type, Int32Type, Int64Type};
+        return match encoded.run_ends().dtype() {
+            DataType::Int16 => gather_runs::<Int16Type>(values, encoded, ranges, budget),
+            DataType::Int32 => gather_runs::<Int32Type>(values, encoded, ranges, budget),
+            DataType::Int64 => gather_runs::<Int64Type>(values, encoded, ranges, budget),
+            _ => Err(Error::Internal {
+                site: "serie::arrow::gather_runs",
+            }),
+        };
+    }
+    // Arrow's range extender rescans nested runs from their first value.
+    // Take avoids that, but loses row counts on zero-width fixed lists.
+    let (runs, zero_width) = gather_layout(dtype);
+    if runs && !zero_width {
+        use crate::budget::{SourceSelection, reserve_source_selection, scratch_vec};
+        let selection = SourceSelection::Ranges(ranges);
+        let len = selection.row_count(values.len())?;
+        let allocation = budget.mark();
+        reserve_source_selection(values.as_ref(), dtype, selection, budget)?;
+        budget.add_growth_since(allocation)?;
+        let mut indices = scratch_vec::<u64>(budget, len, "gather indices")?;
+        for &(start, end) in ranges {
+            indices.extend((start..end).map(|index| index as u64));
+        }
+        return Ok(arrow_select::take::take(
+            values.as_ref(),
+            &arrow_array::UInt64Array::from(indices),
+            None,
+        )?);
+    }
+    let allocation = budget.mark();
+    crate::budget::reserve_source_extend(
+        values.as_ref(),
+        dtype,
+        crate::budget::SourceSelection::Ranges(ranges),
+        budget,
+    )?;
+    crate::budget::reserve_to_data_scratch(values, budget)?;
+    budget.add_growth_since(allocation)?;
+    let data = values.to_data();
+    // Zero initial capacity avoids reserving inactive wide union children.
+    let mut output = arrow_data::transform::MutableArrayData::new(vec![&data], false, 0);
+    for &(start, end) in ranges {
+        output.try_extend(0, start, end)?;
+    }
+    Ok(arrow_array::make_array(output.freeze()))
+}
+
+/// Which Arrow gather limitations occur in the child tree.
+fn gather_layout(dtype: &DataType) -> (bool, bool) {
+    let mut runs = matches!(dtype, DataType::RunEndEncoded(_));
+    let mut zero_width = matches!(dtype, DataType::FixedSizeSerie(_, 0));
+    for index in 0..dtype.field_len() {
+        let child = dtype.get_field_at(index).expect("a declared child");
+        let (child_runs, child_zero_width) = gather_layout(child.dtype());
+        runs |= child_runs;
+        zero_width |= child_zero_width;
+    }
+    (runs, zero_width)
+}
+
+/// Select physical runs by binary-searching each cut once. Arrow's generic
+/// range extender scans from its first run for every cut, which is quadratic
+/// for alternating visible rows. Typed slices borrow both source buffers.
+fn gather_runs<R: arrow_array::types::RunEndIndexType>(
+    values: &ArrayRef,
+    encoded: &Arc<crate::RunEndEncodedType>,
+    ranges: &[(usize, usize)],
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<ArrayRef> {
+    use crate::budget::{SourceSelection, scratch_vec};
+    use arrow_array::{PrimitiveArray, RunArray};
+    use arrow_buffer::ArrowNativeType;
+
+    let source = held::<RunArray<R>>(values)?;
+    let len = SourceSelection::Ranges(ranges).row_count(source.len())?;
+    if R::Native::from_usize(len).is_none() {
+        return Err(Error::IncompatibleSchema(format!(
+            "run-end logical length {len} does not fit {}",
+            encoded.run_ends().dtype(),
+        )));
+    }
+    let mut runs = 0_usize;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            runs = runs
+                .checked_add(cut.get_end_physical_index() - cut.get_start_physical_index() + 1)
+                .ok_or_else(|| {
+                    Error::IncompatibleSchema("selected run count exceeds usize".into())
+                })?;
+        }
+    }
+    budget.add_array_layout(&DataType::RunEndEncoded(Arc::clone(encoded)), len)?;
+    budget.add_array_layout(encoded.run_ends().dtype(), runs)?;
+    let mut physical = scratch_vec::<(usize, usize)>(budget, ranges.len(), "run value ranges")?;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            physical.push((
+                cut.get_start_physical_index(),
+                cut.get_end_physical_index() + 1,
+            ));
+        }
+    }
+    let gathered = gather_ranges(source.values(), encoded.values().dtype(), &physical, budget)?;
+    crate::budget::reserve_vec_bytes::<arrow_data::ArrayData>(budget, 2)?;
+    crate::budget::reserve_vec_bytes::<arrow_buffer::Buffer>(budget, 1)?;
+    crate::budget::reserve_to_data_scratch(&gathered, budget)?;
+    // The retained run-end buffer was reserved above, separately from scratch.
+    let mut ends = Vec::new();
+    ends.try_reserve_exact(runs).map_err(|error| {
+        Error::IncompatibleSchema(format!("run-end output allocation failed: {error}"))
+    })?;
+    let mut written = 0_usize;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            for end in cut.run_ends().sliced_values() {
+                ends.push(
+                    R::Native::from_usize(written + end.as_usize())
+                        .expect("the whole selected length fits the run-end type"),
+                );
+            }
+            written += end - start;
+        }
+    }
+    let ends = PrimitiveArray::<R>::new(arrow_buffer::ScalarBuffer::from(ends), None);
+    let data = arrow_data::ArrayData::builder(values.data_type().clone())
+        .len(len)
+        .child_data(vec![ends.into_data(), gathered.to_data()])
+        .build()?;
+    Ok(arrow_array::make_array(data))
+}
+
+/// Drop hidden variable spans whose children require logical proof. Other
+/// spans can remain borrowed: every physical value is already readable.
+pub(super) fn compact_offsets<O: OffsetSizeTrait>(
+    offsets: OffsetBuffer<O>,
+    values: ArrayRef,
+    dtype: &DataType,
+    nulls: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<(OffsetBuffer<O>, ArrayRef)> {
+    if dtype.layout_is_contract()
+        || nulls.is_none_or(|nulls| nulls.null_count() == 0)
+        || !offsets
+            .windows(2)
+            .enumerate()
+            .any(|(row, pair)| nulls.is_some_and(|nulls| nulls.is_null(row)) && pair[0] != pair[1])
+    {
+        return Ok((offsets, values));
+    }
+    use crate::budget::{SourceSelection, scratch_vec, selected_child_ranges};
+    let rows = offsets.len() - 1;
+    let ranges = selected_child_ranges(
+        SourceSelection::Ranges(&[(0, rows)]),
+        rows,
+        values.len(),
+        |row| nulls.is_none_or(|nulls| nulls.is_valid(row)),
+        |row| Ok((offsets[row].as_usize(), offsets[row + 1].as_usize())),
+        budget,
+    )?;
+    let mut rebuilt = scratch_vec::<O>(budget, offsets.len(), "offsets")?;
+    let mut end = O::zero();
+    rebuilt.push(end);
+    for (row, pair) in offsets.windows(2).enumerate() {
+        if nulls.is_none_or(|nulls| nulls.is_valid(row)) {
+            end += pair[1] - pair[0];
+        }
+        rebuilt.push(end);
+    }
+    let values = gather_ranges(&values, dtype, &ranges, budget)?;
+    Ok((OffsetBuffer::new(rebuilt.into()), values))
+}
+
 /// What a landing may take on trust about the rows it is handed.
 ///
 /// A column holds only rows its field accepts - [`Serie::scalar`] and the
@@ -172,6 +448,12 @@ pub(crate) enum Proof {
     Unproven,
     /// Every row was laid out, selected from a landed column, or certified.
     Proven,
+    /// Nothing is known, and the one reader the landing is private to proves
+    /// each row as it takes it, through [`proven_cell`]: a row it never
+    /// reads is never proven, so the column never leaves that reader. What a
+    /// reader of one row at a time states, where proving the whole batch
+    /// first would make its first row cost every row.
+    OnRead,
     /// A nested column whose children differ, in the order the landing
     /// recurses: record children in order, a list's item, a map's entries,
     /// a union's members, an encoding's values.
@@ -190,6 +472,15 @@ impl Proof {
         }
     }
 
+    /// A map cast proves its keys even when its entry leaves remain unproven.
+    pub(crate) fn map(entries: Self) -> Self {
+        if matches!(entries, Self::Proven) {
+            Self::Proven
+        } else {
+            Self::Children([entries].into())
+        }
+    }
+
     /// Collapse a tree whose children all agree into the one answer.
     pub(crate) fn of_children(children: Vec<Self>) -> Self {
         if children.iter().all(|child| matches!(child, Self::Proven)) {
@@ -201,24 +492,30 @@ impl Proof {
         }
     }
 
-    /// Whether this level's own rows need no read.
-    const fn certifies(&self) -> bool {
-        matches!(self, Self::Proven)
+    /// Whether this level's own rows are read at the landing.
+    const fn reads_at_landing(&self) -> bool {
+        !matches!(self, Self::Proven | Self::OnRead)
     }
 }
 
 /// One module's door: the column its layout is, or `None` for another's.
-type ColumnOf = fn(Arc<Field>, ArrayRef, Option<&NullBuffer>, &Proof) -> Result<Option<Serie>>;
+type ColumnOf = fn(
+    Arc<Field>,
+    ArrayRef,
+    Option<&NullBuffer>,
+    &Proof,
+    &mut crate::budget::MaterializationBudget,
+) -> Result<Option<Serie>>;
 
 /// Build the column `field` types out of buffers that already hold it.
 ///
-/// Every level proves itself - the projection, the absence, the values -
-/// so a child whose buffers disagree with the child field is refused where
-/// it lies rather than at the row that reads it. `proof` says which rows
-/// went through the field's contract already, so they are not read again.
-/// Each module answers `None` for a layout that is not its own, tried in
-/// the order the families are listed; the variant pair is tried before the
-/// record module because it projects to a struct.
+/// The root proves the layout once: the datatype's depth bound and the
+/// field's whole Arrow projection, which already states every child's
+/// layout, so [`child_of`] below does not compare them again. Every level
+/// then proves its own absence and its own values, so a child whose
+/// buffers disagree with the child field is refused where it lies rather
+/// than at the row that reads it. `proof` says which rows went through the
+/// field's contract already, so they are not read again.
 pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
@@ -227,10 +524,44 @@ pub(crate) fn column_of(
 ) -> Result<Serie> {
     field.dtype().validate_bounded()?;
     crate::arrow::require_projection(&field, array.as_ref())?;
+    child_of(
+        field,
+        array,
+        parent,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+    )
+}
+
+/// Build one level of a column whose layout its root already proved: its
+/// absence, its values where they are narrower than their storage, and the
+/// leaf its layout is. Each module answers `None` for a layout that is not
+/// its own, tried in the order the families are listed; the variant pair is
+/// tried before the record module because it projects to a struct.
+pub(crate) fn child_of(
+    field: Arc<Field>,
+    array: ArrayRef,
+    parent: Option<&NullBuffer>,
+    proof: &Proof,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Serie> {
     require_present(&field, array.as_ref(), parent)?;
-    if !proof.certifies() && reads_rows(field.dtype()) {
-        prove_rows(&field, array.as_ref(), parent)?;
-    }
+    // A public child must also be readable independently of its parent.
+    // Encodings without their own bitmap mask their physical values below.
+    let array = if !field.dtype().layout_is_contract()
+        && !matches!(
+            field.dtype(),
+            DataType::Union(..) | DataType::RunEndEncoded(_)
+        )
+        && parent.is_some_and(|above| above.null_count() != 0)
+    {
+        let nulls = parent_nulls(parent, array.nulls(), budget)?;
+        crate::budget::reserve_to_data_scratch(&array, budget)?;
+        arrow_array::make_array(array.to_data().into_builder().nulls(nulls).build()?)
+    } else {
+        array
+    };
+    let proves = proof.reads_at_landing() && reads_rows(field.dtype());
     let modules: [ColumnOf; 11] = [
         null::column_of,
         boolean::column_of,
@@ -238,14 +569,30 @@ pub(crate) fn column_of(
         bytes::column_of,
         variant::column_of,
         structure::column_of,
-        list::column_of,
+        sequence::column_of,
         mapping::column_of,
         union::column_of,
         enums::column_of,
         runend::column_of,
     ];
     for module in modules {
-        if let Some(serie) = module(Arc::clone(&field), Arc::clone(&array), parent, proof)? {
+        if let Some(serie) = module(
+            Arc::clone(&field),
+            Arc::clone(&array),
+            parent,
+            proof,
+            budget,
+        )
+        .map_err(|refusal| match refusal {
+            Error::PhysicalLimit { .. } => Error::Core(crate::Error::InvalidRecord {
+                path: field.name().into(),
+                reason: smol_str::format_smolstr!("{refusal}"),
+            }),
+            other => other,
+        })? {
+            if proves {
+                prove_rows(&field, &serie, parent)?;
+            }
             return Ok(serie);
         }
     }
@@ -259,32 +606,274 @@ pub(crate) fn column_of(
     })
 }
 
+/// The field an Arrow array of no declared field is the column of: its own
+/// layout, named `item`, nullable where the caller read an absent row - its
+/// logical nulls, so a null behind a dictionary key, a run or a union member
+/// counts as one.
+///
+/// # Errors
+///
+/// Returns an error when the layout imports as no datatype.
+pub(crate) fn item_field(storage: &arrow_schema::DataType, nullable: bool) -> crate::Result<Field> {
+    Ok(Field::new(
+        "item",
+        DataType::from_arrow_datatype(storage)?,
+        nullable,
+    ))
+}
+
+/// Whether `holds` answers for `storage` or any datatype nested in it.
+pub(crate) fn storage_holds(
+    storage: &arrow_schema::DataType,
+    holds: &impl Fn(&arrow_schema::DataType) -> bool,
+) -> bool {
+    use arrow_schema::DataType as A;
+    holds(storage)
+        || match storage {
+            A::List(item)
+            | A::LargeList(item)
+            | A::ListView(item)
+            | A::LargeListView(item)
+            | A::FixedSizeList(item, _)
+            | A::Map(item, _) => storage_holds(item.data_type(), holds),
+            A::Struct(fields) => fields
+                .iter()
+                .any(|field| storage_holds(field.data_type(), holds)),
+            A::Union(members, _) => members
+                .iter()
+                .any(|(_, member)| storage_holds(member.data_type(), holds)),
+            A::Dictionary(key, values) => storage_holds(key, holds) || storage_holds(values, holds),
+            A::RunEndEncoded(run_ends, values) => {
+                storage_holds(run_ends.data_type(), holds)
+                    || storage_holds(values.data_type(), holds)
+            }
+            _ => false,
+        }
+}
+
+/// The storage an empty column of `field` lays out as, refusing a union of
+/// no member wherever one lies: Arrow builds no empty column of one - it
+/// reads the first member's type id - so none is laid out.
+fn empty_storage(field: &Field) -> crate::Result<arrow_schema::DataType> {
+    let storage = field.as_arrow_field_ref()?.data_type();
+    let memberless = |node: &arrow_schema::DataType| matches!(node, arrow_schema::DataType::Union(members, _) if members.is_empty());
+    if storage_holds(storage, &memberless) {
+        return Err(Error::Unsupported {
+            kind: "serie",
+            reason: format!(
+                "column {:?} lays out as {storage}, and a union of no member lays out no column",
+                field.name()
+            ),
+        }
+        .into());
+    }
+    Ok(storage.clone())
+}
+
 /// Land one array as the column of `field`, under what its caller proved.
+///
+/// A value a leaf refuses is named by the row of `array` it lies in and
+/// the path below it.
 pub(crate) fn land(field: Arc<Field>, array: ArrayRef, proof: &Proof) -> Result<Serie> {
-    column_of(field, array, None, proof)
+    land_under(field, array, None, proof)
+}
+
+/// Land one array whose layout its caller proved once for every array it
+/// hands over: the field's depth bound and Arrow projection were compared
+/// when a reader resolved its columns, and the batch this array comes from
+/// shares the schema they were compared against - which fixes every
+/// column's datatype - so only absence and the values are this array's own.
+pub(crate) fn land_resolved(field: Arc<Field>, array: ArrayRef, proof: &Proof) -> Result<Serie> {
+    child_of(
+        Arc::clone(&field),
+        Arc::clone(&array),
+        None,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+    )
+    .map_err(|refusal| located(&field, array.as_ref(), refusal))
+}
+
+/// Land one child array beneath the validity of the record it sits in: a
+/// row the parent leaves absent says nothing about the child, so a required
+/// child is judged only where the parent is present.
+pub(crate) fn land_under(
+    field: Arc<Field>,
+    array: ArrayRef,
+    parent: Option<&NullBuffer>,
+    proof: &Proof,
+) -> Result<Serie> {
+    column_of(Arc::clone(&field), Arc::clone(&array), parent, proof)
+        .map_err(|refusal| located(&field, array.as_ref(), refusal))
 }
 
 /// Land one batch as the record column of `root`, resolved once by the
 /// caller and never cloned per batch; the children share the batch's
 /// columns.
+///
+/// A value a leaf refuses is named by the batch row it lies in and the path
+/// below it: `$[3].bid.live[0].miccode`.
 pub(crate) fn land_batch(root: &Arc<Field>, batch: &RecordBatch, proof: &Proof) -> Result<Serie> {
     let records = crate::cast::struct_array_from_batch(batch.clone());
-    column_of(Arc::clone(root), records, None, proof)
+    column_of(Arc::clone(root), Arc::clone(&records), None, proof)
+        .map_err(|refusal| located(root, records.as_ref(), refusal))
+}
+
+/// Restate a leaf's value refusal in the rows of the array that was landed.
+///
+/// The proof reads each leaf in its own rows, which a nested leaf does not
+/// share with the record above it, so the refused cell is found again by
+/// walking the landed rows down to it - once, on the way out. Any other
+/// refusal already names what it refuses.
+fn located(field: &Field, array: &dyn Array, refusal: Error) -> Error {
+    if !matches!(refusal, Error::InvalidValue { .. }) {
+        return refusal;
+    }
+    let root = crate::path::Path::root();
+    (0..array.len())
+        .find_map(|row| {
+            let at = root.child(crate::path::Segment::Index(row));
+            refused_cell(field, array, row, &at)
+        })
+        .map_or(refusal, |(path, reason)| {
+            Error::Core(crate::Error::InvalidRecord {
+                path: path.into(),
+                reason: reason.into(),
+            })
+        })
+}
+
+/// The first cell below row `row` that `field` refuses, as the path to it
+/// and its refusal: a record descends by child, a sequence by item, a map
+/// by entry, and a leaf the landing reads is read.
+fn refused_cell(
+    field: &Field,
+    array: &dyn Array,
+    row: usize,
+    path: &crate::path::Path<'_>,
+) -> Option<(String, String)> {
+    use arrow_array::cast::AsArray as _;
+    use arrow_buffer::ArrowNativeType as _;
+
+    if array.is_null(row) {
+        return None;
+    }
+    let items = |values: &ArrayRef, range: std::ops::Range<usize>, item: &Field| {
+        range.enumerate().find_map(|(index, at)| {
+            let below = path.child(crate::path::Segment::Index(index));
+            refused_cell(item, values.as_ref(), at, &below)
+        })
+    };
+    match field.dtype() {
+        DataType::Struct(fields) => {
+            let records = array.as_struct_opt()?;
+            fields
+                .iter()
+                .zip(records.columns())
+                .find_map(|(child, column)| {
+                    refused_cell(child, column.as_ref(), row, &path.field(child.name()))
+                })
+        }
+        DataType::Serie(item) => {
+            let list = array.as_list_opt::<i32>()?;
+            items(
+                list.values(),
+                list.value_offsets()[row].as_usize()..list.value_offsets()[row + 1].as_usize(),
+                item,
+            )
+        }
+        DataType::LargeSerie(item) => {
+            let list = array.as_list_opt::<i64>()?;
+            items(
+                list.values(),
+                list.value_offsets()[row].as_usize()..list.value_offsets()[row + 1].as_usize(),
+                item,
+            )
+        }
+        DataType::SerieView(item) => {
+            let list = array.as_list_view_opt::<i32>()?;
+            let start = list.value_offsets()[row].as_usize();
+            items(
+                list.values(),
+                start..start + list.value_sizes()[row].as_usize(),
+                item,
+            )
+        }
+        DataType::LargeSerieView(item) => {
+            let list = array.as_list_view_opt::<i64>()?;
+            let start = list.value_offsets()[row].as_usize();
+            items(
+                list.values(),
+                start..start + list.value_sizes()[row].as_usize(),
+                item,
+            )
+        }
+        DataType::FixedSizeSerie(item, _) => {
+            let list = array.as_fixed_size_list_opt()?;
+            let start = list.value_offset(row).as_usize();
+            items(
+                list.values(),
+                start..start + list.value_length().as_usize(),
+                item,
+            )
+        }
+        DataType::Map(_) | DataType::SortedMap(_) => {
+            let map = array.as_map_opt()?;
+            let entries: ArrayRef = Arc::new(map.entries().clone());
+            let mapping = field.dtype().as_mapping()?;
+            let range =
+                map.value_offsets()[row].as_usize()..map.value_offsets()[row + 1].as_usize();
+            items(&entries, range, mapping.entries())
+        }
+        dtype if reads_rows(dtype) => {
+            let refusal = match crate::serie::value::value_from_array(dtype, array, row) {
+                Ok(value) => field.scalar(value).err()?,
+                Err(error) => crate::Error::from(error),
+            };
+            Some(match refusal {
+                crate::Error::InvalidRecord {
+                    path: below,
+                    reason,
+                } => (
+                    format!(
+                        "{}{}",
+                        path.render(),
+                        below.strip_prefix('$').unwrap_or(&below)
+                    ),
+                    reason.to_string(),
+                ),
+                other => (path.render(), other.to_string()),
+            })
+        }
+        _ => None,
+    }
 }
 
 /// Lay out rows that already went through the field's contract - through
 /// [`Field::scalar`] or its canonicalization - and land them proven, so no
 /// row is checked or read a second time.
 pub(crate) fn from_canonical_rows(field: Arc<Field>, rows: &[&Scalar]) -> crate::Result<Serie> {
-    let array = crate::arrow::value::array_from_values(&field, rows)?;
-    Ok(column_of(field, array, None, &Proof::Proven)?)
+    canonical_rows(field, rows).map(|(serie, _)| serie)
+}
+
+/// [`from_canonical_rows`], answering the buffers as they were laid out
+/// beside the landed column: a caller handing the buffers on - a batch
+/// reader - takes them as built rather than reassembling them from the
+/// column, which would validate every level of a nested layout again.
+pub(crate) fn canonical_rows(
+    field: Arc<Field>,
+    rows: &[&Scalar],
+) -> crate::Result<(Serie, ArrayRef)> {
+    let array = crate::serie::value::array_of_rows(&field, rows)?;
+    let serie = column_of(field, Arc::clone(&array), None, &Proof::Proven)?;
+    Ok((serie, array))
 }
 
 /// A field's canonical default - [`Field::default_value`] - as a one-row
 /// array, for the cast engine that fills and places it.
 pub(crate) fn default_array(field: &Field) -> Result<ArrayRef> {
     let value = field.default_value()?;
-    crate::arrow::value::array_from_values(field, &[&value])
+    crate::serie::value::array_of_rows(field, &[&value])
 }
 
 /// A bare datatype's canonical default - [`DataType::default_value`] - as a
@@ -294,7 +883,7 @@ pub(crate) fn default_array(field: &Field) -> Result<ArrayRef> {
 pub(crate) fn default_dtype_array(dtype: &DataType) -> Result<ArrayRef> {
     let field = Field::new("value", dtype.clone(), false);
     let value = dtype.default_value()?;
-    crate::arrow::value::array_from_values(&field, &[&value])
+    crate::serie::value::array_of_rows(&field, &[&value])
 }
 
 /// The record root a non-record column crosses into a table under: the
@@ -306,18 +895,63 @@ pub(crate) fn record_root(field: &Field) -> crate::Result<Field> {
     )
 }
 
+/// The schema a column of `field` crosses into a table under: a record's
+/// own children, or the one column of a [`DEFAULT_ROOT_NAME`] root.
+///
+/// Decided by the field once, so every batch of a chunked column shares it.
+pub(crate) fn batch_schema(field: &Field) -> Result<SchemaRef> {
+    arrow_schema_from_field(&SerieReader::root_of(field)?)
+}
+
+/// One column's rows as the batch `schema` states, where `schema` is
+/// [`batch_schema`]'s answer for the column's field.
+///
+/// A record column's children are the columns; any other column is the one
+/// column. A batch states no row validity, so a record column holding an
+/// absent row is refused rather than having that absence dropped.
+pub(crate) fn batch_under(schema: &SchemaRef, serie: &Serie) -> Result<RecordBatch> {
+    let field = serie.require_field()?;
+    let array = serie.require_arrow_array()?;
+    if field.dtype().as_fields().is_none() {
+        return Ok(RecordBatch::try_new(Arc::clone(schema), vec![array])?);
+    }
+    let absent = array.null_count();
+    if absent != 0 {
+        return Err(Error::IncompatibleSchema(format!(
+            "record column {:?} holds {absent} absent rows, which a table cannot state",
+            field.name()
+        )));
+    }
+    let Some(records) = array.as_any().downcast_ref::<StructArray>() else {
+        return Err(Error::IncompatibleSchema(format!(
+            "record column {:?} does not lay out as a struct array",
+            field.name()
+        )));
+    };
+    Ok(RecordBatch::try_new_with_options(
+        Arc::clone(schema),
+        records.columns().to_vec(),
+        &RecordBatchOptions::new().with_row_count(Some(array.len())),
+    )?)
+}
+
 impl Serie {
     /// Take one Arrow array as a column: of its own field, or cast into
     /// `field`.
     ///
     /// With no field the array is the column of its own layout, named
-    /// `item` and nullable exactly where it holds an absent row; nothing is
-    /// copied, and each row of a leaf whose layout is not its datatype's
-    /// whole contract is read once to prove it, because a bare array carries
-    /// no evidence. With a field, one [`ArrowCastPlan`] is compiled from the
-    /// array's layout to the field and applied once: an exact layout is the
-    /// identity plan and shares the buffers, and any other is converted under
-    /// `options`. A loop over many arrays holds one plan instead.
+    /// `item` and nullable exactly where it holds an absent row. Value buffers
+    /// are shared except where hidden narrow spans or noncompact views need
+    /// rebuilding. Hidden narrow child slots become null placeholders, so a
+    /// child also reads safely on its own. Visible rows of a leaf whose layout
+    /// is not its whole contract are read once, because a bare array carries
+    /// no evidence. With a field, an array already laid out as the field
+    /// lands as it stands, proven exactly as the identity plan would prove it
+    /// and with no plan compiled; any other layout - or an exact one the
+    /// landing refuses, whose absent rows a required field repairs or whose
+    /// values a safe cast nulls - compiles one [`ArrowCastPlan`] and is
+    /// converted under `options`. A loop over many arrays holds one plan
+    /// instead.
     ///
     /// # Errors
     ///
@@ -331,14 +965,21 @@ impl Serie {
         options: ArrowCastOptions,
     ) -> Result<Self> {
         let Some(field) = field else {
-            let dtype = DataType::from_arrow_datatype(array.data_type())?;
-            let nullable = array.null_count() != 0;
-            return land(
-                Arc::new(Field::new("item", dtype, nullable)),
-                array,
+            let item = item_field(array.data_type(), array.logical_null_count() != 0)?;
+            return land(Arc::new(item), array, &Proof::Unproven);
+        };
+        if lands_as_is(field.dtype())
+            && field.as_arrow_field_ref()?.data_type() == array.data_type()
+        {
+            let exact = land(
+                Arc::new(field.clone()),
+                Arc::clone(&array),
                 &Proof::Unproven,
             );
-        };
+            if let Ok(serie) = exact {
+                return Ok(serie);
+            }
+        }
         let source = Arc::new(ArrowField::new(
             field.name(),
             array.data_type().clone(),
@@ -356,7 +997,7 @@ impl Serie {
     /// this crate keeps no column for.
     pub fn empty(field: impl Into<Arc<Field>>) -> crate::Result<Self> {
         let field = field.into();
-        let storage = field.as_arrow_field_ref()?.data_type().clone();
+        let storage = empty_storage(&field)?;
         Ok(land(field, new_empty_array(&storage), &Proof::Proven)?)
     }
 
@@ -371,7 +1012,7 @@ impl Serie {
     /// [`Self::empty`] carries the rule.
     pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> crate::Result<Self> {
         let field = field.into();
-        let storage = field.as_arrow_field_ref()?.data_type().clone();
+        let storage = empty_storage(&field)?;
         let array = match storage {
             arrow_schema::DataType::Dictionary(..)
             | arrow_schema::DataType::RunEndEncoded(..)
@@ -486,33 +1127,23 @@ impl Serie {
 
     /// Drain one Arrow batch stream into the record column of its rows.
     ///
-    /// This is [`SerieReader::from_arrow_reader`] collected: every batch is
-    /// cast by the reader's one plan, and the landed columns are joined once.
-    /// The whole stream is held - a column is one contiguous set of buffers,
-    /// so the bound is the stream itself.
+    /// This is [`ChunkedSerie::from_arrow_reader`](crate::ChunkedSerie::from_arrow_reader)
+    /// joined by [`ChunkedSerie::into_serie`](crate::ChunkedSerie::into_serie):
+    /// every batch is cast by the reader's one plan, and the landed columns
+    /// are joined once. The whole stream is held - a column is one
+    /// contiguous set of buffers, so the bound is the stream itself.
     ///
     /// # Errors
     ///
-    /// [`SerieReader::from_arrow_reader`] carries the rule, and the reader
-    /// carries its own.
+    /// [`SerieReader::from_arrow_reader`] carries the rule, the reader
+    /// carries its own, and the join refuses what
+    /// [`ChunkedSerie::into_serie`](crate::ChunkedSerie::into_serie) does.
     pub fn from_arrow_reader(
         root: Option<&Field>,
         reader: BatchReader,
         options: ArrowCastOptions,
     ) -> Result<Self> {
-        let series = SerieReader::from_arrow_reader(root, reader, options)?;
-        let root = Arc::clone(&series.root);
-        let landed = series.collect::<Result<Vec<Self>>>()?;
-        let arrays = landed
-            .iter()
-            .map(Self::require_arrow_array)
-            .collect::<crate::Result<Vec<ArrayRef>>>()?;
-        if arrays.is_empty() {
-            return Ok(Self::empty(root)?);
-        }
-        let borrowed: Vec<&dyn Array> = arrays.iter().map(AsRef::as_ref).collect();
-        let joined = arrow_select::concat::concat(&borrowed)?;
-        land(root, joined, &Proof::Proven)
+        crate::ChunkedSerie::from_arrow_reader(root, reader, options)?.into_serie()
     }
 
     /// This column under `target`: cast once, for a column in hand.
@@ -548,26 +1179,8 @@ impl Serie {
     /// Returns an error for a run, which names no layout, and for a record
     /// column holding an absent row.
     pub fn into_arrow_batch(&self) -> Result<RecordBatch> {
-        let field = self.require_field()?;
-        let array = self.require_arrow_array()?;
-        let Some(records) = array.as_any().downcast_ref::<StructArray>() else {
-            let root = record_root(field)?;
-            let schema = arrow_schema_from_field(&root)?;
-            return Ok(RecordBatch::try_new(schema, vec![array])?);
-        };
-        let absent = records.null_count();
-        if absent != 0 {
-            return Err(Error::IncompatibleSchema(format!(
-                "record column {:?} holds {absent} absent rows, which a table cannot state",
-                field.name()
-            )));
-        }
-        let schema = arrow_schema_from_field(&field.clone().with_nullable(false))?;
-        Ok(RecordBatch::try_new_with_options(
-            schema,
-            records.columns().to_vec(),
-            &RecordBatchOptions::new().with_row_count(Some(array.len())),
-        )?)
+        let schema = batch_schema(self.require_field()?)?;
+        batch_under(&schema, self)
     }
 
     /// This column's one row as Arrow's scalar datum, sharing its buffers.
@@ -606,10 +1219,43 @@ impl Serie {
 /// reader is dropped - which releases a C stream at the point an early close
 /// would - and the reader is fused.
 pub struct SerieReader {
-    inner: Option<BatchReader>,
+    inner: Option<Source>,
     plan: ArrowCastPlan,
     root: Arc<Field>,
     schema: SchemaRef,
+}
+
+/// What a [`SerieReader`] yields its columns from.
+enum Source {
+    /// A stream, each batch cast by the reader's plan as it arrives.
+    Stream(BatchReader),
+    /// Record columns already held, each yielded as it stands.
+    Held(std::vec::IntoIter<Serie>),
+}
+
+/// The record root a held column of `field` streams under, shared.
+fn held_root(field: &Field) -> crate::Result<Arc<Field>> {
+    Ok(Arc::new(SerieReader::root_of(field)?))
+}
+
+/// One held column as the record column it streams as under `root`,
+/// nothing cast, copied or read.
+fn held_record(root: &Arc<Field>, serie: Serie) -> Result<Serie> {
+    let rows = serie.len();
+    let record = match serie.as_struct() {
+        Some(records) => {
+            let absent = crate::SerieValue::null_count(records);
+            if absent != 0 {
+                return Err(Error::IncompatibleSchema(format!(
+                    "record column {:?} holds {absent} absent rows, which a table cannot state",
+                    serie.require_field()?.name()
+                )));
+            }
+            structure::StructSerie::new(Arc::clone(root), records.children().to_vec(), None, rows)
+        }
+        None => structure::StructSerie::new(Arc::clone(root), vec![serie], None, rows),
+    };
+    Ok(crate::SerieValue::into_serie(record))
 }
 
 impl SerieReader {
@@ -639,8 +1285,59 @@ impl SerieReader {
             ArrowCastPlan::compile_schema(schema.as_ref(), root, options, Deferred::default())?;
         let schema = Arc::clone(plan.target_schema()?);
         Ok(Self {
-            inner: Some(reader),
+            inner: Some(Source::Stream(reader)),
             root: Arc::new(root.clone()),
+            plan,
+            schema,
+        })
+    }
+
+    /// Read one held column as a stream of one record column.
+    ///
+    /// A record column is the one batch it is; any other column is the one
+    /// child of a [`DEFAULT_ROOT_NAME`] record, named as it is - the rule
+    /// [`Serie::into_arrow_batch`] states. Nothing is cast, copied or read:
+    /// the plan is the identity, and the column is yielded as it stands.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a run, which names no layout, and for a record
+    /// column holding an absent row, which a table cannot state.
+    pub fn from_serie(serie: Serie) -> Result<Self> {
+        let root = held_root(serie.require_field()?)?;
+        let record = held_record(&root, serie)?;
+        Self::held(root, vec![record])
+    }
+
+    /// Read a held chunked column as the stream of its chunks, one record
+    /// column per chunk.
+    ///
+    /// A record's chunks are the batches they are; any other field's chunks
+    /// are each the one child of a [`DEFAULT_ROOT_NAME`] record, named as
+    /// it is - the rule [`Self::from_serie`] states, applied per chunk.
+    /// Nothing is cast, copied or read, and a chunked serie of no chunks is
+    /// the empty stream of its root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a record chunk holding an absent row, which a
+    /// table cannot state.
+    pub fn from_chunked(chunked: crate::ChunkedSerie) -> Result<Self> {
+        let root = held_root(chunked.field())?;
+        let mut records = Vec::with_capacity(chunked.num_chunks());
+        for chunk in chunked.chunks() {
+            records.push(held_record(&root, chunk.clone())?);
+        }
+        Self::held(root, records)
+    }
+
+    /// The stream of `records`, each already a record column under `root`.
+    fn held(root: Arc<Field>, records: Vec<Serie>) -> Result<Self> {
+        let plan = ArrowCastPlan::compile(&root, &root, ArrowCastOptions::default())?;
+        let schema = arrow_schema_from_field(&root)?;
+        Ok(Self {
+            inner: Some(Source::Held(records.into_iter())),
+            root,
             plan,
             schema,
         })
@@ -651,18 +1348,49 @@ impl SerieReader {
         &self.root
     }
 
+    /// The record root a held column of `field` crosses into a table under:
+    /// a record's own field, required, or the [`DEFAULT_ROOT_NAME`] record it
+    /// is the one child of, named as it is.
+    ///
+    /// This is the one rule [`Self::from_serie`] and [`Self::from_chunked`]
+    /// name their [`Self::field`] by, and [`Serie::into_arrow_batch`],
+    /// [`Serie::into_arrow_reader`] and
+    /// [`ChunkedSerie::into_arrow_reader`](crate::ChunkedSerie::into_arrow_reader)
+    /// project their schema from, so a binding that names a reader's root
+    /// reads it here rather than restating it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a record of the one child cannot be declared -
+    /// a field a record refuses as a child.
+    pub fn root_of(field: &Field) -> crate::Result<Field> {
+        if field.dtype().as_fields().is_some() {
+            Ok(field.clone().with_nullable(false))
+        } else {
+            record_root(field)
+        }
+    }
+
     /// The stream's transport face: its batches reconciled to the root and
     /// never landed, so no row is proven beyond what the cast itself reads.
     ///
     /// Over an identity plan it is the inner reader, handed back untouched.
     pub fn into_arrow_reader(self) -> BatchReader {
         match self.inner {
-            Some(inner) if self.plan.is_identity() => inner,
-            Some(inner) => Box::new(Reconciled {
+            Some(Source::Stream(inner)) if self.plan.is_identity() => inner,
+            Some(Source::Stream(inner)) => Box::new(Reconciled {
                 inner: Some(inner),
                 plan: self.plan,
                 schema: self.schema,
             }),
+            Some(Source::Held(records)) => {
+                let schema = Arc::clone(&self.schema);
+                let batches = records.map(move |record| {
+                    batch_under(&schema, &record)
+                        .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+                });
+                Box::new(RecordBatchIterator::new(batches, self.schema))
+            }
             None => batch_reader(self.schema, []),
         }
     }
@@ -672,7 +1400,17 @@ impl Iterator for SerieReader {
     type Item = Result<Serie>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let pulled = self.inner.as_mut()?.next();
+        let reader = match self.inner.as_mut()? {
+            Source::Stream(reader) => reader,
+            Source::Held(records) => {
+                let next = records.next();
+                if next.is_none() {
+                    self.inner = None;
+                }
+                return next.map(Ok);
+            }
+        };
+        let pulled = reader.next();
         let landed = match pulled {
             Some(Ok(batch)) => self.plan.cast_batch(&batch),
             Some(Err(error)) => Err(from_reader_error(error)),
@@ -732,5 +1470,25 @@ impl Iterator for Reconciled {
 impl RecordBatchReader for Reconciled {
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/allocations.rs` pins and a caller cannot reach.
+
+    use std::sync::Arc;
+
+    use crate::{Field, Scalar, Serie};
+
+    /// Lay rows the field's contract already canonicalized out, and land
+    /// them proven.
+    ///
+    /// # Errors
+    ///
+    /// Returns the layout's refusal.
+    pub fn from_canonical_rows(field: Arc<Field>, rows: &[&Scalar]) -> crate::Result<Serie> {
+        super::from_canonical_rows(field, rows)
     }
 }

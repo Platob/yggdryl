@@ -1255,8 +1255,8 @@ def test_a_datatype_mutates_its_own_children_until_it_is_hashed() -> None:
     with pytest.raises(TypeError, match="hashed"):
         del hashed["id"]
 
-    # Only a struct may grow or shrink; a list holds exactly one child.
-    items = DataType("list<utf8>")
+    # Only a struct may grow or shrink; a serie holds exactly one child.
+    items = DataType("serie<utf8>")
     with pytest.raises(ValueError, match="struct field"):
         items["extra"] = Field("extra", "utf8")
 
@@ -1295,7 +1295,7 @@ def test_subscripting_a_schema_node_reaches_a_nested_child() -> None:
     order = Field(
         "order",
         DataType.from_fields(
-            [Field("id", "int64", nullable=False), line, Field("tags", "list(tag: utf8)")]
+            [Field("id", "int64", nullable=False), line, Field("tags", "serie(tag: utf8)")]
         ),
         nullable=False,
         metadata={"owner": "trading"},
@@ -1309,7 +1309,7 @@ def test_subscripting_a_schema_node_reaches_a_nested_child() -> None:
     assert order.dtype["id"].dtype == DataType("int64")
     assert order.dtype[1].name == "line"
 
-    # Chained descent, including through a List item.
+    # Chained descent, including through a Serie item.
     assert order["line"]["price"].dtype == DataType("float64")
     assert order["tags"][0].name == "tag"
 
@@ -1592,7 +1592,7 @@ def test_json_reads_every_shape_and_writes_bytes() -> None:
 def test_every_format_carries_the_same_nested_shape() -> None:
     deep = Field(
         "row",
-        DataType("struct<levels:list<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>"),
+        DataType("struct<levels:serie<struct<sym:utf8,px:decimal(18,4)>>,tags:map<utf8,int64>>"),
         nullable=False,
     )
 
@@ -1605,7 +1605,7 @@ def test_every_format_carries_the_same_nested_shape() -> None:
     # Nesting is carried, not flattened into a string.
     document = json.loads(deep.into_json())
     levels = document["dtype"]["fields"][0]["dtype"]
-    assert levels["type"] == "list"
+    assert levels["type"] == "serie"
     assert levels["field"]["dtype"]["fields"][0]["name"] == "sym"
     assert document["dtype"]["fields"][1]["dtype"]["type"] == "map"
 
@@ -1615,7 +1615,7 @@ def test_unnesting_flattens_structs_and_exploding_reaches_inside_collections() -
         "row",
         DataType(
             "struct<id:int64 not null,line:struct<px:float64 not null>,"
-            "levels:list<float64>,tags:map<utf8,int64>>"
+            "levels:serie<float64>,tags:map<utf8,int64>>"
         ),
         nullable=False,
     )
@@ -1623,7 +1623,7 @@ def test_unnesting_flattens_structs_and_exploding_reaches_inside_collections() -
     leaves = row.unnest_fields()
     assert [child.name for child in leaves] == ["id", "line.px", "levels", "tags"]
 
-    # A leaf under a nullable ancestor is nullable, and a list is a leaf here.
+    # A leaf under a nullable ancestor is nullable, and a serie is a leaf here.
     assert not leaves[0].nullable
     assert leaves[1].nullable
 
@@ -1634,7 +1634,7 @@ def test_unnesting_flattens_structs_and_exploding_reaches_inside_collections() -
     exploded = row.explode_fields()
     assert [child.name for child in exploded] == ["id", "line", "levels", "tags"]
     assert exploded[0].dtype == DataType("int64"), "not a collection"
-    assert exploded[2].dtype == DataType("float64"), "a list answers its item"
+    assert exploded[2].dtype == DataType("float64"), "a serie answers its item"
     assert len(exploded[3].dtype) == 2, "a map answers its entries struct"
 
     # A datatype answers the same, so descending never changes the calls.
@@ -1714,7 +1714,7 @@ def test_a_struct_root_canonicalizes_and_validates_one_row() -> None:
     root = Field("row", "struct<id:int64,symbol:utf8>", nullable=False)
 
     row = root.canonicalize_value([1, "AAPL"])
-    assert row.kind == "list"
+    assert row.kind == "serie"
     assert row.as_py() == [1, "AAPL"]
     assert root.validate_value(row) is None
 
@@ -1770,7 +1770,7 @@ def test_a_root_drops_the_children_a_partitioned_write_leaves_in_the_path() -> N
 
 
 def test_parquet_field_ids_are_numbered_and_found_across_the_whole_tree() -> None:
-    tree = Field("row", "struct<id:int64,items:list<struct<sku:utf8>>>", nullable=False)
+    tree = Field("row", "struct<id:int64,items:serie<struct<sku:utf8>>>", nullable=False)
     assert tree.max_parquet_field_id() is None
 
     following = tree.assign_parquet_field_ids()

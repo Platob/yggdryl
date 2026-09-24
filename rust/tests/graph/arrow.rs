@@ -10,7 +10,7 @@ use yggdryl::graph::{
     Book, Element, Event, Execution, MarketElement, MarketEventData, MarketOperation, Order, Quote,
     Trade,
 };
-use yggdryl::{Currency, Decimal18, Side, State};
+use yggdryl::{Ccy, Decimal18, Side, State};
 
 fn operation(kind: &str, unix: i64, code: &str) -> MarketOperation {
     let mut event = MarketEventData::at(unix);
@@ -21,7 +21,7 @@ fn operation(kind: &str, unix: i64, code: &str) -> MarketOperation {
     event.set_recdunix(Some(unix - 1));
     event.set_price(Decimal18::from_int(100 + unix));
     event.set_quantity(Decimal18::from_int(10 + unix));
-    event.set_currency(Currency::new("USD").unwrap());
+    event.set_currency(Ccy::new("USD").unwrap());
     event.set_unit("share".to_owned());
     event.set_side(Side::read(if kind == "quote" { "Sell" } else { "Buy" }).unwrap());
     event.set_symbolticker(Some("ACME".to_owned()));

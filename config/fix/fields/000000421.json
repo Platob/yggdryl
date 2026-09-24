@@ -854,7 +854,7 @@
   {
     "name": "underlyingprovisioncashsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -866,7 +866,7 @@
   {
     "name": "underlyingprovisioncashsettlcurrency2",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

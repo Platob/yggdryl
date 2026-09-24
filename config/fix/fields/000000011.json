@@ -696,7 +696,7 @@
   {
     "name": "sidecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -708,7 +708,7 @@
   {
     "name": "sidesettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

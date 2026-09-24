@@ -26,12 +26,13 @@ mod leaves {
     };
     use arrow_schema::DataType as ArrowDataType;
     use arrow_schema::extension::{EXTENSION_TYPE_METADATA_KEY, EXTENSION_TYPE_NAME_KEY};
-    use yggdryl::arrow::{batch_reader, scalar_array, scalar_value};
+    use yggdryl::arrow::batch_reader;
     use yggdryl::expression::Literal;
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::{
-        Charset, DataType, DataTypeId, Field, Scalar, StringEnum, StructType, Term, Url,
+        ArrowCastOptions, Charset, DataType, DataTypeId, Field, Scalar, Serie, StringEnum,
+        StructType, Term, Url,
     };
     use yggdryl::{IOBase, IOMedia};
     use yggdryl::{Str, StringType};
@@ -263,8 +264,8 @@ mod leaves {
         // bytes.
         assert_eq!(parsed.to_string(), "ccy = sized_ascii(4) 'USD'");
         assert_eq!(parsed.to_string().parse::<Term>().unwrap(), parsed);
-        let currency = "ccy = currency 'USD'".parse::<Term>().unwrap();
-        assert_eq!(currency.to_string(), "ccy = currency 'USD'");
+        let currency = "ccy = ccy 'USD'".parse::<Term>().unwrap();
+        assert_eq!(currency.to_string(), "ccy = ccy 'USD'");
         assert_eq!(currency.to_string().parse::<Term>().unwrap(), currency);
         assert_ne!(currency, "ccy = ascii(3) 'USD'".parse::<Term>().unwrap());
         let refused = "ccy = country 'USD'"
@@ -382,27 +383,35 @@ mod leaves {
     }
 
     #[test]
-    fn an_ascii_value_is_the_string_value_and_carries_no_maximum() {
-        // What comes out of an `ascii` column is the crate's one string value,
+    fn an_ascii_value_carries_the_leaf_of_its_column() {
+        // What comes out of an `ascii` column is a string value of that leaf,
         // equal to the plain spelling of the same characters.
         let value = DataType::ascii().scalar("USD").unwrap();
-        let Scalar::String(held) = &value else {
-            panic!("an ascii value is a string, got {value:?}");
+        let Scalar::AsciiString(held) = &value else {
+            panic!("an ascii value is an ascii string, got {value:?}");
         };
-        assert_eq!(held.charset(), Charset::Ascii);
-        assert_eq!(held.parameters(), StringType::AsciiString);
+        assert_eq!(held.as_str(), "USD");
+        assert_eq!(value.string_parameters(), Some(StringType::AsciiString));
+        assert_eq!(
+            value.string_parameters().map(StringType::charset),
+            Some(Charset::Ascii)
+        );
         assert_eq!(value, Scalar::from("USD"));
         assert_eq!(value.as_str(), Some("USD"));
         assert_eq!(value.id(), DataTypeId::AsciiString);
         assert_eq!(value.dtype().unwrap(), DataType::ascii());
 
-        // A maximum is the column's rule: a value read out of `ascii(4)` is an
-        // `ascii`, and one that outgrows the column is refused naming the bound.
+        // A value read out of `ascii(4)` carries the maximum as its leaf, and
+        // one that outgrows the column is refused naming the bound.
         let bounded = DataType::from_str("ascii(4)").unwrap();
+        let sized = bounded.scalar("USD").unwrap();
+        assert_eq!(sized.id(), DataTypeId::SizedAsciiString);
+        assert_eq!(sized.dtype().unwrap(), bounded);
         assert_eq!(
-            bounded.scalar("USD").unwrap().dtype().unwrap(),
-            DataType::ascii()
+            sized.string_parameters(),
+            Some(StringType::SizedAsciiString(4))
         );
+        assert_eq!(sized, value, "a value is one value in any column");
         let refused = bounded.scalar("EURO!").unwrap_err().to_string();
         assert!(refused.contains("at most 4 bytes"), "{refused}");
 
@@ -413,12 +422,14 @@ mod leaves {
         assert_eq!(padded.as_str(), Some("USD"));
         assert_eq!(padded.id(), DataTypeId::FixedAsciiString);
         assert_eq!(padded.dtype().unwrap(), fixed);
-        let Scalar::String(held) = &padded else {
-            panic!("a fixed ascii value is a string, got {padded:?}");
+        let Scalar::FixedAsciiString(held, width) = &padded else {
+            panic!("a fixed ascii value is a fixed ascii string, got {padded:?}");
         };
-        assert_eq!(held.fixed(), Some(4));
-        assert_eq!(held.encode().unwrap().as_ref(), b"USD\0");
-        assert_eq!(held.encoded_len(), 4);
+        assert_eq!(*width, 4);
+        let leaf = padded.string_parameters().unwrap();
+        assert_eq!(leaf.fixed(), Some(4));
+        assert_eq!(leaf.encode(held.as_str()).unwrap().as_ref(), b"USD\0");
+        assert_eq!(leaf.encoded_len(held.as_str()), 4);
         assert!(fixed.scalar("EURO!").is_err());
     }
 
@@ -472,8 +483,8 @@ mod leaves {
         );
         // The same rule under the value's own door.
         let ascii = StringType::AsciiString;
-        assert!(Str::new("caf\u{e9}").try_with_parameters(ascii).is_err());
-        assert!(Str::from_bytes(&[0x80], ascii).is_err());
+        assert!(ascii.scalar(Str::new("caf\u{e9}")).is_err());
+        assert!(ascii.scalar_from_bytes(&[0x80]).is_err());
     }
 
     #[test]
@@ -526,10 +537,16 @@ mod leaves {
 
             // A value crosses as itself in both directions.
             let value = dtype.scalar("USD").unwrap();
-            let array = scalar_array(&field, &value).unwrap();
+            let array = Serie::from_scalars(field.clone(), [value.clone()])
+                .unwrap()
+                .require_arrow_array()
+                .unwrap();
             assert_eq!(array.data_type(), &storage, "{dtype}");
             assert_eq!(
-                scalar_value(&field, array.as_ref()).unwrap(),
+                Serie::from_arrow_array(Some(&field), array, ArrowCastOptions::default())
+                    .unwrap()
+                    .scalar(0)
+                    .unwrap(),
                 value,
                 "{dtype}"
             );
@@ -612,7 +629,7 @@ mod fields {
         ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StringEnum,
         StructType,
     };
-    use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField, StringField};
+    use yggdryl::{CcyField, CfiCodeField, CountryField, MicCodeField, StringField};
 
     use super::typed::assert_typed_marker;
     use yggdryl::FieldValue as _;
@@ -630,7 +647,7 @@ mod fields {
             DataType::from_str("string(windows-1252)").unwrap(),
         );
         assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
-        assert_typed_marker::<yggdryl::CurrencyType>(DataType::Currency);
+        assert_typed_marker::<yggdryl::CcyType>(DataType::Ccy);
         assert_typed_marker::<yggdryl::MicCodeType>(DataType::MicCode);
         assert_typed_marker::<yggdryl::CfiCodeType>(DataType::CfiCode);
 
@@ -640,20 +657,17 @@ mod fields {
         assert_eq!(note.dtype(), &DataType::ascii());
         let ccy = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), false).unwrap();
         assert_eq!(ccy.dtype(), &DataType::fixed_ascii(4).unwrap());
-        assert!(StringField::try_new("ccy", DataType::Currency, false).is_err());
+        assert!(StringField::try_new("ccy", DataType::Ccy, false).is_err());
 
         // The code/width boundary is the one the markers exist for: a currency
         // and a `fixed_ascii(3)` are the same three bytes and are not each other.
-        assert_eq!(
-            CurrencyField::unit("ccy", false).dtype(),
-            &DataType::Currency
-        );
+        assert_eq!(CcyField::unit("ccy", false).dtype(), &DataType::Ccy);
         assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
         assert_eq!(
             MicCodeField::unit("venue", true).dtype(),
             &DataType::MicCode
         );
-        assert!(CurrencyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
+        assert!(CcyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
         // Six bytes against eight: the confusion a width/code mix-up produces.
         assert!(CfiCodeField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
@@ -666,7 +680,7 @@ mod fields {
         assert!(FieldScalar::new(&width.to_field(), "ABCDEFGHI").is_err());
 
         // A typed code value is checked at the width its own standard fixes.
-        let ccy = CurrencyField::unit("ccy", false);
+        let ccy = CcyField::unit("ccy", false);
         assert_eq!(
             FieldScalar::new(&ccy.to_field(), "USD").unwrap().as_str(),
             Some("USD")
@@ -693,12 +707,16 @@ mod fields {
         }
         assert!(FieldScalar::new(&note.to_field(), "USD\0").is_err());
 
-        // `sized_ascii(4)` is a maximum the value never carries.
+        // `sized_ascii(4)` is a maximum the value carries as its leaf.
         let bounded =
             StringField::try_new("ccy", DataType::from_str("ascii(4)").unwrap(), true).unwrap();
         let bounded_field = bounded.to_field();
         let held = FieldScalar::new(&bounded_field, "EURO").unwrap();
-        assert_eq!(held.value().dtype().unwrap(), DataType::ascii());
+        assert_eq!(
+            held.value().dtype().unwrap(),
+            DataType::sized_ascii(4).unwrap()
+        );
+        assert_eq!(held.value(), &Scalar::from("EURO"));
         let refused = FieldScalar::new(&bounded.to_field(), "EUROS")
             .unwrap_err()
             .to_string();

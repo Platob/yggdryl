@@ -7,10 +7,12 @@
 //! charset, how long - and every string the crate has is one member of it.
 //!
 //! [`StringType`] names the eighteen leaves: six shapes in each of the three
-//! charsets that have a datatype. [`crate::DataType::string`] builds the one
-//! string datatype, [`crate::DataType::String`], from a leaf; `utf8`,
-//! `string(us-ascii)`, `varchar(32)` and `char(8)` are spellings of leaves,
-//! never datatypes of their own. [`Str`] is the one string value, and the
+//! charsets that have a datatype, and each leaf is a [`crate::DataType`]
+//! variant and a [`crate::Scalar`] variant of its own, the number a fixed or
+//! sized leaf states carried inline. [`crate::DataType::string`] builds the
+//! datatype a leaf names; `utf8`, `string(us-ascii)`, `varchar(32)` and
+//! `char(8)` are spellings of leaves, never datatypes of their own. [`Str`] is
+//! the characters every string value holds, and the
 //! registered codes beside it are identities over a published registry rather
 //! than strings with a charset: each stores as the ASCII text it is, under its
 //! own Arrow extension name and held to its own standard's width. The enum
@@ -39,6 +41,7 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use std::fmt;
@@ -59,13 +62,13 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 
 use crate::parser;
 
-use crate::{Charset, DataType, DataTypeId, Error, Field, Result};
+use crate::{Charset, DataType, DataTypeId, Error, Field, Result, Scalar};
 
 /// What a string datatype lays out in Arrow, and what it reads back from.
 ///
@@ -253,33 +256,28 @@ pub(crate) mod casts {
         };
         let read = |cell: Cell<'_>| -> crate::Result<Str> {
             match (source, cell) {
-                (StringSource::String(parameters), Cell::Text(text)) => {
-                    Str::from_storage(text, *parameters).try_with_parameters(target)
-                }
+                (StringSource::String(_), Cell::Text(text)) => target.admit(Str::from(text)),
                 // A declared width trims its own padding where it reads.
                 (StringSource::String(parameters), Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
-                    Str::from_bytes(bytes, *parameters)?.try_with_parameters(target)
+                    target.admit(parameters.read_text(bytes)?)
                 }
                 // So does a code, at the width its standard fixes.
                 (StringSource::Code(code), Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
-                    Str::from_storage(code_cell_text(code, bytes)?, StringType::default())
-                        .try_with_parameters(target)
+                    target.admit(Str::from(code_cell_text(code, bytes)?))
                 }
                 // A UUID is sixteen bytes of identity, every one of which can be
                 // NUL, and its value is the canonical spelling they name.
                 (StringSource::Uuid, Cell::Bytes(bytes) | Cell::Slot(bytes)) => {
-                    Str::from(uuid_text(&uuid_parse(bytes)?)).try_with_parameters(target)
+                    target.admit(Str::from(uuid_text(&uuid_parse(bytes)?)))
                 }
                 (StringSource::Uuid, Cell::Text(text)) => {
-                    Str::from(uuid_text(&uuid_parse(text.as_bytes())?)).try_with_parameters(target)
+                    target.admit(Str::from(uuid_text(&uuid_parse(text.as_bytes())?)))
                 }
                 (StringSource::Code(_) | StringSource::Bare, Cell::Text(text)) => {
-                    Str::from_storage(text, StringType::default()).try_with_parameters(target)
+                    target.admit(Str::from(text))
                 }
-                (StringSource::Bare, Cell::Slot(bytes)) => {
-                    Str::from_bytes(trim_padding(bytes), target)
-                }
-                (StringSource::Bare, Cell::Bytes(bytes)) => Str::from_bytes(bytes, target),
+                (StringSource::Bare, Cell::Slot(bytes)) => target.read_text(trim_padding(bytes)),
+                (StringSource::Bare, Cell::Bytes(bytes)) => target.read_text(bytes),
             }
         };
         if let ArrowDataType::FixedSizeBinary(_) = array.data_type() {
@@ -376,7 +374,11 @@ pub(crate) mod casts {
                 Some(read @ Err(_)) => Some(named_cell(field, index, read)?),
                 None => None,
             };
-            payload = payload.saturating_add(value.as_ref().map_or(0, Str::encoded_len));
+            payload = payload.saturating_add(
+                value
+                    .as_ref()
+                    .map_or(0, |value| target.encoded_len(value.as_str())),
+            );
             values.push(value);
         }
         budget.add_bytes(payload)?;
@@ -659,7 +661,7 @@ impl DataType {
     /// binding read the codes from here rather than repeating four arms.
     pub const CODES: &'static [(&'static str, DataType, usize)] = &[
         ("country", DataType::Country, COUNTRY_WIDTH),
-        ("currency", DataType::Currency, CURRENCY_WIDTH),
+        ("ccy", DataType::Ccy, CCY_WIDTH),
         ("mic", DataType::MicCode, MIC_WIDTH),
         ("cfi", DataType::CfiCode, CFI_WIDTH),
         ("isin", DataType::IsinCode, ISIN_WIDTH),
@@ -971,9 +973,10 @@ fn validate_enum_text(part: &'static str, value: &str) -> Result<()> {
 impl DataType {
     /// The string datatype one leaf names.
     ///
-    /// This is the family's one constructor. Every string is
-    /// [`DataType::String`]; what differs is which leaf it is, and the leaf
-    /// says all of it - the shape, the charset, and the number.
+    /// This is the family's one constructor. Every string is one of the
+    /// eighteen leaf variants, [`DataType::Utf8String`] to
+    /// [`DataType::SizedCp1252String`], and the leaf says all of it - the
+    /// shape, the charset, and the number.
     ///
     /// ```
     /// use yggdryl::StringType;
@@ -1000,7 +1003,7 @@ impl DataType {
     pub fn string(parameters: impl Into<StringType>) -> Result<Self> {
         let parameters = parameters.into();
         parameters.validate()?;
-        Ok(Self::String(parameters))
+        Ok(Self::from(parameters))
     }
 
     /// The leaf a string datatype is, `None` for every other.
@@ -1026,14 +1029,31 @@ impl DataType {
     /// assert_eq!(ascii.charset(), Charset::Ascii);
     /// assert_eq!(ascii.fixed(), Some(3));
     ///
-    /// assert!(DataType::Currency.string_parameters().is_none());
+    /// assert!(DataType::Ccy.string_parameters().is_none());
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
     pub const fn string_parameters(&self) -> Option<StringType> {
         match self {
-            Self::String(parameters) => Some(*parameters),
+            Self::Utf8String => Some(StringType::Utf8String),
+            Self::LargeUtf8String => Some(StringType::LargeUtf8String),
+            Self::Utf8StringView => Some(StringType::Utf8StringView),
+            Self::LargeUtf8StringView => Some(StringType::LargeUtf8StringView),
+            Self::FixedUtf8String(number) => Some(StringType::FixedUtf8String(*number)),
+            Self::SizedUtf8String(number) => Some(StringType::SizedUtf8String(*number)),
+            Self::AsciiString => Some(StringType::AsciiString),
+            Self::LargeAsciiString => Some(StringType::LargeAsciiString),
+            Self::AsciiStringView => Some(StringType::AsciiStringView),
+            Self::LargeAsciiStringView => Some(StringType::LargeAsciiStringView),
+            Self::FixedAsciiString(number) => Some(StringType::FixedAsciiString(*number)),
+            Self::SizedAsciiString(number) => Some(StringType::SizedAsciiString(*number)),
+            Self::Cp1252String => Some(StringType::Cp1252String),
+            Self::LargeCp1252String => Some(StringType::LargeCp1252String),
+            Self::Cp1252StringView => Some(StringType::Cp1252StringView),
+            Self::LargeCp1252StringView => Some(StringType::LargeCp1252StringView),
+            Self::FixedCp1252String(number) => Some(StringType::FixedCp1252String(*number)),
+            Self::SizedCp1252String(number) => Some(StringType::SizedCp1252String(*number)),
             _ => None,
         }
     }
@@ -1041,7 +1061,7 @@ impl DataType {
     /// Return whether this datatype is a string.
     #[must_use]
     pub const fn is_string(&self) -> bool {
-        matches!(self, Self::String(_))
+        self.string_parameters().is_some()
     }
 
     /// The charset a string column's bytes are written in.
@@ -1072,22 +1092,18 @@ impl DataType {
     /// assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
     /// assert_eq!(DataType::sized_utf8(4)?.fixed_byte_width(), None);
-    /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
-    /// assert_eq!(DataType::Currency.code_width(), Some(3));
+    /// assert_eq!(DataType::Ccy.fixed_byte_width(), None);
+    /// assert_eq!(DataType::Ccy.code_width(), Some(3));
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
     pub const fn fixed_byte_width(&self) -> Option<usize> {
         match self {
-            Self::String(parameters) => match parameters.fixed() {
-                Some(width) => Some(width as usize),
-                None => None,
-            },
-            Self::Bytes(parameters) => match parameters.fixed() {
-                Some(width) => Some(width as usize),
-                None => None,
-            },
+            Self::FixedUtf8String(width)
+            | Self::FixedAsciiString(width)
+            | Self::FixedCp1252String(width)
+            | Self::FixedBinary(width) => Some(*width as usize),
             _ => self.id().fixed_byte_width(),
         }
     }
@@ -1448,11 +1464,10 @@ impl StringType {
         )
     }
 
-    /// The leaf a *value* of this column carries.
+    /// The leaf whose storage this column fills.
     ///
-    /// A maximum is the column's rule and not the value's, so a value in a
-    /// sized column is the plain leaf of its charset; every other leaf is
-    /// already what a value is.
+    /// A maximum is a rule laid over plain storage, so a sized column stores
+    /// as the plain leaf of its charset; every other leaf is its own storage.
     #[must_use]
     pub const fn storage(self) -> Self {
         match self {
@@ -1641,6 +1656,194 @@ impl StringType {
                 reason: SmolStr::new_static("expected a width of at least one byte, got 0"),
             }),
             _ => Ok(()),
+        }
+    }
+
+    /// Hold `text` as a value of this leaf, checked against it.
+    ///
+    /// This is the value door: the one rule every string value meets
+    /// whichever way it arrives. On a fixed leaf trailing NUL is padding, so
+    /// it is taken off here rather than left for every reader to trim.
+    /// US-ASCII is a repertoire and is judged here - a value holding a scalar
+    /// above `0x7F` or a NUL is refused - but every other charset is only
+    /// counted: whether its bytes can be written is the write seam's
+    /// question, because a value read back through [`Charset::transcribe`]
+    /// carries scalars the charset does not assign, and that is what
+    /// recovering damage means. The number is counted in stored bytes, which
+    /// [`Charset::encoded_len`] answers without building them.
+    ///
+    /// ```
+    /// use yggdryl::{Scalar, StringType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let code = StringType::FixedAsciiString(4).scalar("USD")?;
+    /// assert_eq!(code, Scalar::from("USD"), "a value is one value in any column");
+    /// assert_eq!(code.string_parameters(), Some(StringType::FixedAsciiString(4)));
+    /// assert!(StringType::AsciiString.scalar("é").is_err());
+    /// assert!(StringType::SizedUtf8String(2).scalar("abc").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidDataType`] for a numbered leaf stating zero,
+    /// and [`Error::InvalidRecord`] naming the number and the stored length
+    /// when the text does not fit it, or the byte that is not US-ASCII.
+    pub fn scalar(self, text: impl Into<Str>) -> Result<Scalar> {
+        Ok(self.adopt(self.admit(text.into())?))
+    }
+
+    /// Read the bytes a column of this leaf stores as one of its values.
+    ///
+    /// The charset decides how strict the reading is. UTF-8 and US-ASCII are
+    /// validated repertoires, so bytes that are not what they claim are
+    /// refused through [`Charset::decode`]. Every other charset is a
+    /// declaration that the column holds legacy bytes, and those are read
+    /// through [`Charset::transcribe`]: a byte the charset leaves unassigned
+    /// reads as the scalar ISO 8859-1 gives it, because a legacy export with
+    /// one bad byte in a million is a file that still has to be read. On a
+    /// fixed leaf the trailing NUL padding the storage writes is taken off
+    /// first.
+    ///
+    /// ```
+    /// use yggdryl::StringType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let value = StringType::FixedCp1252String(4).scalar_from_bytes(b"\xe9t\0\0")?;
+    /// assert_eq!(value.as_str(), Some("ét"));
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Codec`] naming the charset and the first byte it
+    /// refuses, and every refusal of [`Self::scalar`].
+    pub fn scalar_from_bytes(self, bytes: &[u8]) -> Result<Scalar> {
+        Ok(self.adopt(self.read_text(bytes)?))
+    }
+
+    /// The value of this leaf holding `text`, which is not checked again.
+    ///
+    /// The door for what was checked where it was written: a cell of a
+    /// column's own storage, and a value [`Self::admit`] already answered.
+    pub(crate) fn adopt(self, text: Str) -> Scalar {
+        match self {
+            Self::Utf8String => Scalar::Utf8String(text),
+            Self::LargeUtf8String => Scalar::LargeUtf8String(text),
+            Self::Utf8StringView => Scalar::Utf8StringView(text),
+            Self::LargeUtf8StringView => Scalar::LargeUtf8StringView(text),
+            Self::FixedUtf8String(number) => Scalar::FixedUtf8String(text, number),
+            Self::SizedUtf8String(number) => Scalar::SizedUtf8String(text, number),
+            Self::AsciiString => Scalar::AsciiString(text),
+            Self::LargeAsciiString => Scalar::LargeAsciiString(text),
+            Self::AsciiStringView => Scalar::AsciiStringView(text),
+            Self::LargeAsciiStringView => Scalar::LargeAsciiStringView(text),
+            Self::FixedAsciiString(number) => Scalar::FixedAsciiString(text, number),
+            Self::SizedAsciiString(number) => Scalar::SizedAsciiString(text, number),
+            Self::Cp1252String => Scalar::Cp1252String(text),
+            Self::LargeCp1252String => Scalar::LargeCp1252String(text),
+            Self::Cp1252StringView => Scalar::Cp1252StringView(text),
+            Self::LargeCp1252StringView => Scalar::LargeCp1252StringView(text),
+            Self::FixedCp1252String(number) => Scalar::FixedCp1252String(text, number),
+            Self::SizedCp1252String(number) => Scalar::SizedCp1252String(text, number),
+        }
+    }
+
+    /// The text of [`Self::scalar`], checked against this leaf and not yet
+    /// held as a value.
+    pub(crate) fn admit(self, text: Str) -> Result<Str> {
+        self.validate()?;
+        let mut text = text;
+        if self.is_fixed() && text.as_str().ends_with('\0') {
+            text = Str::from(text.as_str().trim_end_matches('\0'));
+        }
+        let charset = self.charset();
+        if charset == Charset::Ascii {
+            crate::ascii::ascii_repertoire(text.as_bytes())?;
+        }
+        if let Some(bound) = self.bound() {
+            let stored = charset.encoded_len(&text);
+            if stored > bound as usize {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        format_args!("at most {bound} bytes of {charset}"),
+                        format_smolstr!("{stored}"),
+                    ),
+                });
+            }
+        }
+        Ok(text)
+    }
+
+    /// The text of [`Self::scalar_from_bytes`], read and checked and not yet
+    /// held as a value.
+    pub(crate) fn read_text(self, bytes: &[u8]) -> Result<Str> {
+        let payload = match self.is_fixed() {
+            true => trim_padding(bytes),
+            false => bytes,
+        };
+        let text = match self.charset() {
+            Charset::Ascii => SmolStr::new(crate::ascii::decode(payload)?),
+            Charset::Cp1252 => crate::cp1252::transcribe_smol(payload),
+            // `charset` answers the three alone; what is not the other two
+            // is UTF-8.
+            _ => SmolStr::new(crate::utf8::decode(payload)?),
+        };
+        self.admit(Str::from(text))
+    }
+
+    /// The bytes `text` stores as under this leaf, in its charset.
+    ///
+    /// UTF-8 text borrows, and so does any all-ASCII text in any of the
+    /// ASCII-compatible charsets, so the ordinary column costs nothing to
+    /// write back out. A fixed leaf answers its whole padded slot.
+    ///
+    /// ```
+    /// use yggdryl::StringType;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(&*StringType::FixedAsciiString(4).encode("ab")?, b"ab\0\0");
+    /// assert!(StringType::FixedAsciiString(1).encode("ab").is_err());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Codec`] naming the first scalar the charset has no
+    /// byte for, and [`Error::InvalidRecord`] when the text is wider than a
+    /// fixed slot.
+    pub fn encode(self, text: &str) -> Result<Cow<'_, [u8]>> {
+        let encoded = self.charset().encode(text)?;
+        Ok(match self.fixed() {
+            Some(width) if encoded.len() > width as usize => {
+                return Err(Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: crate::text::expected_got(
+                        format_args!("at most {width} bytes of {}", self.charset()),
+                        format_smolstr!("{}", encoded.len()),
+                    ),
+                });
+            }
+            Some(width) => {
+                let mut padded = encoded.into_owned();
+                padded.resize(width as usize, 0);
+                Cow::Owned(padded)
+            }
+            None => encoded,
+        })
+    }
+
+    /// How many bytes [`Self::encode`] answers for `text`, without building
+    /// them: a fixed slot's width, otherwise what the charset counts.
+    #[must_use]
+    pub fn encoded_len(self, text: &str) -> usize {
+        match self.fixed() {
+            Some(width) => width as usize,
+            None => self.charset().encoded_len(text),
         }
     }
 
@@ -2205,7 +2408,7 @@ impl StringEnum {
     /// `exchange` and `mic` name one list because they name one thing: FIX
     /// calls the ISO 10383 code an `Exchange`, and ISO calls it a MIC.
     pub const PREBUILT: &'static [(&'static str, &'static [&'static str])] = &[
-        ("currency", Self::CURRENCIES),
+        ("ccy", Self::CURRENCIES),
         ("country", Self::COUNTRIES),
         ("mic", Self::MICS),
         ("exchange", Self::MICS),
@@ -2277,24 +2480,22 @@ impl StringEnum {
     }
 }
 
-/// The string value: the characters, held compactly, beside the leaf its
-/// column stores them under.
+/// The string value's characters, held compactly.
 ///
 /// A string value holds UTF-8 whatever charset it arrived in. That is the
 /// whole point of decoding at the seam: the bytes are read once, at the
 /// boundary that knows the charset, and everything above it reads characters.
-/// What the value keeps is the leaf it is *written* under - the charset, the
-/// shape and, on a fixed leaf, the width - so the same value goes back out the way
-/// it came without the column being consulted twice. A maximum is the
-/// column's rule and never the value's: a value read out of `utf8(32)` is a
-/// `utf8`, exactly as an integer read out of a bounded column is an integer.
+/// The leaf the value is written under - the charset, the shape and the
+/// number - is the [`Scalar`] variant that holds the [`Str`], so the same
+/// value goes back out the way it came without the column being consulted
+/// twice.
 ///
 /// [`Str`] is the one representation, and it is the crate's compact string:
 /// up to [`INLINE_CAPACITY`] bytes live inside the value with no heap behind
 /// them, a longer text is one shared `Arc<str>` that clones by reference
 /// count, and a `&'static str` costs nothing at all. Equality, order and
 /// hashing read the characters alone - a value is one value whichever column
-/// holds it - and the parameters ride beside them.
+/// holds it.
 mod scalars {
     use std::borrow::{Borrow, Cow};
     use std::fmt;
@@ -2306,9 +2507,8 @@ mod scalars {
     use serde::{Deserialize, Serialize};
     use smol_str::{SmolStr, format_smolstr};
 
-    use super::{StringType, trim_padding};
     use crate::Scalar;
-    use crate::{Charset, DataType, Error, Result, Value};
+    use crate::{DataType, Error, Result, Value};
 
     /// How many bytes of text a [`Str`] holds without reaching the heap.
     ///
@@ -2317,11 +2517,11 @@ mod scalars {
     /// a ticker or an ISO date all fit under it and never allocate.
     pub const INLINE_CAPACITY: usize = 23;
 
-    /// One string value: its characters and the parameters it is stored under.
+    /// One string value's characters.
     ///
     /// ```
     /// use yggdryl::{INLINE_CAPACITY, Str, StringType};
-    /// use yggdryl::{Charset, DataType, Scalar};
+    /// use yggdryl::{DataType, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // Short text lives inside the value; longer text is one shared handle.
@@ -2330,29 +2530,27 @@ mod scalars {
     /// let long = Str::new("a".repeat(INLINE_CAPACITY + 1));
     /// assert!(!long.is_inline());
     ///
-    /// // A value is one value whichever leaf it is stored under.
-    /// let latin = StringType::LargeCp1252String;
-    /// let restated = short.clone().try_with_parameters(latin)?;
-    /// assert_eq!(restated, short);
-    /// assert_eq!(restated.charset(), Charset::Cp1252);
-    /// assert_eq!(restated.dtype()?, DataType::large_cp1252());
-    /// assert_eq!(restated.dtype()?, DataType::from_str("large_string(windows-1252)")?);
+    /// // The leaf is the variant that holds the characters, and a value is
+    /// // one value whichever leaf it is stored under.
+    /// let latin = StringType::LargeCp1252String.scalar(short.clone())?;
+    /// assert_eq!(latin, Scalar::LargeCp1252String(short.clone()));
+    /// assert_eq!(latin, Scalar::from("AAPL"));
+    /// assert_eq!(latin.dtype()?, DataType::large_cp1252());
     ///
     /// // It is the crate's string, so it is the `Scalar` string too.
-    /// assert_eq!(Scalar::from("AAPL"), Scalar::String(short));
+    /// assert_eq!(Scalar::from("AAPL"), Scalar::Utf8String(short));
     /// # Ok(())
     /// # }
     /// ```
     #[derive(Clone)]
     pub struct Str {
         text: SmolStr,
-        parameters: StringType,
     }
 
-    const _: () = assert!(std::mem::size_of::<Str>() == 32);
+    const _: () = assert!(std::mem::size_of::<Str>() == 24);
 
     impl Str {
-        /// Text the binary already holds, under the default parameters.
+        /// Text the binary already holds.
         ///
         /// Costs nothing: no copy, no count, so a constant spelling is a
         /// constant value.
@@ -2360,119 +2558,17 @@ mod scalars {
         pub const fn new_static(text: &'static str) -> Self {
             Self {
                 text: SmolStr::new_static(text),
-                parameters: StringType::Utf8String,
             }
         }
 
-        /// A string value under the default parameters: the plain `utf8` leaf.
+        /// The characters of `text`.
         ///
         /// Text up to [`INLINE_CAPACITY`] bytes is copied into the value and
         /// allocates nothing; longer text is one shared `Arc<str>`.
         pub fn new(text: impl AsRef<str>) -> Self {
             Self {
                 text: SmolStr::new(text),
-                parameters: StringType::default(),
             }
-        }
-
-        /// Read the bytes a column stores, under the parameters it declares.
-        ///
-        /// This is the one door bytes take into a string value, and the charset
-        /// decides how strict it is. UTF-8 and US-ASCII are validated
-        /// repertoires - Arrow guarantees the first and the second rides Arrow's
-        /// text storage - so bytes that are not what they claim are refused
-        /// through [`Charset::decode`], and a US-ASCII value holds no NUL and no
-        /// byte above `0x7F`. Every other charset is a declaration that the
-        /// column holds legacy bytes, and those are read through
-        /// [`Charset::transcribe`]: a byte the charset leaves unassigned reads as
-        /// the scalar ISO 8859-1 gives it, because a legacy export with one bad
-        /// byte in a million is a file that still has to be read.
-        ///
-        /// On a fixed leaf the trailing NUL padding the storage writes is
-        /// taken off first, and the value carries the width the leaf
-        /// declares. A maximum is checked and not carried.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`Error::Codec`] naming the charset and the first byte it
-        /// refuses, [`Error::InvalidDataType`] for a numbered leaf stating zero,
-        /// and [`Error::InvalidRecord`] when the text does not fit the bound.
-        pub fn from_bytes(bytes: &[u8], parameters: StringType) -> Result<Self> {
-            let payload = match parameters.is_fixed() {
-                true => trim_padding(bytes),
-                false => bytes,
-            };
-            let text = match parameters.charset() {
-                Charset::Ascii => SmolStr::new(crate::ascii::decode(payload)?),
-                Charset::Cp1252 => crate::cp1252::transcribe_smol(payload),
-                // `charset` answers the three alone; what is not the other
-                // two is UTF-8.
-                _ => SmolStr::new(crate::utf8::decode(payload)?),
-            };
-            Self {
-                text,
-                parameters: StringType::default(),
-            }
-            .try_with_parameters(parameters)
-        }
-
-        /// The text a column's own storage holds, under the parameters it
-        /// declares, checked when it was written and not again here.
-        pub(crate) fn from_storage(text: &str, parameters: StringType) -> Self {
-            Self {
-                text: SmolStr::new(text),
-                parameters: parameters.storage(),
-            }
-        }
-
-        /// Restate the same characters under other parameters.
-        ///
-        /// The characters do not change and the storage is shared, not copied;
-        /// what changes is the bytes [`Self::encode`] answers and the datatype
-        /// [`Self::dtype`] declares. On a fixed leaf trailing NUL is padding,
-        /// so it is taken off here rather than left for every reader to trim.
-        ///
-        /// A maximum is checked and not carried: it is the column's rule, and
-        /// the value answers the plain leaf its storage is. The bound counts
-        /// stored bytes, which [`Charset::encoded_len`] answers without building
-        /// them. US-ASCII is a repertoire and is judged here - a value holding a
-        /// scalar above `0x7F` or a NUL is refused - but every other charset is
-        /// only counted: whether its bytes can be written is the write seam's
-        /// question, because a value read back through [`Charset::transcribe`]
-        /// carries scalars the charset does not assign, and that is what
-        /// recovering damage means.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`Error::InvalidDataType`] for a numbered leaf stating zero,
-        /// and [`Error::InvalidRecord`] naming the bound and the stored length
-        /// when the text does not fit it, or the byte that is not US-ASCII.
-        pub fn try_with_parameters(mut self, parameters: StringType) -> Result<Self> {
-            parameters.validate()?;
-            if parameters.is_fixed() {
-                let trimmed = self.text.trim_end_matches('\0');
-                if trimmed.len() != self.text.len() {
-                    self.text = SmolStr::new(trimmed);
-                }
-            }
-            let charset = parameters.charset();
-            if charset == Charset::Ascii {
-                crate::ascii::ascii_repertoire(self.text.as_bytes())?;
-            }
-            if let Some(bound) = parameters.bound() {
-                let stored = charset.encoded_len(&self.text);
-                if stored > bound as usize {
-                    return Err(Error::InvalidRecord {
-                        path: SmolStr::new_static("$"),
-                        reason: crate::text::expected_got(
-                            format_args!("at most {bound} bytes of {charset}"),
-                            format_smolstr!("{stored}"),
-                        ),
-                    });
-                }
-            }
-            self.parameters = parameters.storage();
-            Ok(self)
         }
 
         /// Borrow the characters.
@@ -2490,68 +2586,10 @@ mod scalars {
             &self.text
         }
 
-        /// The parameters this value is stored under.
-        ///
-        /// Never a sized leaf: a maximum is the column's declaration, and a
-        /// value read out of a bounded column answers the plain leaf it fills.
-        #[must_use]
-        pub const fn parameters(&self) -> StringType {
-            self.parameters
-        }
-
-        /// The charset this value's bytes are written in.
-        #[must_use]
-        pub const fn charset(&self) -> Charset {
-            self.parameters.charset()
-        }
-
-        /// The padded storage width, on a fixed leaf alone.
-        #[must_use]
-        pub const fn fixed(&self) -> Option<u32> {
-            self.parameters.fixed()
-        }
-
         /// Whether the characters live inside the value with no heap behind them.
         #[must_use]
         pub fn is_inline(&self) -> bool {
             !self.text.is_heap_allocated()
-        }
-
-        /// The stored bytes of this value, in the charset it declares.
-        ///
-        /// UTF-8 text borrows, and so does any all-ASCII value in any of the
-        /// ASCII-compatible charsets, so the ordinary column costs nothing to
-        /// write back out. A fixed leaf answers its whole padded slot.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`Error::Codec`] naming the first scalar the charset has no
-        /// byte for.
-        pub fn encode(&self) -> Result<Cow<'_, [u8]>> {
-            let encoded = match self.charset() {
-                Charset::Ascii => crate::ascii::encode(self.as_str())?,
-                Charset::Cp1252 => crate::cp1252::encode(self.as_str())?,
-                // `charset` answers the three alone; what is not the other
-                // two is UTF-8.
-                _ => Cow::Borrowed(crate::utf8::encode(self.as_str())),
-            };
-            Ok(match self.fixed() {
-                Some(width) => {
-                    let mut padded = encoded.into_owned();
-                    padded.resize(width as usize, 0);
-                    Cow::Owned(padded)
-                }
-                None => encoded,
-            })
-        }
-
-        /// How many bytes [`Self::encode`] answers, without building them.
-        #[must_use]
-        pub fn encoded_len(&self) -> usize {
-            match self.fixed() {
-                Some(width) => width as usize,
-                None => self.charset().encoded_len(self.as_str()),
-            }
         }
 
         /// Consume this value and return its characters as an owned `String`.
@@ -2564,16 +2602,6 @@ mod scalars {
         #[must_use]
         pub fn into_inner(self) -> SmolStr {
             self.text
-        }
-
-        /// The datatype this value materializes into.
-        ///
-        /// # Errors
-        ///
-        /// Returns [`Error::InvalidDataType`] only for parameters a constructor
-        /// would have refused, which no door here builds.
-        pub fn dtype(&self) -> Result<DataType> {
-            DataType::string(self.parameters)
         }
     }
 
@@ -2604,7 +2632,7 @@ mod scalars {
     }
 
     /// Sound because [`Eq`], [`Ord`] and [`Hash`] read the characters alone, as
-    /// `str`'s do; folding the parameters into any of them would break every
+    /// `str`'s do; folding anything else into any of them would break every
     /// `BTreeMap<Str, _>::get(&str)` in the crate.
     impl Borrow<str> for Str {
         fn borrow(&self) -> &str {
@@ -2619,15 +2647,8 @@ mod scalars {
     }
 
     impl fmt::Debug for Str {
-        /// The characters, and the parameters when they are not the default, so
-        /// two values that compare equal but declare different columns print
-        /// apart in a failing assertion.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            fmt::Debug::fmt(self.as_str(), formatter)?;
-            if self.parameters != StringType::default() {
-                write!(formatter, " as {}", self.parameters)?;
-            }
-            Ok(())
+            fmt::Debug::fmt(self.as_str(), formatter)
         }
     }
 
@@ -2756,10 +2777,7 @@ mod scalars {
 
     impl From<SmolStr> for Str {
         fn from(value: SmolStr) -> Self {
-            Self {
-                text: value,
-                parameters: StringType::default(),
-            }
+            Self { text: value }
         }
     }
 
@@ -2819,37 +2837,14 @@ mod scalars {
         }
     }
 
-    /// The serde representation of a string that declares more than its text.
-    ///
-    /// The ordinary value - plain UTF-8 - serializes its characters and
-    /// nothing else, exactly as it always has; any other leaf is what makes a
-    /// value carry more than that. The leaf's name says its charset, so none
-    /// is written; one read beside a charset-free name restates the leaf.
-    #[derive(Deserialize, Serialize)]
-    struct Declared<'a> {
-        layout: SmolStr,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        charset: Option<Charset>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        fixed: Option<u32>,
-        text: Cow<'a, str>,
-    }
-
+    /// The characters alone: the leaf a value is written under is the
+    /// [`Scalar`] variant's, and the `Scalar` wire writes it.
     impl Serialize for Str {
         fn serialize<S: serde::Serializer>(
             &self,
             serializer: S,
         ) -> std::result::Result<S::Ok, S::Error> {
-            if self.parameters == StringType::default() {
-                return serializer.serialize_str(self.as_str());
-            }
-            Declared {
-                layout: SmolStr::new_static(self.parameters().as_str()),
-                charset: None,
-                fixed: self.fixed(),
-                text: Cow::Borrowed(self.as_str()),
-            }
-            .serialize(serializer)
+            serializer.serialize_str(self.as_str())
         }
     }
 
@@ -2857,75 +2852,47 @@ mod scalars {
         fn deserialize<D: serde::Deserializer<'de>>(
             deserializer: D,
         ) -> std::result::Result<Self, D::Error> {
-            #[derive(Deserialize)]
-            #[serde(untagged)]
-            enum Representation<'a> {
-                Plain(Cow<'a, str>),
-                Declared(Declared<'a>),
-            }
-
-            match Representation::deserialize(deserializer)? {
-                Representation::Plain(text) => Ok(Self::from(text)),
-                Representation::Declared(declared) => {
-                    let mut leaf =
-                        StringType::from_str(&declared.layout).map_err(serde::de::Error::custom)?;
-                    if let Some(charset) = declared.charset {
-                        leaf = leaf
-                            .with_charset(charset)
-                            .map_err(serde::de::Error::custom)?;
-                    }
-                    // The number is what the document stated, never the
-                    // placeholder the name carries: a numbered layout with
-                    // no `fixed` is refused, not read as width one.
-                    let parameters = leaf
-                        .with_declared_bound(declared.fixed)
-                        .map_err(serde::de::Error::custom)?;
-                    Self::from(declared.text)
-                        .try_with_parameters(parameters)
-                        .map_err(serde::de::Error::custom)
-                }
-            }
+            Cow::<'de, str>::deserialize(deserializer).map(Self::from)
         }
     }
 
+    /// The characters are a value of the plain `utf8` leaf; a value of any
+    /// string leaf lends them.
     impl Value for Str {
         fn dtype(&self) -> Result<DataType> {
-            Self::dtype(self)
+            Ok(DataType::Utf8String)
         }
 
         fn into_scalar(self) -> Scalar {
-            Scalar::String(self)
+            Scalar::Utf8String(self)
         }
 
         fn from_scalar(value: &Scalar) -> Option<&Self> {
-            match value {
-                Scalar::String(value) => Some(value),
-                _ => None,
-            }
+            value.as_string()
         }
     }
 
     impl From<Str> for Scalar {
         fn from(value: Str) -> Self {
-            Self::String(value)
+            Self::Utf8String(value)
         }
     }
 
     impl From<&str> for Scalar {
         fn from(value: &str) -> Self {
-            Self::String(Str::new(value))
+            Self::Utf8String(Str::new(value))
         }
     }
 
     impl From<String> for Scalar {
         fn from(value: String) -> Self {
-            Self::String(Str::new(value))
+            Self::Utf8String(Str::new(value))
         }
     }
 
     impl From<SmolStr> for Scalar {
         fn from(value: SmolStr) -> Self {
-            Self::String(Str::from(value))
+            Self::Utf8String(Str::from(value))
         }
     }
 
@@ -2944,7 +2911,7 @@ mod scalars {
     /// than which kind arrived.
     pub(crate) fn str_from_value(value: &Scalar) -> Option<Result<Str>> {
         Some(match value {
-            Scalar::String(text) => Ok(text.clone()),
+            crate::string_scalars!(text) => Ok(text.clone()),
             code if code.is_code() => Ok(Str::from(
                 code.code_storage().expect("a code borrowed its storage"),
             )),
@@ -2966,18 +2933,180 @@ mod scalars {
                     .into_temporal_text()
                     .map(|text| Ok(Str::from(text)));
             }
-            Scalar::Bytes(bytes) => {
-                std::str::from_utf8(bytes.as_bytes())
-                    .map(Str::new)
-                    .map_err(|error| Error::InvalidRecord {
-                        path: SmolStr::new_static("$"),
-                        reason: format_smolstr!("payload is not UTF-8: {error}"),
-                    })
-            }
+            crate::bytes_scalars!(bytes) => std::str::from_utf8(bytes.as_bytes())
+                .map(Str::new)
+                .map_err(|error| Error::InvalidRecord {
+                    path: SmolStr::new_static("$"),
+                    reason: format_smolstr!("payload is not UTF-8: {error}"),
+                }),
             Scalar::Geometry(value) => crate::wkb::into_wkt(value.as_bytes()).map(Str::from),
             Scalar::Geography(value) => crate::wkb::into_wkt(value.as_bytes()).map(Str::from),
             _ => return None,
         })
+    }
+}
+
+// ------------------------------------------------------------------------
+// A string value: the leaf is the variant, the characters its payload.
+// ------------------------------------------------------------------------
+impl Scalar {
+    /// The leaf a string value is written under, `None` for every other
+    /// value.
+    ///
+    /// The leaf is the variant, the number a fixed or sized one carries
+    /// included, so a value read out of `sized_utf8(32)` answers
+    /// `SizedUtf8String(32)`. The registered codes store as text too but are
+    /// not strings; [`Self::as_str`] reads their text.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar, StringType};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// assert_eq!(Scalar::from("a").string_parameters(), Some(StringType::Utf8String));
+    /// let bounded = DataType::sized_ascii(8)?.scalar("a")?;
+    /// assert_eq!(bounded.string_parameters(), Some(StringType::SizedAsciiString(8)));
+    /// assert_eq!(Scalar::from(1_i32).string_parameters(), None);
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn string_parameters(&self) -> Option<StringType> {
+        match self.string_leaf() {
+            Some((leaf, _)) => Some(leaf),
+            None => None,
+        }
+    }
+
+    /// The characters of a string value of any leaf, `None` for every other
+    /// value - a registered code included, which [`Self::as_str`] reads.
+    #[must_use]
+    pub const fn as_string(&self) -> Option<&Str> {
+        match self {
+            crate::string_scalars!(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    /// The leaf and the characters of a string value.
+    pub(crate) const fn string_leaf(&self) -> Option<(StringType, &Str)> {
+        match self {
+            Self::Utf8String(text) => Some((StringType::Utf8String, text)),
+            Self::LargeUtf8String(text) => Some((StringType::LargeUtf8String, text)),
+            Self::Utf8StringView(text) => Some((StringType::Utf8StringView, text)),
+            Self::LargeUtf8StringView(text) => Some((StringType::LargeUtf8StringView, text)),
+            Self::FixedUtf8String(text, number) => {
+                Some((StringType::FixedUtf8String(*number), text))
+            }
+            Self::SizedUtf8String(text, number) => {
+                Some((StringType::SizedUtf8String(*number), text))
+            }
+            Self::AsciiString(text) => Some((StringType::AsciiString, text)),
+            Self::LargeAsciiString(text) => Some((StringType::LargeAsciiString, text)),
+            Self::AsciiStringView(text) => Some((StringType::AsciiStringView, text)),
+            Self::LargeAsciiStringView(text) => Some((StringType::LargeAsciiStringView, text)),
+            Self::FixedAsciiString(text, number) => {
+                Some((StringType::FixedAsciiString(*number), text))
+            }
+            Self::SizedAsciiString(text, number) => {
+                Some((StringType::SizedAsciiString(*number), text))
+            }
+            Self::Cp1252String(text) => Some((StringType::Cp1252String, text)),
+            Self::LargeCp1252String(text) => Some((StringType::LargeCp1252String, text)),
+            Self::Cp1252StringView(text) => Some((StringType::Cp1252StringView, text)),
+            Self::LargeCp1252StringView(text) => Some((StringType::LargeCp1252StringView, text)),
+            Self::FixedCp1252String(text, number) => {
+                Some((StringType::FixedCp1252String(*number), text))
+            }
+            Self::SizedCp1252String(text, number) => {
+                Some((StringType::SizedCp1252String(*number), text))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A string value as the `Scalar` wire writes it under the `string` tag.
+///
+/// The ordinary value - the `utf8` leaf - writes its characters and nothing
+/// else, which is what it always wrote; any other leaf writes the whole
+/// declaration: its name, the number a fixed or sized leaf states under
+/// `fixed`, and the characters.
+pub(crate) struct StringWire<'a> {
+    pub(crate) leaf: StringType,
+    pub(crate) text: &'a Str,
+}
+
+#[derive(Deserialize, Serialize)]
+struct DeclaredString<'a> {
+    layout: SmolStr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    charset: Option<Charset>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fixed: Option<u32>,
+    text: Cow<'a, str>,
+}
+
+impl Serialize for StringWire<'_> {
+    fn serialize<S: serde::Serializer>(
+        &self,
+        serializer: S,
+    ) -> std::result::Result<S::Ok, S::Error> {
+        if self.leaf == StringType::Utf8String {
+            return serializer.serialize_str(self.text.as_str());
+        }
+        DeclaredString {
+            layout: SmolStr::new_static(self.leaf.as_str()),
+            charset: None,
+            fixed: self.leaf.bound(),
+            text: Cow::Borrowed(self.text.as_str()),
+        }
+        .serialize(serializer)
+    }
+}
+
+/// What the `string` tag reads back: the value, in the leaf its document
+/// names and checked against it.
+///
+/// A charset key beside a charset-free name restates the leaf, as an older
+/// document wrote it. The number is what the document stated, never the
+/// placeholder a numbered name carries, so a numbered layout with no `fixed`
+/// is refused. A number beside a leaf that states none is read as
+/// `with_bound` reads it - a maximum the text is checked against on the plain
+/// leaf, refused on the large and viewed ones - and the value is the leaf the
+/// document names, as it always was.
+pub(crate) struct StringDocument(pub(crate) Scalar);
+
+impl<'de> Deserialize<'de> for StringDocument {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Representation<'a> {
+            Plain(Cow<'a, str>),
+            Declared(DeclaredString<'a>),
+        }
+
+        use serde::de::Error as _;
+        match Representation::deserialize(deserializer)? {
+            Representation::Plain(text) => Ok(Self(Scalar::Utf8String(Str::from(text)))),
+            Representation::Declared(declared) => {
+                let mut leaf = StringType::from_str(&declared.layout).map_err(D::Error::custom)?;
+                if let Some(charset) = declared.charset {
+                    leaf = leaf.with_charset(charset).map_err(D::Error::custom)?;
+                }
+                let bounded = leaf
+                    .with_declared_bound(declared.fixed)
+                    .map_err(D::Error::custom)?;
+                let text = bounded
+                    .admit(Str::from(declared.text))
+                    .map_err(D::Error::custom)?;
+                Ok(Self(match leaf.bound() {
+                    Some(_) => bounded.adopt(text),
+                    None => leaf.adopt(text),
+                }))
+            }
+        }
     }
 }
 
@@ -2996,31 +3125,65 @@ pub(crate) fn trim_padding(bytes: &[u8]) -> &[u8] {
     &bytes[..end]
 }
 
+/// The datatype a leaf names: each leaf is a variant of its own, the number
+/// carried as it stands. [`DataType::string`] is the door that also refuses a
+/// numbered leaf stating zero.
+impl From<StringType> for DataType {
+    fn from(value: StringType) -> Self {
+        match value {
+            StringType::Utf8String => Self::Utf8String,
+            StringType::LargeUtf8String => Self::LargeUtf8String,
+            StringType::Utf8StringView => Self::Utf8StringView,
+            StringType::LargeUtf8StringView => Self::LargeUtf8StringView,
+            StringType::FixedUtf8String(number) => Self::FixedUtf8String(number),
+            StringType::SizedUtf8String(number) => Self::SizedUtf8String(number),
+            StringType::AsciiString => Self::AsciiString,
+            StringType::LargeAsciiString => Self::LargeAsciiString,
+            StringType::AsciiStringView => Self::AsciiStringView,
+            StringType::LargeAsciiStringView => Self::LargeAsciiStringView,
+            StringType::FixedAsciiString(number) => Self::FixedAsciiString(number),
+            StringType::SizedAsciiString(number) => Self::SizedAsciiString(number),
+            StringType::Cp1252String => Self::Cp1252String,
+            StringType::LargeCp1252String => Self::LargeCp1252String,
+            StringType::Cp1252StringView => Self::Cp1252StringView,
+            StringType::LargeCp1252StringView => Self::LargeCp1252StringView,
+            StringType::FixedCp1252String(number) => Self::FixedCp1252String(number),
+            StringType::SizedCp1252String(number) => Self::SizedCp1252String(number),
+        }
+    }
+}
+
+impl TryFrom<&DataType> for StringType {
+    type Error = Error;
+
+    fn try_from(value: &DataType) -> Result<Self> {
+        value
+            .string_parameters()
+            .ok_or_else(|| Error::InvalidDataType {
+                kind: "string",
+                reason: format_smolstr!("expected a string datatype, got {value}"),
+            })
+    }
+}
+
 impl crate::DataTypeValue for StringType {
     const FAMILY: &'static str = "string";
 
     type Sidecar = ();
 
     fn id(&self) -> crate::DataTypeId {
-        DataType::String(*self).id()
-    }
-
-    fn kind(&self) -> crate::DataTypeKind {
-        crate::DataTypeKind::Text
+        StringType::id(*self)
     }
 
     fn validate(&self) -> Result<()> {
-        DataType::String(*self).validate()
+        StringType::validate(*self)
     }
 
     fn into_dtype(self) -> DataType {
-        DataType::String(self)
+        DataType::from(self)
     }
 
     fn from_dtype(dtype: &DataType) -> Option<Self> {
-        match dtype {
-            DataType::String(parameters) => Some(*parameters),
-            _ => None,
-        }
+        dtype.string_parameters()
     }
 }

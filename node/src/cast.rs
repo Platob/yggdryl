@@ -14,6 +14,7 @@ use napi_derive::napi;
 use serde_json::{Value as JsonValue, json};
 use yggdryl::{ArrowCastPlan, Field as CoreField};
 
+use crate::chunked_serie::JsChunkedSerie;
 use crate::field::JsField;
 use crate::napi_error;
 use crate::serie::JsSerie;
@@ -52,6 +53,16 @@ impl JsArrowCastPlan {
         self.inner
             .apply(&serie.inner)
             .map(JsSerie::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Cast every chunk of a chunked column laid out as `source`, the chunks
+    /// kept apart.
+    #[napi(js_name = "_applyChunkedNative", skip_typescript)]
+    pub fn apply_chunked(&self, chunked: &JsChunkedSerie) -> Result<JsChunkedSerie> {
+        self.inner
+            .apply_chunked(&chunked.inner)
+            .map(JsChunkedSerie::from_core)
             .map_err(napi_error)
     }
 
