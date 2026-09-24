@@ -241,6 +241,14 @@ pub struct FixMsg {
     /// derived overlay - never on the wire, never in the arrival record - kept
     /// across settles and filling only a key the stated set leaves absent.
     derived: SecurityIds,
+    /// What the message states that its reading could not take as it
+    /// stands: the parse's refusals first - a value that would not type, a
+    /// counter disagreeing with its group - then what a settle dropped,
+    /// rebuilt by every settle behind the parse's and folded as a union when
+    /// messages merge. Never a column, never a digest input.
+    anomalies: Vec<super::FixAnomaly>,
+    /// How many of `anomalies` the parse recorded, which every settle keeps.
+    arrival_anomalies: usize,
 }
 
 /// Whether `held` is the four parts of a session event joined by `:`,
@@ -590,8 +598,13 @@ impl FixMsg {
         source: Option<Uuid>,
         official_time_delay_ns: i64,
     ) -> Result<Self> {
-        let super::build::Built { field, value, .. } = built;
-        Self::assemble(
+        let super::build::Built {
+            field,
+            value,
+            anomalies,
+            ..
+        } = built;
+        let mut message = Self::assemble(
             registry,
             field,
             value,
@@ -599,7 +612,10 @@ impl FixMsg {
             source,
             official_time_delay_ns,
             false,
-        )
+        )?;
+        message.arrival_anomalies = anomalies.len();
+        message.anomalies = anomalies;
+        Ok(message)
     }
 
     /// Builds a message from the content reconstructed out of a semantic row.
@@ -771,6 +787,8 @@ impl FixMsg {
             entries: OnceLock::new(),
             carried: Vec::new(),
             derived: SecurityIds::default(),
+            anomalies: Vec::new(),
+            arrival_anomalies: 0,
         };
         // The instant the message happened: what it states, else when the
         // transaction it reports happened, else when it was sent - the one
@@ -1017,6 +1035,30 @@ impl FixMsg {
         })
     }
 
+    /// What the message states that its reading could not take as it
+    /// stands, in arrival order: the parse's refusals - a value that would
+    /// not type, a counter disagreeing with its group - then what the last
+    /// settle dropped. Read off the message beside the row: never a column,
+    /// never part of the code it digests to. Two statements of one message
+    /// merge them as a union, the reference's first.
+    #[must_use]
+    pub fn anomalies(&self) -> &[super::FixAnomaly] {
+        &self.anomalies
+    }
+
+    /// Takes the parse's anomalies of another statement of this message
+    /// into this one's, each once, so a merge loses no refusal either side
+    /// recorded; what a settle drops is this message's own to record again.
+    fn fold_anomalies(&mut self, other: &Self) {
+        for anomaly in &other.anomalies[..other.arrival_anomalies] {
+            if !self.anomalies[..self.arrival_anomalies].contains(anomaly) {
+                self.anomalies
+                    .insert(self.arrival_anomalies, anomaly.clone());
+                self.arrival_anomalies += 1;
+            }
+        }
+    }
+
     /// Settles the identity from what the message states: the cross code
     /// where it names none yet, the cross codes in step with it, the code
     /// the content digests to, and the identity the instant and that code
@@ -1029,6 +1071,7 @@ impl FixMsg {
     /// `sync_session_event_identifier` states their joined values as the
     /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
+        self.anomalies.truncate(self.arrival_anomalies);
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
@@ -1145,6 +1188,7 @@ impl FixMsg {
         debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
         crate::graph::market::merge_operation_event_into_reference(&mut self, other);
+        self.fold_anomalies(other);
         Ok(self)
     }
 
@@ -3052,6 +3096,8 @@ impl Clone for FixMsg {
             entries: self.entries.clone(),
             carried: self.carried.clone(),
             derived: self.derived.clone(),
+            anomalies: self.anomalies.clone(),
+            arrival_anomalies: self.arrival_anomalies,
         }
     }
 }
@@ -3171,7 +3217,9 @@ impl Element for FixMsg {
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
-        self.merging_operation_event(other)
+        let mut merged = self.merging_operation_event(other)?;
+        merged.fold_anomalies(other);
+        Some(merged)
     }
 }
 

@@ -2134,6 +2134,19 @@ impl PyFixMsg {
         self.inner.get_lastpx().map(decimal_scalar)
     }
 
+    /// What the message states that its reading could not take as it
+    /// stands, each as `(field, reason)` in arrival order: a value that
+    /// would not type, a counter disagreeing with its group, what the last
+    /// settle dropped. Never a column.
+    #[getter]
+    fn anomalies(&self) -> Vec<(String, String)> {
+        self.inner
+            .anomalies()
+            .iter()
+            .map(|held| (held.field().to_owned(), held.reason().to_owned()))
+            .collect()
+    }
+
     /// The quantity it last traded, `LastQty(32)`; `None` where none.
     #[getter]
     fn lastqty(&self) -> Option<PyScalar> {

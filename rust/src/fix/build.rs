@@ -701,6 +701,10 @@ pub(super) struct Builder<'registry> {
     /// finishes. Best-effort fields never enter this bounded error slot.
     failure: Option<Error>,
     composed: Vec<Composed>,
+    /// What this build could not read as it stands - a value that would not
+    /// type, a counter disagreeing with its group - in arrival order, kept
+    /// on the message beside the row.
+    anomalies: Vec<super::FixAnomaly>,
 }
 
 /// The pair one fold records, as the line wrote it.
@@ -764,6 +768,7 @@ impl<'registry> Builder<'registry> {
             arrival: None,
             failure: None,
             composed: Vec::new(),
+            anomalies: Vec::new(),
         }
     }
 
@@ -1201,7 +1206,7 @@ impl<'registry> Builder<'registry> {
     /// because a line asks it for every value and a capture asks it a
     /// million times. A field with no such declaration is read directly.
     fn typed(
-        &self,
+        &mut self,
         field: &Field,
         source: Option<&'registry Field>,
         raw: &[u8],
@@ -1212,8 +1217,14 @@ impl<'registry> Builder<'registry> {
         // control byte a bridge left in a value is not part of it. The entry
         // keeps the decode as it was, which is what the anomaly reads.
         let cleaned = cleaned(text);
-        self.typed_value(field, source, raw, &cleaned)
-            .unwrap_or(Scalar::Null)
+        match self.typed_value(field, source, raw, &cleaned) {
+            Ok(value) => value,
+            Err(error) => {
+                self.anomalies
+                    .push(super::FixAnomaly::new(field.name(), error.to_string()));
+                Scalar::Null
+            }
+        }
     }
 
     /// The shared conversion before best-effort callers discard a refusal.
@@ -1760,6 +1771,7 @@ impl<'registry> Builder<'registry> {
             mut slots,
             failure,
             composed,
+            mut anomalies,
             ..
         } = self;
         if let Some(error) = failure {
@@ -1835,6 +1847,18 @@ impl<'registry> Builder<'registry> {
                 tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
             }) {
                 let count = i32::try_from(held).unwrap_or(i32::MAX);
+                // The number that arrived and the occurrences the group
+                // holds are two readings of one line: where they disagree,
+                // the group's is the row's and the disagreement is kept.
+                if let Some(stated) = values[at]
+                    .as_i64()
+                    .filter(|stated| *stated != i64::from(count))
+                {
+                    anomalies.push(super::FixAnomaly::new(
+                        fields[at].name(),
+                        format!("states {stated}, the group holds {held}"),
+                    ));
+                }
                 if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
                     values[at] = value;
                 }
@@ -1850,6 +1874,7 @@ impl<'registry> Builder<'registry> {
             value: Scalar::from_sequence(values),
             tags,
             composed,
+            anomalies,
         })
     }
 }
@@ -1861,6 +1886,8 @@ pub(super) struct Built {
     pub(super) value: Scalar,
     pub(super) tags: Vec<(i32, usize)>,
     composed: Vec<Composed>,
+    /// What the build could not read as it stands, in arrival order.
+    pub(super) anomalies: Vec<super::FixAnomaly>,
 }
 
 impl Built {

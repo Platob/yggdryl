@@ -134,6 +134,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Result};
 
 mod aliases;
+mod anomaly;
 mod cfi;
 // Batching is the crate's Arrow surface seen from FIX, so it exists exactly
 // where that surface does.
@@ -170,6 +171,7 @@ pub(crate) mod schema;
 pub(crate) mod store;
 mod ulbridge;
 
+pub use anomaly::FixAnomaly;
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, DEFAULT_REFUSED_MSGTYPES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeSet, FixCodeValue, FixCodes};

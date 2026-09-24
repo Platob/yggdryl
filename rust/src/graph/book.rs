@@ -914,11 +914,11 @@ impl BookSide {
             let quantity = level.iter().try_fold(Decimal18::ZERO, |sum, operation| {
                 sum.checked_add(operation.get_quantity().unwrap_or(Decimal18::ZERO))
                     .ok_or_else(|| {
-                    invalid(
-                        "$.quantity",
-                        "aggregate best-level quantity exceeds decimal18",
-                    )
-                })
+                        invalid(
+                            "$.quantity",
+                            "aggregate best-level quantity exceeds decimal18",
+                        )
+                    })
             })?;
             let first = &level[0];
             element.set_price(Some(price.price()));

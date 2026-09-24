@@ -163,6 +163,16 @@ pub struct FixCommitReport {
 /// and the group a specification adds where it has them. A key a member does
 /// not state is absent rather than empty, so a bare code is the two facts it
 /// is.
+/// One thing a message states that its reading could not take as it
+/// stands: the field it was stated under, and why.
+#[napi(object)]
+pub struct FixAnomalyView {
+    /// The dictionary's name for the field, else the key as it arrived.
+    pub field: String,
+    /// Why the reading could not take the value as it stands.
+    pub reason: String,
+}
+
 #[napi(object)]
 pub struct FixCode {
     /// The wire value this code stands for.
@@ -1717,6 +1727,21 @@ impl JsFixMsg {
     #[napi(getter)]
     pub fn lastpx(&self) -> Option<String> {
         self.inner.get_lastpx().map(|held| held.to_string())
+    }
+
+    /// What the message states that its reading could not take as it
+    /// stands, in arrival order: a value that would not type, a counter
+    /// disagreeing with its group, what the last settle dropped.
+    #[napi(getter)]
+    pub fn anomalies(&self) -> Vec<FixAnomalyView> {
+        self.inner
+            .anomalies()
+            .iter()
+            .map(|held| FixAnomalyView {
+                field: held.field().to_owned(),
+                reason: held.reason().to_owned(),
+            })
+            .collect()
     }
 
     /// The quantity it last traded, `LastQty(32)`, or `null`.
