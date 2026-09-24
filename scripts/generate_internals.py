@@ -49,21 +49,29 @@ def module_path(path: pathlib.Path) -> str:
 
 
 def guards(path: pathlib.Path) -> list[str]:
-    """Return the cfg attributes the crate declares this module behind."""
-    root = module_path(path).split("::")[0]
-    text = LIB.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    for index, line in enumerate(lines):
-        if not re.match(rf"^(?:pub(?:\(crate\))? )?mod {root};$", line):
-            continue
-        found = []
-        look = index - 1
-        while look >= 0 and lines[look].startswith("#["):
-            if lines[look].startswith("#[cfg"):
-                found.append(lines[look])
-            look -= 1
-        return list(reversed(found))
-    return []
+    """Return the cfg attributes the crate declares this module behind: those on
+    every `mod` declaration from `lib.rs` down to the file's own."""
+    parts = module_path(path).split("::")
+    found: list[str] = []
+    declaring = LIB
+    for depth, name in enumerate(parts):
+        lines = declaring.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not re.match(rf"^(?:pub(?:\([a-z]+\))? )?mod {name};$", line):
+                continue
+            own: list[str] = []
+            look = index - 1
+            while look >= 0 and lines[look].startswith("#["):
+                if lines[look].startswith("#[cfg"):
+                    own.append(lines[look])
+                look -= 1
+            found.extend(reversed(own))
+            break
+        folder = SRC.joinpath(*parts[: depth + 1])
+        declaring = folder / "mod.rs"
+        if not declaring.exists():
+            declaring = folder.with_suffix(".rs")
+    return found
 
 
 def block() -> str:

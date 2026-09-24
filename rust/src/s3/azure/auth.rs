@@ -6,11 +6,11 @@
 //! for a public container. The choice belongs to the client, is made once, and
 //! never changes for the life of a handle.
 
-use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
 use super::options::AzureOptions;
 use super::sign::SharedKey;
+use crate::auth::{Bearer, Lease, variable};
 use crate::{Error, Result, Scalar};
 
 /// The scope a storage token is asked for.
@@ -26,6 +26,9 @@ const IMDS_VERSION: &str = "2018-02-01";
 const IDENTITY_VERSION: &str = "2019-08-01";
 /// How long before a token lapses it is obtained again.
 const REFRESH_MARGIN: Duration = Duration::from_secs(5 * 60);
+/// After a token could not be obtained, how long before it is asked for
+/// again rather than the failure answered once more.
+const RETRY_PAUSE: Duration = Duration::from_secs(30);
 /// Off an Azure host, reaching the link-local address hangs; a token is not
 /// worth waiting on that long.
 const IMDS_TIMEOUT: Duration = Duration::from_secs(2);
@@ -154,7 +157,7 @@ impl Authorization {
 /// Where a bearer token comes from, and the one currently held.
 pub(crate) struct TokenCache {
     source: Source,
-    held: Mutex<Option<(String, Option<SystemTime>)>>,
+    held: Lease<Bearer>,
 }
 
 /// The identity a token is obtained for.
@@ -212,25 +215,37 @@ impl TokenCache {
     fn of(source: Source) -> Self {
         Self {
             source,
-            held: Mutex::new(None),
+            held: Lease::new(
+                "Azure bearer token",
+                REFRESH_MARGIN,
+                RETRY_PAUSE,
+                RETRY_PAUSE,
+            ),
         }
     }
 
-    /// The token to authorize with now, obtaining one if what is held lapses.
+    /// The token to authorize with now, obtaining one if what is held
+    /// lapses, and keeping what is held when obtaining another fails while it
+    /// still stands.
     fn resolve(&self, agent: &ureq::Agent, now: SystemTime) -> Result<String> {
-        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((token, expiry)) = held.as_ref() {
-            if expiry.is_none_or(|expiry| expiry > now + REFRESH_MARGIN) {
-                return Ok(token.clone());
-            }
-        }
-        let (token, expiry) = self.obtain(agent, now)?;
-        *held = Some((token.clone(), expiry));
-        Ok(token)
+        self.held
+            .get(now, || self.obtain(agent, now).map(Some))?
+            .map(|bearer| bearer.value().to_owned())
+            .ok_or_else(|| refusal("no bearer token was obtained"))
     }
 
     /// Ask this cache's source for a token.
-    fn obtain(&self, agent: &ureq::Agent, now: SystemTime) -> Result<(String, Option<SystemTime>)> {
+    fn obtain(&self, agent: &ureq::Agent, now: SystemTime) -> Result<Bearer> {
+        let (value, expiry) = self.obtain_pair(agent, now)?;
+        Ok(Bearer::new(value, expiry))
+    }
+
+    /// The token and its expiry, from whichever source this is.
+    fn obtain_pair(
+        &self,
+        agent: &ureq::Agent,
+        now: SystemTime,
+    ) -> Result<(String, Option<SystemTime>)> {
         match &self.source {
             Source::Fixed(token) => Ok((token.clone(), None)),
             Source::ClientSecret {
@@ -393,20 +408,12 @@ fn form(pairs: &[(&str, &str)]) -> String {
         .map(|(name, value)| {
             format!(
                 "{}={}",
-                super::super::sigv4::encode_query_component(name),
-                super::super::sigv4::encode_query_component(value)
+                crate::aws::sigv4::encode_query_component(name),
+                crate::aws::sigv4::encode_query_component(value)
             )
         })
         .collect::<Vec<_>>()
         .join("&")
-}
-
-/// One environment variable, empty read as unset.
-fn variable(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
 }
 
 /// Refuse something about obtaining a token.

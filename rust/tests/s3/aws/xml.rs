@@ -10,7 +10,8 @@ use yggdryl::internals::s3_aws_xml::{
     decode_url, parse_complete_multipart, parse_delete_result, parse_list_objects, parse_upload_id,
     render_complete_multipart, render_create_bucket, render_delete_objects,
 };
-use yggdryl::internals::s3_xml::{escape_text, parse_document};
+use yggdryl::internals::s3_xml::escape_text;
+use yggdryl::internals::xml::parse_document;
 
 const XMLNS: &str = "http://s3.amazonaws.com/doc/2006-03-01/";
 
