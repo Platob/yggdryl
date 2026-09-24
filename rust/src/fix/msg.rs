@@ -1351,15 +1351,34 @@ impl FixMsg {
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
         // The security identifiers FIX states, under the source that names
         // each, with a crated column's row-stated entry kept over them.
-        let mut securityids = self.stated_securityids();
-        for (bit, key) in [
-            (ROW_STATED_ISIN, "ISIN"),
-            (ROW_STATED_BLOOMBERG, "BLOOMBERG"),
-            (ROW_STATED_FIGI, "FIGI"),
+        let (mut securityids, mut dropped) = self.stated_securityids();
+        // A crated column's row-stated entry ranks after the wire's own:
+        // it fills a key the wire leaves absent, and a different code under
+        // a filled key is dropped with an anomaly.
+        for (bit, key, name) in [
+            (ROW_STATED_ISIN, "ISIN", super::ISINCODE_TAG_NAME.1),
+            (
+                ROW_STATED_BLOOMBERG,
+                "BLOOMBERG",
+                super::BLOOMBERGCODE_TAG_NAME.1,
+            ),
+            (ROW_STATED_FIGI, "FIGI", super::FIGICODE_TAG_NAME.1),
         ] {
             if row_stated & bit != 0 {
                 if let Some(id) = self.event.get_securityids().get_id(key) {
-                    securityids.set(id.clone());
+                    match securityids.get(key) {
+                        Some(held) if held != id.code() => dropped.push(super::FixAnomaly::new(
+                            name,
+                            format!(
+                                "states {key}:{} where {key}:{held} is already stated",
+                                id.code()
+                            ),
+                        )),
+                        Some(_) => {}
+                        None => {
+                            securityids.insert(id.clone());
+                        }
+                    }
                 }
             }
         }
@@ -1485,6 +1504,9 @@ impl FixMsg {
         if row_stated & ROW_STATED_MIC == 0 {
             event.set_miccode(miccode);
         }
+        // What the stated identifiers dropped, recorded once the readings
+        // above no longer borrow the message.
+        self.anomalies.extend(dropped);
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
         }
@@ -1520,26 +1542,72 @@ impl FixMsg {
     /// `SecurityID(48)` under its `SecurityIDSource(22)`, then each
     /// `secaltids` occurrence, each source read through [`SecType::read`],
     /// each code validated, the first stated code under a key kept.
-    fn stated_securityids(&self) -> SecurityIds {
+    fn stated_securityids(&self) -> (SecurityIds, Vec<super::FixAnomaly>) {
         let mut ids = SecurityIds::default();
-        let mut state = |source: Option<SmolStr>, code: Option<SmolStr>| {
-            if let (Some(source), Some(code)) = (source, code) {
-                if let Ok(key) = SecType::read(&source) {
-                    if let Ok(id) = SecurityId::new(key, &code) {
+        let mut anomalies = Vec::new();
+        // Fill only: the same code twice under one key is one entry, and a
+        // later different code under a filled key is dropped with an
+        // anomaly, staying on the wire as it arrived.
+        let mut insert = |field: &str, key: SecType, code: &str| match SecurityId::new(key, code) {
+            Ok(id) => {
+                let key = id.sectype();
+                match ids.get(key.as_str()) {
+                    Some(held) if held != id.code() => anomalies.push(super::FixAnomaly::new(
+                        field,
+                        format!(
+                            "states {key}:{} where {key}:{held} is already stated",
+                            id.code()
+                        ),
+                    )),
+                    Some(_) => {}
+                    None => {
                         ids.insert(id);
                     }
                 }
             }
+            Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
+        };
+        let mut state = |field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
+            if let (Some(source), Some(code)) = (source, code) {
+                if let Ok(key) = SecType::read(&source) {
+                    insert(field, key, &code);
+                }
+            }
         };
         state(
+            "securityid",
             self.get_by_tag(22).as_ref().and_then(scalar_text),
             self.get_by_tag(48).as_ref().and_then(scalar_text),
         );
         for occurrence in self.group_members("secaltids", &["securityaltidsource", "securityaltid"])
         {
-            state(occurrence[0].clone(), occurrence[1].clone());
+            state("secaltids", occurrence[0].clone(), occurrence[1].clone());
         }
-        ids
+        // A top-level field no dictionary names, whose name names an
+        // identifier source - `#ISINCODE`, `cusip_code` - states an entry
+        // after the wire's own: trimmed, validated, never a grouped member,
+        // and left on the wire as it arrived. An empty or null-like value
+        // states nothing.
+        let mapped: std::collections::HashSet<usize> =
+            self.tags.iter().map(|(_, at)| *at).collect();
+        if let Some(cells) = self.value.as_sequence() {
+            for (at, (child, cell)) in self.field.fields().iter().zip(cells).enumerate() {
+                if mapped.contains(&at) || child.name().contains('.') {
+                    continue;
+                }
+                let Some(key) = SecType::from_field_name(child.name()) else {
+                    continue;
+                };
+                let Some(text) = scalar_text(cell)
+                    .map(|held| held.trim().to_owned())
+                    .filter(|held| !held.is_empty() && !is_null_like(held))
+                else {
+                    continue;
+                };
+                insert(child.name(), key, &text);
+            }
+        }
+        (ids, anomalies)
     }
 
     /// The stated members of each occurrence of a root repeating group, in
@@ -3794,6 +3862,14 @@ const IDMAP_SOURCES: [(IdMapKind, &str, i32); 13] = [
     (IdMapKind::Alt, "MDREQID", 262),
     (IdMapKind::Alt, "TRADEID", 1003),
 ];
+
+/// Whether `text` is one of the spellings a wire uses for no value at all.
+fn is_null_like(text: &str) -> bool {
+    matches!(
+        text.to_ascii_uppercase().as_str(),
+        "NULL" | "NONE" | "N/A" | "[N/A]" | "NA" | "-"
+    )
+}
 
 /// The row-stated bit of the crated column a security-identifier key
 /// stands for, where one does.

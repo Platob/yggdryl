@@ -25,6 +25,11 @@ use crate::{DataType, Error, FixField, FixFieldMut, Result};
 const BRANCHES: &str = "branches";
 /// The canonical tag.
 const TAG: &str = "tag";
+/// The key on a message child that is an alias spelling which did not fill
+/// its field - the canonical name or an earlier alias arrived too - naming
+/// that field: the child stays its own, re-emits as it arrived, and the tag
+/// resolution leaves it where it stands.
+pub(super) const ALIAS_OF: &str = "FIX:alias";
 /// The full key the canonical tag is stored under.
 pub(super) const TAG_KEY: &str = "FIX:tag";
 /// The alternate tags, a JSON array of tags, highest priority first.

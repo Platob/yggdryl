@@ -958,6 +958,11 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
     // field is answered off the dictionary's index rather than the
     // column's metadata.
     if !field.as_metadata().is_empty() {
+        // An alias spelling that did not fill its field is no field of the
+        // dictionary: its name would resolve to the one it lost to.
+        if field.get_metadata(super::field::ALIAS_OF).is_some() {
+            return Ok(None);
+        }
         if let Some(explicit) = registry.facts_of(field).and_then(|facts| facts.tag) {
             return Ok(Some(explicit));
         }

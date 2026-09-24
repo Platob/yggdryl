@@ -2199,8 +2199,8 @@
     assert.equal(CRATE_SCALARS.length, 27)
     assert.equal(new fix.FixRegistry().size, 30)
     assert.equal(scalars(new fix.FixRegistry()).length, 29)
-    assert.equal(schema.fieldLen, 124)
-    assert.equal(fix.schemaTags().length, 119)
+    assert.equal(schema.fieldLen, 130)
+    assert.equal(fix.schemaTags().length, 125)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],

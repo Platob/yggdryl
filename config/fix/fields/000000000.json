@@ -529,6 +529,10 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "marketorderid",
+        "omsdealerorderid"
+      ],
       "FIX:replacements": [
         {
           "plan": "select orderid as massactionreportid where :msgtype = 'r'"
