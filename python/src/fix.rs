@@ -2153,6 +2153,48 @@ impl PyFixMsg {
         self.inner.get_lastqty().map(decimal_scalar)
     }
 
+    /// FIX's own `LastSpotRate(194)`, the spot rate of the last price, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn lastspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().lastspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `LastForwardPoints(195)`, the forward points of the last price, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn lastforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().lastforwardpoints().map(decimal_scalar)
+    }
+
+    /// FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn bidspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().bidspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn bidforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().bidforwardpoints().map(decimal_scalar)
+    }
+
+    /// FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn offerspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().offerspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn offerforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().offerforwardpoints().map(decimal_scalar)
+    }
+
     /// The price it averaged, `AvgPx(6)`; `None` where none.
     #[getter]
     fn avgpx(&self) -> Option<PyScalar> {

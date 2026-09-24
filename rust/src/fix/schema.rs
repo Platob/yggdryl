@@ -86,15 +86,16 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 /// [`get_quantity`](crate::graph::Market::get_quantity) read off them, and no
 /// column of this crate's restates either, because a row carrying both
 /// would carry one fact twice.
-pub const BODY_TAGS: [i32; 50] = [
+pub const BODY_TAGS: [i32; 56] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
     1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693,
     // The instrument, and what the market says about trading it.
     55, 48, 22, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
     54, 40, 59, 854, 15, 120, // The quote's two lanes, which carry no side of their own.
-    132, 133, 134, 135, // What was done.
-    31, 32, 6, 14, 151, // When.
+    132, 133, 134, 135, 188, 189, 190,
+    191, // What was done, and the FX parts of the last price.
+    31, 32, 6, 14, 151, 194, 195, // When.
     60, 64, 75, 126, // How it went.
     39, 150, 297, 301, 368, 103, 102, 58,
 ];
@@ -277,6 +278,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
         &mut tags,
         &[
             54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
+            194, 195, 188, 189, 190, 191,
         ],
     );
     // How it went: the ranked state the message reached - read off

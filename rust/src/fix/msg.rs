@@ -1407,6 +1407,16 @@ impl FixMsg {
         let prevpx = number(140);
         let (bidpx, bidqty) = (number(132), number(134));
         let (askpx, askqty) = (number(133), number(135));
+        // The FX parts of the prices, each from its own lifted slot: the
+        // last price's, and each lane's.
+        let (spotrate, forwardpoints) =
+            (self.lifted.lastspotrate(), self.lifted.lastforwardpoints());
+        let (bidspotrate, bidforwardpoints) =
+            (self.lifted.bidspotrate(), self.lifted.bidforwardpoints());
+        let (askspotrate, askforwardpoints) = (
+            self.lifted.offerspotrate(),
+            self.lifted.offerforwardpoints(),
+        );
 
         let event = &mut *self.event;
         // Assigned rather than filled: a write can change what the FIX
@@ -1423,13 +1433,17 @@ impl FixMsg {
         event.set_cumqty(cumqty);
         event.set_leavesqty(leavesqty);
         event.set_prevpx(prevpx);
-        // FIX states a lane's price and quantity; its currency and unit are
-        // read off the side by the fill, so the lanes are rebuilt whole here
-        // with the rest of what derives.
+        event.set_spotrate(spotrate);
+        event.set_forwardpoints(forwardpoints);
+        // FIX states a lane's price, quantity and FX parts; its currency and
+        // unit are read off the side by the fill, so the lanes are rebuilt
+        // whole here with the rest of what derives.
         event.set_bid(
             Lane {
                 price: bidpx,
                 quantity: bidqty,
+                spotrate: bidspotrate,
+                forwardpoints: bidforwardpoints,
                 ..Lane::default()
             }
             .stated(),
@@ -1438,6 +1452,8 @@ impl FixMsg {
             Lane {
                 price: askpx,
                 quantity: askqty,
+                spotrate: askspotrate,
+                forwardpoints: askforwardpoints,
                 ..Lane::default()
             }
             .stated(),

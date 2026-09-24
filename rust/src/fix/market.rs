@@ -26,6 +26,8 @@ struct Facts {
     entry_ref_id: Option<SmolStr>,
     price: Option<SmolStr>,
     size: Option<SmolStr>,
+    spotrate: Option<SmolStr>,
+    forwardpoints: Option<SmolStr>,
     date: Option<SmolStr>,
     time: Option<SmolStr>,
     order_id: Option<SmolStr>,
@@ -58,6 +60,8 @@ impl Facts {
             280 => &mut self.entry_ref_id,
             270 => &mut self.price,
             271 => &mut self.size,
+            1026 => &mut self.spotrate,
+            1027 => &mut self.forwardpoints,
             272 => &mut self.date,
             273 => &mut self.time,
             37 => &mut self.order_id,
@@ -155,6 +159,10 @@ struct BookEntry {
     time_nanos: Option<i64>,
     price: Option<Decimal18>,
     size: Option<Decimal18>,
+    /// `MDEntrySpotRate(1026)` and `MDEntryForwardPoints(1027)`: the FX
+    /// parts of the level's price, read onto its lane.
+    spotrate: Option<Decimal18>,
+    forwardpoints: Option<Decimal18>,
     empty_snapshot: bool,
 }
 
@@ -690,6 +698,8 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
     let time_at = member_path(message, members, 273);
     let price_at = member_path(message, members, 270);
     let size_at = member_path(message, members, 271);
+    let spotrate_at = member_path(message, members, 1026);
+    let forwardpoints_at = member_path(message, members, 1027);
     let typed_entries = values
         .get(group_at)
         .and_then(Scalar::sequence_rows)
@@ -722,6 +732,8 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
             time_nanos: root_time,
             price: None,
             size: None,
+            spotrate: None,
+            forwardpoints: None,
             empty_snapshot: true,
         });
         return Ok(answer);
@@ -760,6 +772,16 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
             facts.size.as_deref(),
             format_smolstr!("$.NoMDEntries(268)[{position}].MDEntrySize(271)"),
         )?;
+        let spotrate = decimal(
+            member_value(typed, spotrate_at.as_deref()),
+            facts.spotrate.as_deref(),
+            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntrySpotRate(1026)"),
+        )?;
+        let forwardpoints = decimal(
+            member_value(typed, forwardpoints_at.as_deref()),
+            facts.forwardpoints.as_deref(),
+            format_smolstr!("$.NoMDEntries(268)[{position}].MDEntryForwardPoints(1027)"),
+        )?;
         answer.push(BookEntry {
             facts,
             position,
@@ -767,6 +789,8 @@ fn book_entries(message: &FixMsg) -> Result<Vec<BookEntry>> {
             time_nanos,
             price,
             size,
+            spotrate,
+            forwardpoints,
             empty_snapshot: false,
         });
     }
@@ -982,6 +1006,8 @@ fn build_book_operation(
 
     event.set_price(entry.price);
     event.set_quantity(entry.size);
+    event.set_spotrate(entry.spotrate);
+    event.set_forwardpoints(entry.forwardpoints);
     event.set_side(side);
     event.set_state(state);
     let ticker = entry

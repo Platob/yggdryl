@@ -193,7 +193,7 @@ pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns
 pub use document::{Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
-pub use identity::{FIX_TYPED_TAGS, FixCapture, FixHeader, FixLifted};
+pub use identity::{FIX_TYPED_TAGS, FixCapture, FixHeader, FixLifted, LiftedFx};
 pub use market::FixMarketIterator;
 pub use messages::FixMessages;
 pub use msg::FixMsg;

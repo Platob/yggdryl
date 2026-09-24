@@ -328,7 +328,7 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// test of whether it reaches the wire, the arrival record or the code the
 /// message digests to. What a message *implies* about its market lives on
 /// the event, off these and off the row, and reaches none of the three.
-pub(super) const LIFTED_TAGS: [i32; 17] = [
+pub(super) const LIFTED_TAGS: [i32; 23] = [
     AVGPX_TAG,
     11,
     CUMQTY_TAG,
@@ -343,6 +343,12 @@ pub(super) const LIFTED_TAGS: [i32; 17] = [
     117,
     131,
     LEAVESQTY_TAG,
+    188,
+    189,
+    190,
+    191,
+    194,
+    195,
     198,
     262,
     1003,
@@ -362,9 +368,10 @@ pub(super) const TIMEINFORCE_TAG: i32 = 59;
 /// The prices and quantities a message lifted, and the identifiers it is
 /// known by, each exactly as the message stated it.
 ///
-/// Eight exact numbers and nine identifiers, every one an `Option`: absent
-/// is "the message never said", and that is the only flag this holder
-/// needs, because nothing writes here but a tag.
+/// Eight exact numbers, the six FX parts of a price behind one pointer, and
+/// nine identifiers, every one an `Option`: absent is "the message never
+/// said", and that is the only flag this holder needs, because nothing
+/// writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
     price: Option<Decimal18>,
@@ -375,6 +382,8 @@ pub struct FixLifted {
     avgpx: Option<Decimal18>,
     cumqty: Option<Decimal18>,
     leavesqty: Option<Decimal18>,
+    /// The FX parts, boxed: most messages state none and pay one pointer.
+    fx: Option<Box<LiftedFx>>,
     clordid: Option<SmolStr>,
     origclordid: Option<SmolStr>,
     orderid: Option<SmolStr>,
@@ -386,7 +395,79 @@ pub struct FixLifted {
     tradeid: Option<SmolStr>,
 }
 
+/// The six FX parts of a price a message lifted: the spot rate and the
+/// forward points of its last price and of each of its two lanes, FIX's own
+/// `LastSpotRate(194)`, `LastForwardPoints(195)`, `BidSpotRate(188)`,
+/// `BidForwardPoints(189)`, `OfferSpotRate(190)` and `OfferForwardPoints(191)`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LiftedFx {
+    lastspotrate: Option<Decimal18>,
+    lastforwardpoints: Option<Decimal18>,
+    bidspotrate: Option<Decimal18>,
+    bidforwardpoints: Option<Decimal18>,
+    offerspotrate: Option<Decimal18>,
+    offerforwardpoints: Option<Decimal18>,
+}
+
+impl LiftedFx {
+    /// Whether every part is unstated, which is when the holder drops it.
+    fn is_empty(&self) -> bool {
+        self.lastspotrate.is_none()
+            && self.lastforwardpoints.is_none()
+            && self.bidspotrate.is_none()
+            && self.bidforwardpoints.is_none()
+            && self.offerspotrate.is_none()
+            && self.offerforwardpoints.is_none()
+    }
+}
+
 impl FixLifted {
+    /// Writes one FX part, allocating the parts on the first stated one and
+    /// dropping them when the last is cleared.
+    fn set_fx(&mut self, write: impl FnOnce(&mut LiftedFx)) {
+        let mut fx = self.fx.take().map(|held| *held).unwrap_or_default();
+        write(&mut fx);
+        if !fx.is_empty() {
+            self.fx = Some(Box::new(fx));
+        }
+    }
+
+    /// `LastSpotRate(194)`, where the message stated one.
+    #[must_use]
+    pub fn lastspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.lastspotrate)
+    }
+
+    /// `LastForwardPoints(195)`, where the message stated one.
+    #[must_use]
+    pub fn lastforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.lastforwardpoints)
+    }
+
+    /// `BidSpotRate(188)`, where the message stated one.
+    #[must_use]
+    pub fn bidspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.bidspotrate)
+    }
+
+    /// `BidForwardPoints(189)`, where the message stated one.
+    #[must_use]
+    pub fn bidforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.bidforwardpoints)
+    }
+
+    /// `OfferSpotRate(190)`, where the message stated one.
+    #[must_use]
+    pub fn offerspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.offerspotrate)
+    }
+
+    /// `OfferForwardPoints(191)`, where the message stated one.
+    #[must_use]
+    pub fn offerforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.offerforwardpoints)
+    }
+
     /// `Price(44)`, where the message stated one.
     #[must_use]
     pub const fn price(&self) -> Option<Decimal18> {
@@ -504,6 +585,12 @@ impl FixLifted {
             AVGPX_TAG => self.avgpx.map(Scalar::from),
             CUMQTY_TAG => self.cumqty.map(Scalar::from),
             LEAVESQTY_TAG => self.leavesqty.map(Scalar::from),
+            194 => self.lastspotrate().map(Scalar::from),
+            195 => self.lastforwardpoints().map(Scalar::from),
+            188 => self.bidspotrate().map(Scalar::from),
+            189 => self.bidforwardpoints().map(Scalar::from),
+            190 => self.offerspotrate().map(Scalar::from),
+            191 => self.offerforwardpoints().map(Scalar::from),
             11 => text(&self.clordid),
             41 => text(&self.origclordid),
             37 => text(&self.orderid),
@@ -536,6 +623,30 @@ impl FixLifted {
             AVGPX_TAG => self.avgpx = number(),
             CUMQTY_TAG => self.cumqty = number(),
             LEAVESQTY_TAG => self.leavesqty = number(),
+            194 => {
+                let held = number();
+                self.set_fx(|fx| fx.lastspotrate = held);
+            }
+            195 => {
+                let held = number();
+                self.set_fx(|fx| fx.lastforwardpoints = held);
+            }
+            188 => {
+                let held = number();
+                self.set_fx(|fx| fx.bidspotrate = held);
+            }
+            189 => {
+                let held = number();
+                self.set_fx(|fx| fx.bidforwardpoints = held);
+            }
+            190 => {
+                let held = number();
+                self.set_fx(|fx| fx.offerspotrate = held);
+            }
+            191 => {
+                let held = number();
+                self.set_fx(|fx| fx.offerforwardpoints = held);
+            }
             11 => self.clordid = text(),
             41 => self.origclordid = text(),
             37 => self.orderid = text(),
@@ -593,7 +704,7 @@ pub(super) const TEXT_TAG: i32 = 58;
 /// walks with [`CRATE_TAG_MIN`](crate::CRATE_TAG_MIN) and
 /// [`CRATE_TAG_MAX`](crate::CRATE_TAG_MAX), and `sourceurl` is the one of
 /// them no message holds.
-pub const FIX_TYPED_TAGS: [i32; 29] = [
+pub const FIX_TYPED_TAGS: [i32; 35] = [
     WIRE_HEADER_TAGS[0],
     WIRE_HEADER_TAGS[1],
     WIRE_HEADER_TAGS[2],
@@ -619,6 +730,12 @@ pub const FIX_TYPED_TAGS: [i32; 29] = [
     LIFTED_TAGS[14],
     LIFTED_TAGS[15],
     LIFTED_TAGS[16],
+    LIFTED_TAGS[17],
+    LIFTED_TAGS[18],
+    LIFTED_TAGS[19],
+    LIFTED_TAGS[20],
+    LIFTED_TAGS[21],
+    LIFTED_TAGS[22],
     WIRE_TRAILER_TAGS[0],
     WIRE_TRAILER_TAGS[1],
     WIRE_TRAILER_TAGS[2],
