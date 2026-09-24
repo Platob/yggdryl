@@ -3458,3 +3458,67 @@ mod certification {
         certified(DataType::Urn, urns);
     }
 }
+
+mod chunked {
+    //! One plan over every chunk of a chunked column, the chunks kept apart.
+
+    use yggdryl::{ArrowCastOptions, ArrowCastPlan, ChunkedSerie, DataType, Field, Scalar, Serie};
+
+    fn prices() -> (Field, ChunkedSerie) {
+        let price = Field::new("price", DataType::Int32, false);
+        let column = |rows: &[i32]| {
+            Serie::from_scalars(price.clone(), rows.iter().copied().map(Scalar::from))
+                .expect("int32 rows")
+        };
+        let chunked = ChunkedSerie::from_series(
+            Some(&price),
+            [column(&[125, 126]), column(&[127])],
+            ArrowCastOptions::new(),
+        )
+        .expect("two chunks");
+        (price, chunked)
+    }
+
+    #[test]
+    fn a_plan_casts_every_chunk_and_keeps_them_apart() {
+        let (price, chunked) = prices();
+        let wide = Field::new("price", DataType::Int64, false);
+        let plan = ArrowCastPlan::compile(&price, &wide, ArrowCastOptions::new()).unwrap();
+        let cast = plan.apply_chunked(&chunked).unwrap();
+        assert_eq!((cast.num_chunks(), cast.field()), (2, &wide));
+        assert_eq!(cast.scalar(2).unwrap(), Scalar::from(127_i64));
+        assert!(cast == chunked);
+    }
+
+    #[test]
+    fn an_identity_plan_hands_the_chunked_column_back_and_a_foreign_layout_is_refused() {
+        let (price, chunked) = prices();
+        let same = ArrowCastPlan::compile(&price, &price, ArrowCastOptions::new()).unwrap();
+        let back = same.apply_chunked(&chunked).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            back.field_ref(),
+            chunked.field_ref()
+        ));
+        assert_eq!(back.num_chunks(), 2);
+
+        let text = ChunkedSerie::from_serie(
+            Serie::from_scalars(
+                Field::new("price", DataType::utf8(), false),
+                [Scalar::from("1")],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let refusal = same.apply_chunked(&text).unwrap_err();
+        assert!(refusal.to_string().contains("compiled for"), "{refusal}");
+
+        // No chunk is still judged by its field, and answered under the target.
+        let wide = Field::new("price", DataType::Int64, true);
+        let plan = ArrowCastPlan::compile(&price, &wide, ArrowCastOptions::new()).unwrap();
+        let empty = plan
+            .apply_chunked(&ChunkedSerie::empty(price.clone()).unwrap())
+            .unwrap();
+        assert_eq!((empty.num_chunks(), empty.field()), (0, &wide));
+        assert!(plan.apply_chunked(&text).is_err());
+    }
+}

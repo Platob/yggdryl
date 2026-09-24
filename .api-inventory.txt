@@ -3351,6 +3351,7 @@ pub struct ArrowCastPlan  (one Field-to-Field cast compiled once, immutable, Sen
   pub const fn is_identity(&self) -> bool
   pub fn preflight(&self) -> Result<()>
   pub fn apply(&self, serie: &Serie) -> Result<Serie>  (an identity plan hands back the same buffers; a run and another layout are refused by name)
+  pub fn apply_chunked(&self, chunked: &ChunkedSerie) -> Result<ChunkedSerie>  (apply per chunk under this one plan, the chunks kept apart; an identity plan hands the chunked column back when the target is its own field; the field is judged before any chunk, so an empty chunked column of another layout is refused and one of the source layout answers empty under the target)
 
 ### yggdryl::compatibility  [rust/src/compatibility.rs]
 pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
@@ -4083,13 +4084,13 @@ pub struct ProtocolField<'field>
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
   pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
-  pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field)
+  pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
   pub fn from_scalars(field: impl Into<Arc<Field>>, rows: impl IntoIterator<Item = Scalar>) -> Result<Self>  (every row through Field::scalar, laid out once, landed proven with no second read)
   pub fn from_default(field: impl Into<Arc<Field>>, rows: usize) -> crate::arrow::Result<Self>  (Field::default_value laid out once and repeated by index; a required null field has no default)
-  pub fn from_arrow_array(field: Option<&Field>, array: ArrayRef, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: the array's own field, named item, no buffer copied, each non-contract row read once; Some: one ArrowCastPlan compiled and applied, an exact layout the identity plan sharing the buffers)
+  pub fn from_arrow_array(field: Option<&Field>, array: ArrayRef, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: the array's own field, named item, nullable where it holds a logical null, no buffer copied, each non-contract row read once; Some: one ArrowCastPlan compiled and applied, an exact layout the identity plan sharing the buffers)
   pub fn from_arrow_batch(root: Option<&Field>, batch: &RecordBatch, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: a record column named DEFAULT_ROOT_NAME whose children share the batch's columns; Some: cast into a non-null record root)
-  pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (SerieReader collected and joined once: the whole stream is held, the bound is the stream)
+  pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (ChunkedSerie::from_arrow_reader joined by ChunkedSerie::into_serie: the whole stream is held, the bound is the stream)
   pub fn cast(&self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (its own field is itself; an equal layout under another name or nullability is the same buffers relabelled; otherwise one plan compiled and applied; a run is refused)
   pub fn into_arrow_scalar(&self) -> crate::arrow::Result<arrow_array::Scalar<ArrayRef>>  (exactly one row, its buffers shared)
   pub fn into_arrow_batch(&self) -> crate::arrow::Result<RecordBatch>  (a record column's children are the columns, an absent record row refused; any other column is the one column of a row root)
@@ -4097,6 +4098,8 @@ pub struct ProtocolField<'field>
   pub struct SerieReader  (one record Serie per batch of an Arrow stream under one ArrowCastPlan compiled from the stream's schema before a batch is pulled; at most one source batch held; fused after the first failure; Iterator<Item = crate::arrow::Result<Serie>>, FusedIterator, Debug)
   pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<SerieReader>  (None: the stream's own schema as a DEFAULT_ROOT_NAME record)
   pub fn from_serie(serie: Serie) -> crate::arrow::Result<SerieReader>  (one held column as one record column, a non-record column the one child of a DEFAULT_ROOT_NAME record; nothing cast or read; a run and a record with an absent row refused)
+  pub fn from_chunked(chunked: ChunkedSerie) -> crate::arrow::Result<SerieReader>  (a held chunked column as the stream of its chunks, one record column per chunk - a non-record field's chunks each the one child of a DEFAULT_ROOT_NAME record, from_serie's rule per chunk; nothing cast, copied or read; no chunk is the empty stream of its root; a record chunk with an absent row refused)
+  pub fn root_of(field: &Field) -> crate::Result<Field>  (the record root a held column of field crosses into a table under: a record's own field, required, or the DEFAULT_ROOT_NAME record it is the one child of; what from_serie and from_chunked name their field by and what into_arrow_batch, into_arrow_reader and ChunkedSerie::into_arrow_reader project their schema from)
   pub fn field(&self) -> &Field
   pub fn into_arrow_reader(self) -> BatchReader  (transport: batches reconciled to the root and never landed; the inner reader itself over an identity plan)
   pub fn field(&self) -> Option<&Field>  (None for a run)
@@ -4146,6 +4149,46 @@ pub struct ProtocolField<'field>
   impl From<Serie> for Scalar
   impl FromIterator<Scalar> for Serie  (a run)
   impl IntoIterator for &Serie  (item Cow<'_, Scalar>)
+
+### yggdryl::chunked_serie  [rust/src/chunked_serie.rs]  (ChunkedSerie: many Serie columns under one Field, held apart - pyarrow's ChunkedArray, and under a non-null record field a Table of one batch per chunk; ChunkedSerie and ChunkedRows re-exported at the root)
+  pub struct ChunkedSerie  (the chunks, every one a column whose field is exactly this one, proven at its own door, and the chunk ends kept beside them: a row's chunk is a binary search, the length a read; Clone is a pointer bump per chunk; Eq/Ord/Hash over the rows alone, and PartialEq and PartialOrd with Serie both ways, so it equals and orders as the column of its rows and any other chunking of them; Display name[row, ...] as the column of its rows renders; Debug ChunkedSerie { field, chunks, len, nulls })
+  pub fn empty(field: impl Into<Arc<Field>>) -> crate::Result<Self>  (no chunk; refuses what Serie::empty refuses)
+  pub fn from_serie(serie: Serie) -> crate::Result<Self>  (one chunk, shared; a run is refused)
+  pub fn from_series(field: Option<&Field>, chunks: impl IntoIterator<Item = Serie>, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (None: one datatype in pieces - the first chunk's field, nullable where any chunk's is, a chunk of that datatype under another name or nullability, or naming its serie items or mapping entries otherwise, relabelled, a chunk of another datatype refused naming it; Some: a chunk under the field held as it stands, any other cast in, one plan per run of chunks under one source field; a run, and no chunk with no field, refused; no chunk with a field Self::empty)
+  pub fn from_arrow_arrays(field: Option<&Field>, arrays: impl IntoIterator<Item = ArrayRef>, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (the chunked-array door: one array per chunk, one ArrowCastPlan per run of arrays of one layout, the identity sharing buffers; None: one datatype in pieces - the field named item of the first array's datatype, nullable where any array holds a logical null, an array of that datatype naming its items or entries otherwise relabelled, one of another datatype refused naming chunk {index}; Some: every array cast into the field; no array with no field refused, with a field Self::empty)
+  pub fn from_serie_reader(reader: SerieReader) -> crate::arrow::Result<Self>  (collected, one chunk per batch, none joined)
+  pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (the table door: SerieReader::from_arrow_reader collected, one chunk per batch, where Serie::from_arrow_reader joins them)
+  pub fn field(&self) -> &Field
+  pub fn field_ref(&self) -> &Arc<Field>
+  pub fn dtype(&self) -> DataType  (serie(<the field named item>), what Serie::dtype answers for a column of the field; infallible)
+  pub fn chunks(&self) -> &[Serie]
+  pub fn chunk(&self, index: usize) -> Option<&Serie>  (None past the last)
+  pub fn num_chunks(&self) -> usize
+  pub fn len(&self) -> usize  (a read)
+  pub fn is_empty(&self) -> bool
+  pub fn null_count(&self) -> usize  (one read per chunk)
+  pub fn is_null(&self, index: usize) -> crate::Result<bool>  (refuses past the end naming the field and both counts)
+  pub fn scalar(&self, index: usize) -> crate::Result<Scalar>  (one row built out of the chunk holding it; the one refusal is an index past the end: row {index} is past the end of {len} rows)
+  pub fn get(&self, index: usize) -> Option<Scalar>  (None past the end)
+  pub fn rows(&self) -> Vec<Scalar>  (every row built once, chunk after chunk)
+  pub fn iter(&self) -> ChunkedRows<'_>
+  pub fn slice(&self, offset: usize, length: usize) -> crate::Result<Self>  (zero copy: the chunks the window reaches, found by two binary searches, the two at its edges sliced and every other a pointer bump; a zero-length window holds no chunk; refuses past the end naming both counts)
+  pub fn child(&self, name: &str) -> Option<Self>  (a record's child in every chunk - a table's column - a pointer bump per chunk; a chunked serie of no chunk answers from its field)
+  pub fn child_at(&self, index: usize) -> Option<Self>  (a record's child, or a union's member, at index)
+  pub fn children(&self) -> Vec<Self>  (every child of a record or member of a union; empty elsewhere)
+  pub fn items(&self) -> Option<Self>  (a sequence's items, a mapping's entries, an encoding's values, in every chunk)
+  pub fn get_child_by_path(&self, path: &FieldPath) -> Option<Self>  (exactly Serie::get_child_by_path in every chunk)
+  pub fn push_chunk(&mut self, chunk: Serie, options: ArrowCastOptions) -> crate::arrow::Result<()>  (a column under the field appended as it stands, any other cast in by one plan compiled per call; a run refused; a refusal leaves it unchanged)
+  pub fn into_serie(&self) -> crate::arrow::Result<Serie>  (the one join: no chunk the empty column of the field, one chunk itself, shared, several concatenated once and landed with no row read; a dictionary whose gathered vocabulary Arrow would join past its key refused naming its path)
+  pub fn cast(&self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<Self>  (already under target: a clone; otherwise one ArrowCastPlan compiled and applied to every chunk)
+  pub fn into_arrow_arrays(&self) -> Vec<ArrayRef>  (each chunk's buffers, shared)
+  pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one batch per chunk under one schema built once: a record's chunks are its batches, any other field's chunks each the one column of a row root, as Serie::into_arrow_batch crosses one; a record chunk holding an absent row refused)
+  impl PartialEq<Serie> for ChunkedSerie
+  impl PartialEq<ChunkedSerie> for Serie
+  impl PartialOrd<Serie> for ChunkedSerie
+  impl PartialOrd<ChunkedSerie> for Serie
+  impl IntoIterator for &ChunkedSerie  (item Scalar)
+  pub struct ChunkedRows<'a>  (the rows, each built as the walk reaches it, chunk after chunk; Iterator<Item = Scalar> with an exact size_hint, FusedIterator)
 
 ### yggdryl::serie::primitive  [rust/src/serie/primitive.rs]  (one column of fixed-width rows over every Arrow primitive type, and the 35 named leaves)
   pub trait PrimitiveLeaf: ArrowPrimitiveType + Sized + Send + Sync + 'static  (ties one Arrow primitive type to the leaf its column widens to)

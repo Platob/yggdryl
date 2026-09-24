@@ -26,8 +26,8 @@ use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType, Scalar, Serie,
-    SerieReader, StructType, TimeUnit, Timezone, Url,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, IOBase, IOMedia, IOMode, MediaType, MimeType,
+    Scalar, Serie, SerieReader, StructType, TimeUnit, Timezone, Url,
 };
 
 /// Rows per fixture: one small enough to stay warm, one at the size a
@@ -406,6 +406,84 @@ fn collect_benchmarks(criterion: &mut Criterion) {
                 },
                 BatchSize::LargeInput,
             );
+        });
+    }
+    group.finish();
+}
+
+/// Holding a stream as its chunks: what keeping the batches apart costs
+/// against joining them.
+///
+/// `ChunkedSerie::from_arrow_reader` lands every batch through the reader's
+/// one plan and keeps each as a chunk, where `Serie::from_arrow_reader` -
+/// the `joined` arm - also concatenates them, so the gap between the two is
+/// what the concatenation costs; `into_serie` pays it later, once, over
+/// chunks already landed. A row read through the chunk ends is a binary
+/// search and one row of one chunk, and a table's column is the child of
+/// every batch, a pointer bump per chunk: those two are flat in the row
+/// count, so they are measured before the group carries a rate.
+fn chunked_benchmarks(criterion: &mut Criterion) {
+    let root = root();
+    let options = ArrowCastOptions::new();
+    let tables: Vec<(usize, SchemaRef, Vec<RecordBatch>, ChunkedSerie)> = ROWS
+        .into_iter()
+        .map(|count| {
+            let batch = batch(&root, count);
+            let schema = batch.schema();
+            let parts = parts(&batch);
+            let chunked =
+                ChunkedSerie::from_arrow_reader(Some(&root), streamed(&schema, &parts), options)
+                    .expect("the stream lands as its batches");
+            assert_eq!(chunked.num_chunks(), BATCHES);
+            (count, schema, parts, chunked)
+        })
+        .collect();
+
+    let mut group = criterion.benchmark_group("arrow_chunked_serie");
+    for (count, _, _, chunked) in &tables {
+        let middle = count / 2;
+        group.bench_function(format!("scalar/{count}"), |bencher| {
+            bencher.iter(|| {
+                black_box(chunked)
+                    .scalar(black_box(middle))
+                    .expect("the middle row")
+            });
+        });
+        group.bench_function(format!("child/{count}"), |bencher| {
+            bencher.iter(|| black_box(chunked).child("price").expect("a table column"));
+        });
+    }
+
+    // Every arm below returns the whole result, so, as in the collect group,
+    // batches are sized by the output.
+    for (count, schema, parts, chunked) in &tables {
+        group.throughput(Throughput::Elements(*count as u64));
+        group.bench_function(format!("from_arrow_reader/{count}"), |bencher| {
+            bencher.iter_batched(
+                || streamed(schema, parts),
+                |reader| {
+                    ChunkedSerie::from_arrow_reader(Some(&root), reader, options)
+                        .expect("the stream lands as its batches")
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.bench_function(format!("joined/{count}"), |bencher| {
+            bencher.iter_batched(
+                || streamed(schema, parts),
+                |reader| {
+                    Serie::from_arrow_reader(Some(&root), reader, options)
+                        .expect("the stream concatenates")
+                },
+                BatchSize::LargeInput,
+            );
+        });
+        group.bench_function(format!("into_serie/{count}"), |bencher| {
+            bencher.iter(|| {
+                black_box(chunked)
+                    .into_serie()
+                    .expect("the chunks concatenate")
+            });
         });
     }
     group.finish();
@@ -846,6 +924,7 @@ criterion_group!(
     construction_benchmarks,
     reader_benchmarks,
     collect_benchmarks,
+    chunked_benchmarks,
     cast_benchmarks,
     structured_benchmarks,
     null_visibility_benchmarks,

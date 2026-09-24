@@ -33,6 +33,7 @@ pub mod bytes;
 pub mod cast;
 pub mod ccy;
 pub mod cfi_code;
+pub mod chunked_serie;
 pub mod code;
 mod compatibility;
 pub mod country;
@@ -138,6 +139,7 @@ pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_s
 pub use bytestream::ByteStream;
 pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
 pub use charset::Charset;
+pub use chunked_serie::{ChunkedRows, ChunkedSerie};
 pub use codec::{Codec, Encoder, Level, RestartScan, Restarts};
 pub use datatype_id::DataTypeId;
 pub use datatype_kind::DataTypeKind;

@@ -1,6 +1,6 @@
 # Arrow
 
-`yggdryl::arrow` is where a Field meets Apache Arrow: projected schemas and streamed batches. Every value crossing Arrow - one row, a column, a table - is a [`Serie`](../types/serie.md), and a stream of them a `SerieReader`.
+`yggdryl::arrow` is where a Field meets Apache Arrow: projected schemas and streamed batches. Every value crossing Arrow - one row, a column, a table - is a [`Serie`](../types/serie.md), columns of one field kept apart - a chunked array, a table of several batches - a [`ChunkedSerie`](../types/chunked-serie.md), and a stream of them a `SerieReader`.
 
 ## Pages
 
@@ -15,7 +15,7 @@
 | | |
 | --- | --- |
 | Units | Exactly two: a `RecordBatch` and a one-row array; no row objects. |
-| Columns | One row, a column, a table or a stream reconciled to a field is a [`Serie`](../types/serie.md) or a `SerieReader`, and a cast is [`Serie`'s](../types/cast.md). There is no Arrow wrapper beside them. |
+| Columns | One row, a column, a table or a stream reconciled to a field is a [`Serie`](../types/serie.md), a [`ChunkedSerie`](../types/chunked-serie.md) where its arrays or batches stay apart, or a `SerieReader`, and a cast is [`Serie`'s](../types/cast.md). There is no Arrow wrapper beside them. |
 | Owns | `Serie::from_default` lays out a field's default, `into_arrow_scalar` hands one row over, and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads the row back under its Field. |
 | `DataType` default | A bare datatype is the required `value` field it declares, so its default is the datatype's present value; never null. |
 | `Field` default | `Field::default_value`, repeated: logical null when nullable; carries name, dictionary options, metadata, extension identity. |

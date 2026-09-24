@@ -206,6 +206,7 @@ from .scalar import (
     scalar as scalar,
 )
 from .serie import (
+    ChunkedSerie as ChunkedSerie,
     FixedSizeSerieField as FixedSizeSerieField,
     FixedSizeSerieSerie as FixedSizeSerieSerie,
     LargeSerieField as LargeSerieField,

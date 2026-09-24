@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyAny;
 use yggdryl::{ArrowCastPlan, Field as CoreField, Serie};
 
+use crate::chunked_serie::{PyChunkedSerie, chunked_of};
 use crate::datatype::{arrow_array_from_pyarrow, core_field_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::record_batch_from_value;
@@ -115,13 +116,21 @@ impl PyArrowCastPlan {
         self.inner.preflight().map_err(value_error)
     }
 
-    /// Cast one column of the source layout through this plan.
+    /// Cast one column of the source layout through this plan, or every
+    /// chunk of chunked columns.
     ///
     /// A `Serie` is cast as it is; a `pyarrow.RecordBatch` is first the
     /// record column of its own schema and any other Arrow array the column
     /// of its own layout, exactly as `Serie.from_arrow_batch` and
-    /// `Serie.from_arrow_array` read them with no field.
+    /// `Serie.from_arrow_array` read them with no field. A `ChunkedSerie`,
+    /// a `pyarrow.ChunkedArray` and a `pyarrow.Table` are their chunks, as
+    /// `ChunkedSerie.from_` reads them with no field: the plan is applied to
+    /// every chunk, and the answer is a `ChunkedSerie` of as many chunks.
     fn apply(&self, py: Python<'_>, serie: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        if let Some(chunked) = chunked_of(serie)? {
+            let cast = self.inner.apply_chunked(&chunked).map_err(value_error)?;
+            return Ok(Py::new(py, PyChunkedSerie::from_inner(cast))?.into_any());
+        }
         let cast = if let Ok(serie) = serie.extract::<PyRef<'_, PySerie>>() {
             self.inner.apply(&serie.inner)
         } else {

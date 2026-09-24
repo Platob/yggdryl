@@ -419,6 +419,74 @@ export declare class Catalog {
 export type JsCatalog = Catalog
 
 /**
+ * Many columns under one field, held apart: a chunked array, or a table.
+ *
+ * Every chunk is a column of exactly this field. A row is read out of the
+ * chunk that holds it, and two chunked series - or a chunked serie and a
+ * serie - are equal when their rows are, however the rows are cut.
+ */
+export declare class ChunkedSerie {
+  /** The field every chunk is typed by. */
+  get field(): JsField
+  /** `serie(<the field named item>)`: what a column of this field answers. */
+  get dtype(): JsDataType
+  /** How many chunks the rows are cut into. */
+  get numChunks(): number
+  /** The row count across every chunk. */
+  get length(): number
+  /** The rows that are absent, one read per chunk. */
+  nullCount(): number
+  /** Whether no chunk holds a row. */
+  isEmpty(): boolean
+  /** Whether row `index` is absent. */
+  isNull(index: number): boolean
+  /** Row `index`, built as one value out of the chunk holding it. */
+  scalar(index: number): JsScalar
+  /** Row `index`, or `null` past the end. */
+  at(index: number): JsScalar | null
+  /** Every row, chunk after chunk, each built once. */
+  rows(): Array<JsScalar>
+  /**
+   * The window `offset..offset + length`: the chunks it reaches, the two
+   * at its edges sliced, nothing copied.
+   */
+  slice(offset: number, length: number): ChunkedSerie
+  /**
+   * A record's child named `name` in every chunk - a table's column - or
+   * `null`.
+   */
+  child(name: string): ChunkedSerie | null
+  /** A record's child, or a union's member, at `index` in every chunk. */
+  childAt(index: number): ChunkedSerie | null
+  /** Every child of a record, or member of a union, chunk by chunk. */
+  children(): Array<ChunkedSerie>
+  /**
+   * A sequence's items, a mapping's entries, an encoding's values, in
+   * every chunk; `null` elsewhere.
+   */
+  items(): ChunkedSerie | null
+  /**
+   * The chunked column `path` reaches in every chunk, spelled as a field
+   * path.
+   */
+  getChildByPath(path: string): ChunkedSerie | null
+  /**
+   * Every chunk as one batch of a native `BatchReader`: a record's chunks
+   * the batches they are, any other field's the one column of a `row`
+   * root. A record chunk holding an absent row is refused.
+   */
+  intoArrowReader(): JsBatchReader
+  /** A copy sharing every chunk's buffers. */
+  clone(): ChunkedSerie
+  /**
+   * The rows, rendered behind the field's name as the column of them
+   * would be.
+   */
+  toString(): string
+}
+export type JsChunkedSerie = ChunkedSerie
+
+/**
  * What one `compact` call rewrote.
  *
  * The sizes cross as numbers because a data file already reports
@@ -4442,10 +4510,6 @@ export declare class Serie {
   setChild(child: Serie): void
   /** This record column as a native `BatchReader` of one batch. */
   intoArrowReader(): BatchReader
-  /** Whether two series hold equal rows, whichever leaf holds them. */
-  equals(other: Serie): boolean
-  /** Order two series by their rows, as the core defines it. */
-  compare(other: Serie): number
   /** The rows, rendered behind the field's name. */
   toString(): string
 }

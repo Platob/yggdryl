@@ -63,6 +63,7 @@ import type {
   BoundSelector,
   ByteIterator,
   BytesParametersInput,
+  ChunkedSerie as NativeChunkedSerie,
   DataType,
   Digest,
   Field,
@@ -134,6 +135,14 @@ export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
   readonly prototype: Serie
   new(rows?: Iterable<unknown> | null): Serie
 }
+
+/** Many columns under one field, held apart: a chunked array, or a table. */
+export type ChunkedSerie = NativeChunkedSerie
+/** Built only through its statics: there is no public constructor. */
+export declare const ChunkedSerie: Omit<typeof NativeChunkedSerie, 'prototype'> &
+  (abstract new () => ChunkedSerie) & {
+    readonly prototype: ChunkedSerie
+  }
 
 /** A serie column with 32-bit offsets, handed out by a Serie factory. */
 export declare class SerieSerie extends Serie {
@@ -772,6 +781,10 @@ declare module './index' {
   }
 
   interface Serie extends Iterable<Scalar> {
+    /** Whether the rows equal another serie's, or a chunked serie's. */
+    equals(other: Serie | ChunkedSerie): boolean
+    /** Order the rows against another serie's, or a chunked serie's. */
+    compare(other: Serie | ChunkedSerie): number
     /** Every row as its natural JavaScript value. */
     asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
     /** The same row values as asJs, for JSON.stringify. */
@@ -839,11 +852,112 @@ declare module './index' {
      * are refused.
      */
     function fromSerie(serie: Serie): SerieReader
+    /**
+     * Read a held chunked column as the stream of its chunks, one record
+     * serie per chunk: a record's chunks as they stand, any other field's
+     * each the one child of a record named `row`. Nothing is cast or copied;
+     * a record chunk with an absent row is refused.
+     */
+    function fromChunked(chunked: ChunkedSerie): SerieReader
   }
 
   interface SerieReader extends Iterable<Serie> {
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
+  }
+
+  namespace ChunkedSerie {
+    /** The chunked serie of no chunks under `field`. */
+    function empty(field: Field | string): ChunkedSerie
+    /** One held column as its one chunk, sharing its buffers; a run is refused. */
+    function fromSerie(serie: Serie): ChunkedSerie
+    /**
+     * Held columns as chunks under one field. With no field they are one
+     * datatype in pieces under the first chunk's field, nullable where any
+     * chunk's is, and a chunk of another datatype is refused naming it; with
+     * `field`, every other layout is cast into it, one plan per run of
+     * chunks under one source field. No chunk and no field is refused.
+     */
+    function fromSeries(
+      chunks: Iterable<Serie>,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * One Apache Arrow JS vector as one chunk per `Data` it holds: of its
+     * own layout under the field `item`, nullable only where a row is null,
+     * or cast into `field` by one plan. Every chunk must lay out as the first.
+     */
+    function fromArrowArray(
+      vector: ArrowVector,
+      field?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * One Apache Arrow JS table as one record chunk per batch, and one
+     * record batch as one chunk: of its own schema, named `row`, or cast
+     * into `root` by one plan.
+     */
+    function fromArrowBatch(
+      batch: ArrowRecordBatch | ArrowTable,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+    /**
+     * Drain a native reader, one record chunk per batch, every batch cast
+     * by one plan; the reader is consumed.
+     */
+    function fromArrowReader(
+      reader: BatchReader,
+      root?: Field | string,
+      options?: ArrowCastOptions,
+    ): ChunkedSerie
+  }
+
+  interface ChunkedSerie extends Iterable<Scalar> {
+    /** Every chunk, in order, each handed out as its leaf's class. */
+    readonly chunks: Serie[]
+    /** Chunk `index`, or null past the last. */
+    chunk(index: number): Serie | null
+    /** Every row as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Iterate the rows, chunk after chunk, as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /**
+     * Append one column as a chunk: under the field as it stands, any other
+     * cast into it; a refusal leaves the chunks as they were.
+     */
+    pushChunk(chunk: Serie, options?: ArrowCastOptions): void
+    /** Every row as one column: the one join. */
+    intoSerie(): Serie
+    /**
+     * Every chunk under `field` - a DataType as its required `value` field -
+     * by one plan.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): ChunkedSerie
+    /**
+     * One Apache Arrow JS vector holding one `Data` per chunk. Arrow JS
+     * holds no vector of no `Data`, so a chunked serie of no chunk is a
+     * vector of one empty `Data`.
+     */
+    intoArrowArray(): ArrowVector
+    /**
+     * One Apache Arrow JS table of one batch per chunk: a record's chunks
+     * the batches they are, any other field's the one column of a `row`
+     * root. A record chunk with an absent row is refused. A chunked serie
+     * of no chunk is a table whose one batch is Arrow JS's empty
+     * placeholder, which crosses back as no chunk.
+     */
+    intoArrowTable(): ArrowTable
+    /** Whether the rows equal another chunked serie's, or a serie's. */
+    equals(other: ChunkedSerie | Serie): boolean
+    /**
+     * Order the rows against another chunked serie's, or a serie's, as the
+     * core orders a column's, however the rows are cut.
+     */
+    compare(other: ChunkedSerie | Serie): number
   }
 
   namespace ArrowCastPlan {
@@ -862,6 +976,8 @@ declare module './index' {
   interface ArrowCastPlan {
     /** Cast one column laid out as `source`. */
     apply(serie: Serie): Serie
+    /** Cast every chunk of a chunked column laid out as `source`, kept apart. */
+    apply(chunked: ChunkedSerie): ChunkedSerie
     /** The three cast answers this plan was compiled under. */
     readonly options: Readonly<Required<ArrowCastOptions>>
   }

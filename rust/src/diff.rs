@@ -9,9 +9,7 @@ use std::sync::Arc;
 
 use crate::Field;
 use crate::metadata::write_json_string as write_quoted;
-use crate::{
-    DataType, Metadata, RunEndEncodedType, StructType, UnionFields, hashing::stable_hash_display,
-};
+use crate::{DataType, Metadata, StructType, UnionFields, hashing::stable_hash_display};
 
 /// A lazy iterator over stable, UTF-8 schema difference lines.
 ///
@@ -1105,12 +1103,24 @@ impl fmt::Display for FieldLayoutDisplay<'_> {
     }
 }
 
-fn field_layout_eq(left: &Field, right: &Field) -> bool {
-    left.layout_eq(right)
+/// Whether two datatypes are one datatype as Arrow counts one: every nested
+/// name, nullability and parameter equal, metadata aside, and the names of
+/// a serie's item and of a mapping's entries aside too - Arrow's format says
+/// neither is part of the type, and a reader names them as it likes
+/// (`item`, `element`, `entries`, `key_value`). It is what the chunks of
+/// one column share, where no field was declared to cast them into.
+pub(crate) fn one_datatype(left: &DataType, right: &DataType) -> bool {
+    dtype_eq(left, right, false)
 }
 
-#[allow(clippy::too_many_lines)]
 fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
+    dtype_eq(left, right, true)
+}
+
+/// Nested equality with metadata aside; `named` says whether the name of a
+/// serie's item and of a mapping's entries counts, as every other nested
+/// name always does.
+fn dtype_eq(left: &DataType, right: &DataType, named: bool) -> bool {
     if std::ptr::eq(left, right) {
         return true;
     }
@@ -1119,16 +1129,18 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
         (D::Serie(left), D::Serie(right))
         | (D::SerieView(left), D::SerieView(right))
         | (D::LargeSerie(left), D::LargeSerie(right))
-        | (D::LargeSerieView(left), D::LargeSerieView(right)) => field_layout_eq(left, right),
+        | (D::LargeSerieView(left), D::LargeSerieView(right)) => {
+            field_eq(left, right, named, named)
+        }
         (D::FixedSizeSerie(left, left_size), D::FixedSizeSerie(right, right_size)) => {
-            left_size == right_size && field_layout_eq(left, right)
+            left_size == right_size && field_eq(left, right, named, named)
         }
         (D::Struct(left), D::Struct(right)) => {
             left.len() == right.len()
                 && left
                     .iter()
                     .zip(right.iter())
-                    .all(|(left, right)| field_layout_eq(left, right))
+                    .all(|(left, right)| field_eq(left, right, true, named))
         }
         (D::Union(left, left_mode), D::Union(right, right_mode)) => {
             left_mode == right_mode
@@ -1137,23 +1149,29 @@ fn dtype_layout_eq(left: &DataType, right: &DataType) -> bool {
                     .iter()
                     .zip(right.iter())
                     .all(|((left_id, left), (right_id, right))| {
-                        left_id == right_id && field_layout_eq(left, right)
+                        left_id == right_id && field_eq(left, right, true, named)
                     })
         }
         (D::Dictionary(left), D::Dictionary(right)) => {
-            dtype_layout_eq(left.key(), right.key()) && dtype_layout_eq(left.value(), right.value())
+            dtype_eq(left.key(), right.key(), named) && dtype_eq(left.value(), right.value(), named)
         }
         (D::Map(left), D::Map(right)) | (D::SortedMap(left), D::SortedMap(right)) => {
-            field_layout_eq(left.entries(), right.entries())
+            field_eq(left.entries(), right.entries(), named, named)
         }
-        (D::RunEndEncoded(left), D::RunEndEncoded(right)) => run_layout_eq(left, right),
+        (D::RunEndEncoded(left), D::RunEndEncoded(right)) => {
+            field_eq(left.run_ends(), right.run_ends(), true, named)
+                && field_eq(left.values(), right.values(), true, named)
+        }
         _ => left == right,
     }
 }
 
-fn run_layout_eq(left: &RunEndEncodedType, right: &RunEndEncodedType) -> bool {
-    field_layout_eq(left.run_ends(), right.run_ends())
-        && field_layout_eq(left.values(), right.values())
+/// [`dtype_eq`] over two fields, their own name counting where `own_name`.
+fn field_eq(left: &Field, right: &Field, own_name: bool, named: bool) -> bool {
+    std::ptr::eq(left, right)
+        || (!own_name || left.name() == right.name())
+            && left.is_nullable() == right.is_nullable()
+            && dtype_eq(left.dtype(), right.dtype(), named)
 }
 
 impl DataType {

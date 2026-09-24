@@ -187,6 +187,7 @@ from .nested import (
 from .boolean import BooleanField, NullField, boolean, null
 from .scalar import Scalar, scalar
 from .serie import (
+    ChunkedSerie,
     FixedSizeSerieField,
     FixedSizeSerieSerie,
     LargeSerieField,
@@ -269,6 +270,7 @@ __all__ = [
     "BytesField",
     "BytesParameters",
     "CfiCodeField",
+    "ChunkedSerie",
     "CountryField",
     "CcyField",
     "CusipCodeField",
