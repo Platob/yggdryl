@@ -1337,10 +1337,17 @@ impl FixMsg {
         let tif = word(identity::TIMEINFORCE_TAG);
         // The instrument: what it is classified as, what it is called, and
         // its identifiers under the sources that name them.
+        // The detailed classification the chain reaches, or none: a coarse
+        // stated code is not a classification the market keeps.
         let cficode = self
             .classification()
-            .and_then(|held| CfiCode::new(&held).ok())
-            .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| CfiCode::new(&held).ok()));
+            .and_then(|held| CfiCode::new(&held).ok());
+        debug_assert!(
+            cficode
+                .as_ref()
+                .is_none_or(|held| CfiCode::is_detailed(held.as_str())),
+            "the classification chain answers a detailed code or none"
+        );
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
         // The security identifiers FIX states, under the source that names
         // each, with a crated column's row-stated entry kept over them.

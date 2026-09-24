@@ -261,8 +261,10 @@ impl Market for MarketData {
         self.cficode.as_ref()
     }
 
+    /// A market keeps only a detailed classification: a code that says
+    /// nothing past its category and group is stored as none.
     fn set_cficode(&mut self, code: Option<CfiCode>) {
-        self.cficode = code;
+        self.cficode = code.filter(|held| CfiCode::is_detailed(held.as_str()));
     }
 
     fn get_miccode(&self) -> Option<&MicCode> {
