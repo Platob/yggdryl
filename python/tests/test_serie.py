@@ -719,6 +719,50 @@ class TestReaderFrom:
         (only,) = list(reader)
         assert only.child("price") == column
 
+    def test_from_wraps_a_held_column_before_applying_the_root(self) -> None:
+        column = Serie.from_scalars(price(), [1, 2])
+        root = Field(
+            "row",
+            "struct<price: float64 not null>",
+            nullable=False,
+        )
+        reader = SerieReader.from_(column, root)
+        assert reader.field == root
+        (only,) = list(reader)
+        assert only.field == root
+        assert only.child("price").as_py() == [1.0, 2.0]
+
+    @pytest.mark.parametrize("value", [7, [1, 2], (1, 2)])
+    def test_from_reads_every_serie_value_as_one_stream_item(self, value: object) -> None:
+        expected = SerieReader.from_serie(Serie.from_(value))
+        reader = SerieReader.from_(value)
+        assert reader.field == expected.field
+        assert list(reader) == list(expected)
+
+    def test_from_keeps_an_eager_value_refusal(self) -> None:
+        cyclic: list[object] = []
+        cyclic.append(cyclic)
+        with pytest.raises(TypeError, match="cyclic Python values") as expected:
+            Serie.from_(cyclic)
+        with pytest.raises(TypeError, match="cyclic Python values") as actual:
+            SerieReader.from_(cyclic)
+        assert str(actual.value) == str(expected.value)
+
+    def test_from_keeps_an_iterator_of_tables_streaming(self) -> None:
+        pulled: list[int] = []
+
+        def tables() -> Iterator[pa.Table]:
+            for identifier in (1, 2):
+                pulled.append(identifier)
+                yield pa.table({"id": [identifier]})
+
+        reader = SerieReader.from_(tables())
+        assert pulled == [1]
+        assert next(reader).child("id").as_py() == [1]
+        assert pulled == [1]
+        assert next(reader).child("id").as_py() == [2]
+        assert pulled == [1, 2]
+
     def test_a_record_column_holding_an_absent_row_is_refused(self) -> None:
         records = Serie.from_(pa.array([{"id": 1}, None]))
         assert type(records) is StructSerie
@@ -729,8 +773,41 @@ class TestReaderFrom:
         for value in (quotes(), pa.Table.from_batches([quotes()]), Serie.from_(quotes())):
             reader = SerieReader.from_(value)
             assert Serie.from_(reader) == Serie.from_arrow_batch(quotes())
-        rows = SerieReader.from_([{"id": 1, "symbol": "AAPL"}])
-        assert Serie.from_(rows).as_py() == [{"id": 1, "symbol": "AAPL"}]
+
+    @pytest.mark.parametrize(
+        "records",
+        [
+            [{"id": 1, "symbol": "AAPL"}],
+            ({"id": 1, "symbol": "AAPL"},),
+        ],
+    )
+    def test_from_reads_concrete_mapping_sequences_as_record_rows(
+        self, records: object
+    ) -> None:
+        reader = SerieReader.from_(records)
+        assert reader.field == Field(
+            "row", "struct<id: int64, symbol: utf8>", nullable=False
+        )
+        assert Serie.from_(reader).as_py() == [{"id": 1, "symbol": "AAPL"}]
+
+    def test_from_reuses_the_first_reader_of_a_concrete_batch_sequence(self) -> None:
+        class OneShotReader:
+            def __init__(self, identifier: int) -> None:
+                batch = pa.record_batch({"id": [identifier]})
+                self.reader = pa.RecordBatchReader.from_batches(batch.schema, [batch])
+                self.exports = 0
+
+            def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+                self.exports += 1
+                if self.exports != 1:
+                    raise AssertionError("an Arrow stream was exported more than once")
+                return self.reader.__arrow_c_stream__(requested_schema)
+
+        sources = [OneShotReader(1), OneShotReader(2)]
+        reader = SerieReader.from_(sources)
+        assert [source.exports for source in sources] == [1, 0]
+        assert [batch.child("id").as_py() for batch in reader] == [[1], [2]]
+        assert [source.exports for source in sources] == [1, 1]
 
 
 class TestHandles:

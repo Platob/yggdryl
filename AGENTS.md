@@ -703,9 +703,11 @@ never a second collection API.
   row it was promised, so this is a safety boundary. The landing
   (`serie::arrow::column_of`) proves the projection and absence at every
   level, and reads each row of a leaf whose layout is not its datatype's
-  contract once - unless the caller's `Proof` certifies it. A value it
-  refuses is named by the row of the landed array it lies in and the path
-  below it, found again on the way out. A `Proof::Proven`
+  contract once - unless the caller's `Proof` certifies it. Every public child
+  remains readable on its own: ancestor-null rows mask aligned children, hidden
+  narrow list and map spans are compacted, and dictionary or run-end values are
+  masked by visible reachability. A value it refuses is named by the row of the
+  landed array it lies in and the path below it, found again on the way out. A `Proof::Proven`
   is passed only for rows the crate laid out (`from_canonical_rows`), a
   selection of a landed column (`repeat`), or a plan node that certifies: an
   ingest that read every value under the target's rule, a contract target, a
@@ -1487,6 +1489,13 @@ machinery they share in `text/`.
   required field is absence, repaired under `Nullability::Default` and refused
   under `Strict` - except where null is the datatype's own canonical default,
   the one exception, stated once in the engine and once in the landing.
+- Hidden-span compaction and noncompact list-view gathering draw on the landing's
+  one materialization budget. A root run-end gather searches each selected span
+  once, and a nested run-end uses indexed take unless its tree also contains a
+  zero-width fixed-size serie. That combined tree uses generic range extension
+  to preserve the zero-width row count and may rescan the nested runs once per
+  selected span; retain its explicit cost caveat until one recursive gather
+  replaces it.
 - `ArrowCastOptions` carries the three independent answers a cast needs and every
   entry point takes it: `safe` = may a present value convert, `Nullability` = may
   a declared value be absent, `Representation` = what a same-width pair carries.
@@ -1656,12 +1665,17 @@ Python-only:
   Data Interface and PyArrow holders.
 - Columnar host objects cross as `Serie` (held) or `SerieReader` (streamed):
   `Serie.from_(value, field=None)` and `SerieReader.from_(value, root=None)`
-  are the one recognition ladder - pyarrow, pandas, polars, NumPy, any Arrow C
-  exporter - `SerieReader.from_serie` makes a held column a stream, and
-  `IOBase.read_arrow` answers a `SerieReader`. A cast is `Serie.cast` or an
-  `ArrowCastPlan`, passing the caller's `safe`, `nullability` and
-  `representation`. No binding casts, rebuilds rows from, or walks an Arrow
-  array itself.
+  share one recognition ladder for pyarrow, pandas, polars, NumPy and any Arrow
+  C exporter. After it, a concrete scalar or container takes `Serie.from_`'s
+  scalar boundary and becomes one held reader item. A Python sequence recognized
+  as mapping records or columnar batches remains an incremental record stream and
+  reuses its first batch import; an iterator or generic reusable iterable remains
+  incremental too, and schema resolution may pull its first item. A held non-record
+  column is wrapped as a record before the reader's root is applied.
+  `SerieReader.from_serie` makes a held column a stream, and `IOBase.read_arrow`
+  answers a `SerieReader`. A cast is `Serie.cast` or an `ArrowCastPlan`, passing
+  the caller's `safe`, `nullability` and `representation`. No binding casts,
+  rebuilds rows from, or walks an Arrow array itself.
 - Structured codec facades stay byte-oriented and native, `cls=` is explicit
   reconstruction, and encoders never close caller-owned streams.
 

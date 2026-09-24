@@ -1413,7 +1413,7 @@ impl ArrayCastPlan {
                     .collect(),
             ),
             ArrayCastKind::List { child, .. } => Proof::of_children(vec![child.proof(serie)]),
-            ArrayCastKind::Map { entries, .. } => Proof::of_children(vec![entries.proof(serie)]),
+            ArrayCastKind::Map { entries, .. } => Proof::map(entries.proof(serie)),
             ArrayCastKind::Dictionary { values, .. }
             | ArrayCastKind::Encoded { values }
             | ArrayCastKind::RunEndEncoded { values, .. } => {

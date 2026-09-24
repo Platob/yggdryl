@@ -14,8 +14,10 @@
 #[path = "bench_profile.rs"]
 mod bench_profile;
 
+use arrow_array::Array as _;
 use std::hint::black_box;
 use std::sync::Arc;
+use yggdryl::SerieValue as _;
 
 use arrow_array::{ArrayRef, Decimal128Array, RecordBatch};
 use arrow_schema::SchemaRef;
@@ -610,6 +612,235 @@ fn structured_benchmarks(criterion: &mut Criterion) {
     group.finish();
 }
 
+/// One physical item per offset-list row, with every other row absent.
+fn alternating_list(item: Field, values: ArrayRef) -> (Field, ArrayRef) {
+    let count = values.len();
+    let offsets = (0..=count)
+        .map(|offset| i32::try_from(offset).expect("the benchmark fits i32 offsets"))
+        .collect::<Vec<_>>();
+    let present = (0..count).map(|row| row % 2 == 0).collect::<Vec<_>>();
+    let arrow_item = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the item projects");
+    let array: ArrayRef = Arc::new(arrow_array::ListArray::new(
+        arrow_item,
+        arrow_buffer::OffsetBuffer::new(offsets.into()),
+        values,
+        Some(arrow_buffer::NullBuffer::from(present)),
+    ));
+    (Field::new("spans", DataType::serie(item), true), array)
+}
+
+/// One run per logical row, alternating valid and deliberately invalid ISIN
+/// values, with the projected extension metadata Arrow's array needs.
+fn isin_runs(count: usize) -> (Field, ArrayRef) {
+    let run_field = Field::new(
+        "encoded",
+        DataType::run_end_encoded(
+            DataType::Int32.required_field("run_ends"),
+            DataType::IsinCode.required_field("values"),
+        )
+        .expect("int32 is a run-end type"),
+        false,
+    );
+    let run_ends = arrow_array::Int32Array::from(
+        (1..=count)
+            .map(|end| i32::try_from(end).expect("the benchmark fits i32 run ends"))
+            .collect::<Vec<_>>(),
+    );
+    let values = arrow_array::StringArray::from(
+        (0..count)
+            .map(|row| if row % 2 == 0 { "US0378331005" } else { "BAD" })
+            .collect::<Vec<_>>(),
+    );
+    let plain = arrow_array::RunArray::<arrow_array::types::Int32Type>::try_new(&run_ends, &values)
+        .expect("one run per row");
+    let projected = run_field
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run-end field projects");
+    let encoded = arrow_array::make_array(
+        plain
+            .to_data()
+            .into_builder()
+            .data_type(projected.data_type().clone())
+            .build()
+            .expect("the ISIN extension is legal Arrow metadata"),
+    );
+    (run_field, encoded)
+}
+
+/// A nullable record over the alternating ISIN runs. This keeps the run array
+/// in place and masks its narrow physical values.
+fn alternating_masked_isin_runs(count: usize) -> (Field, ArrayRef) {
+    let (run_field, encoded) = isin_runs(count);
+    let projected = run_field
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the run-end field projects");
+    let records: ArrayRef = Arc::new(arrow_array::StructArray::new(
+        vec![projected].into(),
+        vec![encoded],
+        Some(arrow_buffer::NullBuffer::from(
+            (0..count).map(|row| row % 2 == 0).collect::<Vec<_>>(),
+        )),
+    ));
+    let root = StructType::from_fields([run_field])
+        .map(DataType::from)
+        .expect("one run-end child")
+        .nullable_field("wrapped");
+    (root, records)
+}
+
+/// Alternating null list rows over one physical run per item. Compacting the
+/// required items gathers many disjoint ranges from a run-end array.
+fn alternating_isin_run_list(count: usize) -> (Field, ArrayRef) {
+    let (run_field, runs) = isin_runs(count);
+    alternating_list(run_field.with_name("item"), runs)
+}
+
+/// Alternating null list rows over records containing run-end ISIN values.
+/// This exercises the nested-run gather route without a zero-width fixed list.
+fn alternating_struct_isin_run_list(count: usize) -> (Field, ArrayRef) {
+    let (run_field, runs) = isin_runs(count);
+    let item = Field::new(
+        "item",
+        DataType::from(
+            StructType::from_fields([run_field, DataType::Int64.required_field("id")])
+                .expect("two record children"),
+        ),
+        false,
+    );
+    let projected = item
+        .clone()
+        .into_arrow_field_ref()
+        .expect("the record item projects");
+    let arrow_schema::DataType::Struct(fields) = projected.data_type() else {
+        panic!("the benchmark item is no longer a record");
+    };
+    let ids = arrow_array::Int64Array::from(
+        (0..count)
+            .map(|row| i64::try_from(row).expect("the benchmark fits i64"))
+            .collect::<Vec<_>>(),
+    );
+    let records: ArrayRef = Arc::new(arrow_array::StructArray::new(
+        fields.clone(),
+        vec![runs, Arc::new(ids)],
+        None,
+    ));
+    alternating_list(item, records)
+}
+
+/// Visibility repair has five distinct costs: a layout-contract child stays
+/// borrowed, a required narrow list item compacts away hidden spans, root and
+/// nested run-end arrays gather many disjoint ranges, and a narrow run value
+/// is rebuilt with physical null placeholders under a struct mask.
+fn null_visibility_benchmarks(criterion: &mut Criterion) {
+    let options = ArrowCastOptions::new();
+    let mut group = criterion.benchmark_group("arrow_serie_null_visibility");
+    group.sample_size(10);
+
+    for count in ROWS {
+        let borrowed = alternating_list(
+            DataType::Int64.required_field("item"),
+            Arc::new(arrow_array::Int64Array::from(
+                (0..count)
+                    .map(|value| i64::try_from(value).expect("the benchmark fits i64"))
+                    .collect::<Vec<_>>(),
+            )),
+        );
+        let compacted = alternating_list(
+            DataType::IsinCode.required_field("item"),
+            Arc::new(arrow_array::StringArray::from(
+                (0..count)
+                    .map(|row| if row % 2 == 0 { "US0378331005" } else { "BAD" })
+                    .collect::<Vec<_>>(),
+            )),
+        );
+        let list_runs = alternating_isin_run_list(count);
+        let nested_runs = alternating_struct_isin_run_list(count);
+        let masked_runs = alternating_masked_isin_runs(count);
+
+        let borrowed_landed =
+            Serie::from_arrow_array(Some(&borrowed.0), Arc::clone(&borrowed.1), options)
+                .expect("layout-contract items stay borrowed");
+        assert_eq!(borrowed_landed.items().map(Serie::len), Some(count));
+        assert!(
+            borrowed_landed
+                .into_arrow_array()
+                .unwrap()
+                .to_data()
+                .ptr_eq(&borrowed.1.to_data()),
+            "the layout-only control must retain every input buffer"
+        );
+
+        let compacted_landed =
+            Serie::from_arrow_array(Some(&compacted.0), Arc::clone(&compacted.1), options)
+                .expect("hidden required ISIN items compact away");
+        assert_eq!(
+            compacted_landed.items().map(Serie::len),
+            Some(count.div_ceil(2))
+        );
+        assert_eq!(compacted_landed.scalar(1).unwrap(), Scalar::Null);
+
+        let list_runs_landed =
+            Serie::from_arrow_array(Some(&list_runs.0), Arc::clone(&list_runs.1), options)
+                .expect("hidden required run-end items compact away");
+        let gathered = list_runs_landed
+            .items()
+            .and_then(Serie::as_run_end_encoded)
+            .expect("the gathered run-end items");
+        assert_eq!(gathered.logical_len(), count.div_ceil(2));
+        assert_eq!(gathered.values().len(), count.div_ceil(2));
+        assert_eq!(list_runs_landed.scalar(1).unwrap(), Scalar::Null);
+
+        let nested_runs_landed =
+            Serie::from_arrow_array(Some(&nested_runs.0), Arc::clone(&nested_runs.1), options)
+                .expect("records with nested ISIN runs compact away");
+        let nested_records = nested_runs_landed.items().expect("the gathered records");
+        let nested_encoded = nested_records
+            .child("encoded")
+            .and_then(Serie::as_run_end_encoded)
+            .expect("the nested run-end child");
+        assert_eq!(nested_encoded.logical_len(), count.div_ceil(2));
+        assert_eq!(nested_encoded.values().len(), count.div_ceil(2));
+        assert_eq!(nested_runs_landed.scalar(1).unwrap(), Scalar::Null);
+
+        let run_landed =
+            Serie::from_arrow_array(Some(&masked_runs.0), Arc::clone(&masked_runs.1), options)
+                .expect("hidden ISIN run values become null placeholders");
+        let encoded = run_landed
+            .child("encoded")
+            .and_then(Serie::as_run_end_encoded)
+            .expect("the run-end child");
+        assert_eq!(encoded.values().len(), count);
+        assert_eq!(encoded.values().null_count(), count / 2);
+        assert_eq!(encoded.scalar(1).unwrap(), Scalar::Null);
+
+        group.throughput(Throughput::Elements(count as u64));
+        for (name, (field, array)) in [
+            ("borrowed_list_i64", borrowed),
+            ("compact_list_isin", compacted),
+            ("compact_list_run_end_isin", list_runs),
+            ("compact_list_struct_run_end_isin", nested_runs),
+            ("masked_run_end_isin", masked_runs),
+        ] {
+            group.bench_function(format!("{name}/{count}"), |bencher| {
+                bencher.iter_batched(
+                    || Arc::clone(&array),
+                    |array| {
+                        Serie::from_arrow_array(Some(&field), array, options)
+                            .expect("the visibility fixture lands")
+                    },
+                    BatchSize::SmallInput,
+                );
+            });
+        }
+    }
+    group.finish();
+}
+
 criterion_group!(
     arrow_values,
     construction_benchmarks,
@@ -617,5 +848,6 @@ criterion_group!(
     collect_benchmarks,
     cast_benchmarks,
     structured_benchmarks,
+    null_visibility_benchmarks,
 );
 criterion_main!(arrow_values);

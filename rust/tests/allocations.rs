@@ -2405,6 +2405,154 @@ fn an_arrow_column_is_one_value_without_a_row() {
 }
 
 #[test]
+fn proving_exact_arrow_maps_allocates_per_column_not_per_row() {
+    // Long keys make a materialized Scalar visible to the allocator. Two
+    // entries need no sorting scratch: each map is proved over its buffers,
+    // and an exact landing shares those buffers at either corpus size.
+    use arrow_array::{ArrayRef, Int64Array, MapArray, StringArray, StructArray};
+    use arrow_buffer::OffsetBuffer;
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Fields};
+
+    let fields: Fields = vec![
+        Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+        Arc::new(ArrowField::new("value", ArrowDataType::Int64, true)),
+    ]
+    .into();
+    let entries = Field::new(
+        "entries",
+        DataType::from(
+            StructType::from_fields([
+                DataType::utf8().required_field("key"),
+                DataType::Int64.nullable_field("value"),
+            ])
+            .expect("two map children"),
+        ),
+        false,
+    );
+    for sorted in [false, true] {
+        let field = Field::new(
+            "item",
+            DataType::map(entries.clone(), sorted).expect("a map"),
+            false,
+        );
+        for declared in [false, true] {
+            let mut counts = Vec::new();
+            for rows in [1_024_usize, 16_384] {
+                let keys = if sorted {
+                    [
+                        "a map key longer than inline storage",
+                        "b map key longer than inline storage",
+                    ]
+                } else {
+                    [
+                        "b map key longer than inline storage",
+                        "a map key longer than inline storage",
+                    ]
+                };
+                let keys = StringArray::from_iter_values((0..rows).flat_map(|_| keys));
+                let payload = keys.value_data().as_ptr();
+                let records = StructArray::new(
+                    fields.clone(),
+                    vec![
+                        Arc::new(keys),
+                        Arc::new(Int64Array::from_iter_values(
+                            (0..rows).flat_map(|_| [1_i64, 2]),
+                        )),
+                    ],
+                    None,
+                );
+                let array: ArrayRef = Arc::new(MapArray::new(
+                    Arc::new(ArrowField::new(
+                        "entries",
+                        ArrowDataType::Struct(fields.clone()),
+                        false,
+                    )),
+                    OffsetBuffer::new(
+                        (0..=rows)
+                            .map(|row| i32::try_from(row * 2).expect("the corpus fits"))
+                            .collect::<Vec<_>>()
+                            .into(),
+                    ),
+                    records,
+                    None,
+                    sorted,
+                ));
+                let land = || {
+                    Serie::from_arrow_array(
+                        declared.then_some(&field),
+                        Arc::clone(&array),
+                        ArrowCastOptions::default(),
+                    )
+                    .expect("the exact map lands")
+                };
+                drop(land());
+                let (allocations, column) = counted(land);
+                assert_eq!(column.len(), rows);
+                assert_eq!(
+                    column
+                        .as_map()
+                        .expect("a map")
+                        .keys()
+                        .as_utf8()
+                        .expect("text keys")
+                        .payload()
+                        .as_ptr(),
+                    payload,
+                    "an exact map shares its key payload"
+                );
+                counts.push(allocations);
+            }
+            assert_eq!(
+                counts[0], counts[1],
+                "exact map proof cost {counts:?} at 1024 and 16384 rows \
+                 (sorted={sorted}, declared={declared})"
+            );
+        }
+    }
+}
+
+#[test]
+fn proving_hidden_list_spans_allocates_per_column_not_per_row() {
+    use arrow_array::{ArrayRef, ListArray, StringArray};
+    use arrow_buffer::{NullBuffer, OffsetBuffer};
+    use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
+
+    let mut counts = Vec::new();
+    for rows in [1_024_usize, 16_384] {
+        let values = StringArray::from_iter_values(std::iter::repeat_n(
+            "a physical item longer than inline storage",
+            rows,
+        ));
+        let payload = values.value_data().as_ptr();
+        let offsets = OffsetBuffer::new(
+            (0..=rows)
+                .map(|row| i32::try_from(row).expect("the corpus fits"))
+                .collect::<Vec<_>>()
+                .into(),
+        );
+        let offset_buffer = offsets.as_ptr();
+        let array: ArrayRef = Arc::new(ListArray::new(
+            Arc::new(ArrowField::new("item", ArrowDataType::Utf8, false)),
+            offsets,
+            Arc::new(values),
+            Some(NullBuffer::from_iter((0..rows).map(|row| row % 2 == 0))),
+        ));
+        let land = || {
+            Serie::from_arrow_array(None, Arc::clone(&array), ArrowCastOptions::default())
+                .expect("hidden physical spans remain borrowed")
+        };
+        drop(land());
+        let (allocations, column) = counted(land);
+        let lists = column.as_serie().expect("the list column");
+        assert_eq!(lists.items().len(), rows);
+        assert_eq!(lists.offsets().as_ptr(), offset_buffer);
+        assert_eq!(lists.items().as_utf8().unwrap().payload().as_ptr(), payload);
+        counts.push(allocations);
+    }
+    assert_eq!(counts[0], counts[1], "hidden-span proof cost {counts:?}");
+}
+
+#[test]
 fn proving_a_decimal_or_date64_intake_builds_nothing() {
     // A decimal's precision and a date64's whole days are narrower than the
     // storage, so the landing reads each row once - through the column's
@@ -3380,6 +3528,50 @@ fn a_string_column_is_built_into_one_buffer_whatever_its_charset() {
             counts.windows(2).all(|pair| pair[0] == pair[1]),
             "{dtype} built {counts:?} allocations at 16, 1024 and 16384 rows; \
              a column's cost must not grow with its rows"
+        );
+    }
+}
+
+#[test]
+fn cp1252_write_preflight_adds_no_per_row_allocation() {
+    // A non-ASCII encoding preflight must inspect the repertoire without
+    // encoding into a temporary Vec for each row. Both spellings occupy
+    // four wire bytes and fit a Scalar inline, so the only allocations are
+    // the same replacement buffers, whatever the text or corpus size.
+    for dtype in [
+        DataType::cp1252(),
+        DataType::large_cp1252(),
+        DataType::cp1252_view(),
+        DataType::large_cp1252_view(),
+        DataType::fixed_cp1252(4).expect("a fixed width"),
+        DataType::sized_cp1252(4).expect("a bounded width"),
+    ] {
+        let mut counts = Vec::new();
+        for rows in [1_024_usize, 16_384] {
+            for text in ["cafe", "caf\u{00e9}"] {
+                let field = dtype.clone().required_field("note");
+                let canonical = field
+                    .scalar(Scalar::from(text))
+                    .expect("an encodable value");
+                let incoming = vec![canonical; rows];
+                let mut column = Serie::with_capacity(field, rows).expect("reserved buffers");
+                let (allocations, ()) = counted(|| {
+                    column
+                        .splice(0..0, incoming)
+                        .expect("encodable rows append");
+                });
+                assert_eq!(column.len(), rows);
+                assert_eq!(
+                    column.scalar(rows - 1).expect("the last row").as_str(),
+                    Some(text)
+                );
+                counts.push(allocations);
+            }
+        }
+        assert!(
+            counts.windows(2).all(|pair| pair[0] == pair[1]),
+            "{dtype} writes cost {counts:?} for ASCII/non-ASCII at 1024/16384 rows; \
+             repertoire preflight must not allocate per row"
         );
     }
 }

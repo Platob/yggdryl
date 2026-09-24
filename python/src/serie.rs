@@ -33,7 +33,9 @@ use arrow_array::RecordBatch;
 use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyList, PySlice};
+use pyo3::types::{
+    IntoPyDict, PyFrozenSet, PyIterator, PyList, PyMapping, PySequence, PySet, PySlice,
+};
 use yggdryl::arrow::BatchReader;
 use yggdryl::media::RecordOptions;
 use yggdryl::{
@@ -43,9 +45,9 @@ use yggdryl::{
 use crate::datatype::{PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow};
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
-    Frames, batch_reader_from_any, batch_reader_from_value, batch_reader_to_pyarrow,
-    batch_to_pyarrow, columnar_reader, core_root_field_from_value, declared_by, frame_from_reader,
-    record_batch_from_value, type_name,
+    Frames, batch_reader_from_any, batch_reader_from_record_sequence, batch_reader_from_value,
+    batch_reader_to_pyarrow, batch_to_pyarrow, columnar_reader, core_root_field_from_value,
+    declared_by, frame_from_reader, record_batch_from_value, type_name,
 };
 use crate::scalar::{
     PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, pyarrow_scalar_into_array,
@@ -203,8 +205,17 @@ impl Columnar {
         options: ArrowCastOptions,
     ) -> PyResult<SerieReader> {
         match self {
-            Self::Held(_) | Self::Pinned(_) => {
-                SerieReader::from_serie(self.into_serie(root, options)?).map_err(value_error)
+            Self::Held(serie) | Self::Pinned(serie) => {
+                let reader = SerieReader::from_serie(serie).map_err(value_error)?;
+                match root {
+                    Some(root) => SerieReader::from_arrow_reader(
+                        Some(root),
+                        reader.into_arrow_reader(),
+                        options,
+                    )
+                    .map_err(value_error),
+                    None => Ok(reader),
+                }
             }
             Self::Stream(reader) => {
                 SerieReader::from_arrow_reader(root, reader, options).map_err(value_error)
@@ -279,29 +290,16 @@ pub(crate) fn columnar_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Scalar
     })
 }
 
-/// Read any Python value as one column, cast into `field` when one is given.
+/// Read a Python value already proven not to be columnar as one column.
 ///
-/// A columnar object is [`columnar`]'s; any other value is read as a native
-/// [`Scalar`]: a sequence is its rows and anything else one row, under
-/// `field` or the field the value infers.
-fn serie_from_py(
+/// The value crosses through the native [`Scalar`] boundary exactly once: a
+/// sequence is its rows and anything else one row, under `field` or the field
+/// the value infers.
+fn serie_from_value(
     value: &Bound<'_, PyAny>,
     field: Option<&Bound<'_, PyAny>>,
     options: ArrowCastOptions,
 ) -> PyResult<Serie> {
-    if let Some(columnar) = columnar(value)? {
-        let name = match &columnar {
-            Columnar::Held(serie) | Columnar::Pinned(serie) => serie
-                .field()
-                .map_or(DEFAULT_ROOT, CoreField::name)
-                .to_owned(),
-            Columnar::Stream(_) => DEFAULT_ROOT.to_owned(),
-        };
-        let root = field
-            .map(|field| core_root_field_from_value(field, &name))
-            .transpose()?;
-        return columnar.into_serie(root.as_ref(), options);
-    }
     let scalar = from_py(value).map_err(|error| {
         PyTypeError::new_err(format!(
             "expected a pyarrow Scalar, Array, ChunkedArray, RecordBatch, Table, \
@@ -337,11 +335,38 @@ fn serie_from_py(
     }
 }
 
+/// Read any Python value as one column, cast into `field` when one is given.
+///
+/// A columnar object is [`columnar`]'s; any other value is
+/// [`serie_from_value`]'s.
+fn serie_from_py(
+    value: &Bound<'_, PyAny>,
+    field: Option<&Bound<'_, PyAny>>,
+    options: ArrowCastOptions,
+) -> PyResult<Serie> {
+    if let Some(columnar) = columnar(value)? {
+        let name = match &columnar {
+            Columnar::Held(serie) | Columnar::Pinned(serie) => serie
+                .field()
+                .map_or(DEFAULT_ROOT, CoreField::name)
+                .to_owned(),
+            Columnar::Stream(_) => DEFAULT_ROOT.to_owned(),
+        };
+        let root = field
+            .map(|field| core_root_field_from_value(field, &name))
+            .transpose()?;
+        return columnar.into_serie(root.as_ref(), options);
+    }
+    serie_from_value(value, field, options)
+}
+
 /// Read any Python value as a stream of record columns, cast into `root`.
 ///
-/// A columnar object is [`columnar`]'s, a held column the one item of its
-/// stream; anything else is the rows [`stream_of`] reads, pulled one batch at
-/// a time.
+/// A columnar object is [`columnar`]'s. Iterators and generic reusable
+/// iterables remain row streams, pulled one batch at a time. Sequences of
+/// mappings or batch sources keep the record reader's interpretation. Other
+/// concrete containers, a native [`PyScalar`], and a non-iterable cross through
+/// [`serie_from_value`], then become the one held item of their stream.
 pub(crate) fn serie_reader_from_py(
     value: &Bound<'_, PyAny>,
     root: Option<&Bound<'_, PyAny>>,
@@ -353,7 +378,27 @@ pub(crate) fn serie_reader_from_py(
     if let Some(columnar) = columnar(value)? {
         return columnar.into_reader(root.as_ref(), options);
     }
-    SerieReader::from_arrow_reader(root.as_ref(), stream_of(value)?, options).map_err(value_error)
+    if value.cast::<PySequence>().is_ok()
+        && let Some(reader) = batch_reader_from_record_sequence(
+            value,
+            &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).map_err(value_error)?,
+        )?
+    {
+        return SerieReader::from_arrow_reader(root.as_ref(), reader, options).map_err(value_error);
+    }
+    let streams = value.cast::<PyIterator>().is_ok()
+        || (value.cast::<PySequence>().is_err()
+            && value.cast::<PyMapping>().is_err()
+            && value.cast::<PySet>().is_err()
+            && value.cast::<PyFrozenSet>().is_err()
+            && value.extract::<PyRef<'_, PyScalar>>().is_err()
+            && value.hasattr("__iter__")?);
+    if streams {
+        return SerieReader::from_arrow_reader(root.as_ref(), stream_of(value)?, options)
+            .map_err(value_error);
+    }
+    let serie = serie_from_value(value, None, ArrowCastOptions::new())?;
+    Columnar::Held(serie).into_reader(root.as_ref(), options)
 }
 
 /// The name a record root takes when its spelling carries none, because
@@ -1060,9 +1105,11 @@ impl PySerieReader {
     /// Read any columnar object, or any rows, as a stream of record
     /// columns: of its own schema, or cast into `root` by one plan.
     ///
-    /// A stream - a reader, a table, a frame, a dataset - is not pulled
-    /// until the first column is asked for. A held column - a `Serie`, an
-    /// array, a batch - is the one item of its stream.
+    /// A stream - a reader, a table, a frame, a dataset, an iterator or
+    /// generic iterable - stays a stream. A held column - a `Serie`, an array,
+    /// a batch - is the one item of its stream. Sequences of mappings or batch
+    /// sources remain record streams. Other concrete containers and scalar
+    /// values cross as `Serie.from_` reads them, then become one held item.
     #[staticmethod]
     #[pyo3(name = "from_")]
     #[pyo3(signature = (value, root = None, *, safe = true, nullability = "default", representation = "value"))]

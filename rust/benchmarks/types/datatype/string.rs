@@ -215,5 +215,43 @@ pub(crate) fn string_benchmarks(criterion: &mut Criterion) {
         );
     }
 
+    // `scalar/fixed_cp1252(32)` above measures the field's from-scalar proof,
+    // and `fixed_cp1252_64_write` measures laying a whole fixed column out.
+    // This remaining arm pins the prove-check-write mutation cost with a
+    // non-ASCII byte, where windows-1252 must actually encode the replacement.
+    let fixed = StringType::FixedCp1252String(32);
+    let fixed_field = Arc::new(
+        DataType::string(fixed)
+            .expect("a fixed windows-1252 leaf")
+            .required_field("value"),
+    );
+    let initial = fixed
+        .scalar(format!("{}é", "a".repeat(31)))
+        .expect("32 windows-1252 bytes");
+    let replacement = fixed
+        .scalar(format!("{}€", "b".repeat(31)))
+        .expect("32 windows-1252 bytes");
+    group.bench_function(
+        BenchmarkId::new("mutation_fixed_cp1252_set_middle", ROWS),
+        |bencher| {
+            bencher.iter_batched(
+                || {
+                    Serie::from_scalars(
+                        Arc::clone(&fixed_field),
+                        std::iter::repeat_n(initial.clone(), ROWS),
+                    )
+                    .expect("the fixed column materializes")
+                },
+                |mut column| {
+                    column
+                        .set(ROWS / 2, black_box(&replacement).clone())
+                        .expect("one encodable replacement");
+                    black_box(column)
+                },
+                criterion::BatchSize::LargeInput,
+            );
+        },
+    );
+
     group.finish();
 }

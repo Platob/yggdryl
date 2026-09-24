@@ -392,3 +392,98 @@ fn a_fixed_width_text_column_pads_its_slot_and_reads_the_text_back() {
         b"X\0\0\0CDEF"
     );
 }
+
+#[test]
+fn recovered_cp1252_scalars_are_refused_atomically_by_every_column_write() {
+    fn assert_encoding_refusal(result: std::result::Result<(), yggdryl::Error>) {
+        let refusal = result.expect_err("U+0081 has no windows-1252 byte");
+        let message = refusal.to_string();
+        assert!(message.contains("recovered"), "names the field: {message}");
+        assert!(
+            message.contains("byte 2"),
+            "names the encoding position: {message}"
+        );
+    }
+
+    for leaf in [
+        yggdryl::StringType::Cp1252String,
+        yggdryl::StringType::LargeCp1252String,
+        yggdryl::StringType::Cp1252StringView,
+        yggdryl::StringType::LargeCp1252StringView,
+        yggdryl::StringType::FixedCp1252String(8),
+        yggdryl::StringType::SizedCp1252String(8),
+    ] {
+        let valid = leaf.scalar("safe").expect("encodable text");
+        let recovered = leaf
+            .scalar("ok\u{0081}")
+            .expect("a recovered scalar remains readable");
+        assert_eq!(recovered.as_str(), Some("ok\u{0081}"));
+        let mut column = Serie::from_scalars(
+            Field::new(
+                "recovered",
+                DataType::string(leaf).expect("a string leaf"),
+                true,
+            ),
+            [valid.clone()],
+        )
+        .expect("one encodable row");
+        let before = column.clone();
+
+        assert_encoding_refusal(column.push(recovered.clone()));
+        assert_eq!(column, before);
+        assert_encoding_refusal(column.set(0, recovered.clone()));
+        assert_eq!(column, before);
+        assert_encoding_refusal(column.splice(0..1, vec![valid.clone(), recovered.clone()]));
+        assert_eq!(column, before);
+        assert_encoding_refusal(column.extend(vec![valid, recovered]));
+        assert_eq!(column, before);
+    }
+}
+
+#[test]
+fn a_nested_cp1252_refusal_does_not_mutate_a_preceding_sibling() {
+    let leaf = yggdryl::StringType::Cp1252String;
+    let root = Field::new(
+        "row",
+        DataType::from(
+            yggdryl::StructType::from_fields([
+                Field::new("id", DataType::Int64, false),
+                Field::new("recovered", DataType::string(leaf).unwrap(), false),
+            ])
+            .unwrap(),
+        ),
+        false,
+    );
+    let mut column = Serie::from_scalars(
+        root,
+        [Scalar::from_sequence([
+            Scalar::from(1_i64),
+            leaf.scalar("safe").unwrap(),
+        ])],
+    )
+    .expect("one record");
+    let before = column.clone();
+
+    let refusal = column
+        .push(Scalar::from_sequence([
+            Scalar::from(2_i64),
+            leaf.scalar("ok\u{0081}")
+                .expect("a recovered scalar remains readable"),
+        ]))
+        .expect_err("the second child cannot be encoded");
+    let message = refusal.to_string();
+    assert!(message.contains("recovered"), "names the child: {message}");
+    assert!(
+        message.contains("byte 2"),
+        "names the encoding position: {message}"
+    );
+    assert_eq!(column, before);
+    assert_eq!(
+        column
+            .child("id")
+            .and_then(Serie::as_int64)
+            .unwrap()
+            .values(),
+        &[1]
+    );
+}

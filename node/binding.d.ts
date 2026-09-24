@@ -19,7 +19,6 @@ export {
   RecordOptions,
   Records,
   Selector,
-  Serie,
   SerieReader,
   ArrowCastPlan,
   StringEnum,
@@ -79,7 +78,7 @@ import type {
   RecordOptions,
   Records,
   Selector,
-  Serie,
+  Serie as NativeSerie,
   SerieReader,
   ArrowCastPlan,
   StringParametersInput,
@@ -127,6 +126,75 @@ import type {
 } from 'apache-arrow'
 import type { Buffer } from 'node:buffer'
 import type { URL as NodeURL } from 'node:url'
+
+/** Many values as a schema-free run or the buffers of one field. */
+export type Serie = NativeSerie
+/** The public constructor converts each JavaScript row through Scalar. */
+export declare const Serie: Omit<typeof NativeSerie, 'prototype'> & {
+  readonly prototype: Serie
+  new(rows?: Iterable<unknown> | null): Serie
+}
+
+/** A serie column with 32-bit offsets, handed out by a Serie factory. */
+export declare class SerieSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie column with 64-bit offsets, handed out by a Serie factory. */
+export declare class LargeSerieSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie view with 32-bit offsets and sizes. */
+export declare class SerieViewSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  readonly sizes: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A serie view with 64-bit offsets and sizes. */
+export declare class LargeSerieViewSerie extends Serie {
+  private constructor()
+  readonly offsets: number[]
+  readonly sizes: number[]
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A fixed-size serie column, handed out by a Serie factory. */
+export declare class FixedSizeSerieSerie extends Serie {
+  private constructor()
+  readonly width: number
+  range(index: number): [number, number] | null
+  row(index: number): Serie | null
+}
+
+/** A map column whose rows cut a record column of entries. */
+export declare class MapSerie extends Serie {
+  private constructor()
+  readonly entries: StructSerie
+  readonly keys: Serie
+  readonly values: Serie
+  readonly offsets: number[]
+  readonly keysSorted: boolean
+  range(index: number): [number, number] | null
+  row(index: number): StructSerie | null
+}
+
+/** A record column, handed out by a Serie factory. */
+export declare class StructSerie extends Serie {
+  private constructor()
+  readonly names: string[]
+  withoutChild(name: string): StructSerie
+}
 
 export type {
   Catalog,
@@ -704,6 +772,42 @@ declare module './index' {
   }
 
   interface Serie extends Iterable<Scalar> {
+    /** Every row as its natural JavaScript value. */
+    asJs(options?: Pick<CodecOptions, 'maxDepth'> | null): unknown[]
+    /** The same row values as asJs, for JSON.stringify. */
+    toJSON(): unknown[]
+    /** Iterate the rows as Scalar values. */
+    [Symbol.iterator](): IterableIterator<Scalar>
+    /** A copy sharing the buffers; writing either copies them once. */
+    clone(): Serie
+    /** Drop the field and retain the rows as a schema-free run. */
+    intoRun(): Serie
+    /** The length rows starting at offset. */
+    slice(offset: number, length: number): Serie
+    /** A named record child, or null when absent. */
+    child(name: string): Serie | null
+    /** A record child or union member at index, or null when absent. */
+    childAt(index: number): Serie | null
+    /** Every record child or union member. */
+    children(): Serie[]
+    /** Sequence items, map entries or encoded values; null elsewhere. */
+    items(): Serie | null
+    /** The column a field path reaches, or null when absent. */
+    getChildByPath(path: string): Serie | null
+    /** Replace start..end by rows; omitted rows remove the range. */
+    splice(start: number, end: number, rows?: Iterable<unknown> | null): void
+    /** Overwrite one row through its field's contract. */
+    set(index: number, value: unknown): void
+    /** Append one row through its field's contract. */
+    push(value: unknown): void
+    /** Insert one row before index. */
+    insert(index: number, value: unknown): void
+    /** Append every row through its field's contract. */
+    extend(rows: Iterable<unknown>): void
+    /** Truncate, or grow with copies of value. */
+    resize(length: number, value: unknown): void
+    /** Set a nested cell through the field named by path. */
+    setCell(path: string, index: number, value: unknown): void
     /**
      * This column under `field` - a DataType as its required `value` field -
      * cast once; a run is refused.
@@ -2858,6 +2962,8 @@ declare module './index' {
     function fromExtensions(values: Iterable<string>): MediaType
   }
   interface Scalar extends Iterable<Scalar> {
+    /** The serie a sequence value holds, or null for another value. */
+    asSerie(): Serie | null
     /** Add an inferred JavaScript or native numeric value in Rust. */
     add(other: unknown): Scalar
     /** Subtract an inferred JavaScript or native numeric value in Rust. */

@@ -1022,7 +1022,8 @@ impl DataType {
             | Self::FixedSizeSerie(item, _)
             | Self::LargeSerie(item)
             | Self::LargeSerieView(item) => item.dtype().layout_is_contract(),
-            Self::Map(map) | Self::SortedMap(map) => map.entries.dtype().layout_is_contract(),
+            // Arrow does not prove key uniqueness or the declared ordering.
+            Self::Map(_) | Self::SortedMap(_) => false,
             Self::Union(members, _) => members
                 .iter()
                 .all(|(_, field)| field.dtype().layout_is_contract()),

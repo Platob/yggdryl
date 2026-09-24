@@ -1536,8 +1536,9 @@ fn prepend_canonical_error(
     error: Error,
     segments: impl IntoIterator<Item = FieldSegment>,
 ) -> Error {
-    let Error::InvalidRecord { path, reason } = error else {
-        return error;
+    let (path, reason) = match error {
+        Error::InvalidRecord { path, reason } => (path, reason),
+        other => (SmolStr::new_static("$"), format_smolstr!("{other}")),
     };
     let mut prefixed = String::from("$");
     for segment in segments {

@@ -23,7 +23,7 @@ use std::sync::Arc;
 use arrow_array::types::{
     Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
-use arrow_array::{ArrayRef, DictionaryArray};
+use arrow_array::{Array, ArrayRef, DictionaryArray};
 use arrow_buffer::{ArrowNativeType, NullBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
@@ -351,15 +351,16 @@ serie_leaf!(DictionarySerie);
 /// Both halves take the door nullable under this column's name: absence
 /// is judged once, at this level, on the logical nulls the keys and the
 /// values spell together - and a key hidden under an absent record, or
-/// written for a placeholder, is a key like any other. The values are
-/// proven there once.
+/// written for a placeholder, selects no value for validation. Only vocabulary
+/// values referenced by visible keys are proven. Unused narrow slots become
+/// null placeholders while their payload buffers remain shared.
 pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
-    let _ = parent;
     if !matches!(array.data_type(), ArrowDataType::Dictionary(..)) {
         return Ok(None);
     }
@@ -371,11 +372,26 @@ pub(crate) fn column_of(
     };
     macro_rules! parts {
         ($key:ty) => {{
-            let (keys, values) = super::arrow::held::<DictionaryArray<$key>>(&array)?.into_parts();
-            (Arc::new(keys) as ArrayRef, values)
+            let held = super::arrow::held::<DictionaryArray<$key>>(&array)?;
+            let needs_mask = parent.is_some_and(|above| above.null_count() != 0)
+                || !dictionary.value().layout_is_contract();
+            let hidden = if needs_mask {
+                crate::cast::columns::selected_index_exposure(
+                    held.values().len(),
+                    held.len(),
+                    parent.map(NullBuffer::inner),
+                    |row| held.key(row),
+                    budget,
+                )?
+                .map(NullBuffer::new)
+            } else {
+                None
+            };
+            let (keys, values) = held.into_parts();
+            (Arc::new(keys) as ArrayRef, values, hidden)
         }};
     }
-    let (keys, values) = match dictionary.key() {
+    let (keys, values, hidden) = match dictionary.key() {
         DataType::Int8 => parts!(Int8Type),
         DataType::Int16 => parts!(Int16Type),
         DataType::Int32 => parts!(Int32Type),
@@ -391,12 +407,14 @@ pub(crate) fn column_of(
         keys,
         None,
         &super::arrow::Proof::Proven,
+        budget,
     )?;
     let values = super::arrow::child_of(
         Arc::new(Field::new(field.name(), dictionary.value().clone(), true)),
         values,
-        None,
+        hidden.as_ref(),
         proof.child(0),
+        budget,
     )?;
     Ok(Some(DictionarySerie::new(field, keys, values).into_serie()))
 }

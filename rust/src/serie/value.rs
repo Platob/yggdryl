@@ -1888,23 +1888,25 @@ fn string_array(parameters: StringType, values: &[&Scalar]) -> Result<ArrayRef> 
             .len()
             .checked_mul(slot)
             .ok_or_else(|| invalid_value("a string column within usize", width))?;
-        let mut bytes = vec![0_u8; cells];
+        let mut bytes = Vec::with_capacity(cells);
         let mut validity = Vec::with_capacity(values.len());
-        for (index, value) in values.iter().enumerate() {
+        for value in values {
+            let start = bytes.len();
             match optional_str(value)? {
                 Some(text) => {
-                    let encoded = charset.encode(text)?;
-                    if encoded.len() > slot {
+                    charset.encode_into(text, &mut bytes)?;
+                    let encoded = bytes.len() - start;
+                    if encoded > slot {
                         return Err(invalid_value(
                             &format!("at most {slot} bytes of {charset}"),
-                            encoded.len(),
+                            encoded,
                         ));
                     }
-                    bytes[index * slot..][..encoded.len()].copy_from_slice(&encoded);
                     validity.push(true);
                 }
                 None => validity.push(false),
             }
+            bytes.resize(start + slot, 0);
         }
         let width =
             i32::try_from(width).map_err(|_| invalid_value("a string width within i32", width))?;

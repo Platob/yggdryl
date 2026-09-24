@@ -4,8 +4,10 @@
 //! happens and nowhere else: the layout is proven against the field's own
 //! Arrow projection, absence is judged on the validity words, the values are
 //! proven by the layout where the layout is the contract and read once
-//! where it is not, the array is taken as it is - no buffer copied - and a
-//! nested layout recurses into the columns under it with each child field.
+//! where it is not, and a nested layout recurses with each child field.
+//! Value buffers are shared where their physical rows are readable. Hidden
+//! narrow values become null placeholders; variable spans containing them
+//! are compacted where Arrow requires present children.
 //!
 //! Inline because this section reads `crate::arrow::{Error, Result}` while
 //! the rest of the file reads `crate::{Error, Result}`, and one scope cannot
@@ -206,6 +208,231 @@ pub(crate) fn rebased<O: OffsetSizeTrait>(
     )
 }
 
+/// Combine the two contextual masks without changing stored row validity.
+pub(super) fn parent_nulls(
+    parent: Option<&NullBuffer>,
+    own: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Option<NullBuffer>> {
+    let parent = parent.filter(|nulls| nulls.null_count() != 0);
+    let own = own.filter(|nulls| nulls.null_count() != 0);
+    if let (Some(parent), Some(_)) = (parent, own) {
+        budget.add_bitmap(parent.len())?;
+    }
+    Ok(NullBuffer::union(parent, own))
+}
+
+/// The entries a present offset row reaches. Hidden physical spans stay shared.
+pub(super) fn offset_parent<O: OffsetSizeTrait>(
+    offsets: &OffsetBuffer<O>,
+    len: usize,
+    nulls: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<Option<NullBuffer>> {
+    if nulls.is_none_or(|nulls| nulls.null_count() == 0) {
+        return Ok(None);
+    }
+    crate::cast::columns::range_exposure(
+        len,
+        offsets.len() - 1,
+        nulls.map(NullBuffer::inner),
+        |_| true,
+        |row| Ok((offsets[row].as_usize(), offsets[row + 1].as_usize())),
+        budget,
+    )
+    .map(|mask| mask.map(NullBuffer::new))
+}
+
+/// Copy selected physical spans through Arrow, after reserving bounded
+/// buffers and scratch. One contiguous span remains a shared slice.
+pub(super) fn gather_ranges(
+    values: &ArrayRef,
+    dtype: &DataType,
+    ranges: &[(usize, usize)],
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<ArrayRef> {
+    match ranges {
+        [] => return Ok(values.slice(0, 0)),
+        &[(start, end)] => return Ok(values.slice(start, end - start)),
+        _ => {}
+    }
+    if let DataType::RunEndEncoded(encoded) = dtype {
+        use arrow_array::types::{Int16Type, Int32Type, Int64Type};
+        return match encoded.run_ends().dtype() {
+            DataType::Int16 => gather_runs::<Int16Type>(values, encoded, ranges, budget),
+            DataType::Int32 => gather_runs::<Int32Type>(values, encoded, ranges, budget),
+            DataType::Int64 => gather_runs::<Int64Type>(values, encoded, ranges, budget),
+            _ => Err(Error::Internal {
+                site: "serie::arrow::gather_runs",
+            }),
+        };
+    }
+    // Arrow's range extender rescans nested runs from their first value.
+    // Take avoids that, but loses row counts on zero-width fixed lists.
+    let (runs, zero_width) = gather_layout(dtype);
+    if runs && !zero_width {
+        use crate::budget::{SourceSelection, reserve_source_selection, scratch_vec};
+        let selection = SourceSelection::Ranges(ranges);
+        let len = selection.row_count(values.len())?;
+        let allocation = budget.mark();
+        reserve_source_selection(values.as_ref(), dtype, selection, budget)?;
+        budget.add_growth_since(allocation)?;
+        let mut indices = scratch_vec::<u64>(budget, len, "gather indices")?;
+        for &(start, end) in ranges {
+            indices.extend((start..end).map(|index| index as u64));
+        }
+        return Ok(arrow_select::take::take(
+            values.as_ref(),
+            &arrow_array::UInt64Array::from(indices),
+            None,
+        )?);
+    }
+    let allocation = budget.mark();
+    crate::budget::reserve_source_extend(
+        values.as_ref(),
+        dtype,
+        crate::budget::SourceSelection::Ranges(ranges),
+        budget,
+    )?;
+    crate::budget::reserve_to_data_scratch(values, budget)?;
+    budget.add_growth_since(allocation)?;
+    let data = values.to_data();
+    // Zero initial capacity avoids reserving inactive wide union children.
+    let mut output = arrow_data::transform::MutableArrayData::new(vec![&data], false, 0);
+    for &(start, end) in ranges {
+        output.try_extend(0, start, end)?;
+    }
+    Ok(arrow_array::make_array(output.freeze()))
+}
+
+/// Which Arrow gather limitations occur in the child tree.
+fn gather_layout(dtype: &DataType) -> (bool, bool) {
+    let mut runs = matches!(dtype, DataType::RunEndEncoded(_));
+    let mut zero_width = matches!(dtype, DataType::FixedSizeSerie(_, 0));
+    for index in 0..dtype.field_len() {
+        let child = dtype.get_field_at(index).expect("a declared child");
+        let (child_runs, child_zero_width) = gather_layout(child.dtype());
+        runs |= child_runs;
+        zero_width |= child_zero_width;
+    }
+    (runs, zero_width)
+}
+
+/// Select physical runs by binary-searching each cut once. Arrow's generic
+/// range extender scans from its first run for every cut, which is quadratic
+/// for alternating visible rows. Typed slices borrow both source buffers.
+fn gather_runs<R: arrow_array::types::RunEndIndexType>(
+    values: &ArrayRef,
+    encoded: &Arc<crate::RunEndEncodedType>,
+    ranges: &[(usize, usize)],
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<ArrayRef> {
+    use crate::budget::{SourceSelection, scratch_vec};
+    use arrow_array::{PrimitiveArray, RunArray};
+    use arrow_buffer::ArrowNativeType;
+
+    let source = held::<RunArray<R>>(values)?;
+    let len = SourceSelection::Ranges(ranges).row_count(source.len())?;
+    if R::Native::from_usize(len).is_none() {
+        return Err(Error::IncompatibleSchema(format!(
+            "run-end logical length {len} does not fit {}",
+            encoded.run_ends().dtype(),
+        )));
+    }
+    let mut runs = 0_usize;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            runs = runs
+                .checked_add(cut.get_end_physical_index() - cut.get_start_physical_index() + 1)
+                .ok_or_else(|| {
+                    Error::IncompatibleSchema("selected run count exceeds usize".into())
+                })?;
+        }
+    }
+    budget.add_array_layout(&DataType::RunEndEncoded(Arc::clone(encoded)), len)?;
+    budget.add_array_layout(encoded.run_ends().dtype(), runs)?;
+    let mut physical = scratch_vec::<(usize, usize)>(budget, ranges.len(), "run value ranges")?;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            physical.push((
+                cut.get_start_physical_index(),
+                cut.get_end_physical_index() + 1,
+            ));
+        }
+    }
+    let gathered = gather_ranges(source.values(), encoded.values().dtype(), &physical, budget)?;
+    crate::budget::reserve_vec_bytes::<arrow_data::ArrayData>(budget, 2)?;
+    crate::budget::reserve_vec_bytes::<arrow_buffer::Buffer>(budget, 1)?;
+    crate::budget::reserve_to_data_scratch(&gathered, budget)?;
+    // The retained run-end buffer was reserved above, separately from scratch.
+    let mut ends = Vec::new();
+    ends.try_reserve_exact(runs).map_err(|error| {
+        Error::IncompatibleSchema(format!("run-end output allocation failed: {error}"))
+    })?;
+    let mut written = 0_usize;
+    for &(start, end) in ranges {
+        if start != end {
+            let cut = source.slice(start, end - start);
+            for end in cut.run_ends().sliced_values() {
+                ends.push(
+                    R::Native::from_usize(written + end.as_usize())
+                        .expect("the whole selected length fits the run-end type"),
+                );
+            }
+            written += end - start;
+        }
+    }
+    let ends = PrimitiveArray::<R>::new(arrow_buffer::ScalarBuffer::from(ends), None);
+    let data = arrow_data::ArrayData::builder(values.data_type().clone())
+        .len(len)
+        .child_data(vec![ends.into_data(), gathered.to_data()])
+        .build()?;
+    Ok(arrow_array::make_array(data))
+}
+
+/// Drop hidden variable spans whose children require logical proof. Other
+/// spans can remain borrowed: every physical value is already readable.
+pub(super) fn compact_offsets<O: OffsetSizeTrait>(
+    offsets: OffsetBuffer<O>,
+    values: ArrayRef,
+    dtype: &DataType,
+    nulls: Option<&NullBuffer>,
+    budget: &mut crate::budget::MaterializationBudget,
+) -> Result<(OffsetBuffer<O>, ArrayRef)> {
+    if dtype.layout_is_contract()
+        || nulls.is_none_or(|nulls| nulls.null_count() == 0)
+        || !offsets
+            .windows(2)
+            .enumerate()
+            .any(|(row, pair)| nulls.is_some_and(|nulls| nulls.is_null(row)) && pair[0] != pair[1])
+    {
+        return Ok((offsets, values));
+    }
+    use crate::budget::{SourceSelection, scratch_vec, selected_child_ranges};
+    let rows = offsets.len() - 1;
+    let ranges = selected_child_ranges(
+        SourceSelection::Ranges(&[(0, rows)]),
+        rows,
+        values.len(),
+        |row| nulls.is_none_or(|nulls| nulls.is_valid(row)),
+        |row| Ok((offsets[row].as_usize(), offsets[row + 1].as_usize())),
+        budget,
+    )?;
+    let mut rebuilt = scratch_vec::<O>(budget, offsets.len(), "offsets")?;
+    let mut end = O::zero();
+    rebuilt.push(end);
+    for (row, pair) in offsets.windows(2).enumerate() {
+        if nulls.is_none_or(|nulls| nulls.is_valid(row)) {
+            end += pair[1] - pair[0];
+        }
+        rebuilt.push(end);
+    }
+    let values = gather_ranges(&values, dtype, &ranges, budget)?;
+    Ok((OffsetBuffer::new(rebuilt.into()), values))
+}
+
 /// What a landing may take on trust about the rows it is handed.
 ///
 /// A column holds only rows its field accepts - [`Serie::scalar`] and the
@@ -245,6 +472,15 @@ impl Proof {
         }
     }
 
+    /// A map cast proves its keys even when its entry leaves remain unproven.
+    pub(crate) fn map(entries: Self) -> Self {
+        if matches!(entries, Self::Proven) {
+            Self::Proven
+        } else {
+            Self::Children([entries].into())
+        }
+    }
+
     /// Collapse a tree whose children all agree into the one answer.
     pub(crate) fn of_children(children: Vec<Self>) -> Self {
         if children.iter().all(|child| matches!(child, Self::Proven)) {
@@ -263,7 +499,13 @@ impl Proof {
 }
 
 /// One module's door: the column its layout is, or `None` for another's.
-type ColumnOf = fn(Arc<Field>, ArrayRef, Option<&NullBuffer>, &Proof) -> Result<Option<Serie>>;
+type ColumnOf = fn(
+    Arc<Field>,
+    ArrayRef,
+    Option<&NullBuffer>,
+    &Proof,
+    &mut crate::budget::MaterializationBudget,
+) -> Result<Option<Serie>>;
 
 /// Build the column `field` types out of buffers that already hold it.
 ///
@@ -282,7 +524,13 @@ pub(crate) fn column_of(
 ) -> Result<Serie> {
     field.dtype().validate_bounded()?;
     crate::arrow::require_projection(&field, array.as_ref())?;
-    child_of(field, array, parent, proof)
+    child_of(
+        field,
+        array,
+        parent,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+    )
 }
 
 /// Build one level of a column whose layout its root already proved: its
@@ -295,8 +543,24 @@ pub(crate) fn child_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> Result<Serie> {
     require_present(&field, array.as_ref(), parent)?;
+    // A public child must also be readable independently of its parent.
+    // Encodings without their own bitmap mask their physical values below.
+    let array = if !field.dtype().layout_is_contract()
+        && !matches!(
+            field.dtype(),
+            DataType::Union(..) | DataType::RunEndEncoded(_)
+        )
+        && parent.is_some_and(|above| above.null_count() != 0)
+    {
+        let nulls = parent_nulls(parent, array.nulls(), budget)?;
+        crate::budget::reserve_to_data_scratch(&array, budget)?;
+        arrow_array::make_array(array.to_data().into_builder().nulls(nulls).build()?)
+    } else {
+        array
+    };
     let proves = proof.reads_at_landing() && reads_rows(field.dtype());
     let modules: [ColumnOf; 11] = [
         null::column_of,
@@ -312,7 +576,20 @@ pub(crate) fn child_of(
         runend::column_of,
     ];
     for module in modules {
-        if let Some(serie) = module(Arc::clone(&field), Arc::clone(&array), parent, proof)? {
+        if let Some(serie) = module(
+            Arc::clone(&field),
+            Arc::clone(&array),
+            parent,
+            proof,
+            budget,
+        )
+        .map_err(|refusal| match refusal {
+            Error::PhysicalLimit { .. } => Error::Core(crate::Error::InvalidRecord {
+                path: field.name().into(),
+                reason: smol_str::format_smolstr!("{refusal}"),
+            }),
+            other => other,
+        })? {
             if proves {
                 prove_rows(&field, &serie, parent)?;
             }
@@ -343,8 +620,14 @@ pub(crate) fn land(field: Arc<Field>, array: ArrayRef, proof: &Proof) -> Result<
 /// shares the schema they were compared against - which fixes every
 /// column's datatype - so only absence and the values are this array's own.
 pub(crate) fn land_resolved(field: Arc<Field>, array: ArrayRef, proof: &Proof) -> Result<Serie> {
-    child_of(Arc::clone(&field), Arc::clone(&array), None, proof)
-        .map_err(|refusal| located(&field, array.as_ref(), refusal))
+    child_of(
+        Arc::clone(&field),
+        Arc::clone(&array),
+        None,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+    )
+    .map_err(|refusal| located(&field, array.as_ref(), refusal))
 }
 
 /// Land one child array beneath the validity of the record it sits in: a
@@ -443,6 +726,24 @@ fn refused_cell(
                 item,
             )
         }
+        DataType::SerieView(item) => {
+            let list = array.as_list_view_opt::<i32>()?;
+            let start = list.value_offsets()[row].as_usize();
+            items(
+                list.values(),
+                start..start + list.value_sizes()[row].as_usize(),
+                item,
+            )
+        }
+        DataType::LargeSerieView(item) => {
+            let list = array.as_list_view_opt::<i64>()?;
+            let start = list.value_offsets()[row].as_usize();
+            items(
+                list.values(),
+                start..start + list.value_sizes()[row].as_usize(),
+                item,
+            )
+        }
         DataType::FixedSizeSerie(item, _) => {
             let list = array.as_fixed_size_list_opt()?;
             let start = list.value_offset(row).as_usize();
@@ -535,9 +836,11 @@ impl Serie {
     /// `field`.
     ///
     /// With no field the array is the column of its own layout, named
-    /// `item` and nullable exactly where it holds an absent row; nothing is
-    /// copied, and each row of a leaf whose layout is not its datatype's
-    /// whole contract is read once to prove it, because a bare array carries
+    /// `item` and nullable exactly where it holds an absent row. Value buffers
+    /// are shared except where hidden narrow spans or noncompact views need
+    /// rebuilding. Hidden narrow child slots become null placeholders, so a
+    /// child also reads safely on its own. Visible rows of a leaf whose layout
+    /// is not its whole contract are read once, because a bare array carries
     /// no evidence. With a field, an array already laid out as the field
     /// lands as it stands, proven exactly as the identity plan would prove it
     /// and with no plan compiled; any other layout - or an exact one the

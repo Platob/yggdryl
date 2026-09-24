@@ -512,6 +512,7 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
     if !matches!(array.data_type(), ArrowDataType::Union(..)) {
         return Ok(None);
@@ -527,12 +528,14 @@ pub(crate) fn column_of(
         .zip(arrays)
         .enumerate()
         .map(|(index, ((type_id, member), child))| {
+            budget.add_bitmap(child.len())?;
             let reached = reached(type_id, &type_ids, offsets.as_ref(), child.len(), parent);
             super::arrow::child_of(
                 Arc::new(member.clone()),
                 child,
                 Some(&reached),
                 proof.child(index),
+                budget,
             )
         })
         .collect::<crate::arrow::Result<Vec<Serie>>>()?;

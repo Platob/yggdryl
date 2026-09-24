@@ -37,7 +37,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import ArrowCastPlan, Field, IOBase, Serie, SerieReader
+from yggdryl import ArrowCastPlan, Field, IOBase, Scalar, Serie, SerieReader
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one
@@ -93,6 +93,14 @@ BATCH_PLAN = ArrowCastPlan(SCHEMA, DECLARED_ROOT)
 HELD_BATCH = Serie.from_(BATCH)
 HELD_COLUMN = Serie.from_(COLUMN)
 HELD_SCALAR = Serie.from_(SCALAR)
+# A reader wraps a held leaf as a record before applying its declared root.
+# Naming this fixture explicitly keeps the cast independent of Array inference.
+HELD_READER_COLUMN = Serie.from_arrow_array(
+    COLUMN, Field("size", "int64", nullable=False)
+)
+READER_COLUMN_ROOT = Field("row", "struct<size: float64 not null>", nullable=False)
+NATIVE_SCALAR = Scalar.from_(125)
+CONCRETE_ROWS = (1, 2, 3, 4)
 
 MAP_TYPE = pa.map_(pa.string(), pa.string(), keys_sorted=True)
 MAP_SCHEMA = pa.schema(
@@ -184,6 +192,7 @@ def _write_jsonl_baseline() -> int:
             for row in TEXT_ROWS
         ),
         encoding="utf-8",
+        newline="\n",
     )
 
 
@@ -235,6 +244,22 @@ def _cases(
             small,
         ),
         ("from RecordBatchReader (pyarrow)", _reader, small),
+        ("SerieReader from Python scalar", lambda: SerieReader.from_(125), small),
+        (
+            "SerieReader from native Scalar",
+            lambda: SerieReader.from_(NATIVE_SCALAR),
+            small,
+        ),
+        (
+            "SerieReader from concrete tuple",
+            lambda: SerieReader.from_(CONCRETE_ROWS),
+            small,
+        ),
+        (
+            "SerieReader Python scalar first batch",
+            lambda: next(SerieReader.from_(125)),
+            small,
+        ),
     ]
     if pandas is not None:
         cases += [
@@ -291,6 +316,17 @@ def _cases(
             bulk,
         ),
         ("cast a held column", lambda: HELD_COLUMN.cast(DECLARED_COLUMN), bulk),
+        # Construction plans the record cast; only the first-batch row executes it.
+        (
+            "SerieReader held column, declared root",
+            lambda: SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT),
+            small,
+        ),
+        (
+            "SerieReader held declared first batch",
+            lambda: next(SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)),
+            bulk,
+        ),
         # The Serie doors pair with the two PyArrow casts above: the same
         # array or batch, cast onto the same declared field.
         (
@@ -409,6 +445,14 @@ def main() -> None:
         f"{ROW_COUNT:,} rows, median of 7"
     )
     try:
+        reader = SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)
+        assert reader.field == READER_COLUMN_ROOT
+        (declared,) = list(reader)
+        assert declared.child("size").into_arrow_array().equals(COLUMN.cast(pa.float64()))
+        for value in (125, NATIVE_SCALAR, CONCRETE_ROWS):
+            assert list(SerieReader.from_(value)) == list(
+                SerieReader.from_serie(Serie.from_(value))
+            )
         for exported in (
             HELD_MAP_BATCH.into_arrow_batch(),
             HELD_MAP_BATCH.into_arrow_reader().read_next_batch(),

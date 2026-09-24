@@ -305,31 +305,54 @@ serie_leaf!(MapSerie);
 /// a layout that is not one.
 ///
 /// The cut is rebased onto exactly the entries it reaches; the entries take
-/// the door with the entries field and no parent, because a mapping's
-/// validity says nothing about the entries under it.
+/// the door under the entries reached by present rows. A null map or ancestor
+/// masks its physical entries. Narrow entry subtrees compact hidden spans;
+/// layout-contract entries retain their shared physical buffers.
 pub(crate) fn column_of(
     field: Arc<Field>,
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
-    let _ = parent;
-    let Some(entries_field) = field.dtype().map_entries() else {
+    let Some(map) = field.dtype().as_mapping() else {
         return Ok(None);
     };
+    let entries_field = map.entries();
     if !matches!(array.data_type(), ArrowDataType::Map(..)) {
         return Ok(None);
     }
     let maps = held::<MapArray>(&array)?;
+    if matches!(proof, super::arrow::Proof::Unproven) {
+        crate::cast::columns::validate_map_invariants(
+            &map,
+            &maps,
+            parent.map(NullBuffer::inner),
+            budget,
+        )
+        .map_err(|refusal| {
+            crate::arrow::Error::IncompatibleSchema(format!("column {:?}: {refusal}", field.name()))
+        })?;
+    }
     let entries: ArrayRef = Arc::new(maps.entries().clone());
     let (offsets, values) = rebased(maps.offsets(), &entries);
+    let hidden = super::arrow::parent_nulls(parent, maps.nulls(), budget)?;
+    let (offsets, values) = super::arrow::compact_offsets(
+        offsets,
+        values,
+        entries_field.dtype(),
+        hidden.as_ref(),
+        budget,
+    )?;
+    let hidden = super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
     let entries = super::arrow::child_of(
         Arc::new(entries_field.clone()),
         values,
-        None,
+        hidden.as_ref(),
         proof.child(0),
+        budget,
     )?;
     Ok(Some(
         MapSerie::new(field, offsets, entries, maps.nulls().cloned()).into_serie(),

@@ -76,6 +76,16 @@ pub(crate) fn encode(input: &str) -> Result<Cow<'_, [u8]>> {
     CP1252.encode(input)
 }
 
+/// Prove that recovered text can be written back without allocating output.
+pub(crate) fn require_encodable(input: &str) -> Result<()> {
+    for (position, scalar) in input.char_indices() {
+        if byte_of(scalar).is_none() {
+            return Err(crate::charset::unencodable(name(), position, scalar));
+        }
+    }
+    Ok(())
+}
+
 /// Encode text into a byte target.
 pub(crate) fn encode_into(input: &str, target: &mut Vec<u8>) -> Result<()> {
     CP1252.encode_into(input, target)

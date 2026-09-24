@@ -50,7 +50,7 @@ Arrow spells one binary layout for text and for bytes, so `ByteSerie<T, K>`, `By
 
 A map's rows are `Scalar::Map` (or `Scalar::SortedMap`), and its entries column is a `StructSerie` of the entries field: `Field::scalar` on a map field answers a map whose keys and values are already canonical under the entries record's two fields, so a write turns each pair into a two-cell run for the entries record's own write, and `scalar(i)` pairs them back.
 
-A null row in a nested column is a cleared validity bit and what Arrow needs underneath it: every record child receives one placeholder slot, a serie, serie-view or map row cuts zero items, a fixed-size-serie row holds `width` placeholder items, a union row the placeholder member. A column built by pushes is therefore buffer-for-buffer the column `from_scalars` builds from the same rows.
+A null row written into a nested column clears its validity bit and stores what Arrow needs underneath it: every record child receives one placeholder slot, a serie, serie-view or map row cuts zero items, a fixed-size-serie row holds `width` placeholder items, a union row the placeholder member. A column built by pushes is therefore buffer-for-buffer the column `from_scalars` builds from the same rows. Arrow import may retain nonempty hidden list or map spans when the child's layout is its whole value contract. Hidden slots in narrower logical types become null placeholders, and list or map spans are compacted where required to keep the physical children readable and valid Arrow. This preserves the same reading guarantee when a caller extracts `children()` or `items()`. List views are rebased into the compact cut their writer requires.
 
 ### The root names the layout, the field names the datatype
 
@@ -712,7 +712,7 @@ Two narrowings share the name `as_serie` and are not one: `Serie::as_serie` narr
 
 ## A mapping is a cut over its entries
 
-Arrow lays a mapping out as a list of non-null key-value records, and so does the column: a field, offsets, one record column of the entries field, and a validity bitmap. What a row means is the field's: `Field::scalar` on a map field takes a mapping, the write stores each pair as a two-cell record, and `scalar(i)` pairs the records back into the mapping that went in.
+Arrow lays a mapping out as a list of non-null key-value records, and so does the column: a field, offsets, one record column of the entries field, and a validity bitmap. What a row means is the field's: `Field::scalar` on a map field takes a mapping, the write stores each pair as a two-cell record, and `scalar(i)` pairs the records back into the mapping that went in. Every unproven Arrow map also proves its visible keys: no null or duplicate key, and ascending order where sortedness is declared. Exact layouts and inferred fields obey the same rule. The proof compares the key buffers directly and builds no mapping value per row.
 
 === "Rust"
 
@@ -809,7 +809,7 @@ Arrow lays a mapping out as a list of non-null key-value records, and so does th
 
 ## Arrow: the door, and what it proves
 
-Every crossing shares buffers. `from_arrow_array(field, array, options)` takes an array as a column. With no field it is the column of its own layout, named `item` and nullable exactly where it holds an absent row. With a field, one [`ArrowCastPlan`](cast.md#compiled-plans) is compiled from the array's layout to the field and applied once: an exact layout is the identity plan and shares the buffers, and any other is [cast](cast.md) under the three options. Either way the landing proves three things, so that invariant 1 holds for a column that was never built from values:
+An exact landing shares its value buffers wherever no compaction is required: a sliced cut rebases its offsets, noncompact list views gather their reached items, and hidden list or map spans containing narrow logical values are removed. `from_arrow_array(field, array, options)` takes an array as a column. With no field it is the column of its own layout, named `item` and nullable exactly where it holds an absent row. With a field, one [`ArrowCastPlan`](cast.md#compiled-plans) is compiled from the array's layout to the field and applied once: an exact layout is the identity plan and shares the buffers, and any other is [cast](cast.md) under the three options. Either way the landing proves three things, so that invariant 1 holds for a column that was never built from values:
 
 - the layout: the column's buffers are the field's own Arrow projection, exactly;
 - the absence: a required field holds no absent row - counted on the validity words, repaired to the field's default under `Nullability::Default` and refused by path under `Nullability::Strict` - and a record's children are judged only where the record itself is present, because a null record row leaves its children's slots unspecified; a dictionary, run-end or union column is judged on its logical nulls;
@@ -1152,7 +1152,7 @@ One value crosses the array boundary as a one-row column. `Serie::from_scalars(f
 
 ### Materialization budgets
 
-Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summed across siblings and checked before anything is allocated. The totals cover validity bitmaps, offsets, union buffers, and the values behind dictionary or run-end keys, and only what is built is charged: a dense union allocates the selected member, a sparse union every child. Phase reservations end with the phase, and the same accounting runs behind every [`ArrowCastPlan`](cast.md).
+Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summed across siblings and checked before anything is allocated. The totals cover validity bitmaps, offsets, union buffers, and the values behind dictionary or run-end keys, and only what is built is charged: a dense union allocates the selected member, a sparse union every child. Arrow landing uses the same budget for parent masks, hidden-span compaction and noncompact list-view gathers. A root run-end column gathers by binary-searching each selected span, and a nested run-end column uses Arrow's indexed take when its tree has no zero-width fixed-size serie. When both occur in one tree, the generic range builder preserves the zero-width rows that indexed take loses; memory remains bounded, but it may rescan the nested run ends once per selected span. Phase reservations end with the phase, and the same accounting runs behind every [`ArrowCastPlan`](cast.md).
 
 === "Rust"
 
@@ -1220,7 +1220,7 @@ Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summ
 
 ## Arrow: every columnar runtime in
 
-Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array one combined column, a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` reads the same values as a stream, pulling nothing until the first column is asked for, and a held value is the one item of its stream. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
+Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array one combined column, a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` shares that columnar recognition. A held column, scalar or concrete container read through the same scalar boundary as `Serie.from_` becomes the one item of its stream; a non-record column is wrapped as the one child of a record before `root` is applied. A Python sequence recognized as mapping records or columnar batches remains an incremental record stream, reusing the first batch import, and a Python iterator or generic reusable iterable remains an incremental record-row stream; resolving either stream's schema may pull its first item. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
 
 === "Rust"
 
@@ -1235,7 +1235,7 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     ```python
     import numpy as np
     import pyarrow as pa
-    from yggdryl import Scalar, Serie, SerieReader
+    from yggdryl import Field, Scalar, Serie, SerieReader
 
     table = pa.table({"symbol": ["AAPL", "MSFT"], "size": [100, 250]})
 
@@ -1246,6 +1246,19 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     assert len(Serie.from_(pa.chunked_array([[1, 2], [3]]))) == 3
     assert Serie.from_(np.array([1.5, 2.5])).as_py() == [1.5, 2.5]
     assert Serie.from_(pa.scalar(7, pa.int64())).as_py() == [7]
+
+    # Concrete native values use Serie.from_'s value reading, then become the
+    # one held item of their reader.
+    for value in (7, [1, 2], (1, 2)):
+        expected = SerieReader.from_serie(Serie.from_(value))
+        actual = SerieReader.from_(value)
+        assert actual.field == expected.field
+        assert list(actual) == list(expected)
+
+    # A held leaf is wrapped as a record before the declared root is applied.
+    value = Serie.from_([1, 2], Field("value", "int64", nullable=False))
+    root = Field("row", "struct<value: int64 not null>", nullable=False)
+    assert next(SerieReader.from_(value, root)).child("value").as_py() == [1, 2]
 
     # A record dtype names its members, so it is rows.
     records = np.array([("AAPL", 100)], dtype=[("symbol", "U4"), ("size", "i8")])
@@ -1506,7 +1519,7 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 
 ## Edges
 
-- A row the field refuses refuses the whole write, naming the field, and the column is left as it was; a nullable field is what admits `Scalar::Null`.
+- A row the field refuses refuses the whole write, naming the field, and the column is left as it was; a nullable field is what admits `Scalar::Null`. A windows-1252 write also proves that every character can be encoded before any child is changed. A recovered scalar may retain an unassigned control character for reading, but writing it refuses with the field and character position instead of panicking.
 - `splice` proves every row before it checks, and checks before it writes: a record-of-(int64, utf8) splice whose utf8 child would overflow 32-bit offsets is refused, and every child's buffers are the ones they were.
 - A typed writer exists only on a leaf whose native domain is the datatype's whole domain, and it still validates nullability: `push_value(None)` under a required field is refused by name. A decimal, `date64`, `time32` or `time64` column has none, because its rule is narrower than its storage; a byte, string, sequence, mapping or variant column has none for the same reason.
 - No child is handed out mutably. `set_child` replaces a whole child of exactly `len` rows and `set_cell` writes one slot through the leaf's field, so a record's children stay aligned and `into_arrow_array` never refuses.

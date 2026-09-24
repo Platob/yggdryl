@@ -388,6 +388,25 @@ pub(crate) fn batch_reader_from_any(
     chained_reader(&items, options, None)
 }
 
+/// Recognize a concrete sequence of mappings or batch sources before the
+/// scalar collection door. Its first source is converted only once.
+pub(crate) fn batch_reader_from_record_sequence(
+    value: &Bound<'_, PyAny>,
+    options: &RecordOptions,
+) -> PyResult<Option<BatchReader>> {
+    let items = value.try_iter()?;
+    let Some(first) = next_item(&items)? else {
+        return Ok(None);
+    };
+    if let Some(reader) = columnar_reader(&first)? {
+        return chain_with_reader(&items, reader, options, None).map(Some);
+    }
+    if first.cast::<PyMapping>().is_ok() && first.hasattr("keys")? {
+        return row_reader(&items, &first, options).map(Some);
+    }
+    Ok(None)
+}
+
 /// Build one streamed reader from Python row records.
 ///
 /// A decorated dataclass instance supplies its class's cached
@@ -466,6 +485,16 @@ fn chained_reader(
             None => return row_reader(items, &first, options),
         },
     };
+    chain_with_reader(items, reader, options, only)
+}
+
+/// Continue with the already imported first source and the unconsumed tail.
+fn chain_with_reader(
+    items: &Bound<'_, PyAny>,
+    reader: BatchReader,
+    options: &RecordOptions,
+    only: Option<Frames>,
+) -> PyResult<BatchReader> {
     let root = CoreField::from_arrow_schema(options.name(), reader.schema().as_ref())
         .map_err(value_error)?;
     Ok(Box::new(Chained {

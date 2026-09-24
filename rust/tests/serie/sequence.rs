@@ -550,3 +550,524 @@ fn a_sliced_cut_is_rebased_onto_the_items_it_reaches() {
     assert_eq!(window.offsets().as_ref(), &[0, 2]);
     assert_eq!(window.items().len(), 2);
 }
+
+#[test]
+fn narrow_span_gathers_preserve_nested_zero_width_rows_and_view_order() {
+    let empty: ArrayRef = Arc::new(
+        FixedSizeListArray::try_new_with_length(
+            item(),
+            0,
+            Arc::new(Int64Array::from(Vec::<i64>::new())),
+            None,
+            3,
+        )
+        .expect("three zero-width rows"),
+    );
+    let values: ArrayRef = Arc::new(StructArray::new(
+        vec![
+            Arc::new(ArrowField::new("empty", empty.data_type().clone(), false)),
+            DataType::IsinCode
+                .required_field("code")
+                .into_arrow_field_ref()
+                .unwrap(),
+        ]
+        .into(),
+        vec![
+            empty,
+            Arc::new(arrow_array::StringArray::from(vec![
+                "US0378331005",
+                "BAD",
+                "GB0002634946",
+            ])),
+        ],
+        None,
+    ));
+    let item = Arc::new(ArrowField::new("item", values.data_type().clone(), false));
+    let present = Some(NullBuffer::from(vec![true, false, true]));
+    let offsets: ArrayRef = Arc::new(ListArray::new(
+        Arc::clone(&item),
+        OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+        Arc::clone(&values),
+        present.clone(),
+    ));
+    let views: ArrayRef = Arc::new(ListViewArray::new(
+        item,
+        ScalarBuffer::from(vec![2_i32, 1, 0]),
+        ScalarBuffer::from(vec![1_i32, 1, 1]),
+        values,
+        present,
+    ));
+
+    for (array, expected) in [
+        (offsets, ["US0378331005", "GB0002634946"]),
+        (views, ["GB0002634946", "US0378331005"]),
+    ] {
+        array
+            .to_data()
+            .validate_full()
+            .expect("legal required child arrays");
+        let column = Serie::from_arrow_array(None, array, ArrowCastOptions::new())
+            .expect("gathering a narrow struct preserves its zero-width sibling");
+        assert_eq!(column.len(), 3);
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+        let items = column.items().expect("the gathered item column");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items.rows().len(), 2, "the hidden invalid ISIN was removed");
+        let empty = items.child("empty").unwrap().as_fixed_size_serie().unwrap();
+        assert_eq!(empty.width(), 0);
+        assert_eq!(empty.len(), 2);
+        for row in 0..2 {
+            assert_eq!(empty.scalar(row).unwrap(), Scalar::from_sequence([]));
+        }
+        let codes = items.child("code").unwrap();
+        for (row, code) in expected.into_iter().enumerate() {
+            assert_eq!(codes.scalar(row).unwrap().as_str(), Some(code));
+        }
+        match column.as_serie() {
+            Some(list) => assert_eq!(list.offsets().as_ref(), &[0, 1, 1, 2]),
+            None => {
+                let view = column.as_serie_view().expect("the other input is a view");
+                assert_eq!(view.offsets().as_ref(), &[0, 1, 1]);
+                assert_eq!(view.sizes().as_ref(), &[1, 0, 1]);
+            }
+        }
+        column
+            .require_arrow_array()
+            .unwrap()
+            .to_data()
+            .validate_full()
+            .expect("the gathered struct and zero-width child have the same length");
+    }
+}
+
+#[test]
+fn narrow_sibling_compactions_share_one_materialization_budget() {
+    // Each child copies 600K present ISIN slots across two disjoint spans.
+    // The copied payload is well below the byte limit; their aggregate
+    // exceeds the million-slot limit while either column alone fits.
+    let values = arrow_array::StringArray::from_iter_values((0..600_001).map(|row| {
+        if row == 300_000 {
+            "BAD"
+        } else {
+            "US0378331005"
+        }
+    }));
+    let array: ArrayRef = Arc::new(ListArray::new(
+        DataType::IsinCode
+            .required_field("item")
+            .into_arrow_field_ref()
+            .unwrap(),
+        OffsetBuffer::new(vec![0_i32, 300_000, 300_001, 600_001].into()),
+        Arc::new(values),
+        Some(NullBuffer::from(vec![true, false, true])),
+    ));
+    array
+        .to_data()
+        .validate_full()
+        .expect("legal foreign buffers, including the opaque hidden slot");
+    for name in ["left", "right"] {
+        let schema = Arc::new(arrow_schema::Schema::new(vec![ArrowField::new(
+            name,
+            array.data_type().clone(),
+            true,
+        )]));
+        let batch = arrow_array::RecordBatch::try_new(schema, vec![Arc::clone(&array)]).unwrap();
+        let root = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+            .expect("either 600K-slot compaction fits independently");
+        let column = root.child(name).unwrap();
+        let list = column.as_serie().unwrap();
+        assert_eq!(list.offsets().as_ref(), &[0, 300_000, 300_000, 600_000]);
+        assert_eq!(list.items().len(), 600_000);
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+        assert_eq!(
+            list.items().scalar(599_999).unwrap().as_str(),
+            Some("US0378331005")
+        );
+    }
+    let schema = Arc::new(arrow_schema::Schema::new(vec![
+        ArrowField::new("left", array.data_type().clone(), true),
+        ArrowField::new("right", array.data_type().clone(), true),
+    ]));
+    let batch = arrow_array::RecordBatch::try_new(schema, vec![Arc::clone(&array), array]).unwrap();
+    let refusal = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+        .expect_err("the second output exceeds the shared slot budget");
+    let message = refusal.to_string();
+    assert!(
+        message.contains("expanded slots"),
+        "names the resource: {message}"
+    );
+    assert!(
+        message.contains("1000000"),
+        "states the slot bound: {message}"
+    );
+    assert!(
+        message.contains("right"),
+        "locates the second sibling: {message}"
+    );
+}
+
+#[test]
+fn hidden_spans_preserve_zero_width_items_without_gathering() {
+    let empty: ArrayRef = Arc::new(
+        FixedSizeListArray::try_new_with_length(
+            item(),
+            0,
+            Arc::new(Int64Array::from(Vec::<i64>::new())),
+            None,
+            3,
+        )
+        .expect("three present zero-width items"),
+    );
+    let records: ArrayRef = Arc::new(StructArray::new(
+        vec![
+            Arc::new(ArrowField::new("empty", empty.data_type().clone(), false)),
+            Arc::new(ArrowField::new("id", ArrowDataType::Int64, false)),
+        ]
+        .into(),
+        vec![
+            Arc::clone(&empty),
+            Arc::new(Int64Array::from(vec![7_i64, 999, 9])),
+        ],
+        None,
+    ));
+
+    for values in [empty, records] {
+        let nested_record = matches!(values.data_type(), ArrowDataType::Struct(_));
+        let array = ListArray::new(
+            Arc::new(ArrowField::new("item", values.data_type().clone(), false)),
+            OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+            values,
+            Some(NullBuffer::from(vec![true, false, true])),
+        );
+        let offsets = array.value_offsets().as_ptr();
+        array
+            .to_data()
+            .validate_full()
+            .expect("legal foreign buffers");
+        let column = Serie::from_arrow_array(None, Arc::new(array), ArrowCastOptions::new())
+            .expect("the two visible zero-width items land");
+        let leaf = column.as_serie().expect("the outer list");
+        assert_eq!(leaf.offsets().as_ref(), &[0, 1, 2, 3]);
+        assert_eq!(leaf.offsets().as_ptr(), offsets);
+        assert_eq!(leaf.items().len(), 3);
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+
+        let empty_items = if nested_record {
+            let items = leaf.items();
+            assert_eq!(
+                items
+                    .child("id")
+                    .and_then(Serie::as_int64)
+                    .unwrap()
+                    .values(),
+                &[7, 999, 9],
+                "the physical middle record is retained under its null parent"
+            );
+            items.child("empty").expect("the zero-width child")
+        } else {
+            leaf.items()
+        };
+        let empty_items = empty_items.as_fixed_size_serie().expect("zero-width items");
+        assert_eq!(empty_items.width(), 0);
+        assert_eq!(empty_items.len(), 3);
+        for row in 0..3 {
+            assert_eq!(empty_items.scalar(row).unwrap(), Scalar::from_sequence([]));
+        }
+        for row in [0, 2] {
+            let visible = column.scalar(row).expect("a present list row");
+            assert_eq!(visible.as_sequence().map(<[Scalar]>::len), Some(1));
+        }
+
+        let exported = column
+            .require_arrow_array()
+            .expect("an aligned Arrow output");
+        exported
+            .to_data()
+            .validate_full()
+            .expect("all descendants remain aligned");
+        let lists = exported.as_any().downcast_ref::<ListArray>().unwrap();
+        assert_eq!(lists.values().len(), 3);
+        assert_eq!(lists.len(), 3);
+    }
+}
+
+#[test]
+fn hidden_spans_borrow_sibling_columns_larger_than_the_materialization_limit() {
+    // The million-slot bound concerns materialized output. These two columns
+    // borrow their 600001 physical items, so only temporary proof masks cost.
+    let values = Int64Array::from_iter_values(0_i64..600_001);
+    let payload = values.values().as_ptr();
+    let array: ArrayRef = Arc::new(ListArray::new(
+        item(),
+        OffsetBuffer::new(vec![0_i32, 300_000, 300_001, 600_001].into()),
+        Arc::new(values),
+        Some(NullBuffer::from(vec![true, false, true])),
+    ));
+    array
+        .to_data()
+        .validate_full()
+        .expect("legal foreign buffers");
+    let one = Serie::from_arrow_array(None, Arc::clone(&array), ArrowCastOptions::new())
+        .expect("one physical child column remains borrowed");
+    assert_eq!(one.items().map(Serie::len), Some(600_001));
+    drop(one);
+
+    let schema = Arc::new(arrow_schema::Schema::new(vec![
+        ArrowField::new("left", array.data_type().clone(), true),
+        ArrowField::new("right", array.data_type().clone(), true),
+    ]));
+    let batch = arrow_array::RecordBatch::try_new(schema, vec![Arc::clone(&array), array])
+        .expect("two legal list columns");
+    let root = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+        .expect("both physical child columns remain borrowed");
+    for name in ["left", "right"] {
+        let column = root.child(name).unwrap();
+        let lists = column.as_serie().unwrap();
+        assert_eq!(lists.items().len(), 600_001);
+        assert_eq!(lists.items().as_int64().unwrap().values().as_ptr(), payload);
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+        assert_eq!(lists.row(0).unwrap().len(), 300_000);
+        assert_eq!(lists.row(2).unwrap().len(), 300_000);
+    }
+}
+
+#[test]
+fn inherited_nulls_reach_view_and_fixed_items_through_two_records() {
+    for fixed in [false, true] {
+        for visible_bad in [false, true] {
+            let item = DataType::IsinCode
+                .required_field("item")
+                .into_arrow_field_ref()
+                .unwrap();
+            let values: ArrayRef = Arc::new(arrow_array::StringArray::from(vec![
+                "US0378331005",
+                "BAD",
+                if visible_bad { "BAD" } else { "GB0002634946" },
+            ]));
+            let sequence: ArrayRef = if fixed {
+                Arc::new(FixedSizeListArray::new(item, 1, values, None))
+            } else {
+                Arc::new(ListViewArray::new(
+                    item,
+                    ScalarBuffer::from(vec![0_i32, 1, 2]),
+                    ScalarBuffer::from(vec![1_i32, 1, 1]),
+                    values,
+                    None,
+                ))
+            };
+            let inner: ArrayRef = Arc::new(StructArray::new(
+                vec![Arc::new(ArrowField::new(
+                    "codes",
+                    sequence.data_type().clone(),
+                    false,
+                ))]
+                .into(),
+                vec![sequence],
+                None,
+            ));
+            let outer: ArrayRef = Arc::new(StructArray::new(
+                vec![Arc::new(ArrowField::new(
+                    "inner",
+                    inner.data_type().clone(),
+                    false,
+                ))]
+                .into(),
+                vec![inner],
+                Some(NullBuffer::from(vec![true, false, true])),
+            ));
+            outer
+                .to_data()
+                .validate_full()
+                .expect("legal nested foreign buffers");
+            let landed = Serie::from_arrow_array(None, outer, ArrowCastOptions::new());
+            if visible_bad {
+                let refusal = landed.expect_err("a visible invalid ISIN still refuses");
+                let message = refusal.to_string();
+                assert!(message.contains("codes"), "names the child: {message}");
+                assert!(message.contains("[2]"), "names the visible row: {message}");
+                continue;
+            }
+            let column = landed.expect("both record ancestors reach the item proof");
+            assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+            for row in [0, 2] {
+                assert!(column.scalar(row).is_ok());
+            }
+            column
+                .require_arrow_array()
+                .unwrap()
+                .to_data()
+                .validate_full()
+                .expect("physical required children remain valid Arrow arrays");
+        }
+    }
+}
+
+#[test]
+fn replacing_a_null_offset_row_replaces_its_retained_physical_span() {
+    let array: ArrayRef = Arc::new(ListArray::new(
+        item(),
+        OffsetBuffer::new(vec![0_i32, 1, 3, 4].into()),
+        Arc::new(Int64Array::from(vec![7_i64, 998, 999, 9])),
+        Some(NullBuffer::from(vec![true, false, true])),
+    ));
+    let mut column = Serie::from_arrow_array(None, array, ArrowCastOptions::new()).unwrap();
+    let shared = column.clone();
+    column
+        .set(1, Scalar::from_sequence([Scalar::from(8_i64)]))
+        .unwrap();
+    let lists = column.as_serie().unwrap();
+    assert_eq!(lists.offsets().as_ref(), &[0, 1, 2, 3]);
+    assert_eq!(lists.items().as_int64().unwrap().values(), &[7, 8, 9]);
+    assert_eq!(shared.scalar(1).unwrap(), Scalar::Null);
+    assert_eq!(
+        shared
+            .as_serie()
+            .unwrap()
+            .items()
+            .as_int64()
+            .unwrap()
+            .values(),
+        &[7, 998, 999, 9]
+    );
+    column
+        .require_arrow_array()
+        .unwrap()
+        .to_data()
+        .validate_full()
+        .unwrap();
+}
+
+#[test]
+fn null_sequence_rows_mask_their_physical_items_during_inferred_batch_landing() {
+    fn values() -> ArrayRef {
+        Arc::new(arrow_array::StringArray::from(vec![
+            "US0378331005",
+            "BAD",
+            "GB0002634946",
+        ]))
+    }
+
+    fn validity() -> Option<NullBuffer> {
+        Some(NullBuffer::from(vec![true, false, true]))
+    }
+
+    fn assert_visible_neighbors(column: &Serie) {
+        let first = column.scalar(0).expect("the first row");
+        assert_eq!(
+            first.as_sequence().and_then(|row| row[0].as_str()),
+            Some("US0378331005")
+        );
+        assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+        let third = column.scalar(2).expect("the third row");
+        assert_eq!(
+            third.as_sequence().and_then(|row| row[0].as_str()),
+            Some("GB0002634946")
+        );
+    }
+
+    let item = DataType::IsinCode
+        .required_field("item")
+        .into_arrow_field_ref()
+        .expect("ISIN projects");
+    let arrays: Vec<(&str, ArrayRef)> = vec![
+        (
+            "list32",
+            Arc::new(ListArray::new(
+                Arc::clone(&item),
+                OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+                values(),
+                validity(),
+            )),
+        ),
+        (
+            "list64",
+            Arc::new(LargeListArray::new(
+                Arc::clone(&item),
+                OffsetBuffer::new(vec![0_i64, 1, 2, 3].into()),
+                values(),
+                validity(),
+            )),
+        ),
+        (
+            "view32",
+            Arc::new(ListViewArray::new(
+                Arc::clone(&item),
+                ScalarBuffer::from(vec![0_i32, 1, 2]),
+                ScalarBuffer::from(vec![1_i32, 1, 1]),
+                values(),
+                validity(),
+            )),
+        ),
+        (
+            "view64",
+            Arc::new(arrow_array::LargeListViewArray::new(
+                Arc::clone(&item),
+                ScalarBuffer::from(vec![0_i64, 1, 2]),
+                ScalarBuffer::from(vec![1_i64, 1, 1]),
+                values(),
+                validity(),
+            )),
+        ),
+        (
+            "fixed",
+            Arc::new(FixedSizeListArray::new(
+                Arc::clone(&item),
+                1,
+                values(),
+                validity(),
+            )),
+        ),
+    ];
+
+    // The child list is present at every row; the enclosing struct masks its
+    // invalid middle item instead.
+    let nested = ListArray::new(
+        item,
+        OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+        values(),
+        None,
+    );
+    let nested_fields = vec![Arc::new(ArrowField::new(
+        "codes",
+        nested.data_type().clone(),
+        false,
+    ))]
+    .into();
+    let wrapped: ArrayRef = Arc::new(StructArray::new(
+        nested_fields,
+        vec![Arc::new(nested)],
+        validity(),
+    ));
+
+    let mut columns = arrays;
+    columns.push(("wrapped", wrapped));
+    let schema = Arc::new(arrow_schema::Schema::new(
+        columns
+            .iter()
+            .map(|(name, array)| ArrowField::new(*name, array.data_type().clone(), true))
+            .collect::<Vec<_>>(),
+    ));
+    let batch = arrow_array::RecordBatch::try_new(
+        schema,
+        columns.iter().map(|(_, array)| Arc::clone(array)).collect(),
+    )
+    .expect("one batch");
+    let root = Serie::from_arrow_batch(None, &batch, ArrowCastOptions::new())
+        .expect("null ancestors hide their physical items");
+
+    for name in ["list32", "list64", "view32", "view64", "fixed"] {
+        assert_visible_neighbors(root.child(name).expect("the inferred child"));
+    }
+    let wrapped = root.child("wrapped").expect("the wrapped child");
+    assert_eq!(wrapped.scalar(1).unwrap(), Scalar::Null);
+    for (row, expected) in [(0, "US0378331005"), (2, "GB0002634946")] {
+        let record = wrapped.scalar(row).expect("a visible wrapper row");
+        assert_eq!(
+            record
+                .as_sequence()
+                .and_then(|record| record[0].as_sequence())
+                .and_then(|codes| codes[0].as_str()),
+            Some(expected)
+        );
+    }
+}

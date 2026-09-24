@@ -27,9 +27,8 @@ use std::sync::Arc;
 
 use arrow_array::{
     Array, ArrayRef, FixedSizeListArray, GenericListArray, GenericListViewArray, OffsetSizeTrait,
-    UInt64Array,
 };
-use arrow_buffer::{ArrowNativeType, MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
+use arrow_buffer::{MutableBuffer, NullBuffer, OffsetBuffer, ScalarBuffer};
 use arrow_schema::DataType as ArrowDataType;
 
 use super::{Serie, layout, require_range, require_row, require_window};
@@ -967,6 +966,8 @@ fn rebased_views<O: OffsetSizeTrait>(
     sizes: &ScalarBuffer<O>,
     nulls: Option<&NullBuffer>,
     values: &ArrayRef,
+    dtype: &DataType,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<(ScalarBuffer<O>, ScalarBuffer<O>, ArrayRef)> {
     match contiguous_span(offsets, sizes, nulls) {
         Some(span) if span == (0..values.len()) => {
@@ -984,22 +985,32 @@ fn rebased_views<O: OffsetSizeTrait>(
             ))
         }
         None => {
-            let mut indices: Vec<u64> = Vec::new();
-            let mut rebuilt_offsets = Vec::with_capacity(offsets.len());
-            let mut rebuilt_sizes = Vec::with_capacity(offsets.len());
-            for (row, (offset, size)) in offsets.iter().zip(sizes.iter()).enumerate() {
-                rebuilt_offsets.push(O::usize_as(indices.len()));
+            use crate::budget::{SourceSelection, scratch_vec, selected_child_ranges};
+            let ranges = selected_child_ranges(
+                SourceSelection::Ranges(&[(0, offsets.len())]),
+                offsets.len(),
+                values.len(),
+                |row| nulls.is_none_or(|nulls| nulls.is_valid(row)),
+                |row| {
+                    let start = offsets[row].as_usize();
+                    Ok((start, start + sizes[row].as_usize()))
+                },
+                budget,
+            )?;
+            let gathered = super::arrow::gather_ranges(values, dtype, &ranges, budget)?;
+            let mut reached = 0_usize;
+            let mut rebuilt_offsets = scratch_vec::<O>(budget, offsets.len(), "view offsets")?;
+            let mut rebuilt_sizes = scratch_vec::<O>(budget, offsets.len(), "view sizes")?;
+            for (row, size) in sizes.iter().enumerate() {
+                rebuilt_offsets.push(O::usize_as(reached));
                 let size = if nulls.is_some_and(|nulls| nulls.is_null(row)) {
                     0
                 } else {
                     size.as_usize()
                 };
-                let start = offset.as_usize();
-                indices.extend((start..start + size).map(u64::usize_as));
+                reached += size;
                 rebuilt_sizes.push(O::usize_as(size));
             }
-            let gathered =
-                arrow_select::take::take(values.as_ref(), &UInt64Array::from(indices), None)?;
             Ok((
                 ScalarBuffer::from(rebuilt_offsets),
                 ScalarBuffer::from(rebuilt_sizes),
@@ -1010,12 +1021,14 @@ fn rebased_views<O: OffsetSizeTrait>(
 }
 
 /// The viewed column of one offset width: its views rebased, its items
-/// through the door with the item field and no parent.
+/// through the door with the item field and inherited ancestor visibility.
 fn view_column<O: OffsetLeaf>(
     field: Arc<Field>,
     item: Arc<Field>,
     array: &ArrayRef,
+    parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Serie> {
     let views = super::arrow::held::<GenericListViewArray<O>>(array)?;
     let (offsets, sizes, values) = rebased_views(
@@ -1023,8 +1036,32 @@ fn view_column<O: OffsetLeaf>(
         views.sizes(),
         views.nulls(),
         views.values(),
-    )?;
-    let items = super::arrow::child_of(item, values, None, proof.child(0))?;
+        item.dtype(),
+        budget,
+    )
+    .map_err(|refusal| match refusal {
+        crate::arrow::Error::IncompatibleSchema(reason) => {
+            crate::arrow::Error::IncompatibleSchema(format!("column {:?}: {reason}", field.name()))
+        }
+        other => other,
+    })?;
+    let hidden = if parent.is_some_and(|above| above.null_count() != 0) {
+        crate::cast::columns::range_exposure(
+            values.len(),
+            offsets.len(),
+            parent.map(NullBuffer::inner),
+            |row| views.is_valid(row),
+            |row| {
+                let start = offsets[row].as_usize();
+                Ok((start, start + sizes[row].as_usize()))
+            },
+            budget,
+        )?
+        .map(NullBuffer::new)
+    } else {
+        None
+    };
+    let items = super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
     Ok(OffsetViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
 }
 
@@ -1032,8 +1069,9 @@ fn view_column<O: OffsetLeaf>(
 /// `None` for a layout that is not one.
 ///
 /// An offsets cut is rebased onto exactly the items it reaches, and a
-/// viewed cut made compact; their items take the door with the item field
-/// and no parent, because an absent row reaches no item. A fixed-size cut
+/// viewed cut made compact. Offset items inherit the visibility of the rows
+/// reaching them. Hidden narrow spans are removed; other physical spans
+/// remain shared. A fixed-size cut
 /// hides `width` item slots under every absent row - the placeholders a
 /// write tiles there - so its items take the list's validity, expanded by
 /// `width`, as their parent and a required item is judged only where the
@@ -1043,10 +1081,10 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
-    let _ = parent;
     let Some(sequence) = field.dtype().as_serie_type() else {
         return Ok(None);
     };
@@ -1055,17 +1093,43 @@ pub(crate) fn column_of(
         ArrowDataType::List(_) => {
             let lists = held::<GenericListArray<i32>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::child_of(item, values, None, proof.child(0))?;
+            let hidden = super::arrow::parent_nulls(parent, lists.nulls(), budget)?;
+            let (offsets, values) = super::arrow::compact_offsets(
+                offsets,
+                values,
+                item.dtype(),
+                hidden.as_ref(),
+                budget,
+            )?;
+            let hidden =
+                super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
+            let items =
+                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
             OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::LargeList(_) => {
             let lists = held::<GenericListArray<i64>>(&array)?;
             let (offsets, values) = rebased(lists.offsets(), lists.values());
-            let items = super::arrow::child_of(item, values, None, proof.child(0))?;
+            let hidden = super::arrow::parent_nulls(parent, lists.nulls(), budget)?;
+            let (offsets, values) = super::arrow::compact_offsets(
+                offsets,
+                values,
+                item.dtype(),
+                hidden.as_ref(),
+                budget,
+            )?;
+            let hidden =
+                super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
+            let items =
+                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
             OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
-        ArrowDataType::ListView(_) => view_column::<i32>(field, item, &array, proof)?,
-        ArrowDataType::LargeListView(_) => view_column::<i64>(field, item, &array, proof)?,
+        ArrowDataType::ListView(_) => {
+            view_column::<i32>(field, item, &array, parent, proof, budget)?
+        }
+        ArrowDataType::LargeListView(_) => {
+            view_column::<i64>(field, item, &array, parent, proof, budget)?
+        }
         ArrowDataType::FixedSizeList(_, width) => {
             let lists = held::<FixedSizeListArray>(&array)?;
             let width = usize::try_from(*width).map_err(|_| crate::arrow::Error::Internal {
@@ -1074,8 +1138,13 @@ pub(crate) fn column_of(
             let values = lists
                 .values()
                 .slice(lists.offset() * width, lists.len() * width);
-            let hidden = lists.nulls().map(|nulls| nulls.expand(width));
-            let items = super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0))?;
+            let hidden = super::arrow::parent_nulls(parent, lists.nulls(), budget)?;
+            if hidden.is_some() {
+                budget.add_bitmap(values.len())?;
+            }
+            let hidden = hidden.map(|nulls| nulls.expand(width));
+            let items =
+                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
             FixedSizeSerieSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
                 .into_serie()
         }

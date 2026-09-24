@@ -121,6 +121,25 @@ pub(crate) fn is_text(dtype: &DataType) -> bool {
     dtype.is_string() || dtype.kind() == DataTypeKind::Code
 }
 
+/// Recovered CP1252 scalars can contain unassigned characters; unlike a
+/// scalar, a column must be able to write every accepted value as bytes.
+fn require_encodable(field: &Field, start: usize, rows: &[Scalar]) -> Result<()> {
+    if field.dtype().charset() != Some(crate::Charset::Cp1252) {
+        return Ok(());
+    }
+    for (index, row) in rows.iter().enumerate() {
+        if let Some(text) = row.as_str() {
+            crate::cp1252::require_encodable(text).map_err(|refusal| {
+                crate::Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("{}[{}]", field.name(), start + index),
+                    reason: smol_str::format_smolstr!("{refusal}"),
+                }
+            })?;
+        }
+    }
+    Ok(())
+}
+
 /// Lay canonical `rows` out as the array `field` projects to, once.
 ///
 /// The crate's one scalar-array boundary, so a byte leaf never grows a
@@ -342,6 +361,7 @@ impl<T: ByteArrayType, K: ByteKind> ByteSerie<T, K> {
     /// what its layout stores ([`stored_bytes`]), so a replacement past the
     /// offset type is refused by name before a byte of it is built.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
+        require_encodable(&self.field, range.start, rows)?;
         let replacement = rows.iter().fold(0_usize, |total, row| {
             total.saturating_add(stored_bytes(row))
         });
@@ -546,10 +566,9 @@ impl<T: ByteViewType, K: ByteKind> ByteViewSerie<T, K> {
         (index < self.values.len() && self.values.is_valid(index)).then(|| self.values.value(index))
     }
 
-    /// Refuse what a write could not do: nothing, for views.
+    /// Refuse recovered text whose charset cannot encode it.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
-        let _ = (range, rows);
-        Ok(())
+        require_encodable(&self.field, range.start, rows)
     }
 
     /// Write canonical `rows` over a checked `range`: the views rewritten.
@@ -755,6 +774,7 @@ impl<K: ByteKind> FixedSerie<K> {
 
     /// Refuse what a write could not do: a fixed-width total past `i32`.
     pub(crate) fn check(&self, range: &Range<usize>, rows: &[Scalar]) -> Result<()> {
+        require_encodable(&self.field, range.start, rows)?;
         let total =
             (self.values.len() - range.len() + rows.len()).saturating_mul(self.values.value_size());
         layout::require_offset::<i32>(self.field.name(), total)
@@ -959,6 +979,7 @@ pub(crate) fn column_of(
     array: ArrayRef,
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
+    _budget: &mut crate::budget::MaterializationBudget,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::held;
     use super::string::{

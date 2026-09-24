@@ -23,6 +23,256 @@ fn strict() -> ArrowCastOptions {
         .with_nullability(Nullability::Strict)
 }
 
+/// A public child must remain readable after it loses its parent context.
+fn assert_every_extracted_child_is_readable(column: &Serie) {
+    use std::hash::{Hash, Hasher};
+
+    let expected = (0..column.len())
+        .map(|row| {
+            column
+                .scalar(row)
+                .expect("every physical child row is readable")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(column.rows().as_ref(), expected.as_slice());
+    let run = Serie::new(expected.clone());
+    assert_eq!(column, &run);
+    let mut actual_hash = std::collections::hash_map::DefaultHasher::new();
+    let mut expected_hash = std::collections::hash_map::DefaultHasher::new();
+    column.hash(&mut actual_hash);
+    run.hash(&mut expected_hash);
+    assert_eq!(actual_hash.finish(), expected_hash.finish());
+
+    let field = column.require_field().unwrap();
+    let identity = yggdryl::ArrowCastPlan::compile(field, field, ArrowCastOptions::new())
+        .expect("the child's identity plan");
+    assert_eq!(
+        identity.apply(column).unwrap().rows().as_ref(),
+        expected.as_slice()
+    );
+    let mut appended = Serie::empty(field.clone().with_nullable(true)).unwrap();
+    appended
+        .extend_from_serie(column)
+        .expect("a borrowed child appends safely");
+    assert_eq!(appended.rows().as_ref(), expected.as_slice());
+    column
+        .require_arrow_array()
+        .unwrap()
+        .to_data()
+        .validate_full()
+        .expect("required Arrow children remain physically valid");
+
+    for child in column.children() {
+        assert_every_extracted_child_is_readable(child);
+    }
+    if let Some(items) = column.items() {
+        assert_every_extracted_child_is_readable(items);
+    }
+}
+
+#[test]
+fn hidden_narrow_values_remain_safe_through_every_public_child_surface() {
+    use arrow_array::types::{Int8Type, Int32Type};
+    use arrow_array::{
+        DictionaryArray, FixedSizeListArray, Int8Array, MapArray, RunArray, UnionArray,
+    };
+    use arrow_buffer::ScalarBuffer;
+    use arrow_schema::{FieldRef, Fields, UnionFields};
+
+    let isin = || {
+        DataType::IsinCode
+            .required_field("item")
+            .into_arrow_field_ref()
+            .unwrap()
+    };
+    let values = || -> ArrayRef {
+        Arc::new(StringArray::from(vec![
+            "US0378331005",
+            "BAD",
+            "GB0002634946",
+        ]))
+    };
+    let plain_field = |array: &ArrayRef| -> FieldRef {
+        Arc::new(ArrowField::new("payload", array.data_type().clone(), false))
+    };
+    let mut cases: Vec<(&str, FieldRef, ArrayRef)> = vec![(
+        "struct",
+        DataType::IsinCode
+            .required_field("payload")
+            .into_arrow_field_ref()
+            .unwrap(),
+        values(),
+    )];
+    let fixed: ArrayRef = Arc::new(FixedSizeListArray::new(isin(), 1, values(), None));
+    cases.push(("fixed", plain_field(&fixed), fixed));
+    let list: ArrayRef = Arc::new(ListArray::new(
+        isin(),
+        OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+        values(),
+        None,
+    ));
+    cases.push(("list", plain_field(&list), list));
+    let entry_fields: Fields = vec![
+        Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
+        DataType::IsinCode
+            .required_field("value")
+            .into_arrow_field_ref()
+            .unwrap(),
+    ]
+    .into();
+    let map: ArrayRef = Arc::new(MapArray::new(
+        Arc::new(ArrowField::new(
+            "entries",
+            ArrowDataType::Struct(entry_fields.clone()),
+            false,
+        )),
+        OffsetBuffer::new(vec![0_i32, 1, 2, 3].into()),
+        StructArray::new(
+            entry_fields,
+            vec![
+                Arc::new(StringArray::from(vec!["first", "hidden", "third"])),
+                values(),
+            ],
+            None,
+        ),
+        None,
+        false,
+    ));
+    cases.push(("map", plain_field(&map), map));
+    for dense in [false, true] {
+        let fields = UnionFields::try_new(
+            vec![0_i8, 1],
+            vec![
+                isin(),
+                Arc::new(ArrowField::new("number", ArrowDataType::Int64, false)),
+            ],
+        )
+        .unwrap();
+        let numbers: ArrayRef = if dense {
+            Arc::new(Int64Array::from(vec![7_i64]))
+        } else {
+            Arc::new(Int64Array::from(vec![0_i64, 7, 0]))
+        };
+        let union: ArrayRef = Arc::new(
+            UnionArray::try_new(
+                fields,
+                ScalarBuffer::from(vec![0_i8, 1, 0]),
+                dense.then(|| ScalarBuffer::from(vec![0_i32, 0, 2])),
+                vec![values(), numbers],
+            )
+            .unwrap(),
+        );
+        cases.push((
+            if dense { "dense_union" } else { "sparse_union" },
+            plain_field(&union),
+            union,
+        ));
+    }
+    let dictionary_field = DataType::dictionary(DataType::Int8, DataType::IsinCode)
+        .unwrap()
+        .required_field("payload")
+        .into_arrow_field_ref()
+        .unwrap();
+    let dictionary: ArrayRef = Arc::new(
+        DictionaryArray::<Int8Type>::try_new(Int8Array::from(vec![0_i8, 1, 2]), values()).unwrap(),
+    );
+    cases.push(("dictionary", dictionary_field, dictionary));
+    let run_field = DataType::run_end_encoded(
+        DataType::Int32.required_field("run_ends"),
+        DataType::IsinCode.required_field("values"),
+    )
+    .unwrap()
+    .required_field("payload")
+    .into_arrow_field_ref()
+    .unwrap();
+    let runs = RunArray::<Int32Type>::try_new(&Int32Array::from(vec![1, 2, 3]), values().as_ref())
+        .unwrap();
+    let runs = arrow_array::make_array(
+        runs.to_data()
+            .into_builder()
+            .data_type(run_field.data_type().clone())
+            .build()
+            .unwrap(),
+    );
+    cases.push(("run_end", run_field, runs));
+
+    for (name, field, array) in cases {
+        let source: ArrayRef = Arc::new(StructArray::new(
+            vec![field].into(),
+            vec![array],
+            Some(NullBuffer::from(vec![true, false, true])),
+        ));
+        source
+            .to_data()
+            .validate_full()
+            .expect("legal foreign Arrow buffers");
+        let declared =
+            Field::from_arrow_field(&ArrowField::new("root", source.data_type().clone(), true))
+                .unwrap();
+        for explicit in [false, true] {
+            let column = Serie::from_arrow_array(
+                explicit.then_some(&declared),
+                Arc::clone(&source),
+                ArrowCastOptions::new(),
+            )
+            .unwrap_or_else(|error| panic!("{name}, explicit={explicit}: {error}"));
+            assert_eq!(column.scalar(1).unwrap(), Scalar::Null, "{name}");
+            for (row, expected) in [(0, "US0378331005"), (2, "GB0002634946")] {
+                let value = column.scalar(row).unwrap();
+                assert!(
+                    format!("{value:?}").contains(expected),
+                    "{name} row {row}: {value:?}"
+                );
+            }
+            let payload = column.child("payload").expect("the public child");
+            if matches!(name, "list" | "map") {
+                assert_eq!(
+                    payload.items().unwrap().len(),
+                    2,
+                    "{name} removes the unsafe span"
+                );
+            } else {
+                let physical_values = match name {
+                    "struct" => payload,
+                    "dense_union" | "sparse_union" => payload.child_at(0).unwrap(),
+                    _ => payload.items().unwrap(),
+                };
+                assert_eq!(physical_values.scalar(1).unwrap(), Scalar::Null, "{name}");
+            }
+            assert_every_extracted_child_is_readable(&column);
+        }
+    }
+}
+
+#[test]
+fn a_cast_ingest_proof_does_not_leave_hidden_narrow_bytes_in_a_public_child() {
+    let source: ArrayRef = Arc::new(StructArray::new(
+        vec![Arc::new(ArrowField::new(
+            "code",
+            ArrowDataType::Utf8,
+            false,
+        ))]
+        .into(),
+        vec![Arc::new(StringArray::from(vec!["US0378331005", "BAD"]))],
+        Some(NullBuffer::from(vec![true, false])),
+    ));
+    let field = Field::new(
+        "root",
+        DataType::from(
+            StructType::from_fields([DataType::IsinCode.required_field("code")]).unwrap(),
+        ),
+        true,
+    );
+    let column = Serie::from_arrow_array(Some(&field), source, ArrowCastOptions::new())
+        .expect("a code ingest only validates visible rows");
+    assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
+    assert_eq!(
+        column.child("code").unwrap().scalar(1).unwrap(),
+        Scalar::Null
+    );
+    assert_every_extracted_child_is_readable(&column);
+}
+
 /// A non-null record root over an identifier and a symbol.
 fn quotes_root() -> Field {
     Field::new(
