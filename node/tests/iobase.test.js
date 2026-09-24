@@ -27,7 +27,7 @@ const EVENT_COLUMNS = [
   'currunix', 'creaunix', 'execunix', 'recdunix',
   'exprtime', 'prevunix', 'snapunix',
   'curruuid', 'crossuuid', 'crosscode', 'currhashcode', 'crosshashcode',
-  'prevuuid', 'seqnum', 'srcuuids', 'identifiers', 'state',
+  'prevuuid', 'seqnum', 'srcuuids', 'state',
 ]
 
 // A small Hive-partitioned lake with one private staging area, so listing,

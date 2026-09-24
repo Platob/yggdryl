@@ -525,17 +525,20 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
 mod internal {
     //! The registry, reached through `yggdryl::internals::securityid`.
 
-    use yggdryl::graph::{MarketElement, MarketElementData, MarketEventData};
+    use yggdryl::graph::{Element, Market, MarketData, MarketEventData};
     use yggdryl::internals::securityid::{
         ENTRY_CHARGE, MAX_KEYS_PER_INSTRUMENT, SecurityIdRegistry,
     };
-    use yggdryl::{BloombergCode, CfiCode, CusipCode, IsinCode, SecurityIds, SedolCode};
+    use yggdryl::{CfiCode, IsinCode, SecurityIds};
 
     use super::id;
 
     fn apple() -> MarketEventData {
         let mut event = MarketEventData::at(1);
-        event.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
+        event
+            .insert_securityid(id("isin", "US0378331005"))
+            .expect("a plain holder takes every identifier");
+        event.finalize();
         event
     }
 
@@ -543,8 +546,21 @@ mod internal {
         let body = format!("FR{number:09}");
         let digit = IsinCode::closing_digit(&body).unwrap();
         let mut event = MarketEventData::at(number as i64);
-        event.set_isincode(Some(IsinCode::new(format!("{body}{digit}")).unwrap()));
         event
+            .insert_securityid(id("isin", &format!("{body}{digit}")))
+            .expect("a plain holder takes every identifier");
+        event.finalize();
+        event
+    }
+
+    fn stated(event: &mut MarketEventData, key: &str, code: &str) {
+        event
+            .insert_securityid(id(key, code))
+            .expect("a plain holder takes every identifier");
+    }
+
+    fn code<'event>(event: &'event MarketEventData, key: &str) -> Option<&'event str> {
+        event.get_securityids().get(key)
     }
 
     #[test]
@@ -552,7 +568,7 @@ mod internal {
         let mut codes = SecurityIdRegistry::default();
         let mut first = apple();
         first.set_cficode(Some(CfiCode::new("ESXXXX").unwrap()));
-        first.set_bloombergcode(Some(BloombergCode::new("AAPL US Equity").unwrap()));
+        stated(&mut first, "bloomberg", "AAPL US Equity");
         codes.enrich(&mut first);
         let mut next = apple();
         codes.enrich(&mut next);
@@ -560,16 +576,16 @@ mod internal {
             next.get_cficode().is_none(),
             "coarse classifications are not learned"
         );
-        assert_eq!(next.get_bloombergcode(), first.get_bloombergcode());
+        assert_eq!(code(&next, "bloomberg"), code(&first, "bloomberg"));
 
         let mut precise = apple();
         precise.set_cficode(Some(CfiCode::new("ESVUFR").unwrap()));
-        precise.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
+        stated(&mut precise, "sedol", "2046251");
         codes.enrich(&mut precise);
         let mut later = apple();
         codes.enrich(&mut later);
         assert_eq!(later.get_cficode(), precise.get_cficode());
-        assert_eq!(later.get_sedolcode(), precise.get_sedolcode());
+        assert_eq!(code(&later, "sedol"), code(&precise, "sedol"));
         assert_eq!(
             first.get_cficode().unwrap().as_str(),
             "ESXXXX",
@@ -581,43 +597,43 @@ mod internal {
         assert_eq!(coarse.get_cficode(), precise.get_cficode());
 
         let mut conflict = apple();
-        conflict.set_bloombergcode(Some(BloombergCode::new("AAPL LN Equity").unwrap()));
+        stated(&mut conflict, "bloomberg", "AAPL LN Equity");
         codes.enrich(&mut conflict);
-        assert_eq!(
-            conflict.get_bloombergcode().unwrap().as_str(),
-            "AAPL LN Equity"
-        );
+        assert_eq!(code(&conflict, "bloomberg"), Some("AAPL LN Equity"));
         let mut after_conflict = apple();
         codes.enrich(&mut after_conflict);
-        assert!(after_conflict.get_bloombergcode().is_none());
+        assert!(code(&after_conflict, "bloomberg").is_none());
 
         let mut independent = apple();
         SecurityIdRegistry::default().enrich(&mut independent);
         assert!(independent.get_cficode().is_none());
-        assert!(independent.get_bloombergcode().is_none());
+        assert!(code(&independent, "bloomberg").is_none());
     }
 
     #[test]
-    fn invalid_default_codes_cannot_seed_associations() {
+    fn an_element_without_an_isin_or_a_detailed_code_seeds_no_association() {
+        // A security identifier is validated where it is made, so no empty
+        // or unchecked code reaches a holder: what is left to refuse is an
+        // element naming no ISIN, and a coarse classification.
         let mut codes = SecurityIdRegistry::default();
-        let mut empty = MarketElementData::default();
-        empty.set_isincode(Some(IsinCode::default()));
+        let mut empty = MarketData::default();
         codes.enrich(&mut empty);
         assert_eq!(codes.instruments(), 0);
         assert_eq!(codes.reserved_bytes(), 0);
+        let mut unnamed = MarketEventData::at(1);
+        stated(&mut unnamed, "cusip", "037833100");
+        codes.enrich(&mut unnamed);
+        assert_eq!(codes.instruments(), 0, "nothing is learned without an ISIN");
         let mut observed = apple();
         observed.set_cficode(Some(CfiCode::new("XXXXXX").unwrap()));
-        observed.set_cusipcode(Some(CusipCode::default()));
-        observed.set_sedolcode(Some(SedolCode::default()));
-        observed.set_bloombergcode(Some(BloombergCode::default()));
         codes.enrich(&mut observed);
         let mut later = apple();
         codes.enrich(&mut later);
         assert!(later.get_cficode().is_none());
-        assert!(later.get_sedolcode().is_none());
-        assert!(later.get_bloombergcode().is_none());
+        assert!(code(&later, "sedol").is_none());
+        assert!(code(&later, "bloomberg").is_none());
         assert_eq!(
-            later.get_cusipcode().map(CusipCode::as_str),
+            later.get_securityids().get("cusip"),
             Some("037833100"),
             "the CUSIP a US ISIN embeds is the element's own, not a learned one"
         );
@@ -627,7 +643,7 @@ mod internal {
     fn the_byte_budget_bounds_new_instruments_and_keeps_learning_known_ones() {
         let mut codes = SecurityIdRegistry::with_budget(2 * ENTRY_CHARGE);
         let mut first = apple();
-        first.set_bloombergcode(Some(BloombergCode::new("AAPL US Equity").unwrap()));
+        stated(&mut first, "bloomberg", "AAPL US Equity");
         codes.enrich(&mut first);
         assert_eq!(
             (codes.instruments(), codes.reserved_bytes()),
@@ -635,7 +651,7 @@ mod internal {
         );
 
         let mut same = apple();
-        same.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
+        stated(&mut same, "sedol", "2046251");
         codes.enrich(&mut same);
         assert_eq!(
             (codes.instruments(), codes.reserved_bytes()),
@@ -663,8 +679,8 @@ mod internal {
         let mut later = apple();
         codes.enrich(&mut later);
         assert_eq!(later.get_cficode(), learned_at_cap.get_cficode());
-        assert_eq!(later.get_sedolcode(), same.get_sedolcode());
-        assert_eq!(later.get_bloombergcode(), first.get_bloombergcode());
+        assert_eq!(code(&later, "sedol"), code(&same, "sedol"));
+        assert_eq!(code(&later, "bloomberg"), code(&first, "bloomberg"));
         assert_eq!(codes.reserved_bytes(), 2 * ENTRY_CHARGE);
 
         let mut overflow = SecurityIdRegistry::saturated();

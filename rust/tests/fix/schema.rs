@@ -5,7 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Element, Event, Market, MarketOperation};
 use yggdryl::{
     DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };
@@ -46,9 +46,11 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     use yggdryl::fix::{BODY_TAGS, GROUP_TAGS, HEADER_TAGS, TRAILER_TAGS};
 
     let tags = yggdryl::fix_schema_tags();
-    // MsgCat, two optional event clocks, the session event and six normalized
-    // identifiers join the existing standard CFI column.
-    assert_eq!(tags.len(), 122);
+    // MsgCat, two optional event clocks, the session event and three
+    // normalized identifiers - ISIN, Bloomberg, FIGI - join the existing
+    // standard CFI column; the identifiers map and the CUSIP and SEDOL
+    // columns are retired, their tags never reused.
+    assert_eq!(tags.len(), 119);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -75,7 +77,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "when it happened, and the clocks a message stops being good at"
     );
     assert_eq!(
-        &tags[15..24],
+        &tags[15..23],
         [
             yggdryl::CURRUUID_TAG_NAME.0,
             yggdryl::CROSSUUID_TAG_NAME.0,
@@ -85,12 +87,11 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             yggdryl::PREVUUID_TAG_NAME.0,
             yggdryl::SEQNUM_TAG_NAME.0,
             yggdryl::SRCUUIDS_TAG_NAME.0,
-            yggdryl::IDENTIFIERS_TAG_NAME.0,
         ],
         "which event"
     );
     assert_eq!(
-        &tags[24..36],
+        &tags[23..35],
         [
             8,
             35,
@@ -142,7 +143,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 127);
+    assert_eq!(schema.fields().len(), 124);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     // The frame closes the row: the trailer, then the bridge's own keys, then
     // the arrival record and the counter that counts it.
@@ -557,15 +558,16 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
     let buy = reader
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|38=100|10=0|")
         .unwrap();
+    let bid = buy.get_bid().expect("the bid lane a buy fills");
     assert_eq!(
-        buy.get_bidpx().map(|held| held.to_string()).as_deref(),
+        bid.price.map(|held| held.to_string()).as_deref(),
         Some("12.5")
     );
     assert_eq!(
-        buy.get_bidqty().map(|held| held.to_string()).as_deref(),
+        bid.quantity.map(|held| held.to_string()).as_deref(),
         Some("100")
     );
-    assert_eq!(buy.get_askpx(), None, "no ask lane on a buy");
+    assert_eq!(buy.get_ask(), None, "no ask lane on a buy");
     let row = buy.into_row(&schema).unwrap();
     assert!(
         at(&row, &schema, 132).is_null(),
@@ -578,7 +580,11 @@ fn a_lane_a_message_never_wrote_is_still_true_of_it() {
         .sole_line(b"8=FIX.4.4|35=D|11=A|54=1|44=12.5|132=99.0|10=0|")
         .unwrap();
     assert_eq!(
-        stated.get_bidpx().map(|held| held.to_string()).as_deref(),
+        stated
+            .get_bid()
+            .and_then(|lane| lane.price)
+            .map(|held| held.to_string())
+            .as_deref(),
         Some("99")
     );
     let row = stated.into_row(&schema).unwrap();

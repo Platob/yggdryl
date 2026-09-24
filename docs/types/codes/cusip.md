@@ -263,7 +263,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No vocabulary: `StringEnum::from_logical_name("cusip")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
 - A CUSIP and a [SEDOL](sedol.md) of the same bytes are two values, and neither is the string that spells it.
-- The crate tag `cusipcode(65057)` carries the normalized column in a [FIX capture](index.md#fix-message-definitions).
+- No crate column: in a [FIX capture](index.md#fix-message-definitions) a CUSIP is one security identifier under key `CUSIP` - `SecurityID(48)` under source `1`, or a `secaltids` occurrence - read as `get_securityids().get("CUSIP")`, and derived from a US or CA ISIN where the message states none; the crate tag `cusipcode(65057)` is retired and never reused.
 
 ## Commands
 

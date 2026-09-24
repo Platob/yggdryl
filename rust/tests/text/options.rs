@@ -25,7 +25,7 @@ mod text {
     /// the line's own: the line is an event of the graph, and a message parsed
     /// out of it contains the same seventeen under the same names and
     /// datatypes.
-    const EVENT_COLUMNS: [&str; 17] = [
+    const EVENT_COLUMNS: [&str; 16] = [
         "currunix",
         "creaunix",
         "execunix",
@@ -41,7 +41,6 @@ mod text {
         "prevuuid",
         "seqnum",
         "srcuuids",
-        "identifiers",
         "state",
     ];
 

@@ -108,6 +108,7 @@ from .codes import (
     SideField,
     StateField,
     TimeInForceField,
+    UnitField,
     bloomberg,
     cfi,
     country,
@@ -120,6 +121,7 @@ from .codes import (
     side,
     state,
     timeinforce,
+    unit,
 )
 from .decimal import (
     Decimal32Field,
@@ -361,6 +363,7 @@ __all__ = [
     "Time64Field",
     "TimeField",
     "TimeInForceField",
+    "UnitField",
     "Timezone",
     "TimezoneField",
     "TypedDataType",
@@ -476,6 +479,7 @@ __all__ = [
     "time32",
     "time64",
     "timeinforce",
+    "unit",
     "timezone",
     "toml",
     "txhash",

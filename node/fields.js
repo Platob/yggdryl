@@ -251,6 +251,7 @@ function createFields(DataType, Field, native) {
     side: simple('side'),
     state: simple('state'),
     timeinforce: simple('timeinforce'),
+    unit: simple('unit'),
 
     serie: serie('serie'),
     serieView: serie('serie_view'),

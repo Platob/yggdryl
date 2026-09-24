@@ -181,13 +181,13 @@ test('the complete native catalog survives a snapshot and a store', (t) => {
   assert.deepEqual(fs.readdirSync(folder).sort(), ['codesets', 'components', 'fields', 'groups'])
   // A definition is one document under its category, and the crate's own
   // are written like every other: the fixed row is `components/fixmsg.json`
-  // and its two Map groups are two documents.
+  // and its Map group is one document.
   const documents = (category) => fs.readdirSync(path.join(folder, category)).sort()
   assert.ok(documents('components').includes('fixmsg.json'))
   assert.ok(documents('components').some((name) => name.toLowerCase() === 'party.json'))
   assert.deepEqual(
     documents('groups').map((name) => name.toLowerCase()).sort(),
-    ['identifiers.json', 'metadata.json', 'parties.json'],
+    ['metadata.json', 'parties.json'],
   )
   assert.ok(documents('fields').every((name) => /^\d{9}\.json$/.test(name)))
   // A code set is one document under its own name, which is how it is

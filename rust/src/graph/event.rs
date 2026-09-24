@@ -1,87 +1,71 @@
-//! The market element and the market event held as plain fields: every
-//! fact the traits name, and nothing else.
+//! The holders: the graph vocabulary as plain fields, for the holder that
+//! wants nothing more.
+//!
+//! [`MarketData`] holds every fact [`Element`] and [`Market`] name and no
+//! instant: a book level, a side's summary, an undated entry.
+//! [`MarketEventData`] adds the clocks and the state an [`Event`] answers, so
+//! it is a [`MarketEvent`]: a book, a level dated at an instant.
+//! [`MarketOperationData`] and [`MarketOperationEventData`] add the eight
+//! facts a [`MarketOperation`] states - its category, how long it stands,
+//! whether it can trade, its account, user and own identifiers, and its two
+//! lanes - to each, so an operation entry and an operation event embed the
+//! slim holder and convert to its view by a move, never a copy.
+//!
+//! `Default` states nothing: a price and a quantity of nothing in no currency
+//! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `00UNKNOWN`
+//! state at the epoch, and the nil identity until [`Element::finalize`]
+//! derives one from the facts.
+//!
+//! ```
+//! use yggdryl::graph::{Element, Event, Market, MarketEvent, MarketEventData};
+//! use yggdryl::{Ccy, Decimal18, Side};
+//!
+//! let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+//! event.set_crosscode("O-1".to_owned());
+//! event.set_side(Side::Buy);
+//! event.set_price(Decimal18::from_int(101));
+//! event.set_quantity(Decimal18::from_int(5));
+//! event.set_currency(Ccy::new("USD")?);
+//! event.finalize();
+//! assert_ne!(event.get_currhashcode(), 0);
+//! assert_eq!(event.get_crossuuid(), event.cross_uuid());
+//! // The same facts stated again digest to the same code, whatever holds them.
+//! let mut again = MarketEventData::at(1_700_000_000_000_000_000);
+//! again.set_crosscode("O-1".to_owned());
+//! again.set_side(Side::Buy);
+//! again.set_price(Decimal18::from_int(101));
+//! again.set_quantity(Decimal18::from_int(5));
+//! again.set_currency(Ccy::new("USD")?);
+//! again.finalize();
+//! assert_eq!(again.get_curruuid(), event.get_curruuid());
+//! assert_eq!(event.digest_market_event().as_u64(), event.get_currhashcode());
+//! # Ok::<(), yggdryl::Error>(())
+//! ```
 
-use std::collections::BTreeMap;
+use smol_str::SmolStr;
 
-use super::{Element, Event, MarketElement, MarketEvent};
-use crate::{
-    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
-    Side, State, Uuid,
-};
+use super::market::{Lane, Metadata, empty_metadata, restating_market, restating_operation};
+use super::{Element, Event, Market, MarketEvent, MarketOperation, MarketOperationEvent};
+use crate::idmap::IdMap;
+use crate::securityid::{SecType, SecurityId, SecurityIds};
+use crate::{Ccy, CfiCode, Decimal18, MicCode, Result, Side, State, TimeInForce, Unit, Uuid};
 
-/// The concrete market element: every fact [`Element`] and
-/// [`MarketElement`] name, held as one field each, with no instant of its
-/// own.
-///
-/// Its identity is derived: [`Element::finalize`] digests the facts the
-/// traits know through [`MarketElement::digest_market`], records the code
-/// and sets the identity that code derives, RFC 9562 UUIDv8 over it, so
-/// two elements stating the same things are one identity. It states no
-/// order: with no instant and no predecessor, no element is after another,
-/// and following another takes the chain's cross code, the names it went by
-/// and the market it is about.
-///
-/// A new element states nothing: no identity, no cross code, no names, no
-/// sources, a price and a quantity of nothing in no currency
-/// (`XXX`) and no unit, a side of `UNKNOWN`, no instrument named, no lane
-/// stated. It is what any [`MarketElement`] converts into, dropping
-/// whatever else that element states, and what a [`MarketEventData`] is
-/// without its instants.
-///
-/// ```
-/// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
-/// use yggdryl::{Decimal18, Side, Uuid};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut element = MarketElementData::default();
-/// element.set_crosscode("O-100".to_owned());
-/// // Where the element was read from: provenance, not content.
-/// element.set_srcuuids(vec![Uuid::from_v8(7)]);
-/// element.set_price("82.5".parse()?);
-/// element.set_quantity(Decimal18::from_int(1_000));
-/// element.set_side(Side::read("Buy")?);
-/// element.finalize();
-/// assert_ne!(element.get_currhashcode(), 0);
-/// assert_eq!(element.get_crossuuid(), element.cross_uuid());
-/// // The same facts at an instant: the event states them and its own.
-/// let mut event = MarketEventData::from(element.clone());
-/// event.set_currunix(1_700_000_000_000_000_000);
-/// event.finalize();
-/// assert_eq!(event.get_price(), element.get_price());
-/// assert_eq!(event.get_crosscode(), "O-100");
-/// assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7)], "the source survives");
-/// // And back, through the signatures the two share: the event's instants
-/// // drop, and the identity is what the shared facts derive - a source
-/// // among them not, because where an element was read from is not what it
-/// // states.
-/// let mut again = MarketElementData::from(&event);
-/// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
-/// again.set_srcuuids(vec![Uuid::from_v8(8)]);
-/// again.finalize();
-/// assert_eq!(again.get_curruuid(), element.get_curruuid());
-/// # Ok(())
-/// # }
-/// ```
+/// Every fact [`Element`] and [`Market`] name, as plain fields, with no
+/// instant: what a book level, a side's summary or an undated entry is.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MarketElementData {
+pub struct MarketData {
     curruuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
     currhashcode: u64,
     crosshashcode: u64,
-    identifiers: BTreeMap<String, String>,
     srcuuids: Vec<Uuid>,
-    marketoperationid: Option<i32>,
     price: Decimal18,
     currency: Ccy,
     quantity: Decimal18,
-    unit: String,
+    unit: Unit,
     side: Side,
-    isincode: Option<IsinCode>,
-    cusipcode: Option<CusipCode>,
-    sedolcode: Option<SedolCode>,
-    bloombergcode: Option<BloombergCode>,
-    figicode: Option<FIGICode>,
+    securityids: SecurityIds,
     cficode: Option<CfiCode>,
     miccode: Option<MicCode>,
     lastpx: Option<Decimal18>,
@@ -89,22 +73,15 @@ pub struct MarketElementData {
     avgpx: Option<Decimal18>,
     cumqty: Option<Decimal18>,
     leavesqty: Option<Decimal18>,
-    tif: Option<String>,
-    tradable: Option<bool>,
-    symbolticker: Option<String>,
     prevpx: Option<Decimal18>,
     prevqty: Option<Decimal18>,
-    bidpx: Option<Decimal18>,
-    bidcurrency: Option<Ccy>,
-    bidqty: Option<Decimal18>,
-    bidunit: Option<String>,
-    askpx: Option<Decimal18>,
-    askcurrency: Option<Ccy>,
-    askqty: Option<Decimal18>,
-    askunit: Option<String>,
+    spotrate: Option<Decimal18>,
+    forwardpoints: Option<Decimal18>,
+    ticker: Option<SmolStr>,
+    metadata: Option<Box<Metadata>>,
 }
 
-impl Default for MarketElementData {
+impl Default for MarketData {
     /// An element stating nothing.
     fn default() -> Self {
         Self {
@@ -113,44 +90,31 @@ impl Default for MarketElementData {
             crosscode: String::new(),
             currhashcode: 0,
             crosshashcode: 0,
-            identifiers: BTreeMap::new(),
             srcuuids: Vec::new(),
-            marketoperationid: None,
             price: Decimal18::ZERO,
+            currency: Ccy::none(),
+            quantity: Decimal18::ZERO,
+            unit: Unit::none(),
+            side: Side::Unknown,
+            securityids: SecurityIds::default(),
+            cficode: None,
+            miccode: None,
             lastpx: None,
             lastqty: None,
             avgpx: None,
             cumqty: None,
             leavesqty: None,
-            tif: None,
-            tradable: None,
-            symbolticker: None,
             prevpx: None,
             prevqty: None,
-            currency: Ccy::none(),
-            quantity: Decimal18::ZERO,
-            unit: String::new(),
-            side: Side::Unknown,
-            isincode: None,
-            cusipcode: None,
-            sedolcode: None,
-            bloombergcode: None,
-            figicode: None,
-            cficode: None,
-            miccode: None,
-            bidpx: None,
-            bidcurrency: None,
-            bidqty: None,
-            bidunit: None,
-            askpx: None,
-            askcurrency: None,
-            askqty: None,
-            askunit: None,
+            spotrate: None,
+            forwardpoints: None,
+            ticker: None,
+            metadata: None,
         }
     }
 }
 
-impl Element for MarketElementData {
+impl Element for MarketData {
     fn get_curruuid(&self) -> Uuid {
         self.curruuid
     }
@@ -191,14 +155,6 @@ impl Element for MarketElementData {
         self.crosshashcode = crosshashcode;
     }
 
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        &self.identifiers
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.identifiers = identifiers;
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         &self.srcuuids
     }
@@ -226,7 +182,7 @@ impl Element for MarketElementData {
             return None;
         }
         let mut changed = super::element::follow_element(&mut self, previous);
-        changed |= super::element::follow_market(&mut self, previous);
+        changed |= super::market::follow_market(&mut self, previous);
         if !changed {
             return None;
         }
@@ -239,15 +195,7 @@ impl Element for MarketElementData {
     }
 }
 
-impl MarketElement for MarketElementData {
-    fn get_marketoperationid(&self) -> Option<i32> {
-        self.marketoperationid
-    }
-
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-        self.marketoperationid = marketoperationid;
-    }
-
+impl Market for MarketData {
     fn get_price(&self) -> Decimal18 {
         self.price
     }
@@ -272,83 +220,57 @@ impl MarketElement for MarketElementData {
         self.quantity = quantity;
     }
 
-    fn get_unit(&self) -> &str {
+    fn get_unit(&self) -> &Unit {
         &self.unit
     }
 
-    fn set_unit(&mut self, unit: String) {
+    fn set_unit(&mut self, unit: Unit) {
         self.unit = unit;
     }
 
-    fn get_side(&self) -> &Side {
-        &self.side
+    fn get_side(&self) -> Side {
+        self.side
     }
 
     fn set_side(&mut self, side: Side) {
         self.side = side;
     }
 
-    fn get_isincode(&self) -> Option<&IsinCode> {
-        self.isincode.as_ref()
+    fn get_securityids(&self) -> &SecurityIds {
+        &self.securityids
     }
 
-    fn set_isincode(&mut self, isincode: Option<IsinCode>) {
-        self.isincode = isincode;
-        if self.cusipcode.is_none() {
-            self.cusipcode = self.isincode.as_ref().and_then(|isin| {
-                crate::securityid::embedded(isin)
-                    .find(|id| id.sectype().as_str() == "CUSIP")
-                    .and_then(|id| CusipCode::new(id.code()).ok())
-            });
-        }
+    fn set_securityids(&mut self, ids: SecurityIds) -> Result<()> {
+        self.securityids = ids;
+        Ok(())
     }
 
-    fn get_cusipcode(&self) -> Option<&CusipCode> {
-        self.cusipcode.as_ref()
+    fn insert_securityid(&mut self, id: SecurityId) -> Result<bool> {
+        Ok(self.securityids.insert(id))
     }
 
-    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
-        self.cusipcode = cusipcode;
+    fn remove_securityid(&mut self, key: &SecType) -> Result<bool> {
+        Ok(self.securityids.remove(key).is_some())
     }
 
-    fn get_sedolcode(&self) -> Option<&SedolCode> {
-        self.sedolcode.as_ref()
-    }
-
-    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
-        self.sedolcode = sedolcode;
-    }
-
-    fn get_bloombergcode(&self) -> Option<&BloombergCode> {
-        self.bloombergcode.as_ref()
-    }
-
-    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
-        self.bloombergcode = bloombergcode;
-    }
-
-    fn get_figicode(&self) -> Option<&FIGICode> {
-        self.figicode.as_ref()
-    }
-
-    fn set_figicode(&mut self, figicode: Option<FIGICode>) {
-        self.figicode = figicode;
+    fn derive_securityid(&mut self, id: SecurityId) -> bool {
+        self.securityids.insert(id)
     }
 
     fn get_cficode(&self) -> Option<&CfiCode> {
         self.cficode.as_ref()
     }
 
-    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
-        self.cficode = cficode;
+    fn set_cficode(&mut self, code: Option<CfiCode>) {
+        self.cficode = code;
     }
 
     fn get_miccode(&self) -> Option<&MicCode> {
         self.miccode.as_ref()
     }
 
-    fn set_miccode(&mut self, miccode: Option<MicCode>) {
-        self.miccode = miccode;
+    fn set_miccode(&mut self, code: Option<MicCode>) {
+        self.miccode = code;
     }
 
     fn get_lastpx(&self) -> Option<Decimal18> {
@@ -365,30 +287,6 @@ impl MarketElement for MarketElementData {
 
     fn set_lastqty(&mut self, qty: Option<Decimal18>) {
         self.lastqty = qty;
-    }
-
-    fn get_tif(&self) -> Option<&str> {
-        self.tif.as_deref()
-    }
-
-    fn set_tif(&mut self, tif: Option<String>) {
-        self.tif = tif;
-    }
-
-    fn get_tradable(&self) -> Option<bool> {
-        self.tradable
-    }
-
-    fn set_tradable(&mut self, tradable: Option<bool>) {
-        self.tradable = tradable;
-    }
-
-    fn get_symbolticker(&self) -> Option<&str> {
-        self.symbolticker.as_deref()
-    }
-
-    fn set_symbolticker(&mut self, ticker: Option<String>) {
-        self.symbolticker = ticker;
     }
 
     fn get_avgpx(&self) -> Option<Decimal18> {
@@ -431,130 +329,47 @@ impl MarketElement for MarketElementData {
         self.prevqty = qty;
     }
 
-    fn get_bidpx(&self) -> Option<Decimal18> {
-        self.bidpx
+    fn get_spotrate(&self) -> Option<Decimal18> {
+        self.spotrate
     }
 
-    fn set_bidpx(&mut self, px: Option<Decimal18>) {
-        self.bidpx = px;
+    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+        self.spotrate = rate;
     }
 
-    fn get_bidcurrency(&self) -> Option<&Ccy> {
-        self.bidcurrency.as_ref()
+    fn get_forwardpoints(&self) -> Option<Decimal18> {
+        self.forwardpoints
     }
 
-    fn set_bidcurrency(&mut self, currency: Option<Ccy>) {
-        self.bidcurrency = currency;
+    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+        self.forwardpoints = points;
     }
 
-    fn get_bidqty(&self) -> Option<Decimal18> {
-        self.bidqty
+    fn get_ticker(&self) -> Option<&str> {
+        self.ticker.as_deref()
     }
 
-    fn set_bidqty(&mut self, qty: Option<Decimal18>) {
-        self.bidqty = qty;
+    fn set_ticker(&mut self, ticker: Option<SmolStr>) {
+        self.ticker = ticker.filter(|held| !held.is_empty());
     }
 
-    fn get_bidunit(&self) -> Option<&str> {
-        self.bidunit.as_deref()
+    fn get_metadata(&self) -> &Metadata {
+        match &self.metadata {
+            Some(held) => held,
+            None => empty_metadata(),
+        }
     }
 
-    fn set_bidunit(&mut self, unit: Option<String>) {
-        self.bidunit = unit;
-    }
-
-    fn get_askpx(&self) -> Option<Decimal18> {
-        self.askpx
-    }
-
-    fn set_askpx(&mut self, px: Option<Decimal18>) {
-        self.askpx = px;
-    }
-
-    fn get_askcurrency(&self) -> Option<&Ccy> {
-        self.askcurrency.as_ref()
-    }
-
-    fn set_askcurrency(&mut self, currency: Option<Ccy>) {
-        self.askcurrency = currency;
-    }
-
-    fn get_askqty(&self) -> Option<Decimal18> {
-        self.askqty
-    }
-
-    fn set_askqty(&mut self, qty: Option<Decimal18>) {
-        self.askqty = qty;
-    }
-
-    fn get_askunit(&self) -> Option<&str> {
-        self.askunit.as_deref()
-    }
-
-    fn set_askunit(&mut self, unit: Option<String>) {
-        self.askunit = unit;
+    fn set_metadata(&mut self, metadata: Option<Metadata>) {
+        self.metadata = metadata.filter(|held| !held.is_empty()).map(Box::new);
     }
 }
 
-/// The concrete market event: every fact [`Element`], [`Event`] and
-/// [`MarketElement`] name, held as one field each, so a type that is a
-/// market event and more - a FIX message, a trade record - holds one of
-/// these and delegates the traits to it rather than restating forty
-/// accessors.
-///
-/// Its identity is derived: [`Element::finalize`] digests the facts the
-/// traits know through [`MarketEvent::digest_market_event`] and resets the
-/// code and the current identity from them, so two events stating the same
-/// things at the same instant are one identity. A holder that has more
-/// content to say - a message's body - finalizes itself by feeding that
-/// content behind [`MarketEvent::digest_market_event`] and handing the code
-/// to [`Event::finalized`], and leaves this event's own `finalize` for the
-/// bare case.
-///
-/// A new event is what its instant says and nothing more: the facts of a
-/// default [`MarketElementData`], a state of `00UNKNOWN`, no place in a
-/// chain, no creation, execution, recording, expiration, predecessor or
-/// snapshot. It is what any
-/// [`MarketEvent`] converts into, and what a [`MarketElementData`] becomes
-/// at the epoch, for a caller to date.
-///
-/// ```
-/// use yggdryl::graph::{Element, Event, MarketElement, MarketElementData, MarketEventData};
-/// use yggdryl::{Decimal18, Side, Uuid};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
-/// event.set_price("82.5".parse()?);
-/// event.set_quantity(Decimal18::from_int(1_000));
-/// event.set_side(Side::read("Buy")?);
-/// event.set_srcuuids(vec![Uuid::from_v8(7)]);
-/// // The lane the side implies fills from the event's own facts.
-/// event.fill_lanes();
-/// assert_eq!(event.get_bidpx(), Some("82.5".parse()?));
-/// event.finalize();
-/// assert_eq!(event.get_curruuid(), event.time_uuid()?);
-/// assert_ne!(event.get_currhashcode(), 0);
-/// // The source survives both conversions, and is never part of the code.
-/// assert_eq!(MarketEventData::from(&event).get_srcuuids(), [Uuid::from_v8(7)]);
-/// assert_eq!(MarketElementData::from(event.clone()).get_srcuuids(), [Uuid::from_v8(7)]);
-/// // Restating the same facts is the same identity; a new price is not.
-/// let mut same = MarketEventData::at(1_700_000_000_000_000_000);
-/// same.set_price("82.5".parse()?);
-/// same.set_quantity(Decimal18::from_int(1_000));
-/// same.set_side(Side::read("Buy")?);
-/// same.set_srcuuids(vec![Uuid::from_v8(8)]);
-/// same.fill_lanes();
-/// same.finalize();
-/// assert_eq!(same.get_curruuid(), event.get_curruuid());
-/// same.set_price("83".parse()?);
-/// same.finalize();
-/// assert_ne!(same.get_curruuid(), event.get_curruuid());
-/// # Ok(())
-/// # }
-/// ```
+/// [`MarketData`] with the clocks and the state an event answers: a
+/// [`MarketEvent`] as plain fields.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MarketEventData {
-    element: MarketElementData,
+    market: MarketData,
     currunix: i64,
     state: State,
     seqnum: u64,
@@ -574,7 +389,7 @@ impl MarketEventData {
     #[must_use]
     pub fn at(unix: i64) -> Self {
         Self {
-            element: MarketElementData::default(),
+            market: MarketData::default(),
             currunix: unix,
             state: State::unknown(),
             seqnum: 0,
@@ -588,10 +403,16 @@ impl MarketEventData {
         }
     }
 
-    /// The names this event goes by, for a holder synchronizing one derived
-    /// name before it finalizes the event.
-    pub(crate) fn identifiers_mut(&mut self) -> &mut BTreeMap<String, String> {
-        &mut self.element.identifiers
+    /// The undated market facts this event holds.
+    #[must_use]
+    pub fn market(&self) -> &MarketData {
+        &self.market
+    }
+
+    /// This event's market facts alone, the clocks dropped: a move.
+    #[must_use]
+    pub fn into_market(self) -> MarketData {
+        self.market
     }
 
     /// Reprojects the generic event identities after one of their inputs
@@ -600,9 +421,9 @@ impl MarketEventData {
     /// resulting current identity and cross hash.
     fn refresh_uuids(&mut self) {
         if let Ok(uuid) = self.time_uuid() {
-            self.element.curruuid = uuid;
+            self.market.curruuid = uuid;
         }
-        self.element.crossuuid = self.cross_uuid();
+        self.market.crossuuid = self.cross_uuid();
     }
 }
 
@@ -613,70 +434,72 @@ impl Default for MarketEventData {
     }
 }
 
+impl From<MarketData> for MarketEventData {
+    /// The market facts dated at the epoch.
+    fn from(market: MarketData) -> Self {
+        Self {
+            market,
+            ..Self::default()
+        }
+    }
+}
+
 impl Element for MarketEventData {
     fn get_curruuid(&self) -> Uuid {
-        self.element.curruuid
+        self.market.curruuid
     }
 
     fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.element.curruuid = curruuid;
+        self.market.curruuid = curruuid;
     }
 
     fn get_crossuuid(&self) -> Uuid {
-        self.element.crossuuid
+        self.market.crossuuid
     }
 
     fn set_crossuuid(&mut self, crossuuid: Uuid) {
-        self.element.crossuuid = crossuuid;
+        self.market.crossuuid = crossuuid;
     }
 
     fn get_crosscode(&self) -> &str {
-        &self.element.crosscode
+        &self.market.crosscode
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.element.crosscode = crosscode;
-        self.element.crosshashcode = if self.element.crosscode.is_empty() {
+        self.market.crosscode = crosscode;
+        self.market.crosshashcode = if self.market.crosscode.is_empty() {
             0
         } else {
-            super::element::crosshash(&self.element.crosscode)
+            super::element::crosshash(&self.market.crosscode)
         };
         self.refresh_uuids();
     }
 
     fn get_currhashcode(&self) -> u64 {
-        self.element.currhashcode
+        self.market.currhashcode
     }
 
     fn set_currhashcode(&mut self, hashcode: u64) {
-        self.element.currhashcode = hashcode;
+        self.market.currhashcode = hashcode;
         self.refresh_uuids();
     }
 
     fn get_crosshashcode(&self) -> u64 {
-        self.element.crosshashcode
+        self.market.crosshashcode
     }
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
-        self.element.crosshashcode = crosshashcode;
+        self.market.crosshashcode = crosshashcode;
         self.refresh_uuids();
     }
 
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        &self.element.identifiers
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.element.identifiers = identifiers;
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
-        &self.element.srcuuids
+        &self.market.srcuuids
     }
 
     fn set_srcuuids(&mut self, mut sources: Vec<Uuid>) {
         super::element::canonicalize_uuids(&mut sources);
-        self.element.srcuuids = sources;
+        self.market.srcuuids = sources;
     }
 
     fn is_after(&self, other: &Self) -> bool {
@@ -700,26 +523,6 @@ impl Element for MarketEventData {
 }
 
 impl Event for MarketEventData {
-    /// The timed restatement, and then the market's: a twin takes the live
-    /// event's place in its chain, which is the step before it as well as
-    /// the predecessor and the position, and what that chain is about where
-    /// this reading of the message said nothing of it.
-    fn restating(self, live: &Self) -> Self {
-        super::element::restating_market(self, live)
-    }
-
-    /// Records a finalized content code and projects both identities once.
-    ///
-    /// The public identity-input setters refresh eagerly. Finalization already
-    /// owns the complete new input set, so writing the code directly avoids
-    /// the setter's projection followed by the provided finalizer's identical
-    /// projection. A [`crate::FixMsg`] finalizes through this holder and takes
-    /// the same single projection.
-    fn finalized(&mut self, hashcode: u64) {
-        self.element.currhashcode = hashcode;
-        self.refresh_uuids();
-    }
-
     fn get_currunix(&self) -> i64 {
         self.currunix
     }
@@ -801,271 +604,386 @@ impl Event for MarketEventData {
     fn set_snapunix(&mut self, unix: Option<i64>) {
         self.snapunix = unix;
     }
-}
 
-impl MarketElement for MarketEventData {
-    fn get_marketoperationid(&self) -> Option<i32> {
-        self.element.marketoperationid
+    fn restating(self, live: &Self) -> Self {
+        restating_market(self, live)
     }
 
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-        self.element.marketoperationid = marketoperationid;
-    }
-
-    fn get_price(&self) -> Decimal18 {
-        self.element.price
-    }
-
-    fn set_price(&mut self, price: Decimal18) {
-        self.element.price = price;
-    }
-
-    fn get_currency(&self) -> &Ccy {
-        &self.element.currency
-    }
-
-    fn set_currency(&mut self, currency: Ccy) {
-        self.element.currency = currency;
-    }
-
-    fn get_quantity(&self) -> Decimal18 {
-        self.element.quantity
-    }
-
-    fn set_quantity(&mut self, quantity: Decimal18) {
-        self.element.quantity = quantity;
-    }
-
-    fn get_unit(&self) -> &str {
-        &self.element.unit
-    }
-
-    fn set_unit(&mut self, unit: String) {
-        self.element.unit = unit;
-    }
-
-    fn get_side(&self) -> &Side {
-        &self.element.side
-    }
-
-    fn set_side(&mut self, side: Side) {
-        self.element.side = side;
-    }
-
-    fn get_isincode(&self) -> Option<&IsinCode> {
-        self.element.isincode.as_ref()
-    }
-
-    fn set_isincode(&mut self, isincode: Option<IsinCode>) {
-        self.element.set_isincode(isincode);
-    }
-
-    fn get_cusipcode(&self) -> Option<&CusipCode> {
-        self.element.cusipcode.as_ref()
-    }
-
-    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>) {
-        self.element.set_cusipcode(cusipcode);
-    }
-
-    fn get_sedolcode(&self) -> Option<&SedolCode> {
-        self.element.sedolcode.as_ref()
-    }
-
-    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>) {
-        self.element.set_sedolcode(sedolcode);
-    }
-
-    fn get_bloombergcode(&self) -> Option<&BloombergCode> {
-        self.element.bloombergcode.as_ref()
-    }
-
-    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>) {
-        self.element.set_bloombergcode(bloombergcode);
-    }
-
-    fn get_figicode(&self) -> Option<&FIGICode> {
-        self.element.figicode.as_ref()
-    }
-
-    fn set_figicode(&mut self, figicode: Option<FIGICode>) {
-        self.element.set_figicode(figicode);
-    }
-
-    fn get_cficode(&self) -> Option<&CfiCode> {
-        self.element.cficode.as_ref()
-    }
-
-    fn set_cficode(&mut self, cficode: Option<CfiCode>) {
-        self.element.set_cficode(cficode);
-    }
-
-    fn get_miccode(&self) -> Option<&MicCode> {
-        self.element.miccode.as_ref()
-    }
-
-    fn set_miccode(&mut self, miccode: Option<MicCode>) {
-        self.element.set_miccode(miccode);
-    }
-
-    fn get_lastpx(&self) -> Option<Decimal18> {
-        self.element.lastpx
-    }
-
-    fn set_lastpx(&mut self, px: Option<Decimal18>) {
-        self.element.lastpx = px;
-    }
-
-    fn get_lastqty(&self) -> Option<Decimal18> {
-        self.element.lastqty
-    }
-
-    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
-        self.element.lastqty = qty;
-    }
-
-    fn get_tif(&self) -> Option<&str> {
-        self.element.tif.as_deref()
-    }
-
-    fn set_tif(&mut self, tif: Option<String>) {
-        self.element.tif = tif;
-    }
-
-    fn get_tradable(&self) -> Option<bool> {
-        self.element.tradable
-    }
-
-    fn set_tradable(&mut self, tradable: Option<bool>) {
-        self.element.tradable = tradable;
-    }
-
-    fn get_symbolticker(&self) -> Option<&str> {
-        self.element.symbolticker.as_deref()
-    }
-
-    fn set_symbolticker(&mut self, ticker: Option<String>) {
-        self.element.symbolticker = ticker;
-    }
-
-    fn get_avgpx(&self) -> Option<Decimal18> {
-        self.element.avgpx
-    }
-
-    fn set_avgpx(&mut self, px: Option<Decimal18>) {
-        self.element.avgpx = px;
-    }
-
-    fn get_cumqty(&self) -> Option<Decimal18> {
-        self.element.cumqty
-    }
-
-    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
-        self.element.cumqty = qty;
-    }
-
-    fn get_leavesqty(&self) -> Option<Decimal18> {
-        self.element.leavesqty
-    }
-
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
-        self.element.leavesqty = qty;
-    }
-
-    fn get_prevpx(&self) -> Option<Decimal18> {
-        self.element.prevpx
-    }
-
-    fn set_prevpx(&mut self, px: Option<Decimal18>) {
-        self.element.prevpx = px;
-    }
-
-    fn get_prevqty(&self) -> Option<Decimal18> {
-        self.element.prevqty
-    }
-
-    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
-        self.element.prevqty = qty;
-    }
-
-    fn get_bidpx(&self) -> Option<Decimal18> {
-        self.element.bidpx
-    }
-
-    fn set_bidpx(&mut self, px: Option<Decimal18>) {
-        self.element.bidpx = px;
-    }
-
-    fn get_bidcurrency(&self) -> Option<&Ccy> {
-        self.element.bidcurrency.as_ref()
-    }
-
-    fn set_bidcurrency(&mut self, currency: Option<Ccy>) {
-        self.element.bidcurrency = currency;
-    }
-
-    fn get_bidqty(&self) -> Option<Decimal18> {
-        self.element.bidqty
-    }
-
-    fn set_bidqty(&mut self, qty: Option<Decimal18>) {
-        self.element.bidqty = qty;
-    }
-
-    fn get_bidunit(&self) -> Option<&str> {
-        self.element.bidunit.as_deref()
-    }
-
-    fn set_bidunit(&mut self, unit: Option<String>) {
-        self.element.bidunit = unit;
-    }
-
-    fn get_askpx(&self) -> Option<Decimal18> {
-        self.element.askpx
-    }
-
-    fn set_askpx(&mut self, px: Option<Decimal18>) {
-        self.element.askpx = px;
-    }
-
-    fn get_askcurrency(&self) -> Option<&Ccy> {
-        self.element.askcurrency.as_ref()
-    }
-
-    fn set_askcurrency(&mut self, currency: Option<Ccy>) {
-        self.element.askcurrency = currency;
-    }
-
-    fn get_askqty(&self) -> Option<Decimal18> {
-        self.element.askqty
-    }
-
-    fn set_askqty(&mut self, qty: Option<Decimal18>) {
-        self.element.askqty = qty;
-    }
-
-    fn get_askunit(&self) -> Option<&str> {
-        self.element.askunit.as_deref()
-    }
-
-    fn set_askunit(&mut self, unit: Option<String>) {
-        self.element.askunit = unit;
+    fn finalized(&mut self, hashcode: u64) {
+        self.market.currhashcode = hashcode;
+        self.refresh_uuids();
     }
 }
 
-/// Every fact [`Element`] names, copied from `other` into `this` through
-/// the signatures the two share.
+delegate_market!(MarketEventData, market);
+
+/// The eight facts an operation adds to the market's, as plain fields.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct OperationFacts {
+    marketoperationid: Option<i32>,
+    tif: Option<TimeInForce>,
+    tradable: Option<bool>,
+    accountids: IdMap,
+    userids: IdMap,
+    altids: IdMap,
+    bid: Option<Box<Lane>>,
+    ask: Option<Box<Lane>>,
+}
+
+/// `impl MarketOperation` over an [`OperationFacts`] field.
+macro_rules! operation_facts {
+    ($type:ty, $($field:ident).+) => {
+        impl MarketOperation for $type {
+            fn get_marketoperationid(&self) -> Option<i32> {
+                self.$($field).+.marketoperationid
+            }
+            fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+                self.$($field).+.marketoperationid = marketoperationid;
+            }
+            fn get_tif(&self) -> Option<&TimeInForce> {
+                self.$($field).+.tif.as_ref()
+            }
+            fn set_tif(&mut self, tif: Option<TimeInForce>) {
+                self.$($field).+.tif = tif;
+            }
+            fn get_tradable(&self) -> Option<bool> {
+                self.$($field).+.tradable
+            }
+            fn set_tradable(&mut self, tradable: Option<bool>) {
+                self.$($field).+.tradable = tradable;
+            }
+            fn get_accountids(&self) -> &IdMap {
+                &self.$($field).+.accountids
+            }
+            fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
+                self.$($field).+.accountids = ids;
+                Ok(())
+            }
+            fn insert_accountid(&mut self, key: &str, value: &str) -> Result<bool> {
+                self.$($field).+.accountids.insert(key, value)
+            }
+            fn remove_accountid(&mut self, key: &str) -> Result<bool> {
+                Ok(self.$($field).+.accountids.remove(key).is_some())
+            }
+            fn get_userids(&self) -> &IdMap {
+                &self.$($field).+.userids
+            }
+            fn set_userids(&mut self, ids: IdMap) -> Result<()> {
+                self.$($field).+.userids = ids;
+                Ok(())
+            }
+            fn insert_userid(&mut self, key: &str, value: &str) -> Result<bool> {
+                self.$($field).+.userids.insert(key, value)
+            }
+            fn remove_userid(&mut self, key: &str) -> Result<bool> {
+                Ok(self.$($field).+.userids.remove(key).is_some())
+            }
+            fn get_altids(&self) -> &IdMap {
+                &self.$($field).+.altids
+            }
+            fn set_altids(&mut self, ids: IdMap) -> Result<()> {
+                self.$($field).+.altids = ids;
+                Ok(())
+            }
+            fn insert_altid(&mut self, key: &str, value: &str) -> Result<bool> {
+                self.$($field).+.altids.insert(key, value)
+            }
+            fn remove_altid(&mut self, key: &str) -> Result<bool> {
+                Ok(self.$($field).+.altids.remove(key).is_some())
+            }
+            fn get_bid(&self) -> Option<&Lane> {
+                self.$($field).+.bid.as_deref()
+            }
+            fn set_bid(&mut self, lane: Option<Lane>) {
+                self.$($field).+.bid = lane.and_then(Lane::stated).map(Box::new);
+            }
+            fn get_ask(&self) -> Option<&Lane> {
+                self.$($field).+.ask.as_deref()
+            }
+            fn set_ask(&mut self, lane: Option<Lane>) {
+                self.$($field).+.ask = lane.and_then(Lane::stated).map(Box::new);
+            }
+        }
+    };
+}
+
+/// [`MarketData`] with the operation's facts and no instant: an undated
+/// operation entry as plain fields.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MarketOperationData {
+    market: MarketData,
+    operation: OperationFacts,
+}
+
+impl MarketOperationData {
+    /// The slim market facts this entry holds.
+    #[must_use]
+    pub fn market(&self) -> &MarketData {
+        &self.market
+    }
+
+    /// This entry's market facts alone: a move.
+    #[must_use]
+    pub fn into_market(self) -> MarketData {
+        self.market
+    }
+
+    /// This entry dated at `unix`, nanoseconds since the Unix epoch: a
+    /// move, finalized by the caller once the clocks are in.
+    #[must_use]
+    pub fn at(self, unix: i64) -> MarketOperationEventData {
+        let mut event = MarketEventData::from(self.market);
+        event.currunix = unix;
+        MarketOperationEventData {
+            event,
+            operation: self.operation,
+        }
+    }
+}
+
+impl From<MarketData> for MarketOperationData {
+    /// The market facts with no operation fact stated.
+    fn from(market: MarketData) -> Self {
+        Self {
+            market,
+            operation: OperationFacts::default(),
+        }
+    }
+}
+
+impl Element for MarketOperationData {
+    fn get_curruuid(&self) -> Uuid {
+        self.market.curruuid
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.market.curruuid = curruuid;
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.market.crossuuid
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.market.crossuuid = crossuuid;
+    }
+
+    fn get_crosscode(&self) -> &str {
+        &self.market.crosscode
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.market.crosscode = crosscode;
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        self.market.currhashcode
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.market.currhashcode = hashcode;
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.market.crosshashcode
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.market.crosshashcode = crosshashcode;
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        &self.market.srcuuids
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.market.set_srcuuids(sources);
+    }
+
+    /// An entry with no instant and no predecessor states no order.
+    fn is_after(&self, _: &Self) -> bool {
+        false
+    }
+
+    fn finalize(&mut self) {
+        self.fill_market();
+        self.fill_operation();
+        self.sync_cross();
+        self.market.currhashcode = self.digest_operation().as_u64();
+        self.market.curruuid = Uuid::from_v8(u128::from(self.market.currhashcode));
+        self.market.crossuuid = self.cross_uuid();
+    }
+
+    fn with_previous(mut self, previous: &Self) -> Option<Self> {
+        if previous.market.curruuid == self.market.curruuid {
+            return None;
+        }
+        let mut changed = super::element::follow_element(&mut self, previous);
+        changed |= super::market::follow_market_of_operation(&mut self, previous);
+        changed |= super::market::follow_operation(&mut self, previous);
+        if !changed {
+            return None;
+        }
+        self.finalize();
+        Some(self)
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        self.merging_operation(other)
+    }
+}
+
+delegate_market!(MarketOperationData, market);
+operation_facts!(MarketOperationData, operation);
+
+/// [`MarketEventData`] with the operation's facts: a
+/// [`MarketOperationEvent`] as plain fields, what an order, a quote, an
+/// execution and a message hold.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct MarketOperationEventData {
+    event: MarketEventData,
+    operation: OperationFacts,
+}
+
+impl MarketOperationEventData {
+    /// An operation that happened at `unix`, nanoseconds since the Unix
+    /// epoch, stating nothing else yet.
+    #[must_use]
+    pub fn at(unix: i64) -> Self {
+        Self {
+            event: MarketEventData::at(unix),
+            operation: OperationFacts::default(),
+        }
+    }
+
+    /// The event this operation is, without its operation facts.
+    #[must_use]
+    pub fn event(&self) -> &MarketEventData {
+        &self.event
+    }
+
+    /// The slim market facts this operation holds.
+    #[must_use]
+    pub fn market(&self) -> &MarketData {
+        &self.event.market
+    }
+
+    /// This operation as the event alone, the operation facts dropped: a
+    /// move.
+    #[must_use]
+    pub fn into_event(self) -> MarketEventData {
+        self.event
+    }
+
+    /// This operation without its clocks: a move.
+    #[must_use]
+    pub fn into_entry(self) -> MarketOperationData {
+        MarketOperationData {
+            market: self.event.market,
+            operation: self.operation,
+        }
+    }
+}
+
+impl From<MarketEventData> for MarketOperationEventData {
+    /// The event with no operation fact stated.
+    fn from(event: MarketEventData) -> Self {
+        Self {
+            event,
+            operation: OperationFacts::default(),
+        }
+    }
+}
+
+impl Element for MarketOperationEventData {
+    fn get_curruuid(&self) -> Uuid {
+        self.event.get_curruuid()
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.event.set_curruuid(curruuid);
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.event.get_crossuuid()
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.event.set_crossuuid(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        self.event.get_crosscode()
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.event.set_crosscode(crosscode);
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        self.event.get_currhashcode()
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.event.set_currhashcode(hashcode);
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.event.get_crosshashcode()
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.event.set_crosshashcode(crosshashcode);
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.event.get_srcuuids()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.event.set_srcuuids(sources);
+    }
+
+    fn is_after(&self, other: &Self) -> bool {
+        self.event.is_after(&other.event)
+    }
+
+    fn finalize(&mut self) {
+        self.fill_market();
+        self.fill_operation();
+        self.sync_cross();
+        let hashcode = self.digest_operation_event().as_u64();
+        self.finalized(hashcode);
+    }
+
+    fn with_previous(self, previous: &Self) -> Option<Self> {
+        self.following_operation(previous)
+    }
+
+    fn merge_with(self, other: &Self) -> Option<Self> {
+        self.merging_operation_event(other)
+    }
+}
+
+delegate_event!(
+    MarketOperationEventData,
+    event,
+    restating = |this: MarketOperationEventData, live: &MarketOperationEventData| {
+        restating_operation(this, live)
+    }
+);
+delegate_market!(MarketOperationEventData, event.market);
+operation_facts!(MarketOperationEventData, operation);
+
 fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &E) {
     this.set_curruuid(other.get_curruuid());
     this.set_crossuuid(other.get_crossuuid());
     this.set_crosscode(other.get_crosscode().to_owned());
     this.set_currhashcode(other.get_currhashcode());
     this.set_crosshashcode(other.get_crosshashcode());
-    this.set_identifiers(other.get_identifiers().clone());
     this.set_srcuuids(other.get_srcuuids().to_vec());
 }
 
-/// Every fact [`Event`] names, copied from `other` into `this`.
 fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_currunix(other.get_currunix());
     this.set_state(other.get_state().clone());
@@ -1079,45 +997,45 @@ fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_snapunix(other.get_snapunix());
 }
 
-/// Every fact [`MarketElement`] names, copied from `other` into `this`.
-fn copy_market<T: MarketElement + ?Sized, E: MarketElement + ?Sized>(this: &mut T, other: &E) {
-    this.set_marketoperationid(other.get_marketoperationid());
+fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) {
     this.set_price(other.get_price());
     this.set_currency(other.get_currency().clone());
     this.set_quantity(other.get_quantity());
-    this.set_unit(other.get_unit().to_owned());
-    this.set_side(*other.get_side());
-    this.set_isincode(other.get_isincode().cloned());
-    this.set_cusipcode(other.get_cusipcode().cloned());
-    this.set_sedolcode(other.get_sedolcode().cloned());
-    this.set_bloombergcode(other.get_bloombergcode().cloned());
-    this.set_figicode(other.get_figicode().cloned());
+    this.set_unit(other.get_unit().clone());
+    this.set_side(other.get_side());
+    // A plain holder refuses no identifier; a view of a store may, and a
+    // copy takes what it can.
+    let _ = this.set_securityids(other.get_securityids().clone());
     this.set_cficode(other.get_cficode().cloned());
     this.set_miccode(other.get_miccode().cloned());
     this.set_lastpx(other.get_lastpx());
     this.set_lastqty(other.get_lastqty());
-    this.set_tif(other.get_tif().map(str::to_owned));
-    this.set_tradable(other.get_tradable());
-    this.set_symbolticker(other.get_symbolticker().map(str::to_owned));
     this.set_avgpx(other.get_avgpx());
     this.set_cumqty(other.get_cumqty());
     this.set_leavesqty(other.get_leavesqty());
     this.set_prevpx(other.get_prevpx());
     this.set_prevqty(other.get_prevqty());
-    this.set_bidpx(other.get_bidpx());
-    this.set_bidcurrency(other.get_bidcurrency().cloned());
-    this.set_bidqty(other.get_bidqty());
-    this.set_bidunit(other.get_bidunit().map(str::to_owned));
-    this.set_askpx(other.get_askpx());
-    this.set_askcurrency(other.get_askcurrency().cloned());
-    this.set_askqty(other.get_askqty());
-    this.set_askunit(other.get_askunit().map(str::to_owned));
+    this.set_spotrate(other.get_spotrate());
+    this.set_forwardpoints(other.get_forwardpoints());
+    this.set_ticker(other.get_ticker().map(SmolStr::new));
+    this.set_metadata(Some(other.get_metadata().clone()));
 }
 
-impl<E: MarketElement + ?Sized> From<&E> for MarketElementData {
-    /// The facts any market element states, through the signatures the two
-    /// share; whatever else `other` states - an event's instants, a
-    /// message's body - is left behind.
+fn copy_operation<T: MarketOperation + ?Sized, E: MarketOperation + ?Sized>(
+    this: &mut T,
+    other: &E,
+) {
+    this.set_marketoperationid(other.get_marketoperationid());
+    this.set_tif(other.get_tif().cloned());
+    this.set_tradable(other.get_tradable());
+    let _ = this.set_accountids(other.get_accountids().clone());
+    let _ = this.set_userids(other.get_userids().clone());
+    let _ = this.set_altids(other.get_altids().clone());
+    this.set_bid(other.get_bid().cloned());
+    this.set_ask(other.get_ask().cloned());
+}
+
+impl<E: Element + Market + ?Sized> From<&E> for MarketData {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1127,8 +1045,6 @@ impl<E: MarketElement + ?Sized> From<&E> for MarketElementData {
 }
 
 impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
-    /// The facts any market event states, through the signatures the two
-    /// share; whatever else `other` states is left behind.
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1137,28 +1053,31 @@ impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
         // The setters above keep a derived event coherent while it is
         // mutated. Conversion copies the exact identities the source states,
         // including an assigned identity, after every dependency is in place.
-        this.element.curruuid = other.get_curruuid();
-        this.element.crossuuid = other.get_crossuuid();
+        this.market.curruuid = other.get_curruuid();
+        this.market.crossuuid = other.get_crossuuid();
         this
     }
 }
 
-impl From<MarketEventData> for MarketElementData {
-    /// The event without its instants: the identity, the codes, the names,
-    /// the sources and the market's facts, moved.
-    fn from(event: MarketEventData) -> Self {
-        event.element
+impl<E: Element + MarketOperation + ?Sized> From<&E> for MarketOperationData {
+    fn from(other: &E) -> Self {
+        let mut this = Self::default();
+        copy_element(&mut this, other);
+        copy_market(&mut this, other);
+        copy_operation(&mut this, other);
+        this
     }
 }
 
-impl From<MarketElementData> for MarketEventData {
-    /// The element at the epoch, stating what it states and no instant:
-    /// [`Event::set_currunix`] dates it, and [`Element::finalize`] then derives
-    /// the identity the instant and the facts couple to.
-    fn from(element: MarketElementData) -> Self {
-        Self {
-            element,
-            ..Self::default()
-        }
+impl<E: MarketOperationEvent + ?Sized> From<&E> for MarketOperationEventData {
+    fn from(other: &E) -> Self {
+        let mut this = Self::default();
+        copy_element(&mut this, other);
+        copy_event(&mut this, other);
+        copy_market(&mut this, other);
+        copy_operation(&mut this, other);
+        this.event.market.curruuid = other.get_curruuid();
+        this.event.market.crossuuid = other.get_crossuuid();
+        this
     }
 }

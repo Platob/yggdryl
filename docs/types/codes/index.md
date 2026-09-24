@@ -1,6 +1,6 @@
 # Codes
 
-The twelve registered codes: an identity over a published registry, the width its standard fixes, and the Arrow extension name that identity rides.
+The thirteen registered codes: an identity over a published registry, the width its standard fixes, and the Arrow extension name that identity rides.
 
 A code is not a string with a charset - a currency is ISO 4217 the way a [URL](../../uri/url-urn.md) is RFC 3986. It stores as the US-ASCII text it is, Arrow's `Utf8` under the code's own extension name, held to the width its standard fixes. It is its own datatype, kind `code`, answers `is_code`, `code_name` and `code_width`, and never `string_parameters`. The width is a maximum rather than a layout, so `fixed_byte_width` answers `None`. Text of any length in that repertoire is the [`ascii` string](../text/string.md).
 
@@ -8,7 +8,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | Twelve `DataType` variants, twelve `Field` leaves, twelve `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
+| Owns | Thirteen `DataType` variants, thirteen `Field` leaves, thirteen `Scalar` variants, and the `CodeValue` contract their leaf values answer; the family is the code range of `DataTypeId` bytes, not a type |
 | Validates | At the value door, once: US-ASCII, no NUL, at most the code's width, then the code's own rule - a check digit, a category grid, a published spelling |
 | Lazy | Nothing - a code has no children, no registry lookup and no deferred parse |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -16,7 +16,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the code's own name; Python `ValueError`; JavaScript throws |
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
-| Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
+| Value rank | The thirteen share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
 | Rust only | `DataType::CODES`, the thirteen leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
 
 The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the thirteen is then one file of its own, holding its datatype, its field marker and its value in that order.
@@ -77,6 +77,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
             ("timeinforce", DataType::TimeInForce, 8),
             ("bloomberg", DataType::BloombergCode, 32),
             ("figi", DataType::FIGICode, 12),
+            ("unit", DataType::Unit, 32),
         ]
     );
 
@@ -109,10 +110,10 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
             ("country", "ccy", "mic", "cfi", "isin", "cusip", "sedol",
-             "side", "state", "timeinforce", "bloomberg", "figi")] == [
+             "side", "state", "timeinforce", "bloomberg", "figi", "unit")] == [
         ("country", 2), ("ccy", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("side", 8), ("state", 10), ("timeinforce", 8),
-        ("bloomberg", 32), ("figi", 12),
+        ("bloomberg", 32), ("figi", 12), ("unit", 32),
     ]
 
     # A value is the text, and carries its identity.
@@ -142,9 +143,9 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg', 'figi']
+      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg', 'figi', 'unit']
         .map((name) => new DataType(name).codeWidth),
-      [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32, 12],
+      [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32, 12, 32],
     )
 
     // A value is the text, and carries its identity.
@@ -157,7 +158,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 ## `CodeValue::merge_with` { #the-code-family-value }
 
-The twelve share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
+The thirteen share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
 `CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `ccy` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
 
@@ -479,9 +480,10 @@ carrying `FIX:msgtype` and optional symbolic four-character `FIX:msgcat` metadat
 lookup. Its wire code stays intact; message definitions have no generic datatype
 or code field helper. A fixed row carries the corresponding `int32` `msgcat`
 market-operation ID at crate tag 65054 and its
-six normalized identifier columns: `isincode(65055)`, `cusipcode(65057)`,
-`sedolcode(65058)`, `bloombergcode(65059)`, `miccode(65060)` and
-`figicode(65061)`. `CFICode(461)` is the standard classification field, so no
+four normalized identifier columns: `isincode(65055)`, `bloombergcode(65059)`,
+`miccode(65060)` and `figicode(65061)`; `cusipcode(65057)` and `sedolcode(65058)`
+are retired slots, a CUSIP or a SEDOL being one more security identifier under
+its own key. `CFICode(461)` is the standard classification field, so no
 crate 65056 exists. `SecurityIDSource(22)=S` and
 `SecurityAltIDSource(456)=S` lift a valid FIGI; source `A` remains Bloomberg.
 

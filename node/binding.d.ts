@@ -49,6 +49,7 @@ export {
   type FixEntryView,
   type FixEventView,
   type FixHeaderView,
+  type FixLaneView,
   type MetadataEntry,
   type PartitionEntry,
   type StringParameters,
@@ -330,6 +331,7 @@ export type DataTypeId =
   | 'side'
   | 'state'
   | 'timeinforce'
+  | 'unit'
   | 'uuid'
   | 'version'
   | 'url'
@@ -437,6 +439,7 @@ interface DataTypeKindById {
   side: 'code'
   state: 'code'
   timeinforce: 'code'
+  unit: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -1174,6 +1177,8 @@ export type SideField = FieldOf<'side', string>
 export type StateField = FieldOf<'state', string>
 /** FIX TimeInForce(59), the spelled instruction, held to eight bytes. */
 export type TimeInForceField = FieldOf<'timeinforce', string>
+/** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
+export type UnitField = FieldOf<'unit', string>
 export type SerieField<V = unknown> = FieldOf<'serie', V[], string, unknown>
 export type SerieViewField<V = unknown> = FieldOf<
   'serie_view',
@@ -1466,6 +1471,7 @@ export interface FieldsNamespace {
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
+  unit(name: string, options?: FieldOptions): UnitField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2104,6 +2110,13 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'timeinforce', string, N, O>
+  unit<
+    const N extends string,
+    const O extends FieldOptionsInput = undefined,
+  >(
+    name: N,
+    options?: O,
+  ): NamedField<'unit', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
@@ -3716,9 +3729,8 @@ export interface Fix {
   /**
    * The crate's own definitions in tag order, above every tag FIX or a
    * venue publishes: the event's instants, the identities, the cross code
-   * and the sequence, the `identifiers` and `metadata` Map groups, the
-   * state, the price, the quantity, the units and the lane currencies, the
-   * instrument codes, what a bridge's capture states - `msgctxid`,
+   * and the sequence, the `metadata` Map group, the state, the category,
+   * the security-identifier views, what a bridge's capture states - `msgctxid`,
    * `msgpluginid`, `msgsessionid` - the capture's own column `sourceurl`,
    * which whoever read the line states on the row and no message holds,
    * and the `nofixentries` counting the residual record. Every registry

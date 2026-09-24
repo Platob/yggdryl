@@ -1,10 +1,13 @@
 //! `rust/src/fix/market.rs`: the typed FIX boundary into graph operations.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::{SoleMessage, committed_registry, fixed_codec};
-use yggdryl::graph::{Book, Element, Event, MarketElement, MarketOperation};
+use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
+use yggdryl::graph::{
+    Book, BookInput, Element, Event, Market, MarketOperation, MdUpdateAction, Operation,
+    OperationKind,
+};
 use yggdryl::{DataType, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType};
 
 fn message(line: &[u8]) -> FixMsg {
@@ -13,28 +16,43 @@ fn message(line: &[u8]) -> FixMsg {
         .expect("one FIX message")
 }
 
+/// The operation an input is; a trade or a control is a fixture mistake.
+fn operation_of(input: &BookInput) -> &Operation {
+    match input {
+        BookInput::Operation(operation) => operation,
+        other => panic!("expected an operation, got {other:?}"),
+    }
+}
+
+/// The book scope an input states.
+fn scope_of(input: &BookInput) -> &str {
+    input
+        .book()
+        .and_then(|book| book.scope.as_deref())
+        .expect("a scoped entry")
+}
+
 #[test]
 fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip() {
-    type Case = (&'static [u8], i32, fn(&MarketOperation) -> bool);
-    let cases: &[Case] = &[
+    let cases: &[(&[u8], i32, OperationKind)] = &[
         (
             b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
             10,
-            |operation| matches!(operation, MarketOperation::Order(_)),
+            OperationKind::Order,
         ),
         (
             b"8=FIX.4.4|35=S|117=Q1|55=AAPL|132=99|134=7|133=101|135=8|10=0|",
             14,
-            |operation| matches!(operation, MarketOperation::Quote(_)),
+            OperationKind::Quote,
         ),
         (
             b"8=FIX.4.4|35=8|17=E1|37=O1|55=AAPL|31=100|32=2|150=F|10=0|",
             8,
-            |operation| matches!(operation, MarketOperation::Execution(_)),
+            OperationKind::Execution,
         ),
     ];
 
-    for (line, operation_id, expected) in cases {
+    for (line, operation_id, kind) in cases {
         let source = message(line);
         assert_eq!(source.get_marketoperationid(), Some(*operation_id));
         assert_eq!(
@@ -45,11 +63,13 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
         );
         let operations = source.into_market_operations().expect("a market category");
         assert_eq!(operations.len(), 1);
-        assert!(expected(&operations[0]), "{line:?}");
-        assert_eq!(operations[0].get_marketoperationid(), Some(*operation_id));
+        let operation = operation_of(&operations[0]);
+        assert_eq!(operation.kind(), *kind, "{line:?}");
+        assert_eq!(operation.get_marketoperationid(), Some(*operation_id));
+        assert_eq!(operation.book(), None, "a direct message is no book entry");
         let expected = operations[0].clone();
-        let encoded = MarketOperation::arrow_reader(operations, Some(1), None).unwrap();
-        let actual = MarketOperation::from_arrow_reader(encoded)
+        let encoded = BookInput::arrow_reader(operations, Some(1), None).unwrap();
+        let actual = BookInput::from_arrow_reader(encoded)
             .unwrap()
             .next()
             .unwrap()
@@ -66,7 +86,7 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     .into_market_operations()
     .expect("an actual trade with two sides");
 
-    let [MarketOperation::Trade(trade)] = operations.as_slice() else {
+    let [BookInput::Trade(trade)] = operations.as_slice() else {
         panic!("one composite trade")
     };
     assert_eq!(trade.get_marketoperationid(), Some(21));
@@ -78,23 +98,29 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     };
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
+    assert_eq!(buy.kind(), OperationKind::Execution);
     assert_eq!(buy.get_price().to_string(), "101.25");
     assert_eq!(sell.get_price().to_string(), "101.25");
     assert_eq!(buy.get_quantity().to_string(), "4");
     assert_eq!(sell.get_quantity().to_string(), "6");
-    assert_eq!(buy.get_identifiers()["SideExecID"], "BUY-EXEC");
-    assert_eq!(sell.get_identifiers()["SideExecID"], "SELL-EXEC");
-    assert_eq!(buy.get_identifiers()["OrderID"], "BUY-ORDER");
-    assert_eq!(sell.get_identifiers()["OrderID"], "SELL-ORDER");
-    assert_eq!(buy.get_identifiers()["ClOrdID"], "BUY-CLIENT");
-    assert_eq!(sell.get_identifiers()["ClOrdID"], "SELL-CLIENT");
+    assert_eq!(buy.get_altids().get("SIDEEXECID"), Some("BUY-EXEC"));
+    assert_eq!(sell.get_altids().get("SIDEEXECID"), Some("SELL-EXEC"));
+    assert_eq!(buy.get_altids().get("ORDERID"), Some("BUY-ORDER"));
+    assert_eq!(sell.get_altids().get("ORDERID"), Some("SELL-ORDER"));
+    assert_eq!(buy.get_altids().get("CLORDID"), Some("BUY-CLIENT"));
+    assert_eq!(sell.get_altids().get("CLORDID"), Some("SELL-CLIENT"));
+    assert_eq!(
+        trade.get_altids().get("TRADEID"),
+        None,
+        "TradeReportID(571) is no alternate identifier source today"
+    );
     assert_ne!(buy.get_curruuid(), sell.get_curruuid());
     assert_ne!(buy.get_crossuuid(), sell.get_crossuuid());
     assert_ne!(buy.get_crosscode(), sell.get_crosscode());
 
     let expected = operations[0].clone();
-    let encoded = MarketOperation::arrow_reader(operations, Some(1), None).unwrap();
-    let actual = MarketOperation::from_arrow_reader(encoded)
+    let encoded = BookInput::arrow_reader(operations, Some(1), None).unwrap();
+    let actual = BookInput::from_arrow_reader(encoded)
         .unwrap()
         .next()
         .unwrap()
@@ -126,7 +152,7 @@ fn only_initial_trade_capture_reports_decompose_without_requiring_exec_type() {
     let operations = initial
         .into_market_operations()
         .expect("an initial AE is an actual trade without ExecType");
-    let [MarketOperation::Trade(trade)] = operations.as_slice() else {
+    let [BookInput::Trade(trade)] = operations.as_slice() else {
         panic!("one composite trade")
     };
     assert_eq!(trade.get_execunix(), Some(expected_execunix));
@@ -161,7 +187,7 @@ fn stable_trade_side_ids_make_group_order_irrelevant_to_identity() {
     .into_market_operations()
     .unwrap();
 
-    let ([MarketOperation::Trade(first)], [MarketOperation::Trade(second)]) =
+    let ([BookInput::Trade(first)], [BookInput::Trade(second)]) =
         (first.as_slice(), second.as_slice())
     else {
         panic!("two composite trades")
@@ -182,7 +208,7 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
     )
     .into_market_operations()
     .unwrap();
-    let ([MarketOperation::Trade(first)], [MarketOperation::Trade(second)]) =
+    let ([BookInput::Trade(first)], [BookInput::Trade(second)]) =
         (first.as_slice(), second.as_slice())
     else {
         panic!("two anonymous composite trades")
@@ -195,12 +221,28 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
     )
     .into_market_operations()
     .expect("the identifier tag distinguishes equal values");
-    let [MarketOperation::Trade(tagged)] = tagged.as_slice() else {
+    let [BookInput::Trade(tagged)] = tagged.as_slice() else {
         panic!("one tagged composite trade")
     };
     assert_ne!(
         tagged.executions()[0].get_crosscode(),
         tagged.executions()[1].get_crosscode()
+    );
+    assert_eq!(
+        tagged
+            .executions()
+            .iter()
+            .filter_map(|execution| execution.get_altids().get("SIDEEXECID"))
+            .collect::<Vec<_>>(),
+        ["SAME"]
+    );
+    assert_eq!(
+        tagged
+            .executions()
+            .iter()
+            .filter_map(|execution| execution.get_altids().get("SIDETRADEID"))
+            .collect::<Vec<_>>(),
+        ["SAME"]
     );
 }
 
@@ -247,7 +289,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_eq!(derived.get_marketoperationid(), Some(14));
     assert!(matches!(
         derived.market_operations().unwrap().as_slice(),
-        [MarketOperation::Quote(_)]
+        [BookInput::Operation(operation)] if operation.kind() == OperationKind::Quote
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
@@ -441,14 +483,8 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(expected.len(), 6);
-    assert!(matches!(
-        expected[0].bid().deltas()[0],
-        MarketOperation::Order(_)
-    ));
-    assert!(matches!(
-        expected[1].ask().deltas()[0],
-        MarketOperation::Quote(_)
-    ));
+    assert_eq!(expected[0].bid().deltas()[0].kind(), OperationKind::Order);
+    assert_eq!(expected[1].ask().deltas()[0].kind(), OperationKind::Quote);
     assert_eq!(expected[2].executions().len(), 1);
     assert_eq!(expected[5].executions().len(), 1);
     let actual = Book::from_arrow_reader(codec.book_arrow_reader(mixed, 0, false).unwrap())
@@ -460,7 +496,7 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
     let mut empty = codec.book_arrow_reader(ignored.clone(), 0, false).unwrap();
     assert!(empty.next().is_none());
     for source in ignored {
-        assert!(MarketOperation::try_from(source.clone()).is_err());
+        assert!(BookInput::try_from(source.clone()).is_err());
         let mut strict = yggdryl::fix::FixMarketIterator::new([source].into_iter());
         assert!(strict.next().unwrap().is_err());
         assert!(strict.next().is_none());
@@ -546,11 +582,11 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         books[2].ask().live().next().unwrap(),
     ];
     for (index, (book, operation)) in books.iter().zip(versions).enumerate() {
-        assert!(matches!(operation, MarketOperation::Order(_)));
-        assert_eq!(book.get_symbolticker(), Some("AAPL"));
-        assert_eq!(operation.get_symbolticker(), Some("AAPL"));
-        assert_eq!(operation.get_identifiers()["MDEntryID"], "B1");
-        assert_eq!(operation.get_identifiers()["OrderID"], "O1");
+        assert_eq!(operation.kind(), OperationKind::Order);
+        assert_eq!(book.get_ticker(), Some("AAPL"));
+        assert_eq!(operation.get_ticker(), Some("AAPL"));
+        assert_eq!(operation.get_altids().get(ENTRY_ID), Some("B1"));
+        assert_eq!(operation.get_altids().get("ORDERID"), Some("O1"));
         assert_eq!(operation.get_seqnum(), index as u64);
         assert_eq!(
             operation.get_price().to_string(),
@@ -562,16 +598,16 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         );
         if index < 2 {
             assert!(operation.get_side().is_bid());
-            assert_eq!(operation.get_bidpx(), Some(operation.get_price()));
-            assert_eq!(operation.get_bidqty(), Some(operation.get_quantity()));
-            assert_eq!(operation.get_askpx(), None);
-            assert_eq!(operation.get_askqty(), None);
+            let bid = operation.get_bid().expect("the bid lane");
+            assert_eq!(bid.price, Some(operation.get_price()));
+            assert_eq!(bid.quantity, Some(operation.get_quantity()));
+            assert_eq!(operation.get_ask(), None);
         } else {
             assert!(operation.get_side().is_ask());
-            assert_eq!(operation.get_askpx(), Some(operation.get_price()));
-            assert_eq!(operation.get_askqty(), Some(operation.get_quantity()));
-            assert_eq!(operation.get_bidpx(), None);
-            assert_eq!(operation.get_bidqty(), None);
+            let ask = operation.get_ask().expect("the ask lane");
+            assert_eq!(ask.price, Some(operation.get_price()));
+            assert_eq!(ask.quantity, Some(operation.get_quantity()));
+            assert_eq!(operation.get_bid(), None);
         }
     }
     for pair in versions.windows(2) {
@@ -581,8 +617,27 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         assert_eq!(pair[1].get_prevqty(), Some(pair[0].get_quantity()));
     }
     assert_eq!(versions[0].get_prevuuid(), None);
-    assert_eq!(versions[1].get_identifiers()["MDEntrySize"], "11");
-    assert_eq!(versions[2].get_identifiers()["MDEntryPx"], "101");
+    // The book control each entry stated rides with it, typed: what the
+    // partial update said, and only that.
+    assert_eq!(
+        versions[0].action(),
+        Some(MdUpdateAction::Snapshot),
+        "a full refresh entry"
+    );
+    let changed = versions[1].book().expect("the change's control");
+    assert_eq!(changed.action, Some(MdUpdateAction::Change));
+    assert_eq!(
+        changed.entry_size.map(|held| held.to_string()),
+        Some("11".to_owned())
+    );
+    assert_eq!(changed.entry_px, None, "the change restated no price");
+    let overlaid = versions[2].book().expect("the overlay's control");
+    assert_eq!(overlaid.action, Some(MdUpdateAction::Overlay));
+    assert_eq!(
+        overlaid.entry_px.map(|held| held.to_string()),
+        Some("101".to_owned())
+    );
+    assert_eq!(overlaid.entry_size, None, "the overlay restated no size");
 }
 
 #[test]
@@ -606,13 +661,13 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     let [deleted] = books[1].bid().deltas() else {
         panic!("one terminal bid delta")
     };
-    assert!(matches!(deleted, MarketOperation::Order(_)));
+    assert_eq!(deleted.kind(), OperationKind::Order);
     assert!(!deleted.get_state().is_live());
     assert!(deleted.get_side().is_bid());
-    assert_eq!(deleted.get_symbolticker(), Some("AAPL"));
-    assert_eq!(deleted.get_identifiers()["MDEntryID"], "B1");
-    assert_eq!(deleted.get_identifiers()["MDUpdateAction"], "2");
-    assert_eq!(deleted.get_identifiers()["OrderID"], "O1");
+    assert_eq!(deleted.get_ticker(), Some("AAPL"));
+    assert_eq!(deleted.get_altids().get(ENTRY_ID), Some("B1"));
+    assert_eq!(deleted.action(), Some(MdUpdateAction::Delete));
+    assert_eq!(deleted.get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
     assert_eq!(deleted.get_seqnum(), previous.get_seqnum() + 1);
@@ -629,13 +684,13 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
     let second = codec
         .sole_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|54=1|44=101|38=6|10=0|")
         .unwrap();
-    assert_eq!(second.get_symbolticker(), None);
+    assert_eq!(second.get_ticker(), None);
     let messages = codec
         .lifecycle([first, second])
         .collect::<yggdryl::Result<Vec<_>>>()
         .unwrap();
     assert_eq!(messages.len(), 2);
-    assert_eq!(messages[1].get_symbolticker(), Some("AAPL"));
+    assert_eq!(messages[1].get_ticker(), Some("AAPL"));
     assert_eq!(messages[1].get_prevuuid(), Some(messages[0].get_curruuid()));
 
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
@@ -645,12 +700,12 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
         .unwrap();
     assert_eq!(books.len(), 2);
     for (index, book) in books.iter().enumerate() {
-        assert_eq!(book.get_symbolticker(), Some("AAPL"));
+        assert_eq!(book.get_ticker(), Some("AAPL"));
         assert_eq!(book.bid().len(), 1);
         assert!(book.ask().is_empty());
         let operation = book.bid().live().next().unwrap();
-        assert!(matches!(operation, MarketOperation::Order(_)));
-        assert_eq!(operation.get_symbolticker(), Some("AAPL"));
+        assert_eq!(operation.kind(), OperationKind::Order);
+        assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_price().to_string(), ["100", "101"][index]);
         assert_eq!(operation.get_quantity().to_string(), ["5", "6"][index]);
     }
@@ -658,16 +713,17 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
 
 #[test]
 fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
-    let operations = message(
+    let inputs = message(
         b"8=FIX.4.4|35=W|55=AAPL|262=REQ-1|1021=2|1180=MDP|1181=42|268=3|269=0|278=B1|270=100|271=10|290=1|269=1|278=A1|37=O1|270=101|271=12|290=1|269=2|278=T1|270=100.5|271=2|10=0|",
     )
     .market_operations()
     .expect("a full refresh");
 
-    assert_eq!(operations.len(), 3);
-    assert!(matches!(operations[0], MarketOperation::Quote(_)));
-    assert!(matches!(operations[1], MarketOperation::Order(_)));
-    assert!(matches!(operations[2], MarketOperation::Execution(_)));
+    assert_eq!(inputs.len(), 3);
+    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    assert_eq!(operations[0].kind(), OperationKind::Quote);
+    assert_eq!(operations[1].kind(), OperationKind::Order);
+    assert_eq!(operations[2].kind(), OperationKind::Execution);
     assert!(operations[0].get_side().is_bid());
     assert!(operations[1].get_side().is_ask());
     assert!(operations[0].get_crosscode().ends_with("|MDEntryID=B1"));
@@ -675,15 +731,36 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     assert!(operations[2].get_crosscode().ends_with("|MDEntryID=T1"));
     assert_eq!(operations[0].get_price().to_string(), "100");
     assert_eq!(operations[1].get_quantity().to_string(), "12");
-    assert_eq!(operations[0].get_symbolticker(), Some("AAPL"));
-    for operation in &operations {
-        assert_eq!(operation.get_identifiers()["MDUpdateAction"], "SNAPSHOT");
-        assert_eq!(operation.get_identifiers()["ApplID"], "MDP");
-        assert_eq!(operation.get_identifiers()["ApplSeqNum"], "42");
-        assert!(operation.get_identifiers()["BookScope"].contains("Symbol=AAPL"));
-        assert!(operation.get_identifiers()["BookScope"].contains("MDReqID=REQ-1"));
+    assert_eq!(operations[0].get_ticker(), Some("AAPL"));
+    assert_eq!(operations[1].get_altids().get("ORDERID"), Some("O1"));
+    assert_eq!(
+        operations[1].get_altids().get("MDREQID"),
+        Some("REQ-1"),
+        "the request the message answers names every entry"
+    );
+    for (index, operation) in operations.iter().enumerate() {
+        let book = operation
+            .book()
+            .expect("a full refresh entry is a book entry");
+        assert_eq!(book.action, Some(MdUpdateAction::Snapshot));
+        assert!(operation.is_full_snapshot());
+        assert_eq!(
+            book.position,
+            (index < 2).then_some(1),
+            "the trade states no position"
+        );
+        assert!(operation.scope().contains("Symbol=AAPL"));
+        assert!(operation.scope().contains("MDReqID=REQ-1"));
         assert!(operation.get_state().is_live());
     }
+    assert_eq!(
+        operations[0].book().and_then(|book| book.entry_px),
+        Some("100".parse().unwrap())
+    );
+    assert_eq!(
+        operations[0].book().and_then(|book| book.entry_size),
+        Some("10".parse().unwrap())
+    );
 }
 
 #[test]
@@ -693,76 +770,97 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
     )
     .into_market_operations()
     .unwrap();
-    assert!(initial[0].get_identifiers()["BookScope"].contains("MDReqID=REQ-1"));
-    let mut book = Book::new(initial[0].get_currunix(), "AAPL");
+    assert!(scope_of(&initial[0]).contains("MDReqID=REQ-1"));
+    let mut book = Book::new(initial[0].currunix(), "AAPL");
     book.add_operations(initial).unwrap();
 
     let empty_other_request =
         message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|262=REQ-2|268=0|10=0|")
             .into_market_operations()
             .unwrap();
-    assert!(empty_other_request[0].get_identifiers()["BookScope"].contains("MDReqID=REQ-2"));
+    assert!(scope_of(&empty_other_request[0]).contains("MDReqID=REQ-2"));
+    assert!(empty_other_request[0].is_full_snapshot());
     book.add_operations(empty_other_request).unwrap();
     assert_eq!(book.bid().len(), 1);
 }
 
 #[test]
-fn occurrence_identifiers_replace_stale_protocol_keys_and_keep_foreign_keys() {
+fn an_operation_names_its_entry_beside_the_message_identifiers_and_refuses_a_key_without_a_source()
+{
     let mut source = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|");
-    source.set_identifiers(BTreeMap::from([
-        ("foreign".to_owned(), "kept".to_owned()),
-        ("MDEntryRefID".to_owned(), "STALE".to_owned()),
-        ("MDEntryPx".to_owned(), "999".to_owned()),
-        ("MDPriceLevel".to_owned(), "88".to_owned()),
-        ("ApplSeqNum".to_owned(), "77".to_owned()),
-    ]));
-
-    let operation = MarketOperation::try_from(source).unwrap();
-    let identifiers = operation.get_identifiers();
-    assert_eq!(identifiers.get("foreign").map(String::as_str), Some("kept"));
-    assert_eq!(identifiers.get("MDEntryID").map(String::as_str), Some("B1"));
-    assert_eq!(
-        identifiers.get("MDEntrySize").map(String::as_str),
-        Some("11")
+    // A message's alternate identifiers are views of its fields: a key the
+    // dictionary has a source field for is written there, one it has not is
+    // a located refusal, never a private slot.
+    let error = source.insert_altid("foreign", "kept").unwrap_err();
+    assert!(
+        matches!(&error, Error::InvalidRecord { path, .. } if path.contains("foreign")),
+        "{error}"
     );
-    for absent in ["MDEntryRefID", "MDEntryPx", "MDPriceLevel", "ApplSeqNum"] {
-        assert!(!identifiers.contains_key(absent), "stale {absent} survived");
-    }
+    assert!(source.insert_altid("MDREQID", "REQ-9").unwrap());
+    assert_eq!(
+        source.get_by_tag(262).as_ref().and_then(Scalar::as_str),
+        Some("REQ-9")
+    );
+
+    let input = BookInput::try_from(source).unwrap();
+    let operation = operation_of(&input);
+    let altids = operation.get_altids();
+    assert_eq!(altids.get(ENTRY_ID), Some("B1"));
+    assert_eq!(altids.get(ENTRY_REF_ID), None);
+    assert_eq!(altids.get("MDREQID"), Some("REQ-9"));
+    assert_eq!(altids.get("foreign"), None);
+    let book = operation.book().expect("an entry states its control");
+    assert_eq!(book.action, Some(MdUpdateAction::Change));
+    assert_eq!(
+        book.entry_size.map(|held| held.to_string()),
+        Some("11".to_owned())
+    );
+    assert_eq!(book.entry_px, None, "the entry restated no price");
+    assert!(operation.scope().contains("MDReqID=REQ-9"));
 }
 
 #[test]
 fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
-    let operations = message(
+    let inputs = message(
         b"8=FIX.4.4|35=X|83=7|1181=43|268=3|279=0|269=0|278=B1|55=AAPL|270=100|271=10|290=1|279=1|269=0|278=B1|55=AAPL|270=101|271=11|290=1|279=2|269=0|280=B1|55=AAPL|10=0|",
     )
     .into_market_operations()
     .expect("incremental operations");
 
-    assert_eq!(operations.len(), 3);
-    assert_eq!(operations[0].get_identifiers()["MDUpdateAction"], "0");
-    assert_eq!(operations[1].get_identifiers()["MDUpdateAction"], "1");
-    assert_eq!(operations[2].get_identifiers()["MDUpdateAction"], "2");
+    assert_eq!(inputs.len(), 3);
+    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    assert_eq!(operations[0].action(), Some(MdUpdateAction::New));
+    assert_eq!(operations[1].action(), Some(MdUpdateAction::Change));
+    assert_eq!(operations[2].action(), Some(MdUpdateAction::Delete));
+    assert!(
+        operations
+            .iter()
+            .all(|operation| !operation.is_full_snapshot())
+    );
     assert!(operations[0].get_state().is_live());
     assert!(operations[1].get_state().is_live());
     assert!(!operations[2].get_state().is_live());
     assert_eq!(operations[2].get_crosscode(), operations[0].get_crosscode());
-    assert_eq!(operations[0].get_identifiers()["RptSeq"], "7");
-    assert_eq!(operations[0].get_identifiers()["ApplSeqNum"], "43");
+    assert_eq!(operations[0].get_altids().get(ENTRY_ID), Some("B1"));
+    assert_eq!(operations[2].get_altids().get(ENTRY_ID), None);
+    assert_eq!(operations[2].get_altids().get(ENTRY_REF_ID), Some("B1"));
+    assert_eq!(operations[1].book().and_then(|book| book.position), Some(1));
 }
 
 #[test]
 fn fallback_identity_is_scoped_typed_and_stable_across_price_changes() {
-    let operation = MarketOperation::try_from(message(
+    let input = BookInput::try_from(message(
         b"8=FIX.4.4|35=X|1301=XNAS|1300=NASDAQ|268=1|279=0|269=1|55=AAPL|1023=2|290=3|270=101.25|271=4|10=0|",
     ))
     .expect("one operation");
-    let code = operation.get_crosscode();
+    let code = input.event().get_crosscode();
     assert!(code.contains("Symbol=AAPL"), "{code}");
     assert!(code.contains("MarketID=XNAS"), "{code}");
     assert!(code.contains("MDEntryType=1"), "{code}");
     assert!(code.contains("MDEntryPositionNo=3"), "{code}");
     assert!(code.contains("MDPriceLevel=2"), "{code}");
     assert!(!code.contains("MDEntryPx="), "{code}");
+    assert_eq!(input.book().and_then(|book| book.position), Some(3));
 }
 
 #[test]
@@ -791,7 +889,7 @@ fn unsupported_market_shapes_name_the_exact_fix_path() {
 
 #[test]
 fn singular_conversion_refuses_a_multi_entry_book_message() {
-    let error = MarketOperation::try_from(message(
+    let error = BookInput::try_from(message(
         b"8=FIX.4.4|35=W|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=101|271=11|10=0|",
     ))
     .expect_err("two entries are not one operation");
@@ -811,19 +909,22 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
     .expect("entry clocks");
 
     assert_eq!(operations.len(), 2);
-    assert_eq!(operations[0].get_currunix(), 1_789_896_600_123_456_789);
-    assert_eq!(operations[1].get_currunix(), 1_789_896_600_223_456_789);
+    assert_eq!(operations[0].currunix(), 1_789_896_600_123_456_789);
+    assert_eq!(operations[1].currunix(), 1_789_896_600_223_456_789);
     assert_eq!(
-        operations[1].get_execunix(),
+        operations[1].event().get_execunix(),
         Some(1_789_896_600_223_456_789)
     );
 
-    let snapshot = MarketOperation::try_from(message(
+    let snapshot = BookInput::try_from(message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|272=20260920|273=09:30:00.123456789|10=0|",
     ))
     .expect("one full-snapshot entry");
-    assert_eq!(snapshot.get_currunix(), 1_789_984_800_000_000_000);
-    assert_eq!(snapshot.get_creaunix(), Some(1_789_896_600_123_456_789));
+    assert_eq!(snapshot.currunix(), 1_789_984_800_000_000_000);
+    assert_eq!(
+        snapshot.event().get_creaunix(),
+        Some(1_789_896_600_123_456_789)
+    );
 }
 
 #[test]
@@ -842,14 +943,14 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
         assert_eq!(
             operations
                 .iter()
-                .map(|operation| operation.get_identifiers()["MDEntryID"].as_str())
+                .map(|input| operation_of(input).get_altids().get(ENTRY_ID).unwrap())
                 .collect::<Vec<_>>(),
             expected
         );
         assert!(
             operations
                 .windows(2)
-                .all(|pair| { pair[0].get_currunix() <= pair[1].get_currunix() })
+                .all(|pair| { pair[0].currunix() <= pair[1].currunix() })
         );
     }
 }
@@ -859,7 +960,7 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
     let snapshot = message(b"8=FIX.4.4|35=W|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|")
         .into_market_operations()
         .unwrap();
-    let mut book = Book::new(snapshot[0].get_currunix(), "AAPL");
+    let mut book = Book::new(snapshot[0].currunix(), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let size_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|")
@@ -886,8 +987,8 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     )
     .into_market_operations()
     .unwrap();
-    let identity = snapshot[0].get_crosscode().to_owned();
-    let mut book = Book::new(snapshot[0].get_currunix(), "AAPL");
+    let identity = snapshot[0].event().get_crosscode().to_owned();
+    let mut book = Book::new(snapshot[0].currunix(), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let change = message(
@@ -895,7 +996,7 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     )
     .into_market_operations()
     .unwrap();
-    assert_eq!(change[0].get_crosscode(), identity);
+    assert_eq!(change[0].event().get_crosscode(), identity);
     book.add_operations(change).unwrap();
     assert_eq!(book.bid().len(), 1);
     assert_eq!(
@@ -920,14 +1021,16 @@ fn an_empty_full_refresh_clears_its_scope() {
     )
     .into_market_operations()
     .unwrap();
-    let mut book = Book::new(initial[0].get_currunix(), "AAPL");
+    let mut book = Book::new(initial[0].currunix(), "AAPL");
     book.add_operations(initial).unwrap();
     assert_eq!(book.bid().len(), 1);
 
     let empty = message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
         .into_market_operations()
         .unwrap();
-    assert!(matches!(empty.as_slice(), [MarketOperation::Snapshot(_)]));
+    assert!(matches!(empty.as_slice(), [BookInput::Snapshot(_)]));
+    assert!(empty[0].is_full_snapshot());
+    assert_eq!(empty[0].event().get_ticker(), Some("AAPL"));
     book.add_operations(empty).unwrap();
     assert!(book.bid().is_empty());
     assert!(book.ask().is_empty());
@@ -935,11 +1038,11 @@ fn an_empty_full_refresh_clears_its_scope() {
 
 #[test]
 fn book_scope_escapes_external_delimiters_injectively() {
-    let operation = MarketOperation::try_from(message(
+    let input = BookInput::try_from(message(
         b"8=FIX.4.4|35=W|55=A=B%X|268=1|269=0|278=B1|270=100|271=1|10=0|",
     ))
     .unwrap();
-    assert!(operation.get_identifiers()["BookScope"].contains("Symbol=A%3DB%25X"));
+    assert!(scope_of(&input).contains("Symbol=A%3DB%25X"));
 }
 
 fn tagged(name: &str, tag: i32, dtype: DataType) -> Field {

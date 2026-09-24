@@ -8,7 +8,8 @@ use yggdryl::{
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
-        use yggdryl::graph::{MarketElement, MarketElementData};
+        use yggdryl::graph::{Market, MarketData};
+        use yggdryl::securityid::{SecType, SecurityId};
         use yggdryl::{CfiCode, FIGICode, IsinCode};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
@@ -23,11 +24,11 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         codes.bench_function("cfi_merge", |bench| {
             bench.iter(|| CfiCode::merged(black_box("ESXXXX"), black_box("ESVUFR")));
         });
-        let isin = IsinCode::new("US0378331005").unwrap();
+        let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {
             bench.iter(|| {
-                let mut element = MarketElementData::default();
-                element.set_isincode(Some(black_box(&isin).clone()));
+                let mut element = MarketData::default();
+                let _ = element.insert_securityid(black_box(&isin).clone());
                 black_box(element)
             });
         });

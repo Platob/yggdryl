@@ -1,31 +1,34 @@
-//! `rust/src/graph/element.rs`: an element states its identity, its cross
-//! identity, its codes, its names and its sources; an event its instant,
-//! its state and the optional facts of its lifecycle; a market element its
-//! price, quantity and side. The traits are signatures and provided
+//! `rust/src/graph/element.rs` and `rust/src/graph/market.rs`: an element
+//! states its identity, its cross identity, its codes and its sources; an
+//! event its instant, its state and the optional facts of its lifecycle; a
+//! market its price, quantity, side and instrument; a market operation the
+//! names it goes by and its lanes. The traits are signatures and provided
 //! readings, so what a caller can rely on is that a value implementing them
 //! answers through them, including as a trait object, and that following,
 //! merging and syncing fold the lifecycle the way the traits say - over the
-//! crate's own holders, [`MarketElementData`] and [`MarketEventData`], and
-//! over a foreign type that implements only the signatures.
+//! crate's own holders, [`MarketData`], [`MarketEventData`],
+//! [`MarketOperationData`] and [`MarketOperationEventData`], and over a
+//! foreign type that implements only the signatures.
 
 use std::collections::BTreeMap;
 use std::hash::Hasher;
 
+use smol_str::SmolStr;
 use yggdryl::graph::{
-    Element, Event, MarketElement, MarketElementData, MarketEvent, MarketEventData,
+    Element, Event, Lane, Market, MarketData, MarketEvent, MarketEventData, MarketOperation,
+    MarketOperationData, MarketOperationEvent, MarketOperationEventData,
 };
+use yggdryl::idmap::IdMap;
+use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{
-    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side, State,
-    Uuid,
-};
+use yggdryl::{Ccy, CfiCode, Decimal18, IsinCode, MicCode, Side, State, TimeInForce, Unit, Uuid};
 
 #[test]
 fn generic_event_uuid_lists_are_sorted_unique_at_the_storage_boundary() {
     let uuids = [Uuid::from_v8(3), Uuid::from_v8(1), Uuid::from_v8(2)];
     let expected = [Uuid::from_v8(1), Uuid::from_v8(2), Uuid::from_v8(3)];
 
-    let mut element = MarketElementData::default();
+    let mut element = MarketData::default();
     element.set_srcuuids(vec![uuids[2], uuids[1], uuids[2], uuids[0]]);
     assert_eq!(element.get_srcuuids(), expected);
 
@@ -44,7 +47,6 @@ struct Report {
     crosscode: String,
     hashcode: u64,
     crosshashcode: u64,
-    identifiers: BTreeMap<String, String>,
     sources: Vec<Uuid>,
     unix: i64,
     state: State,
@@ -70,7 +72,6 @@ impl Report {
             crosscode: String::new(),
             hashcode: 0,
             crosshashcode: 0,
-            identifiers: BTreeMap::new(),
             sources: Vec::new(),
             unix,
             state: State::from_spelling("New").expect("a shipped state"),
@@ -126,14 +127,6 @@ impl Element for Report {
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
         self.crosshashcode = crosshashcode;
-    }
-
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        &self.identifiers
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.identifiers = identifiers;
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {
@@ -267,13 +260,6 @@ pub(crate) fn filled() -> State {
     State::from_spelling("Filled").expect("a shipped state")
 }
 
-fn identifiers<const N: usize>(pairs: [(&str, &str); N]) -> BTreeMap<String, String> {
-    pairs
-        .into_iter()
-        .map(|(scheme, identifier)| (scheme.to_owned(), identifier.to_owned()))
-        .collect()
-}
-
 /// The millisecond, saturated sequence lane and 62-bit payload one generic
 /// event identity carries, read back out of its UUIDv7 bits.
 fn decoded(uuid: Uuid) -> (i64, u16, u64) {
@@ -301,30 +287,61 @@ fn crosshash(crosscode: &str) -> u64 {
     state.as_u64()
 }
 
+fn decimal(text: &str) -> Decimal18 {
+    Decimal18::parse(text).expect("a decimal")
+}
+
+fn currency(code: &str) -> Ccy {
+    Ccy::new(code).expect("a currency")
+}
+
+fn unit(text: &str) -> Unit {
+    Unit::new(text).expect("a unit")
+}
+
+/// One security identifier under `key` - `ISIN`, `CUSIP`, a FIX source
+/// code - validated by its source.
+fn securityid(key: &str, code: &str) -> SecurityId {
+    SecurityId::new(SecType::read(key).expect("a source"), code).expect("an identifier")
+}
+
 /// One trade as the crate holds it: a buy of a thousand barrels at 82.5
-/// dollars, stated and not yet finalized, so the lanes it implies are still
-/// empty and a case about filling them starts from nothing.
+/// dollars, stated and not yet finalized.
 fn stated(ms: i64) -> MarketEventData {
     let mut trade = MarketEventData::at(at(ms));
-    trade.set_price(Decimal18::parse("82.5").expect("a decimal"));
-    trade.set_currency(Ccy::new("USD").expect("a currency"));
+    trade.set_price(decimal("82.5"));
+    trade.set_currency(currency("USD"));
     trade.set_quantity(Decimal18::from_int(1_000));
-    trade.set_unit("bbl".to_owned());
+    trade.set_unit(unit("bbl"));
     trade.set_side(Side::read("Buy").expect("a side"));
     trade
 }
 
-/// The same trade, finalized: its identity is what it states and when, and
-/// the lane its side implies is filled, because finalizing fills.
+/// The same trade, finalized: its identity is what it states and when.
 fn trade(ms: i64) -> MarketEventData {
     let mut trade = stated(ms);
     trade.finalize();
     trade
 }
 
+/// The same trade as an operation, stated and not yet finalized, so the
+/// lanes it implies are still empty and a case about filling them starts
+/// from nothing.
+fn stated_operation(ms: i64) -> MarketOperationEventData {
+    MarketOperationEventData::from(stated(ms))
+}
+
+/// The same operation, finalized: the lane its side implies is filled,
+/// because finalizing fills.
+fn operation(ms: i64) -> MarketOperationEventData {
+    let mut operation = stated_operation(ms);
+    operation.finalize();
+    operation
+}
+
 #[test]
 fn an_element_answers_the_identities_codes_and_sources_it_was_given() {
-    let mut element = MarketElementData::default();
+    let mut element = MarketData::default();
     assert_eq!(element.get_curruuid(), Uuid::default(), "no identity yet");
     assert_eq!(element.get_crossuuid(), Uuid::default());
     assert_eq!(
@@ -363,28 +380,67 @@ fn an_element_answers_the_identities_codes_and_sources_it_was_given() {
 }
 
 #[test]
-fn an_element_goes_by_the_names_it_was_given_each_under_its_scheme() {
-    let mut element = MarketElementData::default();
+fn an_operation_goes_by_the_names_it_was_given_each_under_its_scheme() {
+    let mut operation = MarketOperationData::default();
+    assert!(operation.get_altids().is_empty(), "no system named it yet");
     assert!(
-        element.get_identifiers().is_empty(),
-        "no system named it yet"
+        operation
+            .insert_altid("OrderID", "O-1")
+            .expect("a plain holder takes every key")
     );
-    element.set_identifiers(identifiers([("OrderID", "O-1"), ("ClOrdID", "C-1")]));
-    assert_eq!(element.get_identifiers()["ClOrdID"], "C-1");
-    assert_eq!(element.get_identifiers()["OrderID"], "O-1");
-    // Held as text under text, in the scheme's order, so a walk over them is
-    // the same walk whatever order they were stated in.
+    assert!(
+        operation
+            .insert_altid("ClOrdID", "C-1")
+            .expect("a plain holder takes every key")
+    );
+    // Held under the scheme upper-cased, in byte order, so a walk over them
+    // is the same walk whatever order they were stated in.
+    assert_eq!(operation.get_altids().get("CLORDID"), Some("C-1"));
+    assert_eq!(operation.get_altids().get("ORDERID"), Some("O-1"));
     assert_eq!(
-        element.get_identifiers().keys().collect::<Vec<_>>(),
-        ["ClOrdID", "OrderID"]
+        operation
+            .get_altids()
+            .iter()
+            .map(|(scheme, _)| scheme)
+            .collect::<Vec<_>>(),
+        ["CLORDID", "ORDERID"]
+    );
+    // A name stated once is stated: inserting the key again fills nothing.
+    assert!(
+        !operation
+            .insert_altid("ORDERID", "O-2")
+            .expect("a plain holder")
+    );
+    assert_eq!(operation.get_altids().get("ORDERID"), Some("O-1"));
+    assert!(operation.remove_altid("ORDERID").expect("a plain holder"));
+    assert!(
+        !operation
+            .remove_altid("ORDERID")
+            .expect("nothing left to remove")
     );
     // The map is replaced whole, never merged.
-    element.set_identifiers(identifiers([("ExecID", "E-1")]));
-    assert_eq!(element.get_identifiers().len(), 1);
-    assert_eq!(element.get_identifiers().get("ClOrdID"), None);
-    // And a walk over trait objects reads them the same way.
-    let held: &dyn Element = &element;
-    assert_eq!(held.get_identifiers()["ExecID"], "E-1");
+    let mut ids = IdMap::new();
+    ids.insert("EXECID", "E-1").expect("a key");
+    operation.set_altids(ids).expect("a plain holder");
+    assert_eq!(operation.get_altids().len(), 1);
+    assert_eq!(operation.get_altids().get("CLORDID"), None);
+    // The accounts and the users are maps of their own.
+    operation
+        .insert_accountid("ACCOUNT", "ACC-1")
+        .expect("a plain holder");
+    operation
+        .insert_userid("SENDERSUBID", "trader")
+        .expect("a plain holder");
+    assert_eq!(operation.get_accountids().get("ACCOUNT"), Some("ACC-1"));
+    assert_eq!(operation.get_userids().get("SENDERSUBID"), Some("trader"));
+    assert_eq!(operation.get_altids().get("ACCOUNT"), None);
+    // And a walk written against the signatures alone reads them the same
+    // way, whatever holder stands behind them.
+    fn execid<E: MarketOperation + ?Sized>(held: &E) -> Option<&str> {
+        held.get_altids().get("EXECID")
+    }
+    assert_eq!(execid(&operation), Some("E-1"));
+    assert_eq!(execid(&operation.clone().at(0)), Some("E-1"));
 }
 
 #[test]
@@ -408,7 +464,7 @@ fn sync_cross_forces_the_cross_codes_from_the_cross_code() {
 
     // Two elements sharing a cross code share the cross identity, whichever
     // type holds them.
-    let mut element = MarketElementData::default();
+    let mut element = MarketData::default();
     element.set_crosscode("O-100".to_owned());
     element.sync_cross();
     assert_eq!(element.get_crossuuid(), report.get_crossuuid());
@@ -449,16 +505,24 @@ fn an_event_is_after_another_by_its_instant_and_a_market_element_states_no_order
     // A market element has no instant and records no predecessor, so it
     // states no order: one that followed another is neither after nor
     // before it, and neither is one unrelated to it.
-    let mut first = MarketElementData::default();
+    let mut first = MarketData::default();
     first.set_crosscode("FIRST".to_owned());
     first.finalize();
-    let next = MarketElementData::default()
+    let next = MarketData::default()
         .with_previous(&first)
         .expect("a market element follows another");
     assert!(!next.is_after(&first) && !next.is_before(&first));
     assert!(!first.is_after(&next) && !first.is_before(&next));
-    let stranger = MarketElementData::default();
+    let stranger = MarketData::default();
     assert!(!stranger.is_after(&first) && !stranger.is_before(&first));
+    // An operation entry states no order either.
+    let mut entry = MarketOperationData::default();
+    entry.set_crosscode("FIRST".to_owned());
+    entry.finalize();
+    let next = MarketOperationData::default()
+        .with_previous(&entry)
+        .expect("an entry follows another");
+    assert!(!next.is_after(&entry) && !entry.is_before(&next));
 }
 
 #[test]
@@ -646,16 +710,42 @@ fn following_carries_the_lifecycle_forward() {
     assert_eq!(own.get_crossuuid(), own.cross_uuid());
     assert_eq!(own.get_srcuuids(), [Uuid::from_v8(70)]);
 
-    // The names the predecessor went by carry forward where the next one
-    // does not state them, and its own word stays where it does.
-    let mut named = Report::at(7, 10);
-    named.set_identifiers(identifiers([("ClOrdID", "C-1"), ("OrderID", "O-1")]));
-    let mut next = Report::at(8, 20);
-    next.set_identifiers(identifiers([("OrderID", "O-2")]));
+    // The order's own identifiers carry forward where the next operation
+    // does not state them, and its own word stays where it does; a name
+    // that is not the order's own - the client's, an execution's - names
+    // one statement and travels along no chain.
+    let mut named = MarketOperationEventData::at(at(10));
+    named.set_crosscode("O-100".to_owned());
+    named
+        .insert_altid("ORDERID", "O-1")
+        .expect("a plain holder");
+    named
+        .insert_altid("CLORDID", "C-1")
+        .expect("a plain holder");
+    named
+        .insert_accountid("ACCOUNT", "ACC-1")
+        .expect("a plain holder");
+    named.finalize();
+    let mut next = MarketOperationEventData::at(at(20));
+    next.set_crosscode("O-100".to_owned());
+    next.insert_altid("EXECID", "E-2").expect("a plain holder");
+    next.finalize();
     let next = next.with_previous(&named).expect("follows");
-    assert_eq!(next.get_identifiers()["ClOrdID"], "C-1");
-    assert_eq!(next.get_identifiers()["OrderID"], "O-2");
-    assert_eq!(next.get_identifiers().len(), 2);
+    assert_eq!(next.get_altids().get("ORDERID"), Some("O-1"));
+    assert_eq!(next.get_altids().get("EXECID"), Some("E-2"));
+    assert_eq!(next.get_altids().get("CLORDID"), None);
+    assert_eq!(next.get_altids().len(), 2);
+    assert_eq!(
+        next.get_accountids().get("ACCOUNT"),
+        Some("ACC-1"),
+        "the accounts carry whole"
+    );
+    let mut own = MarketOperationEventData::at(at(20));
+    own.set_crosscode("O-100".to_owned());
+    own.insert_altid("ORDERID", "O-2").expect("a plain holder");
+    own.finalize();
+    let own = own.with_previous(&named).expect("follows");
+    assert_eq!(own.get_altids().get("ORDERID"), Some("O-2"));
 }
 
 #[test]
@@ -819,10 +909,10 @@ fn following_adopts_the_predecessors_cross_code() {
     assert_eq!(fill.get_curruuid(), fill.time_uuid().expect("an identity"));
 
     // A market element follows too, and adopts the code the same way.
-    let mut first = MarketElementData::default();
+    let mut first = MarketData::default();
     first.set_crosscode("O-100".to_owned());
     first.finalize();
-    let mut next = MarketElementData::default();
+    let mut next = MarketData::default();
     next.set_crosscode("O-999".to_owned());
     next.finalize();
     let next = next.with_previous(&first).expect("follows");
@@ -837,22 +927,19 @@ fn following_adopts_the_predecessors_cross_code() {
 
 #[test]
 fn restating_takes_the_live_elements_place_in_its_chain() {
-    // The live element: second in its chain, named, filled.
+    // The live element: second in its chain, filled.
     let first = Report::at(1, 10);
     let mut live = Report::at(2, 20);
     live.set_crosscode("O-100".to_owned());
-    live.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     live.set_creaunix(Some(5));
     live.set_state(filled());
     let mut live = live.with_previous(&first).expect("follows");
     live.set_snapunix(Some(20));
-    // Its twin, as another hop logged it: the same instant, its own
-    // names, a cross code of its own, a line of its own and a lifecycle it
-    // knows less of.
+    // Its twin, as another hop logged it: the same instant, a cross code
+    // of its own, a line of its own and a lifecycle it knows less of.
     live.set_srcuuids(vec![Uuid::from_v8(70)]);
     let mut twin = Report::at(2, 20);
     twin.set_crosscode("O-999".to_owned());
-    twin.set_identifiers(identifiers([("ExecID", "E-2"), ("ClOrdID", "C-9")]));
     twin.set_srcuuids(vec![Uuid::from_v8(71)]);
     twin.set_creaunix(Some(8));
     twin.set_exprtime(Some(99));
@@ -866,11 +953,8 @@ fn restating_takes_the_live_elements_place_in_its_chain() {
     assert_eq!(twin.get_crosscode(), "O-100");
     assert_eq!(twin.get_crosshashcode(), crosshash("O-100"));
     assert_eq!(twin.get_crossuuid(), live.get_crossuuid());
-    // The names it lacks are taken, its own word kept. The sources stay the
-    // twin's own: the line it was read from, never the live one's, because
-    // provenance travels along no chain.
-    assert_eq!(twin.get_identifiers()["ClOrdID"], "C-9");
-    assert_eq!(twin.get_identifiers()["ExecID"], "E-2");
+    // The sources stay the twin's own: the line it was read from, never the
+    // live one's, because provenance travels along no chain.
     assert_eq!(twin.get_srcuuids(), [Uuid::from_v8(71)]);
     // The lifecycle folds: the earliest creation, the latest expiration,
     // the furthest state. What it says of itself - its instant - is its own.
@@ -1029,7 +1113,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
     event_time_later.set_recdunix(Some(100));
     event_time_later.set_execunix(Some(12));
     event_time_later.set_crosscode("OLD".to_owned());
-    event_time_later.set_identifiers(identifiers([("OrderID", "OLD"), ("OldOnly", "1")]));
     event_time_later.set_srcuuids(vec![Uuid::from_v8(70)]);
     event_time_later.set_prevuuid(Some(Uuid::from_v8(2)));
     event_time_later.set_prevunix(Some(20));
@@ -1040,10 +1123,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
     recorded_later.set_recdunix(Some(200));
     recorded_later.set_execunix(Some(15));
     recorded_later.set_crosscode("REFERENCE".to_owned());
-    recorded_later.set_identifiers(identifiers([
-        ("OrderID", "REFERENCE"),
-        ("ReferenceOnly", "1"),
-    ]));
     recorded_later.set_srcuuids(vec![Uuid::from_v8(71)]);
     recorded_later.set_prevuuid(Some(Uuid::from_v8(3)));
     recorded_later.set_prevunix(Some(19));
@@ -1062,9 +1141,6 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
         assert_eq!(merged.get_currunix(), 20);
         assert_eq!(merged.get_currhashcode(), 0xB);
         assert_eq!(merged.get_crosscode(), "REFERENCE");
-        assert_eq!(merged.get_identifiers()["OrderID"], "REFERENCE");
-        assert_eq!(merged.get_identifiers()["OldOnly"], "1");
-        assert_eq!(merged.get_identifiers()["ReferenceOnly"], "1");
         assert_eq!(
             merged.get_srcuuids(),
             [Uuid::from_v8(70), Uuid::from_v8(71)]
@@ -1137,11 +1213,11 @@ fn merging_uses_the_latest_recording_as_the_reference_but_keeps_earliest_clocks(
     that.finalize();
     assert!(this.clone().merge_with(&that).is_none());
     assert!(that.clone().merge_with(&this).is_none());
-    that.set_identifiers(identifiers([("ThatOnly", "1")]));
-    let merged = this.merge_with(&that).expect("the other fills a name");
+    that.set_srcuuids(vec![Uuid::from_v8(77)]);
+    let merged = this.merge_with(&that).expect("the other fills a source");
     assert_eq!(merged.get_currhashcode(), 0xA);
     assert_eq!(merged.get_crosscode(), "THIS");
-    assert_eq!(merged.get_identifiers()["ThatOnly"], "1");
+    assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(77)]);
 }
 
 #[test]
@@ -1397,7 +1473,6 @@ fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
         event.get_crossuuid(),
         Uuid::from_v8(u128::from(crosshash("O-100")))
     );
-
     event.set_crosscode(String::new());
     assert_eq!(event.get_crosshashcode(), 0);
     assert_eq!(event.get_curruuid(), uncrossed);
@@ -1407,51 +1482,80 @@ fn mutating_a_concrete_events_identity_inputs_reprojects_eagerly() {
 #[test]
 fn a_market_element_names_its_instrument_the_way_the_market_does() {
     let mut held = trade(10);
-    for absent in [
-        held.get_isincode().is_none(),
-        held.get_cusipcode().is_none(),
-        held.get_sedolcode().is_none(),
-        held.get_bloombergcode().is_none(),
-        held.get_cficode().is_none(),
-        held.get_miccode().is_none(),
-    ] {
-        assert!(
-            absent,
-            "an instrument is named only where the market names it"
-        );
-    }
-    held.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
-    held.set_cusipcode(Some(CusipCode::new("037833100").expect("a CUSIP")));
-    held.set_sedolcode(Some(SedolCode::new("B0YBKJ7").expect("a SEDOL")));
-    held.set_bloombergcode(Some(
-        BloombergCode::new("AAPL US EQUITY").expect("a BloombergCode identifier"),
-    ));
+    assert!(
+        held.get_securityids().is_empty(),
+        "an instrument is named only where the market names it"
+    );
+    assert!(held.get_cficode().is_none());
+    assert!(held.get_miccode().is_none());
+    // One identifier per source, stated through the fallible verbs a view
+    // of another store may refuse and a plain holder never does.
+    assert!(
+        held.insert_securityid(securityid("ISIN", "US0378331005"))
+            .expect("a plain holder")
+    );
+    assert!(
+        held.insert_securityid(securityid("CUSIP", "037833100"))
+            .expect("a plain holder")
+    );
+    assert!(
+        held.insert_securityid(securityid("2", "B0YBKJ7"))
+            .expect("the SEDOL source code")
+    );
+    assert!(
+        held.insert_securityid(securityid("BLOOMBERG", "AAPL US EQUITY"))
+            .expect("a plain holder")
+    );
     held.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
     held.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
+    // Read by the source's name, its FIX code or its spelling folded.
+    assert_eq!(held.get_securityids().get("ISIN"), Some("US0378331005"));
+    assert_eq!(held.get_securityids().get("4"), Some("US0378331005"));
+    assert_eq!(held.get_securityids().get("isin"), Some("US0378331005"));
+    assert_eq!(held.get_securityids().get("CUSIP"), Some("037833100"));
+    assert_eq!(held.get_securityids().get("SEDOL"), Some("B0YBKJ7"));
     assert_eq!(
-        held.get_isincode().map(IsinCode::as_str),
-        Some("US0378331005")
-    );
-    assert_eq!(
-        held.get_cusipcode().map(CusipCode::as_str),
-        Some("037833100")
-    );
-    assert_eq!(held.get_sedolcode().map(SedolCode::as_str), Some("B0YBKJ7"));
-    assert_eq!(
-        held.get_bloombergcode().map(BloombergCode::as_str),
+        held.get_securityids().get("BLOOMBERG"),
         Some("AAPL US EQUITY")
+    );
+    assert_eq!(held.get_securityids().len(), 4);
+    assert_eq!(
+        held.get_securityids()
+            .iter()
+            .map(|id| id.sectype().as_str().to_owned())
+            .collect::<Vec<_>>(),
+        ["BLOOMBERG", "CUSIP", "ISIN", "SEDOL"],
+        "held in source order"
     );
     assert_eq!(held.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
     assert_eq!(held.get_miccode().map(MicCode::as_str), Some("XPAR"));
-    // Each is unsaid on its own.
-    held.set_cusipcode(None);
-    assert!(held.get_cusipcode().is_none());
-    assert!(held.get_isincode().is_some());
+    // Each is unsaid on its own; a stated identifier is never overwritten
+    // by inserting, and a second statement under a held source fills nothing.
+    assert!(
+        held.remove_securityid(&SecType::read("CUSIP").unwrap())
+            .expect("a plain holder")
+    );
+    assert!(held.get_securityids().get("CUSIP").is_none());
+    assert!(held.get_securityids().get("ISIN").is_some());
+    assert!(
+        !held
+            .insert_securityid(securityid("ISIN", "US5949181045"))
+            .expect("a plain holder")
+    );
+    assert_eq!(held.get_securityids().get("ISIN"), Some("US0378331005"));
     // The codes are the crate's own: a spelling that is no identifier never
     // reaches the element.
     assert!(
         IsinCode::new("US0378331006").is_err(),
         "a wrong check digit is no ISIN"
+    );
+    assert!(
+        SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331006").is_err(),
+        "and no security identifier under the ISIN source either"
+    );
+    assert!(
+        SecType::read("ticker").is_err(),
+        "a ticker is a name, never a security identifier source"
     );
 }
 
@@ -1461,47 +1565,63 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     assert_eq!(held.get_price().to_string(), "82.5");
     assert_eq!(held.get_currency().as_str(), "USD");
     assert_eq!(held.get_quantity(), Decimal18::from_int(1_000));
-    assert_eq!(held.get_unit(), "bbl");
+    assert_eq!(held.get_unit().as_str(), "bbl");
     assert_eq!(held.get_side().as_str(), "BUY");
 
     held.set_price(Decimal18::from_int(83));
-    held.set_currency(Ccy::new("EUR").expect("a currency"));
+    held.set_currency(currency("EUR"));
     held.set_quantity(Decimal18::ZERO);
-    held.set_unit("MWh".to_owned());
+    held.set_unit(unit("MWh"));
     held.set_side(Side::read("2").expect("a side"));
     assert_eq!(held.get_price(), Decimal18::from_int(83));
     assert_eq!(held.get_currency().as_str(), "EUR");
     assert_eq!(held.get_quantity(), Decimal18::ZERO);
-    assert_eq!(held.get_unit(), "MWh");
+    assert_eq!(held.get_unit().as_str(), "MWh");
     assert_eq!(held.get_side().as_str(), "SELL");
+    assert_eq!(held.get_side(), Side::Sell, "a side is a value, copied out");
 
     // A new element states nothing: no price, no currency, no unit, no side.
-    let bare = MarketElementData::default();
+    let bare = MarketData::default();
     assert_eq!(
         (bare.get_price(), bare.get_quantity()),
         (Decimal18::ZERO, Decimal18::ZERO)
     );
     assert_eq!(bare.get_currency(), &Ccy::none());
-    assert_eq!(bare.get_unit(), "");
-    assert_eq!(bare.get_side(), &Side::Unknown);
+    assert_eq!(bare.get_unit(), &Unit::none());
+    assert!(bare.get_unit().is_none());
+    assert_eq!(bare.get_side(), Side::Unknown);
+    assert_eq!(bare.get_ticker(), None);
+    assert!(bare.get_metadata().is_empty());
 
-    // One walk reads all three traits through the market event object, and
-    // the timed readings are the market event's too.
+    // One walk written against the market event signatures reads all three
+    // traits, and the timed readings are the market event's too.
+    fn readings<E: MarketEvent + ?Sized>(object: &E) -> (Uuid, i64, u64, Option<Uuid>, String) {
+        (
+            object.get_curruuid(),
+            object.get_currunix(),
+            object.get_seqnum(),
+            object.get_prevuuid(),
+            object.get_price().to_string(),
+        )
+    }
     let next = trade(20)
         .with_previous(&held)
         .expect("a later trade follows");
-    let object: &dyn MarketEvent = &next;
     assert_eq!(
-        object.get_curruuid(),
-        next.time_uuid().expect("an identity")
+        readings(&next),
+        (
+            next.time_uuid().expect("an identity"),
+            at(20),
+            1,
+            Some(held.get_curruuid()),
+            // What the trade itself says moves nowhere.
+            "82.5".to_owned(),
+        )
     );
-    assert_eq!(object.get_currunix(), at(20));
-    assert_eq!(object.get_seqnum(), 1);
-    assert_eq!(object.get_prevuuid(), Some(held.get_curruuid()));
     assert_eq!(
-        object.get_price().to_string(),
+        readings(&MarketOperationEventData::from(next.clone())).4,
         "82.5",
-        "what the trade itself says moves nowhere"
+        "and an operation event answers the same signatures"
     );
 }
 
@@ -1511,7 +1631,9 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     first.set_currency(Ccy::none());
     first.set_side(Side::Unknown);
     first.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
-    first.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
+    first
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
     first.finalize();
     // A later statement of the same trade: the identity kept, the instant
     // and the facts restated.
@@ -1519,8 +1641,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     later.set_currunix(at(20));
     later.set_price(Decimal18::from_int(83));
     later.set_quantity(Decimal18::from_int(5));
-    later.set_unit("MWh".to_owned());
-    later.set_currency(Ccy::new("EUR").expect("a currency"));
+    later.set_unit(unit("MWh"));
+    later.set_currency(currency("EUR"));
     later.set_side(Side::read("2").expect("a side"));
     later.set_cficode(Some(CfiCode::new("ESVUFX").expect("a CFI")));
     later.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
@@ -1535,15 +1657,21 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let merged = first.clone().merge_with(&later).expect("the same trade");
     assert_eq!(merged.get_currunix(), at(20));
     assert_eq!(
-        (merged.get_price(), merged.get_quantity(), merged.get_unit()),
+        (
+            merged.get_price(),
+            merged.get_quantity(),
+            merged.get_unit().as_str()
+        ),
         (Decimal18::from_int(83), Decimal18::from_int(5), "MWh")
     );
     assert_eq!(merged.get_currency().as_str(), "EUR");
     assert_eq!(merged.get_side().as_str(), "SELL");
     assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(
-        merged.get_isincode().map(IsinCode::as_str),
-        Some("US0378331005")
+        merged.get_securityids().get("CUSIP"),
+        Some("037833100"),
+        "the CUSIP the ISIN carries was derived when the first statement finalized"
     );
     assert_eq!(merged.get_miccode().map(MicCode::as_str), Some("XPAR"));
     // Merged, the event is finalized: its identity is what it now says.
@@ -1561,10 +1689,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
         (Decimal18::from_int(83), "EUR")
     );
     assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
-    assert_eq!(
-        merged.get_isincode().map(IsinCode::as_str),
-        Some("US0378331005")
-    );
+    assert_eq!(merged.get_securityids().get("ISIN"), Some("US0378331005"));
 
     // A statement that knows a code the later one states as none keeps
     // its own: the later statement leads, and unknown takes the other.
@@ -1588,7 +1713,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
     event_time_later.set_recdunix(Some(at(100)));
     event_time_later.set_execunix(Some(at(12)));
     event_time_later.set_price(Decimal18::from_int(83));
-    event_time_later.set_unit("old".to_owned());
+    event_time_later.set_unit(unit("old"));
     event_time_later.set_curruuid(first.get_curruuid());
 
     let mut recorded_later = first.clone();
@@ -1596,7 +1721,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
     recorded_later.set_recdunix(Some(at(200)));
     recorded_later.set_execunix(Some(at(15)));
     recorded_later.set_price(Decimal18::from_int(84));
-    recorded_later.set_unit("reference".to_owned());
+    recorded_later.set_unit(unit("reference"));
     recorded_later.set_curruuid(first.get_curruuid());
 
     for merged in [
@@ -1611,7 +1736,7 @@ fn merging_a_market_event_lets_the_latest_recording_lead_event_time() {
     ] {
         assert_eq!(merged.get_currunix(), at(20));
         assert_eq!(merged.get_price(), Decimal18::from_int(84));
-        assert_eq!(merged.get_unit(), "reference");
+        assert_eq!(merged.get_unit().as_str(), "reference");
         assert_eq!(merged.get_execunix(), Some(at(12)));
         assert_eq!(merged.get_recdunix(), Some(at(100)));
     }
@@ -1622,24 +1747,27 @@ fn merging_a_market_element_lets_this_statement_lead() {
     // With no instant to say which statement is later, this one leads:
     // its price, quantity and unit stand, and each code is the better of
     // the two with this one first.
-    let mut this = MarketElementData::default();
+    let mut this = MarketData::default();
     this.set_crosscode("T-1".to_owned());
-    this.set_price(Decimal18::parse("82.5").expect("a decimal"));
+    this.set_price(decimal("82.5"));
     this.set_quantity(Decimal18::from_int(1_000));
     this.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
     this.finalize();
     let mut other = this.clone();
     other.set_price(Decimal18::from_int(83));
-    other.set_unit("bbl".to_owned());
-    other.set_currency(Ccy::new("USD").expect("a currency"));
+    other.set_unit(unit("bbl"));
+    other.set_currency(currency("USD"));
     other.set_side(Side::read("1").expect("a side"));
     other.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
-    other.set_identifiers(identifiers([("ClOrdID", "C-1")]));
+    other.set_metadata(Some(BTreeMap::from([(
+        SmolStr::new("Feed"),
+        SmolStr::new("OTHER"),
+    )])));
     let merged = this.clone().merge_with(&other).expect("the same element");
     assert_eq!(merged.get_price().to_string(), "82.5");
     assert_eq!(
         merged.get_unit(),
-        "",
+        &Unit::none(),
         "this element's unit stands, stated or not"
     );
     assert_eq!(
@@ -1649,7 +1777,11 @@ fn merging_a_market_element_lets_this_statement_lead() {
     );
     assert_eq!(merged.get_side().as_str(), "BUY");
     assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
-    assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
+    assert_eq!(
+        merged.get_metadata()["Feed"],
+        "OTHER",
+        "a key this statement leaves unstated is taken"
+    );
     // Finalized: the identity is what the merged element states.
     assert_eq!(
         merged.get_curruuid(),
@@ -1657,7 +1789,7 @@ fn merging_a_market_element_lets_this_statement_lead() {
     );
     assert_ne!(merged.get_curruuid(), this.get_curruuid());
     // Another element does not merge, and nothing new answers nothing.
-    let mut stranger = MarketElementData::default();
+    let mut stranger = MarketData::default();
     stranger.set_crosscode("T-2".to_owned());
     stranger.finalize();
     assert!(this.clone().merge_with(&stranger).is_none());
@@ -1677,10 +1809,13 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
     bare.set_prevuuid(second.get_prevuuid());
     assert!(second.clone().merge_with(&bare).is_none());
     // And a statement that adds one thing answers the element with it.
-    let mut named = Report::at(2, 20);
-    named.set_identifiers(identifiers([("ClOrdID", "C-1")]));
-    let merged = second.clone().merge_with(&named).expect("one name taken");
-    assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
+    let mut sourced = Report::at(2, 20);
+    sourced.set_srcuuids(vec![Uuid::from_v8(70)]);
+    let merged = second
+        .clone()
+        .merge_with(&sourced)
+        .expect("one source taken");
+    assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(70)]);
 
     // An identity assigned stays through a change; one derived from the
     // instant and the content code is reset from those inputs.
@@ -1722,35 +1857,40 @@ fn a_reading_that_changes_nothing_answers_nothing_and_a_changed_element_is_final
 fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
     // A buy is a bid: the bid lane takes the price, the currency, the
     // quantity and the unit, and the ask lane stays empty.
-    let mut buy = trade(10);
+    let mut buy = stated_operation(10);
+    assert_eq!((buy.get_bid(), buy.get_ask()), (None, None));
     buy.fill_lanes();
-    assert_eq!(
-        buy.get_bidpx(),
-        Some(Decimal18::parse("82.5").expect("a decimal"))
-    );
-    assert_eq!(buy.get_bidcurrency().map(Ccy::as_str), Some("USD"));
-    assert_eq!(buy.get_bidqty(), Some(Decimal18::from_int(1_000)));
-    assert_eq!(buy.get_bidunit(), Some("bbl"));
-    assert_eq!((buy.get_askpx(), buy.get_askqty()), (None, None));
-    assert!(buy.get_askcurrency().is_none() && buy.get_askunit().is_none());
+    let bid = buy.get_bid().expect("the bid lane the buy fills");
+    assert_eq!(bid.price, Some(decimal("82.5")));
+    assert_eq!(bid.currency.as_ref().map(Ccy::as_str), Some("USD"));
+    assert_eq!(bid.quantity, Some(Decimal18::from_int(1_000)));
+    assert_eq!(bid.unit.as_ref().map(Unit::as_str), Some("bbl"));
+    assert_eq!((bid.spotrate, bid.forwardpoints), (None, None));
+    assert_eq!(buy.get_ask(), None);
+    // Finalizing fills the same lane.
+    assert_eq!(operation(10).get_bid(), Some(bid));
 
     // A sell short is an ask, and what the lane already states stands.
-    let mut sell = stated(20);
+    let mut sell = stated_operation(20);
     sell.set_side(Side::read("SellShort").expect("a side"));
-    sell.set_askpx(Some(Decimal18::from_int(90)));
+    sell.set_ask(Some(Lane {
+        price: Some(Decimal18::from_int(90)),
+        ..Lane::default()
+    }));
     sell.fill_lanes();
-    assert_eq!(sell.get_askpx(), Some(Decimal18::from_int(90)));
-    assert_eq!(sell.get_askqty(), Some(Decimal18::from_int(1_000)));
-    assert_eq!(sell.get_askunit(), Some("bbl"));
-    assert_eq!(sell.get_bidpx(), None);
+    let ask = sell.get_ask().expect("the ask lane");
+    assert_eq!(ask.price, Some(Decimal18::from_int(90)));
+    assert_eq!(ask.quantity, Some(Decimal18::from_int(1_000)));
+    assert_eq!(ask.unit.as_ref().map(Unit::as_str), Some("bbl"));
+    assert_eq!(sell.get_bid(), None);
 
     // A cross takes neither lane, and a side stated as none neither.
     for spelling in ["Cross", "Opposite", "UNKNOWN"] {
-        let mut neither = stated(30);
+        let mut neither = stated_operation(30);
         neither.set_side(Side::read(spelling).expect("a side"));
         neither.fill_lanes();
         assert_eq!(
-            (neither.get_bidpx(), neither.get_askpx()),
+            (neither.get_bid(), neither.get_ask()),
             (None, None),
             "{spelling}"
         );
@@ -1758,34 +1898,48 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
 
     // Only a stated fact fills a lane: a price or a quantity of nothing, no
     // currency and no unit are nothing to state on the lane either.
-    let mut unstated = MarketElementData::default();
+    let mut unstated = MarketOperationData::default();
     unstated.set_side(Side::read("Buy").expect("a side"));
     unstated.fill_lanes();
-    assert_eq!((unstated.get_bidpx(), unstated.get_bidqty()), (None, None));
-    assert!(unstated.get_bidcurrency().is_none() && unstated.get_bidunit().is_none());
+    assert_eq!(unstated.get_bid(), None);
     unstated.set_quantity(Decimal18::from_int(5));
     unstated.fill_lanes();
-    assert_eq!(unstated.get_bidqty(), Some(Decimal18::from_int(5)));
-    assert_eq!(unstated.get_bidpx(), None, "still no price to state");
+    let bid = unstated.get_bid().expect("a lane with one fact");
+    assert_eq!(bid.quantity, Some(Decimal18::from_int(5)));
+    assert_eq!(bid.price, None, "still no price to state");
+    assert!(bid.currency.is_none() && bid.unit.is_none());
+    assert!(!Lane::default().is_stated());
+    assert_eq!(Lane::default().stated(), None);
 
     // Lanes merge as the market's facts do: the later statement's where it
     // states one, else this one's.
-    let mut quoted = trade(40);
-    quoted.set_bidpx(Some(Decimal18::from_int(80)));
+    let mut quoted = operation(40);
+    quoted.set_bid(Some(Lane {
+        price: Some(Decimal18::from_int(80)),
+        ..Lane::default()
+    }));
     let mut later = quoted.clone();
     later.set_currunix(at(50));
-    later.set_bidpx(None);
-    later.set_askpx(Some(Decimal18::from_int(85)));
+    later.set_bid(None);
+    later.set_ask(Some(Lane {
+        price: Some(Decimal18::from_int(85)),
+        ..Lane::default()
+    }));
     later.set_curruuid(quoted.get_curruuid());
     let merged = quoted.merge_with(&later).expect("the same quote");
-    assert_eq!(merged.get_bidpx(), Some(Decimal18::from_int(80)));
-    assert_eq!(merged.get_askpx(), Some(Decimal18::from_int(85)));
+    assert_eq!(
+        merged.get_bid().and_then(|lane| lane.price),
+        Some(Decimal18::from_int(80))
+    );
+    assert_eq!(
+        merged.get_ask().and_then(|lane| lane.price),
+        Some(Decimal18::from_int(85))
+    );
 }
 
 #[test]
 fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
-    let mut event = Report::at(1, 10);
-    event.set_identifiers(identifiers([("ClOrdID", "C-1")]));
+    let event = Report::at(1, 10);
     let same = event.clone();
     let code = |event: &Report| event.digest_event().as_u64();
     // Two elements stating the same things digest alike, whatever the
@@ -1803,14 +1957,11 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
     moved.set_exprtime(Some(200));
     moved.set_snapunix(Some(10));
     assert_eq!(code(&event), code(&moved));
-    // What an element states moves the code: a cross code, a name, the
-    // state, the place in its chain, the predecessor.
+    // What an element states moves the code: a cross code, the state, the
+    // place in its chain, the predecessor.
     let mut crossed = same.clone();
     crossed.set_crosscode("O-1".to_owned());
     assert_ne!(code(&event), code(&crossed));
-    let mut named = same.clone();
-    named.set_identifiers(identifiers([("ClOrdID", "C-2")]));
-    assert_ne!(code(&event), code(&named));
     let mut done = same.clone();
     done.set_state(filled());
     assert_ne!(code(&event), code(&done));
@@ -1842,10 +1993,49 @@ fn the_digest_starts_from_what_an_element_states_and_never_from_when() {
         trade.digest_market().as_u64(),
         trade.digest_market_event().as_u64()
     );
-    let element = MarketElementData::from(&trade);
+    let element = MarketData::from(&trade);
     assert_eq!(
         element.digest_market().as_u64(),
         trade.digest_market().as_u64()
+    );
+    // An operation continues with its own facts: a name it goes by moves
+    // the code, and so does a lane.
+    let operation = operation(10);
+    let mut named = operation.clone();
+    named
+        .insert_altid("ORDERID", "O-1")
+        .expect("a plain holder");
+    assert_ne!(
+        operation.digest_operation_event().as_u64(),
+        named.digest_operation_event().as_u64()
+    );
+    let mut quoted = operation.clone();
+    quoted.set_ask(Some(Lane {
+        price: Some(Decimal18::from_int(85)),
+        ..Lane::default()
+    }));
+    assert_ne!(
+        operation.digest_operation_event().as_u64(),
+        quoted.digest_operation_event().as_u64()
+    );
+    assert_ne!(
+        operation.digest_operation_event().as_u64(),
+        operation.digest_market_event().as_u64()
+    );
+    let entry = MarketOperationData::from(&operation);
+    assert_eq!(
+        entry.digest_operation().as_u64(),
+        operation.digest_operation().as_u64()
+    );
+    // Metadata is part of what a market states, in key order.
+    let mut annotated = trade.clone();
+    annotated.set_metadata(Some(BTreeMap::from([(
+        SmolStr::new("Feed"),
+        SmolStr::new("PRIMARY"),
+    )])));
+    assert_ne!(
+        trade.digest_market().as_u64(),
+        annotated.digest_market().as_u64()
     );
 }
 
@@ -1930,9 +2120,9 @@ fn merging_two_incarnations_of_one_identity_unions_their_sources_once() {
 fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     // A market element's identity is its content: RFC 9562 UUIDv8 over the
     // code, so two elements stating the same things are one identity.
-    let mut element = MarketElementData::default();
+    let mut element = MarketData::default();
     element.set_crosscode("O-100".to_owned());
-    element.set_price(Decimal18::parse("82.5").expect("a decimal"));
+    element.set_price(decimal("82.5"));
     element.set_side(Side::read("Buy").expect("a side"));
     element.finalize();
     assert_ne!(element.get_currhashcode(), 0);
@@ -1949,10 +2139,26 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     same.finalize();
     assert_eq!(same, element);
     // Without a cross code the cross element is the identity itself.
-    let mut alone = MarketElementData::default();
+    let mut alone = MarketData::default();
     alone.finalize();
     assert_eq!(alone.get_crossuuid(), alone.get_curruuid());
     assert_ne!(alone.get_curruuid(), Uuid::default());
+
+    // An operation entry's identity is its content too, its operation facts
+    // included: the same element named an order is another entry.
+    let mut entry = MarketOperationData::from(element.clone());
+    entry.finalize();
+    assert_eq!(entry.get_currhashcode(), entry.digest_operation().as_u64());
+    assert_eq!(
+        entry.get_curruuid(),
+        Uuid::from_v8(u128::from(entry.get_currhashcode()))
+    );
+    let mut named = entry.clone();
+    named
+        .insert_altid("ORDERID", "O-100")
+        .expect("a plain holder");
+    named.finalize();
+    assert_ne!(named.get_curruuid(), entry.get_curruuid());
 
     // A market event's identity is UUIDv7 over its instant and the code its
     // content digests to, so the same facts at another instant differ.
@@ -1969,13 +2175,28 @@ fn the_crates_own_holders_derive_their_identity_from_what_they_state() {
     assert_eq!(trade(10), event);
     assert_ne!(trade(11).get_curruuid(), event.get_curruuid());
     assert_eq!(trade(11).get_currhashcode(), event.get_currhashcode());
+
+    // And an operation event's over its instant and its operation facts.
+    let operation = operation(10);
+    assert_eq!(
+        operation.get_curruuid(),
+        operation.time_uuid().expect("an identity")
+    );
+    assert_eq!(
+        operation.get_currhashcode(),
+        operation.digest_operation_event().as_u64()
+    );
+    assert_ne!(
+        operation.get_currhashcode(),
+        event.get_currhashcode(),
+        "the lane the buy fills is part of what the operation states"
+    );
 }
 
 #[test]
 fn the_market_element_and_the_market_event_convert_into_each_other() {
     let mut event = trade(10);
     event.set_crosscode("O-100".to_owned());
-    event.set_identifiers(identifiers([("ClOrdID", "C-1")]));
     event.set_srcuuids(vec![Uuid::from_v8(70)]);
     event.set_state(filled());
     event.set_seqnum(3);
@@ -1986,30 +2207,36 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     event.set_prevuuid(Some(Uuid::from_v8(8)));
     event.set_prevunix(Some(at(8)));
     event.set_snapunix(Some(at(10)));
-    event.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
-    event.fill_lanes();
+    event
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    event.set_ticker(Some(SmolStr::new("BRN")));
+    event.set_metadata(Some(BTreeMap::from([(
+        SmolStr::new("Feed"),
+        SmolStr::new("PRIMARY"),
+    )])));
     event.finalize();
 
     // Through the signatures the two share: every element and market fact
     // copied, the event's instants left behind.
-    let element = MarketElementData::from(&event);
+    let element = MarketData::from(&event);
     assert_eq!(element.get_curruuid(), event.get_curruuid());
     assert_eq!(element.get_crossuuid(), event.get_crossuuid());
     assert_eq!(element.get_crosscode(), "O-100");
     assert_eq!(element.get_currhashcode(), event.get_currhashcode());
     assert_eq!(element.get_crosshashcode(), event.get_crosshashcode());
-    assert_eq!(element.get_identifiers(), event.get_identifiers());
     assert_eq!(element.get_srcuuids(), [Uuid::from_v8(70)]);
     assert_eq!(element.get_price(), event.get_price());
     assert_eq!(element.get_currency(), event.get_currency());
     assert_eq!(element.get_quantity(), event.get_quantity());
     assert_eq!(element.get_unit(), event.get_unit());
     assert_eq!(element.get_side(), event.get_side());
-    assert_eq!(element.get_isincode(), event.get_isincode());
-    assert_eq!(element.get_bidpx(), event.get_bidpx());
-    assert_eq!(element.get_bidunit(), event.get_bidunit());
+    assert_eq!(element.get_securityids(), event.get_securityids());
+    assert_eq!(element.get_ticker(), Some("BRN"));
+    assert_eq!(element.get_metadata(), event.get_metadata());
     // Moved, the same element results.
-    assert_eq!(MarketElementData::from(event.clone()), element);
+    assert_eq!(event.clone().into_market(), element);
+    assert_eq!(event.market(), &element);
     // And an event from an event is the event.
     assert_eq!(MarketEventData::from(&event), event);
 
@@ -2027,8 +2254,8 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
     assert_eq!(back.get_crosscode(), "O-100");
     assert_eq!(back.get_srcuuids(), [Uuid::from_v8(70)]);
     assert_eq!(back.get_price(), event.get_price());
-    assert_eq!(back.get_isincode(), event.get_isincode());
-    assert_eq!(MarketElementData::from(&back), element);
+    assert_eq!(back.get_securityids(), event.get_securityids());
+    assert_eq!(MarketData::from(&back), element);
     // Dated and finalized, its identity is what the instant and the shared
     // facts derive - and back again, the element's own.
     let mut dated = back;
@@ -2038,11 +2265,58 @@ fn the_market_element_and_the_market_event_convert_into_each_other() {
         dated.get_curruuid(),
         dated.time_uuid().expect("an identity")
     );
-    let mut again = MarketElementData::from(&dated);
+    let mut again = MarketData::from(&dated);
     again.finalize();
     let mut expected = element.clone();
     expected.finalize();
     assert_eq!(again.get_curruuid(), expected.get_curruuid());
+
+    // The operation holders convert the same way, their own facts with
+    // them: an event gains the operation facts stating none, an operation
+    // event drops its clocks into an entry and dates again from it.
+    let mut operation = MarketOperationEventData::from(event.clone());
+    assert_eq!(operation.event(), &event);
+    assert_eq!(operation.market(), &element);
+    assert!(operation.get_altids().is_empty());
+    assert_eq!(operation.get_tif(), None);
+    assert_eq!((operation.get_bid(), operation.get_ask()), (None, None));
+    operation
+        .insert_altid("ORDERID", "O-100")
+        .expect("a plain holder");
+    operation.set_tif(TimeInForce::from_spelling("Day"));
+    operation.set_tradable(Some(true));
+    operation.finalize();
+    assert_eq!(operation.clone().into_event(), {
+        let mut event = event.clone();
+        event.set_curruuid(operation.get_curruuid());
+        event.set_currhashcode(operation.get_currhashcode());
+        event
+    });
+    let entry = operation.clone().into_entry();
+    assert_eq!(entry, MarketOperationData::from(&operation));
+    assert_eq!(entry.get_altids().get("ORDERID"), Some("O-100"));
+    assert_eq!(entry.get_tif().map(TimeInForce::as_str), Some("0"));
+    assert_eq!(entry.get_tradable(), Some(true));
+    assert_eq!(entry.get_ticker(), Some("BRN"));
+    assert_eq!(entry.get_price(), event.get_price());
+    assert_eq!(entry.market(), &MarketData::from(&operation));
+    let mut redated = entry.clone().at(at(10));
+    assert_eq!(redated.get_currunix(), at(10));
+    assert_eq!(redated.get_state(), &State::unknown());
+    assert_eq!(redated.get_altids(), entry.get_altids());
+    assert_eq!(redated.get_bid(), entry.get_bid());
+    assert_eq!(
+        redated.get_curruuid(),
+        entry.get_curruuid(),
+        "dating the holder finalizes nothing: the caller does, once the clocks are in"
+    );
+    redated.finalize();
+    assert_eq!(
+        redated.get_curruuid(),
+        redated.time_uuid().expect("an identity")
+    );
+    assert_eq!(MarketOperationEventData::from(&redated), redated);
+    assert_eq!(entry.clone().into_market(), MarketData::from(&entry));
 }
 
 #[test]
@@ -2050,20 +2324,21 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
     // What a report says about a trade and nothing about an order: the
     // price it is about is the price it traded at, and the quantity the
     // quantity it traded.
-    let mut fill = MarketEventData::at(at(10));
+    let mut fill = MarketOperationEventData::at(at(10));
     fill.set_side(Side::read("Buy").expect("a side"));
-    fill.set_lastpx(Some(Decimal18::parse("82.5").expect("a decimal")));
+    fill.set_lastpx(Some(decimal("82.5")));
     fill.set_lastqty(Some(Decimal18::from_int(300)));
-    fill.set_avgpx(Some(Decimal18::parse("82.25").expect("a decimal")));
+    fill.set_avgpx(Some(decimal("82.25")));
     fill.fill_market();
-    assert_eq!(
-        fill.get_price(),
-        Decimal18::parse("82.5").expect("a decimal")
-    );
+    assert_eq!(fill.get_price(), decimal("82.5"));
     assert_eq!(fill.get_quantity(), Decimal18::from_int(300));
-    // And what it settled on reaches the lane its side implies.
-    assert_eq!(fill.get_bidpx(), Some(Decimal18::parse("82.5").unwrap()));
-    assert_eq!(fill.get_bidqty(), Some(Decimal18::from_int(300)));
+    // And what it settled on reaches the lane its side implies once the
+    // operation fills.
+    assert_eq!(fill.get_bid(), None, "the market ladder fills no lane");
+    fill.fill_operation();
+    let bid = fill.get_bid().expect("the bid lane");
+    assert_eq!(bid.price, Some(decimal("82.5")));
+    assert_eq!(bid.quantity, Some(Decimal18::from_int(300)));
 
     // The average stands in where nothing traded under this message.
     let mut averaged = MarketEventData::at(at(20));
@@ -2082,17 +2357,39 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
 
     // A quote states only its lanes, and the side says which one it is
     // about. Nothing is invented for a side that takes neither.
-    let mut quote = MarketEventData::at(at(40));
+    let mut quote = MarketOperationEventData::at(at(40));
     quote.set_side(Side::read("Sell").expect("a side"));
-    quote.set_askpx(Some(Decimal18::from_int(85)));
-    quote.set_askqty(Some(Decimal18::from_int(7)));
-    quote.set_askcurrency(Some(Ccy::new("EUR").expect("a currency")));
-    quote.set_askunit(Some("mt".to_owned()));
+    quote.set_ask(Some(Lane {
+        price: Some(Decimal18::from_int(85)),
+        quantity: Some(Decimal18::from_int(7)),
+        currency: Some(currency("EUR")),
+        unit: Some(unit("mt")),
+        ..Lane::default()
+    }));
     quote.fill_market();
+    quote.fill_operation();
     assert_eq!(quote.get_price(), Decimal18::from_int(85));
     assert_eq!(quote.get_quantity(), Decimal18::from_int(7));
     assert_eq!(quote.get_currency().as_str(), "EUR");
-    assert_eq!(quote.get_unit(), "mt");
+    assert_eq!(quote.get_unit().as_str(), "mt");
+
+    // The ISIN's national number fills the source it names, as a derived
+    // identifier, only where the element states none under it.
+    let mut listed = MarketEventData::at(at(45));
+    listed
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    listed.fill_market();
+    assert_eq!(listed.get_securityids().get("CUSIP"), Some("037833100"));
+    let mut stated = MarketEventData::at(at(46));
+    stated
+        .insert_securityid(securityid("CUSIP", "594918104"))
+        .expect("a plain holder");
+    stated
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    stated.fill_market();
+    assert_eq!(stated.get_securityids().get("CUSIP"), Some("594918104"));
 
     // Filling twice changes nothing the first run did not, and a fact the
     // element stated is never overwritten.
@@ -2104,10 +2401,15 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
         held.fill_market();
         held
     };
-    assert_eq!(
-        once.get_price(),
-        Decimal18::parse("82.5").expect("a decimal")
-    );
+    assert_eq!(once.get_price(), decimal("82.5"));
+    assert_eq!(once, twice);
+    let mut once = operation(50);
+    once.fill_operation();
+    let twice = {
+        let mut held = once.clone();
+        held.fill_operation();
+        held
+    };
     assert_eq!(once, twice);
 }
 
@@ -2115,73 +2417,105 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
 /// then reads the price, the quantity, the currency and the unit off it.
 #[test]
 fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
-    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
-    let currency = |code: &str| Ccy::new(code).expect("a currency");
-
     // A bid alone is a party willing to pay: a buy at the bid.
-    let mut bid = MarketEventData::at(at(10));
-    assert_eq!(bid.get_side(), &Side::Unknown);
-    bid.set_bidpx(Some(decimal("101.5")));
-    bid.set_bidqty(Some(Decimal18::from_int(200)));
-    bid.set_bidcurrency(Some(currency("USD")));
-    bid.set_bidunit(Some("shares".to_owned()));
-    bid.fill_market();
+    let mut bid = MarketOperationEventData::at(at(10));
+    assert_eq!(bid.get_side(), Side::Unknown);
+    bid.set_bid(Some(Lane {
+        price: Some(decimal("101.5")),
+        quantity: Some(Decimal18::from_int(200)),
+        currency: Some(currency("USD")),
+        unit: Some(unit("shares")),
+        ..Lane::default()
+    }));
+    bid.fill_operation();
     assert_eq!(bid.get_side().as_str(), "BUY");
     assert_eq!(bid.get_price(), decimal("101.5"));
     assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
     assert_eq!(bid.get_currency().as_str(), "USD");
-    assert_eq!(bid.get_unit(), "shares");
-    assert_eq!(bid.get_askpx(), None, "the other lane stays empty");
+    assert_eq!(bid.get_unit().as_str(), "shares");
+    assert_eq!(bid.get_ask(), None, "the other lane stays empty");
 
     // An offer alone is a party willing to be paid: a sell at the offer.
-    let mut ask = MarketEventData::at(at(20));
-    ask.set_askpx(Some(decimal("102")));
-    ask.set_askqty(Some(Decimal18::from_int(50)));
-    ask.fill_market();
+    let mut ask = MarketOperationEventData::at(at(20));
+    ask.set_ask(Some(Lane {
+        price: Some(decimal("102")),
+        quantity: Some(Decimal18::from_int(50)),
+        ..Lane::default()
+    }));
+    ask.fill_operation();
     assert_eq!(ask.get_side().as_str(), "SELL");
     assert_eq!(ask.get_price(), decimal("102"));
     assert_eq!(ask.get_quantity(), Decimal18::from_int(50));
-    assert_eq!(ask.get_bidpx(), None);
+    assert_eq!(ask.get_bid(), None);
 
     // Any fact of a lane states it: a currency alone names the side and
     // prices the element in it, and invents no price.
-    let mut priced = MarketEventData::at(at(30));
-    priced.set_askcurrency(Some(currency("EUR")));
-    priced.fill_market();
+    let mut priced = MarketOperationEventData::at(at(30));
+    priced.set_ask(Some(Lane {
+        currency: Some(currency("EUR")),
+        ..Lane::default()
+    }));
+    priced.fill_operation();
     assert_eq!(priced.get_side().as_str(), "SELL");
     assert_eq!(priced.get_currency().as_str(), "EUR");
     assert_eq!(priced.get_price(), Decimal18::ZERO);
 
+    // The FX parts of a forward price ride the lane too.
+    let mut forward = MarketOperationEventData::at(at(35));
+    forward.set_bid(Some(Lane {
+        price: Some(decimal("1.1025")),
+        spotrate: Some(decimal("1.1")),
+        forwardpoints: Some(decimal("0.0025")),
+        ..Lane::default()
+    }));
+    forward.fill_operation();
+    assert_eq!(forward.get_side().as_str(), "BUY");
+    assert_eq!(forward.get_spotrate(), Some(decimal("1.1")));
+    assert_eq!(forward.get_forwardpoints(), Some(decimal("0.0025")));
+
     // Two lanes name no side, so nothing reads off either.
-    let mut two = MarketEventData::at(at(40));
-    two.set_bidpx(Some(decimal("101")));
-    two.set_askpx(Some(decimal("102")));
-    two.fill_market();
-    assert_eq!(two.get_side(), &Side::Unknown);
+    let mut two = MarketOperationEventData::at(at(40));
+    two.set_bid(Some(Lane {
+        price: Some(decimal("101")),
+        ..Lane::default()
+    }));
+    two.set_ask(Some(Lane {
+        price: Some(decimal("102")),
+        ..Lane::default()
+    }));
+    two.fill_operation();
+    assert_eq!(two.get_side(), Side::Unknown);
     assert_eq!(two.get_price(), Decimal18::ZERO);
 
     // A side the element states is its own, whatever lane it quotes: a
     // cross takes no lane, so the offer it carries dates nothing either.
-    let mut cross = MarketEventData::at(at(50));
+    let mut cross = MarketOperationEventData::at(at(50));
     cross.set_side(Side::read("Cross").expect("a side"));
-    cross.set_askpx(Some(decimal("102")));
-    cross.fill_market();
+    cross.set_ask(Some(Lane {
+        price: Some(decimal("102")),
+        ..Lane::default()
+    }));
+    cross.fill_operation();
     assert_eq!(cross.get_side().as_str(), "CROSS");
     assert_eq!(cross.get_price(), Decimal18::ZERO);
 
     // An element pricing itself is not a quote: a trade at its last price
     // beside a lone bid is about the trade, and names no side.
-    let mut traded = MarketEventData::at(at(60));
+    let mut traded = MarketOperationEventData::at(at(60));
     traded.set_lastpx(Some(decimal("100")));
-    traded.set_bidpx(Some(decimal("99")));
+    traded.set_bid(Some(Lane {
+        price: Some(decimal("99")),
+        ..Lane::default()
+    }));
     traded.fill_market();
-    assert_eq!(traded.get_side(), &Side::Unknown);
+    traded.fill_operation();
+    assert_eq!(traded.get_side(), Side::Unknown);
     assert_eq!(traded.get_price(), decimal("100"));
 
     // Filling twice changes nothing the first run did not.
     let twice = {
         let mut held = bid.clone();
-        held.fill_market();
+        held.fill_operation();
         held
     };
     assert_eq!(bid, twice);
@@ -2192,12 +2526,17 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
 /// the quote before it named.
 #[test]
 fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
-    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
     let quote = |ms: i64, bid: Option<&str>, ask: Option<&str>| {
-        let mut held = MarketEventData::at(at(ms));
+        let mut held = MarketOperationEventData::at(at(ms));
         held.set_crosscode("Q1".to_owned());
-        held.set_bidpx(bid.map(decimal));
-        held.set_askpx(ask.map(decimal));
+        held.set_bid(bid.map(|price| Lane {
+            price: Some(decimal(price)),
+            ..Lane::default()
+        }));
+        held.set_ask(ask.map(|price| Lane {
+            price: Some(decimal(price)),
+            ..Lane::default()
+        }));
         held.finalize();
         held
     };
@@ -2207,7 +2546,7 @@ fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
     let two = quote(20, Some("102"), Some("103"))
         .with_previous(&first)
         .expect("the next quote");
-    assert_eq!(two.get_side(), &Side::Unknown, "two lanes name no side");
+    assert_eq!(two.get_side(), Side::Unknown, "two lanes name no side");
     assert_eq!(two.get_price(), Decimal18::ZERO);
 
     let offer = quote(30, None, Some("104"))
@@ -2224,21 +2563,21 @@ fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
 }
 
 #[test]
-fn a_linked_market_event_still_inherits_a_missing_symbolticker() {
+fn a_linked_market_event_still_inherits_a_missing_ticker() {
     let mut previous = MarketEventData::at(at(10));
-    previous.set_symbolticker(Some("AAPL".to_owned()));
+    previous.set_ticker(Some(SmolStr::new("AAPL")));
     previous.finalize();
     let mut linked = MarketEventData::at(at(20))
         .with_previous(&previous)
         .expect("the next version");
-    linked.set_symbolticker(None);
+    linked.set_ticker(None);
     linked.finalize();
     let before = linked.get_curruuid();
 
     let inherited = linked
         .with_previous(&previous)
         .expect("market facts can change when the timed link is unchanged");
-    assert_eq!(inherited.get_symbolticker(), Some("AAPL"));
+    assert_eq!(inherited.get_ticker(), Some("AAPL"));
     assert_eq!(inherited.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(inherited.get_seqnum(), 1);
     assert_ne!(inherited.get_curruuid(), before);
@@ -2246,57 +2585,66 @@ fn a_linked_market_event_still_inherits_a_missing_symbolticker() {
 }
 
 #[test]
-fn market_element_versions_inherit_only_an_absent_symbolticker() {
-    let mut first = MarketElementData::default();
-    first.set_symbolticker(Some("AAPL".to_owned()));
+fn market_element_versions_inherit_only_an_absent_ticker() {
+    let mut first = MarketData::default();
+    first.set_ticker(Some(SmolStr::new("AAPL")));
     first.finalize();
-    let second = MarketElementData::default()
+    let second = MarketData::default()
         .with_previous(&first)
         .expect("a second version");
-    let third = MarketElementData::default()
+    let third = MarketData::default()
         .with_previous(&second)
         .expect("a third version");
-    assert_eq!(second.get_symbolticker(), Some("AAPL"));
-    assert_eq!(third.get_symbolticker(), Some("AAPL"));
-    // A stated ticker, even an empty one, is the element's own word. Following
-    // a version with nothing else to give moves nothing and so answers
-    // nothing; following one that gives a cross code takes that code and
-    // still keeps the ticker as stated.
+    assert_eq!(second.get_ticker(), Some("AAPL"));
+    assert_eq!(third.get_ticker(), Some("AAPL"));
+    // A stated ticker is the element's own word. Following a version with
+    // nothing else to give moves nothing and so answers nothing; following
+    // one that gives a cross code takes that code and still keeps the
+    // ticker as stated. An empty ticker is no ticker: stated as none, it is
+    // inherited like one.
     let mut crossed = third.clone();
     crossed.set_crosscode("O-100".to_owned());
     crossed.finalize();
-    for symbol in ["MSFT", ""] {
-        let mut stated = MarketElementData::default();
-        stated.set_symbolticker(Some(symbol.to_owned()));
-        stated.finalize();
-        assert!(
-            stated.clone().with_previous(&third).is_none(),
-            "a stated ticker {symbol:?} takes nothing"
-        );
-        let followed = stated
-            .with_previous(&crossed)
-            .expect("the cross code is taken");
-        assert_eq!(followed.get_crosscode(), "O-100");
-        assert_eq!(followed.get_symbolticker(), Some(symbol));
-    }
+    let mut stated = MarketData::default();
+    stated.set_ticker(Some(SmolStr::new("MSFT")));
+    stated.finalize();
+    assert!(
+        stated.clone().with_previous(&third).is_none(),
+        "a stated ticker takes nothing"
+    );
+    let followed = stated
+        .with_previous(&crossed)
+        .expect("the cross code is taken");
+    assert_eq!(followed.get_crosscode(), "O-100");
+    assert_eq!(followed.get_ticker(), Some("MSFT"));
+    let mut empty = MarketData::default();
+    empty.set_ticker(Some(SmolStr::new("")));
+    assert_eq!(empty.get_ticker(), None, "an empty ticker is none");
+    empty.finalize();
+    let followed = empty
+        .with_previous(&third)
+        .expect("a ticker stated as none inherits");
+    assert_eq!(followed.get_ticker(), Some("AAPL"));
 }
 
 #[test]
 fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     // An order naming its instrument, how long it stands and what the
     // market says about trading it.
-    let mut order = trade(10);
+    let mut order = operation(10);
     order.set_crosscode("O-100".to_owned());
-    order.set_tif(Some("GoodTillCancel".to_owned()));
+    order.set_tif(TimeInForce::from_spelling("GoodTillCancel"));
     order.set_tradable(Some(true));
-    order.set_symbolticker(Some("BRN".to_owned()));
-    order.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
+    order.set_ticker(Some(SmolStr::new("BRN")));
+    order
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
     order.set_miccode(Some(MicCode::new("XLON").expect("a MIC")));
     order.finalize();
 
     // The report that answers it names none of that, and states a price and
     // a quantity of its own.
-    let mut report = MarketEventData::at(at(20));
+    let mut report = MarketOperationEventData::at(at(20));
     report.set_crosscode("O-100".to_owned());
     report.set_price(Decimal18::from_int(83));
     report.set_quantity(Decimal18::from_int(400));
@@ -2305,22 +2653,16 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     let followed = report.with_previous(&order).expect("the step after");
     // The step before, as the step before: a price beside the price it
     // moved from.
-    assert_eq!(
-        followed.get_prevpx(),
-        Some(Decimal18::parse("82.5").expect("a decimal"))
-    );
+    assert_eq!(followed.get_prevpx(), Some(decimal("82.5")));
     assert_eq!(followed.get_prevqty(), Some(Decimal18::from_int(1_000)));
     // And what the chain is about, where this report said nothing.
-    assert_eq!(followed.get_tif(), Some("GoodTillCancel"));
+    assert_eq!(followed.get_tif().map(TimeInForce::as_str), Some("1"));
     assert_eq!(followed.get_tradable(), Some(true));
-    assert_eq!(followed.get_symbolticker(), Some("BRN"));
+    assert_eq!(followed.get_ticker(), Some("BRN"));
     assert_eq!(followed.get_currency().as_str(), "USD");
-    assert_eq!(followed.get_unit(), "bbl");
+    assert_eq!(followed.get_unit().as_str(), "bbl");
     assert_eq!(followed.get_side().as_str(), "BUY");
-    assert_eq!(
-        followed.get_isincode().map(IsinCode::as_str),
-        Some("US0378331005")
-    );
+    assert_eq!(followed.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(followed.get_miccode().map(MicCode::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the
     // one it followed.
@@ -2329,89 +2671,101 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_seqnum(), 1);
 
     // A statement of its own never gives way to the chain's.
-    let mut own = MarketEventData::at(at(20));
+    let mut own = MarketOperationEventData::at(at(20));
     own.set_crosscode("O-100".to_owned());
-    own.set_tif(Some("ImmediateOrCancel".to_owned()));
+    own.set_tif(TimeInForce::from_spelling("ImmediateOrCancel"));
     own.set_tradable(Some(false));
-    own.set_symbolticker(Some("WTI".to_owned()));
+    own.set_ticker(Some(SmolStr::new("WTI")));
     own.set_prevpx(Some(Decimal18::from_int(1)));
     own.finalize();
     let followed = own.with_previous(&order).expect("the step after");
-    assert_eq!(followed.get_tif(), Some("ImmediateOrCancel"));
+    assert_eq!(followed.get_tif().map(TimeInForce::as_str), Some("3"));
     assert_eq!(followed.get_tradable(), Some(false));
-    assert_eq!(followed.get_symbolticker(), Some("WTI"));
+    assert_eq!(followed.get_ticker(), Some("WTI"));
     assert_eq!(followed.get_prevpx(), Some(Decimal18::from_int(1)));
 
     // Merging folds the same facts the other way: two statements of one
     // event, the later leading where both state one and the other filling
     // what it leaves out.
-    let mut first = trade(30);
+    let mut first = operation(30);
     first.set_lastpx(Some(Decimal18::from_int(80)));
     first.set_cumqty(Some(Decimal18::from_int(100)));
-    first.set_tif(Some("Day".to_owned()));
+    first.set_tif(TimeInForce::from_spelling("Day"));
     first.finalize();
     let mut later = first.clone();
     later.set_currunix(at(40));
     later.set_lastpx(Some(Decimal18::from_int(81)));
     later.set_cumqty(None);
     later.set_leavesqty(Some(Decimal18::from_int(900)));
-    later.set_avgpx(Some(Decimal18::parse("80.5").expect("a decimal")));
+    later.set_avgpx(Some(decimal("80.5")));
     later.set_tif(None);
     later.set_tradable(Some(true));
-    later.set_symbolticker(Some("BRN".to_owned()));
+    later.set_ticker(Some(SmolStr::new("BRN")));
     later.set_curruuid(first.get_curruuid());
     let merged = first.merge_with(&later).expect("the same event");
     assert_eq!(merged.get_lastpx(), Some(Decimal18::from_int(81)));
     assert_eq!(merged.get_cumqty(), Some(Decimal18::from_int(100)));
     assert_eq!(merged.get_leavesqty(), Some(Decimal18::from_int(900)));
-    assert_eq!(
-        merged.get_avgpx(),
-        Some(Decimal18::parse("80.5").expect("a decimal"))
-    );
-    assert_eq!(merged.get_tif(), Some("Day"));
+    assert_eq!(merged.get_avgpx(), Some(decimal("80.5")));
+    assert_eq!(merged.get_tif().map(TimeInForce::as_str), Some("0"));
     assert_eq!(merged.get_tradable(), Some(true));
-    assert_eq!(merged.get_symbolticker(), Some("BRN"));
+    assert_eq!(merged.get_ticker(), Some("BRN"));
     assert_eq!(merged.get_currunix(), at(40));
 
     // Every one of them is part of what the event is, so two events that
     // differ only there answer to different codes.
-    let mut halted = trade(50);
+    let mut halted = operation(50);
     halted.set_tradable(Some(false));
     halted.finalize();
-    let mut trading = trade(50);
+    let mut trading = operation(50);
     trading.set_tradable(Some(true));
     trading.finalize();
     assert_ne!(halted.get_currhashcode(), trading.get_currhashcode());
     let mut named = trade(50);
-    named.set_symbolticker(Some("BRN".to_owned()));
+    named.set_ticker(Some(SmolStr::new("BRN")));
     named.finalize();
     assert_ne!(named.get_currhashcode(), trade(50).get_currhashcode());
 }
-#[test]
-fn isin_setters_fill_only_deterministic_missing_identifiers() {
-    use yggdryl::graph::{MarketElement, MarketElementData, MarketEventData};
-    use yggdryl::{CusipCode, IsinCode};
 
-    let mut element = MarketElementData::default();
-    element.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
-    assert_eq!(
-        element.get_cusipcode().map(CusipCode::as_str),
-        Some("037833100")
-    );
+#[test]
+fn an_isin_derives_only_the_deterministic_missing_identifiers() {
+    let mut element = MarketData::default();
+    element
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    element.finalize();
+    assert_eq!(element.get_securityids().get("CUSIP"), Some("037833100"));
     assert!(element.get_cficode().is_none());
-    assert!(element.get_bloombergcode().is_none());
-    let stated = CusipCode::new("594918104").unwrap();
-    element.set_cusipcode(Some(stated.clone()));
-    element.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
-    assert_eq!(element.get_cusipcode(), Some(&stated));
+    assert!(element.get_securityids().get("BLOOMBERG").is_none());
+    // A stated identifier stands: deriving fills only a missing key.
+    let mut stated = MarketData::default();
+    stated
+        .insert_securityid(securityid("CUSIP", "594918104"))
+        .expect("a plain holder");
+    stated
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    stated.finalize();
+    assert_eq!(stated.get_securityids().get("CUSIP"), Some("594918104"));
+    // Deriving is a fill that never writes through: the verb says whether
+    // it filled, and answers nothing where the key is held.
+    let mut derived = MarketData::default();
+    assert!(derived.derive_securityid(securityid("CUSIP", "037833100")));
+    assert!(!derived.derive_securityid(securityid("CUSIP", "594918104")));
+    assert_eq!(derived.get_securityids().get("CUSIP"), Some("037833100"));
 
     let mut event = MarketEventData::at(0);
-    event.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
-    assert_eq!(
-        event.get_cusipcode().map(CusipCode::as_str),
-        Some("037833100")
-    );
-    let mut unknown = MarketElementData::default();
-    unknown.set_isincode(Some(IsinCode::default()));
-    assert!(unknown.get_cusipcode().is_none());
+    event
+        .insert_securityid(securityid("ISIN", "US0378331005"))
+        .expect("a plain holder");
+    event.finalize();
+    assert_eq!(event.get_securityids().get("CUSIP"), Some("037833100"));
+    // An ISIN of a country whose number the crate does not know carries
+    // nothing it can derive.
+    let mut foreign = MarketData::default();
+    foreign
+        .insert_securityid(securityid("ISIN", "FR0000131104"))
+        .expect("a plain holder");
+    foreign.finalize();
+    assert_eq!(foreign.get_securityids().len(), 1);
 }

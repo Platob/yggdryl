@@ -2622,7 +2622,7 @@ mod internal {
                 .definitions(FixCategory::Groups)
                 .map(Field::name)
                 .collect::<Vec<_>>(),
-            ["Parties", "identifiers", "metadata"]
+            ["Parties", "metadata"]
         );
         // The walk holds the definitions too, so a registry rebuilt from its
         // own walk is the registry.
@@ -3091,7 +3091,7 @@ mod internal {
 
     #[test]
     fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes() {
-        use yggdryl::graph::MarketElement;
+        use yggdryl::graph::{Market, MarketOperation};
 
         let codec = deriving();
         let held = codec
@@ -3128,13 +3128,13 @@ mod internal {
         assert_eq!(held.get_lastpx(), yggdryl::Decimal18::parse("82.5").ok());
         // How long it stands, as the message spelled it: what `1` names is the
         // dictionary's to say.
-        assert_eq!(held.get_tif(), Some("1"));
+        assert_eq!(held.get_tif().map(yggdryl::TimeInForce::as_str), Some("1"));
 
         // What the market said about trading it, read off the status it stated:
         // `ReadyToTrade` trades.
         assert_eq!(held.get_tradable(), Some(true));
         // And the ticker, off `Symbol`.
-        assert_eq!(held.get_symbolticker(), Some("BRN"));
+        assert_eq!(held.get_ticker(), Some("BRN"));
 
         // A halt says the opposite, and a status that is about something else
         // says nothing either way.
@@ -3162,14 +3162,14 @@ mod internal {
         let held = codec
             .parse_fix_line(b"8=FIX.4.4|35=8|55=[N/A]|48=US0378331005|22=4|10=0|")
             .expect("a readable report");
-        assert_eq!(held.get_symbolticker(), None);
+        assert_eq!(held.get_ticker(), None);
         // A message carrying no `Symbol` at all still names one where the
         // exchange's own identifier is the ticker: that is what `Symbol`
         // derives to, and this column is what it settled on.
         let held = codec
             .parse_fix_line(b"8=FIX.4.4|35=8|48=IBM|22=8|10=0|")
             .expect("a readable report");
-        assert_eq!(held.get_symbolticker(), Some("IBM"));
+        assert_eq!(held.get_ticker(), Some("IBM"));
     }
 
     #[test]
@@ -4181,9 +4181,9 @@ mod internal {
         for field in registry.definitions(FixCategory::Groups) {
             assert!(groups.insert(field.name()));
             if let Some(map) = (field.dtype()).as_mapping() {
-                // The crate's two Map groups, each counted by its own tag and
+                // The crate's one Map group, counted by its own tag and
                 // reached through the counter door, as every group is.
-                let (tag, name) = [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME]
+                let (tag, name) = [yggdryl::METADATA_TAG_NAME]
                     .into_iter()
                     .find(|(_, name)| *name == field.name())
                     .unwrap_or_else(|| panic!("{} is no crate group", field.name()));
@@ -4223,8 +4223,8 @@ mod internal {
                 .unwrap();
             assert_eq!(counter.dtype(), &DataType::Int32);
         }
-        // The shipped dictionary's groups, beside the crate's two Map groups.
-        assert_eq!(groups.len(), 580 + 2);
+        // The shipped dictionary's groups, beside the crate's one Map group.
+        assert_eq!(groups.len(), 580 + 1);
         assert_eq!(entries.len(), 580);
         // The shipped dictionary's own, beside the crate's own components,
         // which every registry carries.
@@ -4792,7 +4792,7 @@ mod internal {
             .unwrap()
             .unwrap();
         assert_eq!(
-            yggdryl::graph::MarketElement::get_isincode(&held).map(yggdryl::IsinCode::as_str),
+            yggdryl::graph::Market::get_securityids(&held).get("ISIN"),
             Some("US0378331005")
         );
     }

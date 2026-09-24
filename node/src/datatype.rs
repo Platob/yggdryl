@@ -132,6 +132,7 @@ impl JsDataType {
             "side" => CoreDataType::Side,
             "state" => CoreDataType::State,
             "timeinforce" => CoreDataType::TimeInForce,
+            "unit" => CoreDataType::Unit,
             "uuid" => CoreDataType::uuid(),
             "version" => CoreDataType::Version,
             "url" => CoreDataType::url(),

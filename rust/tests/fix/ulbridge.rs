@@ -16,7 +16,7 @@ mod dataset {
     use std::sync::Arc;
 
     use arrow_array::RecordBatch;
-    use yggdryl::graph::{Element, Event, MarketElement};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -549,10 +549,7 @@ mod dataset {
             "83.08",
             "and the price the message is about, read off it"
         );
-        assert_eq!(
-            fill.get_isincode().map(|held| held.as_str()),
-            Some("CH0012221716")
-        );
+        assert_eq!(fill.get_securityids().get("ISIN"), Some("CH0012221716"));
         assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
         assert_eq!(fill.by_tag(460).unwrap().as_i128(), Some(5), "Product");
         assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
@@ -574,7 +571,11 @@ mod dataset {
                     == Some("XX0000000001".to_owned())
             })
             .expect("the anonymized line");
-        assert_eq!(masked.get_isincode(), None, "no ISIN off a masked one");
+        assert_eq!(
+            masked.get_securityids().get("ISIN"),
+            None,
+            "no ISIN off a masked one"
+        );
         assert!(
             masked.get_by_tag(470).is_none_or(|held| held.is_null()),
             "and no country either"

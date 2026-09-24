@@ -1,29 +1,24 @@
-//! An element of a graph, one that happened at an instant, one that
-//! happened in a market, and one that did both.
+//! An element of a graph, and one that happened at an instant.
 //!
-//! Four traits: what an element answers about itself, what it takes, and
+//! Two traits: what an element answers about itself, what it takes, and
 //! the two readings every element has - following another, and merging with
-//! another statement of itself. The identity is the crate's own [`Uuid`], so
+//! another statement of itself. What an element that stands in a market
+//! answers is [`Market`](super::Market) and [`MarketOperation`](super::MarketOperation). The identity is the crate's own [`Uuid`], so
 //! an element is addressed the way every identified value in the crate is,
 //! and a predecessor or a cross element is named by the same
 //! identity rather than by a reference, so an element can name one it does
 //! not hold.
 
-use std::collections::BTreeMap;
 use std::hash::Hasher;
 
-use super::event::{MarketElementData, MarketEventData};
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
-use crate::{
-    BloombergCode, Ccy, CfiCode, CodeValue, CusipCode, Decimal18, FIGICode, IsinCode, MicCode,
-    SedolCode, Side, State, Uuid,
-};
+use crate::{CodeValue, State, Uuid};
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 
 /// One element of a graph: a node that knows its own identity, the identity
-/// it has elsewhere, the codes it digests to, the names it goes by and the
-/// identities of the elements it was read from.
+/// it has elsewhere, the codes it digests to and the identities of the
+/// elements it was read from.
 ///
 /// The sources are its provenance: the elements it was read from - a message
 /// parsed from a text line has that line's identity as its one source - so
@@ -47,10 +42,10 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// step with it. The cross element is never absent: it is the identity the
 /// cross hash code derives where a cross code is stated, and the element's
 /// own identity where none is, [`Self::cross_uuid`], so every element stands
-/// in exactly one chain. The identifiers are the names the element
-/// goes by elsewhere, each under the scheme that issued it - an order's
-/// `ClOrdID` and `OrderID`, a trade's `ExecID` - held as text under text in
-/// sorted order, so an element can be found by any name a system gave it.
+/// in exactly one chain. The names an operation goes by elsewhere - an
+/// order's `ClOrdID` and `OrderID`, a trade's `ExecID` - are the
+/// operation's own facts, [`MarketOperation::get_altids`](super::MarketOperation::get_altids),
+/// not the node's.
 /// Every fact is read and written through the trait, so a store or a walk
 /// that only knows an element as `dyn Element` can still place it; every
 /// accessor is `get_` and every mutator `set_`, so the traits claim no bare
@@ -66,15 +61,12 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// predecessor, a snapshot its base - and [`Event::following`] is the
 /// reading an event delegates to. [`Self::merge_with`] folds another
 /// statement of the same element into this one, and is provided: the cross
-/// element and the cross code are taken where this one states none, the
-/// identifiers this one lacks are taken, and the sources become a sorted
-/// unique union. An event
+/// element and the cross code are taken where this one states none, and the
+/// sources become a sorted unique union. An event
 /// delegates to
 /// [`Event::merging`], which folds the instants and the state too.
 ///
 /// ```
-/// use std::collections::BTreeMap;
-///
 /// use yggdryl::graph::Element;
 /// use yggdryl::Uuid;
 ///
@@ -84,7 +76,6 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     crosscode: String,
 ///     hashcode: u64,
 ///     crosshashcode: u64,
-///     identifiers: BTreeMap<String, String>,
 ///     previous: Option<Uuid>,
 ///     sources: Vec<Uuid>,
 /// }
@@ -97,7 +88,6 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///             crosscode: String::new(),
 ///             hashcode: 0,
 ///             crosshashcode: 0,
-///             identifiers: BTreeMap::new(),
 ///             previous: None,
 ///             sources: Vec::new(),
 ///         }
@@ -135,12 +125,6 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 ///     fn set_crosshashcode(&mut self, crosshashcode: u64) {
 ///         self.crosshashcode = crosshashcode;
 ///     }
-///     fn get_identifiers(&self) -> &BTreeMap<String, String> {
-///         &self.identifiers
-///     }
-///     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-///         self.identifiers = identifiers;
-///     }
 ///     fn get_srcuuids(&self) -> &[Uuid] {
 ///         &self.sources
 ///     }
@@ -174,7 +158,6 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// assert_eq!(root.get_crossuuid(), root.get_curruuid(), "no cross code: its own chain");
 /// let mut child = Node::new(2);
 /// child.set_crosscode("O-100".to_owned());
-/// child.set_identifiers(BTreeMap::from([("ClOrdID".to_owned(), "C-1".to_owned())]));
 /// assert!(!child.is_after(&root) && !child.is_before(&root), "unrelated, so neither");
 /// let child = child.with_previous(&root).expect("a node follows another");
 /// assert!(child.is_after(&root) && root.is_before(&child));
@@ -185,19 +168,12 @@ use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
 /// // The implementor's rule: a node never follows itself.
 /// assert!(Node::new(1).with_previous(&root).is_none());
 ///
-/// // A second statement of the same node merges into the first: the
-/// // identifiers it states fill the ones the first left out. Another node
-/// // does not merge at all.
+/// // A second statement of the same node merges into the first; another
+/// // node does not merge at all.
 /// let mut again = Node::new(2);
-/// again.set_identifiers(BTreeMap::from([
-///     ("ClOrdID".to_owned(), "other".to_owned()),
-///     ("OrderID".to_owned(), "O-1".to_owned()),
-/// ]));
 /// again.set_srcuuids(vec![Uuid::from_v8(70)]);
 /// let merged = child.merge_with(&again).expect("the same node");
 /// assert_eq!(merged.get_crosscode(), "O-100", "this element's word wins");
-/// assert_eq!(merged.get_identifiers()["ClOrdID"], "C-1");
-/// assert_eq!(merged.get_identifiers()["OrderID"], "O-1", "and what it lacked is taken");
 /// // A source is provenance: unioned by the merge, and never fed to the code.
 /// assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(70)]);
 /// assert!(merged.merge_with(&root).is_none());
@@ -238,14 +214,6 @@ pub trait Element {
 
     /// Records the code the cross code digests to.
     fn set_crosshashcode(&mut self, crosshashcode: u64);
-
-    /// The names this element goes by elsewhere, each under the scheme that
-    /// issued it, in sorted order; empty where no system named it.
-    fn get_identifiers(&self) -> &BTreeMap<String, String>;
-
-    /// Records the names this element goes by elsewhere; the map is
-    /// replaced whole.
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>);
 
     /// The identities of the elements this one was read from: its
     /// provenance, never its chain. Empty for an element read from a
@@ -343,8 +311,9 @@ pub trait Element {
     ///
     /// Provided, and what an implementor's [`Self::finalize`] starts from:
     /// an event continues with [`Event::digest_event`], a market element
-    /// with [`MarketElement::digest_market`], a market event with
-    /// [`MarketEvent::digest_market_event`], and each feeds its own content
+    /// with [`Market::digest_market`](super::Market::digest_market), a market
+    /// event with [`MarketEvent::digest_market_event`](super::MarketEvent::digest_market_event),
+    /// and each feeds its own content
     /// behind them and reads `as_u64` for the code. The facts are fed
     /// through their typed accessors, so two elements stating the same
     /// things digest alike whatever holds them.
@@ -353,7 +322,6 @@ pub trait Element {
         if !self.get_crosscode().is_empty() {
             feed(&mut state, "crosscode", self.get_crosscode().as_bytes());
         }
-        feed_named(&mut state, self, |_| true);
         state
     }
 
@@ -372,8 +340,8 @@ pub trait Element {
     /// where `other` is another element or where the fold changes nothing.
     ///
     /// Provided: the cross code is taken from `other` where this one states
-    /// none, the identifiers this one lacks are taken from it, the sources
-    /// become a sorted unique union, the cross codes are brought in step, and
+    /// none, the sources become a sorted unique union, the cross codes are
+    /// brought in step, and
     /// the element is finalized where any of that moved. An event delegates to
     /// [`Event::merging`], which folds the rest.
     fn merge_with(mut self, other: &Self) -> Option<Self>
@@ -389,8 +357,8 @@ pub trait Element {
 }
 
 /// The facts an element takes from another statement of itself: the cross
-/// code it left out, the identifiers it lacks, and the sources it did not
-/// name; whether any of them moved.
+/// code it left out and the sources it did not name; whether any of them
+/// moved.
 pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
     let mut changed = false;
     if this.get_crosscode().is_empty() && !other.get_crosscode().is_empty() {
@@ -398,7 +366,6 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
         changed = true;
     }
     changed |= this.sync_cross();
-    changed |= take_identifiers(this, other);
     changed |= union_sources(this, other);
     changed
 }
@@ -406,7 +373,7 @@ pub(super) fn merge_element<E: Element + ?Sized>(this: &mut E, other: &E) -> boo
 /// The element facts of two event statements, with the recording-selected
 /// reference leading conflicts and list order. An unstated fact on the
 /// reference is still filled by the other statement.
-fn merge_event_element<E: Element + ?Sized>(
+pub(super) fn merge_event_element<E: Element + ?Sized>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,
@@ -421,15 +388,6 @@ fn merge_event_element<E: Element + ?Sized>(
         changed = true;
     }
     changed |= this.sync_cross();
-
-    let mut identifiers = this.get_identifiers().clone();
-    for (scheme, identifier) in other.get_identifiers() {
-        identifiers.insert(scheme.clone(), identifier.clone());
-    }
-    if &identifiers != this.get_identifiers() {
-        this.set_identifiers(identifiers);
-        changed = true;
-    }
 
     let sources = union_uuids(other.get_srcuuids(), this.get_srcuuids())
         .unwrap_or_else(|| other.get_srcuuids().to_vec());
@@ -544,28 +502,7 @@ pub(super) fn follow_element<E: Element + ?Sized>(this: &mut E, previous: &E) ->
         changed = true;
     }
     changed |= this.sync_cross();
-    changed |= take_identifiers(this, previous);
     changed
-}
-
-/// The identifiers `other` knows and `this` does not, taken; the ones this
-/// element states are its own word and stay. Whether any was taken.
-fn take_identifiers<E: Element + ?Sized>(this: &mut E, other: &E) -> bool {
-    if other
-        .get_identifiers()
-        .keys()
-        .all(|scheme| this.get_identifiers().contains_key(scheme))
-    {
-        return false;
-    }
-    let mut identifiers = this.get_identifiers().clone();
-    for (scheme, identifier) in other.get_identifiers() {
-        identifiers
-            .entry(scheme.clone())
-            .or_insert_with(|| identifier.clone());
-    }
-    this.set_identifiers(identifiers);
-    true
 }
 
 /// The XXH3-64 digest of one cross code's bytes: the one derivation of a
@@ -586,7 +523,7 @@ pub(crate) fn feed(state: &mut Xxh3, name: &str, bytes: &[u8]) {
 }
 
 /// Records `next` where it differs from `current`, answering whether it did.
-fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
+pub(super) fn moved<T: PartialEq>(current: T, next: T, set: impl FnOnce(T)) -> bool {
     if current == next {
         return false;
     }
@@ -665,7 +602,7 @@ pub(super) fn fill_execution<E: Event + ?Sized>(event: &mut E) -> bool {
 /// earliest execution and recording either statement knows; whether any
 /// moved. An unstamped execution observation first dates itself from its own
 /// event instant. These never fold between successive events in one lifecycle.
-fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
+pub(super) fn fold_event_instants<E: Event + ?Sized>(this: &mut E, other: &E) -> bool {
     let execunix = earliest(execution_unix(this), execution_unix(other));
     let mut changed = moved(this.get_execunix(), execunix, |unix| {
         this.set_execunix(unix)
@@ -691,7 +628,7 @@ fn latest(left: Option<i64>, right: Option<i64>) -> Option<i64> {
 /// lifecycle carried forward. An unstamped execution input dates itself, then
 /// the later of that precise clock and the predecessor's remains the latest
 /// execution the lifecycle has reached; whether any fact moved.
-fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
+pub(super) fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
     let execunix = latest(execution_unix(this), previous.get_execunix());
     let mut changed = moved(this.get_execunix(), execunix, |unix| {
         this.set_execunix(unix)
@@ -725,7 +662,7 @@ fn follow_timed<E: Event>(this: &mut E, previous: &E) -> bool {
 /// instant and code, the further place in the chain, the lifecycle folded,
 /// and the reference's predecessor and snapshot where stated, otherwise the
 /// other statement's; whether any moved.
-fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
+pub(super) fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
     let mut changed = fold_event_instants(this, other);
     if other_is_reference {
         changed |= moved(this.get_currunix(), other.get_currunix(), |unix| {
@@ -765,21 +702,6 @@ fn merge_timed<E: Event>(this: &mut E, other: &E, other_is_reference: bool) -> b
     changed
 }
 
-/// Continues a digest with the names an element goes by, each under its own
-/// scheme: what [`Element::digest`] feeds behind the cross code.
-fn feed_named<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
-where
-    E: Element + ?Sized,
-    F: Fn(&str) -> bool,
-{
-    let mut staged = Staged::new(state);
-    for (scheme, identifier) in this.get_identifiers() {
-        if include_identifier(scheme) {
-            staged.feed(scheme, identifier.as_bytes());
-        }
-    }
-}
-
 /// Facts staged on the stack and written to a digest a chunk at a time.
 ///
 /// A fact is four writes, and an element states dozens - its names, its
@@ -803,7 +725,7 @@ impl<'state> Staged<'state> {
     }
 
     /// [`feed`], staged.
-    fn feed(&mut self, name: &str, bytes: &[u8]) {
+    pub(super) fn feed(&mut self, name: &str, bytes: &[u8]) {
         self.write(name.as_bytes());
         self.write(&[0]);
         self.write(bytes);
@@ -841,12 +763,7 @@ impl Drop for Staged<'_> {
 /// its predecessor's identity. A holder can leave out a name that records
 /// capture provenance rather than event content without duplicating the
 /// framing this digest owns.
-pub(crate) fn feed_event_facts<E, F>(state: &mut Xxh3, this: &E, include_identifier: F)
-where
-    E: Event + ?Sized,
-    F: Fn(&str) -> bool,
-{
-    feed_named(state, this, include_identifier);
+pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
     feed_timed(state, this);
 }
 
@@ -899,8 +816,8 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// for an event, which an implementor's [`Element::with_previous`]
 /// delegates to; [`Self::merging`] is what merging means, which its
 /// [`Element::merge_with`] delegates to. Both fold the lifecycle the same
-/// way: the earliest creation, the latest expiration, the furthest state,
-/// and the identifiers the other knew. Following then keeps a newer explicit
+/// way: the earliest creation, the latest expiration and the furthest state.
+/// Following then keeps a newer explicit
 /// expiration, including one that shortens the lifetime. Recording belongs
 /// to one observation and never follows; execution is the lifecycle's latest
 /// execution clock, so an unstated non-execution carries its predecessor's,
@@ -909,8 +826,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// later is after.
 ///
 /// ```
-/// use std::collections::BTreeMap;
-///
 /// use yggdryl::graph::{Element, Event};
 /// use yggdryl::{State, Uuid};
 ///
@@ -920,7 +835,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     crosscode: String,
 ///     hashcode: u64,
 ///     crosshashcode: u64,
-///     identifiers: BTreeMap<String, String>,
 ///     sources: Vec<Uuid>,
 ///     unix: i64,
 ///     state: State,
@@ -942,7 +856,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///             crosscode: String::new(),
 ///             hashcode: 0,
 ///             crosshashcode: 0,
-///             identifiers: BTreeMap::new(),
 ///             sources: Vec::new(),
 ///             unix,
 ///             state: State::from_spelling("New").expect("a shipped state"),
@@ -988,12 +901,6 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 ///     }
 ///     fn set_crosshashcode(&mut self, crosshashcode: u64) {
 ///         self.crosshashcode = crosshashcode;
-///     }
-///     fn get_identifiers(&self) -> &BTreeMap<String, String> {
-///         &self.identifiers
-///     }
-///     fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-///         self.identifiers = identifiers;
 ///     }
 ///     fn get_srcuuids(&self) -> &[Uuid] {
 ///         &self.sources
@@ -1087,17 +994,15 @@ fn feed_timed<E: Event + ?Sized>(state: &mut Xxh3, this: &E) {
 /// let mut first = Report::at(1, 10_000);
 /// first.set_creaunix(Some(5_000));
 /// first.set_crosscode("O-100".to_owned());
-/// first.set_identifiers(BTreeMap::from([("ClOrdID".to_owned(), "C-1".to_owned())]));
 /// let second = Report::at(2, 20_000);
 /// assert!(second.is_after(&first) && first.is_before(&second));
 /// let second = second.with_previous(&first).expect("the later one follows");
 /// assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
 /// assert_eq!(second.get_prevunix(), Some(10_000));
 /// // Following carries the lifecycle forward: the earliest creation known,
-/// // the names the predecessor went by, the cross code the chain shares -
-/// // its digest and the cross identity in step - and the next place in it.
+/// // the cross code the chain shares - its digest and the cross identity in
+/// // step - and the next place in it.
 /// assert_eq!(second.get_creaunix(), Some(5_000));
-/// assert_eq!(second.get_identifiers()["ClOrdID"], "C-1");
 /// assert_eq!(second.get_crosscode(), "O-100");
 /// assert_ne!(second.get_crosshashcode(), 0);
 /// assert_eq!(second.get_crossuuid(), second.cross_uuid());
@@ -1274,9 +1179,9 @@ pub trait Event: Element {
     /// This event with another statement of itself folded in, by the
     /// timed reading, or nothing where `other` is another event.
     ///
-    /// The element-level merge first - the reference statement's cross code,
-    /// identifiers and list order, with the other statement filling what it
-    /// leaves unstated - and then the timed facts: the instant and code are
+    /// The element-level merge first - the reference statement's cross code
+    /// and list order, with the other statement filling what it leaves
+    /// unstated - and then the timed facts: the instant and code are
     /// the reference's. The reference is the statement with the latest
     /// `recdunix`; a stated clock leads an unstated one, a tie falls back
     /// to the later event instant, and an exact tie keeps this one. The
@@ -1417,1221 +1322,11 @@ pub trait Event: Element {
     }
 }
 
-/// An element that stands in a market: a price, a quantity, and which side
-/// of the market it stood on, with no instant of its own.
-///
-/// Five facts beside what an element already states, each read and
-/// written: `price` is a [`Decimal18`] - exact, as a market's numbers
-/// are - and `currency` the [`Ccy`] it is quoted in; `quantity` is the
-/// quantity, a [`Decimal18`] too, and `unit` the text it is counted in - a
-/// lot, a barrel, a megawatt-hour, whatever the market says; `side` is the
-/// crate's [`Side`] code, FIX's `Side(54)`. Two lanes state the quote the
-/// element makes, each optional and each the same four facts - `bidpx`,
-/// `bidcurrency`, `bidqty`, `bidunit` for what the element would pay, and
-/// the `ask` four for what it would be paid - and [`Self::fill_lanes`] fills
-/// the lane the side implies from the price, the currency, the quantity and
-/// the unit where the lane states nothing. Six more name the instrument and
-/// the market, each optional because a market names an instrument the way
-/// it does: the [`IsinCode`], the [`CusipCode`], the [`SedolCode`], the [`BloombergCode`]
-/// identifier, the [`CfiCode`] classification and the [`MicCode`] of the market it
-/// traded on, the crate's own validated codes.
-///
-/// Two more readings are provided. [`Self::digest_market`] continues
-/// [`Element::digest`] with the market's facts, for an implementor's
-/// [`Element::finalize`]. [`Self::merging_market`] is what merging means
-/// for a market element with no instant to say which statement is later:
-/// the element-level merge, then this element's price, quantity and unit
-/// standing, and each code the better of the two as
-/// [`CodeValue::merge_with`] reads it, this element leading - which an
-/// implementor's [`Element::merge_with`] delegates to. A market element
-/// that also happened at an instant is a [`MarketEvent`], whose readings
-/// let the latest-recorded statement lead, falling back to the later event
-/// instant where recording clocks tie or are absent. What a price of nothing
-/// or a quantity of zero means is the market's to say.
-///
-/// ```
-/// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::{CfiCode, Ccy, CusipCode, Decimal18, IsinCode, Side};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut trade = MarketElementData::default();
-/// trade.set_price("82.5".parse()?);
-/// trade.set_currency(Ccy::new("USD")?);
-/// trade.set_quantity(Decimal18::from_int(1_000));
-/// trade.set_unit("bbl".to_owned());
-/// trade.set_side(Side::read("1")?);
-/// trade.set_isincode(Some(IsinCode::new("US0378331005")?));
-/// assert_eq!(trade.get_price().to_string(), "82.5");
-/// assert_eq!(trade.get_currency().as_str(), "USD");
-/// assert_eq!(trade.get_unit(), "bbl");
-/// // A buy is a bid: the lane the side implies fills from the trade's own
-/// // facts, and the other lane stays empty.
-/// trade.fill_lanes();
-/// assert_eq!(trade.get_bidpx(), Some("82.5".parse()?));
-/// assert_eq!(trade.get_bidcurrency().map(Ccy::as_str), Some("USD"));
-/// assert_eq!((trade.get_bidqty(), trade.get_bidunit()), (Some(Decimal18::from_int(1_000)), Some("bbl")));
-/// assert_eq!(trade.get_askpx(), None);
-/// // A market element is an element: one walk reads both.
-/// let held: &dyn MarketElement = &trade;
-/// assert_eq!(held.get_side().as_str(), "BUY");
-/// assert_eq!(held.get_isincode().map(IsinCode::as_str), Some("US0378331005"));
-/// // A validated US ISIN fills its embedded, checksum-valid CUSIP.
-/// assert_eq!(held.get_cusipcode().map(CusipCode::as_str), Some("037833100"));
-/// // Finalized, its identity is what it states.
-/// trade.finalize();
-/// let mut same = trade.clone();
-/// same.set_curruuid(Default::default());
-/// same.finalize();
-/// assert_eq!(same.get_curruuid(), trade.get_curruuid());
-/// // Another statement of the trade merges in: this one's price stands,
-/// // and the CFI the other states fills what this one left unknown.
-/// let mut other = trade.clone();
-/// other.set_price("83".parse()?);
-/// other.set_cficode(Some(CfiCode::new("ESVUFR")?));
-/// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
-/// let merged = trade.merge_with(&other).expect("the same trade");
-/// assert_eq!(merged.get_price().to_string(), "82.5");
-/// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
-/// # Ok(())
-/// # }
-/// ```
-pub trait MarketElement: Element {
-    /// The stable integer category of the market operation, where stated.
-    fn get_marketoperationid(&self) -> Option<i32>;
-
-    /// Records the stable integer category of the market operation.
-    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>);
-
-    /// The price.
-    fn get_price(&self) -> Decimal18;
-
-    /// Records the price.
-    fn set_price(&mut self, price: Decimal18);
-
-    /// The currency the price is quoted in.
-    fn get_currency(&self) -> &Ccy;
-
-    /// Records the currency the price is quoted in.
-    fn set_currency(&mut self, currency: Ccy);
-
-    /// The quantity.
-    fn get_quantity(&self) -> Decimal18;
-
-    /// Records the quantity.
-    fn set_quantity(&mut self, quantity: Decimal18);
-
-    /// The unit the quantity is counted in; empty where the market says none.
-    fn get_unit(&self) -> &str;
-
-    /// Records the unit the quantity is counted in.
-    fn set_unit(&mut self, unit: String);
-
-    /// Which side of the market the element stood on.
-    fn get_side(&self) -> &Side;
-
-    /// Records which side of the market the element stood on.
-    fn set_side(&mut self, side: Side);
-
-    /// The instrument's ISIN, where the market named it by one.
-    fn get_isincode(&self) -> Option<&IsinCode>;
-
-    /// Records the instrument's ISIN; `None` states the market named none.
-    fn set_isincode(&mut self, isincode: Option<IsinCode>);
-
-    /// The instrument's CUSIP, where the market named it by one.
-    fn get_cusipcode(&self) -> Option<&CusipCode>;
-
-    /// Records the instrument's CUSIP; `None` states the market named none.
-    fn set_cusipcode(&mut self, cusipcode: Option<CusipCode>);
-
-    /// The instrument's SEDOL, where the market named it by one.
-    fn get_sedolcode(&self) -> Option<&SedolCode>;
-
-    /// Records the instrument's SEDOL; `None` states the market named none.
-    fn set_sedolcode(&mut self, sedolcode: Option<SedolCode>);
-
-    /// The instrument's BloombergCode identifier, where the market named it by
-    /// one.
-    fn get_bloombergcode(&self) -> Option<&BloombergCode>;
-
-    /// Records the instrument's BloombergCode identifier; `None` states the
-    /// market named none.
-    fn set_bloombergcode(&mut self, bloombergcode: Option<BloombergCode>);
-
-    /// The instrument's FIGI, where the market named it by one.
-    fn get_figicode(&self) -> Option<&FIGICode>;
-
-    /// Records the instrument's FIGI; `None` states the market named none.
-    fn set_figicode(&mut self, figicode: Option<FIGICode>);
-
-    /// The instrument's CFI classification, where the market stated it.
-    fn get_cficode(&self) -> Option<&CfiCode>;
-
-    /// Records the instrument's CFI classification; `None` states the
-    /// market stated none.
-    fn set_cficode(&mut self, cficode: Option<CfiCode>);
-
-    /// The market the element traded on, as its ISO 10383 MIC, where the
-    /// element names it.
-    fn get_miccode(&self) -> Option<&MicCode>;
-
-    /// Records the market the element traded on; `None` states it names
-    /// none.
-    fn set_miccode(&mut self, miccode: Option<MicCode>);
-
-    /// The price the element last traded at, where it states one.
-    ///
-    /// What [`Self::get_price`] settles on is the price the element is *about*:
-    /// what it orders, else what it last traded, else what it averaged. This
-    /// is the last trade alone, so a fill and the order it fills are told
-    /// apart without reading which field each settled from.
-    fn get_lastpx(&self) -> Option<Decimal18>;
-
-    /// Records the price the element last traded at; `None` states none.
-    fn set_lastpx(&mut self, px: Option<Decimal18>);
-
-    /// The quantity the element last traded, where it states one.
-    fn get_lastqty(&self) -> Option<Decimal18>;
-
-    /// Records the quantity the element last traded; `None` states none.
-    fn set_lastqty(&mut self, qty: Option<Decimal18>);
-
-    /// How long the element stands, where it says: FIX's `TimeInForce`, as
-    /// the element states it. A market fact rather than a protocol one - it
-    /// is what a resting order and a fill-or-kill differ by - and free text
-    /// here, because what the code `1` names is the dictionary's to say and
-    /// not this trait's: a caller that wants `GoodTillCancel` reads the
-    /// code set the registry holds for the tag.
-    fn get_tif(&self) -> Option<&str>;
-
-    /// Records how long the element stands; `None` states nothing.
-    fn set_tif(&mut self, tif: Option<String>);
-
-    /// Whether the element can be traded right now, where the market says.
-    ///
-    /// A fact about the instrument and its session rather than about the
-    /// element: a halt, a closed session, a delisting. `None` states the
-    /// market said nothing either way, which is not the same as a `false`
-    /// - a status a venue spells `Unknown or Invalid` closes nothing.
-    fn get_tradable(&self) -> Option<bool>;
-
-    /// Records whether the element can be traded right now; `None` states
-    /// the market said nothing either way.
-    fn set_tradable(&mut self, tradable: Option<bool>);
-
-    /// The ticker the element's instrument is known by, where it is known
-    /// by one: the human-readable name a screen shows it under, free text
-    /// rather than a code, because a venue's ticker answers to no standard
-    /// the way an ISIN or a MIC does.
-    ///
-    /// Beside the instrument codes rather than among them: the codes name
-    /// the instrument to a system, and this names it to a person.
-    fn get_symbolticker(&self) -> Option<&str>;
-
-    /// Records the ticker the element's instrument is known by; `None`
-    /// states it is known by none.
-    fn set_symbolticker(&mut self, ticker: Option<String>);
-
-    /// The volume-weighted price the element averaged, where it states one.
-    fn get_avgpx(&self) -> Option<Decimal18>;
-
-    /// Records the price the element averaged; `None` states none.
-    fn set_avgpx(&mut self, px: Option<Decimal18>);
-
-    /// How much of the element's quantity is done, where it states it.
-    fn get_cumqty(&self) -> Option<Decimal18>;
-
-    /// Records how much of it is done; `None` states none.
-    fn set_cumqty(&mut self, qty: Option<Decimal18>);
-
-    /// How much of it is still open, where it states it.
-    fn get_leavesqty(&self) -> Option<Decimal18>;
-
-    /// Records how much of it is still open; `None` states none.
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>);
-
-    /// The price stated before this element, where one was.
-    ///
-    /// What the element itself says about the price before its own - a
-    /// closing price it carries - else what the statement before it in its
-    /// chain stated, which a walk fills as it fills the instants. It is what
-    /// a move is measured against: a price beside the price it moved from.
-    fn get_prevpx(&self) -> Option<Decimal18>;
-
-    /// Records the price stated before this element; `None` states none.
-    fn set_prevpx(&mut self, px: Option<Decimal18>);
-
-    /// The quantity stated before this element, where one was.
-    fn get_prevqty(&self) -> Option<Decimal18>;
-
-    /// Records the quantity stated before this element; `None` states none.
-    fn set_prevqty(&mut self, qty: Option<Decimal18>);
-
-    /// The bid lane's price, where the element states one.
-    fn get_bidpx(&self) -> Option<Decimal18>;
-
-    /// Records the bid lane's price; `None` states the lane has none.
-    fn set_bidpx(&mut self, px: Option<Decimal18>);
-
-    /// The currency the bid lane is quoted in, where the element states one.
-    fn get_bidcurrency(&self) -> Option<&Ccy>;
-
-    /// Records the currency the bid lane is quoted in.
-    fn set_bidcurrency(&mut self, currency: Option<Ccy>);
-
-    /// The bid lane's quantity, where the element states one.
-    fn get_bidqty(&self) -> Option<Decimal18>;
-
-    /// Records the bid lane's quantity.
-    fn set_bidqty(&mut self, qty: Option<Decimal18>);
-
-    /// The unit the bid lane's quantity is counted in, where stated.
-    fn get_bidunit(&self) -> Option<&str>;
-
-    /// Records the unit the bid lane's quantity is counted in.
-    fn set_bidunit(&mut self, unit: Option<String>);
-
-    /// The ask lane's price, where the element states one.
-    fn get_askpx(&self) -> Option<Decimal18>;
-
-    /// Records the ask lane's price; `None` states the lane has none.
-    fn set_askpx(&mut self, px: Option<Decimal18>);
-
-    /// The currency the ask lane is quoted in, where the element states one.
-    fn get_askcurrency(&self) -> Option<&Ccy>;
-
-    /// Records the currency the ask lane is quoted in.
-    fn set_askcurrency(&mut self, currency: Option<Ccy>);
-
-    /// The ask lane's quantity, where the element states one.
-    fn get_askqty(&self) -> Option<Decimal18>;
-
-    /// Records the ask lane's quantity.
-    fn set_askqty(&mut self, qty: Option<Decimal18>);
-
-    /// The unit the ask lane's quantity is counted in, where stated.
-    fn get_askunit(&self) -> Option<&str>;
-
-    /// Records the unit the ask lane's quantity is counted in.
-    fn set_askunit(&mut self, unit: Option<String>);
-
-    /// Fills the lane the side implies from the element's own facts, where
-    /// the lane states nothing of its own.
-    ///
-    /// A side that takes the bid lane - [`Side::is_bid`] - is a party
-    /// willing to pay the price for the quantity, so the bid price, currency,
-    /// quantity and unit each take the element's where the lane left them
-    /// out; a side that takes the ask lane fills the ask the same way; a
-    /// side that takes neither - a cross, `OPPOSITE`, one stated as none -
-    /// fills nothing. What a lane already states stands: a quote carrying
-    /// its own lanes is never overwritten.
-    ///
-    /// Provided, and what a reader that lifts a quote out of an order calls.
-    /// Fills every market fact this element implies from the ones it
-    /// states, and stops where it would be inventing.
-    ///
-    /// What a market element says comes in three shapes that repeat one
-    /// another: the price and quantity it is *about*, the last trade it
-    /// reports, and the two lanes a quote is made of. A message states some
-    /// of them and leaves the rest to be read off what it stated, so this
-    /// reads them, in one order, each rule filling only what is still
-    /// unstated:
-    ///
-    /// 0. A quote stating one lane and no side is that lane's side: a bid
-    ///    alone - any of `bidpx`, `bidcurrency`, `bidqty` or `bidunit` - is
-    ///    a party willing to pay, so the element is a buy, and an ask alone
-    ///    one willing to be paid, a sell. A quote is an element the lane is
-    ///    the only price of: one stating a price, a last trade or an average
-    ///    of its own is about that, and a lane beside it is context. A side
-    ///    the element states, a cross or `OPPOSITE` included, is its own and
-    ///    stands, and a quote stating both lanes or neither names no side.
-    /// 1. The price is what the element is about, else what it last traded,
-    ///    else what it averaged, else what its own side's lane quotes - a
-    ///    report stating only `LastPx` is about that price, and a quote
-    ///    stating only its bid is about that bid. The quantity reads the
-    ///    same way: what it orders, else what it last traded, else the
-    ///    lane's size. How much is done and how much is left are not on
-    ///    that ladder, because together they *are* the quantity ordered and
-    ///    the dictionary already says so - one rule, in one place.
-    /// 2. The currency and the unit are the element's own, else the ones the
-    ///    side's lane states: a lane priced in a currency prices the element
-    ///    in it.
-    /// 3. The side's lane is then filled from all of that, by
-    ///    [`Self::fill_lanes`]: a buy at a price is a party willing to pay
-    ///    it, and a sell at one is a party willing to be paid it.
-    ///
-    /// Nothing is invented: a price of nothing, a quantity of nothing, no
-    /// currency and no unit fill nothing, an element that states no side
-    /// and quotes no single lane fills no lane, and a fact the element
-    /// stated is never overwritten.
-    /// Running it twice changes nothing the first run did not.
-    ///
-    /// Provided, and what an implementor's [`Element::finalize`] runs before
-    /// it digests, so the code an element answers to covers what it implies
-    /// as well as what it wrote.
-    fn fill_market(&mut self)
-    where
-        Self: Sized,
-    {
-        if self.get_cusipcode().is_none() {
-            if let Some(cusip) = self.get_isincode().and_then(|isin| {
-                crate::securityid::embedded(isin)
-                    .find(|id| id.sectype().as_str() == "CUSIP")
-                    .and_then(|id| CusipCode::new(id.code()).ok())
-            }) {
-                self.set_cusipcode(Some(cusip));
-            }
-        }
-        // Only a quote: an element pricing itself - an order at its price, a
-        // trade at its last - is about that, and a lane beside it is context.
-        if self.get_side() == &Side::Unknown
-            && self.get_price() == Decimal18::ZERO
-            && self.get_lastpx().is_none()
-            && self.get_avgpx().is_none()
-        {
-            let named = match lanes_stated(self) {
-                (true, false) => Some("Buy"),
-                (false, true) => Some("Sell"),
-                _ => None,
-            };
-            if let Some(spelling) = named {
-                self.set_side(Side::read(spelling).expect("a shipped side"));
-            }
-        }
-        let side = self.get_side();
-        let (bid, ask) = (side.is_bid(), side.is_ask());
-        // The lane the element's own side quotes, which is the only lane its
-        // own facts can be read off: a buy is about the bid it is willing to
-        // pay, and the other lane is the other party's.
-        let lane_px = if bid {
-            self.get_bidpx()
-        } else if ask {
-            self.get_askpx()
-        } else {
-            None
-        };
-        let lane_qty = if bid {
-            self.get_bidqty()
-        } else if ask {
-            self.get_askqty()
-        } else {
-            None
-        };
-        let lane_currency = if bid {
-            self.get_bidcurrency().cloned()
-        } else if ask {
-            self.get_askcurrency().cloned()
-        } else {
-            None
-        };
-        let lane_unit = if bid {
-            self.get_bidunit().map(str::to_owned)
-        } else if ask {
-            self.get_askunit().map(str::to_owned)
-        } else {
-            None
-        };
-        if self.get_price() == Decimal18::ZERO {
-            if let Some(px) = self.get_lastpx().or_else(|| self.get_avgpx()).or(lane_px) {
-                self.set_price(px);
-            }
-        }
-        if self.get_quantity() == Decimal18::ZERO {
-            if let Some(qty) = self.get_lastqty().or(lane_qty) {
-                self.set_quantity(qty);
-            }
-        }
-        if self.get_currency() == &Ccy::none() {
-            if let Some(currency) = lane_currency {
-                self.set_currency(currency);
-            }
-        }
-        if self.get_unit().is_empty() {
-            if let Some(unit) = lane_unit {
-                self.set_unit(unit);
-            }
-        }
-        self.fill_lanes();
-    }
-
-    fn fill_lanes(&mut self)
-    where
-        Self: Sized,
-    {
-        let side = self.get_side();
-        let (bid, ask) = (side.is_bid(), side.is_ask());
-        if !bid && !ask {
-            return;
-        }
-        // Only a stated fact fills a lane: a price or a quantity of nothing,
-        // no currency, no unit, is nothing to state on the lane either.
-        let px = Some(self.get_price()).filter(|px| *px != Decimal18::ZERO);
-        let qty = Some(self.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
-        let currency = Some(self.get_currency().clone()).filter(|held| *held != Ccy::none());
-        let unit = Some(self.get_unit().to_owned()).filter(|unit| !unit.is_empty());
-        if bid {
-            if self.get_bidpx().is_none() {
-                self.set_bidpx(px);
-            }
-            if self.get_bidcurrency().is_none() {
-                self.set_bidcurrency(currency);
-            }
-            if self.get_bidqty().is_none() {
-                self.set_bidqty(qty);
-            }
-            if self.get_bidunit().is_none() {
-                self.set_bidunit(unit);
-            }
-        } else {
-            if self.get_askpx().is_none() {
-                self.set_askpx(px);
-            }
-            if self.get_askcurrency().is_none() {
-                self.set_askcurrency(currency);
-            }
-            if self.get_askqty().is_none() {
-                self.set_askqty(qty);
-            }
-            if self.get_askunit().is_none() {
-                self.set_askunit(unit);
-            }
-        }
-    }
-
-    /// Continues [`Element::digest`] with the market's facts: the price,
-    /// the currency, the quantity, the unit, the side, each instrument code
-    /// the market names, the market itself, and each lane fact stated.
-    ///
-    /// Provided, for an implementor's [`Element::finalize`] to feed its own
-    /// content behind.
-    fn digest_market(&self) -> Xxh3 {
-        let mut state = self.digest();
-        feed_market(&mut state, self);
-        state
-    }
-
-    /// This element with another statement of itself folded in, by the
-    /// market reading with no instant to say which is later, or nothing
-    /// where `other` is another element or where the fold changes nothing.
-    ///
-    /// The element-level merge first - the cross code, the identifiers, the
-    /// sources' union - and then the market's facts
-    /// with this element leading: its price, quantity, unit and lane facts
-    /// stand where it states them, and the currency, the side and each
-    /// instrument code are the better of the two statements as
-    /// [`CodeValue::merge_with`] reads them, the other filling what this
-    /// one leaves unknown - a `XXX` currency, an `UNKNOWN` side, an `X` in
-    /// a CFI. An element that moved is finalized.
-    ///
-    /// Provided, so an implementor's [`Element::merge_with`] has a default
-    /// to delegate to.
-    fn merging_market(mut self, other: &Self) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if other.get_curruuid() != self.get_curruuid() {
-            return None;
-        }
-        let changed = merge_element(&mut self, other);
-        if !(merge_market(&mut self, other, false) || changed) {
-            return None;
-        }
-        self.finalize();
-        Some(self)
-    }
-}
-
-/// An element that happened in a market at one instant: an [`Event`] that
-/// is a [`MarketElement`], which every type implementing both is.
-///
-/// Nothing to implement: the two supertraits state the facts, and this
-/// trait provides the readings that need both. [`Self::digest_market_event`]
-/// continues [`Event::digest_event`] with the market's facts, for an
-/// implementor's [`Element::finalize`]; [`Self::merging_market_event`] is
-/// what merging means for a market event - the timed merge, then the
-/// reference statement's price, quantity and unit, and each code the better
-/// of the two as [`CodeValue::merge_with`] reads it, the reference leading -
-/// which an implementor's [`Element::merge_with`] delegates to. Following
-/// adds the market's chain facts to the timed reading, [`Event::following`].
-///
-/// ```
-/// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-/// use yggdryl::{CfiCode, Ccy, Decimal18, Side};
-///
-/// # fn main() -> yggdryl::Result<()> {
-/// let mut trade = MarketEventData::at(10);
-/// trade.set_price("82.5".parse()?);
-/// trade.set_currency(Ccy::new("USD")?);
-/// trade.set_quantity(Decimal18::from_int(1_000));
-/// trade.set_side(Side::read("1")?);
-/// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
-/// trade.finalize();
-/// // A market event is an event is a market element is an element: one
-/// // walk reads all.
-/// let held: &dyn MarketEvent = &trade;
-/// assert_eq!(held.get_currunix(), 10);
-/// assert_eq!(held.get_side().as_str(), "BUY");
-/// assert_eq!(held.get_curruuid(), trade.time_uuid()?);
-/// // A later statement of the trade merges in: its price has the last
-/// // word, and the CFI it states fills what this one left unknown.
-/// let mut later = trade.clone();
-/// later.set_currunix(20);
-/// later.set_price("83".parse()?);
-/// later.set_cficode(Some(CfiCode::new("ESVUFR")?));
-/// // An outside capture key established that this restatement is the same
-/// // event; changing identity inputs otherwise derives a new UUID eagerly.
-/// later.set_curruuid(trade.get_curruuid());
-/// let merged = trade.merge_with(&later).expect("the same trade");
-/// assert_eq!(merged.get_price(), Decimal18::from_int(83));
-/// assert_eq!(merged.get_currunix(), 20);
-/// assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
-/// # Ok(())
-/// # }
-/// ```
-pub trait MarketEvent: Event + MarketElement {
-    /// Continues [`Event::digest_event`] with the market's facts, exactly
-    /// as [`MarketElement::digest_market`] continues [`Element::digest`].
-    ///
-    /// Provided, for an implementor's [`Element::finalize`] to feed its own
-    /// content behind.
-    fn digest_market_event(&self) -> Xxh3 {
-        let mut state = self.digest_event();
-        feed_market(&mut state, self);
-        state
-    }
-
-    /// This market event stated as the one after `previous`: the timed
-    /// reading, then the price and the quantity that statement settled on
-    /// as the step before this one, and what the chain is about - the
-    /// instrument's names and symbol ticker, its market, the currency, the unit, the side,
-    /// the time in force and whether it can trade - where this event
-    /// states none of it.
-    ///
-    /// Provided, and what an implementor's [`Element::with_previous`]
-    /// delegates to where following means carrying the step before along.
-    /// Missing market facts also propagate when the timed link is unchanged.
-    /// An event that moved is finalized once after both readings settle.
-    fn following_market(mut self, previous: &Self) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_currunix() > self.get_currunix()
-        {
-            return None;
-        }
-        let changed = follow_timed(&mut self, previous);
-        if !(follow_market(&mut self, previous) || changed) {
-            return None;
-        }
-        self.finalize();
-        Some(self)
-    }
-
-    /// This event with another statement of itself folded in, by the
-    /// market reading, or nothing where `other` is another event.
-    ///
-    /// The timed merge first - [`Event::merging`] - and then the market's
-    /// facts: the reference statement's price, quantity and unit have the
-    /// last word, as its instant and code do; the currency, the side and each
-    /// instrument code are the better of the two statements as
-    /// [`CodeValue::merge_with`] reads them, the reference leading and the
-    /// other filling what it leaves unknown - a `XXX` currency, an `UNKNOWN`
-    /// side, an `X` in a CFI - and a code only one statement names is that
-    /// one's; each lane fact is the reference statement's where it states
-    /// one, else the other statement's. Equal recording and event instants
-    /// keep this event leading. Nothing where the fold changes nothing; an
-    /// event that moved is finalized.
-    ///
-    /// Provided, so an implementor's [`Element::merge_with`] has a default
-    /// to delegate to.
-    fn merging_market_event(mut self, other: &Self) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if other.get_curruuid() != self.get_curruuid() {
-            return None;
-        }
-        let other_is_reference = right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
-        );
-        if !merge_market_event(&mut self, other, other_is_reference) {
-            return None;
-        }
-        self.finalize();
-        Some(self)
-    }
-}
-
-impl<E: Event + MarketElement + ?Sized> MarketEvent for E {}
-
-/// A concrete market element that can move through the graph's canonical
-/// [`MarketElementData`] holder.
-///
-/// The holder is the one interchange representation. Implementors convert
-/// into it by value and rebuild from it by value, so changing one market
-/// entry wrapper into another moves owned strings, maps, and sources rather
-/// than cloning them.
-pub trait MarketEntryValue:
-    MarketElement + From<MarketElementData> + Into<MarketElementData> + Sized
-{
-    /// Converts this entry into any other concrete market-entry value through
-    /// the canonical holder, moving every shared fact.
-    fn into_entry<T: MarketEntryValue>(self) -> T {
-        T::from(self.into())
-    }
-}
-
-impl<T> MarketEntryValue for T where
-    T: MarketElement + From<MarketElementData> + Into<MarketElementData> + Sized
-{
-}
-
-/// A concrete market event that can move through the graph's canonical
-/// [`MarketEventData`] holder.
-///
-/// The holder is the one interchange representation. Implementors convert
-/// into it by value and rebuild from it by value, so changing one operation
-/// wrapper into another moves owned strings, maps, and sources rather than
-/// cloning them.
-pub trait MarketOperationValue:
-    MarketEvent + From<MarketEventData> + Into<MarketEventData> + Sized
-{
-    /// Converts this operation into any other concrete market-operation value
-    /// through the canonical holder, moving every shared fact.
-    fn into_operation<T: MarketOperationValue>(self) -> T {
-        T::from(self.into())
-    }
-}
-
-impl<T> MarketOperationValue for T where
-    T: MarketEvent + From<MarketEventData> + Into<MarketEventData> + Sized
-{
-}
-
-/// Folds `other` into a market event whose identity as the same event has
-/// already been established. `other_is_reference` selects which statement
-/// leads conflicts; execution and recording clocks still fold to their
-/// earliest values independently of that selection.
-fn merge_market_event<E: MarketEvent>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
-    let changed = merge_event_element(this, other, other_is_reference);
-    let changed = merge_timed(this, other, other_is_reference) || changed;
-    merge_market(this, other, other_is_reference) || changed
-}
-
-/// Fully folds another statement of an event into a reference selected by a
-/// caller that already proved their equivalence. Unlike
-/// [`Element::merge_with`], this does not compare the content-derived event
-/// identities: capture protocols can establish one delivery across two
-/// differently timestamped or restated messages. The held value is always
-/// the reference and is finalized where the fold moved it.
-pub(crate) fn merge_market_event_into_reference<E: MarketEvent>(
-    reference: &mut E,
-    other: &E,
-) -> bool {
-    let changed = merge_market_event(reference, other, false);
-    if changed {
-        reference.finalize();
-    }
-    changed
-}
-
-/// Continues a digest with the market's facts: the price, the currency,
-/// the quantity, the unit, the side, each instrument code the market
-/// names, the market itself, and each lane fact stated.
-fn feed_market<E: MarketElement + ?Sized>(state: &mut Xxh3, this: &E) {
-    let mut staged = Staged::new(state);
-    if let Some(marketoperationid) = this.get_marketoperationid() {
-        staged.feed("marketoperationid", &marketoperationid.to_le_bytes());
-    }
-    staged.feed("price", &this.get_price().units().to_le_bytes());
-    staged.feed("currency", this.get_currency().as_str().as_bytes());
-    staged.feed("quantity", &this.get_quantity().units().to_le_bytes());
-    // What the element traded and how far it has got are its own statements
-    // and part of what it says; what came before it is not, so the previous
-    // price and quantity are left out exactly as the predecessor's instant
-    // and identity are.
-    if let Some(tif) = this.get_tif() {
-        staged.feed("tif", tif.as_bytes());
-    }
-    if let Some(tradable) = this.get_tradable() {
-        staged.feed("tradable", &[u8::from(tradable)]);
-    }
-    if let Some(ticker) = this.get_symbolticker() {
-        staged.feed("symbolticker", ticker.as_bytes());
-    }
-    for (name, held) in [
-        ("lastpx", this.get_lastpx()),
-        ("lastqty", this.get_lastqty()),
-        ("avgpx", this.get_avgpx()),
-        ("cumqty", this.get_cumqty()),
-        ("leavesqty", this.get_leavesqty()),
-    ] {
-        if let Some(held) = held {
-            staged.feed(name, &held.units().to_le_bytes());
-        }
-    }
-    staged.feed("unit", this.get_unit().as_bytes());
-    staged.feed("side", this.get_side().as_str().as_bytes());
-    let codes: [(&str, Option<&str>); 7] = [
-        ("isincode", this.get_isincode().map(IsinCode::as_str)),
-        ("cusipcode", this.get_cusipcode().map(CusipCode::as_str)),
-        ("sedolcode", this.get_sedolcode().map(SedolCode::as_str)),
-        (
-            "bloombergcode",
-            this.get_bloombergcode().map(BloombergCode::as_str),
-        ),
-        ("figicode", this.get_figicode().map(FIGICode::as_str)),
-        ("cficode", this.get_cficode().map(CfiCode::as_str)),
-        ("miccode", this.get_miccode().map(MicCode::as_str)),
-    ];
-    for (name, code) in codes {
-        if let Some(code) = code {
-            staged.feed(name, code.as_bytes());
-        }
-    }
-    feed_lane(
-        &mut staged,
-        "bid",
-        this.get_bidpx(),
-        this.get_bidcurrency(),
-        this.get_bidqty(),
-        this.get_bidunit(),
-    );
-    feed_lane(
-        &mut staged,
-        "ask",
-        this.get_askpx(),
-        this.get_askcurrency(),
-        this.get_askqty(),
-        this.get_askunit(),
-    );
-}
-
-/// The market's facts an element takes from another statement of itself:
-/// the leading statement's price, quantity, unit and lane facts, and each
-/// code the better of the two; whether any moved. `later` says whether
-/// `other` is the leading statement.
-/// The market facts an event takes from the statement it follows: the price
-/// and the quantity that statement settled on as the step before this one,
-/// and what the chain itself is about where this statement says nothing of
-/// it.
-///
-/// A chain is what a price moved along, and a message states where it is
-/// rather than where it was, so the move is only readable with the step
-/// before it beside it. What the event states stays: a message carrying its
-/// own closing price has already said what it means by the price before.
-pub(super) fn follow_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
-    let mut changed = false;
-    if this.get_prevpx().is_none() {
-        let px = Some(previous.get_price()).filter(|px| *px != Decimal18::ZERO);
-        changed |= moved(this.get_prevpx(), px, |px| this.set_prevpx(px));
-    }
-    if this.get_prevqty().is_none() {
-        let qty = Some(previous.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
-        changed |= moved(this.get_prevqty(), qty, |qty| this.set_prevqty(qty));
-    }
-    changed | chain_market(this, previous)
-}
-
-/// What restating means for a market event: the timed restatement, including
-/// the earliest per-event execution and recording clocks, then the market's.
-///
-/// Free rather than provided, because it *is* what [`Event::restating`]
-/// means for a market event, and an implementor's override of that method is
-/// how the reading reaches a walk. Every implementor that is also a
-/// [`MarketElement`] delegates here rather than restating the body.
-pub(crate) fn restating_market<E: MarketEvent>(mut this: E, live: &E) -> E {
-    restate_event(&mut this, live);
-    fold_event_instants(&mut this, live);
-    this.fold_lifecycle(live);
-    restate_market(&mut this, live);
-    this.finalize();
-    this
-}
-
-/// The market facts a restatement takes from the live element it is another
-/// reading of: the step before it, which is the place in the chain and not
-/// something a second reading of one message sees for itself, and what the
-/// chain is about. A twin that says nothing of either is about what the
-/// live statement was about.
-fn restate_market<E: MarketElement + ?Sized>(this: &mut E, live: &E) -> bool {
-    let mut changed = moved(
-        this.get_prevpx(),
-        stated(this.get_prevpx(), live.get_prevpx(), false),
-        |px| this.set_prevpx(px),
-    );
-    changed |= moved(
-        this.get_prevqty(),
-        stated(this.get_prevqty(), live.get_prevqty(), false),
-        |qty| this.set_prevqty(qty),
-    );
-    changed | chain_market(this, live)
-}
-
-/// What the chain an element stands in is about, taken from another
-/// statement of that chain where this one says nothing of it; whether any
-/// moved.
-///
-/// A chain follows one instrument in one session: the names it goes by, the
-/// market it trades on, what it is quoted in and counted in, the side it
-/// takes, how long it stands and whether it can trade at all are the
-/// chain's, so a report that names none of them is about the ones the
-/// statement beside it named. This statement always leads - a code it
-/// spells better is never replaced by a weaker one - and nothing here is
-/// about a step: the price and the quantity a predecessor settled on reach
-/// an element as `prevpx` and `prevqty`, never as its own. The side is the
-/// chain's only for an element quoting no lane: one quoting a lane says its
-/// side itself, one lane naming it and two naming none.
-fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
-    let mut changed = moved(
-        this.get_currency().clone(),
-        better(this.get_currency().clone(), previous.get_currency(), false),
-        |currency| this.set_currency(currency),
-    );
-    // An element quoting a lane of its own says its side itself - one lane
-    // names it and two name none - so the chain's is not its to take.
-    if lanes_stated(this) == (false, false) {
-        changed |= moved(
-            *this.get_side(),
-            better(*this.get_side(), previous.get_side(), false),
-            |side| this.set_side(side),
-        );
-    }
-    if this.get_unit().is_empty() {
-        changed |= moved(
-            this.get_unit().to_owned(),
-            previous.get_unit().to_owned(),
-            |unit| this.set_unit(unit),
-        );
-    }
-    changed |= moved(
-        this.get_tif().map(str::to_owned),
-        stated(
-            this.get_tif().map(str::to_owned),
-            previous.get_tif().map(str::to_owned),
-            false,
-        ),
-        |tif| this.set_tif(tif),
-    );
-    changed |= moved(
-        this.get_tradable(),
-        stated(this.get_tradable(), previous.get_tradable(), false),
-        |tradable| this.set_tradable(tradable),
-    );
-    if this.get_symbolticker().is_none() {
-        if let Some(ticker) = previous.get_symbolticker() {
-            this.set_symbolticker(Some(ticker.to_owned()));
-            changed = true;
-        }
-    }
-    changed |= moved(
-        this.get_isincode().cloned(),
-        better_stated(this.get_isincode().cloned(), previous.get_isincode(), false),
-        |code| this.set_isincode(code),
-    );
-    changed |= moved(
-        this.get_cusipcode().cloned(),
-        better_stated(
-            this.get_cusipcode().cloned(),
-            previous.get_cusipcode(),
-            false,
-        ),
-        |code| this.set_cusipcode(code),
-    );
-    changed |= moved(
-        this.get_sedolcode().cloned(),
-        better_stated(
-            this.get_sedolcode().cloned(),
-            previous.get_sedolcode(),
-            false,
-        ),
-        |code| this.set_sedolcode(code),
-    );
-    changed |= moved(
-        this.get_bloombergcode().cloned(),
-        better_stated(
-            this.get_bloombergcode().cloned(),
-            previous.get_bloombergcode(),
-            false,
-        ),
-        |code| this.set_bloombergcode(code),
-    );
-    changed |= moved(
-        this.get_figicode().cloned(),
-        better_stated(this.get_figicode().cloned(), previous.get_figicode(), false),
-        |code| this.set_figicode(code),
-    );
-    changed |= moved(
-        this.get_cficode().cloned(),
-        better_stated(this.get_cficode().cloned(), previous.get_cficode(), false),
-        |code| this.set_cficode(code),
-    );
-    changed |= moved(
-        this.get_miccode().cloned(),
-        better_stated(this.get_miccode().cloned(), previous.get_miccode(), false),
-        |code| this.set_miccode(code),
-    );
-    changed
-}
-
-fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool) -> bool {
-    let mut changed = moved(
-        this.get_marketoperationid(),
-        stated(
-            this.get_marketoperationid(),
-            other.get_marketoperationid(),
-            later,
-        ),
-        |marketoperationid| this.set_marketoperationid(marketoperationid),
-    );
-    if later {
-        changed |= moved(this.get_price(), other.get_price(), |px| this.set_price(px));
-        changed |= moved(this.get_quantity(), other.get_quantity(), |qty| {
-            this.set_quantity(qty)
-        });
-        changed |= moved(
-            this.get_unit().to_owned(),
-            other.get_unit().to_owned(),
-            |unit| this.set_unit(unit),
-        );
-    }
-    // What the element traded, how far it has got, how long it stands,
-    // whether it can trade at all, and the step before it all fold as a
-    // lane folds: the statement that has one keeps it, and the selected one
-    // leads where both do.
-    changed |= moved(
-        this.get_lastpx(),
-        stated(this.get_lastpx(), other.get_lastpx(), later),
-        |px| this.set_lastpx(px),
-    );
-    changed |= moved(
-        this.get_lastqty(),
-        stated(this.get_lastqty(), other.get_lastqty(), later),
-        |qty| this.set_lastqty(qty),
-    );
-    changed |= moved(
-        this.get_avgpx(),
-        stated(this.get_avgpx(), other.get_avgpx(), later),
-        |px| this.set_avgpx(px),
-    );
-    changed |= moved(
-        this.get_cumqty(),
-        stated(this.get_cumqty(), other.get_cumqty(), later),
-        |qty| this.set_cumqty(qty),
-    );
-    changed |= moved(
-        this.get_leavesqty(),
-        stated(this.get_leavesqty(), other.get_leavesqty(), later),
-        |qty| this.set_leavesqty(qty),
-    );
-    changed |= moved(
-        this.get_tif().map(str::to_owned),
-        stated(
-            this.get_tif().map(str::to_owned),
-            other.get_tif().map(str::to_owned),
-            later,
-        ),
-        |tif| this.set_tif(tif),
-    );
-    changed |= moved(
-        this.get_tradable(),
-        stated(this.get_tradable(), other.get_tradable(), later),
-        |tradable| this.set_tradable(tradable),
-    );
-    changed |= moved(
-        this.get_symbolticker().map(str::to_owned),
-        stated(
-            this.get_symbolticker().map(str::to_owned),
-            other.get_symbolticker().map(str::to_owned),
-            later,
-        ),
-        |ticker| this.set_symbolticker(ticker),
-    );
-    changed |= moved(
-        this.get_prevpx(),
-        stated(this.get_prevpx(), other.get_prevpx(), later),
-        |px| this.set_prevpx(px),
-    );
-    changed |= moved(
-        this.get_prevqty(),
-        stated(this.get_prevqty(), other.get_prevqty(), later),
-        |qty| this.set_prevqty(qty),
-    );
-    changed |= moved(
-        this.get_bidpx(),
-        stated(this.get_bidpx(), other.get_bidpx(), later),
-        |px| this.set_bidpx(px),
-    );
-    changed |= moved(
-        this.get_bidcurrency().cloned(),
-        better_stated(
-            this.get_bidcurrency().cloned(),
-            other.get_bidcurrency(),
-            later,
-        ),
-        |currency| this.set_bidcurrency(currency),
-    );
-    changed |= moved(
-        this.get_bidqty(),
-        stated(this.get_bidqty(), other.get_bidqty(), later),
-        |qty| this.set_bidqty(qty),
-    );
-    changed |= moved(
-        this.get_bidunit().map(str::to_owned),
-        stated(
-            this.get_bidunit().map(str::to_owned),
-            other.get_bidunit().map(str::to_owned),
-            later,
-        ),
-        |unit| this.set_bidunit(unit),
-    );
-    changed |= moved(
-        this.get_askpx(),
-        stated(this.get_askpx(), other.get_askpx(), later),
-        |px| this.set_askpx(px),
-    );
-    changed |= moved(
-        this.get_askcurrency().cloned(),
-        better_stated(
-            this.get_askcurrency().cloned(),
-            other.get_askcurrency(),
-            later,
-        ),
-        |currency| this.set_askcurrency(currency),
-    );
-    changed |= moved(
-        this.get_askqty(),
-        stated(this.get_askqty(), other.get_askqty(), later),
-        |qty| this.set_askqty(qty),
-    );
-    changed |= moved(
-        this.get_askunit().map(str::to_owned),
-        stated(
-            this.get_askunit().map(str::to_owned),
-            other.get_askunit().map(str::to_owned),
-            later,
-        ),
-        |unit| this.set_askunit(unit),
-    );
-    changed |= moved(
-        this.get_currency().clone(),
-        better(this.get_currency().clone(), other.get_currency(), later),
-        |currency| this.set_currency(currency),
-    );
-    changed |= moved(
-        *this.get_side(),
-        better(*this.get_side(), other.get_side(), later),
-        |side| this.set_side(side),
-    );
-    changed |= moved(
-        this.get_isincode().cloned(),
-        better_stated(this.get_isincode().cloned(), other.get_isincode(), later),
-        |code| this.set_isincode(code),
-    );
-    changed |= moved(
-        this.get_cusipcode().cloned(),
-        better_stated(this.get_cusipcode().cloned(), other.get_cusipcode(), later),
-        |code| this.set_cusipcode(code),
-    );
-    changed |= moved(
-        this.get_sedolcode().cloned(),
-        better_stated(this.get_sedolcode().cloned(), other.get_sedolcode(), later),
-        |code| this.set_sedolcode(code),
-    );
-    changed |= moved(
-        this.get_bloombergcode().cloned(),
-        better_stated(
-            this.get_bloombergcode().cloned(),
-            other.get_bloombergcode(),
-            later,
-        ),
-        |code| this.set_bloombergcode(code),
-    );
-    changed |= moved(
-        this.get_figicode().cloned(),
-        better_stated(this.get_figicode().cloned(), other.get_figicode(), later),
-        |code| this.set_figicode(code),
-    );
-    changed |= moved(
-        this.get_cficode().cloned(),
-        better_stated(this.get_cficode().cloned(), other.get_cficode(), later),
-        |code| this.set_cficode(code),
-    );
-    changed |= moved(
-        this.get_miccode().cloned(),
-        better_stated(this.get_miccode().cloned(), other.get_miccode(), later),
-        |code| this.set_miccode(code),
-    );
-    changed
-}
-
-/// Feeds one quote lane to a digest: each fact it states, under the lane's
-/// name.
-fn feed_lane(
-    staged: &mut Staged<'_>,
-    lane: &str,
-    px: Option<Decimal18>,
-    currency: Option<&Ccy>,
-    qty: Option<Decimal18>,
-    unit: Option<&str>,
-) {
-    if let Some(px) = px {
-        staged.feed(lane, &px.units().to_le_bytes());
-    }
-    if let Some(currency) = currency {
-        staged.feed(lane, currency.as_str().as_bytes());
-    }
-    if let Some(qty) = qty {
-        staged.feed(lane, &qty.units().to_le_bytes());
-    }
-    if let Some(unit) = unit {
-        staged.feed(lane, unit.as_bytes());
-    }
-}
-
-/// The better of two statements of one code: the selected statement leading,
-/// the other filling what it leaves unknown.
-/// Whether an element's bid lane and its ask lane each state anything, a
-/// lane any of its price, currency, quantity and unit.
-fn lanes_stated<E: MarketElement + ?Sized>(this: &E) -> (bool, bool) {
-    let bid = this.get_bidpx().is_some()
-        || this.get_bidcurrency().is_some()
-        || this.get_bidqty().is_some()
-        || this.get_bidunit().is_some();
-    let ask = this.get_askpx().is_some()
-        || this.get_askcurrency().is_some()
-        || this.get_askqty().is_some()
-        || this.get_askunit().is_some();
-    (bid, ask)
-}
-
-fn better<C: CodeValue>(this: C, other: &C, later: bool) -> C {
-    if later {
-        other.clone().merge_with(&this)
-    } else {
-        this.merge_with(other)
-    }
-}
-
 /// The fact the selected statement states, else the other's, else nothing.
-fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
+pub(super) fn stated<T>(this: Option<T>, other: Option<T>, later: bool) -> Option<T> {
     if later {
         other.or(this)
     } else {
         this.or(other)
-    }
-}
-
-/// [`better`] where each statement may name no code at all: the one that
-/// names one, or nothing where neither does.
-fn better_stated<C: CodeValue>(this: Option<C>, other: Option<&C>, later: bool) -> Option<C> {
-    match (this, other) {
-        (Some(this), Some(other)) => Some(better(this, other, later)),
-        (Some(this), None) => Some(this),
-        (None, other) => other.cloned(),
     }
 }

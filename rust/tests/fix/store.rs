@@ -44,11 +44,10 @@ fn definition_at(document: &Scalar, category: &str, name: &str) -> usize {
 const DUMP_WRITE: &str = "YGGDRYL_FIX_DUMP_WRITE";
 
 /// The documents a store dump states that the generator does not: the
-/// crate's field shard and the fixed row.
-const CRATE_DOCUMENTS: [&str; 5] = [
+/// crate's field shard, the fixed row, its one Map group and its code set.
+const CRATE_DOCUMENTS: [&str; 4] = [
     "fields/000000650.json",
     "components/fixmsg.json",
-    "groups/identifiers.json",
     "groups/metadata.json",
     "codesets/msgcatcodeset.json",
 ];
@@ -136,13 +135,13 @@ fn catalog() -> FixRegistry {
 #[test]
 fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_020).unwrap();
+    let map = registry.get_field_by_counter(65_049).unwrap();
     let mut stated = map.clone();
     stated.set_comment("not the crate's declaration").unwrap();
     let snapshot = registry.into_json().unwrap();
     // The dump states it - a snapshot is the whole dictionary - and reading
     // one back takes the held declaration over the document's.
-    assert!(snapshot.contains("identifiers"));
+    assert!(snapshot.contains("metadata"));
     assert_eq!(FixRegistry::from_json(&snapshot).unwrap(), registry);
 
     let document = Scalar::from_struct([
@@ -155,27 +154,27 @@ fn crate_map_groups_are_written_and_still_win_over_a_stored_override() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
 
     let root = scratch("crate-map");
     let mut folder = LocalFolder::new(&root).unwrap();
     registry.commit(&mut folder).unwrap();
-    assert!(root.join("groups/identifiers.json").exists());
+    assert!(root.join("groups/metadata.json").exists());
     folder
-        .child_by_path("groups/identifiers.json")
+        .child_by_path("groups/metadata.json")
         .unwrap()
         .write_all_bytes(&stated.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
     std::fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
 fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips() {
     let mut registry = FixRegistry::new();
-    let mut map = registry.get_field_by_counter(65_020).unwrap().clone();
-    map.as_fix_mut().set_group("identifiers").unwrap();
+    let mut map = registry.get_field_by_counter(65_049).unwrap().clone();
+    map.as_fix_mut().set_group("metadata").unwrap();
     let component = StructType::from_fields([map])
         .map(DataType::from)
         .unwrap()
@@ -188,7 +187,7 @@ fn builtin_map_group_references_resolve_after_snapshot_and_directory_roundtrips(
     let root = scratch("crate-map-reference");
     let mut folder = LocalFolder::new(&root).unwrap();
     registry.commit(&mut folder).unwrap();
-    assert!(root.join("groups/identifiers.json").exists());
+    assert!(root.join("groups/metadata.json").exists());
     assert_eq!(FixRegistry::from_handle(&folder).unwrap(), registry);
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -447,7 +446,7 @@ fn ordinary_stored_component_references_still_require_null_placeholders() {
 #[test]
 fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     let registry = FixRegistry::new();
-    let map = registry.get_field_by_counter(65_020).unwrap();
+    let map = registry.get_field_by_counter(65_049).unwrap();
     let mut substituted = map.clone();
     substituted.as_fix_mut().set_tag(9001).unwrap();
     substituted.as_fix_mut().set_counter(9001).unwrap();
@@ -461,18 +460,18 @@ fn a_stored_builtin_group_name_cannot_be_redefined_under_another_tag() {
     ])
     .unwrap();
     let loaded = FixRegistry::from_json(&yggdryl::into_json_scalar(&document).unwrap()).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
 
     let root = scratch("crate-map-substitution");
     let folder = LocalFolder::new(&root).unwrap();
     folder
-        .child_by_path("groups/identifiers.json")
+        .child_by_path("groups/metadata.json")
         .unwrap()
         .write_all_bytes(&substituted.into_json_bytes().unwrap())
         .unwrap();
     let loaded = FixRegistry::from_handle(&folder).unwrap();
-    assert_eq!(loaded.get_field_by_counter(65_020), Some(map));
+    assert_eq!(loaded.get_field_by_counter(65_049), Some(map));
     assert!(loaded.get_field_by_counter(9001).is_none());
     std::fs::remove_dir_all(root).unwrap();
 }
@@ -657,10 +656,10 @@ fn the_complete_committed_catalog_round_trips_through_one_snapshot() {
         928 + super::crated_components()
     );
     assert_eq!(super::msgtypes(&loaded).count(), 181);
-    // The generated groups, and the crate's two Map groups beside them.
+    // The generated groups, and the crate's one Map group beside them.
     assert_eq!(
         super::definitions(&loaded, FixCategory::Groups).count(),
-        580 + 2
+        580 + 1
     );
 }
 
@@ -1174,7 +1173,7 @@ fn contexts_sharing_a_counter_are_explicitly_ambiguous() {
     // crate's own `metadata` Map.
     assert_eq!(
         super::definitions(&registry, FixCategory::Groups).count(),
-        4
+        3
     );
     assert_eq!(registry.field(453).unwrap().dtype(), &DataType::Int32);
 }
@@ -1300,7 +1299,7 @@ fn tracked_seed_resolves_every_category_and_native_reference_graph() {
     // to 928 distinct names, so no message and component share one.
     for (category, count) in [
         (FixCategory::Components, 928 + super::crated_components()),
-        (FixCategory::Groups, 580 + 2),
+        (FixCategory::Groups, 580 + 1),
     ] {
         assert_eq!(
             super::definitions(&registry, category).count(),
@@ -3021,13 +3020,21 @@ mod committed {
     /// identifiers group stopped describing a key it no longer carries, and
     /// `execunix` says an execution report stating no clock executed at its
     /// `currunix`.
-    /// It last moved when `msgsesseventid` joined its four parts by `:`, the
+    /// It moved when `msgsesseventid` joined its four parts by `:`, the
     /// way a bridge's row header brackets them: that one description is the
     /// only document that changed.
+    /// It last moved when the slim `Market` trait landed: the `identifiers`
+    /// Map group at 65020 and the `cusipcode` and `sedolcode` crated fields
+    /// at 65057 and 65058 are retired, their tags never reused - the names a
+    /// message goes by are its alternate identifiers and CUSIP and SEDOL are
+    /// members of its security identifiers, neither a column of the fixed
+    /// row - so three definitions, three members of the fixed row and one
+    /// group document are gone, and `isincode`, `bloombergcode` and
+    /// `figicode` describe themselves as views of `securityids`.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 9_221_405_344_434_563_289);
+        assert_eq!(registry.stable_hash(), 4_816_611_246_891_994_692);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

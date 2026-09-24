@@ -1,6 +1,5 @@
 //! The one FIX boundary into typed graph market operations.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::iter::FusedIterator;
 
@@ -8,9 +7,10 @@ use smol_str::{SmolStr, format_smolstr};
 
 use super::{FixCodec, FixEntry, FixMsg};
 use crate::arrow::BatchReader;
+use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use crate::graph::{
-    Book, BookIterator, Element, Event, Execution, MarketElement, MarketEventData, MarketOperation,
-    Order, Quote, Trade,
+    Book, BookControl, BookInput, BookIterator, BookRef, Element, Event, Market, MarketOperation,
+    MarketOperationEventData, MdUpdateAction, Operation, OperationKind, Trade,
 };
 use crate::{Ccy, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
 
@@ -148,13 +148,6 @@ impl Facts {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Kind {
-    Order,
-    Quote,
-    Execution,
-}
-
 struct BookEntry {
     facts: Facts,
     position: usize,
@@ -182,14 +175,14 @@ impl FixMsg {
     /// missing, repeated or count-mismatched `NoSides(552)` group; a missing
     /// or non-bid/ask `Side(54)`; an invalid side decimal or currency; or a
     /// sided execution that violates the composite trade invariants.
-    pub fn market_operations(&self) -> Result<Vec<MarketOperation>> {
+    pub fn market_operations(&self) -> Result<Vec<BookInput>> {
         operations(self, self.event().clone())
     }
 
     /// Moves this message into graph market operations.
     ///
     /// A direct order, quote, execution or trade moves its
-    /// [`MarketEventData`] without cloning it, then finalizes the generic
+    /// [`MarketOperationEventData`] without cloning it, then finalizes the generic
     /// operation identity from those projected facts. Book messages
     /// necessarily make one owned event per `NoMDEntries(268)` occurrence, or
     /// one scoped snapshot control for an empty `W`.
@@ -197,7 +190,7 @@ impl FixMsg {
     /// # Errors
     ///
     /// Returns the same typed refusals as [`Self::market_operations`].
-    pub fn into_market_operations(self) -> Result<Vec<MarketOperation>> {
+    pub fn into_market_operations(self) -> Result<Vec<BookInput>> {
         Ok(expand_message(self)?.into_vec())
     }
 }
@@ -239,7 +232,7 @@ where
     I: Iterator,
     I::Item: Into<Result<FixMsg>>,
 {
-    type Item = Result<MarketOperation>;
+    type Item = Result<BookInput>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -353,14 +346,14 @@ impl FixCodec {
 // trade does not pay a heap allocation merely to satisfy the iterator shape.
 #[allow(clippy::large_enum_variant)]
 enum MessageOperations {
-    One(Option<MarketOperation>),
-    Many(std::vec::IntoIter<MarketOperation>),
+    One(Option<BookInput>),
+    Many(std::vec::IntoIter<BookInput>),
 }
 
 impl MessageOperations {
     /// Recovers the expanded allocation instead of collecting it through the
     /// type-erased iterator path.
-    fn into_vec(self) -> Vec<MarketOperation> {
+    fn into_vec(self) -> Vec<BookInput> {
         match self {
             Self::One(operation) => operation.into_iter().collect(),
             Self::Many(operations) => operations.collect(),
@@ -369,7 +362,7 @@ impl MessageOperations {
 }
 
 impl Iterator for MessageOperations {
-    type Item = MarketOperation;
+    type Item = BookInput;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -396,14 +389,13 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     let category = category(&message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(&message, message.event())?;
-        let trade = Trade::from_parts(MarketEventData::from(message), executions)?;
+        let trade = Trade::from_parts(MarketOperationEventData::from(message), executions)?;
         return Ok(MessageOperations::One(Some(trade.into())));
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
-        return Ok(MessageOperations::One(Some(operation(
-            kind,
-            MarketEventData::from(message),
-        ))));
+        return Ok(MessageOperations::One(Some(
+            operation(kind, MarketOperationEventData::from(message)).into(),
+        )));
     }
     let msgtype = message.header().msgtype();
     if category != "BOOK" || !matches!(msgtype, "W" | "X") {
@@ -411,17 +403,19 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     }
     let msgtype = SmolStr::new(msgtype);
     let entries = book_entries(&message)?;
-    let operations = build_book_operations(MarketEventData::from(message), &msgtype, &entries)?;
+    let operations =
+        build_book_operations(MarketOperationEventData::from(message), &msgtype, &entries)?;
     Ok(MessageOperations::Many(operations.into_iter()))
 }
 
-fn effective_unix(operation: &MarketOperation) -> i64 {
-    operation
+fn effective_unix(input: &BookInput) -> i64 {
+    input
+        .event()
         .get_snapunix()
-        .unwrap_or_else(|| operation.get_currunix())
+        .unwrap_or_else(|| input.currunix())
 }
 
-impl TryFrom<FixMsg> for MarketOperation {
+impl TryFrom<FixMsg> for BookInput {
     type Error = Error;
 
     fn try_from(message: FixMsg) -> Result<Self> {
@@ -439,14 +433,14 @@ impl TryFrom<FixMsg> for MarketOperation {
     }
 }
 
-fn operations(message: &FixMsg, base: MarketEventData) -> Result<Vec<MarketOperation>> {
+fn operations(message: &FixMsg, base: MarketOperationEventData) -> Result<Vec<BookInput>> {
     let category = category(message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(message, &base)?;
         return Trade::from_parts(base, executions).map(|trade| vec![trade.into()]);
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
-        return Ok(vec![operation(kind, base)]);
+        return Ok(vec![operation(kind, base).into()]);
     }
     let msgtype = message.header().msgtype();
     if category != "BOOK" || !matches!(msgtype, "W" | "X") {
@@ -471,11 +465,11 @@ fn category(message: &FixMsg) -> Result<&str> {
         })
 }
 
-fn direct_kind(category: &str, is_execution: bool) -> Option<Kind> {
+fn direct_kind(category: &str, is_execution: bool) -> Option<OperationKind> {
     match category {
-        "ORDR" => Some(Kind::Order),
-        "QUOT" => Some(Kind::Quote),
-        "EXEC" if is_execution => Some(Kind::Execution),
+        "ORDR" => Some(OperationKind::Order),
+        "QUOT" => Some(OperationKind::Quote),
+        "EXEC" if is_execution => Some(OperationKind::Execution),
         _ => None,
     }
 }
@@ -494,16 +488,13 @@ fn unsupported_message(message: &FixMsg) -> Error {
     )
 }
 
-fn operation(kind: Kind, mut event: MarketEventData) -> MarketOperation {
-    event.finalize();
-    match kind {
-        Kind::Order => MarketOperation::Order(Order::from(event)),
-        Kind::Quote => MarketOperation::Quote(Quote::from(event)),
-        Kind::Execution => MarketOperation::Execution(Execution::from(event)),
-    }
+fn operation(kind: OperationKind, data: MarketOperationEventData) -> Operation {
+    let mut operation = Operation::new(kind, data).expect("an order, a quote or an execution");
+    operation.finalize();
+    operation
 }
 
-fn trade_executions(message: &FixMsg, base: &MarketEventData) -> Result<Vec<Execution>> {
+fn trade_executions(message: &FixMsg, base: &MarketOperationEventData) -> Result<Vec<Operation>> {
     let mut groups = message
         .entries()
         .iter()
@@ -549,10 +540,10 @@ fn trade_executions(message: &FixMsg, base: &MarketEventData) -> Result<Vec<Exec
 }
 
 fn trade_execution(
-    base: &MarketEventData,
+    base: &MarketOperationEventData,
     occurrence: &FixEntry,
     index: usize,
-) -> Result<Execution> {
+) -> Result<Operation> {
     let path = |tag: i32, name: &str| format_smolstr!("$.NoSides(552)[{index}].{name}({tag})");
     let raw_side = entry_value(occurrence, 54)
         .ok_or_else(|| invalid(path(54, "Side"), "expected a bid or ask side, got no value"))?;
@@ -592,22 +583,22 @@ fn trade_execution(
         })?);
     }
 
-    let mut identifiers = event.get_identifiers().clone();
-    identifiers.insert("Side".to_owned(), side.as_str().to_owned());
-    for (tag, name) in [
-        (1427, "SideExecID"),
-        (1005, "SideTradeReportID"),
-        (1506, "SideTradeID"),
-        (1507, "SideOrigTradeID"),
-        (37, "OrderID"),
-        (198, "SecondaryOrderID"),
-        (11, "ClOrdID"),
-        (526, "SecondaryClOrdID"),
-        (41, "OrigClOrdID"),
+    for (tag, key) in [
+        (1427, "SIDEEXECID"),
+        (1005, "SIDETRADEREPORTID"),
+        (1506, "SIDETRADEID"),
+        (1507, "SIDEORIGTRADEID"),
+        (37, "ORDERID"),
+        (198, "SECONDARYORDERID"),
+        (11, "CLORDID"),
+        (526, "SECONDARYCLORDID"),
+        (41, "ORIGCLORDID"),
     ] {
-        insert(&mut identifiers, name, entry_value(occurrence, tag));
+        if let Some(value) = entry_value(occurrence, tag) {
+            let _ = event.remove_altid(key);
+            let _ = event.insert_altid(key, value);
+        }
     }
-    event.set_identifiers(identifiers);
 
     let stable = [1427, 1506, 1005, 37, 11]
         .into_iter()
@@ -626,7 +617,7 @@ fn trade_execution(
         chain.len(),
         side.as_str(),
     ));
-    Ok(Execution::from(event))
+    Ok(Operation::execution(event))
 }
 
 fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
@@ -859,10 +850,10 @@ fn gather(entry: &FixEntry, facts: &mut Facts) {
 }
 
 fn build_book_operations(
-    base: MarketEventData,
+    base: MarketOperationEventData,
     msgtype: &str,
     entries: &[BookEntry],
-) -> Result<Vec<MarketOperation>> {
+) -> Result<Vec<BookInput>> {
     let mut answer = Vec::with_capacity(entries.len());
     let mut base = Some(base);
     for (index, entry) in entries.iter().enumerate() {
@@ -878,33 +869,32 @@ fn build_book_operations(
 }
 
 fn build_book_operation(
-    mut event: MarketEventData,
+    mut event: MarketOperationEventData,
     msgtype: &str,
     entry: &BookEntry,
-) -> Result<MarketOperation> {
+) -> Result<BookInput> {
     let path = |tag: i32, name: &str| {
         format_smolstr!("$.NoMDEntries(268)[{}].{name}({tag})", entry.position)
     };
     if entry.empty_snapshot {
-        let scope = book_scope(&entry.facts, event.get_symbolticker());
-        event.set_symbolticker(
-            entry
-                .facts
-                .symbol
-                .as_deref()
-                .map(str::to_owned)
-                .or_else(|| event.get_symbolticker().map(str::to_owned)),
-        );
+        let scope = book_scope(&entry.facts, event.get_ticker());
+        let ticker = entry
+            .facts
+            .symbol
+            .as_deref()
+            .map(SmolStr::new)
+            .or_else(|| event.get_ticker().map(SmolStr::new));
+        event.set_ticker(ticker);
         let mut crosscode = scope.clone();
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
         event.set_state(State::read("New").expect("the shipped new state"));
-        let mut identifiers = operation_identifiers(&event);
-        identifiers.insert("BookScope".to_owned(), scope);
-        identifiers.insert("MDUpdateAction".to_owned(), "SNAPSHOT".to_owned());
-        event.set_identifiers(identifiers);
-        event.finalize();
-        return Ok(MarketOperation::Snapshot(event));
+        let mut control = event.into_event();
+        control.finalize();
+        return Ok(BookInput::Snapshot(BookControl::snapshot(
+            control,
+            Some(SmolStr::new(scope)),
+        )));
     }
     let entry_type = entry.facts.entry_type.as_deref().ok_or_else(|| {
         invalid(
@@ -913,9 +903,9 @@ fn build_book_operation(
         )
     })?;
     let kind = match entry_type {
-        "0" | "1" if entry.facts.order_id.is_some() => Kind::Order,
-        "0" | "1" => Kind::Quote,
-        "2" => Kind::Execution,
+        "0" | "1" if entry.facts.order_id.is_some() => OperationKind::Order,
+        "0" | "1" => OperationKind::Quote,
+        "2" => OperationKind::Execution,
         other => {
             return Err(invalid(
                 path(269, "MDEntryType"),
@@ -924,24 +914,34 @@ fn build_book_operation(
         }
     };
     let action = if msgtype == "W" {
-        "SNAPSHOT"
+        MdUpdateAction::Snapshot
     } else {
-        entry.facts.action.as_deref().ok_or_else(|| {
+        let stated = entry.facts.action.as_deref().ok_or_else(|| {
             invalid(
                 path(279, "MDUpdateAction"),
                 "expected an incremental action from 0 through 5, got no value",
             )
-        })?
+        })?;
+        MdUpdateAction::read(stated)
+            .filter(|action| *action != MdUpdateAction::Snapshot)
+            .ok_or_else(|| {
+                invalid(
+                    path(279, "MDUpdateAction"),
+                    format_smolstr!(
+                        "expected an incremental action from 0 through 5, got {stated:?}"
+                    ),
+                )
+            })?
     };
     let state = match action {
-        "SNAPSHOT" | "0" => State::read("New").expect("the shipped new state"),
-        "1" | "5" => State::read("Replaced").expect("the shipped replaced state"),
-        "2" | "3" | "4" => State::read("Canceled").expect("the shipped canceled state"),
-        other => {
-            return Err(invalid(
-                path(279, "MDUpdateAction"),
-                format_smolstr!("expected an incremental action from 0 through 5, got {other:?}"),
-            ));
+        MdUpdateAction::Snapshot | MdUpdateAction::New => {
+            State::read("New").expect("the shipped new state")
+        }
+        MdUpdateAction::Change | MdUpdateAction::Overlay => {
+            State::read("Replaced").expect("the shipped replaced state")
+        }
+        MdUpdateAction::Delete | MdUpdateAction::DeleteThru | MdUpdateAction::DeleteFrom => {
+            State::read("Canceled").expect("the shipped canceled state")
         }
     };
 
@@ -957,7 +957,7 @@ fn build_book_operation(
     };
     if let Some(unix) = entry_unix(entry, event.get_currunix(), &path)? {
         if msgtype == "W" {
-            if matches!(kind, Kind::Execution) {
+            if matches!(kind, OperationKind::Execution) {
                 event.set_execunix(Some(unix));
             } else {
                 event.set_creaunix(Some(unix));
@@ -965,11 +965,11 @@ fn build_book_operation(
         } else {
             event.set_currunix(unix);
         }
-        if msgtype != "W" && matches!(kind, Kind::Execution) {
+        if msgtype != "W" && matches!(kind, OperationKind::Execution) {
             event.set_execunix(Some(unix));
         }
     }
-    let scope = book_scope(&entry.facts, event.get_symbolticker());
+    let scope = book_scope(&entry.facts, event.get_ticker());
     let crosscode = if let Some(identifier) = entry
         .facts
         .entry_id
@@ -980,83 +980,50 @@ fn build_book_operation(
         push_scope(&mut crosscode, "MDEntryID", identifier);
         crosscode
     } else {
-        fallback_crosscode(&scope, entry_type, action, &entry.facts, &path)?
+        fallback_crosscode(&scope, entry_type, action.as_str(), &entry.facts, &path)?
     };
 
     event.set_price(entry.price.unwrap_or(Decimal18::ZERO));
     event.set_quantity(entry.size.unwrap_or(Decimal18::ZERO));
     event.set_side(side);
     event.set_state(state);
-    event.set_symbolticker(
-        entry
-            .facts
-            .symbol
-            .as_deref()
-            .map(str::to_owned)
-            .or_else(|| event.get_symbolticker().map(str::to_owned)),
-    );
+    let ticker = entry
+        .facts
+        .symbol
+        .as_deref()
+        .map(SmolStr::new)
+        .or_else(|| event.get_ticker().map(SmolStr::new));
+    event.set_ticker(ticker);
     event.set_crosscode(crosscode);
 
-    let mut identifiers = operation_identifiers(&event);
-    identifiers.insert("BookScope".to_owned(), scope);
-    insert(
-        &mut identifiers,
-        "MDEntryID",
-        entry.facts.entry_id.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "MDEntryRefID",
-        entry.facts.entry_ref_id.as_deref(),
-    );
-    identifiers.insert("MDUpdateAction".to_owned(), action.to_owned());
-    insert(
-        &mut identifiers,
-        "MDEntryPositionNo",
-        entry.facts.position.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "MDPriceLevel",
-        entry.facts.level.as_deref(),
-    );
-    insert(&mut identifiers, "MDEntryPx", entry.facts.price.as_deref());
-    insert(&mut identifiers, "MDEntrySize", entry.facts.size.as_deref());
-    insert(&mut identifiers, "MDEntryDate", entry.facts.date.as_deref());
-    insert(&mut identifiers, "MDEntryTime", entry.facts.time.as_deref());
-    insert(&mut identifiers, "OrderID", entry.facts.order_id.as_deref());
-    insert(
-        &mut identifiers,
-        "RptSeq",
-        entry.facts.report_sequence.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "ApplID",
-        entry.facts.application_id.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "ApplSeqNum",
-        entry.facts.application_sequence.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "ApplBegSeqNum",
-        entry.facts.application_begin_sequence.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "ApplEndSeqNum",
-        entry.facts.application_end_sequence.as_deref(),
-    );
-    insert(
-        &mut identifiers,
-        "ApplLastSeqNum",
-        entry.facts.application_last_sequence.as_deref(),
-    );
-    event.set_identifiers(identifiers);
-    Ok(operation(kind, event))
+    // The entry's own and referenced identifiers and the order it names are
+    // the operation's alternate identifiers; the book-control facts ride
+    // beside the operation, typed.
+    for (key, value) in [
+        (ENTRY_ID, entry.facts.entry_id.as_deref()),
+        (ENTRY_REF_ID, entry.facts.entry_ref_id.as_deref()),
+        ("ORDERID", entry.facts.order_id.as_deref()),
+    ] {
+        if let Some(value) = value {
+            let _ = event.remove_altid(key);
+            let _ = event.insert_altid(key, value);
+        }
+    }
+    let book = BookRef {
+        action: Some(action),
+        scope: Some(SmolStr::new(scope)),
+        position: entry
+            .facts
+            .position
+            .as_deref()
+            .and_then(|position| position.parse().ok()),
+        entry_px: entry.facts.price.as_ref().and(entry.price),
+        entry_size: entry.facts.size.as_ref().and(entry.size),
+    };
+    let mut operation = Operation::new(kind, event).expect("an order, a quote or an execution");
+    operation.set_book(Some(book));
+    operation.finalize();
+    Ok(BookInput::Operation(operation))
 }
 
 fn decimal(
@@ -1106,39 +1073,6 @@ fn entry_unix(
             )
         })?;
     Ok(Some(unix))
-}
-
-fn insert(identifiers: &mut BTreeMap<String, String>, name: &str, value: Option<&str>) {
-    if let Some(value) = value {
-        identifiers.insert(name.to_owned(), value.to_owned());
-    }
-}
-
-fn operation_identifiers(event: &MarketEventData) -> BTreeMap<String, String> {
-    const OWNED: [&str; 17] = [
-        "BookScope",
-        "MDEntryID",
-        "MDEntryRefID",
-        "MDUpdateAction",
-        "MDEntryPositionNo",
-        "MDPriceLevel",
-        "MDEntryPx",
-        "MDEntrySize",
-        "MDEntryDate",
-        "MDEntryTime",
-        "OrderID",
-        "RptSeq",
-        "ApplID",
-        "ApplSeqNum",
-        "ApplBegSeqNum",
-        "ApplEndSeqNum",
-        "ApplLastSeqNum",
-    ];
-    let mut identifiers = event.get_identifiers().clone();
-    for name in OWNED {
-        identifiers.remove(name);
-    }
-    identifiers
 }
 
 fn book_scope(facts: &Facts, fallback_symbol: Option<&str>) -> String {
@@ -1201,7 +1135,7 @@ fn fallback_crosscode(
         push_scope(&mut crosscode, "MDPriceLevel", level);
     }
     if facts.position.is_none() && facts.level.is_none() {
-        if !matches!(action, "SNAPSHOT" | "0") {
+        if !matches!(action, "snapshot" | "0") {
             return Err(invalid(
                 path(278, "MDEntryID"),
                 "expected MDEntryID, MDEntryRefID, MDEntryPositionNo or MDPriceLevel for an anonymous incremental update",

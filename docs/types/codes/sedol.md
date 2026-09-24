@@ -256,7 +256,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("sedol")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- The crate tag `sedolcode(65058)` carries the normalized column in a [FIX capture](index.md#fix-message-definitions).
+- No crate column: in a [FIX capture](index.md#fix-message-definitions) a SEDOL is one security identifier under key `SEDOL` - `SecurityID(48)` under source `2`, or a `secaltids` occurrence - read as `get_securityids().get("SEDOL")`, and derived from a GB, IE, GG, JE or IM ISIN where the message states none; the crate tag `sedolcode(65058)` is retired and never reused.
 
 ## Commands
 

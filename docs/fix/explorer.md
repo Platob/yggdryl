@@ -14,17 +14,17 @@ Search the native FIX catalog and inspect the fields, components and groups it s
 
 ## Use
 
-A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `identifiers` and `metadata` Map groups instead own tag and counter together - 65020 and 65049 - with no scalar counter column.
+A Serie group and its scalar count have separate definitions: `NoPartyIDs` is the integer field at tag 453; `Parties` is a group containing `Party` components. The built-in `metadata` Map group instead owns tag and counter together - 65049 - with no scalar counter column.
 
 | Collection | Shipped documents | Live registry |
 | --- | ---: | ---: |
-| Scalar fields | 6,241 | 6,270 |
-| Groups | 580 | 582 |
+| Scalar fields | 6,241 | 6,268 |
+| Groups | 580 | 581 |
 | Components, including messages | 928 | 928 |
 | Messages, a subset of components | 181 | 181 |
 | Code sets, read by 2,027 fields | 735 | 736 |
 
-The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `execunix`, `recdunix` and the session-event key `msgsesseventid` among them - and its two Map groups. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 127 columns over 122 tags.
+The live additions are the crate's 27 scalar fields - `srcuuids`, `figicode`, `execunix`, `recdunix` and the session-event key `msgsesseventid` among them - and its `metadata` Map group. `SendingTime` and `TransactTime` are seeded standard clocks; the builtin `msgcatcodeset` makes the live code-set count 736. The native fixed capture schema has 124 columns over 119 tags.
 
 === "Rust"
 
@@ -36,18 +36,18 @@ The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `e
     let registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
     // Every category is in the one length: the fields, the components and
     // the groups.
-    assert_eq!(registry.len(), 7_780);
+    assert_eq!(registry.len(), 7_777);
     // The walk is the same listing: the fields, then the definitions.
-    assert_eq!(registry.iter().count(), 7_780);
+    assert_eq!(registry.iter().count(), 7_777);
     assert_eq!(registry.field_by_tag(453)?.dtype(), &DataType::Int32);
     let parties = registry.field_by_name("parties")?;
     assert_eq!(parties.as_fix().counter()?, Some(453));
     assert_eq!(parties.as_fix().component(), Some("party"));
-    let identifiers = registry.field_by_counter(65_020)?;
-    assert_eq!(identifiers.name(), "identifiers");
-    assert_eq!(identifiers.as_fix().tag()?, Some(65_020));
-    assert!(identifiers.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
-    assert!(registry.get_field_by_tag(65_020).is_none());
+    let metadata = registry.field_by_counter(65_049)?;
+    assert_eq!(metadata.name(), "metadata");
+    assert_eq!(metadata.as_fix().tag()?, Some(65_049));
+    assert!(metadata.dtype().as_mapping().is_some_and(|mapping| mapping.keys_sorted()));
+    assert!(registry.get_field_by_tag(65_049).is_none());
     assert_eq!(registry.msgtype("D")?.as_str(), "D");
     // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together.
@@ -67,16 +67,16 @@ The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `e
     registry = FixRegistry.from_handle(Path("config/fix").resolve())
     # Every category is in the one length: the fields, the components and the
     # groups; iterating a Python registry walks the fields alone.
-    assert len(registry) == 7_780
-    assert sum(1 for _ in registry) == 6_270
+    assert len(registry) == 7_777
+    assert sum(1 for _ in registry) == 6_268
     assert str(registry.field_by_tag(453).dtype) == "int32"
     parties = registry.field_by_name("parties")
     assert parties.fix.counter == 453
     assert parties.fix.component == "party"
-    identifiers = registry.field_by_counter(65_020)
-    assert identifiers.name == "identifiers" and identifiers.fix.tag == 65_020
-    assert identifiers.into_arrow().type.keys_sorted
-    assert registry.get_field_by_tag(65_020) is None
+    metadata = registry.field_by_counter(65_049)
+    assert metadata.name == "metadata" and metadata.fix.tag == 65_049
+    assert metadata.into_arrow().type.keys_sorted
+    assert registry.get_field_by_tag(65_049) is None
     assert registry.msgtype("D").value == "D"
     # The crate's own columns are fields from tag 65003, held by every registry;
     # an identity is the tag and the name together, an int derived on every read.
@@ -96,17 +96,17 @@ The live additions are the crate's 29 scalar fields - `srcuuids`, `figicode`, `e
     const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
     // Every category is in the one size: the fields, the components and the
     // groups, which is what a Node registry iterates too.
-    assert.equal(registry.size, 7780)
+    assert.equal(registry.size, 7777)
     assert.equal([...registry].length, registry.size)
     assert.equal(registry.fieldByTag(453).dtype.toString(), 'int32')
     const parties = registry.fieldByName('parties')
     assert.equal(parties.fix.counter, 453)
     assert.equal(parties.fix.component, 'party')
-    const identifiers = registry.fieldByCounter(65020)
-    assert.equal(identifiers.name, 'identifiers')
-    assert.equal(identifiers.fix.tag, 65020)
-    assert.match(identifiers.dtype.toString(), /keys_sorted=true/)
-    assert.equal(registry.getFieldByTag(65020), null)
+    const metadata = registry.fieldByCounter(65049)
+    assert.equal(metadata.name, 'metadata')
+    assert.equal(metadata.fix.tag, 65049)
+    assert.match(metadata.dtype.toString(), /keys_sorted=true/)
+    assert.equal(registry.getFieldByTag(65049), null)
     assert.equal(registry.msgtype('D').asStr(), 'D')
     // The crate's own columns are fields from tag 65003, held by every registry;
     // an identity is the tag and the name together, a number derived on every read.

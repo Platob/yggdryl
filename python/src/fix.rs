@@ -23,13 +23,17 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 
 use yggdryl::Uuid as CoreUuid;
-use yggdryl::graph::{Element, Event, MarketElement, MarketEventData as CoreMarketEventData};
+use yggdryl::graph::{
+    Element, Event, Lane as CoreLane, Market, MarketOperation,
+    MarketOperationEventData as CoreMarketOperationEventData,
+};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
-    MsgType as CoreMsgType, Scalar, StructType, TimeUnit, Timezone,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, IdMap as CoreIdMap,
+    MsgType as CoreMsgType, Scalar, SecurityIds as CoreSecurityIds, StructType,
+    TimeInForce as CoreTimeInForce, TimeUnit, Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
@@ -173,6 +177,43 @@ fn codes_from_py(codes: &Bound<'_, PyAny>) -> PyResult<Vec<CoreFixCode>> {
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
 fn decimal_scalar(held: yggdryl::Decimal18) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
+}
+
+/// An identifier map - the accounts, the users, the names an operation
+/// goes by - as the `dict` Python reads, each value under the key that
+/// stated it, in key order.
+fn idmap_dict(ids: &CoreIdMap) -> BTreeMap<String, String> {
+    ids.iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect()
+}
+
+/// The identifiers an instrument is stated under, one code under each
+/// source - `ISIN`, `CUSIP`, `FIGI` - in source order.
+fn securityids_dict(ids: &CoreSecurityIds) -> BTreeMap<String, String> {
+    ids.iter()
+        .map(|id| (id.sectype().as_str().to_owned(), id.code().to_owned()))
+        .collect()
+}
+
+/// One lane of a quote as the `dict` Python reads - `price`, `spotrate`,
+/// `forwardpoints`, `currency`, `quantity` and `unit`, each `None` where the
+/// lane leaves the slot out - or `None` where the holder states no lane.
+fn lane_dict<'py>(
+    py: Python<'py>,
+    lane: Option<&CoreLane>,
+) -> PyResult<Option<Bound<'py, PyDict>>> {
+    let Some(lane) = lane else {
+        return Ok(None);
+    };
+    let record = PyDict::new(py);
+    record.set_item("price", lane.price.map(decimal_scalar))?;
+    record.set_item("spotrate", lane.spotrate.map(decimal_scalar))?;
+    record.set_item("forwardpoints", lane.forwardpoints.map(decimal_scalar))?;
+    record.set_item("currency", lane.currency.as_ref().map(code_scalar))?;
+    record.set_item("quantity", lane.quantity.map(decimal_scalar))?;
+    record.set_item("unit", lane.unit.as_ref().map(yggdryl::Unit::as_str))?;
+    Ok(Some(record))
 }
 
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
@@ -323,8 +364,8 @@ impl PyFixRegistry {
     ///
     /// `fix_crate_fields` lists what the crate adds beside the specification:
     /// its own columns in tag order from 65003 - the clocks, the identities,
-    /// the derived facts and the capture's own - and the two Map groups
-    /// `identifiers` and `metadata`. Beside them sit two seeded standard
+    /// the derived facts and the capture's own - and the Map group
+    /// `metadata`. Beside them sit two seeded standard
     /// clocks, `SendingTime` (52) and `TransactTime` (60), each a nanosecond
     /// UTC `datetime64`, ordinary definitions a loaded dictionary supplies its
     /// own metadata for; the crate's fields are held by every dictionary
@@ -1884,8 +1925,8 @@ impl PyFixMsg {
     ///
     /// A copy at the moment it is asked for, so a message written afterwards
     /// leaves it behind; the same facts are the message's own properties.
-    fn event(&self) -> PyMarketEventData {
-        PyMarketEventData {
+    fn event(&self) -> PyMarketOperationEventData {
+        PyMarketOperationEventData {
             inner: self.inner.event().clone(),
         }
     }
@@ -2027,23 +2068,18 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The names the message goes by, each under the field that stated it.
-    #[getter]
-    fn identifiers(&self) -> BTreeMap<String, String> {
-        self.inner.get_identifiers().clone()
-    }
-
-    /// The stable integer category of the market operation, or `None`.
-    #[getter]
-    fn marketoperationid(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
-    }
-
     /// The price the message states, as a decimal; zero where it states
     /// none.
     #[getter]
     fn price(&self) -> PyScalar {
         PyScalar::from_inner(Scalar::from(self.inner.get_price()))
+    }
+
+    /// The currency, as the `currency` code it is; `XXX` where none is
+    /// stated.
+    #[getter]
+    fn currency(&self) -> PyScalar {
+        code_scalar(self.inner.get_currency())
     }
 
     /// The quantity the message states, as a decimal; zero where it states
@@ -2053,19 +2089,42 @@ impl PyFixMsg {
         PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
     }
 
+    /// The unit the quantity is counted in, as spelled; empty where the
+    /// message states none.
+    #[getter]
+    fn unit(&self) -> &str {
+        self.inner.get_unit().as_str()
+    }
+
     /// The side, as the `side` code it is: the one stated, else the lane a
     /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
     /// else `UNKNOWN`.
     #[getter]
     fn side(&self) -> PyScalar {
-        code_scalar(self.inner.get_side())
+        PyScalar::from_inner(Scalar::from(self.inner.get_side()))
     }
 
-    /// The currency, as the `currency` code it is; `XXX` where none is
-    /// stated.
+    /// The identifiers the instrument is stated under, one code under each
+    /// source - `ISIN`, `CUSIP`, `FIGI` - read off `SecurityID(48)` under
+    /// `SecurityIDSource(22)` and the `SecurityAltID` group, in source
+    /// order; empty where the message states none.
     #[getter]
-    fn currency(&self) -> PyScalar {
-        code_scalar(self.inner.get_currency())
+    fn securityids(&self) -> BTreeMap<String, String> {
+        securityids_dict(self.inner.get_securityids())
+    }
+
+    /// The instrument's classification, read off `CFICode(461)` and what
+    /// the message says about the security; `None` where nothing does.
+    #[getter]
+    fn cficode(&self) -> Option<PyScalar> {
+        self.inner.get_cficode().map(code_scalar)
+    }
+
+    /// The market, read off `SecurityExchange(207)`, `ExDestination(100)`
+    /// or `LastMkt(30)`, the first that names an ISO 10383 MIC.
+    #[getter]
+    fn miccode(&self) -> Option<PyScalar> {
+        self.inner.get_miccode().map(code_scalar)
     }
 
     /// The price the message last traded at, as a decimal; `None` where it
@@ -2112,12 +2171,39 @@ impl PyFixMsg {
         self.inner.get_prevqty().map(decimal_scalar)
     }
 
-    /// How long the message stands, `TimeInForce(59)`, as it states it;
-    /// `None` where it says nothing. What the code `1` names is the
-    /// dictionary's to say.
+    /// The spot part of an FX forward price; `None` where the message
+    /// states none.
+    #[getter]
+    fn spotrate(&self) -> Option<PyScalar> {
+        self.inner.get_spotrate().map(decimal_scalar)
+    }
+
+    /// The forward points of an FX forward price; `None` where the message
+    /// states none.
+    #[getter]
+    fn forwardpoints(&self) -> Option<PyScalar> {
+        self.inner.get_forwardpoints().map(decimal_scalar)
+    }
+
+    /// The ticker the instrument is known by; `None` where it has none and
+    /// the security identifiers are what name it.
+    #[getter]
+    fn ticker(&self) -> Option<&str> {
+        self.inner.get_ticker()
+    }
+
+    /// The stable integer category of the market operation, or `None`.
+    #[getter]
+    fn marketoperationid(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
+    }
+
+    /// How long the message stands, `TimeInForce(59)`, as the code it
+    /// states; `None` where it says nothing. What the code `1` names is
+    /// the dictionary's to say.
     #[getter]
     fn tif(&self) -> Option<&str> {
-        self.inner.get_tif()
+        self.inner.get_tif().map(CoreTimeInForce::as_str)
     }
 
     /// Whether the instrument could be traded when the message was sent, or
@@ -2128,58 +2214,43 @@ impl PyFixMsg {
         self.inner.get_tradable()
     }
 
-    /// The ticker the instrument is known by; `None` where it has none and
-    /// the codes beside it are what name it.
+    /// The accounts the message names - `ACCOUNT` for `Account(1)`, the
+    /// customer-account party - each under the field that stated it, in
+    /// key order; empty where it names none.
     #[getter]
-    fn symbolticker(&self) -> Option<&str> {
-        self.inner.get_symbolticker()
+    fn accountids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_accountids())
     }
 
-    /// The instrument's ISIN, read off `SecurityID(48)` under its source or
-    /// the `SecurityAltID` group; `None` where no check digit closes one.
+    /// The users the message names - `SENDERSUBID`, `ONBEHALFOFSUBID`, the
+    /// trader parties - each under the field that stated it, in key order;
+    /// empty where it names none.
     #[getter]
-    fn isincode(&self) -> Option<PyScalar> {
-        self.inner.get_isincode().map(code_scalar)
+    fn userids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_userids())
     }
 
-    /// The instrument's CUSIP, read the same way; `None` where none closes.
+    /// The names the message goes by - `ORDERID`, `CLORDID`, `EXECID`,
+    /// `QUOTEID` - each under the field that stated it, in key order;
+    /// empty where it names none.
     #[getter]
-    fn cusipcode(&self) -> Option<PyScalar> {
-        self.inner.get_cusipcode().map(code_scalar)
+    fn altids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_altids())
     }
 
-    /// The instrument's SEDOL, read the same way; `None` where none closes.
+    /// The bid lane a quote states - `price`, `spotrate`, `forwardpoints`,
+    /// `currency`, `quantity` and `unit`, each `None` where the lane leaves
+    /// it out - or `None` where the message states no bid.
     #[getter]
-    fn sedolcode(&self) -> Option<PyScalar> {
-        self.inner.get_sedolcode().map(code_scalar)
+    fn bid<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        lane_dict(py, self.inner.get_bid())
     }
 
-    /// The instrument's Bloomberg identifier, read the same way; `None`
-    /// where the message names none.
+    /// The ask lane, shaped as the bid; `None` where the message states no
+    /// offer.
     #[getter]
-    fn bloombergcode(&self) -> Option<PyScalar> {
-        self.inner.get_bloombergcode().map(code_scalar)
-    }
-
-    /// The instrument's FIGI, read off `SecurityID(48)` under source `S` or
-    /// its alternate group; `None` where no checked identifier is stated.
-    #[getter]
-    fn figicode(&self) -> Option<PyScalar> {
-        self.inner.get_figicode().map(code_scalar)
-    }
-
-    /// The instrument's classification, read off `CFICode(461)` and what
-    /// the message says about the security; `None` where nothing does.
-    #[getter]
-    fn cficode(&self) -> Option<PyScalar> {
-        self.inner.get_cficode().map(code_scalar)
-    }
-
-    /// The market, read off `SecurityExchange(207)`, `ExDestination(100)`
-    /// or `LastMkt(30)`, the first that names an ISO 10383 MIC.
-    #[getter]
-    fn miccode(&self) -> Option<PyScalar> {
-        self.inner.get_miccode().map(code_scalar)
+    fn ask<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        lane_dict(py, self.inner.get_ask())
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.
@@ -2992,8 +3063,8 @@ pub(crate) fn fix_schema_tags() -> Vec<i32> {
 /// - the `msgpluginid`, the `msgctxid`, the `msgsessionid` and the
 /// `msgsesseventid` they join to with the message type and sequence - the
 /// `sourceurl` a line was read from, the `nofixentries` that counts its
-/// content, and the two Map groups `identifiers` and `metadata`, plus the generic
-/// `marketoperationid` shared with market operations. Thirty-one in all,
+/// content, and the Map group `metadata`, plus the generic
+/// `marketoperationid` shared with market operations. Twenty-eight in all,
 /// each a fact no FIX dictionary publishes, at the datatype its graph column
 /// names.
 #[pyfunction]
@@ -3309,25 +3380,27 @@ impl PyFixCapture {
 /// held still.
 ///
 /// A copy of the message's event at the moment it was asked for - the facts
-/// are forty small values, and a view that borrowed them would pin the
-/// message - so it is immutable, compares by every fact and hashes by the
-/// code the facts digest to. Instants are nanoseconds since the Unix epoch,
-/// UTC, as `int`; identities are `uuid` `Scalar`s; prices and quantities
-/// decimal `Scalar`s; the currency, the side, the state and the instrument
-/// identifiers the code `Scalar` their datatype is.
+/// are forty-three small values, and a view that borrowed them would pin
+/// the message - so it is immutable, compares by every fact and hashes by
+/// the code the facts digest to. Instants are nanoseconds since the Unix
+/// epoch, UTC, as `int`; identities are `uuid` `Scalar`s; prices and
+/// quantities decimal `Scalar`s; the currency, the side and the state the
+/// code `Scalar` their datatype is; the unit and the time in force their
+/// spellings; the security identifiers and the three identifier maps
+/// `dict`s in key order; a lane a `dict` of its six slots, or `None`.
 #[pyclass(
-    name = "MarketEventData",
+    name = "MarketOperationEventData",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
 #[derive(Clone)]
-pub(crate) struct PyMarketEventData {
-    inner: CoreMarketEventData,
+pub(crate) struct PyMarketOperationEventData {
+    inner: CoreMarketOperationEventData,
 }
 
 #[pymethods]
-impl PyMarketEventData {
+impl PyMarketOperationEventData {
     /// The event's `UUIDv7` identity: its millisecond and sequence lead an
     /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
     /// `crosshashcode`.
@@ -3360,12 +3433,6 @@ impl PyMarketEventData {
     #[getter]
     fn crosshashcode(&self) -> u64 {
         self.inner.get_crosshashcode()
-    }
-
-    /// The names the event goes by, each under the field that stated it.
-    #[getter]
-    fn identifiers(&self) -> BTreeMap<String, String> {
-        self.inner.get_identifiers().clone()
     }
 
     /// The identities of the elements this one was read from: the text line
@@ -3445,22 +3512,58 @@ impl PyMarketEventData {
         self.inner.get_snapunix()
     }
 
-    /// The stable integer category of the market operation, or `None`.
-    #[getter]
-    fn marketoperationid(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
-    }
-
     /// The price, as a decimal; zero where none is stated.
     #[getter]
     fn price(&self) -> PyScalar {
         PyScalar::from_inner(Scalar::from(self.inner.get_price()))
     }
 
+    /// The currency, as the `currency` code it is; `XXX` where none is
+    /// stated.
+    #[getter]
+    fn currency(&self) -> PyScalar {
+        code_scalar(self.inner.get_currency())
+    }
+
     /// The quantity, as a decimal; zero where none is stated.
     #[getter]
     fn quantity(&self) -> PyScalar {
         PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    }
+
+    /// The unit the quantity is counted in, as spelled; empty where none
+    /// is stated.
+    #[getter]
+    fn unit(&self) -> &str {
+        self.inner.get_unit().as_str()
+    }
+
+    /// The side, as the `side` code it is: the one stated, else the lane a
+    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
+    /// else `UNKNOWN`.
+    #[getter]
+    fn side(&self) -> PyScalar {
+        PyScalar::from_inner(Scalar::from(self.inner.get_side()))
+    }
+
+    /// The identifiers the instrument is stated under, one code under each
+    /// source - `ISIN`, `CUSIP`, `FIGI` - in source order; empty where none
+    /// is stated.
+    #[getter]
+    fn securityids(&self) -> BTreeMap<String, String> {
+        securityids_dict(self.inner.get_securityids())
+    }
+
+    /// The instrument's CFI classification, or `None`.
+    #[getter]
+    fn cficode(&self) -> Option<PyScalar> {
+        self.inner.get_cficode().map(code_scalar)
+    }
+
+    /// The market the event names, as an ISO 10383 MIC, or `None`.
+    #[getter]
+    fn miccode(&self) -> Option<PyScalar> {
+        self.inner.get_miccode().map(code_scalar)
     }
 
     /// The last traded price, or `None`.
@@ -3505,10 +3608,46 @@ impl PyMarketEventData {
         self.inner.get_prevqty().map(decimal_scalar)
     }
 
-    /// The time-in-force spelling, or `None`.
+    /// The spot part of an FX forward price, or `None`.
+    #[getter]
+    fn spotrate(&self) -> Option<PyScalar> {
+        self.inner.get_spotrate().map(decimal_scalar)
+    }
+
+    /// The forward points of an FX forward price, or `None`.
+    #[getter]
+    fn forwardpoints(&self) -> Option<PyScalar> {
+        self.inner.get_forwardpoints().map(decimal_scalar)
+    }
+
+    /// The instrument ticker, or `None`.
+    #[getter]
+    fn ticker(&self) -> Option<&str> {
+        self.inner.get_ticker()
+    }
+
+    /// What a bridge stated under its own namespaces, each under the key as
+    /// the bridge spelled it, folded, in key order; empty where it stated
+    /// none.
+    #[getter]
+    fn metadata(&self) -> BTreeMap<String, String> {
+        self.inner
+            .get_metadata()
+            .iter()
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect()
+    }
+
+    /// The stable integer category of the market operation, or `None`.
+    #[getter]
+    fn marketoperationid(&self) -> Option<i32> {
+        self.inner.get_marketoperationid()
+    }
+
+    /// The time in force, as the code it states, or `None`.
     #[getter]
     fn tif(&self) -> Option<&str> {
-        self.inner.get_tif()
+        self.inner.get_tif().map(CoreTimeInForce::as_str)
     }
 
     /// Whether the instrument was tradable, or `None`.
@@ -3517,129 +3656,39 @@ impl PyMarketEventData {
         self.inner.get_tradable()
     }
 
-    /// The instrument ticker, or `None`.
+    /// The accounts the event names, each under the field that stated it,
+    /// in key order; empty where it names none.
     #[getter]
-    fn symbolticker(&self) -> Option<&str> {
-        self.inner.get_symbolticker()
+    fn accountids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_accountids())
     }
 
-    /// The currency, as the `currency` code it is; `XXX` where none is
-    /// stated.
+    /// The users the event names, each under the field that stated it, in
+    /// key order; empty where it names none.
     #[getter]
-    fn currency(&self) -> PyScalar {
-        code_scalar(self.inner.get_currency())
+    fn userids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_userids())
     }
 
-    /// The unit the quantity is counted in; empty where none is stated.
+    /// The names the event goes by, each under the field that stated it,
+    /// in key order; empty where it names none.
     #[getter]
-    fn unit(&self) -> &str {
-        self.inner.get_unit()
+    fn altids(&self) -> BTreeMap<String, String> {
+        idmap_dict(self.inner.get_altids())
     }
 
-    /// The side, as the `side` code it is: the one stated, else the lane a
-    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
-    /// else `UNKNOWN`.
+    /// The bid lane - `price`, `spotrate`, `forwardpoints`, `currency`,
+    /// `quantity` and `unit`, each `None` where the lane leaves it out - or
+    /// `None` where none is stated.
     #[getter]
-    fn side(&self) -> PyScalar {
-        code_scalar(self.inner.get_side())
+    fn bid<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        lane_dict(py, self.inner.get_bid())
     }
 
-    /// The instrument's ISIN, or `None`.
+    /// The ask lane, shaped as the bid, or `None`.
     #[getter]
-    fn isincode(&self) -> Option<PyScalar> {
-        self.inner.get_isincode().map(code_scalar)
-    }
-
-    /// The instrument's CUSIP, or `None`.
-    #[getter]
-    fn cusipcode(&self) -> Option<PyScalar> {
-        self.inner.get_cusipcode().map(code_scalar)
-    }
-
-    /// The instrument's SEDOL, or `None`.
-    #[getter]
-    fn sedolcode(&self) -> Option<PyScalar> {
-        self.inner.get_sedolcode().map(code_scalar)
-    }
-
-    /// The instrument's Bloomberg identifier, or `None`.
-    #[getter]
-    fn bloombergcode(&self) -> Option<PyScalar> {
-        self.inner.get_bloombergcode().map(code_scalar)
-    }
-
-    /// The instrument's FIGI, or `None`.
-    #[getter]
-    fn figicode(&self) -> Option<PyScalar> {
-        self.inner.get_figicode().map(code_scalar)
-    }
-
-    /// The instrument's CFI classification, or `None`.
-    #[getter]
-    fn cficode(&self) -> Option<PyScalar> {
-        self.inner.get_cficode().map(code_scalar)
-    }
-
-    /// The market the event names, as an ISO 10383 MIC, or `None`.
-    #[getter]
-    fn miccode(&self) -> Option<PyScalar> {
-        self.inner.get_miccode().map(code_scalar)
-    }
-
-    /// The bid lane's price, or `None`.
-    #[getter]
-    fn bidpx(&self) -> Option<PyScalar> {
-        self.inner
-            .get_bidpx()
-            .map(|held| PyScalar::from_inner(Scalar::from(held)))
-    }
-
-    /// The bid lane's size, or `None`.
-    #[getter]
-    fn bidqty(&self) -> Option<PyScalar> {
-        self.inner
-            .get_bidqty()
-            .map(|held| PyScalar::from_inner(Scalar::from(held)))
-    }
-
-    /// The currency the bid lane is quoted in, or `None`.
-    #[getter]
-    fn bidcurrency(&self) -> Option<PyScalar> {
-        self.inner.get_bidcurrency().map(code_scalar)
-    }
-
-    /// The unit the bid lane's size is counted in, or `None`.
-    #[getter]
-    fn bidunit(&self) -> Option<&str> {
-        self.inner.get_bidunit()
-    }
-
-    /// The ask lane's price, or `None`.
-    #[getter]
-    fn askpx(&self) -> Option<PyScalar> {
-        self.inner
-            .get_askpx()
-            .map(|held| PyScalar::from_inner(Scalar::from(held)))
-    }
-
-    /// The ask lane's size, or `None`.
-    #[getter]
-    fn askqty(&self) -> Option<PyScalar> {
-        self.inner
-            .get_askqty()
-            .map(|held| PyScalar::from_inner(Scalar::from(held)))
-    }
-
-    /// The currency the ask lane is quoted in, or `None`.
-    #[getter]
-    fn askcurrency(&self) -> Option<PyScalar> {
-        self.inner.get_askcurrency().map(code_scalar)
-    }
-
-    /// The unit the ask lane's size is counted in, or `None`.
-    #[getter]
-    fn askunit(&self) -> Option<&str> {
-        self.inner.get_askunit()
+    fn ask<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        lane_dict(py, self.inner.get_ask())
     }
 
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
@@ -3659,7 +3708,7 @@ impl PyMarketEventData {
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketEventData({}, currunix={}, state={:?}, crosscode={:?})",
+            "MarketOperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
             self.inner.get_curruuid(),
             self.inner.get_currunix(),
             self.inner.get_state().as_str(),

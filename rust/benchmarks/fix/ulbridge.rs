@@ -21,10 +21,11 @@ use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{BatchSize, Criterion, Throughput};
-use yggdryl::graph::{Event, MarketElement};
+use yggdryl::graph::{Event, Market};
 use yggdryl::holder::Buffer;
+use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{BloombergCode, FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
+use yggdryl::{FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -213,13 +214,17 @@ pub fn benchmarks(criterion: &mut Criterion) {
             BatchSize::LargeInput,
         );
     });
-    let bloombergcode = BloombergCode::new("AAPL US EQUITY").expect("a Bloomberg identifier");
-    group.bench_function("step/set_bloombergcode", |bencher| {
+    let bloombergcode = SecurityId::new(
+        SecType::read("BLOOMBERG").expect("the Bloomberg source"),
+        "AAPL US EQUITY",
+    )
+    .expect("a Bloomberg identifier");
+    group.bench_function("step/insert_securityid", |bencher| {
         bencher.iter_batched(
             || messages.clone(),
             |mut held| {
                 for message in &mut held {
-                    message.set_bloombergcode(Some(bloombergcode.clone()));
+                    let _ = message.insert_securityid(bloombergcode.clone());
                 }
                 held
             },

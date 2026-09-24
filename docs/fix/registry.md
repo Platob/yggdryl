@@ -28,8 +28,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 31 definitions from tag 65003: 29 scalar fields and the sorted Map groups `identifiers(65020)` and `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 31 scalar fields and two groups: 33 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 31 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 28 definitions from tag 65003: 27 scalar fields and the sorted Map group `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 29 scalar fields and one group: 30 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 29 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -164,7 +164,7 @@ The generator gives every group a collection display. A unique published plural 
 
 ## Component identifiers
 
-`FIX:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; a [parse](capture.md#a-messages-direct-identifiers-fill-one-map) writes them into the message's `identifiers` Map.
+`FIX:identifiers` names only a component's direct scalar members, including a message or a group's occurrence component; the setter accepts names, aliases and decimal tags, then stores canonical names in member order. `MsgType::identifier_values` reads that compiled selection from a message, returning declaration fields beside the values the message's content row holds, skipping absent or null members and never descending into groups; no column carries them - the names a message goes by are its [identifier maps](message.md#the-identifier-maps), read off the fields that state them.
 
 === "Rust"
 
@@ -275,7 +275,7 @@ The generator gives every group a collection display. A unique published plural 
 | Stored metadata | The same setter normalizes hand-written declarations after references resolve; reload and merge retain final component order, not the caller's spelling order |
 | Selection | Exact canonical member name first; a renamed member's tag only when unique in both the declaration and row; an ambiguous tag selects nothing |
 | Ownership | Rust borrows both values without allocation; Python returns read-only declaration Field clones and Scalar wrappers; Node returns independent mutable Field clones and Scalar wrappers, never a mutable registry member |
-| Filled | After restatement and the derivations, the [`identifiers`](capture.md#a-messages-direct-identifiers-fill-one-map) Map carries the selected values as sorted, unique canonical-name/text pairs at this message's own level, and the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by them |
+| Filled | Nothing: the `identifiers` Map (65020) that carried the selected values is retired, its tag never reused. A message's names are its [identifier maps](message.md#the-identifier-maps), read off the fields that state them, and the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by `altids` |
 
 The generator's one explicit identifier-family table annotates every matching direct member across the 109 shipped components that declare one, message definitions among them; a group member is not flattened into its enclosing message. The [CLI definition flags](cli.md#definition-flags) expose the same native setter through `--identifiers`; category replacement and the [whole-list merge rule](#one-merge-with-a-rule-per-key) remain distinct operations.
 
@@ -289,12 +289,12 @@ A field is its tag and its name, and a lookup asks for one of them: canonical be
 | `field_by_id(FixId)` | Exact: the one field whose tag and folded name digest to that id |
 | `field_by_name(name)` | The canonical fold, then an alias fold |
 | `field_by_path(path)` | Canonical Map name before a scalar alias; otherwise scalar lookup, then a named message/component/group head and nested members |
-| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65020` the `identifiers` Map - while the counter itself answers `field(453)` |
+| `field_by_counter(tag)` | The globally unique repeating group that counter tag opens - `453` the `Parties` Serie, `65049` the `metadata` Map - while the counter itself answers `field(453)` |
 | `MsgType::get_group_by_tag(tag)` | Unique group within that message's structure |
 
 The `get_` forms return absence; failing twins return a typed, located error. One spelling addresses a member on both sides: a schema states one item type for a serie, so `Parties[0].PartyID` answers the field every occurrence holds here and the value that occurrence carries in a message. A path through a group may still omit the occurrence - `Parties.PartyID` - because a schema has no positions to skip. A counter shared by multiple contexts is ambiguous globally, so parsing uses the selected message's compiled group index.
 
-A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `identifiers` and `metadata` are reached by their canonical name or their counter, never by scalar `field_by_tag(65020)`; their key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
+A Map group is a native mapping, not a numeric repeating frame: its entries and key stay non-null and its sortedness survives projection and reload. `metadata` is reached by its canonical name or its counter, never by scalar `field_by_tag(65049)`; its key and value gain no wire delimiter or numeric tags, and a canonical scalar name cannot collide with a Map group's name.
 
 Names and aliases use separate indexes; a stored name is rechecked after hashing, so a digest collision never selects an unrelated field. The id is the signed XXH32 of the tag's little-endian bytes followed by the folded name, so `MsgType`, `msgtype` and `Msg_Type` under tag 35 are one id; `FixId::of(tag, name)` refuses a tag that is not positive and displays as its decimal digest - the [fold and its halves](index.md#identity-is-a-tag-and-a-name) are the vocabulary's. An id crosses every boundary as that integer - `FixKey::Id` in Rust, `field_by_id(int)` and `get_by_id(int)` in Python and JavaScript - and a bare integer anywhere else is a tag.
 
@@ -1281,7 +1281,7 @@ Registration states the set tag 35 reads by - the one the field names, else `msg
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 29 crate scalar fields and two Map groups beside the two seeded clocks, so `len()` is 33. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 27 crate scalar fields and one Map group beside the two seeded clocks, so `len()` is 30. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `LocalFolder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

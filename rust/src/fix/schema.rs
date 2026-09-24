@@ -46,7 +46,7 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Weak};
 
-use crate::graph::MarketElement;
+use crate::graph::Market;
 
 use smol_str::SmolStr;
 
@@ -82,8 +82,8 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 ///
 /// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
 /// like the rest, each exact and stated once. What a message is *about* is
-/// what [`get_price`](crate::graph::MarketElement::get_price) and
-/// [`get_quantity`](crate::graph::MarketElement::get_quantity) read off them, and no
+/// what [`get_price`](crate::graph::Market::get_price) and
+/// [`get_quantity`](crate::graph::Market::get_quantity) read off them, and no
 /// column of this crate's restates either, because a row carrying both
 /// would carry one fact twice.
 pub const BODY_TAGS: [i32; 50] = [
@@ -163,13 +163,12 @@ pub fn fix_schema_tags() -> Vec<i32> {
         CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
         CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
         CURRUUID_TAG_NAME as CURRUUID, EXECUNIX_TAG_NAME as EXECUNIX,
-        EXPRTIME_TAG_NAME as EXPRTIME, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
-        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
-        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
-        MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
-        PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
-        RECDUNIX_TAG_NAME as RECDUNIX, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
-        SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
+        EXPRTIME_TAG_NAME as EXPRTIME, METADATA_TAG_NAME as METADATA,
+        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
+        MSGPLUGINID_TAG_NAME as MSGPLUGINID, MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID,
+        MSGSESSIONID_TAG_NAME as MSGSESSIONID, PREVUNIX_TAG_NAME as PREVUNIX,
+        PREVUUID_TAG_NAME as PREVUUID, RECDUNIX_TAG_NAME as RECDUNIX, SEQNUM_TAG_NAME as SEQNUM,
+        SNAPUNIX_TAG_NAME as SNAPUNIX, SRCUUIDS_TAG_NAME as SRCUUIDS, STATE_TAG_NAME as STATE,
     };
     let crated = super::fix_crate_fields().unwrap_or_default();
     let counter = super::crated::NOFIXENTRIES_TAG_NAME.0;
@@ -207,7 +206,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             PREVUUID.0,
             SEQNUM.0,
             SRCUUIDS.0,
-            IDENTIFIERS.0,
         ],
     );
     // Which message, over which session: what the frame says it is, who sent
@@ -244,8 +242,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             48,
             22,
             super::ISINCODE_TAG_NAME.0,
-            super::CUSIPCODE_TAG_NAME.0,
-            super::SEDOLCODE_TAG_NAME.0,
             super::BLOOMBERGCODE_TAG_NAME.0,
             super::FIGICODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
@@ -275,7 +271,7 @@ pub fn fix_schema_tags() -> Vec<i32> {
     //
     // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
     // and `Quantity(53)` are columns like the rest of the ladder, and what a
-    // message is *about* is what [`MarketElement::get_price`] reads off them
+    // message is *about* is what [`Market::get_price`] reads off them
     // rather than a column restating one of them.
     band(
         &mut tags,

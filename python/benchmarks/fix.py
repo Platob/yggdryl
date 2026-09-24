@@ -265,9 +265,9 @@ SNAPSHOT_CODEC = FixCodec(SEED_REGISTRY, snapshot_ns=1_000_000_000)
 assert ORDER_TYPE.msgcat == "ORDR"
 assert PARSED.msgcat == 10
 assert SNAPSHOT_CODEC.snapshot_ns == 1_000_000_000
-# A parse fills what the line implied, so the identifiers are on the message
-# the parse answered rather than behind a pass of its own.
-assert PARSED.identifiers == {"clordid": "ORDER-000000"}
+# A parse fills what the line implied, so the names the message goes by are
+# on the message the parse answered rather than behind a pass of its own.
+assert PARSED.altids == {"CLORDID": "ORDER-000000"}
 assert [field.name for field, _ in ORDER_TYPE.identifier_values(PARSED)] == ["clordid"]
 WALKED = next(iter(CODEC.lifecycle([PARSED])))
 
@@ -324,8 +324,8 @@ def _identifier_values() -> object:
     return ORDER_TYPE.identifier_values(PARSED)
 
 
-def _identifiers_map() -> object:
-    return PARSED.identifiers
+def _altids_map() -> object:
+    return PARSED.altids
 
 
 def _event_facts() -> object:
@@ -340,7 +340,7 @@ def _message_entries() -> object:
     return PARSED.entries()
 
 
-def _arrow_reader_with_identifiers() -> int:
+def _arrow_reader_fixed_rows() -> int:
     return CODEC.arrow_reader(FIXED_SCHEMA, (PARSED for _ in LINES)).read_all().num_rows
 
 
@@ -487,12 +487,12 @@ def main() -> None:
         _measure("FixMsg.msgcat", _message_msgcat, args.iterations)
         _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
-        _measure("identifiers native map crossing", _identifiers_map, args.iterations)
+        _measure("altids native map crossing", _altids_map, args.iterations)
         _measure("message event holder", _event_facts, args.iterations)
         _measure("message header holder", _header_facts, args.iterations)
         _measure("message entries", _message_entries, args.iterations)
         streams = max(1, args.iterations // 50)
-        _measure(f"arrow_reader with identifiers/{len(LINES)}", _arrow_reader_with_identifiers, streams)
+        _measure(f"arrow_reader fixed rows/{len(LINES)}", _arrow_reader_fixed_rows, streams)
         _measure(f"parse_lines drain/{len(LINES)}", _parse_lines_drain, streams)
         _measure(f"parse_text_lines drain/{len(LINES)}", _parse_text_lines_drain, streams)
         _measure(

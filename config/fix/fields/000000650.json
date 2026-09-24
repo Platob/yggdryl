@@ -290,30 +290,6 @@
     }
   },
   {
-    "name": "cusipcode",
-    "dtype": {
-      "type": "cusip"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65057",
-      "description": "The normalized CUSIP the message identifies.",
-      "display": "CusipCode"
-    }
-  },
-  {
-    "name": "sedolcode",
-    "dtype": {
-      "type": "sedol"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65058",
-      "description": "The normalized SEDOL the message identifies.",
-      "display": "SedolCode"
-    }
-  },
-  {
     "name": "bloombergcode",
     "dtype": {
       "type": "bloomberg"

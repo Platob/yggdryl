@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Element, Event, Market};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Timezone, Url};

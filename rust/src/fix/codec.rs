@@ -424,7 +424,7 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it. A capture named for one of the seventeen event columns
+    /// whoever read it. A capture named for one of the sixteen event columns
     /// is silent too: it is the line's own fact - the place, the state, the
     /// instant the line reads off it - and the line states its identity as
     /// the message's source, which is all a line says about a message; the

@@ -7,12 +7,22 @@ use std::sync::Arc;
 
 use yggdryl::fix::FIXENTRIES_COLUMN;
 
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    BloombergCode, CusipCode, DataType, Decimal18, FIGICode, Field, FixCodec, FixEntry, FixMsg,
-    FixRegistry, IsinCode, Scalar, SedolCode, StructType, fix_schema, fix_schema_carrying,
+    Ccy, DataType, Decimal18, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType,
+    fix_schema, fix_schema_carrying,
 };
+
+/// One security identifier under `key`, validated by its source.
+fn securityid(key: &str, code: &str) -> SecurityId {
+    SecurityId::new(SecType::read(key).expect("a source"), code).expect("an identifier")
+}
+
+fn sectype(key: &str) -> SecType {
+    SecType::read(key).expect("a source")
+}
 
 fn reader() -> (Arc<FixRegistry>, FixCodec) {
     let registry = super::committed_registry();
@@ -27,11 +37,19 @@ fn instrument_identifier_setters_fill_secaltids() {
         .sole_line(b"8=FIX.4.4|35=D|11=A1|454=1|455=AAPL.O|456=5|10=0|")
         .expect("an order with one unrelated alternate identifier");
 
-    message.set_isincode(Some(IsinCode::new("US0378331005").unwrap()));
-    message.set_cusipcode(Some(CusipCode::new("037833100").unwrap()));
-    message.set_sedolcode(Some(SedolCode::new("2046251").unwrap()));
-    message.set_bloombergcode(Some(BloombergCode::new("AAPL US EQUITY").unwrap()));
-    message.set_figicode(Some(FIGICode::new("BBG000BLNQ16").unwrap()));
+    for (key, code) in [
+        ("ISIN", "US0378331005"),
+        ("CUSIP", "037833100"),
+        ("SEDOL", "2046251"),
+        ("BLOOMBERG", "AAPL US EQUITY"),
+        ("FIGI", "BBG000BLNQ16"),
+    ] {
+        assert!(
+            message
+                .insert_securityid(securityid(key, code))
+                .expect("a key the dictionary has a source field for")
+        );
+    }
 
     let alternates = |message: &FixMsg| {
         super::sequence(
@@ -70,26 +88,40 @@ fn instrument_identifier_setters_fill_secaltids() {
         Some("6")
     );
 
-    // A second value for one source replaces its occurrence rather than
-    // adding a duplicate. Clearing another source removes only that one;
-    // the unrelated RIC occurrence remains where the input stated it.
-    message.set_isincode(Some(IsinCode::new("US5949181045").unwrap()));
-    message.set_bloombergcode(None);
+    // A source's identifier is stated once: inserting under a held source
+    // fills nothing, and another value for it is a removal and an
+    // insertion, whose occurrence closes the group. Removing another source
+    // removes only that one; the unrelated RIC occurrence remains where the
+    // input stated it.
+    assert!(
+        !message
+            .insert_securityid(securityid("ISIN", "US5949181045"))
+            .unwrap()
+    );
+    assert!(message.remove_securityid(&sectype("ISIN")).unwrap());
+    assert!(
+        message
+            .insert_securityid(securityid("ISIN", "US5949181045"))
+            .unwrap()
+    );
+    assert!(message.remove_securityid(&sectype("BLOOMBERG")).unwrap());
+    assert!(!message.remove_securityid(&sectype("BLOOMBERG")).unwrap());
     assert_eq!(
         alternates(&message),
         [
             ("AAPL.O".to_owned(), "5".to_owned()),
-            ("US5949181045".to_owned(), "4".to_owned()),
             ("037833100".to_owned(), "1".to_owned()),
             ("2046251".to_owned(), "2".to_owned()),
             ("BBG000BLNQ16".to_owned(), "S".to_owned()),
+            ("US5949181045".to_owned(), "4".to_owned()),
         ]
     );
+    assert_eq!(message.get_securityids().get("ISIN"), Some("US5949181045"));
+    assert_eq!(message.get_securityids().get("BLOOMBERG"), None);
 
-    message.set_isincode(None);
-    message.set_cusipcode(None);
-    message.set_sedolcode(None);
-    message.set_figicode(None);
+    for key in ["ISIN", "CUSIP", "SEDOL", "FIGI"] {
+        assert!(message.remove_securityid(&sectype(key)).unwrap());
+    }
     assert_eq!(
         alternates(&message),
         [("AAPL.O".to_owned(), "5".to_owned())]
@@ -117,17 +149,16 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     // The names the message goes by are its own; where the bridge delivered
     // it is the capture's word, so the session event is no identifier.
     assert_eq!(
-        message
-            .get_identifiers()
-            .iter()
-            .map(|(key, value)| (key.as_str(), value.as_str()))
-            .collect::<Vec<_>>(),
+        message.get_altids().iter().collect::<Vec<_>>(),
         [
-            ("clordid", "CLIENT-1"),
-            ("orderid", "ORDER-1"),
-            ("origclordid", "CLIENT-0"),
+            ("CLORDID", "CLIENT-1"),
+            ("MDREQID", "MARKET-1"),
+            ("ORDERID", "ORDER-1"),
+            ("ORIGCLORDID", "CLIENT-0"),
+            ("QUOTEID", "QUOTE-1"),
+            ("QUOTEREQID", "REQUEST-1"),
         ],
-        "the component names stand without the capture context"
+        "every identifier a source field states stands, without the capture context"
     );
     assert_eq!(
         message.capture().msgsesseventid(),
@@ -161,7 +192,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         capture_only.capture().msgsesseventid(),
         Some("ZZ:SESSION-1:CONTEXT-1:7")
     );
-    assert!(capture_only.get_identifiers().is_empty());
+    assert!(capture_only.get_altids().is_empty());
 
     for partial in [
         b"MSGTYPE=ZZ|MSGSEQNUM=7|MSGSESSIONID=SESSION-1".as_slice(),
@@ -171,7 +202,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
         let partial = reader.sole_line(partial).unwrap();
         assert_eq!(partial.capture().msgsesseventid(), None);
         assert!(partial.by_tag(yggdryl::MSGSESSEVENTID_TAG_NAME.0).is_err());
-        assert!(!partial.get_identifiers().contains_key("msgsesseventid"));
+        assert!(!partial.get_altids().contains_key("MSGSESSEVENTID"));
         assert_eq!(partial.get_crosscode(), "");
     }
 
@@ -183,7 +214,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     // Two deliveries of one message go by the same names and are one
     // content; only the session event they were delivered as tells them
     // apart.
-    assert_eq!(message.get_identifiers(), other_capture.get_identifiers());
+    assert_eq!(message.get_altids(), other_capture.get_altids());
     assert_eq!(
         other_capture.capture().msgsesseventid(),
         Some("8:SESSION-2:CONTEXT-2:7")
@@ -207,7 +238,7 @@ fn crosscode_uses_fix_priority_while_session_events_name_the_observation() {
     );
     let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
     assert_eq!(rebuilt.get_crosscode(), "ORDER-1");
-    assert_eq!(rebuilt.get_identifiers(), message.get_identifiers());
+    assert_eq!(rebuilt.get_altids(), message.get_altids());
     assert_eq!(
         rebuilt.capture().msgsesseventid(),
         Some("8:SESSION-1:CONTEXT-1:7")
@@ -231,24 +262,15 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         message.capture().msgsesseventid(),
         Some("8:SESSION-2:CONTEXT-1:7")
     );
-    assert_eq!(
-        message.get_identifiers().get("clordid").map(String::as_str),
-        Some("CLIENT-1")
-    );
-    assert_eq!(
-        message.get_identifiers().get("orderid").map(String::as_str),
-        Some("ORDER-1")
-    );
+    assert_eq!(message.get_altids().get("CLORDID"), Some("CLIENT-1"));
+    assert_eq!(message.get_altids().get("ORDERID"), Some("ORDER-1"));
 
     // A missing part unsays the key rather than leaving a stale one.
     message
         .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::Null)
         .unwrap();
     assert_eq!(message.capture().msgsesseventid(), None);
-    assert_eq!(
-        message.get_identifiers().get("clordid").map(String::as_str),
-        Some("CLIENT-1")
-    );
+    assert_eq!(message.get_altids().get("CLORDID"), Some("CLIENT-1"));
 
     message
         .set(yggdryl::MSGCTXID_TAG_NAME.0, Scalar::from("CONTEXT-2"))
@@ -289,7 +311,7 @@ fn session_event_identifier_tracks_typed_capture_edits_without_losing_other_name
         message.capture().msgsesseventid(),
         Some("F:SESSION-3:CONTEXT-2:8")
     );
-    assert!(!message.get_identifiers().contains_key("msgsesseventid"));
+    assert!(!message.get_altids().contains_key("MSGSESSEVENTID"));
 }
 
 /// The key is the four values joined by `:` and nothing else: no length
@@ -352,26 +374,6 @@ fn session_event_identifier_is_the_plain_join_of_its_four_values() {
         stated.capture().msgsesseventid(),
         Some("8:SESSION-1:CONTEXT-1:7")
     );
-
-    // A row written while the key was an identifier still states it there:
-    // the column owns it now, so settling removes the legacy entry, and the
-    // content it was never part of does not move.
-    let mut legacy = base.clone();
-    let code = legacy.get_currhashcode();
-    let mut identifiers = legacy.get_identifiers().clone();
-    identifiers.insert(
-        "msgsesseventid".to_owned(),
-        "1:8|9:SESSION-1|9:CONTEXT-1|7".to_owned(),
-    );
-    legacy.set_identifiers(identifiers);
-    legacy.finalize();
-    assert!(!legacy.get_identifiers().contains_key("msgsesseventid"));
-    assert_eq!(legacy.get_identifiers(), base.get_identifiers());
-    assert_eq!(
-        legacy.capture().msgsesseventid(),
-        Some("8:SESSION-1:CONTEXT-1:7")
-    );
-    assert_eq!(legacy.get_currhashcode(), code);
 
     // A row is read the same way: a stale cell is derived over, a null cell
     // is derived into, and the row written back states the one key.
@@ -465,7 +467,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
             .as_str(),
         Some("8:e7256476:9effef3e6a:1094")
     );
-    assert!(!message.get_identifiers().contains_key("msgsesseventid"));
+    assert!(!message.get_altids().contains_key("MSGSESSEVENTID"));
     // Delivery provenance, never content: the key is no byte of the wire.
     let wire = message.into_bytes(b'|');
     assert!(
@@ -541,7 +543,7 @@ fn a_captured_line_states_its_session_event_at_its_own_column() {
     ] {
         let partial = sole(&partial);
         assert_eq!(partial.capture().msgsesseventid(), None);
-        assert!(!partial.get_identifiers().contains_key("msgsesseventid"));
+        assert!(!partial.get_altids().contains_key("MSGSESSEVENTID"));
         assert!(
             partial
                 .into_row(&schema)
@@ -1463,10 +1465,7 @@ fn a_group_held_as_a_column_reads_as_its_run() {
     let message = FixMsg::with_registry(Arc::clone(&registry), root, row).expect("a message");
     assert!(super::holds_column(&message, "secaltids"));
 
-    assert_eq!(
-        message.get_isincode(),
-        Some(&IsinCode::new("US0378331005").unwrap())
-    );
+    assert_eq!(message.get_securityids().get("ISIN"), Some("US0378331005"));
     let group = message
         .entries()
         .iter()
@@ -1533,8 +1532,13 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
     assert_eq!(bid.get_price(), decimal("101.5"));
     assert_eq!(bid.get_quantity(), Decimal18::from_int(200));
     assert_eq!(bid.get_currency().as_str(), "USD");
-    assert_eq!(bid.get_bidcurrency().map(|held| held.as_str()), Some("USD"));
-    assert_eq!(bid.get_askpx(), None);
+    assert_eq!(
+        bid.get_bid()
+            .and_then(|lane| lane.currency.as_ref())
+            .map(Ccy::as_str),
+        Some("USD")
+    );
+    assert_eq!(bid.get_ask(), None);
     let wire = bid.into_bytes(b'|');
     assert!(
         !wire.windows(4).any(|held| held == b"|54="),
@@ -1583,11 +1587,13 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         )
         .unwrap();
     assert_eq!(
-        order.get_bidcurrency().map(|held| held.as_str()),
+        order
+            .get_bid()
+            .and_then(|lane| lane.currency.as_ref())
+            .map(Ccy::as_str),
         Some("USD")
     );
     order.remove(54).unwrap();
     assert_eq!(order.get_side().as_str(), "UNKNOWN");
-    assert_eq!(order.get_bidpx(), None);
-    assert_eq!(order.get_bidcurrency(), None);
+    assert_eq!(order.get_bid(), None);
 }

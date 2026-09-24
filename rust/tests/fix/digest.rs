@@ -273,11 +273,13 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Thirty-one definitions: the event and capture facts, the execution and
-    // recording clocks, the session event a bridge delivered the message as,
-    // MsgCat, and six normalized identifiers whose standard FIX
-    // representation is contextual. CFI already has its own standard tag, so
-    // it adds no crate definition.
+    // Twenty-eight definitions: the event and capture facts, the execution
+    // and recording clocks, the session event a bridge delivered the message
+    // as, MsgCat, and three normalized identifiers - ISIN, Bloomberg, FIGI -
+    // whose standard FIX representation is contextual; CUSIP and SEDOL are
+    // members of the security identifiers and the names a message goes by
+    // are its alternate identifiers, so neither has a crate definition. CFI
+    // already has its own standard tag, so it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -286,7 +288,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "msgpluginid",
             "currhashcode",
             "crosshashcode",
-            "identifiers",
             "prevunix",
             "prevuuid",
             "creaunix",
@@ -304,8 +305,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "exprtime",
             "msgcat",
             "isincode",
-            "cusipcode",
-            "sedolcode",
             "bloombergcode",
             "miccode",
             "figicode",
@@ -323,7 +322,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("MsgPluginId"),
             Some("CurrHashCode"),
             Some("CrossHashCode"),
-            Some("Identifiers"),
             Some("PrevUnix"),
             Some("PrevUuid"),
             Some("CreaUnix"),
@@ -341,8 +339,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("ExprTime"),
             Some("MsgCat"),
             Some("IsinCode"),
-            Some("CusipCode"),
-            Some("SedolCode"),
             Some("BloombergCode"),
             Some("MicCode"),
             Some("FIGICode"),
@@ -413,15 +409,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // The arrival record is a group, so it has a counter like any other.
     assert_eq!(typed(yggdryl::NOFIXENTRIES_TAG_NAME.1), &DataType::Int32);
     assert!(field(yggdryl::NOFIXENTRIES_TAG_NAME.1).is_nullable());
-    // The names a message goes by and what a bridge stated under its own
-    // namespaces are the two Map groups, each its own counter.
-    for (tag, name) in [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME] {
-        assert_eq!(
-            typed(name),
-            &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
-        );
-        assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
-    }
+    // What a bridge stated under its own namespaces is the one Map group,
+    // with a counter of its own.
+    let (tag, name) = yggdryl::METADATA_TAG_NAME;
+    assert_eq!(
+        typed(name),
+        &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+    );
+    assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
     // No partition column: how a layout is cut is the target's - an Iceberg
     // table takes an `hour` transform over `currunix` - and a materialized copy
     // of that instant was a second owner of it.
@@ -556,17 +551,16 @@ fn every_registry_holds_the_crates_fields_and_takes_them_again() {
         registered + 2,
         "standard clock seeds remain"
     );
-    for (tag, name) in [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME] {
-        let map = registry.get_field_by_counter(tag).unwrap();
-        assert_eq!(map.name(), name);
-        assert_eq!(
-            map.dtype(),
-            &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
-        );
-        assert_eq!(registry.get_field_by_name(name), Some(map));
-        // A Map group is its own counter: no scalar stands beside it.
-        assert!(registry.get_field_by_tag(tag).is_none());
-    }
+    let (tag, name) = yggdryl::METADATA_TAG_NAME;
+    let map = registry.get_field_by_counter(tag).unwrap();
+    assert_eq!(map.name(), name);
+    assert_eq!(
+        map.dtype(),
+        &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+    );
+    assert_eq!(registry.get_field_by_name(name), Some(map));
+    // A Map group is its own counter: no scalar stands beside it.
+    assert!(registry.get_field_by_tag(tag).is_none());
 }
 
 /// A fresh registry registers every one of the crate's own fields, and

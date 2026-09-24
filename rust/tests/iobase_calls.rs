@@ -61,13 +61,13 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
     // document reads and writes and are outside this tally. No manifest:
     // a dictionary is one namespace, and what each dialect contributed
     // travels on the field it contributed to.
-    // Six documents and four roots: the store's own field shard, the crate's
-    // block on its own shard, its `identifiers` and `metadata` groups and its
-    // `fixmsg` component - a store states the whole row, so the crate's four
-    // documents are written beside the store's one - plus the built-in
-    // MsgCat vocabulary. The three category roots and `codesets/` are each
-    // reached once for pruning. MsgCat adds one document lookup and no root
-    // lookup; reading still resolves exactly four roots.
+    // Five documents and four roots: the store's own field shard, the crate's
+    // block on its own shard, its `metadata` group and its `fixmsg` component
+    // - a store states the whole row, so the crate's three documents are
+    // written beside the store's one - plus the built-in MsgCat vocabulary.
+    // The three category roots and `codesets/` are each reached once for
+    // pruning. MsgCat adds one document lookup and no root lookup; reading
+    // still resolves exactly four roots.
     assert_eq!(
         registry
             .codesets()
@@ -76,9 +76,9 @@ fn fix_catalog_storage_resolves_each_root_path_once() {
         ["msgcatcodeset"],
     );
     costs(
-        "six documents, four roots",
+        "five documents, four roots",
         &calls,
-        "child_by_path=10",
+        "child_by_path=9",
         || {
             registry.commit(&mut folder).unwrap();
         },
@@ -620,7 +620,7 @@ mod records {
 
     #[test]
     fn text_costs() {
-        // Plain-text rows are the seventeen event columns and `body`, so this
+        // Plain-text rows are the sixteen event columns and `body`, so this
         // one is read rather than written from a batch. The one `mtime` call
         // per read buys no column of its own any more - it is what dates the
         // rows, and it is a fact about the handle, so every row shares the one
@@ -647,7 +647,7 @@ mod records {
             &calls,
             "size=1 media_type=1 is_container=2",
             || {
-                assert_eq!(handle.column_size().expect("columns"), 18);
+                assert_eq!(handle.column_size().expect("columns"), 17);
             },
         );
         costs(

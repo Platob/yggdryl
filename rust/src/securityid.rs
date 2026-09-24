@@ -14,14 +14,11 @@ use smol_str::{SmolStr, format_smolstr};
 
 use crate::bloomberg_code::BLOOMBERG_WIDTH;
 use crate::code::{folded_spelling, is_null_like};
-use crate::graph::MarketElement;
+use crate::graph::{Element, Market};
 use crate::idmap::{
     IdMap, entry_refusal, located_at, merge_sorted, sorted_map_scalar, text_entries,
 };
-use crate::{
-    BloombergCode, CfiCode, CusipCode, DataType, Error, FIGICode, IsinCode, Result, Scalar,
-    SedolCode,
-};
+use crate::{CfiCode, CusipCode, DataType, Error, FIGICode, IsinCode, Result, Scalar, SedolCode};
 
 /// The most bytes a source key may be once upper-cased.
 const KEY_WIDTH: usize = 32;
@@ -950,56 +947,30 @@ impl SecurityIdRegistry {
     }
 }
 
-/// Learn what `event` states about its instrument, then fill what it left
-/// unstated, through the five code fields a market element carries today.
-///
-/// What `graph/instrument.rs` did in place: the codes are read into a
-/// [`SecurityIds`], learned, filled, and the filled ones written back where
-/// the event stated none. Stands until the market trait carries the set.
-pub(crate) fn enrich<E: MarketElement>(registry: &mut SecurityIdRegistry, event: &mut E) {
-    let mut ids = SecurityIds::default();
-    let mut state = |key: &str, code: Option<&str>| {
-        if let Some(code) = code {
-            if let Ok(id) = SecurityId::new(SecType::read(key).expect("a known source"), code) {
-                ids.insert(id);
-            }
-        }
-    };
-    state("ISIN", event.get_isincode().map(IsinCode::as_str));
-    state("CUSIP", event.get_cusipcode().map(CusipCode::as_str));
-    state("SEDOL", event.get_sedolcode().map(SedolCode::as_str));
-    state(
-        "BLOOMBERG",
-        event.get_bloombergcode().map(BloombergCode::as_str),
-    );
-    state("FIGI", event.get_figicode().map(FIGICode::as_str));
+/// Learn what `event` states about its instrument - its security identifiers
+/// and its CFI - then fill what it left unstated: each absent key the
+/// registry knows for the ISIN is derived onto the event, never stated, and
+/// the element is finalized where anything moved.
+pub(crate) fn enrich<E: Market + Element>(registry: &mut SecurityIdRegistry, event: &mut E) {
+    let mut ids = event.get_securityids().clone();
     let mut cfi = event.get_cficode().cloned();
     registry.learn(&ids, cfi.as_ref());
     if !registry.fill(&mut ids, &mut cfi) {
         return;
     }
+    let mut changed = false;
     if cfi.as_ref() != event.get_cficode() {
         event.set_cficode(cfi);
+        changed = true;
     }
-    macro_rules! write_back {
-        ($key:literal, $get:ident, $set:ident, $code:ident) => {
-            if event.$get().is_none() {
-                if let Some(code) = ids.get($key).and_then(|code| $code::new(code).ok()) {
-                    event.$set(Some(code));
-                }
-            }
-        };
+    for id in ids.iter() {
+        if !event.get_securityids().contains_key(id.sectype().as_str()) {
+            changed |= event.derive_securityid(id.clone());
+        }
     }
-    write_back!("CUSIP", get_cusipcode, set_cusipcode, CusipCode);
-    write_back!("SEDOL", get_sedolcode, set_sedolcode, SedolCode);
-    write_back!(
-        "BLOOMBERG",
-        get_bloombergcode,
-        set_bloombergcode,
-        BloombergCode
-    );
-    write_back!("FIGI", get_figicode, set_figicode, FIGICode);
-    event.finalize();
+    if changed {
+        event.finalize();
+    }
 }
 
 #[cfg(feature = "internals")]
@@ -1015,7 +986,7 @@ pub mod internals {
     //! reservation stay exactly as private as they were.
     use std::collections::HashMap;
 
-    use crate::graph::MarketElement;
+    use crate::graph::{Element, Market};
     use crate::{CfiCode, SecurityIds};
 
     /// The instrument associations one ordered lifecycle learns.
@@ -1043,7 +1014,7 @@ pub mod internals {
         }
 
         /// Learn what `event` states, then fill what it left unstated.
-        pub fn enrich<E: MarketElement>(&mut self, event: &mut E) {
+        pub fn enrich<E: Market + Element>(&mut self, event: &mut E) {
             super::enrich(&mut self.0, event);
         }
 

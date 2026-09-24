@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::iter::FusedIterator;
 use std::vec;
 
-use super::{Element, Event};
+use super::{Element, Event, MarketOperationEvent};
 use crate::{State, Uuid};
 
 /// The elements a walk reads, in the order it reads them.
@@ -81,14 +81,14 @@ enum Source<E, I> {
 /// leaves snapshot instants as they came.
 ///
 /// ```
-/// use yggdryl::graph::{Element, EventIterator, Event, MarketEventData};
+/// use yggdryl::graph::{Element, EventIterator, Event, MarketOperationEventData};
 /// use yggdryl::State;
 ///
 /// // One order's life as three events sharing its cross code, plus one
 /// // event of another order: a market event orders by instant and follows
 /// // by the timed reading.
 /// let event = |order: &str, unix: i64, state: &str| {
-///     let mut event = MarketEventData::at(unix);
+///     let mut event = MarketOperationEventData::at(unix);
 ///     event.set_crosscode(order.to_owned());
 ///     event.set_state(State::from_spelling(state).expect("a shipped state"));
 ///     event.finalize();
@@ -179,7 +179,7 @@ struct Live<E> {
 
 impl<E, I> EventIterator<E, I>
 where
-    E: Event + Clone,
+    E: MarketOperationEvent + Clone,
     I: Iterator<Item = E>,
 {
     /// Opens a walk over `elements`.
@@ -247,24 +247,24 @@ where
             self.expirations.remove(&(deadline, identity));
         }
         if is_alive(element) {
-            for (scheme, name) in element.get_identifiers() {
+            for (scheme, name) in element.get_altids().iter() {
                 let held = self
                     .named
-                    .entry(scheme.clone())
+                    .entry(scheme.to_owned())
                     .or_default()
-                    .insert(name.clone(), identity);
+                    .insert(name.to_owned(), identity);
                 if held == Some(identity) {
                     continue;
                 }
                 if let Some(known) = held.and_then(|held| self.names_of.get_mut(&held)) {
                     known.retain(|(held_scheme, held_name)| {
-                        held_scheme != scheme || held_name != name
+                        held_scheme.as_str() != scheme || held_name.as_str() != name
                     });
                 }
                 self.names_of
                     .entry(identity)
                     .or_default()
-                    .push((scheme.clone(), name.clone()));
+                    .push((scheme.to_owned(), name.to_owned()));
             }
             self.alive.insert(
                 identity,
@@ -415,12 +415,12 @@ where
             return own;
         }
         element
-            .get_identifiers()
+            .get_altids()
             .iter()
             .find_map(|(scheme, name)| {
                 self.named
-                    .get(scheme.as_str())
-                    .and_then(|names| names.get(name.as_str()))
+                    .get(scheme)
+                    .and_then(|names| names.get(name))
                     .copied()
             })
             .filter(|identity| self.alive.contains_key(identity))
@@ -430,7 +430,7 @@ where
 
 impl<E, I> Iterator for EventIterator<E, I>
 where
-    E: Event + Clone,
+    E: MarketOperationEvent + Clone,
     I: Iterator<Item = E>,
 {
     type Item = E;
@@ -512,7 +512,7 @@ where
 
 impl<E, I> FusedIterator for EventIterator<E, I>
 where
-    E: Event + Clone,
+    E: MarketOperationEvent + Clone,
     I: FusedIterator<Item = E>,
 {
 }
@@ -561,13 +561,13 @@ pub mod internals {
     //! retiring a name forgets exactly the records it opened.
     use super::EventIterator;
     use crate::Uuid;
-    use crate::graph::Event;
+    use crate::graph::MarketOperationEvent;
 
     /// Settle `element` as the element alive under `identity`, arriving as
     /// `arrived`.
     pub fn settle<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid, element: &E, arrived: Uuid)
     where
-        E: Event + Clone,
+        E: MarketOperationEvent + Clone,
         I: Iterator<Item = E>,
     {
         walk.settle(identity, element, arrived);
@@ -576,7 +576,7 @@ pub mod internals {
     /// Retire the element alive under `identity`, answering whether one was.
     pub fn retire<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid) -> bool
     where
-        E: Event + Clone,
+        E: MarketOperationEvent + Clone,
         I: Iterator<Item = E>,
     {
         walk.retire(identity).is_some()

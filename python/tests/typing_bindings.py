@@ -1458,7 +1458,7 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_event: fix.MarketEventData = fix_message.event()
+fix_message_event: fix.MarketOperationEventData = fix_message.event()
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
@@ -1474,12 +1474,32 @@ fix_message_state: Scalar = fix_message.state
 fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
 fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
-fix_message_identifiers: dict[str, str] = fix_message.identifiers
 fix_message_marketoperationid: int | None = fix_message.marketoperationid
 fix_message_price: Scalar = fix_message.price
-fix_message_quantity: Scalar = fix_message.quantity
-fix_message_side: Scalar = fix_message.side
 fix_message_currency: Scalar = fix_message.currency
+fix_message_quantity: Scalar = fix_message.quantity
+fix_message_unit: str = fix_message.unit
+fix_message_side: Scalar = fix_message.side
+fix_message_securityids: dict[str, str] = fix_message.securityids
+fix_message_cficode: Scalar | None = fix_message.cficode
+fix_message_miccode: Scalar | None = fix_message.miccode
+fix_message_lastpx: Scalar | None = fix_message.lastpx
+fix_message_lastqty: Scalar | None = fix_message.lastqty
+fix_message_avgpx: Scalar | None = fix_message.avgpx
+fix_message_cumqty: Scalar | None = fix_message.cumqty
+fix_message_leavesqty: Scalar | None = fix_message.leavesqty
+fix_message_prevpx: Scalar | None = fix_message.prevpx
+fix_message_prevqty: Scalar | None = fix_message.prevqty
+fix_message_spotrate: Scalar | None = fix_message.spotrate
+fix_message_forwardpoints: Scalar | None = fix_message.forwardpoints
+fix_message_ticker: str | None = fix_message.ticker
+fix_message_tif: str | None = fix_message.tif
+fix_message_tradable: bool | None = fix_message.tradable
+fix_message_accountids: dict[str, str] = fix_message.accountids
+fix_message_userids: dict[str, str] = fix_message.userids
+fix_message_altids: dict[str, str] = fix_message.altids
+fix_message_bid: dict[str, Scalar | str | None] | None = fix_message.bid
+fix_message_ask: dict[str, Scalar | str | None] | None = fix_message.ask
 fix_message_entries: list[FixEntryTuple] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
 fix_message_wire_text: str = fix_message.into_text("|")
@@ -1511,7 +1531,6 @@ fix_event_crossuuid: Scalar = fix_message_event.crossuuid
 fix_event_crosscode: str = fix_message_event.crosscode
 fix_event_currhashcode: int = fix_message_event.currhashcode
 fix_event_crosshashcode: int = fix_message_event.crosshashcode
-fix_event_identifiers: dict[str, str] = fix_message_event.identifiers
 fix_event_srcuuids: list[Scalar] = fix_message_event.srcuuids
 fix_event_currunix: int = fix_message_event.currunix
 fix_event_state: Scalar = fix_message_event.state
@@ -1535,24 +1554,21 @@ fix_event_prevpx: Scalar | None = fix_message_event.prevpx
 fix_event_prevqty: Scalar | None = fix_message_event.prevqty
 fix_event_tif: str | None = fix_message_event.tif
 fix_event_tradable: bool | None = fix_message_event.tradable
-fix_event_symbolticker: str | None = fix_message_event.symbolticker
+fix_event_ticker: str | None = fix_message_event.ticker
 fix_event_currency: Scalar = fix_message_event.currency
 fix_event_unit: str = fix_message_event.unit
 fix_event_side: Scalar = fix_message_event.side
-fix_event_isincode: Scalar | None = fix_message_event.isincode
-fix_event_cusipcode: Scalar | None = fix_message_event.cusipcode
-fix_event_sedolcode: Scalar | None = fix_message_event.sedolcode
-fix_event_bloombergcode: Scalar | None = fix_message_event.bloombergcode
+fix_event_securityids: dict[str, str] = fix_message_event.securityids
 fix_event_cficode: Scalar | None = fix_message_event.cficode
 fix_event_miccode: Scalar | None = fix_message_event.miccode
-fix_event_bidpx: Scalar | None = fix_message_event.bidpx
-fix_event_bidqty: Scalar | None = fix_message_event.bidqty
-fix_event_bidcurrency: Scalar | None = fix_message_event.bidcurrency
-fix_event_bidunit: str | None = fix_message_event.bidunit
-fix_event_askpx: Scalar | None = fix_message_event.askpx
-fix_event_askqty: Scalar | None = fix_message_event.askqty
-fix_event_askcurrency: Scalar | None = fix_message_event.askcurrency
-fix_event_askunit: str | None = fix_message_event.askunit
+fix_event_spotrate: Scalar | None = fix_message_event.spotrate
+fix_event_forwardpoints: Scalar | None = fix_message_event.forwardpoints
+fix_event_metadata: dict[str, str] = fix_message_event.metadata
+fix_event_accountids: dict[str, str] = fix_message_event.accountids
+fix_event_userids: dict[str, str] = fix_message_event.userids
+fix_event_altids: dict[str, str] = fix_message_event.altids
+fix_event_bid: dict[str, Scalar | str | None] | None = fix_message_event.bid
+fix_event_ask: dict[str, Scalar | str | None] | None = fix_message_event.ask
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1779,13 +1795,31 @@ assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert isinstance(fix_message_wire_text, str)
-assert isinstance(fix_message_event, fix.MarketEventData)
+assert isinstance(fix_message_event, fix.MarketOperationEventData)
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
 assert fix_message_msgcat is None or isinstance(fix_message_msgcat, int)
 assert fix_message_marketoperationid is None or isinstance(fix_message_marketoperationid, int)
-assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_identifiers, dict)
+assert isinstance(fix_message_metadata, dict) and isinstance(fix_message_altids, dict)
+assert isinstance(fix_message_accountids, dict) and isinstance(fix_message_userids, dict)
+assert isinstance(fix_message_securityids, dict) and isinstance(fix_message_unit, str)
+assert fix_message_cficode is None or fix_message_cficode
+assert fix_message_miccode is None or fix_message_miccode
+assert fix_message_lastpx is None or isinstance(fix_message_lastpx, Scalar)
+assert fix_message_lastqty is None or isinstance(fix_message_lastqty, Scalar)
+assert fix_message_avgpx is None or isinstance(fix_message_avgpx, Scalar)
+assert fix_message_cumqty is None or isinstance(fix_message_cumqty, Scalar)
+assert fix_message_leavesqty is None or isinstance(fix_message_leavesqty, Scalar)
+assert fix_message_prevpx is None or isinstance(fix_message_prevpx, Scalar)
+assert fix_message_prevqty is None or isinstance(fix_message_prevqty, Scalar)
+assert fix_message_spotrate is None or isinstance(fix_message_spotrate, Scalar)
+assert fix_message_forwardpoints is None or isinstance(fix_message_forwardpoints, Scalar)
+assert fix_message_ticker is None or isinstance(fix_message_ticker, str)
+assert fix_message_tif is None or isinstance(fix_message_tif, str)
+assert fix_message_tradable is None or isinstance(fix_message_tradable, bool)
+assert fix_message_bid is None or isinstance(fix_message_bid, dict)
+assert fix_message_ask is None or isinstance(fix_message_ask, dict)
 assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
 assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
 assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
@@ -1827,22 +1861,16 @@ assert fix_event_prevpx is None or isinstance(fix_event_prevpx, Scalar)
 assert fix_event_prevqty is None or isinstance(fix_event_prevqty, Scalar)
 assert fix_event_tif is None or isinstance(fix_event_tif, str)
 assert fix_event_tradable is None or isinstance(fix_event_tradable, bool)
-assert fix_event_symbolticker is None or isinstance(fix_event_symbolticker, str)
-assert fix_event_isincode is None or fix_event_isincode
-assert fix_event_cusipcode is None or fix_event_cusipcode
-assert fix_event_sedolcode is None or fix_event_sedolcode
-assert fix_event_bloombergcode is None or fix_event_bloombergcode
+assert fix_event_ticker is None or isinstance(fix_event_ticker, str)
 assert fix_event_cficode is None or fix_event_cficode
 assert fix_event_miccode is None or fix_event_miccode
-assert fix_event_bidpx is None or fix_event_bidpx
-assert fix_event_bidqty is None or fix_event_bidqty
-assert fix_event_bidcurrency is None or fix_event_bidcurrency
-assert fix_event_bidunit is None or fix_event_bidunit
-assert fix_event_askpx is None or fix_event_askpx
-assert fix_event_askqty is None or fix_event_askqty
-assert fix_event_askcurrency is None or fix_event_askcurrency
-assert fix_event_askunit is None or fix_event_askunit
-assert isinstance(fix_event_identifiers, dict)
+assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
+assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
+assert fix_event_bid is None or isinstance(fix_event_bid, dict)
+assert fix_event_ask is None or isinstance(fix_event_ask, dict)
+assert isinstance(fix_event_securityids, dict) and isinstance(fix_event_metadata, dict)
+assert isinstance(fix_event_accountids, dict) and isinstance(fix_event_userids, dict)
+assert isinstance(fix_event_altids, dict)
 assert isinstance(fix_event_curruuid, Scalar) and isinstance(fix_event_crossuuid, Scalar)
 assert isinstance(fix_event_state, Scalar) and isinstance(fix_event_side, Scalar)
 assert isinstance(fix_event_price, Scalar) and isinstance(fix_event_quantity, Scalar)

@@ -215,31 +215,6 @@ impl MsgType {
         })
     }
 
-    /// Canonical identifier text in ascending member-name order.
-    ///
-    /// Enrichment stores this Map; lifecycle uses the same answer when the
-    /// message states none. An identifier whose value will not spell text is
-    /// left out, so one unreadable member costs that member and never the
-    /// message.
-    pub(super) fn identifier_mapping(&self, message: &FixMsg) -> Result<Scalar> {
-        let mut entries: Vec<(Scalar, Scalar)> = self
-            .identifier_values(message)
-            // An identifier whose value will not spell text names nothing, so
-            // it is left out rather than taken as the empty name or allowed
-            // to refuse the message around it: the arrival record still
-            // carries the bytes, and every identifier that does spell text
-            // still reaches the map.
-            .filter_map(|(field, value)| {
-                let held = DataType::utf8().scalar(value).ok()?;
-                Some((Scalar::from(field.name()), held))
-            })
-            .collect();
-        // `schema::fitted` trusts a matching Map datatype ID. The
-        // producer must therefore establish sortedness before storage.
-        entries.sort_unstable_by(|left, right| left.0.cmp(&right.0));
-        Scalar::from_mapping(entries)
-    }
-
     /// The direct scalar child `key` names under the crate's name fold, and
     /// the tag it carries.
     ///

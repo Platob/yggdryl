@@ -25,8 +25,11 @@ stable numeric market-operation category. Each committed message component
 still carries its exhaustive four-character `FIX:msgcat` metadata, and the
 builtin `msgcatcodeset` maps those names to the row integers (`UNKN=0`,
 `ORDR=10`, `QUOT=14`, and so on). The normalized instrument columns are `isincode(65055)`,
-`cusipcode(65057)`, `sedolcode(65058)`, `bloombergcode(65059)` and
-`miccode(65060)`; CFI remains standard `CFICode(461)`, with no tag 65056.
+`bloombergcode(65059)`, `miccode(65060)` and `figicode(65061)` - the first, the
+second and the last views of the message's security identifiers; CFI remains
+standard `CFICode(461)`, with no tag 65056, and `cusipcode(65057)` and
+`sedolcode(65058)` are retired slots: a CUSIP or a SEDOL is one more security
+identifier under its own key.
 
 The protocol view exposes the category beside the message type: Rust
 `field.as_fix().msgcat()`, Python `field.fix.msgcat`, and JavaScript
@@ -388,14 +391,14 @@ A tag is what identifies a field on the wire and a name is what identifies it to
 and groups are the three registry categories, a message being a component that
 carries `FIX:msgtype`.
 
-The crate's `identifiers(65020)` and `metadata(65049)` are also groups: a
-nullable, sorted-key `map<utf8, utf8>` each, whose occurrence is its non-null
-entries Struct, with no separate scalar counter and no invented numeric tags
-for its key or value. A parse fills the first from the message's
-[declared identifiers](registry.md#component-identifiers) and the second from
-the [namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
+The crate's `metadata(65049)` is also a group: a nullable, sorted-key
+`map<utf8, utf8>` whose occurrence is its non-null entries Struct, with no
+separate scalar counter and no invented numeric tags for its key or value. A
+parse fills it from the
+[namespaced keys](capture.md#a-composed-key-fills-the-field-its-last-segment-names)
 a bridge wrote, while ordinary Serie/LargeSerie groups keep their existing
-counter rules.
+counter rules; the `identifiers(65020)` group is retired, and the names a
+message goes by are its [identifier maps](message.md#the-identifier-maps).
 
 The published FIX component names guide the catalog: [FIX message structures](https://fixtrading.org/concepts-part1-messagestructures/)
 and [FIX Orchestra](https://github.com/FIXTradingCommunity/fix-orchestra-spec/blob/master/v1-0-STANDARD/orchestra_spec.md)
@@ -421,10 +424,10 @@ names are folded; `display` keeps the specification's spelling.
     assert!(!registry.field_by_name("Party")?.fields().is_empty());
     assert_eq!(registry.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
     assert_eq!(registry.field_by_name("PartyID")?.as_fix().tag()?, Some(448));
-    let identifiers = registry.field_by_counter(65_020)?;
-    assert_eq!(identifiers.name(), "identifiers");
-    assert_eq!(identifiers.as_fix().counter()?, Some(65_020));
-    assert!(registry.get_field_by_tag(65_020).is_none(), "a Map group is no scalar");
+    let metadata = registry.field_by_counter(65_049)?;
+    assert_eq!(metadata.name(), "metadata");
+    assert_eq!(metadata.as_fix().counter()?, Some(65_049));
+    assert!(registry.get_field_by_tag(65_049).is_none(), "a Map group is no scalar");
     ```
 
 === "Python"
@@ -443,10 +446,10 @@ names are folded; `display` keeps the specification's spelling.
     assert registry.field_by_name("Party").is_struct
     assert registry.field_by_path("Parties.PartyID").fix.tag == 448
     assert registry.field_by_name("PartyID").fix.tag == 448
-    identifiers = registry.field_by_counter(65_020)
-    assert identifiers.name == "identifiers"
-    assert identifiers.fix.counter == 65_020
-    assert registry.get_field_by_tag(65_020) is None, "a Map group is no scalar"
+    metadata = registry.field_by_counter(65_049)
+    assert metadata.name == "metadata"
+    assert metadata.fix.counter == 65_049
+    assert registry.get_field_by_tag(65_049) is None, "a Map group is no scalar"
     ```
 
 === "JavaScript"
@@ -466,10 +469,10 @@ names are folded; `display` keeps the specification's spelling.
     assert.ok(registry.fieldByName('Party').fieldLen > 0)
     assert.equal(registry.fieldByPath('Parties.PartyID').fix.tag, 448)
     assert.equal(registry.fieldByName('PartyID').fix.tag, 448)
-    const identifiers = registry.fieldByCounter(65020)
-    assert.equal(identifiers.name, 'identifiers')
-    assert.equal(identifiers.fix.counter, 65020)
-    assert.equal(registry.getFieldByTag(65020), null, 'a Map group is no scalar')
+    const metadata = registry.fieldByCounter(65049)
+    assert.equal(metadata.name, 'metadata')
+    assert.equal(metadata.fix.counter, 65049)
+    assert.equal(registry.getFieldByTag(65049), null, 'a Map group is no scalar')
     ```
 
 ## Edges

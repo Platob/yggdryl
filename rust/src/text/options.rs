@@ -25,7 +25,7 @@ pub(crate) const EVENT_CAPTURES: [&str; 8] = [
 /// The event columns no capture can feed, because the line derives them -
 /// its identity, the chain's, the codes, the names it goes by - or a walk
 /// states them: a capture spelled as one is refused.
-pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 9] = [
+pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 8] = [
     "currunix",
     "curruuid",
     "crosscode",
@@ -33,7 +33,6 @@ pub(crate) const DERIVED_EVENT_COLUMNS: [&str; 9] = [
     "currhashcode",
     "crosshashcode",
     "srcuuids",
-    "identifiers",
     "seqnum",
 ];
 

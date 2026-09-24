@@ -748,7 +748,8 @@ fn a_value_written_into_a_message_is_restated_as_a_read_one_is() {
 /// follows.
 #[test]
 fn an_identifier_setter_syncs_a_group_held_as_a_column() {
-    use yggdryl::graph::MarketElement;
+    use yggdryl::graph::Market;
+    use yggdryl::securityid::{SecType, SecurityId};
 
     let registry = super::committed_registry();
     let parsed = super::fixed_codec(Arc::clone(&registry))
@@ -760,7 +761,9 @@ fn an_identifier_setter_syncs_a_group_held_as_a_column() {
     let mut message = FixMsg::with_registry(Arc::clone(&registry), root, row).expect("a message");
     assert!(super::holds_column(&message, "secaltids"));
 
-    message.set_isincode(Some(yggdryl::IsinCode::new("US0378331005").unwrap()));
+    message
+        .insert_securityid(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap())
+        .unwrap();
     let group = message
         .by_name("secaltids")
         .expect("the alternate identifiers");

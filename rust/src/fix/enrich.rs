@@ -73,7 +73,7 @@
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::iter::FusedIterator;
 use std::vec;
@@ -606,14 +606,6 @@ pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> crate::Res
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.
     registry.derivations()?.fill_all(&mut held)?;
-    if held.get_identifiers().is_empty() {
-        if let Some(component) = registry.get_msgtype(held.header().msgtype()) {
-            let identifiers = component.identifier_mapping(&held)?;
-            if !identifiers.is_null() {
-                held.set_unsettled(super::IDENTIFIERS_TAG_NAME.0, identifiers)?;
-            }
-        }
-    }
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
@@ -865,14 +857,6 @@ impl Element for LifecycleMessage {
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
         self.message.set_crosshashcode(crosshashcode);
-    }
-
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        self.message.get_identifiers()
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.message.set_identifiers(identifiers);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {
@@ -1131,3 +1115,6 @@ pub mod internals {
     //! the type is named here so that signature is public.
     pub use super::Derivations;
 }
+
+crate::graph::delegate_market!(LifecycleMessage, message);
+crate::graph::delegate_operation!(LifecycleMessage, message);

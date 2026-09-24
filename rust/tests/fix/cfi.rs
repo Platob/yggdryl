@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use yggdryl::CfiCode;
-use yggdryl::graph::MarketElement;
+use yggdryl::graph::Market;
 use yggdryl::{FixMsg, FixRegistry};
 
 fn registry() -> Arc<FixRegistry> {

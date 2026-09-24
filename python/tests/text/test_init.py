@@ -28,8 +28,8 @@ ROWHEADER = r"\[(?<level>[A-Z]+)\] id=(?<id>\d+)"
 MTIME = datetime.datetime(2026, 8, 14, 12, 34, 56, 789_000, tzinfo=datetime.timezone.utc)
 
 
-# The seventeen event columns every line batch opens with: the line as the
-# event it is, the same seventeen a FIX row parsed out of it opens with.
+# The sixteen event columns every line batch opens with: the line as the
+# event it is, the same sixteen a FIX row parsed out of it opens with.
 EVENT_COLUMNS = [
     "currunix",
     "creaunix",
@@ -46,7 +46,6 @@ EVENT_COLUMNS = [
     "prevuuid",
     "seqnum",
     "srcuuids",
-    "identifiers",
     "state",
 ]
 
@@ -203,11 +202,11 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
     assert located.startswith("file:///") and located.endswith("app.log")
     assert table.column("crosscode").to_pylist() == [located] * 3
 
-    # The seventeen event columns every row opens with: the line as the event
+    # The sixteen event columns every row opens with: the line as the event
     # it is - dated by the handle, identified by its instant and its bytes,
-    # placed by its row number, named by the captures it matched - and a
-    # null wherever it states nothing.
-    def event(row: int, seqnum: int, identifiers: dict[str, str] | None) -> dict[str, object]:
+    # placed by its row number - and a null wherever it states nothing; the
+    # captures it matched are its own columns beside them.
+    def event(row: int, seqnum: int) -> dict[str, object]:
         # A record spells an identity as text, where the table holds a UUID.
         identity = str(table.column("curruuid")[row].as_py())
         return {
@@ -226,25 +225,24 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "prevuuid": None,
             "seqnum": seqnum,
             "srcuuids": None,
-            "identifiers": identifiers,
             "state": "00UNKNOWN",
         }
 
     assert list(source.read_records(options=options)) == [
         {
-            **event(0, 10, {"id": "7", "level": "INFO"}),
+            **event(0, 10),
             "body": " first",
             "level": "INFO",
             "id": 7,
         },
         {
-            **event(1, 11, {"id": "9", "level": "WARN"}),
+            **event(1, 11),
             "body": " second",
             "level": "WARN",
             "id": 9,
         },
         {
-            **event(2, 12, None),
+            **event(2, 12),
             "body": "plain",
             "level": None,
             "id": None,

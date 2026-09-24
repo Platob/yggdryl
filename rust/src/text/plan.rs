@@ -5,7 +5,7 @@
 //! decided here, once, before a byte is read. The per-row path then reads
 //! each planned column off the line's own reading of it, which resolves on
 //! the first ask and once: a batch asks every row for every column of the
-//! plan, the seventeen event columns it opens with included, and a projection
+//! plan, the sixteen event columns it opens with included, and a projection
 //! reads fewer of them afterwards; a line handed on as a line resolves only
 //! what is asked of it.
 //!
@@ -24,7 +24,7 @@ use super::options::{MIMETYPE_COLUMN, TextOptions};
 /// What fills one emitted column.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TextSource {
-    /// One of the seventeen columns the line is stated in as an event.
+    /// One of the sixteen columns the line is stated in as an event.
     Event(EventColumn),
     /// What the line was classified as.
     BodyType,
@@ -78,7 +78,7 @@ impl TextPlan {
         options.require_retained_body()?;
         let mut columns =
             Vec::with_capacity(EventColumn::ALL.len() + 3 + options.capture_names().len());
-        // The event the line is, in the seventeen columns every graph event
+        // The event the line is, in the sixteen columns every graph event
         // is stated in - the same a FIX row opens with - so a message's
         // `srcuuids` joins the line's `curruuid` here, and a line read back
         // keeps the identity a message named.
@@ -168,7 +168,7 @@ impl TextPlan {
                     .clone()
                     .named_field(column.name.clone(), column.nullable);
                 // The spelling a catalog shows, beside what the column
-                // holds: the seventeen event columns carry the display their
+                // holds: the sixteen event columns carry the display their
                 // own enum states, so a line's row and a message's row name
                 // one fact one way.
                 if let Some(display) = column.display {

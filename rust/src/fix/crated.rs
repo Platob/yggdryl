@@ -15,13 +15,13 @@
 //! and sequence. Each belongs in a column: a scalar registers as a field,
 //! and the identifiers Map as a group of entries.
 //!
-//! The standard owns prices, quantities and classification. Six normalized
+//! The standard owns prices, quantities and classification. Four normalized
 //! instrument identifiers have crate columns because their FIX sources depend
-//! on an identifier source or exchange context. Parsing derives ISIN,
-//! Bloomberg, FIGI and MIC; CUSIP and SEDOL are direct semantic-row or setter
-//! facts, while FIX source `1` and `2` values stay in `SecurityID` or
-//! `secaltids`. The columns read the existing market event holder; they add no
-//! second value. `CFICode(461)` already names its classification, so it keeps
+//! on an identifier source or exchange context: ISIN, Bloomberg and FIGI are
+//! views of the message's security identifiers, and MIC is the market. A
+//! CUSIP or a SEDOL is one more security identifier under its own key, never
+//! a column of its own. The columns read the existing market holder; they add
+//! no second value. `CFICode(461)` already names its classification, so it keeps
 //! its standard tag. `MsgCat` projects the message component's symbolic
 //! `FIX:msgcat` metadata through the registry code set into the generic
 //! market operation's stable integer ID. State and expiry are event facts derived from the standard's
@@ -32,7 +32,7 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the seventeen say more than the column
+//! sentence, and join on it. Nine of the sixteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
 //! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
@@ -85,7 +85,7 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
-use crate::graph::{EventColumn, MarketColumn};
+use crate::graph::{EventColumn, OperationColumn};
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -118,10 +118,6 @@ pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");
 /// The tag and name carrying the cross hash code: the XXH3-64 of the cross
 /// code, zero where the message names none.
 pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");
-
-/// The tag and name of the Map group carrying the names the message goes by,
-/// each under the field that stated it.
-pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_020, "identifiers");
 
 /// The tag and name carrying when the message this one follows happened.
 pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");
@@ -260,10 +256,6 @@ pub(super) fn msgcat_codeset() -> Option<Arc<str>> {
 }
 /// The tag and name carrying the normalized ISIN the message identifies.
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");
-/// The tag and name carrying the normalized CUSIP the message identifies.
-pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_057, "cusipcode");
-/// The tag and name carrying the normalized SEDOL the message identifies.
-pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_058, "sedolcode");
 /// The tag and name carrying the normalized Bloomberg identifier the message identifies.
 pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");
 /// The tag and name carrying the normalized market MIC the message identifies.
@@ -285,7 +277,7 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 /// `MsgSeqNum(34)` joined by `:`, where all four are stated.
 pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_065, "msgsesseventid");
 
-/// The graph event column one crate tag is, for the seventeen that are one.
+/// The graph event column one crate tag is, for the sixteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -302,7 +294,7 @@ pub fn event_column_of(tag: i32) -> Option<EventColumn> {
 /// The graph market column one crate tag is, where the FIX field and the
 /// generic market schema are two views of the same fact.
 #[must_use]
-pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
+pub fn market_column_of(tag: i32) -> Option<OperationColumn> {
     CRATED.iter().find_map(|held| match held.holds {
         Holds::Market { column, .. } if held.tag_name.0 == tag => Some(column),
         _ => None,
@@ -385,13 +377,13 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the seventeen [`EventColumn`]s, which owns all three: a text
+    /// One of the sixteen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
     /// One of the generic market facts shared with graph operations.
     Market {
-        column: MarketColumn,
+        column: OperationColumn,
         display: &'static str,
     },
     /// A fact no graph event states - what a bridge's row header said and
@@ -444,7 +436,7 @@ impl Crated {
     /// One graph market column under the crate's own tag.
     const fn market(
         tag_name: (i32, &'static str),
-        column: MarketColumn,
+        column: OperationColumn,
         display: &'static str,
     ) -> Self {
         Self {
@@ -506,7 +498,7 @@ impl Crated {
         let (dtype, display, description) = match self.holds {
             Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
             Holds::Market { column, display } => (
-                column.datatype(),
+                column.datatype()?,
                 display,
                 "The stable integer category of the market operation.",
             ),
@@ -545,7 +537,7 @@ impl Crated {
 /// The order is the tags', because that is the order a schema, a document
 /// and [`fix_crate_fields`] all walk them in. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 31] = [
+const CRATED: [Crated; 28] = [
     Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
     Crated::own(
         MSGCTXID_TAG_NAME,
@@ -566,11 +558,6 @@ const CRATED: [Crated; 31] = [
          behind it.",
     ),
     Crated::event(CROSSHASHCODE_TAG_NAME, EventColumn::CrossHashCode),
-    Crated::event(IDENTIFIERS_TAG_NAME, EventColumn::Identifiers).saying(
-        "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; repeating-group members are \
-         not flattened.",
-    ),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
     Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
@@ -632,26 +619,18 @@ const CRATED: [Crated; 31] = [
          ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
-    Crated::market(MSGCAT_TAG_NAME, MarketColumn::MarketOperationId, "MsgCat")
-        .saying("The stable integer code for the message type's business category.")
-        .reading(MSGCAT_CODESET_NAME),
+    Crated::market(
+        MSGCAT_TAG_NAME,
+        OperationColumn::MarketOperationId,
+        "MsgCat",
+    )
+    .saying("The stable integer code for the message type's business category.")
+    .reading(MSGCAT_CODESET_NAME),
     Crated::own(
         ISINCODE_TAG_NAME,
         || Ok(DataType::isin()),
         "IsinCode",
         "The normalized ISIN the message identifies.",
-    ),
-    Crated::own(
-        CUSIPCODE_TAG_NAME,
-        || Ok(DataType::cusip()),
-        "CusipCode",
-        "The normalized CUSIP the message identifies.",
-    ),
-    Crated::own(
-        SEDOLCODE_TAG_NAME,
-        || Ok(DataType::sedol()),
-        "SedolCode",
-        "The normalized SEDOL the message identifies.",
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,
@@ -707,7 +686,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 31);
+/// assert_eq!(held.len(), 28);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -

@@ -31,7 +31,7 @@ use super::{TextBytes, TextEntries, TextEntry};
 /// | [`entries`](Self::entries) | the key/value tree the body states, by [`TextEntries::from_bytes`] |
 /// | [`bodytype`](Self::bodytype) | what the body is classified as |
 /// | [`mtime`](Self::mtime) | the header's `mtime` capture as an instant, else the handle's modification time |
-/// | `get_identifiers` | the named captures the line matched, each under the capture's name |
+/// | `named_captures` (inherent) | the named captures the line matched, each under the capture's name |
 /// | `get_currunix` | [`mtime`](Self::mtime); the handle's time over a refused capture, the epoch where the line has none |
 /// | `get_seqnum` | the row number under `start_rownum`, else the physical index |
 /// | `get_state` | a `state` capture, else `00UNKNOWN` |
@@ -1303,6 +1303,30 @@ impl TextLine {
     }
 }
 
+impl TextLine {
+    /// The named captures the line matched, each under the capture's name;
+    /// what a row header states about the line, an element of nothing else.
+    #[must_use]
+    pub fn named_captures(&self) -> &BTreeMap<String, String> {
+        if let Some(stated) = &self.stated.identifiers {
+            return stated;
+        }
+        self.resolved.identifiers.get_or_init(|| {
+            self.options
+                .capture_names()
+                .enumerate()
+                .filter_map(|(at, name)| Some((name.to_owned(), self.capture(at)?.to_owned())))
+                .collect()
+        })
+    }
+
+    /// Records the named captures, replacing what the line matched.
+    pub fn set_named_captures(&mut self, captures: BTreeMap<String, String>) {
+        self.stated.identifiers = Some(captures);
+        self.derive_content();
+    }
+}
+
 impl Element for TextLine {
     fn get_curruuid(&self) -> Uuid {
         if let Some(stated) = self.stated.curruuid {
@@ -1373,7 +1397,7 @@ impl Element for TextLine {
             if !crosscode.is_empty() {
                 crate::graph::element::feed(&mut state, "crosscode", crosscode.as_bytes());
             }
-            crate::graph::element::feed_event_facts(&mut state, self, |name| name != MTIME_COLUMN);
+            crate::graph::element::feed_event_facts(&mut state, self);
             state.write(self.body.as_bytes());
             state.as_u64()
         })
@@ -1401,24 +1425,6 @@ impl Element for TextLine {
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
         self.stated.crosshashcode = Some(crosshashcode);
         self.derive_uuids();
-    }
-
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        if let Some(stated) = &self.stated.identifiers {
-            return stated;
-        }
-        self.resolved.identifiers.get_or_init(|| {
-            self.options
-                .capture_names()
-                .enumerate()
-                .filter_map(|(at, name)| Some((name.to_owned(), self.capture(at)?.to_owned())))
-                .collect()
-        })
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.stated.identifiers = Some(identifiers);
-        self.derive_content();
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {

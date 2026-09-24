@@ -257,16 +257,6 @@
         }
       },
       {
-        "name": "identifiers",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:group": "identifiers"
-        }
-      },
-      {
         "name": "beginstring",
         "dtype": {
           "type": "null"
@@ -440,28 +430,6 @@
         "metadata": {
           "FIX:field": "isincode",
           "FIX:tag": "65055"
-        }
-      },
-      {
-        "name": "cusipcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "cusipcode",
-          "FIX:tag": "65057"
-        }
-      },
-      {
-        "name": "sedolcode",
-        "dtype": {
-          "type": "null"
-        },
-        "nullable": true,
-        "metadata": {
-          "FIX:field": "sedolcode",
-          "FIX:tag": "65058"
         }
       },
       {

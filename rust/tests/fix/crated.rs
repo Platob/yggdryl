@@ -6,7 +6,7 @@ use super::fixed_codec;
 
 mod categories {
     use std::sync::Arc;
-    use yggdryl::graph::MarketElement;
+    use yggdryl::graph::Market;
     use yggdryl::{FIGICode, FixMsg, Scalar};
 
     #[test]
@@ -19,11 +19,8 @@ mod categories {
             b"8=FIX.4.4|35=D|11=A|454=1|455=BBG000BLNQ16|456=S|10=0|".as_slice(),
         ] {
             let message = codec.parse_fix_line(line).expect("a FIGI source");
-            assert_eq!(
-                message.get_figicode().map(|value| value.as_str()),
-                Some("BBG000BLNQ16")
-            );
-            assert!(message.get_bloombergcode().is_none());
+            assert_eq!(message.get_securityids().get("FIGI"), Some("BBG000BLNQ16"));
+            assert!(message.get_securityids().get("BLOOMBERG").is_none());
             let at = yggdryl::fix_column_of(&schema, yggdryl::FIGICODE_TAG_NAME.0)
                 .expect("the FIGI fixed column");
             assert_eq!(
@@ -34,7 +31,7 @@ mod categories {
         let malformed = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=X|22=S|48=BBG000BLNQ17|10=0|")
             .expect("a malformed FIGI stays raw");
-        assert!(malformed.get_figicode().is_none());
+        assert!(malformed.get_securityids().get("FIGI").is_none());
 
         let mut explicit = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=E|10=0|")
@@ -47,10 +44,7 @@ mod categories {
             .expect("a direct FIGI fact");
         let row = explicit.into_row(&schema).unwrap();
         let rebuilt = FixMsg::from_row(registry, &schema, &row).unwrap();
-        assert_eq!(
-            rebuilt.get_figicode().map(|value| value.as_str()),
-            Some("BBG000BLNQ16")
-        );
+        assert_eq!(rebuilt.get_securityids().get("FIGI"), Some("BBG000BLNQ16"));
         assert_eq!(rebuilt.into_row(&schema).unwrap(), row);
     }
 }
@@ -101,7 +95,7 @@ mod table {
     }
 
     /// The eight columns FIX says more about than the graph does keep their
-    /// own wording; the other eleven take the column's.
+    /// own wording; the other eight take the column's.
     ///
     /// Which is which is a judgement, so it is pinned rather than argued: a
     /// description that drifts back into restating the column is caught here
@@ -128,7 +122,6 @@ mod table {
                 "currhashcode",
                 "execunix",
                 "exprtime",
-                "identifiers",
                 "recdunix",
                 "srcuuids",
                 "state",
