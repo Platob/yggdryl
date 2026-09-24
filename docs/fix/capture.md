@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `FIX:tag`, and a named group column's counter on its `FIX:counter` |
-| Shape | the crate's own clocks, identities, category and normalized instrument codes with the `metadata` Map group; the standard header, with crate `msgcat` immediately after `msgtype`; the fields a consumer reads, four Serie groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 119 tags from `fix_schema_tags`, 124 columns with the shipped registry, each Serie group adding its column beside its counter |
+| Shape | the crate's own clocks, identities, category and normalized instrument codes with the `metadata` Map group; the standard header, with crate `msgcat` immediately after `msgtype`; the fields a consumer reads, four Serie groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 125 tags from `fix_schema_tags`, 130 columns with the shipped registry, each Serie group adding its column beside its counter |
 | Identifiers | the names a message goes by are no column of the row: its [identifier maps](message.md#the-identifier-maps) are read off the FIX fields that state them, and its security identifiers off `SecurityID(48)` under its source, the `secaltids` group and the crated `isincode`, `bloombergcode` and `figicode` views |
 | Non-null | `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - the instants the identity is settled against and the identity it settles to; every other column is nullable, `state` among them - stated on every row a message writes, `00UNKNOWN` where nothing states one, but a [state](../types/codes/state.md#the-rank-leads) has no neutral member to fill an empty cell with, `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -418,7 +418,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert_eq!(&columns[header..header + 4], ["beginstring", "msgtype", "msgcat", "msgseqnum"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
     // FIGI adds one protocol tag and its projected column.
-    assert_eq!(fix_schema_tags().len(), 119);
+    assert_eq!(fix_schema_tags().len(), 125);
     assert_eq!(columns.len(), 124);
     assert_eq!(&fix_schema_tags()[header..header + 4], [8, 35, 65054, 34]);
 
@@ -451,7 +451,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert columns[header:header + 4] == ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     assert columns[-1] == "fixentries"
     # FIGI adds one protocol tag and its projected column.
-    assert len(fix_schema_tags()) == 119
+    assert len(fix_schema_tags()) == 125
     assert len(columns) == 124
     assert fix_schema_tags()[header:header + 4] == [8, 35, 65054, 34]
 
@@ -481,7 +481,7 @@ A proprietary group that reuses a standard counter but maps none of that standar
     assert.deepEqual(columns.slice(header, header + 4), ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'])
     assert.equal(columns[columns.length - 1], 'fixentries')
     // FIGI adds one protocol tag and its projected column.
-    assert.equal(fix.schemaTags().length, 119)
+    assert.equal(fix.schemaTags().length, 125)
     assert.equal(columns.length, 124)
     assert.deepEqual(fix.schemaTags().slice(header, header + 4), [8, 35, 65054, 34])
 
