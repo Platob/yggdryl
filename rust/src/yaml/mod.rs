@@ -730,7 +730,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::Float64(_)
             | string_scalars!(_)
             | Scalar::Country(_)
-            | Scalar::Currency(_)
+            | Scalar::Ccy(_)
             | Scalar::MicCode(_)
             | Scalar::CfiCode(_)
             | Scalar::Side(_)

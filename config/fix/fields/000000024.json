@@ -1206,7 +1206,7 @@
   {
     "name": "legagreementcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

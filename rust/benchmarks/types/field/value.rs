@@ -468,7 +468,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let payload_root = StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
     ])
     .map(DataType::from)
     .expect("the payload row schema is valid")
@@ -476,7 +476,7 @@ pub fn benchmarks(criterion: &mut Criterion) {
     let large_root = StructType::from_fields([
         Field::new("symbol", DataType::large_utf8(), false),
         Field::new("payload", DataType::large_binary(), false),
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
     ])
     .map(DataType::from)
     .expect("the wide-layout row schema is valid")

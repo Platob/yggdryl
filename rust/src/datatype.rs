@@ -158,7 +158,7 @@ pub enum DataType {
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country,
     /// ISO 4217: a currency code, three ASCII bytes.
-    Currency,
+    Ccy,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     MicCode,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
@@ -307,8 +307,8 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // Every spelling a code is written in becomes the exact code leaf.
-    /// let currency = DataType::Currency.scalar("USD\0")?;
-    /// assert_eq!(currency.id(), DataTypeId::Currency);
+    /// let currency = DataType::Ccy.scalar("USD\0")?;
+    /// assert_eq!(currency.id(), DataTypeId::Ccy);
     /// assert_eq!(currency.as_str(), Some("USD"));
     /// // A decimal is restated at the scale the column declares.
     /// let decimal = DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?;
@@ -318,7 +318,7 @@ impl DataType {
     /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
     /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);
     ///
-    /// assert!(DataType::Currency.scalar("EURO").is_err());
+    /// assert!(DataType::Ccy.scalar("EURO").is_err());
     /// # Ok(())
     /// # }
     /// ```
@@ -388,7 +388,7 @@ impl DataType {
             Self::FixedCp1252String(_) => DataTypeId::FixedCp1252String,
             Self::SizedCp1252String(_) => DataTypeId::SizedCp1252String,
             Self::Country => DataTypeId::Country,
-            Self::Currency => DataTypeId::Currency,
+            Self::Ccy => DataTypeId::Ccy,
             Self::MicCode => DataTypeId::MicCode,
             Self::CfiCode => DataTypeId::CfiCode,
             Self::IsinCode => DataTypeId::IsinCode,
@@ -732,7 +732,7 @@ enum Shape<'a> {
     Bytes(crate::bytes::BytesType),
     String(crate::string::StringType),
     Country,
-    Currency,
+    Ccy,
     MicCode,
     CfiCode,
     IsinCode,
@@ -821,7 +821,7 @@ impl<'a> Shape<'a> {
             D::Date32 => Self::Date32,
             D::Date64 => Self::Date64,
             D::Country => Self::Country,
-            D::Currency => Self::Currency,
+            D::Ccy => Self::Ccy,
             D::MicCode => Self::MicCode,
             D::CfiCode => Self::CfiCode,
             D::IsinCode => Self::IsinCode,
@@ -926,7 +926,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         // variants they replaced held, so nothing after them moves.
         crate::string_dtypes!() => 25,
         DataType::Country => 30,
-        DataType::Currency => 31,
+        DataType::Ccy => 31,
         DataType::MicCode => 32,
         DataType::CfiCode => 33,
         DataType::Uuid => 34,
@@ -1216,7 +1216,7 @@ mod arrow {
                     string::arrow_storage(self.string_parameters().expect("a string leaf"))?
                 }
                 R::Country
-                | R::Currency
+                | R::Ccy
                 | R::MicCode
                 | R::CfiCode
                 | R::IsinCode
@@ -1313,7 +1313,7 @@ mod arrow {
         ///
         /// An Arrow datatype carries no metadata, so an extension type arrives
         /// as the storage it is written over: `fixed_binary(3)` and not
-        /// `currency`, `binary` and not `geometry`. The identity lives on the
+        /// `ccy`, `binary` and not `geometry`. The identity lives on the
         /// field - [`Field::from_arrow_field`](crate::Field::from_arrow_field)
         /// reads it, and [`Self::into_arrow_datatype_ffi`] projects a node that
         /// carries it - so a schema round trip keeps every first-class datatype
@@ -1542,7 +1542,7 @@ mod arrow {
                 Self::MimeType => Some((crate::MIMETYPE_EXTENSION_NAME, String::new())),
                 Self::MediaType => Some((crate::MEDIATYPE_EXTENSION_NAME, String::new())),
                 // A code carries its own name, so the identity survives Arrow:
-                // three bytes under `yggdryl.currency` read back a currency.
+                // three bytes under `yggdryl.ccy` read back a currency.
                 code => crate::code_extension_name(code).map(|name| (name, String::new())),
             }
         }

@@ -81,7 +81,7 @@ intoField(BenchRow)
 
 // The prebuilt ISO 4217 listing: what a schema pays once when it declares a
 // currency column, and the members every reader of that schema computes.
-const currencies = StringEnum.fromLogicalName('currency')
+const ccys = StringEnum.fromLogicalName('ccy')
 // The one string datatype with everything declared, and a fixed width the
 // datatype answers for.
 const latin = DataType.string({ charset: 'windows-1252', max: 32 })
@@ -128,8 +128,8 @@ benchmark('schema/string_parameters', () =>
 benchmark('schema/bytes_parameters', () => DataType.bytes({ max: 16 }))
 benchmark('schema/string_parameters_get', () => latin.stringParameters)
 benchmark('schema/fixed_byte_width', () => tenor.fixedByteWidth)
-benchmark('schema/currency', () => DataType.from('currency'))
-benchmark('schema/ascii_field', () => fields.currency('ccy'))
+benchmark('schema/ccy', () => DataType.from('ccy'))
+benchmark('schema/ccy_field', () => fields.ccy('ccy'))
 benchmark('schema/fixed_ascii_field', () => fields.fixedAscii('tenor', 8))
 benchmark('schema/string_field', () =>
   fields.string('note', { charset: 'windows-1252', max: 32 }),
@@ -177,9 +177,9 @@ benchmark('schema/without_partition_fields', () =>
   partitioned.withoutPartitionFields(),
 )
 benchmark('schema/string_vocabulary_prebuilt', () =>
-  StringEnum.fromLogicalName('currency'),
+  StringEnum.fromLogicalName('ccy'),
 )
-benchmark('schema/string_vocabulary_enum', () => currencies.intoEnum('currency'))
+benchmark('schema/string_vocabulary_enum', () => ccys.intoEnum('ccy'))
 benchmark('schema/mime_known_parse', () => MimeType.fromString(knownMime))
 benchmark('schema/mime_custom_parse', () => MimeType.fromString(customMime))
 benchmark('schema/media_compound_parse', () => MediaType.fromString(compoundMedia))

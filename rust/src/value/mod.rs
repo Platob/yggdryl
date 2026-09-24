@@ -202,7 +202,7 @@ pub trait CodeValue: Value {
     /// where the two describe one instrument; a
     /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
     /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
-    /// [`Currency`](crate::Currency) `XXX` and a [`MicCode`](crate::MicCode) `XXXX` take the other. Every other
+    /// [`Ccy`](crate::Ccy) `XXX` and a [`MicCode`](crate::MicCode) `XXXX` take the other. Every other
     /// code is an identifier with nothing partial about it, so this one
     /// stands as it is. This is what a graph element folds two statements
     /// of one fact with.

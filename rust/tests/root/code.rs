@@ -15,7 +15,7 @@ mod datatypes {
         StringEnum, StructType,
     };
     use yggdryl::{
-        CfiCodeField, CountryField, CurrencyField, DxFeedExchangeFeed, MicCode, MicCodeField,
+        CcyField, CfiCodeField, CountryField, DxFeedExchangeFeed, MicCode, MicCodeField,
     };
 
     fn root(fields: impl IntoIterator<Item = Field>) -> Field {
@@ -33,7 +33,7 @@ mod datatypes {
     /// The ten codes, each with its width and one value its standard names.
     const CODED: [(&str, DataType, usize, &str); 11] = [
         ("country", DataType::Country, 2, "US"),
-        ("currency", DataType::Currency, 3, "USD"),
+        ("ccy", DataType::Ccy, 3, "USD"),
         ("mic", DataType::MicCode, 4, "XPAR"),
         ("cfi", DataType::CfiCode, 6, "ESVUFR"),
         ("isin", DataType::IsinCode, 12, "US0378331005"),
@@ -428,7 +428,7 @@ mod datatypes {
         // And a code is not the string of the same characters.
         assert_ne!(side, Scalar::from("BUY"));
         assert_ne!(
-            DataType::Currency.scalar(Scalar::from("USD")).unwrap(),
+            DataType::Ccy.scalar(Scalar::from("USD")).unwrap(),
             DataType::fixed_ascii(3).unwrap().scalar("USD").unwrap()
         );
     }
@@ -542,7 +542,7 @@ mod datatypes {
 
     #[test]
     fn a_code_and_the_text_that_holds_it_are_not_the_same_column() {
-        let currency = Field::new("ccy", DataType::Currency, false);
+        let currency = Field::new("ccy", DataType::Ccy, false);
         let bounded = Field::new("ccy", DataType::from_str("ascii(3)").unwrap(), false);
 
         // Identical storage, different identity, so neither imports as the other:
@@ -567,10 +567,7 @@ mod datatypes {
         let mismatched = arrow_schema::Field::new("ccy", ArrowDataType::FixedSizeBinary(3), false)
             .with_metadata(
                 [
-                    (
-                        "ARROW:extension:name".to_owned(),
-                        "yggdryl.currency".to_owned(),
-                    ),
+                    ("ARROW:extension:name".to_owned(), "yggdryl.ccy".to_owned()),
                     ("ARROW:extension:metadata".to_owned(), String::new()),
                 ]
                 .into_iter()
@@ -580,18 +577,45 @@ mod datatypes {
             Field::from_arrow_field(&mismatched).unwrap().dtype(),
             &DataType::fixed_binary(3).unwrap()
         );
+
+        for storage in [
+            ArrowDataType::Utf8,
+            ArrowDataType::Dictionary(
+                Box::new(ArrowDataType::Int32),
+                Box::new(ArrowDataType::Utf8),
+            ),
+            ArrowDataType::FixedSizeBinary(3),
+        ] {
+            let retired = arrow_schema::Field::new("ccy", storage, false).with_metadata(
+                [
+                    (
+                        "ARROW:extension:name".to_owned(),
+                        "yggdryl.currency".to_owned(),
+                    ),
+                    ("ARROW:extension:metadata".to_owned(), String::new()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+            let refusal = Field::from_arrow_field(&retired)
+                .expect_err("the retired extension is not anonymous storage");
+            let message = refusal.to_string();
+            assert!(message.contains("ccy"), "names the field: {message}");
+            assert!(message.contains("yggdryl.currency"), "{message}");
+            assert!(message.contains("yggdryl.ccy"), "{message}");
+        }
     }
 
     #[test]
     fn the_typed_field_and_scalar_aliases_name_their_code() {
-        let ccy = CurrencyField::unit("ccy", false);
+        let ccy = CcyField::unit("ccy", false);
         let venue = MicCodeField::unit("venue", true);
         let iso = CountryField::unit("iso", true);
         let cfi = CfiCodeField::unit("classification", true);
 
         let ccy_field = ccy.to_field();
         let venue_field = venue.to_field();
-        assert_eq!(ccy_field.dtype(), &DataType::Currency);
+        assert_eq!(ccy_field.dtype(), &DataType::Ccy);
         assert_eq!(venue_field.dtype(), &DataType::MicCode);
         assert_eq!(iso.to_field().dtype(), &DataType::Country);
         assert_eq!(cfi.to_field().dtype(), &DataType::CfiCode);
@@ -599,14 +623,14 @@ mod datatypes {
         // The pairing is the field's value contract, so the text becomes the code
         // leaf on the way in.
         let value = FieldScalar::new(&ccy_field, "USD").unwrap();
-        assert_eq!(value.dtype(), &DataType::Currency);
+        assert_eq!(value.dtype(), &DataType::Ccy);
         assert_eq!(value.name(), "ccy");
         assert_eq!(value.as_str(), Some("USD"));
-        assert_eq!(value.value().id(), DataTypeId::Currency);
+        assert_eq!(value.value().id(), DataTypeId::Ccy);
 
         // The leaf is the datatype's, so a width of the same size is not a code.
         let plain = Field::new("ccy", DataType::fixed_ascii(3).unwrap(), false);
-        assert!(CurrencyField::try_from_field(plain).is_err());
+        assert!(CcyField::try_from_field(plain).is_err());
         assert!(FieldScalar::new(&venue_field, "XPARIS").is_err());
 
         // A typed field's column is the text leaf its code stores as: the typed
@@ -689,12 +713,12 @@ mod datatypes {
     #[test]
     fn a_code_column_reads_into_every_string_and_byte_datatype() {
         let strict = || ArrowCastOptions::new().with_safe(false);
-        let ccy = Field::new("v", DataType::Currency, false);
+        let ccy = Field::new("v", DataType::Ccy, false);
         let stored = Serie::from_arrow_array(Some(&ccy), text(&["USD"]), strict())
             .unwrap()
             .require_arrow_array()
             .unwrap();
-        // The column carries `yggdryl.currency`, which is what a reading reads it
+        // The column carries `yggdryl.ccy`, which is what a reading reads it
         // under.
         let batch = RecordBatch::try_new(
             root([ccy.clone()]).into_arrow_schema().unwrap(),
@@ -762,7 +786,7 @@ mod datatypes {
 
         // And the same readings hold one value at a time: a code spells its text,
         // and that text's bytes are its payload.
-        let value = DataType::Currency.scalar(Scalar::from("USD")).unwrap();
+        let value = DataType::Ccy.scalar(Scalar::from("USD")).unwrap();
         assert_eq!(
             DataType::utf8().scalar(value.clone()).unwrap().as_str(),
             Some("USD")
@@ -772,16 +796,14 @@ mod datatypes {
             Some(b"USD".as_slice())
         );
         assert_eq!(
-            DataType::Currency
-                .scalar(Scalar::from(b"USD".to_vec()))
-                .unwrap(),
+            DataType::Ccy.scalar(Scalar::from(b"USD".to_vec())).unwrap(),
             value
         );
     }
 
     #[test]
     fn a_code_merges_to_the_better_statement() {
-        use yggdryl::{CfiCode, CodeValue, Currency, IsinCode, MicCode, Side, State};
+        use yggdryl::{Ccy, CfiCode, CodeValue, IsinCode, MicCode, Side, State};
 
         // A classification fills what it left unknown from the other, and stands
         // as it is beside another instrument's.
@@ -826,16 +848,16 @@ mod datatypes {
             "BUY"
         );
         assert_eq!(
-            Currency::new("XXX")
+            Ccy::new("XXX")
                 .unwrap()
-                .merge_with(&Currency::new("USD").unwrap())
+                .merge_with(&Ccy::new("USD").unwrap())
                 .as_str(),
             "USD"
         );
         assert_eq!(
-            Currency::new("USD")
+            Ccy::new("USD")
                 .unwrap()
-                .merge_with(&Currency::new("EUR").unwrap())
+                .merge_with(&Ccy::new("EUR").unwrap())
                 .as_str(),
             "USD"
         );
@@ -857,31 +879,30 @@ mod datatypes {
         );
 
         // `XXX` is the currency that states none, so the other one stands.
-        let unstated = Currency::new("XXX").unwrap();
+        let unstated = Ccy::new("XXX").unwrap();
         assert_eq!(
             unstated
                 .clone()
-                .merge_with(&Currency::new("USD").unwrap())
+                .merge_with(&Ccy::new("USD").unwrap())
                 .as_str(),
             "USD"
         );
         // A code the other states nothing better than keeps what it had.
-        let stated = Currency::new("EUR").unwrap();
+        let stated = Ccy::new("EUR").unwrap();
         assert_eq!(stated.clone().merge_with(&unstated), stated);
     }
 
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
         use yggdryl::{
-            BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
-            SedolCode,
+            BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
         };
         use yggdryl::{Side, State, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
                 crate::family_leaf!(Country, Country::new("US").unwrap()),
-                crate::family_leaf!(Currency, Currency::new("USD").unwrap()),
+                crate::family_leaf!(Ccy, Ccy::new("USD").unwrap()),
                 crate::family_leaf!(MicCode, MicCode::new("XPAR").unwrap()),
                 crate::family_leaf!(CfiCode, CfiCode::new("ESVUFR").unwrap()),
                 crate::family_leaf!(Side, Side::new("BUY").unwrap()),

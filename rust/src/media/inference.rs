@@ -192,7 +192,7 @@ impl Scalar {
                 DataType::string(self.string_parameters().expect("a string leaf"))
             }
             Self::Country(_) => Ok(DataType::Country),
-            Self::Currency(_) => Ok(DataType::Currency),
+            Self::Ccy(_) => Ok(DataType::Ccy),
             Self::MicCode(_) => Ok(DataType::MicCode),
             Self::CfiCode(_) => Ok(DataType::CfiCode),
             Self::Side(_) => Ok(DataType::Side),

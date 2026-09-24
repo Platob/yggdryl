@@ -92,7 +92,7 @@ mod text {
         let mut options: RecordOptions = TextOptions::new().into();
         let field = StructType::from_fields([
             DataType::utf8().required_field("crosscode"),
-            DataType::Currency.required_field("body"),
+            DataType::Ccy.required_field("body"),
         ])
         .map(DataType::from)
         .unwrap()
@@ -102,7 +102,7 @@ mod text {
             ("crosscode", yggdryl::Scalar::from("input")),
             (
                 "body",
-                yggdryl::Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
+                yggdryl::Scalar::Ccy(yggdryl::Ccy::new("EUR").unwrap()),
             ),
         ])
         .unwrap()];
@@ -111,7 +111,7 @@ mod text {
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains("expected a utf8 body column, got currency"),
+            error.contains("expected a utf8 body column, got ccy"),
             "{error}"
         );
         assert_eq!(target.read_all_bytes().unwrap(), b"old");

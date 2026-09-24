@@ -208,11 +208,7 @@ mod widths {
                 DataTypeId::FixedCp1252String,
             ),
             (DataType::Country, Scalar::from("US"), DataTypeId::Country),
-            (
-                DataType::Currency,
-                Scalar::from("USD"),
-                DataTypeId::Currency,
-            ),
+            (DataType::Ccy, Scalar::from("USD"), DataTypeId::Ccy),
             (DataType::MicCode, Scalar::from("XNAS"), DataTypeId::MicCode),
             (
                 DataType::CfiCode,

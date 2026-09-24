@@ -1352,7 +1352,7 @@ fn payload_row() -> (Field, Scalar) {
     let root = StructType::from_fields([
         Field::new("symbol", DataType::utf8(), false),
         Field::new("payload", DataType::binary(), false),
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
         Field::new("venue", DataType::ascii(), false),
     ])
     .map(DataType::from)
@@ -2146,7 +2146,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Cp1252StringView, Scalar::from("AAPL")),
         (DataTypeId::LargeCp1252StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
-        (DataTypeId::Currency, Scalar::from("USD")),
+        (DataTypeId::Ccy, Scalar::from("USD")),
         (DataTypeId::MicCode, Scalar::from("XNAS")),
         (DataTypeId::CfiCode, Scalar::from("ESVUFR")),
         (DataTypeId::IsinCode, Scalar::from("US0378331005")),

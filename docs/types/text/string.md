@@ -16,7 +16,7 @@ One string datatype in eighteen real leaves: six shapes in each of the three cha
 
 The twelve [registered codes](../codes/index.md) are not strings: a currency is
 an identity over ISO 4217 that stores as the text it is, so it is
-`DataType::Currency`, kind `Code`, answers `code_width`, and never
+`DataType::Ccy`, kind `Code`, answers `code_width`, and never
 `string_parameters`.
 
 ## DataType
@@ -798,7 +798,7 @@ language.
     assert_eq!(Field::from_arrow_field(&field.into_arrow_field()?)?.string_enum()?, Some(side.clone()));
 
     // The ISO listings ship with the package.
-    let currencies = StringEnum::from_logical_name("currency")?;
+    let currencies = StringEnum::from_logical_name("ccy")?;
     assert_eq!(currencies.get("USD"), Some("USD"));
     // A string that does not pack is refused by name.
     let refused = Field::new("side", DataType::utf8(), false).try_with_string_enum(&side).unwrap_err().to_string();
@@ -826,7 +826,7 @@ language.
     assert Field.from_arrow(field.into_arrow()).string_enum == side
 
     # The ISO listings ship with the package.
-    assert StringEnum.from_logical_name("currency").get("USD") == "USD"
+    assert StringEnum.from_logical_name("ccy").get("USD") == "USD"
     # A string that does not pack is refused by name.
     with pytest.raises(ValueError, match="at most 16 bytes"):
         Field("side", "utf8").set_string_enum(side)
@@ -844,7 +844,7 @@ language.
     assert.throws(() => new DataType('ascii').asciiPacked('US'), /at most 16 bytes/)
 
     // The ISO listings ship with the package.
-    const currencies = StringEnum.fromLogicalName('currency')
+    const currencies = StringEnum.fromLogicalName('ccy')
     assert.equal(currencies.get('USD'), 'USD')
     ```
 

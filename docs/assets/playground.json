@@ -82,14 +82,14 @@
       "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) }), fields.struct('row', [fields.country('ccy')], { nullable: false })).intoArrowBatch().schema.fields[0]"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "fixedByteWidth": null,
       "codeWidth": 3,
       "kind": "code",
       "arrow": "Utf8",
-      "extensionName": "yggdryl.currency",
+      "extensionName": "yggdryl.ccy",
       "extensionDocument": "",
-      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false })).intoArrowBatch().schema.fields[0]"
+      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['A'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false })).intoArrowBatch().schema.fields[0]"
     },
     {
       "dtype": "mic",
@@ -1230,11 +1230,11 @@
       "readBack": "us"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "typical",
       "input": "USD",
       "inputLiteral": "'USD'",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
       "ok": true,
       "storage": [
         85,
@@ -1246,11 +1246,11 @@
       "readBack": "USD"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "ISO 4217",
       "input": "EUR",
       "inputLiteral": "'EUR'",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
       "ok": true,
       "storage": [
         69,
@@ -1262,11 +1262,11 @@
       "readBack": "EUR"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "empty",
       "input": "",
       "inputLiteral": "''",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([''], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
       "ok": true,
       "storage": [],
       "storageHex": "",
@@ -1274,11 +1274,11 @@
       "readBack": ""
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "exactly the width",
       "input": "GBP",
       "inputLiteral": "'GBP'",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['GBP'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['GBP'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
       "ok": true,
       "storage": [
         71,
@@ -1290,29 +1290,29 @@
       "readBack": "GBP"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "one byte too long",
       "input": "USDT",
       "inputLiteral": "'USDT'",
-      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USDT'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()",
+      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USDT'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()",
       "ok": false,
       "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 3 bytes, got 4 bytes"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "non-ASCII",
       "input": "USÉ",
       "inputLiteral": "'USÉ'",
-      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USÉ'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()",
+      "call": "Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USÉ'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()",
       "ok": false,
       "error": "incompatible Arrow record schema: row 0 of column ccy: invalid record value at $: expected ASCII text of at most 3 bytes, got a non-ASCII byte 0xC3 at 2"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "lower case",
       "input": "usd",
       "inputLiteral": "'usd'",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['usd'], new arrow.Utf8()) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()",
       "ok": true,
       "storage": [
         117,
@@ -1924,7 +1924,7 @@
       "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(0, 0)], new arrow.FixedSizeBinary(2)) }), fields.struct('row', [fields.country('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "exactly the width",
       "storage": [
         85,
@@ -1934,10 +1934,10 @@
       "storageHex": "55 53 44",
       "storageEscaped": "USD",
       "text": "USD",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(85, 83, 68)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(85, 83, 68)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "padded",
       "storage": [
         85,
@@ -1947,10 +1947,10 @@
       "storageHex": "55 53 00",
       "storageEscaped": "US\\0",
       "text": "US",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(85, 83, 0)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(85, 83, 0)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
     },
     {
-      "dtype": "currency",
+      "dtype": "ccy",
       "label": "all NUL",
       "storage": [
         0,
@@ -1960,7 +1960,7 @@
       "storageHex": "00 00 00",
       "storageEscaped": "\\0\\0\\0",
       "text": "",
-      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(0, 0, 0)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.currency('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
+      "call": "const stored = Serie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray([Uint8Array.of(0, 0, 0)], new arrow.FixedSizeBinary(3)) }), fields.struct('row', [fields.ccy('ccy')], { nullable: false }), { safe: false }).intoArrowBatch()\nSerie.fromArrowBatch(stored, fields.struct('row', [fields.utf8('ccy')], { nullable: false })).intoArrowBatch()"
     },
     {
       "dtype": "mic",
@@ -2055,9 +2055,9 @@
   ],
   "vocabulary": {
     "name": "Currency",
-    "dtype": "currency",
+    "dtype": "ccy",
     "prebuilt": {
-      "name": "currency",
+      "name": "ccy",
       "size": 177,
       "sample": [
         "AED",
@@ -2073,7 +2073,7 @@
         "BBD",
         "BDT"
       ],
-      "call": "StringEnum.fromLogicalName('currency')"
+      "call": "StringEnum.fromLogicalName('ccy')"
     },
     "steps": [
       {
@@ -2083,7 +2083,7 @@
         "generated": "USD",
         "isPrebuilt": true,
         "storageHex": "55 53 44",
-        "call": "'currency' packs 'USD' as 5591876n"
+        "call": "'ccy' packs 'USD' as 5591876n"
       },
       {
         "member": "EUR",
@@ -2092,7 +2092,7 @@
         "generated": "EUR",
         "isPrebuilt": true,
         "storageHex": "45 55 52",
-        "call": "'currency' packs 'EUR' as 4543826n"
+        "call": "'ccy' packs 'EUR' as 4543826n"
       },
       {
         "member": "JPY",
@@ -2101,7 +2101,7 @@
         "generated": "JPY",
         "isPrebuilt": true,
         "storageHex": "4a 50 59",
-        "call": "'currency' packs 'JPY' as 4870233n"
+        "call": "'ccy' packs 'JPY' as 4870233n"
       },
       {
         "member": "N_A",
@@ -2110,7 +2110,7 @@
         "generated": "N_A",
         "isPrebuilt": false,
         "storageHex": "6e 2f 61",
-        "call": "'currency' packs 'n/a' as 7221089n"
+        "call": "'ccy' packs 'n/a' as 7221089n"
       },
       {
         "member": "_3M",
@@ -2119,14 +2119,14 @@
         "generated": "_3M",
         "isPrebuilt": false,
         "storageHex": "33 4d",
-        "call": "'currency' packs '3M' as 3362048n"
+        "call": "'ccy' packs '3M' as 3362048n"
       }
     ],
     "declaration": {
       "json": "{\"members\":{\"EUR\":\"EUR\",\"JPY\":\"JPY\",\"N_A\":\"n/a\",\"USD\":\"USD\",\"_3M\":\"3M\"},\"name\":\"Currency\"}",
-      "extensionName": "yggdryl.currency",
+      "extensionName": "yggdryl.ccy",
       "carried": "{\"members\":{\"EUR\":\"EUR\",\"JPY\":\"JPY\",\"N_A\":\"n/a\",\"USD\":\"USD\",\"_3M\":\"3M\"},\"name\":\"Currency\"}",
-      "call": "const ccy = fields.currency('ccy')\nccy.setStringEnum(new StringEnum('Currency', {\"USD\":\"USD\",\"EUR\":\"EUR\",\"JPY\":\"JPY\",\"N_A\":\"n/a\",\"_3M\":\"3M\"}))\nSerie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }), fields.struct('row', [ccy], { nullable: false }))\n  .intoArrowBatch().schema.fields[0].metadata"
+      "call": "const ccy = fields.ccy('ccy')\nccy.setStringEnum(new StringEnum('Currency', {\"USD\":\"USD\",\"EUR\":\"EUR\",\"JPY\":\"JPY\",\"N_A\":\"n/a\",\"_3M\":\"3M\"}))\nSerie.fromArrowBatch(new arrow.Table({ ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()) }), fields.struct('row', [ccy], { nullable: false }))\n  .intoArrowBatch().schema.fields[0].metadata"
     },
     "enum": {
       "name": "Currency",
@@ -2152,7 +2152,7 @@
           "3362048"
         ]
       ],
-      "call": "declared.intoEnum('currency')"
+      "call": "declared.intoEnum('ccy')"
     }
   },
   "versions": [

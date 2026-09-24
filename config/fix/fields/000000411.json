@@ -52,7 +52,7 @@
   {
     "name": "marketdisruptionfallbackbasketcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -825,7 +825,7 @@
   {
     "name": "paymentscheduleratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -889,7 +889,7 @@
   {
     "name": "paymentschedulesettlperiodpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1028,7 +1028,7 @@
   {
     "name": "paymentstreamflatratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1054,7 +1054,7 @@
   {
     "name": "paymentstreammaximumpaymentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1080,7 +1080,7 @@
   {
     "name": "paymentstreammaximumtransactioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1145,7 +1145,7 @@
   {
     "name": "paymentstreamcontractpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

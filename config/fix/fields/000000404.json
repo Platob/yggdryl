@@ -292,7 +292,7 @@
   {
     "name": "legpaymentstubfixedcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -852,7 +852,7 @@
   {
     "name": "legprovisioncashsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -864,7 +864,7 @@
   {
     "name": "legprovisioncashsettlcurrency2",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

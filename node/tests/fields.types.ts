@@ -5,7 +5,7 @@ import {
   type AsciiField,
   type BytesDataTypeId,
   type BytesField,
-  type CurrencyField,
+  type CcyField,
   type FIGICodeField,
   type FixedAsciiField,
   type FixedCp1252Field,
@@ -81,10 +81,10 @@ const projectedShape: GeometryField = fields.geometry('shape', 'EPSG:3857', {
 const region: GeographyField = fields.geography('region', 'OGC:CRS84', 'vincenty', {
   nullable: false,
 })
-const currency: CurrencyField = fields.currency('ccy', { nullable: false })
-const currencyId: 'currency' = currency.dtype.id
-const currencyKind: 'code' = currency.dtype.kind
-const currencyValue: string = currency.defaultJSValue()
+const ccy: CcyField = fields.ccy('ccy', { nullable: false })
+const ccyId: 'ccy' = ccy.dtype.id
+const ccyKind: 'code' = ccy.dtype.kind
+const ccyValue: string = ccy.defaultJSValue()
 const figi: FIGICodeField = fields.figi('figi', { nullable: false })
 const figiId: 'figi' = figi.dtype.id
 const figiValue: string = figi.defaultJSValue()
@@ -116,9 +116,9 @@ const nullableLatin: string | null = fields.string('latin').defaultJSValue()
 const blob: BytesField = fields.bytes('blob', { layout: 'large_binary', nullable: false })
 const blobId: BytesDataTypeId = blob.dtype.id
 const blobValue: Uint8Array = blob.defaultJSValue()
-void currencyId
-void currencyKind
-void currencyValue
+void ccyId
+void ccyKind
+void ccyValue
 void figi
 void figiId
 void figiValue
@@ -197,7 +197,12 @@ DataType.time()
 const nonNullDefault: number = fields.int32('defaulted').defaultJSValue()
 // @ts-expect-error a defaulted factory field does not satisfy the non-null alias
 const nonNullAlias: Int32Field = fields.int32('defaulted')
+// @ts-expect-error the CurrencyField export was retired with the datatype spelling
+const retiredCurrencyField: import('..').CurrencyField = ccy
+// @ts-expect-error the currency field factory was retired with the datatype spelling
+fields.currency('ccy')
 
+void retiredCurrencyField
 void idKind
 void idId
 void eventTime

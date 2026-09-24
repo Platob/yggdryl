@@ -458,7 +458,7 @@
   {
     "name": "posqtyunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -613,7 +613,7 @@
   {
     "name": "tradealloccurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1117,7 +1117,7 @@
   {
     "name": "settlpriceunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

@@ -479,7 +479,7 @@
   {
     "name": "underlyingreturnratecommissioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -566,7 +566,7 @@
   {
     "name": "underlyingreturnratequotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -842,7 +842,7 @@
   {
     "name": "underlyingreturnratepricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

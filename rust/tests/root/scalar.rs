@@ -726,8 +726,8 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     use std::hash::{Hash, Hasher};
 
     use yggdryl::{
-        BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode,
-        SedolCode, TimeInForce,
+        BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
+        TimeInForce,
     };
 
     fn hash_of(value: &Scalar) -> u64 {
@@ -741,7 +741,7 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     // what makes a sorted column of fields and a sorted column of values agree.
     let ascending = [
         Scalar::Country(Country::new("FR").unwrap()),
-        Scalar::Currency(Currency::new("EUR").unwrap()),
+        Scalar::Ccy(Ccy::new("EUR").unwrap()),
         Scalar::MicCode(MicCode::new("XPAR").unwrap()),
         Scalar::CfiCode(CfiCode::new("ESVUFR").unwrap()),
         Scalar::Side(yggdryl::Side::new("BUY").unwrap()),
@@ -763,18 +763,18 @@ fn the_twelve_codes_sort_by_which_code_then_by_text() {
     }
 
     // Two codes whose bytes agree are two values, and their hashes say so.
-    let currency = Scalar::Currency(Currency::new("XXX").unwrap());
+    let currency = Scalar::Ccy(Ccy::new("XXX").unwrap());
     let country = Scalar::Country(Country::new("XX").unwrap());
     assert_ne!(currency, country);
     assert_ne!(hash_of(&currency), hash_of(&country));
 
     // Within one code the text decides, and hash agrees with order.
-    let one = Scalar::Currency(Currency::new("EUR").unwrap());
-    let other = Scalar::Currency(Currency::new("USD").unwrap());
+    let one = Scalar::Ccy(Ccy::new("EUR").unwrap());
+    let other = Scalar::Ccy(Ccy::new("USD").unwrap());
     assert!(one < other);
     assert_eq!(
         hash_of(&one),
-        hash_of(&Scalar::Currency(Currency::new("EUR").unwrap()))
+        hash_of(&Scalar::Ccy(Ccy::new("EUR").unwrap()))
     );
     assert_ne!(hash_of(&one), hash_of(&other));
 }
@@ -1185,7 +1185,7 @@ fn every_family_is_the_range_its_kind_owns_and_no_other() {
         ),
         (Scalar::from("text"), DataTypeKind::Text),
         (
-            Scalar::Currency(yggdryl::Currency::new("EUR").unwrap()),
+            Scalar::Ccy(yggdryl::Ccy::new("EUR").unwrap()),
             DataTypeKind::Code,
         ),
         (Scalar::from(vec![1_u8, 2]), DataTypeKind::Bytes),
@@ -1354,10 +1354,10 @@ fn every_scalar_family_exposes_its_leaf_contract() {
     assert_eq!(view.dtype().unwrap(), DataType::binary_view());
     assert_eq!(<bytes::Bytes as Value>::from_scalar(&view), Some(&bytes));
 
-    let currency = yggdryl::Currency::new("USD").unwrap();
-    assert_eq!(<yggdryl::Currency as CodeValue>::WIDTH, 3);
+    let currency = yggdryl::Ccy::new("USD").unwrap();
+    assert_eq!(<yggdryl::Ccy as CodeValue>::WIDTH, 3);
     assert_eq!(CodeValue::as_str(&currency), "USD");
-    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Currency);
+    assert_eq!(Value::dtype(&currency).unwrap(), DataType::Ccy);
 
     let geometry = geospatial::Geometry::new(POINT_EMPTY_WKB.as_slice()).unwrap();
     assert_eq!(
@@ -1425,7 +1425,7 @@ fn concrete_leaves_preserve_their_physical_identity() {
     );
 
     let ascii = string::StringType::AsciiString.scalar("FIX").unwrap();
-    let currency = yggdryl::Currency::new("USD").unwrap();
+    let currency = yggdryl::Ccy::new("USD").unwrap();
     assert_eq!(ascii.as_str(), Some("FIX"));
     assert_eq!(
         ascii.string_parameters().map(string::StringType::charset),

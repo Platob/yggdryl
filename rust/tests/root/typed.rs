@@ -176,10 +176,10 @@ mod pairing {
         );
         assert!(FieldScalar::new(&narrow, 1_000_i64).is_err());
 
-        let ccy = Field::new("ccy", DataType::Currency, false);
+        let ccy = Field::new("ccy", DataType::Ccy, false);
         let typed = FieldScalar::new(&ccy, "USD\0").unwrap();
         assert_eq!(typed.as_str(), Some("USD"));
-        assert_eq!(typed.value().id(), yggdryl::DataTypeId::Currency);
+        assert_eq!(typed.value().id(), yggdryl::DataTypeId::Ccy);
     }
 
     #[test]
@@ -907,7 +907,7 @@ mod records {
             let schema = Field::from_parts(
                 "row",
                 StructType::from_fields([
-                    DataType::Currency.required_field("currency"),
+                    DataType::Ccy.required_field("currency"),
                     Field::new(
                         "symbol",
                         DataType::dictionary(DataType::Int8, DataType::utf8()).unwrap(),

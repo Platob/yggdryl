@@ -244,12 +244,12 @@ impl DataType {
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// // `USD` packs into `USD\0` under `fixed_ascii(4)`, which is that
-    /// // big-endian `i32`; under `currency` it is the three bytes alone.
+    /// // big-endian `i32`; under `ccy` it is the three bytes alone.
     /// let ccy = DataType::fixed_ascii(4)?;
     /// assert_eq!(ccy.ascii_packed(b"USD")?, 0x5553_4400);
     /// assert_eq!(ccy.ascii_packed(b"USD\0")?, 0x5553_4400);
     /// assert_eq!(ccy.ascii_value(0x5553_4400)?, "USD");
-    /// assert_eq!(DataType::Currency.ascii_packed(b"USD")?, 0x0055_5344);
+    /// assert_eq!(DataType::Ccy.ascii_packed(b"USD")?, 0x0055_5344);
     ///
     /// // The order of the integers is the order of the text.
     /// assert!(ccy.ascii_packed(b"EUR")? < ccy.ascii_packed(b"USD")?);

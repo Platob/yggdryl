@@ -12,7 +12,7 @@ use crate::graph::{
     Book, BookIterator, Element, Event, Execution, MarketElement, MarketEventData, MarketOperation,
     Order, Quote, Trade,
 };
-use crate::{Currency, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
+use crate::{Ccy, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
 
 const MD_ENTRIES: i32 = 268;
 const TRADE_SIDES: i32 = 552;
@@ -584,7 +584,7 @@ fn trade_execution(
         }
     }
     if let Some(value) = entry_value(occurrence, 1154) {
-        event.set_currency(Currency::new(value).map_err(|_| {
+        event.set_currency(Ccy::new(value).map_err(|_| {
             invalid(
                 path(1154, "SideCurrency"),
                 format_smolstr!("expected a currency code, got {value:?}"),

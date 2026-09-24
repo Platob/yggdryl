@@ -1,7 +1,7 @@
 """The registered code vocabularies, declared as enums over their datatypes.
 
 Each class is the Python spelling of one registered code in the datatype
-grammar: `country` is ISO 3166-1 alpha-2 in at most two bytes, `currency` is
+grammar: `country` is ISO 3166-1 alpha-2 in at most two bytes, `ccy` is
 ISO 4217 in three, `mic` is ISO 10383 in four, and `cfi` is ISO 10962 in six.
 A member *is* the integer its code packs into - its bytes padded to that width
 - so the same code is the same integer in every process, whatever a column
@@ -17,7 +17,7 @@ its own packed code, registered once and announced once on the
 
 from __future__ import annotations
 
-from .string import CfiCode, CountryCode, CurrencyCode, MicCode
+from .string import CcyCode, CfiCode, CountryCode, MicCode
 
 
 class Country(CountryCode):
@@ -60,10 +60,10 @@ class Country(CountryCode):
     ZA = "ZA"
 
 
-class Currency(CurrencyCode):
+class Ccy(CcyCode):
     """ISO 4217, the three-letter currency code.
 
-    The `currency` datatype stores as the text it is, so a currency column
+    The `ccy` datatype stores as the text it is, so a currency column
     holds `USD` and nothing else - no padding to write and none to trim.
     """
 
@@ -203,6 +203,6 @@ class CFI(CfiCode):
 __all__ = [
     "CFI",
     "Country",
-    "Currency",
+    "Ccy",
     "MIC",
 ]

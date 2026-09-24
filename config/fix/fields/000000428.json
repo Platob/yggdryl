@@ -407,7 +407,7 @@
   {
     "name": "underlyingextraordinarydividendcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -730,7 +730,7 @@
   {
     "name": "underlyingdividendpaymentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

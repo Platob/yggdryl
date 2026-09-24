@@ -8,7 +8,7 @@ mod xxhash {
 
         use yggdryl::xxhash::{Xxh3, xxh3};
         use yggdryl::{
-            Bytes, BytesType, Currency, Decimal32, Decimal64, Geography, Interval, Side, Str,
+            Bytes, BytesType, Ccy, Decimal32, Decimal64, Geography, Interval, Side, Str,
             StringType, TimeInForce,
         };
         use yggdryl::{
@@ -96,7 +96,7 @@ mod xxhash {
                 stored("USD", StringType::AsciiString),
                 stored("USD", StringType::FixedAsciiString(4)),
                 stored("AAPL", StringType::SizedCp1252String(8)),
-                Scalar::Currency(Currency::new("USD").unwrap()),
+                Scalar::Ccy(Ccy::new("USD").unwrap()),
                 Scalar::Side(Side::new("BUY").unwrap()),
                 Scalar::TimeInForce(TimeInForce::new("1").unwrap()),
                 Scalar::from(Codec::Gzip),
@@ -338,13 +338,10 @@ mod xxhash {
                 };
                 assert_eq!(feed(&stored_bytes(leaf)), binary, "{leaf:?}");
             }
-            let mut expected = vec![DataTypeId::Currency.as_u8()];
+            let mut expected = vec![DataTypeId::Ccy.as_u8()];
             expected.extend_from_slice(&3_u64.to_le_bytes());
             expected.extend_from_slice(b"USD");
-            assert_eq!(
-                feed(&Scalar::Currency(Currency::new("USD").unwrap())),
-                expected
-            );
+            assert_eq!(feed(&Scalar::Ccy(Ccy::new("USD").unwrap())), expected);
         }
 
         #[test]

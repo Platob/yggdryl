@@ -481,7 +481,7 @@
   {
     "name": "legreturnratecommissioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -568,7 +568,7 @@
   {
     "name": "legreturnratequotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -844,7 +844,7 @@
   {
     "name": "legreturnratepricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

@@ -13,8 +13,8 @@ from yggdryl.enums import (
     CfiCode,
     Country,
     CountryCode,
-    Currency,
-    CurrencyCode,
+    Ccy,
+    CcyCode,
     MIC,
     MicCode,
     fixed_ascii,
@@ -278,7 +278,7 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # over the code's own datatype rather than an ASCII width.
     for declared, base, spelling in (
         (Country, CountryCode, "country"),
-        (Currency, CurrencyCode, "currency"),
+        (Ccy, CcyCode, "ccy"),
         (MIC, MicCode, "mic"),
         (CFI, CfiCode, "cfi"),
     ):
@@ -290,7 +290,7 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # ISO 3166-1 is two bytes, ISO 4217 three and ISO 10962 six, so each packs
     # with none of the padding a wider width would have stored.
     assert int(Country.US) == 0x5553
-    assert int(Currency.USD) == 0x555344
+    assert int(Ccy.USD) == 0x555344
     assert int(MIC.XPAR) == DataType.fixed_ascii(4).ascii_packed("XPAR")
     assert int(CFI.ESVUFR) == 0x455356554652
     assert str(CFI.ESVUFR) == "ESVUFR"
@@ -301,14 +301,14 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     assert "XLIT" not in MIC.__members__
 
     # A declaration reads back as the class that wrote it, over the code's
-    # datatype: `currency` and `fixed_ascii(3)` are both three bytes and are not the
+    # datatype: `ccy` and `fixed_ascii(3)` are both three bytes and are not the
     # same vocabulary base.
-    recovered = AsciiCode.from_field(
-        Field.from_arrow(Currency.into_field("ccy").into_arrow())
-    )
-    assert recovered.__name__ == "Currency"
-    assert recovered.dtype() == DataType("currency")
-    assert int(recovered.USD) == int(Currency.USD)
+    recovered = AsciiCode.from_field(Field.from_arrow(Ccy.into_field("ccy").into_arrow()))
+    assert recovered.__name__ == "Ccy"
+    assert recovered.dtype() == DataType("ccy")
+    assert int(recovered.USD) == int(Ccy.USD)
+    assert not hasattr(enums, "Currency")
+    assert not hasattr(enums, "CurrencyCode")
 
 
 #: A width base bound to a name, which is what an annotation can spell.
@@ -318,7 +318,7 @@ FixedAscii3 = fixed_ascii(3)
 def test_an_annotation_infers_the_vocabulary_it_names() -> None:
     @scalar
     class Trade:
-        ccy: Currency
+        ccy: Ccy
         venue: MIC
         home: Country
         width: FixedAscii3
@@ -326,8 +326,8 @@ def test_an_annotation_infers_the_vocabulary_it_names() -> None:
     row = Trade.into_field()
     declared = {child.name: child for child in row}
 
-    assert declared["ccy"].dtype == DataType("currency")
-    assert declared["ccy"].string_enum == Currency.as_enum()
+    assert declared["ccy"].dtype == DataType("ccy")
+    assert declared["ccy"].string_enum == Ccy.as_enum()
     assert declared["venue"].dtype == DataType("mic")
     assert declared["venue"].string_enum == MIC.as_enum()
     assert declared["home"].dtype == DataType("country")

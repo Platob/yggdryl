@@ -4,14 +4,14 @@ from .string import (
     AsciiCode as AsciiCode,
     CfiCode as CfiCode,
     CountryCode as CountryCode,
-    CurrencyCode as CurrencyCode,
+    CcyCode as CcyCode,
     MicCode as MicCode,
     fixed_ascii as fixed_ascii,
 )
 from .codes import (
     CFI as CFI,
     Country as Country,
-    Currency as Currency,
+    Ccy as Ccy,
     MIC as MIC,
 )
 
@@ -38,11 +38,11 @@ __all__ = [
     "AsciiCode",
     "CfiCode",
     "CountryCode",
-    "CurrencyCode",
+    "CcyCode",
     "MicCode",
     "CFI",
     "Country",
-    "Currency",
+    "Ccy",
     "MIC",
     "fixed_ascii",
     "CHARSETS",

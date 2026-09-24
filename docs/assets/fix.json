@@ -135,7 +135,7 @@
         201
       ],
       [
-        "currency",
+        "ccy",
         165
       ],
       [
@@ -405,7 +405,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:derivation": "settlcurrency",
@@ -1984,7 +1984,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:derivation": "currency",
@@ -2227,7 +2227,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "138",
@@ -3377,7 +3377,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "220",
@@ -4666,7 +4666,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "318",
@@ -6740,7 +6740,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "478",
@@ -6752,7 +6752,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "479",
@@ -7282,7 +7282,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "521",
@@ -7727,7 +7727,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "556",
@@ -9262,7 +9262,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "675",
@@ -9274,7 +9274,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "676",
@@ -10056,7 +10056,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "736",
@@ -10453,7 +10453,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "767",
@@ -12379,7 +12379,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "918",
@@ -12669,7 +12669,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "941",
@@ -12681,7 +12681,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "942",
@@ -12744,7 +12744,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "947",
@@ -15347,7 +15347,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1154",
@@ -15359,7 +15359,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1155",
@@ -16511,7 +16511,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1245",
@@ -16726,7 +16726,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1262",
@@ -18020,7 +18020,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1367",
@@ -19999,7 +19999,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1524",
@@ -20023,7 +20023,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1526",
@@ -20047,7 +20047,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1528",
@@ -20098,7 +20098,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1532",
@@ -20644,7 +20644,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1576",
@@ -20805,7 +20805,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1589",
@@ -21372,7 +21372,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1634",
@@ -21523,7 +21523,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1646",
@@ -22226,7 +22226,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1702",
@@ -22264,7 +22264,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1705",
@@ -22312,7 +22312,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1709",
@@ -22400,7 +22400,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1716",
@@ -22412,7 +22412,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1717",
@@ -22424,7 +22424,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1718",
@@ -22436,7 +22436,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1719",
@@ -22448,7 +22448,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1720",
@@ -22460,7 +22460,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1721",
@@ -22472,7 +22472,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1722",
@@ -22484,7 +22484,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1723",
@@ -23220,7 +23220,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1781",
@@ -23912,7 +23912,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1835",
@@ -24067,7 +24067,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1847",
@@ -24571,7 +24571,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "1887",
@@ -27531,7 +27531,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2122",
@@ -27555,7 +27555,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2124",
@@ -27567,7 +27567,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2125",
@@ -28840,7 +28840,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2226",
@@ -28929,7 +28929,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2233",
@@ -28941,7 +28941,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2234",
@@ -29341,7 +29341,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2266",
@@ -29365,7 +29365,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2268",
@@ -29377,7 +29377,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2269",
@@ -32250,7 +32250,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2495",
@@ -33744,7 +33744,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2615",
@@ -34095,7 +34095,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2643",
@@ -34120,7 +34120,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2645",
@@ -34270,7 +34270,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2657",
@@ -34295,7 +34295,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2659",
@@ -34743,7 +34743,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2695",
@@ -36289,7 +36289,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2818",
@@ -36612,7 +36612,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2843",
@@ -36662,7 +36662,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2847",
@@ -36763,7 +36763,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "2866",
@@ -40289,7 +40289,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40006",
@@ -40502,7 +40502,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40023",
@@ -40578,7 +40578,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40029",
@@ -40604,7 +40604,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40031",
@@ -40902,7 +40902,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40055",
@@ -41587,7 +41587,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40109",
@@ -41599,7 +41599,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40110",
@@ -42518,7 +42518,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40183",
@@ -42650,7 +42650,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40194",
@@ -42785,7 +42785,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40205",
@@ -42920,7 +42920,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40216",
@@ -43049,7 +43049,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40226",
@@ -43124,7 +43124,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40232",
@@ -43313,7 +43313,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40247",
@@ -43753,7 +43753,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40282",
@@ -44331,7 +44331,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40328",
@@ -44724,7 +44724,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40359",
@@ -45016,7 +45016,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40382",
@@ -45106,7 +45106,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40389",
@@ -45534,7 +45534,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40423",
@@ -46094,7 +46094,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40467",
@@ -46106,7 +46106,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40468",
@@ -47088,7 +47088,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40546",
@@ -47403,7 +47403,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40571",
@@ -47981,7 +47981,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40617",
@@ -48374,7 +48374,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40648",
@@ -48677,7 +48677,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40672",
@@ -48767,7 +48767,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40679",
@@ -49195,7 +49195,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40713",
@@ -49548,7 +49548,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40741",
@@ -50113,7 +50113,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40786",
@@ -50506,7 +50506,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40817",
@@ -50747,7 +50747,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40836",
@@ -50837,7 +50837,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40843",
@@ -51265,7 +51265,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "40877",
@@ -52774,7 +52774,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41000",
@@ -54065,7 +54065,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41104",
@@ -54838,7 +54838,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41166",
@@ -54902,7 +54902,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41171",
@@ -55041,7 +55041,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41182",
@@ -55067,7 +55067,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41184",
@@ -55093,7 +55093,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41186",
@@ -55158,7 +55158,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41191",
@@ -55310,7 +55310,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41203",
@@ -56003,7 +56003,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41259",
@@ -56499,7 +56499,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41299",
@@ -56783,7 +56783,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41322",
@@ -57068,7 +57068,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41345",
@@ -57168,7 +57168,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41353",
@@ -57194,7 +57194,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41355",
@@ -57365,7 +57365,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41369",
@@ -58728,7 +58728,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41479",
@@ -59425,7 +59425,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41535",
@@ -59489,7 +59489,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41540",
@@ -59628,7 +59628,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41551",
@@ -59654,7 +59654,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41553",
@@ -59680,7 +59680,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41555",
@@ -59745,7 +59745,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41560",
@@ -59897,7 +59897,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41572",
@@ -60258,7 +60258,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41601",
@@ -60480,7 +60480,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41619",
@@ -60588,7 +60588,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41628",
@@ -60932,7 +60932,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41656",
@@ -61428,7 +61428,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41696",
@@ -61628,7 +61628,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41712",
@@ -61712,7 +61712,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41719",
@@ -63663,7 +63663,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41876",
@@ -63748,7 +63748,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41883",
@@ -63812,7 +63812,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41888",
@@ -63951,7 +63951,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41899",
@@ -63977,7 +63977,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41901",
@@ -64003,7 +64003,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41903",
@@ -64068,7 +64068,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41908",
@@ -64220,7 +64220,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41920",
@@ -64867,7 +64867,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "41972",
@@ -65363,7 +65363,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42012",
@@ -65739,7 +65739,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42042",
@@ -65839,7 +65839,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42050",
@@ -65865,7 +65865,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42052",
@@ -65976,7 +65976,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42061",
@@ -66086,7 +66086,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42070",
@@ -66206,7 +66206,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42080",
@@ -67306,7 +67306,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42167",
@@ -67318,7 +67318,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42168",
@@ -68350,7 +68350,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42251",
@@ -69502,7 +69502,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42343",
@@ -71247,7 +71247,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42482",
@@ -71949,7 +71949,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42538",
@@ -72036,7 +72036,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42545",
@@ -72312,7 +72312,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42567",
@@ -73806,7 +73806,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42686",
@@ -74472,7 +74472,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42739",
@@ -74559,7 +74559,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42746",
@@ -74835,7 +74835,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42768",
@@ -75640,7 +75640,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42832",
@@ -75963,7 +75963,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42858",
@@ -77474,7 +77474,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "42978",
@@ -78225,7 +78225,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "43038",
@@ -78312,7 +78312,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "43045",
@@ -78588,7 +78588,7 @@
       },
       {
         "dtype": {
-          "type": "currency"
+          "type": "ccy"
         },
         "metadata": {
           "FIX:tag": "43067",
@@ -291861,14 +291861,14 @@
         "c": "currency",
         "t": 15,
         "n": "Currency",
-        "y": "currency",
+        "y": "ccy",
         "x": "Identifies currency used for price or quantity fields, depending on the asset class being traded. CurrencyCodeSource(2897) may be used to disambiguate the code source scheme used, and ISO 4217 is the default scheme if absent."
       },
       {
         "c": "settlcurrency",
         "t": 120,
         "n": "SettlCurrency",
-        "y": "currency",
+        "y": "ccy",
         "x": "Currency code of settlement denomination."
       },
       {
@@ -293606,7 +293606,7 @@
                             },
                             {
                               "dtype": {
-                                "type": "currency"
+                                "type": "ccy"
                               },
                               "metadata": {
                                 "FIX:field": "benchmarkcurvecurrency",
@@ -293741,7 +293741,7 @@
                       },
                       {
                         "dtype": {
-                          "type": "currency"
+                          "type": "ccy"
                         },
                         "metadata": {
                           "FIX:derivation": "settlcurrency",
@@ -293768,7 +293768,7 @@
                       },
                       {
                         "dtype": {
-                          "type": "currency"
+                          "type": "ccy"
                         },
                         "metadata": {
                           "FIX:derivation": "currency",
@@ -297619,7 +297619,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "settlcurrency",
@@ -297646,7 +297646,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "currency",
@@ -297952,7 +297952,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "settlcurrency",
@@ -297979,7 +297979,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "currency",
@@ -298310,7 +298310,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "settlcurrency",
@@ -298337,7 +298337,7 @@
             },
             {
               "dtype": {
-                "type": "currency"
+                "type": "ccy"
               },
               "metadata": {
                 "FIX:derivation": "currency",

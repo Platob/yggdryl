@@ -180,13 +180,13 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_currency(&self) -> &$crate::Currency {
+            fn get_currency(&self) -> &$crate::Ccy {
                 <$holder as $crate::graph::MarketElement>::get_currency(
                     <Self as AsRef<$holder>>::as_ref(self),
                 )
             }
 
-            fn set_currency(&mut self, currency: $crate::Currency) {
+            fn set_currency(&mut self, currency: $crate::Ccy) {
                 <$holder as $crate::graph::MarketElement>::set_currency(
                     <Self as AsMut<$holder>>::as_mut(self),
                     currency,
@@ -468,13 +468,13 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_bidcurrency(&self) -> Option<&$crate::Currency> {
+            fn get_bidcurrency(&self) -> Option<&$crate::Ccy> {
                 <$holder as $crate::graph::MarketElement>::get_bidcurrency(<Self as AsRef<
                     $holder,
                 >>::as_ref(self))
             }
 
-            fn set_bidcurrency(&mut self, currency: Option<$crate::Currency>) {
+            fn set_bidcurrency(&mut self, currency: Option<$crate::Ccy>) {
                 <$holder as $crate::graph::MarketElement>::set_bidcurrency(
                     <Self as AsMut<$holder>>::as_mut(self),
                     currency,
@@ -520,13 +520,13 @@ macro_rules! delegate_market_value {
                 );
             }
 
-            fn get_askcurrency(&self) -> Option<&$crate::Currency> {
+            fn get_askcurrency(&self) -> Option<&$crate::Ccy> {
                 <$holder as $crate::graph::MarketElement>::get_askcurrency(<Self as AsRef<
                     $holder,
                 >>::as_ref(self))
             }
 
-            fn set_askcurrency(&mut self, currency: Option<$crate::Currency>) {
+            fn set_askcurrency(&mut self, currency: Option<$crate::Ccy>) {
                 <$holder as $crate::graph::MarketElement>::set_askcurrency(
                     <Self as AsMut<$holder>>::as_mut(self),
                     currency,

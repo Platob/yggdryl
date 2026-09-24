@@ -579,7 +579,7 @@ enum DataTypeRef<'a> {
         fixed: Option<u32>,
     },
     Country {},
-    Currency {},
+    Ccy {},
     #[serde(rename = "mic")]
     MicCode {},
     #[serde(rename = "cfi")]
@@ -740,7 +740,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
                 }
             }
             D::Country => Self::Country {},
-            D::Currency => Self::Currency {},
+            D::Ccy => Self::Ccy {},
             D::MicCode => Self::MicCode {},
             D::CfiCode => Self::CfiCode {},
             D::IsinCode => Self::IsinCode {},
@@ -882,7 +882,7 @@ enum DataTypeWire {
         fixed: Option<u32>,
     },
     Country {},
-    Currency {},
+    Ccy {},
     #[serde(rename = "mic")]
     MicCode {},
     #[serde(rename = "cfi")]
@@ -1024,7 +1024,7 @@ impl TryFrom<DataTypeWire> for DataType {
                 fixed,
             } => Self::string(string_parameters(layout, charset, max, fixed)?)?,
             DataTypeWire::Country {} => Self::Country,
-            DataTypeWire::Currency {} => Self::Currency,
+            DataTypeWire::Ccy {} => Self::Ccy,
             DataTypeWire::MicCode {} => Self::MicCode,
             DataTypeWire::CfiCode {} => Self::CfiCode,
             DataTypeWire::IsinCode {} => Self::IsinCode,
@@ -1160,7 +1160,7 @@ impl DataType {
             D::Date32 => tag("date32"),
             D::Date64 => tag("date64"),
             D::Country => tag("country"),
-            D::Currency => tag("currency"),
+            D::Ccy => tag("ccy"),
             D::MicCode => tag("mic"),
             D::CfiCode => tag("cfi"),
             D::IsinCode => tag("isin"),
@@ -1439,7 +1439,7 @@ impl DataType {
             "date32" => Self::date32(),
             "date64" => Self::date64(),
             "country" => Self::Country,
-            "currency" => Self::Currency,
+            "ccy" => Self::Ccy,
             "mic" => Self::MicCode,
             "cfi" => Self::CfiCode,
             "isin" => Self::IsinCode,

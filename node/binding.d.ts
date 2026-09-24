@@ -310,7 +310,7 @@ export type DataTypeId =
   | 'large_utf8'
   | 'large_utf8_view'
   | 'country'
-  | 'currency'
+  | 'ccy'
   | 'mic'
   | 'cfi'
   | 'isin'
@@ -417,7 +417,7 @@ interface DataTypeKindById {
   large_utf8: 'text'
   large_utf8_view: 'text'
   country: 'code'
-  currency: 'code'
+  ccy: 'code'
   mic: 'code'
   cfi: 'code'
   isin: 'code'
@@ -1037,7 +1037,7 @@ export type SizedCp1252Field = FieldOf<'sized_cp1252', string>
 /** ISO 3166-1 alpha-2, the two-letter country code, stored as its text. */
 export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
-export type CurrencyField = FieldOf<'currency', string>
+export type CcyField = FieldOf<'ccy', string>
 /** ISO 10383, the four-character market identifier code. */
 export type MicCodeField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
@@ -1339,7 +1339,7 @@ export interface FieldsNamespace {
   mimetype(name: string, options?: FieldOptions): MimeTypeField
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
-  currency(name: string, options?: FieldOptions): CurrencyField
+  ccy(name: string, options?: FieldOptions): CcyField
   mic(name: string, options?: FieldOptions): MicCodeField
   cfi(name: string, options?: FieldOptions): CfiCodeField
   isin(name: string, options?: FieldOptions): IsinCodeField
@@ -1938,13 +1938,13 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'country', string, N, O>
-  currency<
+  ccy<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
   >(
     name: N,
     options?: O,
-  ): NamedField<'currency', string, N, O>
+  ): NamedField<'ccy', string, N, O>
   mic<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,

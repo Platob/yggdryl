@@ -140,8 +140,8 @@ impl DataType {
     ///
     /// // Narrowing keeps the tighter type: the code over the width it stores
     /// // in, and the decimal's own backing over the one precision needs.
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), false)?, DataType::Currency);
-    /// assert_eq!(DataType::Currency.merge_with(&DataType::utf8(), true)?, DataType::utf8());
+    /// assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), false)?, DataType::Ccy);
+    /// assert_eq!(DataType::Ccy.merge_with(&DataType::utf8(), true)?, DataType::utf8());
     /// assert_eq!(
     ///     DataType::decimal128(10, 2)?.merge_with(&DataType::Int16, true)?,
     ///     DataType::decimal128(10, 2)?,
@@ -624,11 +624,11 @@ fn text_parameters(dtype: &DataType) -> Option<StringType> {
 /// Meet two text types, conserving a registered code where the direction can.
 ///
 /// Widening never answers a code: a code names fewer values than the width it
-/// is bounded by, so the type holding both sides is the plain one - `currency`
+/// is bounded by, so the type holding both sides is the plain one - `ccy`
 /// beside `ascii(3)` is `ascii(3)`. Narrowing asks the opposite question, for
 /// the tightest type that names both, and there the code is the answer
-/// whenever the other side is at least as general: `currency` beside `utf8`
-/// or `ascii(3)` narrows to `currency`, and only a side narrower still, such
+/// whenever the other side is at least as general: `ccy` beside `utf8`
+/// or `ascii(3)` narrows to `ccy`, and only a side narrower still, such
 /// as `ascii(2)`, outranks it.
 ///
 /// Two *different* codes are the one pair neither direction answers with a

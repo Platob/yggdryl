@@ -240,7 +240,7 @@ function createFields(DataType, Field, native) {
     // is, held to the width its standard fixes, and carrying that identity
     // across Arrow under its own extension name.
     country: simple('country'),
-    currency: simple('currency'),
+    ccy: simple('ccy'),
     mic: simple('mic'),
     cfi: simple('cfi'),
     isin: simple('isin'),

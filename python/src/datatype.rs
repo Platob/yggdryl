@@ -456,7 +456,7 @@ impl PyDataType {
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
-            "currency" => CoreDataType::Currency,
+            "ccy" => CoreDataType::Ccy,
             "mic" => CoreDataType::MicCode,
             "cfi" => CoreDataType::CfiCode,
             "isin" => CoreDataType::IsinCode,
@@ -762,7 +762,7 @@ impl PyDataType {
         Self::from_validated(inner)
     }
 
-    /// Resolves a registered logical name such as ``currency`` or ``Price``
+    /// Resolves a registered logical name such as ``ccy`` or ``Price``
     /// to the datatype it spells, folding case, ``_``, ``-``, and spaces.
     #[staticmethod]
     fn from_logical_name(name: &str) -> PyResult<Self> {

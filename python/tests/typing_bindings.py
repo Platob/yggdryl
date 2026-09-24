@@ -20,7 +20,7 @@ from yggdryl import (
     BytesField,
     CfiCodeField,
     CountryField,
-    CurrencyField,
+    CcyField,
     CusipCodeField,
     DataType,
     DenseUnionField,
@@ -91,7 +91,7 @@ from yggdryl._native import (
     StringParameters,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import AsciiCode, CurrencyCode, fixed_ascii
+from yggdryl.enums import AsciiCode, CcyCode, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -454,8 +454,8 @@ large_binary_dtype: DataType = DataType.large_binary()
 binary_view_dtype: DataType = DataType.binary_view()
 fixed_size_binary_dtype: DataType = DataType.fixed_size_binary(16)
 bytes_dtype_parameters: BytesParameters | None = bytes_dtype.bytes_parameters
-currency_dtype: DataType = DataType.from_logical_name("currency")
-currency_width: int | None = currency_dtype.fixed_byte_width
+ccy_dtype: DataType = DataType.from_logical_name("ccy")
+ccy_width: int | None = ccy_dtype.fixed_byte_width
 logical_names: dict[str, DataType] = DataType.logical_names()
 prebuilt_lists: dict[str, list[str]] = StringEnum.prebuilt()
 prebuilt_mics: StringEnum = StringEnum.from_logical_name("mic")
@@ -502,8 +502,8 @@ typed_binary_kind: Literal[
 ] = typed_binary.dtype.id
 typed_country: CountryField = yggdryl.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
-typed_currency: CurrencyField = yggdryl.currency("ccy", nullable=False)
-typed_currency_kind: Literal["currency"] = typed_currency.dtype.id
+typed_ccy: CcyField = yggdryl.ccy("ccy", nullable=False)
+typed_ccy_kind: Literal["ccy"] = typed_ccy.dtype.id
 typed_mic: MicCodeField = yggdryl.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
 typed_cfi: CfiCodeField = yggdryl.cfi("classification")
@@ -531,20 +531,20 @@ ascii_member_name: str = StringEnum.member_name("n/a")
 ascii_width_base: type[AsciiCode] = fixed_ascii(4)
 
 
-class TypedCurrency(CurrencyCode):
+class TypedCcy(CcyCode):
     USD = "USD"
     EUR = "EUR"
 
 
-ascii_declared_code: int = int(TypedCurrency.USD)
-ascii_declared_value: str = TypedCurrency.USD.into_str()
-ascii_parsed: TypedCurrency = TypedCurrency.from_str("JPY")
-ascii_by_code: TypedCurrency = TypedCurrency.from_code(0x55534400)
-ascii_declared_dtype: DataType = TypedCurrency.dtype()
-ascii_declared_enum: StringEnum = TypedCurrency.as_enum()
-ascii_declared_field: Field = TypedCurrency.into_field("ccy", nullable=False)
+ascii_declared_code: int = int(TypedCcy.USD)
+ascii_declared_value: str = TypedCcy.USD.into_str()
+ascii_parsed: TypedCcy = TypedCcy.from_str("JPY")
+ascii_by_code: TypedCcy = TypedCcy.from_code(0x55534400)
+ascii_declared_dtype: DataType = TypedCcy.dtype()
+ascii_declared_enum: StringEnum = TypedCcy.as_enum()
+ascii_declared_field: Field = TypedCcy.into_field("ccy", nullable=False)
 ascii_recovered_class: type[AsciiCode] = AsciiCode.from_field(ascii_declared_field)
-ascii_base: type[AsciiCode] = TypedCurrency
+ascii_base: type[AsciiCode] = TypedCcy
 
 ascii_declaration: StringEnum = StringEnum("Side", {"BUY": "B"})
 ascii_declaration_json: str = ascii_declaration.into_json()

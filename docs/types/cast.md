@@ -1180,7 +1180,7 @@ cargo bench --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggd
 
 ### Row canonicalization
 
-Row canonicalization over a three-column row - `utf8`, `binary`, `currency` - at two payload
+Row canonicalization over a three-column row - `utf8`, `binary`, `ccy` - at two payload
 sizes. Containerized x86_64 Linux, Intel Xeon, rustc 1.94.1 release, Criterion point estimates.
 `unchanged` hands the root a row already in its declared representation; `relayout` hands the
 same row to a `large_utf8`/`large_binary` root. Both are flat in the payload because neither

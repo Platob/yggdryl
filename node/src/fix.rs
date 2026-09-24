@@ -47,7 +47,7 @@ use napi::bindgen_prelude::{
 use napi_derive::napi;
 use yggdryl::graph::{Element, Event, MarketElement, MarketEventData};
 use yggdryl::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
+    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, FIGICode, IsinCode, MicCode, SedolCode,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
@@ -1192,11 +1192,11 @@ fn event_view(event: &MarketEventData) -> Result<FixEventView> {
         miccode: text(event.get_miccode().map(MicCode::as_str)),
         bidpx: decimal(event.get_bidpx()),
         bidqty: decimal(event.get_bidqty()),
-        bidcurrency: text(event.get_bidcurrency().map(Currency::as_str)),
+        bidcurrency: text(event.get_bidcurrency().map(Ccy::as_str)),
         bidunit: text(event.get_bidunit()),
         askpx: decimal(event.get_askpx()),
         askqty: decimal(event.get_askqty()),
-        askcurrency: text(event.get_askcurrency().map(Currency::as_str)),
+        askcurrency: text(event.get_askcurrency().map(Ccy::as_str)),
         askunit: text(event.get_askunit()),
     })
 }

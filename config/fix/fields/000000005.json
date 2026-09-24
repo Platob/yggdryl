@@ -266,7 +266,7 @@
   {
     "name": "contamtcurr",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -711,7 +711,7 @@
   {
     "name": "legcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

@@ -75,7 +75,7 @@
   {
     "name": "additionaltermbondcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -288,7 +288,7 @@
   {
     "name": "cashsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -364,7 +364,7 @@
   {
     "name": "cashsettlquotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -390,7 +390,7 @@
   {
     "name": "cashsettlminimumquotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -688,7 +688,7 @@
   {
     "name": "streamcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

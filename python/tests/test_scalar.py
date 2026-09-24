@@ -138,9 +138,9 @@ def test_scalar_identity_accessors_name_the_exact_leaf_and_family() -> None:
         (Scalar.from_("AAPL"), "utf8", "text"),
         (
             json.loads(
-                '"USD"', field=Field("value", "currency", False), cls=Scalar
+                '"USD"', field=Field("value", "ccy", False), cls=Scalar
             ),
-            "currency",
+            "ccy",
             "code",
         ),
         (
@@ -405,7 +405,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         # fixed or sized leaf its number; the name says the charset.
         ("string", ("fixed_ascii", 4, "USD")),
         ("string", ("large_cp1252_view", None, "café")),
-        ("currency", "USD"),
+        ("ccy", "USD"),
         ("side", "BUY"),
         ("version", "5.0.1"),
         ("bytes", b"\x00\xff"),
@@ -432,7 +432,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
     # references into it below stay pinned to what they name.
     code_states: list[tuple[object, ...]] = [
         ("country", "FR"),
-        ("currency", "USD"),
+        ("ccy", "USD"),
         ("mic", "XPAR"),
         ("cfi", "ESVUFR"),
         ("isin", "US0378331005"),
@@ -472,6 +472,8 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
     assert Scalar._from_pickle(mapping_state).kind == "map"
     with pytest.raises(ValueError, match="unknown"):
         Scalar._from_pickle(("future", None))
+    with pytest.raises(ValueError, match="unknown"):
+        Scalar._from_pickle(("currency", "USD"))
 
 
 @pytest.mark.parametrize(

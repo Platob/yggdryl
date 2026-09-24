@@ -235,10 +235,8 @@ mod codes {
 
     #[test]
     fn only_a_registered_name_is_a_code() {
-        assert_eq!(
-            code_for_extension("yggdryl.currency"),
-            Some(DataType::Currency)
-        );
+        assert_eq!(code_for_extension("yggdryl.ccy"), Some(DataType::Ccy));
+        assert_eq!(code_for_extension("yggdryl.currency"), None);
         assert_eq!(code_for_extension("yggdryl.cfi"), Some(DataType::CfiCode));
         assert_eq!(
             code_for_extension("yggdryl.cusip"),
@@ -256,11 +254,8 @@ mod codes {
     fn a_code_packs_at_the_width_its_standard_fixes() {
         // The packing pads; the column does not. Both codes and fixed ASCII
         // widths answer, and nothing else does.
-        assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
-            0x0055_5344
-        );
-        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
+        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
+        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(DataType::Country.ascii_packed(b"FR").unwrap(), 0x4652);
         assert_eq!(
             DataType::fixed_ascii(4)
@@ -269,7 +264,7 @@ mod codes {
                 .unwrap(),
             0x5553_4400
         );
-        assert!(DataType::Currency.ascii_packed(b"EURO").is_err());
+        assert!(DataType::Ccy.ascii_packed(b"EURO").is_err());
         assert!(DataType::utf8().ascii_packed(b"USD").is_err());
     }
 
@@ -284,7 +279,7 @@ mod codes {
 
     #[test]
     fn a_cell_is_validated_at_the_code_width() {
-        assert_eq!(code_cell_text(&DataType::Currency, b"USD").unwrap(), "USD");
+        assert_eq!(code_cell_text(&DataType::Ccy, b"USD").unwrap(), "USD");
         assert_eq!(code_cell_text(&DataType::Country, b"FR").unwrap(), "FR");
         assert_eq!(
             code_cell_text(&DataType::CfiCode, b"ESVUFR").unwrap(),
@@ -957,8 +952,8 @@ mod leaves {
 
         // A code is an identity over a registry, not a string with a charset:
         // it stores as text without declaring one.
-        assert_eq!(DataType::Currency.charset(), None);
-        assert!(!DataType::Currency.is_string());
+        assert_eq!(DataType::Ccy.charset(), None);
+        assert!(!DataType::Ccy.is_string());
         assert!(DataType::utf8().is_string());
     }
 
@@ -2075,8 +2070,8 @@ mod widths {
             ("char(8)", DataType::fixed_utf8(8).unwrap()),
             ("country", DataType::Country),
             ("Country", DataType::Country),
-            ("currency", DataType::Currency),
-            ("Currency", DataType::Currency),
+            ("ccy", DataType::Ccy),
+            ("Ccy", DataType::Ccy),
             ("mic", DataType::MicCode),
             ("MIC", DataType::MicCode),
             ("Exchange", DataType::MicCode),
@@ -2093,12 +2088,12 @@ mod widths {
             assert_eq!(parsed.to_string().parse::<DataType>().unwrap(), parsed);
         }
         let row: DataType =
-            "struct<ccy: currency, isin: fixed_ascii(12), code: cfi, iso: country, name: utf8(32)>"
+            "struct<ccy: ccy, isin: fixed_ascii(12), code: cfi, iso: country, name: utf8(32)>"
                 .parse()
                 .unwrap();
         assert_eq!(
             row.get_field_by_path("ccy").map(Field::dtype),
-            Some(&DataType::Currency)
+            Some(&DataType::Ccy)
         );
         assert_eq!(
             row.get_field_by_path("isin").map(Field::dtype),
@@ -2183,8 +2178,11 @@ mod widths {
             assert!(!dtype.is_string());
             assert_eq!(dtype.string_parameters(), None);
         }
-        assert_eq!("currency".parse::<DataType>().unwrap(), DataType::Currency);
-        assert_ne!(DataType::Currency, DataType::fixed_ascii(3).unwrap());
+        assert_eq!("ccy".parse::<DataType>().unwrap(), DataType::Ccy);
+        for retired in ["currency", "Currency", "CURRENCY"] {
+            assert!(retired.parse::<DataType>().is_err(), "{retired}");
+        }
+        assert_ne!(DataType::Ccy, DataType::fixed_ascii(3).unwrap());
         // ISO 10962 is six characters, and `cfi` holds at most those six.
         assert_eq!(DataType::CfiCode.code_width(), Some(6));
         // A width of six bytes is spellable, and it is still not a CFI code.
@@ -2206,10 +2204,8 @@ mod widths {
 
         // A code name is a grammar keyword like every other, so the parser
         // reads it case-insensitively and trimmed.
-        assert_eq!(
-            " CURRENCY ".parse::<DataType>().unwrap(),
-            DataType::Currency
-        );
+        assert_eq!(" CCY ".parse::<DataType>().unwrap(), DataType::Ccy);
+        assert!(" CURRENCY ".parse::<DataType>().is_err());
         // FIGI is its own checked twelve-character code, not a Bloomberg alias.
         assert_eq!(" FIGI ".parse::<DataType>().unwrap(), DataType::FIGICode);
         // The grammar still reports words that name nothing as unknown.
@@ -2221,13 +2217,10 @@ mod widths {
     fn a_code_packs_and_merges_by_the_ascii_rules() {
         // The packed integer is the value's own storage bytes, exactly as it
         // is for a width: the code is a datatype, not a second encoding.
+        assert_eq!(DataType::Ccy.ascii_packed(b"USD").unwrap(), 0x0055_5344);
+        assert_eq!(DataType::Ccy.ascii_value(0x0055_5344).unwrap(), "USD");
         assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
-            0x0055_5344
-        );
-        assert_eq!(DataType::Currency.ascii_value(0x0055_5344).unwrap(), "USD");
-        assert_eq!(
-            DataType::Currency.ascii_packed(b"USD").unwrap(),
+            DataType::Ccy.ascii_packed(b"USD").unwrap(),
             DataType::fixed_ascii(3)
                 .unwrap()
                 .ascii_packed(b"USD")
@@ -2256,27 +2249,21 @@ mod widths {
         // Two schemas that agree on a code keep it; a code reconciled with
         // anything else answers the plain text both fit in.
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::Currency, true)
-                .unwrap(),
-            DataType::Currency
+            DataType::Ccy.merge_with(&DataType::Ccy, true).unwrap(),
+            DataType::Ccy
         );
         assert_eq!(
-            DataType::Currency
+            DataType::Ccy
                 .merge_with(&DataType::fixed_ascii(3).unwrap(), true)
                 .unwrap(),
             DataType::from_str("ascii(3)").unwrap()
         );
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::Country, true)
-                .unwrap(),
+            DataType::Ccy.merge_with(&DataType::Country, true).unwrap(),
             DataType::from_str("ascii(3)").unwrap()
         );
         assert_eq!(
-            DataType::Currency
-                .merge_with(&DataType::utf8(), true)
-                .unwrap(),
+            DataType::Ccy.merge_with(&DataType::utf8(), true).unwrap(),
             DataType::utf8()
         );
     }
@@ -2435,7 +2422,7 @@ mod widths {
         // same characters, and the hash is what tells them apart.
         for (code, width) in [
             (DataType::Country, DataType::fixed_ascii(2).unwrap()),
-            (DataType::Currency, DataType::fixed_ascii(3).unwrap()),
+            (DataType::Ccy, DataType::fixed_ascii(3).unwrap()),
             (DataType::MicCode, DataType::fixed_ascii(4).unwrap()),
             (DataType::CfiCode, DataType::fixed_ascii(6).unwrap()),
         ] {
@@ -2659,7 +2646,7 @@ mod listings {
 
     fn lists() -> [(&'static str, &'static [&'static str]); 3] {
         [
-            ("currency", StringEnum::CURRENCIES),
+            ("ccy", StringEnum::CURRENCIES),
             ("country", StringEnum::COUNTRIES),
             ("mic", StringEnum::MICS),
         ]
@@ -2744,7 +2731,7 @@ mod listings {
         let refused = StringEnum::from_logical_name("unregistered_code")
             .unwrap_err()
             .to_string();
-        assert!(refused.contains("currency"), "{refused}");
+        assert!(refused.contains("ccy"), "{refused}");
     }
 }
 

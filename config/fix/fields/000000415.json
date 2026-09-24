@@ -441,7 +441,7 @@
   {
     "name": "legpaymentscheduleratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -505,7 +505,7 @@
   {
     "name": "legpaymentschedulesettlperiodpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -644,7 +644,7 @@
   {
     "name": "legpaymentstreamflatratecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -670,7 +670,7 @@
   {
     "name": "legstreammaximumpaymentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -696,7 +696,7 @@
   {
     "name": "legstreammaximumtransactioncurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -761,7 +761,7 @@
   {
     "name": "legpaymentstreamcontractpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -913,7 +913,7 @@
   {
     "name": "legpaymentstreamratespreadcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

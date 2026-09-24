@@ -15,7 +15,7 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 | Refuses | A byte past `0x7F`, a NUL, text longer than the width, and whatever the code's own rule refuses; `string_parameters`, which a code has none of |
 | Errors | Rust `Error::InvalidDataType { kind, reason }` where `kind` is the code's own name; Python `ValueError`; JavaScript throws |
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
-| Identity | The extension *name*, never the storage: `yggdryl.currency` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
+| Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
 | Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
 
@@ -25,7 +25,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 | Page | Registry | Most bytes | Arrow extension |
 | --- | --- | ---: | --- |
-| [Currency](currency.md) | ISO 4217 | 3 | `yggdryl.currency` |
+| [Ccy](ccy.md) | ISO 4217 | 3 | `yggdryl.ccy` |
 | [Country](country.md) | ISO 3166-1 alpha-2 | 2 | `yggdryl.country` |
 | [MIC](mic.md) | ISO 10383 market identifier | 4 | `yggdryl.mic` |
 | [CFI](cfi.md) | ISO 10962 classification | 6 | `yggdryl.cfi` |
@@ -48,12 +48,12 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     use yggdryl::{DataType, DataTypeKind, Scalar};
 
     // A registered code is a datatype, not a name over a width.
-    let currency = DataType::currency();
-    assert_eq!(DataType::from_str("currency")?, currency);
-    assert_eq!(currency.to_string(), "currency");
+    let currency = DataType::ccy();
+    assert_eq!(DataType::from_str("ccy")?, currency);
+    assert_eq!(currency.to_string(), "ccy");
     assert_eq!(currency.kind(), DataTypeKind::Code);
     assert!(currency.is_code());
-    assert_eq!(currency.code_name(), Some("currency"));
+    assert_eq!(currency.code_name(), Some("ccy"));
     // The width bounds a value; a code stores as its text, so it names no
     // fixed layout.
     assert_eq!(currency.code_width(), Some(3));
@@ -65,7 +65,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
         DataType::CODES,
         &[
             ("country", DataType::Country, 2),
-            ("currency", DataType::Currency, 3),
+            ("ccy", DataType::Ccy, 3),
             ("mic", DataType::MicCode, 4),
             ("cfi", DataType::CfiCode, 6),
             ("isin", DataType::IsinCode, 12),
@@ -82,7 +82,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     // A value is the text, and carries its identity.
     let usd = currency.scalar("USD")?;
     assert_eq!(usd.as_str(), Some("USD"));
-    assert_eq!(usd.kind(), "currency");
+    assert_eq!(usd.kind(), "ccy");
     assert!(usd.is_code());
     assert_ne!(DataType::Side.scalar("BUY")?, DataType::TimeInForce.scalar("BUY")?);
     // A plain string of the same bytes is a string.
@@ -95,11 +95,11 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     from yggdryl import DataType, Scalar
 
     # A registered code is a datatype, not a name over a width.
-    currency = DataType("currency")
-    assert str(currency) == "currency"
+    currency = DataType("ccy")
+    assert str(currency) == "ccy"
     assert currency.kind == "code"
     assert currency.is_code
-    assert currency.code_name == "currency"
+    assert currency.code_name == "ccy"
     # The width bounds a value; a code stores as its text, so it names no
     # fixed layout.
     assert currency.code_width == 3
@@ -107,9 +107,9 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert currency.string_parameters is None
     assert currency != DataType.fixed_ascii(3)
     assert [(DataType(name).id, DataType(name).code_width) for name in
-            ("country", "currency", "mic", "cfi", "isin", "cusip", "sedol",
+            ("country", "ccy", "mic", "cfi", "isin", "cusip", "sedol",
              "side", "state", "timeinforce", "bloomberg", "figi")] == [
-        ("country", 2), ("currency", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
+        ("country", 2), ("ccy", 3), ("mic", 4), ("cfi", 6), ("isin", 12),
         ("cusip", 9), ("sedol", 7), ("side", 8), ("state", 10), ("timeinforce", 8),
         ("bloomberg", 32), ("figi", 12),
     ]
@@ -117,7 +117,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     # A value is the text, and carries its identity.
     usd = currency.scalar("USD")
     assert usd.as_str() == "USD"
-    assert usd.kind == "currency"
+    assert usd.kind == "ccy"
     assert usd.family == "code"
     assert DataType("side").scalar("BUY") != DataType("timeinforce").scalar("BUY")
     assert Scalar.from_("USD").kind == "string"
@@ -130,9 +130,9 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     const { DataType, Scalar } = require('yggdryl')
 
     // A registered code is a datatype, not a name over a width.
-    const currency = new DataType('currency')
-    assert.equal(currency.id, 'currency')
-    assert.equal(currency.toString(), 'currency')
+    const currency = new DataType('ccy')
+    assert.equal(currency.id, 'ccy')
+    assert.equal(currency.toString(), 'ccy')
     assert.equal(currency.kind, 'code')
     // The width bounds a value; a code stores as its text, so it names no
     // fixed layout.
@@ -141,7 +141,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     assert.equal(currency.stringParameters, null)
     assert.ok(!currency.equals(DataType.fixedAscii(3)))
     assert.deepEqual(
-      ['country', 'currency', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg', 'figi']
+      ['country', 'ccy', 'mic', 'cfi', 'isin', 'cusip', 'sedol', 'side', 'state', 'timeinforce', 'bloomberg', 'figi']
         .map((name) => new DataType(name).codeWidth),
       [2, 3, 4, 6, 12, 9, 7, 8, 10, 8, 32, 12],
     )
@@ -149,7 +149,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
     // A value is the text, and carries its identity.
     const usd = currency.scalar('USD')
     assert.equal(usd.asJs(), 'USD')
-    assert.equal(usd.kind, 'currency')
+    assert.equal(usd.kind, 'ccy')
     assert.equal(usd.family, 'code')
     assert.equal(Scalar.from('USD').kind, 'string')
     ```
@@ -158,19 +158,19 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 The twelve share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `currency` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `ccy` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
 
 ```rust
-use yggdryl::{CodeValue, Currency, DataTypeKind, IsinCode, MicCode, Scalar, State};
+use yggdryl::{CodeValue, Ccy, DataTypeKind, IsinCode, MicCode, Scalar, State};
 
 // A code is its own leaf, in the code family's range; its text is not a code.
-let usd = Scalar::Currency(Currency::new("USD")?);
+let usd = Scalar::Ccy(Ccy::new("USD")?);
 assert!(usd.is_code() && DataTypeKind::Code.contains(usd.id()));
 assert!(!Scalar::from("USD").is_code());
 
 // A code stated as none takes the other; anything stated stands.
-assert_eq!(Currency::none().merge_with(&Currency::new("USD")?).as_str(), "USD");
-assert_eq!(Currency::new("USD")?.merge_with(&Currency::new("EUR")?).as_str(), "USD");
+assert_eq!(Ccy::none().merge_with(&Ccy::new("USD")?).as_str(), "USD");
+assert_eq!(Ccy::new("USD")?.merge_with(&Ccy::new("EUR")?).as_str(), "USD");
 assert_eq!(MicCode::none().merge_with(&MicCode::new("XPAR")?).as_str(), "XPAR");
 
 // A lifecycle takes the state further along, whichever side it is on.
@@ -266,7 +266,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert_eq!(ascii4.ascii_packed(b"USD")?, 0x5553_4400);
     assert_eq!(ascii4.ascii_packed(b"USD\0")?, 0x5553_4400);
     assert_eq!(ascii4.ascii_value(0x5553_4400)?, "USD");
-    assert_eq!(DataType::Currency.ascii_packed(b"USD")?, 0x0055_5344);
+    assert_eq!(DataType::Ccy.ascii_packed(b"USD")?, 0x0055_5344);
     // Sixteen bytes fill the whole `i128`; a wider width has no packed code.
     assert_eq!(
         DataType::fixed_ascii(16)?.ascii_packed(b"US0378331005")?,
@@ -291,7 +291,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
 
     // The ISO listings ship with the package, so a code column declares the
     // vocabulary it draws from without a copy per language.
-    let currencies = StringEnum::from_logical_name("currency")?;
+    let currencies = StringEnum::from_logical_name("ccy")?;
     assert_eq!(currencies.len(), StringEnum::CURRENCIES.len());
     assert_eq!(currencies.get("USD"), Some("USD"));
     assert_eq!(StringEnum::from_logical_name("Exchange")?.len(), StringEnum::MICS.len());
@@ -324,7 +324,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert ascii4.ascii_packed("USD") == 0x55534400
     assert ascii4.ascii_packed("USD\x00") == 0x55534400
     assert ascii4.ascii_value(0x55534400) == "USD"
-    assert DataType("currency").ascii_packed("USD") == 0x555344
+    assert DataType("ccy").ascii_packed("USD") == 0x555344
     # Sixteen bytes fill the whole 128-bit integer, which Python holds natively.
     assert DataType.fixed_ascii(16).ascii_packed("US0378331005") == (
         0x55533033373833333130303500000000
@@ -351,8 +351,8 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
 
     # The ISO listings ship with the package, so a code column declares the
     # vocabulary it draws from without a copy per language.
-    currencies = StringEnum.from_logical_name("currency")
-    assert len(currencies) == len(StringEnum.prebuilt()["currency"])
+    currencies = StringEnum.from_logical_name("ccy")
+    assert len(currencies) == len(StringEnum.prebuilt()["ccy"])
     assert currencies.get("USD") == "USD"
     assert len(StringEnum.from_logical_name("Exchange")) == len(StringEnum.prebuilt()["mic"])
     # A registered name with no listing answers an enum of no members.
@@ -382,7 +382,7 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
     assert.equal(ascii4.asciiPacked('USD'), 0x55534400n)
     assert.equal(ascii4.asciiPacked('USD\0'), 0x55534400n)
     assert.equal(ascii4.asciiValue(0x55534400n), 'USD')
-    assert.equal(new DataType('currency').asciiPacked('USD'), 0x555344n)
+    assert.equal(new DataType('ccy').asciiPacked('USD'), 0x555344n)
     // Sixteen bytes fill the whole 128-bit integer, so every code is a bigint.
     assert.equal(
       DataType.fixedAscii(16).asciiPacked('US0378331005'),
@@ -409,8 +409,8 @@ Every code rides Arrow's `Utf8` - which is what the text is - and the `yggdryl.<
 
     // The ISO listings ship with the package, so a code column declares the
     // vocabulary it draws from without a copy per language.
-    const currencies = StringEnum.fromLogicalName('currency')
-    assert.equal(currencies.length, StringEnum.prebuilt().currency.length)
+    const currencies = StringEnum.fromLogicalName('ccy')
+    assert.equal(currencies.length, StringEnum.prebuilt().ccy.length)
     assert.equal(currencies.get('USD'), 'USD')
     assert.equal(StringEnum.fromLogicalName('tenor').length, 0)
 
@@ -437,18 +437,18 @@ Declaring a vocabulary *over* one of these widths is Python-only: `yggdryl.enums
 builds an `IntEnum` base whose members are their own storage bytes read
 big-endian, so a member is the text and the integer at once. Rust and JavaScript
 express the same column as the datatype alone. The four registered bases -
-`Currency`, `Country`, `MicCode`, `CFI` - ship declared; `fixed_ascii(width)` builds
+`Ccy`, `Country`, `MicCode`, `CFI` - ship declared; `fixed_ascii(width)` builds
 one over any fixed width.
 
 === "Python"
 
     ```python
-    from yggdryl.enums import Currency, fixed_ascii
+    from yggdryl.enums import Ccy, fixed_ascii
 
     # A member is its value's own storage bytes, read big-endian: three ASCII
     # letters of a currency are three bytes of an integer.
-    assert int(Currency.USD) == 0x555344
-    assert str(Currency.USD) == "USD"
+    assert int(Ccy.USD) == 0x555344
+    assert str(Ccy.USD) == "USD"
 
     class Venue(fixed_ascii(4)):
         XNAS = "XNAS"
@@ -488,13 +488,13 @@ crate 65056 exists. `SecurityIDSource(22)=S` and
 
 - A byte past `0x7F`, a NUL, or a value longer than the width -> refused naming the width (`at most 4 bytes`), and the row in a cast.
 - Stored under a code -> the text itself, so nothing is padded and nothing has to be trimmed back. A cast from a fixed-width column still trims the NUL that column's slot wrote; the padding was the slot's, never the value's. Text carrying trailing NULs canonicalizes to the trimmed value.
-- `Scalar::kind()` -> the code's id: `currency`, `side`, `state`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
+- `Scalar::kind()` -> the code's id: `ccy`, `side`, `state`; a plain `utf8` string's kind is `string`, and any other leaf's is its name, `fixed_utf8` or `cp1252`.
 - A code's equality, order and hash carry the identity first, then the text: `Side("1") != TimeInForce("1")`. A code and a plain string of the same bytes are two values.
-- `utf8` under `yggdryl.currency` -> `currency`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.currency` over any other storage imports as that storage.
+- `utf8` under `yggdryl.ccy` -> `ccy`; under `yggdryl.string` with a document -> the string it describes; under no name -> `utf8`. The extension *name* is what separates them, so `yggdryl.ccy` over any other storage imports as that storage.
 - Default value: a code defaults to the empty text its storage does, answered as the code's own scalar, and an empty text cell entering the column reads as that member ([Cast](../cast.md#empty-text)). [ISIN](isin.md), [CUSIP](cusip.md), [SEDOL](sedol.md), [FIGI](figi.md), [Bloomberg](bloomberg.md), [Side](side.md) and [State](state.md) are the exceptions, because their value door gates the space rather than holding it, so none has a neutral member: `default_value` refuses naming the code rather than answering a value no registry issued, and an empty text cell entering one of them is null, as it is for a UUID.
 - A cast refusal under `safe` -> null, which a required column fills with the default; under strict -> the row and the column, for a code exactly as for a string ([Cast](../cast.md)).
 - [Merged](../field.md#merging-two-schemas) widening: a code beside itself -> kept; beside `fixed_ascii(n)`, `ascii` or `utf8` -> that string. Narrowing (`upscale=false`): a code beside any plainer shape storing it -> the code; beside narrower text -> that text.
-- `currency` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
+- `ccy` beside `country` -> `sized_ascii(3)` widening and `sized_ascii(2)` narrowing, the bounded text both fit, never one code holding the other's values.
 - A code shares no fixed width with anything, because its own width bounds variable text: beside `fixed_size_binary(n)` -> `binary` in either direction.
 - Iceberg, Spark, Polars, pandas, Avro, filter literals -> text, [rewritten](../datatype.md) to `string`/`utf8`. Every registered code, not a subset: the listing each of these paths reads is `DataType::CODES`, through `DataType::is_code` and `DataType::code_width`, so a code cannot be spellable in one and unspellable in the next.
 - Parquet -> the `String` logical type and the byte-array bounds that come with it, so a planner reads statistics over the codes themselves and a reader outside this crate gets a column it can already use.

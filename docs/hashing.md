@@ -487,7 +487,7 @@ assert_eq!(
 
 The tag byte is a wire contract laid out by family: every [`DataTypeKind`](types/datatype.md#identity-and-family) owns a range of bytes, its leaves sit in it and a leaf added later takes the next free byte of its family, so a stored digest never moves; the same byte is what the [value stream](types/value-stream.md) writes after its version. A digest identifies the value, not its storage width.
 
-The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text/string.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes/index.md) feeds its own id - `country`, `currency`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `currency` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
+The tag is the value's own [`DataTypeId`](types/datatype.md), except where a family compares equal across its members and one member's tag then stands for all of them: integers feed `int128` or `uint128` by sign, floats and decimals feed their widest member, every [string](types/text/string.md) feeds `utf8` (`0x51`) whatever its leaf, and a geography feeds `geometry`. A [code](types/codes/index.md) feeds its own id - `country`, `ccy`, `mic`, `cfi`, `isin`, `cusip`, `sedol`, `side`, `state`, `timeinforce` - so a `ccy` and a `country` holding the same three bytes are two digests, as they are two values. Bytes feed `binary` whatever their layout.
 
 The bytes moved once, together, when the identifiers were laid out by family: every stored digest of every value changed in that commit, and none has since; the family layout is what keeps the next leaf from moving any.
 
@@ -1348,7 +1348,7 @@ A holder naming `DIGEST:time` stores the instant it names in front of its digest
 - A `field` whose storage does not match the array given to `column_digests` -> reconciled to the field first, strictly, so a layout difference answers the same digest and a value the declaration cannot hold is named.
 - The same value on a big-endian machine -> the same digest; every integer in the feed is little-endian.
 - An `ascii`, `sized_ascii(n)`, `fixed_ascii(n)`, `sized_utf8(n)` or `cp1252` cell holding the same characters -> one digest; every string is one value and feeds the `utf8` tag.
-- A `currency` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
+- A `ccy` and a `country` cell holding the same text -> two digests; a code feeds its own id, and a code never digests like the string that spells it.
 - A `geometry` and a `geography` cell over the same WKB -> one digest; both feed the `geometry` tag.
 - Holder-local `DIGEST:sources` or `DIGEST:algorithm` -> ignored by `row_digests`; they configure [`apply_arrow_batch`](#digest-holders-and-row-digests) only.
 - A path through a serie, map, or union -> that value is selected whole, never traversed.

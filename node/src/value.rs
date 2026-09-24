@@ -92,7 +92,7 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         // hyphenated spelling, so both project as the string family does.
         string if string.is_string() => JsValueHint::String,
         D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -351,7 +351,7 @@ fn text_or_binary_to_js<'env>(
             .to_owned()
             .into_unknown(env)?,
         D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode

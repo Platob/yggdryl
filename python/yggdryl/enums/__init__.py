@@ -7,12 +7,12 @@ it can never drift from the Rust constants it mirrors.
 
 The vocabularies a caller declares are the other half: subclassing the base
 :func:`fixed_ascii` builds for one width, or one of the four registered code
-bases - :class:`CountryCode`, :class:`CurrencyCode`, :class:`MicCode`,
+bases - :class:`CountryCode`, :class:`CcyCode`, :class:`MicCode`,
 :class:`CfiCode` - names one open ASCII vocabulary whose members are the
 integers their values pack into.
 
 The four registered codes arrive already declared: :class:`Country`,
-:class:`Currency`, :class:`MIC`, and :class:`CFI` are those vocabularies over
+:class:`Ccy`, :class:`MIC`, and :class:`CFI` are those vocabularies over
 their own datatypes, open for every code they do not name.
 """
 
@@ -25,11 +25,11 @@ from .string import (
     AsciiCode,
     CfiCode,
     CountryCode,
-    CurrencyCode,
+    CcyCode,
     MicCode,
     fixed_ascii,
 )
-from .codes import CFI, Country, Currency, MIC
+from .codes import CFI, Ccy, Country, MIC
 
 _LISTING = _enum_values()
 
@@ -91,11 +91,11 @@ __all__ = [
     "AsciiCode",
     "CfiCode",
     "CountryCode",
-    "CurrencyCode",
+    "CcyCode",
     "MicCode",
     "CFI",
     "Country",
-    "Currency",
+    "Ccy",
     "MIC",
     "fixed_ascii",
     "CHARSETS",

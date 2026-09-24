@@ -109,7 +109,7 @@ The value is the two letters, under the country's identity.
     assert_eq!(france.kind(), "country");
 
     // A country and a currency of alike bytes are two values.
-    assert_ne!(DataType::Country.scalar("US")?, DataType::Currency.scalar("US")?);
+    assert_ne!(DataType::Country.scalar("US")?, DataType::Ccy.scalar("US")?);
     let refused = Country::new("FRA").unwrap_err().to_string();
     assert!(refused.contains("at most 2 bytes"), "{refused}");
     ```
@@ -124,7 +124,7 @@ The value is the two letters, under the country's identity.
     france = DataType("country").scalar("FR")
     assert france.as_py() == "FR"
     assert france.kind == "country"
-    assert DataType("country").scalar("US") != DataType("currency").scalar("US")
+    assert DataType("country").scalar("US") != DataType("ccy").scalar("US")
 
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").scalar("FRA")
@@ -267,7 +267,7 @@ The width is the narrowest of the twelve, and every path reads it from the datat
 
 - `at most 2 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`.
 - A country has no value stating none, so nothing is taken over on a [merge](index.md#the-code-family-value): this one stands.
-- `country` beside [`currency`](currency.md) merges to `sized_ascii(3)` widening and `sized_ascii(2)` narrowing - the bounded text both fit.
+- `country` beside [`ccy`](ccy.md) merges to `sized_ascii(3)` widening and `sized_ascii(2)` narrowing - the bounded text both fit.
 - The two letters an [ISIN](isin.md) opens with are the numbering agency's prefix, which includes international prefixes such as `XS` that no country names; `IsinCode::prefix` reads them as text rather than as this code.
 - The default value is the empty text, answered as a `country` scalar ([Cast](../cast.md#empty-text)).
 

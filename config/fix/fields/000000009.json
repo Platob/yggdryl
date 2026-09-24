@@ -230,7 +230,7 @@
   {
     "name": "agreementcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -520,7 +520,7 @@
   {
     "name": "underlyingstrikecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -532,7 +532,7 @@
   {
     "name": "legstrikecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -595,7 +595,7 @@
   {
     "name": "strikecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

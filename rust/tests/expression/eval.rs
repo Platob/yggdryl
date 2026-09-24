@@ -55,11 +55,7 @@ mod internal {
                 Scalar::from("FIX"),
                 DataTypeId::FixedAsciiString,
             ),
-            (
-                DataType::Currency,
-                Scalar::from("USD"),
-                DataTypeId::Currency,
-            ),
+            (DataType::Ccy, Scalar::from("USD"), DataTypeId::Ccy),
         ];
 
         for (target, input, id) in cases {

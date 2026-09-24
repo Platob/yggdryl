@@ -281,7 +281,7 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("US"), Scalar::Null]),
             ),
             (
-                Field::new("currency", DataType::Currency, true),
+                Field::new("currency", DataType::Ccy, true),
                 Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
             ),
             (

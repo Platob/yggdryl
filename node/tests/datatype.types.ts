@@ -67,8 +67,8 @@ const stringInput: StringParametersInput = { charset: 'us-ascii', fixed: 4 }
 const bytesInput: BytesParametersInput = { fixed: 16 }
 const charset: string | null = fixedAsciiType.charset
 const fixedByteWidth: number | null = fixedAsciiType.fixedByteWidth
-const currencyType: DataType = new DataType('currency')
-const currencyTypeWidth: number | null = currencyType.fixedByteWidth
+const ccyType: DataType = new DataType('ccy')
+const ccyTypeWidth: number | null = ccyType.fixedByteWidth
 const figiType: DataType = new DataType('figi')
 const figiTypeWidth: number | null = figiType.codeWidth
 const urlType: DataType = new DataType('url')
@@ -111,8 +111,8 @@ void stringInput
 void bytesInput
 void charset
 void fixedByteWidth
-void currencyType
-void currencyTypeWidth
+void ccyType
+void ccyTypeWidth
 void figiType
 void figiTypeWidth
 void urlType
@@ -135,7 +135,7 @@ const currencyDeclarationRemoved: string | null = currencyDeclaration.remove('EU
 const currencyDeclarationCodes: Record<string, bigint> =
   currencyDeclaration.intoMembers(DataType.fixedAscii(3))
 const currencyDeclarationEnum: Readonly<Record<string, bigint>> =
-  currencyDeclaration.intoEnum('currency')
+  currencyDeclaration.intoEnum('ccy')
 const currencyDeclarationLength: number = currencyDeclaration.length
 const currencyDeclarationEquals: boolean =
   currencyDeclaration.equals(currencyDeclarationParsed)

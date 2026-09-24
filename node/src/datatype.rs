@@ -121,7 +121,7 @@ impl JsDataType {
             "cp1252_view" => CoreDataType::cp1252_view(),
             "large_cp1252_view" => CoreDataType::large_cp1252_view(),
             "country" => CoreDataType::Country,
-            "currency" => CoreDataType::Currency,
+            "ccy" => CoreDataType::Ccy,
             "mic" => CoreDataType::MicCode,
             "cfi" => CoreDataType::CfiCode,
             "isin" => CoreDataType::IsinCode,
@@ -304,7 +304,7 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Resolves a registered logical name such as `currency` or `Price` to
+    /// Resolves a registered logical name such as `ccy` or `Price` to
     /// the datatype it spells, folding case, `_`, `-`, and spaces.
     #[napi(factory)]
     pub fn from_logical_name(name: String) -> Result<Self> {

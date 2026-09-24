@@ -231,8 +231,8 @@ fn the_columns_are_named_by_fold_and_filled_by_tag() {
     // the packed currency and a side is the packed side.
     let fields = schema.fields();
     let typed = |tag: i32| fields[column_of(&schema, tag)].dtype().clone();
-    assert_eq!(typed(15), DataType::Currency, "Currency(15)");
-    assert_eq!(typed(120), DataType::Currency, "SettlCurrency(120)");
+    assert_eq!(typed(15), DataType::Ccy, "Currency(15)");
+    assert_eq!(typed(120), DataType::Ccy, "SettlCurrency(120)");
     assert_eq!(typed(54), DataType::Side, "Side(54)");
     assert_eq!(typed(35), DataType::utf8(), "MsgType(35)");
     assert!(

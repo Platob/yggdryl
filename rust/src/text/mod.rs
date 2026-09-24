@@ -724,7 +724,7 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Interval(_)
             | crate::string_scalars!(_)
             | Scalar::Country(_)
-            | Scalar::Currency(_)
+            | Scalar::Ccy(_)
             | Scalar::MicCode(_)
             | Scalar::CfiCode(_)
             | Scalar::Side(_)

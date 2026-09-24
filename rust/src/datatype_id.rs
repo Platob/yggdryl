@@ -163,7 +163,7 @@ pub enum DataTypeId {
     /// ISO 3166-1 alpha-2: a country code, two ASCII bytes.
     Country = 0x71,
     /// ISO 4217: a currency code, three ASCII bytes.
-    Currency = 0x72,
+    Ccy = 0x72,
     /// ISO 10383: a market identifier code, four ASCII bytes.
     MicCode = 0x73,
     /// ISO 10962: a classification of financial instruments, six ASCII bytes.
@@ -282,7 +282,7 @@ impl DataTypeId {
         Self::MimeType,
         Self::MediaType,
         Self::Country,
-        Self::Currency,
+        Self::Ccy,
         Self::MicCode,
         Self::CfiCode,
         Self::Side,
@@ -355,7 +355,7 @@ impl DataTypeId {
             Self::LargeBinary => "large_binary",
             Self::BinaryView => "binary_view",
             Self::Country => "country",
-            Self::Currency => "currency",
+            Self::Ccy => "ccy",
             Self::MicCode => "mic",
             Self::CfiCode => "cfi",
             Self::IsinCode => "isin",
@@ -651,7 +651,7 @@ impl DataTypeId {
     pub const fn code_width(self) -> Option<usize> {
         match self {
             Self::Country => Some(2),
-            Self::Currency => Some(3),
+            Self::Ccy => Some(3),
             Self::MicCode => Some(4),
             Self::CfiCode => Some(6),
             Self::SedolCode => Some(7),

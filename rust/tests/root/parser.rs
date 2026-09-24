@@ -322,7 +322,7 @@ mod grammar {
             DataType::from_str("sized_binary(16)").unwrap(),
             DataType::from_str("string(windows-1252)").unwrap(),
             DataType::Country,
-            DataType::Currency,
+            DataType::Ccy,
             DataType::MicCode,
             DataType::CfiCode,
             DataType::Uuid,

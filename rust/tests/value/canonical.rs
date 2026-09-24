@@ -260,7 +260,7 @@ mod value {
             );
             assert_eq!(
                 DataType::utf8()
-                    .scalar(DataType::Currency.scalar("USD").unwrap())
+                    .scalar(DataType::Ccy.scalar("USD").unwrap())
                     .unwrap(),
                 Scalar::from("USD")
             );

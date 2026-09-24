@@ -158,7 +158,7 @@ nav:
       - Bytes: types/text/bytes.md
     - Codes:
       - types/codes/index.md
-      - Currency: types/codes/currency.md
+      - Ccy: types/codes/ccy.md
       - Country: types/codes/country.md
       - MIC: types/codes/mic.md
       - CFI: types/codes/cfi.md

@@ -965,7 +965,7 @@
   {
     "name": "legsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -977,7 +977,7 @@
   {
     "name": "legbenchmarkcurvecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

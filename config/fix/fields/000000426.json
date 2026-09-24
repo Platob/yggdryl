@@ -1082,7 +1082,7 @@
   {
     "name": "paymentstreamformulacurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

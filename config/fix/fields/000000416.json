@@ -14,7 +14,7 @@
   {
     "name": "legphysicalsettlcurency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -236,7 +236,7 @@
   {
     "name": "legprotectiontermcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -344,7 +344,7 @@
   {
     "name": "legprotectiontermeventcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -688,7 +688,7 @@
   {
     "name": "legstreamcommoditycurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1184,7 +1184,7 @@
   {
     "name": "legstreamcommoditysettlperiodpricecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

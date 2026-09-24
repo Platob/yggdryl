@@ -16,7 +16,7 @@ use super::event::{MarketElementData, MarketEventData};
 use crate::txhash::TxHash;
 use crate::xxhash::Xxh3;
 use crate::{
-    BloombergCode, CfiCode, CodeValue, Currency, CusipCode, Decimal18, FIGICode, IsinCode, MicCode,
+    BloombergCode, Ccy, CfiCode, CodeValue, CusipCode, Decimal18, FIGICode, IsinCode, MicCode,
     SedolCode, Side, State, Uuid,
 };
 use crate::{Digest, DigestAlgorithm, Result, TimeUnit};
@@ -1422,7 +1422,7 @@ pub trait Event: Element {
 ///
 /// Five facts beside what an element already states, each read and
 /// written: `price` is a [`Decimal18`] - exact, as a market's numbers
-/// are - and `currency` the [`Currency`] it is quoted in; `quantity` is the
+/// are - and `currency` the [`Ccy`] it is quoted in; `quantity` is the
 /// quantity, a [`Decimal18`] too, and `unit` the text it is counted in - a
 /// lot, a barrel, a megawatt-hour, whatever the market says; `side` is the
 /// crate's [`Side`] code, FIX's `Side(54)`. Two lanes state the quote the
@@ -1451,12 +1451,12 @@ pub trait Event: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, MarketElement, MarketElementData};
-/// use yggdryl::{CfiCode, Currency, CusipCode, Decimal18, IsinCode, Side};
+/// use yggdryl::{CfiCode, Ccy, CusipCode, Decimal18, IsinCode, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketElementData::default();
 /// trade.set_price("82.5".parse()?);
-/// trade.set_currency(Currency::new("USD")?);
+/// trade.set_currency(Ccy::new("USD")?);
 /// trade.set_quantity(Decimal18::from_int(1_000));
 /// trade.set_unit("bbl".to_owned());
 /// trade.set_side(Side::read("1")?);
@@ -1468,7 +1468,7 @@ pub trait Event: Element {
 /// // facts, and the other lane stays empty.
 /// trade.fill_lanes();
 /// assert_eq!(trade.get_bidpx(), Some("82.5".parse()?));
-/// assert_eq!(trade.get_bidcurrency().map(Currency::as_str), Some("USD"));
+/// assert_eq!(trade.get_bidcurrency().map(Ccy::as_str), Some("USD"));
 /// assert_eq!((trade.get_bidqty(), trade.get_bidunit()), (Some(Decimal18::from_int(1_000)), Some("bbl")));
 /// assert_eq!(trade.get_askpx(), None);
 /// // A market element is an element: one walk reads both.
@@ -1509,10 +1509,10 @@ pub trait MarketElement: Element {
     fn set_price(&mut self, price: Decimal18);
 
     /// The currency the price is quoted in.
-    fn get_currency(&self) -> &Currency;
+    fn get_currency(&self) -> &Ccy;
 
     /// Records the currency the price is quoted in.
-    fn set_currency(&mut self, currency: Currency);
+    fn set_currency(&mut self, currency: Ccy);
 
     /// The quantity.
     fn get_quantity(&self) -> Decimal18;
@@ -1674,10 +1674,10 @@ pub trait MarketElement: Element {
     fn set_bidpx(&mut self, px: Option<Decimal18>);
 
     /// The currency the bid lane is quoted in, where the element states one.
-    fn get_bidcurrency(&self) -> Option<&Currency>;
+    fn get_bidcurrency(&self) -> Option<&Ccy>;
 
     /// Records the currency the bid lane is quoted in.
-    fn set_bidcurrency(&mut self, currency: Option<Currency>);
+    fn set_bidcurrency(&mut self, currency: Option<Ccy>);
 
     /// The bid lane's quantity, where the element states one.
     fn get_bidqty(&self) -> Option<Decimal18>;
@@ -1698,10 +1698,10 @@ pub trait MarketElement: Element {
     fn set_askpx(&mut self, px: Option<Decimal18>);
 
     /// The currency the ask lane is quoted in, where the element states one.
-    fn get_askcurrency(&self) -> Option<&Currency>;
+    fn get_askcurrency(&self) -> Option<&Ccy>;
 
     /// Records the currency the ask lane is quoted in.
-    fn set_askcurrency(&mut self, currency: Option<Currency>);
+    fn set_askcurrency(&mut self, currency: Option<Ccy>);
 
     /// The ask lane's quantity, where the element states one.
     fn get_askqty(&self) -> Option<Decimal18>;
@@ -1840,7 +1840,7 @@ pub trait MarketElement: Element {
                 self.set_quantity(qty);
             }
         }
-        if self.get_currency() == &Currency::none() {
+        if self.get_currency() == &Ccy::none() {
             if let Some(currency) = lane_currency {
                 self.set_currency(currency);
             }
@@ -1866,7 +1866,7 @@ pub trait MarketElement: Element {
         // no currency, no unit, is nothing to state on the lane either.
         let px = Some(self.get_price()).filter(|px| *px != Decimal18::ZERO);
         let qty = Some(self.get_quantity()).filter(|qty| *qty != Decimal18::ZERO);
-        let currency = Some(self.get_currency().clone()).filter(|held| *held != Currency::none());
+        let currency = Some(self.get_currency().clone()).filter(|held| *held != Ccy::none());
         let unit = Some(self.get_unit().to_owned()).filter(|unit| !unit.is_empty());
         if bid {
             if self.get_bidpx().is_none() {
@@ -1955,12 +1955,12 @@ pub trait MarketElement: Element {
 ///
 /// ```
 /// use yggdryl::graph::{Element, Event, MarketElement, MarketEvent, MarketEventData};
-/// use yggdryl::{CfiCode, Currency, Decimal18, Side};
+/// use yggdryl::{CfiCode, Ccy, Decimal18, Side};
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let mut trade = MarketEventData::at(10);
 /// trade.set_price("82.5".parse()?);
-/// trade.set_currency(Currency::new("USD")?);
+/// trade.set_currency(Ccy::new("USD")?);
 /// trade.set_quantity(Decimal18::from_int(1_000));
 /// trade.set_side(Side::read("1")?);
 /// trade.set_cficode(Some(CfiCode::new("ESXXXR")?));
@@ -2574,7 +2574,7 @@ fn feed_lane(
     staged: &mut Staged<'_>,
     lane: &str,
     px: Option<Decimal18>,
-    currency: Option<&Currency>,
+    currency: Option<&Ccy>,
     qty: Option<Decimal18>,
     unit: Option<&str>,
 ) {

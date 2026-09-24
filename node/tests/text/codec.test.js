@@ -894,10 +894,10 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       [Scalar.from('AAPL'), 'utf8', 'text'],
       [
         json.loads('"USD"', {
-          field: new Field('value', 'currency', false),
+          field: new Field('value', 'ccy', false),
           scalar: true,
         }),
-        'currency',
+        'ccy',
         'code',
       ],
       [

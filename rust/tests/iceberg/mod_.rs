@@ -1520,7 +1520,7 @@ mod types {
         // value layer drops them silently rather than failing.
         for (dtype, value) in [
             (DataType::Country, "FR"),
-            (DataType::Currency, "USD"),
+            (DataType::Ccy, "USD"),
             (DataType::MicCode, "XPAR"),
             (DataType::CfiCode, "ESVUFR"),
             (DataType::IsinCode, "US0378331005"),

@@ -28,7 +28,7 @@
   {
     "name": "settlementamountcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -66,7 +66,7 @@
   {
     "name": "collateralcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -114,7 +114,7 @@
   {
     "name": "paycollectcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -202,7 +202,7 @@
   {
     "name": "unitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -214,7 +214,7 @@
   {
     "name": "priceunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -226,7 +226,7 @@
   {
     "name": "underlyingunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -238,7 +238,7 @@
   {
     "name": "underlyingpriceunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -250,7 +250,7 @@
   {
     "name": "legunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -262,7 +262,7 @@
   {
     "name": "legpriceunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -274,7 +274,7 @@
   {
     "name": "derivativeunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -286,7 +286,7 @@
   {
     "name": "derivativepriceunitofmeasurecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -1022,7 +1022,7 @@
   {
     "name": "entitlementattribcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

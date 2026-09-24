@@ -2,7 +2,7 @@
 //! [`MarketElement`] answers.
 
 use crate::{
-    BloombergCode, CfiCode, Currency, CusipCode, DataType, Decimal18, FIGICode, Field, IsinCode,
+    BloombergCode, Ccy, CfiCode, CusipCode, DataType, Decimal18, FIGICode, Field, IsinCode,
     MicCode, Result, Scalar, SedolCode, Side,
 };
 
@@ -173,7 +173,7 @@ impl MarketColumn {
             | Self::BidQty
             | Self::AskPx
             | Self::AskQty => DataType::DECIMAL,
-            Self::Currency | Self::BidCurrency | Self::AskCurrency => DataType::Currency,
+            Self::Currency | Self::BidCurrency | Self::AskCurrency => DataType::Ccy,
             Self::Side => DataType::Side,
             Self::IsinCode => DataType::IsinCode,
             Self::CusipCode => DataType::CusipCode,
@@ -278,8 +278,8 @@ impl MarketColumn {
             }
             Self::Currency => {
                 if let Some(held) = match value {
-                    Scalar::Currency(held) => Some(held.clone()),
-                    other => other.as_str().and_then(|text| Currency::new(text).ok()),
+                    Scalar::Ccy(held) => Some(held.clone()),
+                    other => other.as_str().and_then(|text| Ccy::new(text).ok()),
                 } {
                     element.set_currency(held);
                 }
@@ -331,9 +331,9 @@ impl MarketColumn {
     }
 }
 
-fn currency_of(value: &Scalar) -> Option<Currency> {
+fn currency_of(value: &Scalar) -> Option<Ccy> {
     match value {
-        Scalar::Currency(held) => Some(held.clone()),
-        other => other.as_str().and_then(|text| Currency::new(text).ok()),
+        Scalar::Ccy(held) => Some(held.clone()),
+        other => other.as_str().and_then(|text| Ccy::new(text).ok()),
     }
 }

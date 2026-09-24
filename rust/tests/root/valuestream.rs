@@ -155,7 +155,7 @@ mod stream {
             text("fixed_ascii(4)", "USD "),
             text("large_cp1252_view", "café"),
             text("sized_utf8(8)", "bounded"),
-            text("currency", "USD"),
+            text("ccy", "USD"),
             text("country", "FR"),
             text("mic", "XPAR"),
             text("cfi", "ESVUFR"),

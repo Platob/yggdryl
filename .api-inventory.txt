@@ -1245,8 +1245,8 @@ pub trait MarketElement: Element  (an element that stands in a market: its optio
   fn set_marketoperationid(&mut self, marketoperationid: Option<i32>)
   fn get_price(&self) -> Decimal18  (exact: `decimal128(38, 18)` preapplied)
   fn set_price(&mut self, price: Decimal18)
-  fn get_currency(&self) -> &Currency
-  fn set_currency(&mut self, currency: Currency)
+  fn get_currency(&self) -> &Ccy
+  fn set_currency(&mut self, currency: Ccy)
   fn get_quantity(&self) -> Decimal18
   fn set_quantity(&mut self, quantity: Decimal18)
   fn get_unit(&self) -> &str  (the unit the quantity is counted in, as the market spells it; empty where it says none)
@@ -1267,7 +1267,7 @@ pub trait MarketElement: Element  (an element that stands in a market: its optio
   fn set_cficode(&mut self, cficode: Option<CfiCode>)
   fn get_miccode(&self) -> Option<&MicCode>  (the market it traded on, ISO 10383, where known)
   fn set_miccode(&mut self, miccode: Option<MicCode>)
-  fn get_bidpx(&self) -> Option<Decimal18>  // and set_bidpx(Option<Decimal18>), get_bidcurrency() -> Option<&Currency> / set_bidcurrency(Option<Currency>), get_bidqty() -> Option<Decimal18> / set_bidqty, get_bidunit() -> Option<&str> / set_bidunit(Option<String>): the bid lane, what the element would pay; and get_askpx, get_askcurrency, get_askqty, get_askunit with their setters: the ask lane, what it would be paid
+  fn get_bidpx(&self) -> Option<Decimal18>  // and set_bidpx(Option<Decimal18>), get_bidcurrency() -> Option<&Ccy> / set_bidcurrency(Option<Ccy>), get_bidqty() -> Option<Decimal18> / set_bidqty, get_bidunit() -> Option<&str> / set_bidunit(Option<String>): the bid lane, what the element would pay; and get_askpx, get_askcurrency, get_askqty, get_askunit with their setters: the ask lane, what it would be paid
   fn get_lastpx(&self) -> Option<Decimal18>  // and set_lastpx(Option<Decimal18>), get_lastqty() / set_lastqty(Option<Decimal18>): what the element last traded, held under FIX's own LastPx(31) and LastQty(32)
   fn get_avgpx(&self) -> Option<Decimal18>  // and set_avgpx(Option<Decimal18>), get_cumqty() / set_cumqty, get_leavesqty() / set_leavesqty(Option<Decimal18>): what it averaged, how much is done and how much is left, under FIX's own AvgPx(6), CumQty(14) and LeavesQty(151)
   fn get_tif(&self) -> Option<&str>  // and set_tif(Option<String>): how long the element stands, FIX's TimeInForce(59) as the element states it - what the code `1` names is the dictionary's to say
@@ -4038,7 +4038,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Currency, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -4347,7 +4347,7 @@ pub trait CodeValue: Value  (implemented by the twelve registered codes)
   const WIDTH: usize
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
-  fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: CfiCode fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Currency `XXX` and MicCode `XXXX` take the other, every identifier stands as it is)
+  fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: CfiCode fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Ccy `XXX` and MicCode `XXXX` take the other, every identifier stands as it is)
 pub trait NestedValue: Value  (implemented by Run, Serie, Map and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
@@ -4592,11 +4592,11 @@ impl Scalar
   pub const fn country() -> Self
   pub type CountryField = FieldOf<CountryType>;
 
-### yggdryl::currency  [rust/src/currency.rs]
-  pub struct Currency(SmolStr)  (one validated code; `CurrencyType` marks its field, `CurrencyField` is `FieldOf<CurrencyType>`)
+### yggdryl::ccy  [rust/src/ccy.rs]
+  pub struct Ccy(SmolStr)  (one validated code; `CcyType` marks its field, `CcyField` is `FieldOf<CcyType>`)
   pub fn none() -> Self
-  pub const fn currency() -> Self
-  pub type CurrencyField = FieldOf<CurrencyType>;
+  pub const fn ccy() -> Self
+  pub type CcyField = FieldOf<CcyType>;
 
 ### yggdryl::mic_code  [rust/src/mic_code.rs]
   pub enum DxFeedExchangeFeed  (#[non_exhaustive]; CtaUtp, Cboe, NasdaqBasic, NyseBqt, Otc, Cme, UsOptions; the dxFeed table that gives a regional exchange code its meaning)
@@ -4797,7 +4797,7 @@ pub struct Str  (the characters alone, 24 bytes, SmolStr-backed; Deref<Target=st
 impl Scalar
   pub const fn string_parameters(&self) -> Option<StringType>  (the leaf a string value is written under, its number included - a cell read out of sized_utf8(32) answers SizedUtf8String(32); None for a code)
   pub const fn as_string(&self) -> Option<&Str>  (the characters of any string leaf; as_str also reads a code's text)
-pub struct Country  // and Currency, MicCode, CfiCode, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; IsinCode, CusipCode and SedolCode fold lower case and refuse a check digit that does not close them, while BloombergCode holds ASCII to its width and FIGICode folds ASCII case, validates its twelve-character shape and check digit
+pub struct Country  // and Ccy, MicCode, CfiCode, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; IsinCode, CusipCode and SedolCode fold lower case and refuse a check digit that does not close them, while BloombergCode holds ASCII to its width and FIGICode folds ASCII case, validates its twelve-character shape and check digit
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -4843,9 +4843,9 @@ pub struct CfiGroup  (a group letter and its name, under one category)
   pub const fn identifier(&self) -> DataTypeId
   pub const fn datatype(&self) -> DataType
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("currency", DataType::Currency, 3), ("mic", DataType::MicCode, 4), ("cfi", DataType::CfiCode, 6), ("isin", DataType::IsinCode, 12), ("cusip", DataType::CusipCode, 9), ("sedol", DataType::SedolCode, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::BloombergCode, 32), ("figi", DataType::FIGICode, 12)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 3), ("mic", DataType::MicCode, 4), ("cfi", DataType::CfiCode, 6), ("isin", DataType::IsinCode, 12), ("cusip", DataType::CusipCode, 9), ("sedol", DataType::SedolCode, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::BloombergCode, 32), ("figi", DataType::FIGICode, 12)];
   pub const fn country() -> Self
-  pub const fn currency() -> Self
+  pub const fn ccy() -> Self
   pub const fn mic() -> Self
   pub const fn cfi() -> Self
   pub const fn isin() -> Self
@@ -4876,13 +4876,13 @@ impl StringEnum
   pub const SIDES: &'static [&'static str]  (the explicit side values, sorted: ASDEF, BORROW, BUY, BUYMINUS, CROSS, CROSSSH, CROSSSHX, LEND, OPPOSITE, REDEEM, SELL, SELLPLUS, SELLUND, SSHORT, SSHORTEX, SUBSCR, UNDISC, UNKNOWN - one per side FIX's Side(54) names across every version and UNKNOWN; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
   pub const STATES: &'static [&'static str]
   pub const TIMESINFORCE: &'static [&'static str]
-  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // currency, country, mic, exchange, side, state, timeinforce
+  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // ccy, country, mic, exchange, side, state, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
   pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
-pub struct CountryType  // and CurrencyType, MicCodeType, CfiCodeType, IsinCodeType, CusipCodeType, SedolCodeType, BloombergCodeType, FIGICodeType, SideType, StateType, TimeInForceType: the twelve code markers (country, currency, mic, cfi, isin, cusip, sedol, bloomberg, figi, side, state, timeinforce)
+pub struct CountryType  // and CcyType, MicCodeType, CfiCodeType, IsinCodeType, CusipCodeType, SedolCodeType, BloombergCodeType, FIGICodeType, SideType, StateType, TimeInForceType: the twelve code markers (country, ccy, mic, cfi, isin, cusip, sedol, bloomberg, figi, side, state, timeinforce)
   pub type CountryField = FieldOf<CountryType>;
-  pub type CurrencyField = FieldOf<CurrencyType>;
+  pub type CcyField = FieldOf<CcyType>;
   pub type MicCodeField = FieldOf<MicCodeType>;
   pub type CfiCodeField = FieldOf<CfiCodeType>;
   pub type IsinCodeField = FieldOf<IsinCodeType>;

@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    BloombergCode, CfiCode, Country, Currency, CusipCode, FIGICode, IsinCode, MicCode, SedolCode,
-    Side, State, TimeInForce, decimal,
+    BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
+    State, TimeInForce, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -208,7 +208,7 @@ pub enum Scalar {
     /// ISO 3166-1 alpha-2 country code.
     Country(Country),
     /// ISO 4217 currency code.
-    Currency(Currency),
+    Ccy(Ccy),
     /// ISO 10383 market identifier code.
     MicCode(MicCode),
     /// ISO 10962 classification code.
@@ -679,7 +679,7 @@ impl<'de> Deserialize<'de> for Scalar {
             D256(i256, i8),
             String(crate::string::StringDocument),
             Country(SmolStr),
-            Currency(SmolStr),
+            Ccy(SmolStr),
             #[serde(rename = "mic")]
             MicCode(SmolStr),
             #[serde(rename = "cfi")]
@@ -766,8 +766,8 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Country(value) => crate::Country::new(value)
                 .map(Self::Country)
                 .map_err(D::Error::custom),
-            StructuralWire::Currency(value) => crate::Currency::new(value)
-                .map(Self::Currency)
+            StructuralWire::Ccy(value) => crate::Ccy::new(value)
+                .map(Self::Ccy)
                 .map_err(D::Error::custom),
             StructuralWire::MicCode(value) => crate::MicCode::new(value)
                 .map(Self::MicCode)
@@ -1028,7 +1028,7 @@ impl Ord for Scalar {
             // compares its characters, every byte value its payload.
             string_scalars!(left) => same_kind!(string_scalars!(right) => left.cmp(right)),
             Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)
@@ -1126,7 +1126,7 @@ impl Hash for Scalar {
             }
             string_scalars!(value) => value.hash(state),
             Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)
@@ -1212,7 +1212,7 @@ fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Ti
 macro_rules! code_scalars {
     () => {
         $crate::Scalar::Country(_)
-            | $crate::Scalar::Currency(_)
+            | $crate::Scalar::Ccy(_)
             | $crate::Scalar::MicCode(_)
             | $crate::Scalar::CfiCode(_)
             | $crate::Scalar::Side(_)
@@ -1328,7 +1328,7 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Interval(_) => 16,
         Scalar::Uuid(_) => 17,
         Scalar::Country(_)
-        | Scalar::Currency(_)
+        | Scalar::Ccy(_)
         | Scalar::MicCode(_)
         | Scalar::CfiCode(_)
         | Scalar::Side(_)
@@ -1410,7 +1410,7 @@ impl Scalar {
             Self::FixedCp1252String(_, _) => DataTypeId::FixedCp1252String,
             Self::SizedCp1252String(_, _) => DataTypeId::SizedCp1252String,
             Self::Country(_) => DataTypeId::Country,
-            Self::Currency(_) => DataTypeId::Currency,
+            Self::Ccy(_) => DataTypeId::Ccy,
             Self::MicCode(_) => DataTypeId::MicCode,
             Self::CfiCode(_) => DataTypeId::CfiCode,
             Self::Side(_) => DataTypeId::Side,
@@ -1487,7 +1487,7 @@ impl Scalar {
                 _ => self.id().as_str(),
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
-            Self::Currency(_) => DataTypeId::Currency.as_str(),
+            Self::Ccy(_) => DataTypeId::Ccy.as_str(),
             Self::MicCode(_) => DataTypeId::MicCode.as_str(),
             Self::CfiCode(_) => DataTypeId::CfiCode.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
@@ -1747,7 +1747,7 @@ impl Scalar {
     pub const fn code_storage(&self) -> Option<&SmolStr> {
         match self {
             Self::Country(value) => Some(value.storage()),
-            Self::Currency(value) => Some(value.storage()),
+            Self::Ccy(value) => Some(value.storage()),
             Self::MicCode(value) => Some(value.storage()),
             Self::CfiCode(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
@@ -1999,7 +1999,7 @@ impl Scalar {
             | Self::Boolean(_)
             | string_scalars!(_)
             | Self::Country(_)
-            | Self::Currency(_)
+            | Self::Ccy(_)
             | Self::MicCode(_)
             | Self::CfiCode(_)
             | Self::Side(_)

@@ -2,7 +2,7 @@
   {
     "name": "complexeventcrediteventcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

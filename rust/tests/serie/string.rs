@@ -93,14 +93,14 @@ fn a_row_past_the_end_is_refused_naming_the_column_and_both_counts() {
 #[test]
 fn a_code_column_refuses_an_unregistered_value_at_push_and_keeps_what_it_had() {
     let mut column = Serie::from_scalars(
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
         [Scalar::from("USD"), Scalar::from("EUR")],
     )
     .expect("two currencies");
     assert!(column.as_utf8().is_some());
     assert_eq!(
         column.field().map(|field| field.dtype()),
-        Some(&DataType::Currency)
+        Some(&DataType::Ccy)
     );
 
     let refusal = column

@@ -2098,14 +2098,14 @@ mod typed {
         #[test]
         fn a_code_answers_safe_and_strict_exactly_as_a_string_does() {
             let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), Some("EURO"), None]));
-            let refused = cast_dtype(DataType::Currency, Arc::clone(&text), strict())
+            let refused = cast_dtype(DataType::Ccy, Arc::clone(&text), strict())
                 .unwrap_err()
                 .to_string();
             assert!(refused.contains("row 1"), "{refused}");
             assert!(refused.contains("at most 3 bytes"), "{refused}");
 
             let lenient = cast_into(
-                &Field::new("ccy", DataType::Currency, true),
+                &Field::new("ccy", DataType::Ccy, true),
                 text,
                 ArrowCastOptions::new(),
             )
@@ -2124,7 +2124,7 @@ mod typed {
             // leaf as its own typed array, so the `Arc` around it is new; the
             // buffers under it are the caller's.
             let passing: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR"]));
-            let shared = cast_dtype(DataType::Currency, Arc::clone(&passing), strict()).unwrap();
+            let shared = cast_dtype(DataType::Ccy, Arc::clone(&passing), strict()).unwrap();
             assert!(shared.to_data().ptr_eq(&passing.to_data()));
 
             // A fixed binary source is trimmed of the padding its slot wrote and
@@ -2136,9 +2136,9 @@ mod typed {
                 )
                 .unwrap(),
             );
-            assert!(cast_dtype(DataType::Currency, Arc::clone(&stored), strict()).is_err());
+            assert!(cast_dtype(DataType::Ccy, Arc::clone(&stored), strict()).is_err());
             let lenient = cast_into(
-                &Field::new("ccy", DataType::Currency, true),
+                &Field::new("ccy", DataType::Ccy, true),
                 stored,
                 ArrowCastOptions::new(),
             )
@@ -2212,8 +2212,8 @@ mod typed {
         #[test]
         fn a_code_reads_into_a_string_and_bare_bytes_are_taken_as_the_target_charset() {
             let codes: ArrayRef = Arc::new(StringArray::from(vec!["USD"]));
-            let currency = cast_dtype(DataType::Currency, codes, strict()).unwrap();
-            let source = batch(Field::new("text", DataType::Currency, true), currency);
+            let currency = cast_dtype(DataType::Ccy, codes, strict()).unwrap();
+            let source = batch(Field::new("text", DataType::Ccy, true), currency);
             let back = cast_column(source, dtype("utf8(8)"), strict()).unwrap();
             assert_eq!(
                 back.as_ref()
@@ -2464,7 +2464,7 @@ mod typed {
         fn codes() -> Vec<DataType> {
             vec![
                 DataType::Country,
-                DataType::Currency,
+                DataType::Ccy,
                 DataType::MicCode,
                 DataType::CfiCode,
                 DataType::IsinCode,
@@ -3427,7 +3427,7 @@ mod certification {
     fn the_code_ingest_writes_only_registered_members() {
         let codes = text(&[Some("USD"), Some("usd"), Some("EURO"), Some(""), None]);
         for target in [
-            DataType::Currency,
+            DataType::Ccy,
             DataType::Country,
             DataType::Side,
             DataType::State,

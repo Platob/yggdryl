@@ -572,7 +572,7 @@ export declare class DataType {
   /** Exactly `byteWidth` bytes per value - Arrow's `FixedSizeBinary`. */
   static fixedSizeBinary(byteWidth: number): DataType
   /**
-   * Resolves a registered logical name such as `currency` or `Price` to
+   * Resolves a registered logical name such as `ccy` or `Price` to
    * the datatype it spells, folding case, `_`, `-`, and spaces.
    */
   static fromLogicalName(name: string): DataType

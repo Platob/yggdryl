@@ -864,7 +864,7 @@ impl fmt::Display for DataType {
             | D::Float32
             | D::Float64
             | D::Country
-            | D::Currency
+            | D::Ccy
             | D::MicCode
             | D::CfiCode
             | D::IsinCode

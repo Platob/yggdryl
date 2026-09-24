@@ -642,7 +642,7 @@ fn every_storage_layout_is_one_variant_and_its_field_names_the_datatype() {
 
     // A code, a URL and a UUID keep a variant of their own over the leaf
     // they are stored in, which the leaf's accessor still reaches.
-    lands_as!(DataType::Currency, Currency, as_utf8);
+    lands_as!(DataType::Ccy, Ccy, as_utf8);
     lands_as!(DataType::Url, Url, as_utf8);
     lands_as!(DataType::Uuid, Uuid, as_fixed_bytes);
     lands_as!(DataType::geometry(None).unwrap(), Geometry, as_binary);

@@ -783,6 +783,44 @@ mod records {
 
     /// A schema naming fewer columns becomes an Arrow IPC projection, so the
     /// columns it leaves out are never built into arrays.
+    #[test]
+    fn ipc_refuses_the_retired_currency_extension() {
+        let field = arrow_schema::Field::new("ccy", arrow_schema::DataType::Utf8, false)
+            .with_metadata(
+                [
+                    (
+                        "ARROW:extension:name".to_owned(),
+                        "yggdryl.currency".to_owned(),
+                    ),
+                    ("ARROW:extension:metadata".to_owned(), String::new()),
+                ]
+                .into_iter()
+                .collect(),
+            );
+        let schema = Arc::new(arrow_schema::Schema::new(vec![field]));
+        let batch = RecordBatch::try_new(
+            Arc::clone(&schema),
+            vec![Arc::new(StringArray::from(vec!["USD"]))],
+        )
+        .unwrap();
+        let mut bytes = Vec::new();
+        {
+            let mut writer =
+                arrow_ipc::writer::StreamWriter::try_new(&mut bytes, schema.as_ref()).unwrap();
+            writer.write(&batch).unwrap();
+            writer.finish().unwrap();
+        }
+        let media = Ipc::new(Buffer::from_bytes(bytes));
+        let options = media.record_options().unwrap();
+        let refusal = media
+            .read_arrow_field(&options)
+            .expect_err("IPC must not erase a retired extension into UTF-8");
+        let message = refusal.to_string();
+        assert!(message.contains("ccy"), "names the field: {message}");
+        assert!(message.contains("yggdryl.currency"), "{message}");
+        assert!(message.contains("yggdryl.ccy"), "{message}");
+    }
+
     mod pushdown {
 
         use arrow_array::RecordBatchReader;

@@ -62,7 +62,7 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 
 use crate::parser::Parser;
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 
@@ -661,7 +661,7 @@ impl DataType {
     /// binding read the codes from here rather than repeating four arms.
     pub const CODES: &'static [(&'static str, DataType, usize)] = &[
         ("country", DataType::Country, COUNTRY_WIDTH),
-        ("currency", DataType::Currency, CURRENCY_WIDTH),
+        ("ccy", DataType::Ccy, CCY_WIDTH),
         ("mic", DataType::MicCode, MIC_WIDTH),
         ("cfi", DataType::CfiCode, CFI_WIDTH),
         ("isin", DataType::IsinCode, ISIN_WIDTH),
@@ -1029,7 +1029,7 @@ impl DataType {
     /// assert_eq!(ascii.charset(), Charset::Ascii);
     /// assert_eq!(ascii.fixed(), Some(3));
     ///
-    /// assert!(DataType::Currency.string_parameters().is_none());
+    /// assert!(DataType::Ccy.string_parameters().is_none());
     /// # Ok(())
     /// # }
     /// ```
@@ -1092,8 +1092,8 @@ impl DataType {
     /// assert_eq!(DataType::fixed_binary(16)?.fixed_byte_width(), Some(16));
     /// assert_eq!(DataType::utf8().fixed_byte_width(), None);
     /// assert_eq!(DataType::sized_utf8(4)?.fixed_byte_width(), None);
-    /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
-    /// assert_eq!(DataType::Currency.code_width(), Some(3));
+    /// assert_eq!(DataType::Ccy.fixed_byte_width(), None);
+    /// assert_eq!(DataType::Ccy.code_width(), Some(3));
     /// # Ok(())
     /// # }
     /// ```
@@ -2408,7 +2408,7 @@ impl StringEnum {
     /// `exchange` and `mic` name one list because they name one thing: FIX
     /// calls the ISO 10383 code an `Exchange`, and ISO calls it a MIC.
     pub const PREBUILT: &'static [(&'static str, &'static [&'static str])] = &[
-        ("currency", Self::CURRENCIES),
+        ("ccy", Self::CURRENCIES),
         ("country", Self::COUNTRIES),
         ("mic", Self::MICS),
         ("exchange", Self::MICS),

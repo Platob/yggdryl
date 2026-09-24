@@ -1471,7 +1471,7 @@ def test_registry_resolves_every_key_the_way_the_core_does(seed: FixRegistry) ->
     # vocabulary; the protocol's own code sets keep their base type, and
     # tag 54 is the one FIX field typed as the value it holds.
     assert seed.field_by_tag(54).dtype == DataType("side")
-    assert seed.field_by_tag(15).dtype == DataType("currency")
+    assert seed.field_by_tag(15).dtype == DataType("ccy")
     assert seed.field_by_tag(39).dtype == DataType("utf8")
     assert seed.field_by_tag(40).dtype == DataType("utf8")
 

@@ -228,7 +228,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | crate::bytes_dtypes!()
             | crate::string_dtypes!()
             | DataType::Country
-            | DataType::Currency
+            | DataType::Ccy
             | DataType::MicCode
             | DataType::CfiCode
             | DataType::IsinCode
@@ -343,7 +343,7 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         // and a code, which stores as its text, holds the empty text itself.
         crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode

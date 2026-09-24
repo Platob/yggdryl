@@ -714,7 +714,7 @@ class Scalar:
         "large_ascii_view", "fixed_ascii", "sized_ascii", "cp1252",
         "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
         "sized_cp1252",
-        "country", "currency", "mic", "cfi", "isin",
+        "country", "ccy", "mic", "cfi", "isin",
         "cusip", "sedol", "bloomberg", "side", "state", "timeinforce",
         "uuid", "version", "timezone", "mimetype", "mediatype", "url", "urn",
         "bytes", "large_binary", "binary_view", "large_binary_view",

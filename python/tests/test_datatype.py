@@ -742,28 +742,32 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     # and ISO 6166 twelve: each is a datatype of its own holding its values to
     # exactly that, not a name over a width. The five are the registrations
     # whose name answers a type of its own.
-    currency = DataType.from_logical_name("Currency")
-    assert currency == DataType("currency")
-    assert DataType.logical_names()["currency"] == currency
+    ccy = DataType.from_logical_name("Ccy")
+    assert ccy == DataType("ccy")
+    assert DataType.logical_names()["ccy"] == ccy
     assert DataType.from_logical_name("Exchange") == DataType("mic")
 
-    assert currency.id == "currency"
-    assert currency.kind == "code"
-    assert str(currency) == "currency"
+    assert ccy.id == "ccy"
+    assert ccy.kind == "code"
+    assert str(ccy) == "ccy"
     # The width bounds a value; a code stores as the text it is, so it names
     # no fixed layout.
-    assert currency.code_width == 3
-    assert currency.fixed_byte_width is None
-    assert currency.string_parameters is None
-    assert currency.charset is None
-    assert not currency.is_string
-    assert currency != DataType.fixed_ascii(3)
-    assert DataType(" CURRENCY ") == currency
-    assert eval(repr(currency), {"DataType": DataType}) == currency
+    assert ccy.code_width == 3
+    assert ccy.fixed_byte_width is None
+    assert ccy.string_parameters is None
+    assert ccy.charset is None
+    assert not ccy.is_string
+    assert ccy != DataType.fixed_ascii(3)
+    assert DataType(" CCY ") == ccy
+    assert eval(repr(ccy), {"DataType": DataType}) == ccy
+    with pytest.raises(ValueError):
+        DataType("currency")
+    with pytest.raises(ValueError):
+        DataType.from_logical_name("Currency")
 
     for name, width in [
         ("country", 2),
-        ("currency", 3),
+        ("ccy", 3),
         ("mic", 4),
         ("cfi", 6),
         ("isin", 12),
@@ -777,8 +781,8 @@ def test_a_registered_code_is_its_own_datatype() -> None:
     # The packed integer is the value's bytes padded to the code's own width,
     # exactly as for a fixed US-ASCII string of it. The padding is the
     # packing's; the column stores the text alone.
-    assert currency.ascii_packed("USD") == DataType.fixed_ascii(3).ascii_packed("USD")
-    assert currency.ascii_value(0x555344) == "USD"
+    assert ccy.ascii_packed("USD") == DataType.fixed_ascii(3).ascii_packed("USD")
+    assert ccy.ascii_value(0x555344) == "USD"
     with pytest.raises(ValueError, match="at most 2 bytes"):
         DataType("country").ascii_packed("USD")
     figi = DataType("figi")
@@ -844,7 +848,7 @@ def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
         )
         return Serie.from_arrow_batch(batch, row(target), safe=False).into_arrow_batch().column(0)
 
-    ccy = Field("ccy", "currency")
+    ccy = Field("ccy", "ccy")
     stored = Serie.from_arrow_array(pa.array(["USD"]), ccy, safe=False).into_arrow_array()
     for spelling in ["utf8", "ascii", "utf8(3)", "fixed_ascii(3)", "binary", "fixed_size_binary(3)"]:
         read = through(ccy, stored, Field("ccy", DataType(spelling)))
@@ -866,17 +870,26 @@ def test_a_code_and_a_uuid_read_into_every_string_and_byte_datatype() -> None:
 
 
 def test_a_registered_code_carries_its_identity_across_arrow() -> None:
-    ccy = Field("ccy", "currency")
+    ccy = Field("ccy", "ccy")
     arrow_field = ccy.into_arrow()
 
     # A code stores as the text it is; the extension name is what carries the
     # identity, so pyarrow sees a string column a reader can already use.
     assert arrow_field.type == pa.string()
     assert arrow_field.metadata == {
-        b"ARROW:extension:name": b"yggdryl.currency",
+        b"ARROW:extension:name": b"yggdryl.ccy",
         b"ARROW:extension:metadata": b"",
     }
     assert Field.from_arrow(arrow_field) == ccy
+    retired = pa.field(
+        "ccy",
+        pa.string(),
+        metadata={b"ARROW:extension:name": b"yggdryl.currency"},
+    )
+    with pytest.raises(ValueError) as error:
+        Field.from_arrow(retired)
+    message = str(error.value)
+    assert "ccy" in message and "yggdryl.currency" in message and "yggdryl.ccy" in message
 
     # The same text under the string family's name is a bounded string, and
     # under no name at all is plain text.
@@ -1096,7 +1109,7 @@ def test_a_string_and_a_byte_field_cross_json_under_one_tag_each() -> None:
 def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
     prebuilt = StringEnum.prebuilt()
     assert set(prebuilt) == {
-        "currency",
+        "ccy",
         "country",
         "mic",
         "exchange",
@@ -1402,7 +1415,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         ),
         "variant": yggdryl.variant("value"),
         "country": yggdryl.country("value"),
-        "currency": yggdryl.currency("value"),
+        "ccy": yggdryl.ccy("value"),
         "mic": yggdryl.mic("value"),
         "cfi": yggdryl.cfi("value"),
         "isin": yggdryl.isin("value"),
@@ -1604,9 +1617,11 @@ def test_typed_factory_parameters_use_native_validation() -> None:
     assert yggdryl.fixed_ascii("isin", 64, nullable=False).dtype.fixed_byte_width == 64
     assert yggdryl.fixed_utf8("name", 8).dtype == DataType.fixed_utf8(8)
     assert yggdryl.fixed_utf8("name", 8).dtype.string_parameters.fixed == 8
-    assert yggdryl.currency("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
+    assert yggdryl.ccy("ccy", metadata={"code": "ISO 4217"}).metadata["code"] == (
         "ISO 4217"
     )
+    assert not hasattr(yggdryl, "currency")
+    assert not hasattr(yggdryl, "CurrencyField")
     assert yggdryl.time("coarse", "ms").dtype == DataType("time32(ms)")
     assert yggdryl.time("precise", "us").dtype == DataType("time64(us)")
     assert yggdryl.datetime64("event", "us", "Custom/Accepted").dtype.id == (

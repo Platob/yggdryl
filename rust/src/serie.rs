@@ -518,8 +518,8 @@ pub enum Serie {
     FixedString(Arc<FixedStringSerie>),
     /// A column of `Country` values, stored as their UTF-8 text.
     Country(Arc<Utf8StringSerie>),
-    /// A column of `Currency` values, stored as their UTF-8 text.
-    Currency(Arc<Utf8StringSerie>),
+    /// A column of `Ccy` values, stored as their UTF-8 text.
+    Ccy(Arc<Utf8StringSerie>),
     /// A column of `MicCode` values, stored as their UTF-8 text.
     MicCode(Arc<Utf8StringSerie>),
     /// A column of `CfiCode` values, stored as their UTF-8 text.
@@ -647,7 +647,7 @@ macro_rules! column {
             Serie::BinaryViewString($column) => $answer,
             Serie::FixedString($column) => $answer,
             Serie::Country($column) => $answer,
-            Serie::Currency($column) => $answer,
+            Serie::Ccy($column) => $answer,
             Serie::MicCode($column) => $answer,
             Serie::CfiCode($column) => $answer,
             Serie::IsinCode($column) => $answer,
@@ -864,7 +864,7 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::Currency(held) => {
+            Serie::Ccy(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1331,7 +1331,7 @@ impl Leaf for Utf8StringSerie {
     fn root(self) -> Serie {
         match SerieValue::field(&self).dtype() {
             DataType::Country => Serie::Country(Arc::new(self)),
-            DataType::Currency => Serie::Currency(Arc::new(self)),
+            DataType::Ccy => Serie::Ccy(Arc::new(self)),
             DataType::MicCode => Serie::MicCode(Arc::new(self)),
             DataType::CfiCode => Serie::CfiCode(Arc::new(self)),
             DataType::IsinCode => Serie::IsinCode(Arc::new(self)),
@@ -1356,7 +1356,7 @@ impl Leaf for Utf8StringSerie {
         match serie {
             Serie::Utf8String(held)
             | Serie::Country(held)
-            | Serie::Currency(held)
+            | Serie::Ccy(held)
             | Serie::MicCode(held)
             | Serie::CfiCode(held)
             | Serie::IsinCode(held)
@@ -1381,7 +1381,7 @@ impl Leaf for Utf8StringSerie {
         match serie {
             Serie::Utf8String(held)
             | Serie::Country(held)
-            | Serie::Currency(held)
+            | Serie::Ccy(held)
             | Serie::MicCode(held)
             | Serie::CfiCode(held)
             | Serie::IsinCode(held)
@@ -2898,7 +2898,7 @@ impl Serie {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::Country(mine), Self::Country(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::Currency(mine), Self::Currency(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Ccy(mine), Self::Ccy(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::MicCode(mine), Self::MicCode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::CfiCode(mine), Self::CfiCode(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::IsinCode(mine), Self::IsinCode(theirs)) => Arc::make_mut(mine).append(theirs),

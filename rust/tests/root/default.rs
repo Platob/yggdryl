@@ -581,7 +581,7 @@ mod scalars {
                 DataTypeId::FixedCp1252String,
             ),
             (DataType::Country, DataTypeId::Country),
-            (DataType::Currency, DataTypeId::Currency),
+            (DataType::Ccy, DataTypeId::Ccy),
             (DataType::MicCode, DataTypeId::MicCode),
             (DataType::CfiCode, DataTypeId::CfiCode),
             (DataType::Uuid, DataTypeId::Uuid),

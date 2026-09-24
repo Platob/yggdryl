@@ -132,7 +132,7 @@ mod internal {
             "currency.parquet",
             vec![
                 ArrowField::new("id", ArrowDataType::Int64, false),
-                extension_field("ccy", ArrowDataType::Utf8, "yggdryl.currency", Some("")),
+                extension_field("ccy", ArrowDataType::Utf8, "yggdryl.ccy", Some("")),
             ],
             vec![
                 Arc::new(Int64Array::from(vec![1, 2, 3])),
@@ -160,7 +160,7 @@ mod internal {
             .map(|batch| batch.unwrap())
             .collect();
         let restored = Field::from_arrow_field(batches[0].schema().field(1)).unwrap();
-        assert_eq!(restored.dtype(), &DataType::Currency);
+        assert_eq!(restored.dtype(), &DataType::Ccy);
         assert_eq!(restored.name(), "ccy");
         let cells = batches[0]
             .column(1)

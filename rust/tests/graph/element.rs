@@ -16,8 +16,8 @@ use yggdryl::graph::{
 };
 use yggdryl::xxhash::Xxh3;
 use yggdryl::{
-    BloombergCode, CfiCode, Currency, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side,
-    State, Uuid,
+    BloombergCode, Ccy, CfiCode, CusipCode, Decimal18, IsinCode, MicCode, SedolCode, Side, State,
+    Uuid,
 };
 
 #[test]
@@ -307,7 +307,7 @@ fn crosshash(crosscode: &str) -> u64 {
 fn stated(ms: i64) -> MarketEventData {
     let mut trade = MarketEventData::at(at(ms));
     trade.set_price(Decimal18::parse("82.5").expect("a decimal"));
-    trade.set_currency(Currency::new("USD").expect("a currency"));
+    trade.set_currency(Ccy::new("USD").expect("a currency"));
     trade.set_quantity(Decimal18::from_int(1_000));
     trade.set_unit("bbl".to_owned());
     trade.set_side(Side::read("Buy").expect("a side"));
@@ -1465,7 +1465,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     assert_eq!(held.get_side().as_str(), "BUY");
 
     held.set_price(Decimal18::from_int(83));
-    held.set_currency(Currency::new("EUR").expect("a currency"));
+    held.set_currency(Ccy::new("EUR").expect("a currency"));
     held.set_quantity(Decimal18::ZERO);
     held.set_unit("MWh".to_owned());
     held.set_side(Side::read("2").expect("a side"));
@@ -1481,7 +1481,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
         (bare.get_price(), bare.get_quantity()),
         (Decimal18::ZERO, Decimal18::ZERO)
     );
-    assert_eq!(bare.get_currency(), &Currency::none());
+    assert_eq!(bare.get_currency(), &Ccy::none());
     assert_eq!(bare.get_unit(), "");
     assert_eq!(bare.get_side(), &Side::unknown());
 
@@ -1508,7 +1508,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
 #[test]
 fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let mut first = trade(10);
-    first.set_currency(Currency::none());
+    first.set_currency(Ccy::none());
     first.set_side(Side::unknown());
     first.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
     first.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
@@ -1520,7 +1520,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     later.set_price(Decimal18::from_int(83));
     later.set_quantity(Decimal18::from_int(5));
     later.set_unit("MWh".to_owned());
-    later.set_currency(Currency::new("EUR").expect("a currency"));
+    later.set_currency(Ccy::new("EUR").expect("a currency"));
     later.set_side(Side::read("2").expect("a side"));
     later.set_cficode(Some(CfiCode::new("ESVUFX").expect("a CFI")));
     later.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
@@ -1570,7 +1570,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     // its own: the later statement leads, and unknown takes the other.
     let mut bare = later.clone();
     bare.set_currunix(at(30));
-    bare.set_currency(Currency::none());
+    bare.set_currency(Ccy::none());
     bare.set_curruuid(later.get_curruuid());
     let merged = later.clone().merge_with(&bare).expect("the same trade");
     assert_eq!(merged.get_currency().as_str(), "EUR");
@@ -1631,7 +1631,7 @@ fn merging_a_market_element_lets_this_statement_lead() {
     let mut other = this.clone();
     other.set_price(Decimal18::from_int(83));
     other.set_unit("bbl".to_owned());
-    other.set_currency(Currency::new("USD").expect("a currency"));
+    other.set_currency(Ccy::new("USD").expect("a currency"));
     other.set_side(Side::read("1").expect("a side"));
     other.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
     other.set_identifiers(identifiers([("ClOrdID", "C-1")]));
@@ -1728,7 +1728,7 @@ fn the_lane_the_side_implies_fills_from_the_elements_own_facts() {
         buy.get_bidpx(),
         Some(Decimal18::parse("82.5").expect("a decimal"))
     );
-    assert_eq!(buy.get_bidcurrency().map(Currency::as_str), Some("USD"));
+    assert_eq!(buy.get_bidcurrency().map(Ccy::as_str), Some("USD"));
     assert_eq!(buy.get_bidqty(), Some(Decimal18::from_int(1_000)));
     assert_eq!(buy.get_bidunit(), Some("bbl"));
     assert_eq!((buy.get_askpx(), buy.get_askqty()), (None, None));
@@ -2086,7 +2086,7 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
     quote.set_side(Side::read("Sell").expect("a side"));
     quote.set_askpx(Some(Decimal18::from_int(85)));
     quote.set_askqty(Some(Decimal18::from_int(7)));
-    quote.set_askcurrency(Some(Currency::new("EUR").expect("a currency")));
+    quote.set_askcurrency(Some(Ccy::new("EUR").expect("a currency")));
     quote.set_askunit(Some("mt".to_owned()));
     quote.fill_market();
     assert_eq!(quote.get_price(), Decimal18::from_int(85));
@@ -2116,7 +2116,7 @@ fn filling_settles_the_price_and_the_quantity_down_one_ladder_each() {
 #[test]
 fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
-    let currency = |code: &str| Currency::new(code).expect("a currency");
+    let currency = |code: &str| Ccy::new(code).expect("a currency");
 
     // A bid alone is a party willing to pay: a buy at the bid.
     let mut bid = MarketEventData::at(at(10));

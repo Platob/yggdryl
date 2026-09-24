@@ -5,12 +5,12 @@ use smol_str::SmolStr;
 
 use crate::ascii::ascii_text_sized;
 use crate::{
-    BLOOMBERG_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME, CURRENCY_EXTENSION_NAME,
+    BLOOMBERG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME,
     SEDOL_EXTENSION_NAME, SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME,
 };
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
 };
 use crate::{DataType, Error, Result};
@@ -138,7 +138,7 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::Currency.code_name(), Some("currency"));
+    /// assert_eq!(DataType::Ccy.code_name(), Some("ccy"));
     /// assert_eq!(DataType::fixed_ascii(3)?.code_name(), None);
     /// # Ok(())
     /// # }
@@ -147,7 +147,7 @@ impl DataType {
     pub const fn code_name(&self) -> Option<&'static str> {
         match self {
             Self::Country => Some("country"),
-            Self::Currency => Some("currency"),
+            Self::Ccy => Some("ccy"),
             Self::MicCode => Some("mic"),
             Self::CfiCode => Some("cfi"),
             Self::IsinCode => Some("isin"),
@@ -173,8 +173,8 @@ impl DataType {
     /// use yggdryl::DataType;
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// assert_eq!(DataType::Currency.code_width(), Some(3));
-    /// assert_eq!(DataType::Currency.fixed_byte_width(), None);
+    /// assert_eq!(DataType::Ccy.code_width(), Some(3));
+    /// assert_eq!(DataType::Ccy.fixed_byte_width(), None);
     /// assert_eq!(DataType::fixed_ascii(3)?.code_width(), None);
     /// # Ok(())
     /// # }
@@ -202,7 +202,7 @@ impl DataType {
 pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str> {
     match dtype {
         DataType::Country => Some(COUNTRY_EXTENSION_NAME),
-        DataType::Currency => Some(CURRENCY_EXTENSION_NAME),
+        DataType::Ccy => Some(CCY_EXTENSION_NAME),
         DataType::MicCode => Some(MIC_EXTENSION_NAME),
         DataType::CfiCode => Some(CFI_EXTENSION_NAME),
         DataType::BloombergCode => Some(BLOOMBERG_EXTENSION_NAME),
@@ -220,12 +220,12 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
 /// The code one Arrow extension name imports as.
 ///
 /// The name alone, because a code's storage is Arrow's `Utf8` and the caller
-/// has already checked it: a `yggdryl.currency` over anything else stays the
+/// has already checked it: a `yggdryl.ccy` over anything else stays the
 /// storage it is rather than silently becoming a currency.
 pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
     match name {
         COUNTRY_EXTENSION_NAME => Some(DataType::Country),
-        CURRENCY_EXTENSION_NAME => Some(DataType::Currency),
+        CCY_EXTENSION_NAME => Some(DataType::Ccy),
         MIC_EXTENSION_NAME => Some(DataType::MicCode),
         CFI_EXTENSION_NAME => Some(DataType::CfiCode),
         BLOOMBERG_EXTENSION_NAME => Some(DataType::BloombergCode),
@@ -269,7 +269,7 @@ pub(crate) fn code_text<const WIDTH: usize>(bytes: &[u8]) -> Result<&str> {
 pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'a str> {
     match dtype {
         DataType::Country => code_text::<COUNTRY_WIDTH>(bytes),
-        DataType::Currency => code_text::<CURRENCY_WIDTH>(bytes),
+        DataType::Ccy => code_text::<CCY_WIDTH>(bytes),
         DataType::MicCode => code_text::<MIC_WIDTH>(bytes),
         DataType::CfiCode => code_text::<CFI_WIDTH>(bytes),
         DataType::BloombergCode => code_text::<BLOOMBERG_WIDTH>(bytes),
@@ -325,8 +325,8 @@ mod arrow {
     /// The Arrow storage one registered code lays out.
     ///
     /// A code is the ASCII text it is, so it rides Arrow's own text layout and
-    /// the `yggdryl.{country,currency,mic,...}` name beside it carries the
-    /// identity: three bytes under `yggdryl.currency` read back a currency.
+    /// the `yggdryl.{country,ccy,mic,...}` name beside it carries the
+    /// identity: three bytes under `yggdryl.ccy` read back a currency.
     ///
     /// # Errors
     ///

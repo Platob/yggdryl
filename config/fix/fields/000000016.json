@@ -426,7 +426,7 @@
   {
     "name": "limitamtcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -577,7 +577,7 @@
   {
     "name": "marginamtccy",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

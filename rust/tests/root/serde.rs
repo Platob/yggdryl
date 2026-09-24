@@ -112,6 +112,15 @@ mod value {
     }"#;
         assert!(serde_json::from_slice::<Scalar>(encoded).is_err());
     }
+
+    #[test]
+    fn ccy_scalar_serde_has_one_current_tag() {
+        let value = Scalar::Ccy(yggdryl::Ccy::new("USD").unwrap());
+        let encoded = serde_json::to_string(&value).unwrap();
+        assert_eq!(encoded, r#"{"type":"ccy","value":"USD"}"#);
+        assert_eq!(serde_json::from_str::<Scalar>(&encoded).unwrap(), value);
+        assert!(serde_json::from_str::<Scalar>(r#"{"type":"currency","value":"USD"}"#).is_err());
+    }
 }
 
 mod datatypes {
@@ -166,6 +175,14 @@ mod datatypes {
         assert_eq!(DataType::from_json(&utc_json).unwrap(), utc);
 
         assert!(DataType::from_json(r#"{"type":"timestamp","unit":"microsecond"}"#).is_err());
+    }
+
+    #[test]
+    fn ccy_datatype_serde_has_one_current_tag() {
+        let document = DataType::Ccy.into_json().unwrap();
+        assert_eq!(document, r#"{"type":"ccy"}"#);
+        assert_eq!(DataType::from_json(&document).unwrap(), DataType::Ccy);
+        assert!(DataType::from_json(r#"{"type":"currency"}"#).is_err());
     }
 
     #[test]

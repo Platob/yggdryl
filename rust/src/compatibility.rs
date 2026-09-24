@@ -373,7 +373,7 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         // not the bytes.
         crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -514,7 +514,7 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // encodes them as UTF-8 and trims a fixed width's padding.
         crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -630,7 +630,7 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         // encodes them as UTF-8 and trims a fixed width's padding.
         crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -748,7 +748,7 @@ incompatible(
         // `USD`, under a type it can name.
         crate::string_dtypes!()
         | D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -837,7 +837,7 @@ fn field_with_dtype(
 /// The extensions this workspace owns never reach here: the canonical
 /// `arrow.parquet.variant`,
 /// `geoarrow.wkb`, `yggdryl.string`, `arrow.uuid`, and each registered code's
-/// own `yggdryl.{country,currency,mic,cfi}` import as the first-class
+/// own `yggdryl.{country,ccy,mic,cfi}` import as the first-class
 /// `variant`, `geometry`, `geography`, string, `uuid` and code datatypes
 /// with their `ARROW:extension:*` keys stripped, so a field carrying these
 /// keys names an extension the workspace does not model.

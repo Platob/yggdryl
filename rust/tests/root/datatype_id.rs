@@ -150,10 +150,21 @@ fn the_strings_and_the_codes_are_text() {
     // The identifier is the canonical name alone; the grammar's other
     // spellings of a leaf belong to `DataType`.
     assert!(DataTypeId::from_str("string").is_err());
+    assert_eq!(DataTypeId::from_str("Ccy").unwrap(), DataTypeId::Ccy);
+    assert_eq!(DataTypeId::Ccy.as_str(), "ccy");
+    assert_eq!(serde_json::to_string(&DataTypeId::Ccy).unwrap(), "\"ccy\"");
     assert_eq!(
-        DataTypeId::from_str("Currency").unwrap(),
-        DataTypeId::Currency
+        serde_json::from_str::<DataTypeId>("\"ccy\"").unwrap(),
+        DataTypeId::Ccy
     );
+    for retired in ["currency", "Currency", "CURRENCY"] {
+        assert!(DataTypeId::from_str(retired).is_err(), "{retired}");
+        assert_eq!(DataTypeId::from_legacy_name(retired), None, "{retired}");
+        assert!(
+            serde_json::from_str::<DataTypeId>(&format!("\"{retired}\"")).is_err(),
+            "{retired}"
+        );
+    }
 }
 
 #[test]
@@ -246,7 +257,7 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::MimeType, 0x67),
         (DataTypeId::MediaType, 0x68),
         (DataTypeId::Country, 0x71),
-        (DataTypeId::Currency, 0x72),
+        (DataTypeId::Ccy, 0x72),
         (DataTypeId::MicCode, 0x73),
         (DataTypeId::CfiCode, 0x74),
         (DataTypeId::Side, 0x75),
@@ -463,7 +474,7 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
             K::Code,
             &[
                 DataTypeId::Country,
-                DataTypeId::Currency,
+                DataTypeId::Ccy,
                 DataTypeId::MicCode,
                 DataTypeId::CfiCode,
                 DataTypeId::Side,
@@ -568,9 +579,9 @@ fn fixed_widths_match_their_layout() {
 
 #[test]
 fn a_code_width_is_a_bound_and_never_a_layout() {
-    assert_eq!(DataTypeId::Currency.code_width(), Some(3));
+    assert_eq!(DataTypeId::Ccy.code_width(), Some(3));
     assert_eq!(DataTypeId::CfiCode.code_width(), Some(6));
-    assert_eq!(DataTypeId::Currency.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::Ccy.fixed_byte_width(), None);
     assert_eq!(DataTypeId::CfiCode.fixed_byte_width(), None);
     // Only a code has one: a width that is a layout is not this fact.
     assert_eq!(DataTypeId::Uuid.code_width(), None);

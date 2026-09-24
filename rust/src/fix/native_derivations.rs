@@ -33,7 +33,7 @@ const DATETIME_NS_UTC: DataType = DataType::DateTime64 {
 enum NativeKind {
     Boolean,
     Country,
-    Currency,
+    Ccy,
     DateTimeNsUtc,
     Decimal18,
     Float64,
@@ -46,7 +46,7 @@ impl NativeKind {
         match self {
             Self::Boolean => dtype == &DataType::Boolean,
             Self::Country => dtype == &DataType::Country,
-            Self::Currency => dtype == &DataType::Currency,
+            Self::Ccy => dtype == &DataType::Ccy,
             Self::DateTimeNsUtc => dtype == &DATETIME_NS_UTC,
             Self::Decimal18 => dtype == &DECIMAL18,
             Self::Float64 => dtype == &DataType::Float64,
@@ -61,7 +61,7 @@ impl NativeKind {
 const FIELDS: &[(i32, &str, NativeKind)] = &[
     (6, "avgpx", NativeKind::Decimal18),
     (14, "cumqty", NativeKind::Decimal18),
-    (15, "currency", NativeKind::Currency),
+    (15, "currency", NativeKind::Ccy),
     (22, "securityidsource", NativeKind::String),
     (31, "lastpx", NativeKind::Decimal18),
     (32, "lastqty", NativeKind::Decimal18),
@@ -75,7 +75,7 @@ const FIELDS: &[(i32, &str, NativeKind)] = &[
     (59, "timeinforce", NativeKind::String),
     (84, "cxlqty", NativeKind::Decimal18),
     (119, "settlcurramt", NativeKind::Decimal18),
-    (120, "settlcurrency", NativeKind::Currency),
+    (120, "settlcurrency", NativeKind::Ccy),
     (122, "origsendingtime", NativeKind::DateTimeNsUtc),
     (132, "bidpx", NativeKind::Decimal18),
     (133, "offerpx", NativeKind::Decimal18),

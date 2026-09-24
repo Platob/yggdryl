@@ -522,7 +522,7 @@ fn a_value_the_fields_contract_refuses_is_refused_at_the_door_naming_the_row() {
     // and the door reads each row once through the field's contract.
     let text: ArrayRef = Arc::new(StringArray::from(vec!["USD", "EUR", "EURO"]));
     let refusal = Serie::from_arrow_array(
-        Some(&Field::new("ccy", DataType::Currency, false)),
+        Some(&Field::new("ccy", DataType::Ccy, false)),
         Arc::clone(&text),
         strict(),
     )
@@ -533,7 +533,7 @@ fn a_value_the_fields_contract_refuses_is_refused_at_the_door_naming_the_row() {
 
     // Under `safe` the refused value is nulled rather than refused.
     let nulled = Serie::from_arrow_array(
-        Some(&Field::new("ccy", DataType::Currency, true)),
+        Some(&Field::new("ccy", DataType::Ccy, true)),
         Arc::clone(&text),
         ArrowCastOptions::new(),
     )
@@ -545,7 +545,7 @@ fn a_value_the_fields_contract_refuses_is_refused_at_the_door_naming_the_row() {
     // not read.
     let text: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
     let column = Serie::from_arrow_array(
-        Some(&Field::new("ccy", DataType::Currency, true)),
+        Some(&Field::new("ccy", DataType::Ccy, true)),
         text,
         strict(),
     )
@@ -588,7 +588,7 @@ fn from_scalars_proves_the_rows_once_and_lays_them_out_once() {
     // A code column's rows are proven by the contract on the way in, and
     // the door does not read them again: the column reads back as codes.
     let codes = Serie::from_scalars(
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
         [Scalar::from("USD"), Scalar::from("EUR")],
     )
     .expect("two registered currencies");
@@ -609,7 +609,7 @@ fn from_scalars_proves_the_rows_once_and_lays_them_out_once() {
     .expect_err("a required column admits no absent row");
     assert!(refusal.to_string().contains("price"));
     let refusal = Serie::from_scalars(
-        Field::new("ccy", DataType::Currency, false),
+        Field::new("ccy", DataType::Ccy, false),
         [Scalar::from("USD"), Scalar::from("EURO")],
     )
     .expect_err("EURO is not a registered currency");

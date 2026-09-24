@@ -75,13 +75,13 @@ impl Field {
     /// use yggdryl::{DataType, DataTypeId, Field, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let ccy = Field::new("ccy", DataType::Currency, false);
+    /// let ccy = Field::new("ccy", DataType::Ccy, false);
     /// let currency = ccy.scalar("USD\0")?;
-    /// assert_eq!(currency.id(), DataTypeId::Currency);
+    /// assert_eq!(currency.id(), DataTypeId::Ccy);
     /// assert_eq!(currency.as_str(), Some("USD"));
     /// assert!(ccy.scalar(Scalar::Null).is_err());
     /// assert_eq!(
-    ///     Field::new("ccy", DataType::Currency, true).scalar(Scalar::Null)?,
+    ///     Field::new("ccy", DataType::Ccy, true).scalar(Scalar::Null)?,
     ///     Scalar::Null
     /// );
     /// # Ok(())
@@ -886,7 +886,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         // code's own type fixes. A value already stored as this code holds
         // that trimmed text, so it is returned without re-walking its bytes.
         D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode
@@ -913,7 +913,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             };
             let canonical = match dtype {
                 D::Country => Scalar::Country(crate::Country::new(text)?),
-                D::Currency => Scalar::Currency(crate::Currency::new(text)?),
+                D::Ccy => Scalar::Ccy(crate::Ccy::new(text)?),
                 D::MicCode => Scalar::MicCode(crate::MicCode::new(text)?),
                 D::CfiCode => Scalar::CfiCode(crate::CfiCode::new(text)?),
                 D::IsinCode => Scalar::IsinCode(crate::IsinCode::new(text)?),
@@ -1710,7 +1710,7 @@ fn validate_dtype_value(
             _ => Err(expected(dtype.name(), value)),
         },
         D::Country
-        | D::Currency
+        | D::Ccy
         | D::MicCode
         | D::CfiCode
         | D::IsinCode

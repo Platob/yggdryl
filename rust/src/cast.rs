@@ -57,7 +57,7 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BLOOMBERG_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
+    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
     code_refusal, recognized_arrow_extension,
 };
@@ -1609,7 +1609,7 @@ impl ArrayCastPlan {
             ..
         } = rules;
         let source_extension = match source_metadata {
-            Some(metadata) => recognized_arrow_extension(metadata, source_type)?,
+            Some(metadata) => recognized_arrow_extension(metadata, source_type, path)?,
             None => None,
         };
         check_extension_source(field, source_extension.as_ref())?;
@@ -2417,7 +2417,7 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::Currency => ingest_code_array::<CURRENCY_WIDTH>(
+                DataType::Ccy => ingest_code_array::<CCY_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

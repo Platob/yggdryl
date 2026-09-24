@@ -264,8 +264,8 @@ mod leaves {
         // bytes.
         assert_eq!(parsed.to_string(), "ccy = sized_ascii(4) 'USD'");
         assert_eq!(parsed.to_string().parse::<Term>().unwrap(), parsed);
-        let currency = "ccy = currency 'USD'".parse::<Term>().unwrap();
-        assert_eq!(currency.to_string(), "ccy = currency 'USD'");
+        let currency = "ccy = ccy 'USD'".parse::<Term>().unwrap();
+        assert_eq!(currency.to_string(), "ccy = ccy 'USD'");
         assert_eq!(currency.to_string().parse::<Term>().unwrap(), currency);
         assert_ne!(currency, "ccy = ascii(3) 'USD'".parse::<Term>().unwrap());
         let refused = "ccy = country 'USD'"
@@ -629,7 +629,7 @@ mod fields {
         ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StringEnum,
         StructType,
     };
-    use yggdryl::{CfiCodeField, CountryField, CurrencyField, MicCodeField, StringField};
+    use yggdryl::{CcyField, CfiCodeField, CountryField, MicCodeField, StringField};
 
     use super::typed::assert_typed_marker;
     use yggdryl::FieldValue as _;
@@ -647,7 +647,7 @@ mod fields {
             DataType::from_str("string(windows-1252)").unwrap(),
         );
         assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
-        assert_typed_marker::<yggdryl::CurrencyType>(DataType::Currency);
+        assert_typed_marker::<yggdryl::CcyType>(DataType::Ccy);
         assert_typed_marker::<yggdryl::MicCodeType>(DataType::MicCode);
         assert_typed_marker::<yggdryl::CfiCodeType>(DataType::CfiCode);
 
@@ -657,20 +657,17 @@ mod fields {
         assert_eq!(note.dtype(), &DataType::ascii());
         let ccy = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), false).unwrap();
         assert_eq!(ccy.dtype(), &DataType::fixed_ascii(4).unwrap());
-        assert!(StringField::try_new("ccy", DataType::Currency, false).is_err());
+        assert!(StringField::try_new("ccy", DataType::Ccy, false).is_err());
 
         // The code/width boundary is the one the markers exist for: a currency
         // and a `fixed_ascii(3)` are the same three bytes and are not each other.
-        assert_eq!(
-            CurrencyField::unit("ccy", false).dtype(),
-            &DataType::Currency
-        );
+        assert_eq!(CcyField::unit("ccy", false).dtype(), &DataType::Ccy);
         assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
         assert_eq!(
             MicCodeField::unit("venue", true).dtype(),
             &DataType::MicCode
         );
-        assert!(CurrencyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
+        assert!(CcyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
         // Six bytes against eight: the confusion a width/code mix-up produces.
         assert!(CfiCodeField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
@@ -683,7 +680,7 @@ mod fields {
         assert!(FieldScalar::new(&width.to_field(), "ABCDEFGHI").is_err());
 
         // A typed code value is checked at the width its own standard fixes.
-        let ccy = CurrencyField::unit("ccy", false);
+        let ccy = CcyField::unit("ccy", false);
         assert_eq!(
             FieldScalar::new(&ccy.to_field(), "USD").unwrap().as_str(),
             Some("USD")

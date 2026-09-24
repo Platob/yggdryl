@@ -274,7 +274,7 @@
   {
     "name": "legadditionaltermbondcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -559,7 +559,7 @@
   {
     "name": "legcashsettlcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -659,7 +659,7 @@
   {
     "name": "legcashsettlquotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -685,7 +685,7 @@
   {
     "name": "legcashsettlminimumquotecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -856,7 +856,7 @@
   {
     "name": "legcomplexeventcrediteventcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

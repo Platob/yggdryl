@@ -252,7 +252,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['fixed_cp1252', fields.fixedCp1252('value', 8)],
     ['sized_cp1252', fields.sizedCp1252('value', 32)],
     ['country', fields.country('value')],
-    ['currency', fields.currency('value')],
+    ['ccy', fields.ccy('value')],
     ['mic', fields.mic('value')],
     ['cfi', fields.cfi('value')],
     ['isin', fields.isin('value')],
@@ -521,7 +521,7 @@ test('the registered codes build their own datatype at their own width', () => {
   // text without the identity.
   const declared = new Map([
     ['country', [fields.country('venue_country'), 2]],
-    ['currency', [fields.currency('settlement_ccy'), 3]],
+    ['ccy', [fields.ccy('settlement_ccy'), 3]],
     ['mic', [fields.mic('venue'), 4]],
     ['cfi', [fields.cfi('classification'), 6]],
     ['isin', [fields.isin('instrument'), 12]],
@@ -541,7 +541,7 @@ test('the registered codes build their own datatype at their own width', () => {
     assert.equal(value.nullable, true, name)
   }
 
-  assert.ok(!fields.currency('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
+  assert.ok(!fields.ccy('ccy').dtype.equals(fields.fixedAscii('ccy', 3).dtype))
   // A securities identifier is closed by its own check digit, and a column
   // of them holds the canonical spelling: a cast lets in an identifier the
   // check digit closes, in upper case; a typo or a lower-case spelling is
@@ -573,8 +573,19 @@ test('the registered codes build their own datatype at their own width', () => {
     /canonical spelling/,
   )
   assert.equal(declared.get('country')[0].name, 'venue_country')
-  assert.equal(fields.currency('ccy', { nullable: false }).nullable, false)
+  assert.equal(fields.ccy('ccy', { nullable: false }).nullable, false)
   assert.equal(fields.mic('venue', { metadata: { source: 'iso' } }).get('source'), 'iso')
+  assert.equal('currency' in fields, false)
+
+  const root = fields.struct('row', [fields.ccy('settlement_ccy')], { nullable: false })
+  const table = new arrow.Table({
+    settlement_ccy: arrow.vectorFromArray(['USD'], new arrow.Utf8()),
+  })
+  const batch = Serie.fromArrowBatch(table, root).intoArrowBatch()
+  assert.equal(
+    batch.schema.fields[0].metadata.get('ARROW:extension:name'),
+    'yggdryl.ccy',
+  )
 })
 
 test('nested factories preserve exact child metadata and dictionary state', () => {

@@ -24,7 +24,7 @@ fn root(fields: impl IntoIterator<Item = Field>) -> Field {
 /// fixed four-byte slot, and the variable US-ASCII string bounded at four.
 fn currency_columns() -> [(&'static str, DataType); 3] {
     [
-        ("currency", DataType::Currency),
+        ("ccy", DataType::Ccy),
         (
             "fixed_ascii",
             DataType::fixed_ascii(4).expect("four bytes is a width"),
@@ -38,7 +38,7 @@ fn currency_columns() -> [(&'static str, DataType); 3] {
 
 pub(crate) fn ascii_benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("ascii");
-    for spelling in ["fixed_ascii(4)", "sized_ascii(4)", "currency"] {
+    for spelling in ["fixed_ascii(4)", "sized_ascii(4)", "ccy"] {
         group.bench_function(
             BenchmarkId::new("parse_display_round_trip", spelling),
             |bencher| {

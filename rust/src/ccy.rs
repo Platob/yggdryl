@@ -10,9 +10,9 @@ use crate::typed::define_field_types;
 use crate::value::CodeValue;
 use crate::{DataType, Result, Scalar, Value};
 
-code_leaf!(Currency, CURRENCY_WIDTH);
+code_leaf!(Ccy, CCY_WIDTH);
 
-impl Currency {
+impl Ccy {
     /// ISO 4217's code for no currency.
     const NONE: &str = "XXX";
 
@@ -33,13 +33,13 @@ impl Currency {
     }
 }
 
-code_value!(Currency, Currency, CURRENCY_WIDTH, merge = Currency::merged);
+code_value!(Ccy, Ccy, CCY_WIDTH, merge = Ccy::merged);
 
 /// The Arrow extension name of the currency code.
-pub(crate) const CURRENCY_EXTENSION_NAME: &str = "yggdryl.currency";
+pub(crate) const CCY_EXTENSION_NAME: &str = "yggdryl.ccy";
 
 /// The most bytes ISO 4217's currency code may be.
-pub(crate) const CURRENCY_WIDTH: usize = 3;
+pub(crate) const CCY_WIDTH: usize = 3;
 
 impl DataType {
     /// Creates ISO 4217's three-letter currency code.
@@ -47,15 +47,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::currency(), DataType::Currency);
-    /// assert_eq!(DataType::currency().to_string(), "currency");
-    /// assert_eq!(DataType::currency().code_width(), Some(3));
+    /// assert_eq!(DataType::ccy(), DataType::Ccy);
+    /// assert_eq!(DataType::ccy().to_string(), "ccy");
+    /// assert_eq!(DataType::ccy().code_width(), Some(3));
     /// ```
     #[must_use]
-    pub const fn currency() -> Self {
-        Self::Currency
+    pub const fn ccy() -> Self {
+        Self::Ccy
     }
 }
 
 // /// A currency-typed field: ISO 4217.
-define_field_types!(CurrencyType, Currency);
+define_field_types!(CcyType, Ccy);

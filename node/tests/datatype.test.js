@@ -211,8 +211,8 @@ test('every string column is one of eighteen leaves: a shape in a charset', () =
   // A datatype that is not a string answers none of this.
   assert.equal(new DataType('int32').stringParameters, null)
   assert.equal(new DataType('int32').charset, null)
-  assert.equal(new DataType('currency').stringParameters, null)
-  assert.equal(new DataType('currency').charset, null)
+  assert.equal(new DataType('ccy').stringParameters, null)
+  assert.equal(new DataType('ccy').charset, null)
 
   // A reading the leaf does not take, two readings, a width of nothing, a
   // numbered leaf with no number, a maximum on a large or view leaf, a
@@ -398,25 +398,27 @@ test('every byte column is one datatype: a layout and a bound', () => {
 })
 
 test('a registered code is its own datatype over its standard width', () => {
-  // Not a name over a width: `currency` is text with an identity held to
+  // Not a name over a width: `ccy` is text with an identity held to
   // three bytes, and `fixed_ascii(3)` is three bytes without one.
-  const currency = new DataType('currency')
+  const ccy = new DataType('ccy')
 
-  assert.equal(currency.id, 'currency')
-  assert.equal(currency.kind, 'code')
-  assert.equal(currency.toString(), 'currency')
+  assert.equal(ccy.id, 'ccy')
+  assert.equal(ccy.kind, 'code')
+  assert.equal(ccy.toString(), 'ccy')
   // The width bounds a value; a code stores as its text, so it names no
   // fixed layout.
-  assert.equal(currency.codeWidth, 3)
-  assert.equal(currency.fixedByteWidth, null)
-  assert.equal(currency.stringParameters, null)
-  assert.ok(!currency.equals(DataType.fixedAscii(3)))
-  assert.ok(DataType.from('currency').equals(currency))
-  assert.ok(DataType.from(' CURRENCY ').equals(currency))
+  assert.equal(ccy.codeWidth, 3)
+  assert.equal(ccy.fixedByteWidth, null)
+  assert.equal(ccy.stringParameters, null)
+  assert.ok(!ccy.equals(DataType.fixedAscii(3)))
+  assert.ok(DataType.from('ccy').equals(ccy))
+  assert.ok(DataType.from(' CCY ').equals(ccy))
+  assert.throws(() => new DataType('currency'))
+  assert.throws(() => DataType.fromLogicalName('Currency'))
 
   for (const [name, width] of [
     ['country', 2],
-    ['currency', 3],
+    ['ccy', 3],
     ['mic', 4],
     // Six bytes, which is a width no ASCII variant has.
     ['cfi', 6],
@@ -442,8 +444,8 @@ test('a registered code is its own datatype over its standard width', () => {
   // The packed integer pads the value to the code's own width, exactly as a
   // fixed US-ASCII string of it does. The padding is the packing's; the
   // column stores the text alone.
-  assert.equal(currency.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
-  assert.equal(currency.asciiValue(0x555344n), 'USD')
+  assert.equal(ccy.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
+  assert.equal(ccy.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
   const figi = DataType.fromString('figi')
   assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
@@ -674,8 +676,8 @@ test('malformed recursive datatypes never use a permissive fallback', () => {
 test('a prebuilt vocabulary names the ISO codes a column carries', () => {
   const prebuilt = StringEnum.prebuilt()
   assert.deepEqual(Object.keys(prebuilt).sort(), [
+    'ccy',
     'country',
-    'currency',
     'exchange',
     'mic',
     'side',
@@ -809,7 +811,7 @@ test('an enum declares itself onto the field its values name', () => {
     () => new Field('venue', DataType.utf8()).setStringEnum(side),
     /expected a fixed US-ASCII string of at most 16 bytes, or a registered code, got utf8/,
   )
-  const coded = new Field('ccy', 'currency', false)
+  const coded = new Field('ccy', 'ccy', false)
   coded.setStringEnum(side)
   assert.ok(coded.stringEnum.equals(side))
   assert.throws(() => new StringEnum('Side', { '': 'B' }), /non-empty member name/)

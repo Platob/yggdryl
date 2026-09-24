@@ -78,7 +78,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
     let row = DataType::from_str(
-        "struct<ccy: Currency, venue: Exchange, px: Price, qty: Qty, at: UTCTimestamp>",
+        "struct<ccy: Ccy, venue: Exchange, px: Price, qty: Qty, at: UTCTimestamp>",
     )?;
     assert_eq!(
         row.get_field_by_path("venue").map(|field| field.dtype().clone()),
@@ -96,7 +96,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
         DataType::from_str("utc_date_only")?,
         DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC)?,
     );
-    assert_eq!(DataType::LOGICAL_NAMES[0], ("currency", DataType::Currency));
+    assert_eq!(DataType::LOGICAL_NAMES[0], ("ccy", DataType::Ccy));
 
     // Three of the names also prebuild the vocabulary their codes come from.
     assert_eq!(StringEnum::prebuilt_values("MIC"), StringEnum::MICS);
@@ -120,14 +120,14 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert str(price) == "float64"
 
     # The same lookup backs the grammar, so a FIX declaration types a row.
-    row = DataType("struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>")
+    row = DataType("struct<ccy: Ccy, venue: Exchange, px: Price, at: UTCTimestamp>")
     assert row["venue"].dtype == DataType("mic")
     assert row["at"].dtype == DataType('datetime64(ns,"UTC")')
 
     # Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     # A FIX date is that day's midnight, so it resolves to an instant.
     assert DataType("utc_date_only") == DataType("datetime64(ns, UTC)")
-    assert DataType.logical_names()["currency"] == DataType("currency")
+    assert DataType.logical_names()["ccy"] == DataType("ccy")
 
     # Three of the names also prebuild the vocabulary their codes come from.
     assert StringEnum.prebuilt()["mic"] == StringEnum.prebuilt()["exchange"]
@@ -152,14 +152,14 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(price.toString(), 'float64')
 
     // The same lookup backs the grammar, so a FIX declaration types a row.
-    const row = DataType.from('struct<ccy: Currency, venue: Exchange, px: Price, at: UTCTimestamp>')
+    const row = DataType.from('struct<ccy: Ccy, venue: Exchange, px: Price, at: UTCTimestamp>')
     assert.equal(row.getField('venue').dtype.id, 'mic')
     assert.equal(row.getField('at').dtype.toString(), 'datetime64(ns,"UTC")')
 
     // Case, `_`, `-`, and spaces fold, exactly as elsewhere in the grammar.
     // A FIX date is that day's midnight, so it resolves to an instant.
     assert.equal(DataType.from('utc_date_only').id, 'datetime64')
-    assert.equal(DataType.logicalNames().currency.id, 'currency')
+    assert.equal(DataType.logicalNames().ccy.id, 'ccy')
 
     // Three of the names also prebuild the vocabulary their codes come from.
     assert.deepEqual(StringEnum.prebuilt().mic, StringEnum.prebuilt().exchange)
@@ -172,11 +172,11 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `currency`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
-| `Currency` | String | `currency` | ISO 4217 alpha-3, at most 3 bytes |
+| `Ccy` | String | `ccy` | ISO 4217 alpha-3, at most 3 bytes |
 | `Country` | String | `country` | ISO 3166-1 alpha-2, at most 2 bytes |
 | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, at most 4 bytes |
 | `cfi` | - | `cfi` | ISO 10962, at most 6 bytes |
@@ -665,7 +665,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - `into_arrow`, `into_arrow_ffi` consume the source -> clone first.
 - `DataType::from_arrow(currency.into_arrow())` -> `utf8`: an Arrow datatype has no metadata to name an extension with. `Field`, a schema, an IPC stream, and `into_arrow_ffi` all keep it, `dictionary(int32, <extension>)` included.
 - a logical name folds -> trimmed, ASCII case-insensitive, `_`, `-`, and spaces ignored.
-- prebuilt `currency`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
+- prebuilt `ccy`, `country`, `mic` -> codes in sorted order, so every process on this version answers the same integers.
 - prebuilt `mic` -> the common venues, not the whole ISO 10383 registry.
 - a JavaScript default -> a plain array, `Buffer`, `Map`, or `{ typeId, value }`.
 - JSON emit order -> `name`, `dtype`, `nullable`, `dictionary_id` when non-zero, `dictionary_is_ordered` when set, then `metadata`.

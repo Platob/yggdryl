@@ -342,7 +342,7 @@ mod limits {
                 // the number they charge is read from `code_width`, which owns
                 // it, rather than restated here.
                 DataType::Country
-                | DataType::Currency
+                | DataType::Ccy
                 | DataType::MicCode
                 | DataType::CfiCode
                 | DataType::IsinCode
@@ -462,7 +462,7 @@ mod limits {
                 // the number they charge is read from `code_width`, which owns
                 // it, rather than restated here.
                 DataType::Country
-                | DataType::Currency
+                | DataType::Ccy
                 | DataType::MicCode
                 | DataType::CfiCode
                 | DataType::IsinCode

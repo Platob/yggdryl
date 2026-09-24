@@ -224,7 +224,7 @@
   {
     "name": "posttradepaymentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -547,7 +547,7 @@
   {
     "name": "collateralreinvestmentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -597,7 +597,7 @@
   {
     "name": "fundingsourcecurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {
@@ -698,7 +698,7 @@
   {
     "name": "sidecollateralreinvestmentcurrency",
     "dtype": {
-      "type": "currency"
+      "type": "ccy"
     },
     "nullable": true,
     "metadata": {

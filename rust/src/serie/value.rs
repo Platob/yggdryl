@@ -10,7 +10,7 @@ use crate::budget::{
 };
 use crate::string::is_text_storage;
 use crate::{
-    BLOOMBERG_WIDTH, Bytes, BytesType, CFI_WIDTH, COUNTRY_WIDTH, CURRENCY_WIDTH, CUSIP_WIDTH,
+    BLOOMBERG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH,
     FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
     TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
@@ -168,7 +168,7 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
             string_array(dtype.string_parameters().expect("a string leaf"), values)?
         }
         DataType::Country => code_array::<COUNTRY_WIDTH>(dtype, values)?,
-        DataType::Currency => code_array::<CURRENCY_WIDTH>(dtype, values)?,
+        DataType::Ccy => code_array::<CCY_WIDTH>(dtype, values)?,
         DataType::MicCode => code_array::<MIC_WIDTH>(dtype, values)?,
         DataType::CfiCode => code_array::<CFI_WIDTH>(dtype, values)?,
         DataType::IsinCode => code_array::<ISIN_WIDTH>(dtype, values)?,
@@ -524,7 +524,7 @@ macro_rules! read_code {
 
 read_code!(
     read_country => Country,
-    read_currency => Currency,
+    read_ccy => Ccy,
     read_mic => MicCode,
     read_cfi => CfiCode,
     read_isin => IsinCode,
@@ -633,7 +633,7 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::LargeAsciiStringView => read_large_ascii_view,
         DataType::SizedUtf8String(_) | DataType::SizedAsciiString(_) => read_numbered_text,
         DataType::Country => read_country,
-        DataType::Currency => read_currency,
+        DataType::Ccy => read_ccy,
         DataType::MicCode => read_mic,
         DataType::CfiCode => read_cfi,
         DataType::IsinCode => read_isin,
@@ -805,7 +805,7 @@ pub(crate) fn value_from_array(
         | DataType::MimeType
         | DataType::MediaType
         | DataType::Country
-        | DataType::Currency
+        | DataType::Ccy
         | DataType::MicCode
         | DataType::CfiCode
         | DataType::IsinCode
