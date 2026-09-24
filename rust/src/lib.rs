@@ -25,7 +25,11 @@ mod fix_category;
 pub use fix_category::FixCategory;
 mod arithmetic;
 pub mod ascii;
+#[cfg(feature = "aws")]
+mod auth;
 pub mod avro;
+#[cfg(feature = "aws")]
+pub mod aws;
 pub mod bloomberg_code;
 pub mod boolean;
 pub(crate) mod budget;
@@ -127,6 +131,8 @@ mod variant;
 pub mod version;
 mod vocabulary;
 pub mod wkb;
+#[cfg(feature = "aws")]
+mod xml;
 pub mod xxhash;
 pub mod yaml;
 pub mod zip;
@@ -297,9 +303,34 @@ pub use version::*;
 pub mod internals {
     pub use crate::arithmetic::internals as arithmetic;
     pub use crate::arrow::rows::internals as arrow_rows;
+    #[cfg(feature = "aws")]
+    pub use crate::auth::environment::internals as auth_environment;
+    #[cfg(feature = "aws")]
+    pub use crate::auth::lease::internals as auth_lease;
+    #[cfg(feature = "aws")]
+    pub use crate::auth::report::internals as auth_report;
+    #[cfg(feature = "aws")]
+    pub use crate::auth::secret::internals as auth_secret;
     pub use crate::avro::arrow::internals as avro_arrow;
     pub use crate::avro::batch::internals as avro_batch;
     pub use crate::avro::schema::internals as avro_schema;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::container::internals as aws_container;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::credentials::internals as aws_credentials;
+    #[cfg(feature = "aws")]
+    #[cfg(feature = "s3")]
+    pub use crate::aws::environment::internals as aws_environment;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::profile::internals as aws_profile;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::session::internals as aws_session;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::sigv4::internals as aws_sigv4;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::sso::internals as aws_sso;
+    #[cfg(feature = "aws")]
+    pub use crate::aws::sts::internals as aws_sts;
     pub use crate::bytestream::internals as bytestream;
     pub use crate::charset::reader::internals as charset_reader;
     pub use crate::code::internals as code;
@@ -364,10 +395,6 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::answer::internals as s3_answer;
     #[cfg(feature = "s3")]
-    pub use crate::s3::aws::credentials::internals as s3_aws_credentials;
-    #[cfg(feature = "s3")]
-    pub use crate::s3::aws::profile::internals as s3_aws_profile;
-    #[cfg(feature = "s3")]
     pub use crate::s3::aws::xml::internals as s3_aws_xml;
     #[cfg(feature = "s3")]
     pub use crate::s3::azure::dialect::internals as s3_azure_dialect;
@@ -381,8 +408,6 @@ pub mod internals {
     pub use crate::s3::file::internals as s3_file;
     #[cfg(feature = "s3")]
     pub use crate::s3::options::internals as s3_options;
-    #[cfg(feature = "s3")]
-    pub use crate::s3::sigv4::internals as s3_sigv4;
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
@@ -403,6 +428,8 @@ pub mod internals {
     pub use crate::valuestream::internals as valuestream;
     pub use crate::variant::internals as variant;
     pub use crate::version::internals as version;
+    #[cfg(feature = "aws")]
+    pub use crate::xml::internals as xml;
     pub use crate::xxhash::internals as xxhash;
     pub use crate::zip::archive::internals as zip_archive;
     pub use crate::zip::entry::internals as zip_entry;

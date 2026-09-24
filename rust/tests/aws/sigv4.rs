@@ -1,4 +1,4 @@
-//! `rust/src/s3/sigv4.rs`: the request signing no caller can name.
+//! `rust/src/aws/sigv4.rs`: the request signing no caller can name.
 //!
 //! The signature is what every S3 request stands or falls on, and the only way
 //! to know it is right is to reproduce AWS's own published example vectors -
@@ -8,7 +8,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use yggdryl::internals::s3_sigv4::{
+use yggdryl::internals::aws_sigv4::{
     EMPTY_PAYLOAD_SHA256, Signer, amz_date, canonical_query, canonical_request, encode_key,
     encode_query_component, sha256_hex, string_to_sign,
 };
@@ -288,7 +288,7 @@ fn amz_date_renders_known_epochs_in_utc() {
         (4_107_542_400, "21000301T000000Z"),
     ];
     for (seconds, expected) in cases {
-        let (date, datetime) = amz_date(at(seconds));
+        let (date, datetime): (String, String) = amz_date(at(seconds));
         assert_eq!(datetime, expected);
         assert_eq!(date, &expected[..8]);
     }
@@ -310,7 +310,7 @@ fn the_signing_key_is_reused_within_a_day_and_rederived_across_days() {
         EMPTY_PAYLOAD_SHA256,
         at(MAY_24_2013),
     );
-    let (date, key) = cached(&signer).unwrap();
+    let (date, key): (String, [u8; 32]) = cached(&signer).unwrap();
     assert_eq!(date, "20130524");
     assert_eq!(key, signer.signing_key("20130524"));
     signer.sign(
@@ -332,7 +332,7 @@ fn the_signing_key_is_reused_within_a_day_and_rederived_across_days() {
         EMPTY_PAYLOAD_SHA256,
         at(MAY_24_2013 + 86_400),
     );
-    let (next_date, next_key) = cached(&signer).unwrap();
+    let (next_date, next_key): (String, [u8; 32]) = cached(&signer).unwrap();
     assert_eq!(next_date, "20130525");
     assert_ne!(next_key, key);
 }
@@ -411,97 +411,4 @@ fn accessors_answer_the_bound_credentials() {
     let signer = Signer::new("id", "secret", None, "eu-west-3");
     assert_eq!(signer.access_key_id(), "id");
     assert_eq!(signer.region(), "eu-west-3");
-}
-
-mod protocol {
-    use crate::mod_::{BUCKET, file, file_with, options, store};
-    use yggdryl::IOBase;
-    use yggdryl::internals::s3_options::signs_payload;
-    use yggdryl::internals::s3_sigv4::sha256_hex;
-    use yggdryl::s3::{AwsOptions, S3Options};
-
-    #[test]
-    fn every_request_carries_a_signature_over_the_headers_it_names() {
-        let store = store();
-        store.require_access_key(Some("AKIAIOSFODNN7EXAMPLE"));
-        let mut handle = file(&store, "lake/part.parquet");
-        handle.write_all_bytes(b"PAR1").expect("a signed write");
-
-        let recorded = store.requests();
-        let put = recorded.last().expect("the write");
-        let authorization = put
-            .headers
-            .iter()
-            .find(|(name, _)| name == "authorization")
-            .map(|(_, value)| value.clone())
-            .expect("an authorization header");
-        assert!(
-            authorization.starts_with("AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/"),
-            "{authorization}"
-        );
-        assert!(
-            authorization.contains("/us-east-1/s3/aws4_request"),
-            "{authorization}"
-        );
-        assert!(authorization.contains("SignedHeaders="), "{authorization}");
-        // The payload is signed by its real hash, so the store can verify it.
-        let payload_hash = put
-            .headers
-            .iter()
-            .find(|(name, _)| name == "x-amz-content-sha256")
-            .map(|(_, value)| value.clone())
-            .expect("a payload hash");
-        assert_eq!(payload_hash, sha256_hex(b"PAR1"));
-    }
-
-    #[test]
-    fn a_write_signs_its_payload_over_http_and_leaves_it_unsigned_over_tls() {
-        let store = store();
-        // The fixture endpoint is plain HTTP, where nothing but the hash would
-        // establish that the body arrived as it was sent.
-        let mut handle = file(&store, "lake/part.bin");
-        handle.write_all_bytes(b"AAPL,187.23").expect("a write");
-        let recorded = store.requests();
-        let put = recorded.last().expect("the write");
-        assert_eq!(
-            put.headers
-                .iter()
-                .find(|(name, _)| name == "x-amz-content-sha256")
-                .map(|(_, value)| value.as_str()),
-            Some(sha256_hex(b"AAPL,187.23").as_str()),
-        );
-
-        // Asking for the other policy sends the literal S3 accepts instead, which
-        // is what an HTTPS endpoint selects on its own: hashing a large value
-        // costs more than the rest of the request, and TLS already covers it.
-        store.clear_requests();
-        let mut unsigned = file_with(
-            "lake/unsigned.bin",
-            options(&store).with_aws(AwsOptions::default().with_payload_signing(false)),
-        );
-        unsigned.write_all_bytes(b"AAPL,187.23").expect("a write");
-        let recorded = store.requests();
-        let put = recorded.last().expect("the write");
-        assert_eq!(
-            put.headers
-                .iter()
-                .find(|(name, _)| name == "x-amz-content-sha256")
-                .map(|(_, value)| value.as_str()),
-            Some("UNSIGNED-PAYLOAD"),
-        );
-        // Either way the store received the bytes it was sent.
-        assert_eq!(
-            store.get(BUCKET, "lake/unsigned.bin").expect("the object"),
-            b"AAPL,187.23"
-        );
-
-        // The policy an unset value picks follows the endpoint's scheme.
-        let over_tls = S3Options::default().with_endpoint("https://s3.example.io");
-        assert!(!signs_payload(&over_tls, "https"));
-        assert!(signs_payload(&S3Options::default(), "http"));
-        assert!(signs_payload(
-            &over_tls.with_aws(AwsOptions::default().with_payload_signing(true)),
-            "https"
-        ));
-    }
 }

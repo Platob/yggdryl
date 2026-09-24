@@ -18,13 +18,12 @@
 
 use std::time::Duration;
 
-use super::aws::credentials::Credentials;
 use super::aws::options::{AwsOptions, Checksum};
-use super::aws::sts::AssumedRole;
 use super::azure::options::{AzureOptions, BlobType};
 use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
 use super::options::S3Options;
+use crate::aws::{AssumedRole, CredentialSource, Credentials, Sso};
 use crate::{Error, Result};
 
 impl S3Options {
@@ -41,7 +40,12 @@ impl S3Options {
     /// | anonymous | `anonymous` | | `anonymous` | `AWS_NO_SIGN_REQUEST` |
     /// | addressing | `path_style` | `s3.force-virtual-addressing` | `force_virtual_addressing` | `AWS_S3_FORCE_PATH_STYLE` |
     /// | timeouts | `timeout`, `connect_timeout` | `s3.request-timeout`, `s3.connect-timeout` | `request_timeout`, `connect_timeout` | |
-    /// | role | `role_arn`, `role_session_name`, `external_id` | `s3.role-arn` | `role_arn` | |
+    /// | profile | `profile` | | | `AWS_PROFILE` |
+    /// | role | `role_arn`, `role_session_name`, `external_id`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file` | `s3.role-arn` | `role_arn` | `AWS_ROLE_ARN` |
+    /// | sign-in | `sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session` | | | |
+    /// | AWS files | `config_file`, `shared_credentials_file`, `credential_process`, `ca_bundle` | | | `AWS_CONFIG_FILE` |
+    /// | AWS endpoints | `use_fips_endpoint`, `use_dualstack_endpoint`, `sts_regional_endpoints`, `sts_endpoint` | | | `AWS_USE_FIPS_ENDPOINT` |
+    /// | instance metadata | `ec2_metadata_disabled`, `ec2_metadata_service_endpoint`, `metadata_service_timeout`, `metadata_service_num_attempts` | | | `AWS_EC2_METADATA_DISABLED` |
     /// | encryption | `sse_type`, `sse_key`, `sse_md5` | `s3.sse.type`, `s3.sse.key` | | |
     /// | project | `project`, `user_project` | `gcs.project-id` | `project_id` | `GOOGLE_CLOUD_PROJECT` |
     /// | Google identity | `credentials_file`, `access_token` | `gcs.oauth2.token` | `credentials_file` | `GOOGLE_APPLICATION_CREDENTIALS` |
@@ -110,11 +114,16 @@ impl S3Options {
     ///
     /// The whole environment is swept rather than a list of variables being
     /// looked up, so every name [`Self::with_properties`] accepts is also an
-    /// environment variable: `AWS_REGION` and `AZURE_STORAGE_ACCOUNT_NAME`
-    /// because they are the stores' own spellings, `AWS_SSE_TYPE` and
-    /// `YGGDRYL_ROLE_ARN` because they are this crate's knobs said the same
-    /// way. Names it does not know are ignored, which is most of an
-    /// environment.
+    /// environment variable: `AZURE_STORAGE_ACCOUNT_NAME` because it is the
+    /// store's own spelling, `AWS_SSE_TYPE` and `YGGDRYL_ROLE_ARN` because
+    /// they are this crate's knobs said the same way. Names it does not know
+    /// are ignored, which is most of an environment. The variables the AWS
+    /// tools themselves read - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`,
+    /// `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest - are left to the
+    /// [`Session`](crate::aws::Session), which reads them with the
+    /// precedence those tools give them: a profile the environment names
+    /// does not displace the environment's own keys the way one a property
+    /// names does.
     ///
     /// Answers nothing when [`Self::with_environment`] is off.
     #[must_use]
@@ -124,6 +133,9 @@ impl S3Options {
         }
         let mut found: Vec<(String, String)> = std::env::vars()
             .filter_map(|(name, value)| {
+                if crate::aws::environment::is_native(&name) {
+                    return None;
+                }
                 let named = self
                     .environment_prefixes()
                     .iter()
@@ -172,7 +184,9 @@ impl S3Options {
         if self.credentials().is_none() && !self.anonymous() {
             if let Some(credentials) = ambient.credentials() {
                 self = self.with_credentials(credentials.clone());
-            } else if ambient.anonymous() {
+            } else if ambient.anonymous() && !self.session().states_identity() {
+                // An ambient `anonymous` never silences an identity the
+                // caller stated on the session.
                 self = self.with_anonymous(true);
             }
         }
@@ -216,10 +230,14 @@ impl S3Options {
         if self.container_deletion() == fallback.container_deletion() {
             self = self.with_container_deletion(ambient.container_deletion());
         }
+        let session = self.session().under(ambient.session());
         let aws = self.aws().clone().under(ambient.aws());
         let google = self.google().clone().under(ambient.google());
         let azure = self.azure().clone().under(ambient.azure());
-        self.with_aws(aws).with_google(google).with_azure(azure)
+        self.with_session(session)
+            .with_aws(aws)
+            .with_google(google)
+            .with_azure(azure)
     }
 
     /// The same, starting from the defaults.
@@ -340,10 +358,48 @@ impl S3Options {
                 parts.sse_key = Some(value.to_owned());
             }
 
-            // --- Amazon S3's own --------------------------------------------
-            "profile" | "profile_name" => {
-                parts.aws = parts.aws.clone().with_profile(value);
+            // --- who this process is to AWS ---------------------------------
+            "profile" | "profile_name" => parts.profile = Some(value.to_owned()),
+            "mfa_serial" | "role_mfa_serial" => parts.mfa_serial = Some(value.to_owned()),
+            "source_profile" | "role_source_profile" => {
+                parts.source_profile = Some(value.to_owned());
             }
+            "credential_source" | "role_credential_source" => {
+                parts.credential_source = Some(value.parse::<CredentialSource>()?);
+            }
+            "web_identity_token_file" | "role_web_identity_token_file" => {
+                parts.web_identity_token_file = Some(value.to_owned());
+            }
+            "credential_process" => parts.credential_process = Some(value.to_owned()),
+            "config_file" => parts.config_file = Some(value.to_owned()),
+            "shared_credentials_file" => parts.credentials_file = Some(value.to_owned()),
+            "ca_bundle" => parts.ca_bundle = Some(value.to_owned()),
+            "use_fips_endpoint" | "fips_endpoint" => parts.use_fips = Some(flag(name, value)?),
+            "use_dualstack_endpoint" | "dualstack_endpoint" => {
+                parts.use_dualstack = Some(flag(name, value)?);
+            }
+            "sts_regional_endpoints" => parts.sts_regional = Some(regional(name, value)?),
+            "ec2_metadata_disabled" | "metadata_disabled" => {
+                parts.metadata_disabled = Some(flag(name, value)?);
+            }
+            "ec2_metadata_service_endpoint"
+            | "metadata_service_endpoint"
+            | "ec2_metadata_endpoint" => {
+                parts.metadata_endpoint = Some(value.to_owned());
+            }
+            "metadata_service_timeout" | "ec2_metadata_service_timeout" => {
+                parts.metadata_timeout = Some(seconds(name, value)?);
+            }
+            "metadata_service_num_attempts" | "ec2_metadata_service_num_attempts" => {
+                parts.metadata_attempts = Some(count(name, value)?);
+            }
+            "sso_start_url" => parts.sso_start_url = Some(value.to_owned()),
+            "sso_region" => parts.sso_region = Some(value.to_owned()),
+            "sso_account_id" => parts.sso_account_id = Some(value.to_owned()),
+            "sso_role_name" => parts.sso_role_name = Some(value.to_owned()),
+            "sso_session" | "sso_session_name" => parts.sso_session = Some(value.to_owned()),
+
+            // --- Amazon S3's own --------------------------------------------
             "payload_signing" | "sign_payload" | "payload_signing_enabled" => {
                 parts.aws = parts.aws.clone().with_payload_signing(flag(name, value)?);
             }
@@ -353,7 +409,7 @@ impl S3Options {
                     .clone()
                     .with_requester_pays(requester(name, value)?);
             }
-            "checksum" | "checksum_algorithm" | "request_checksum_calculation" => {
+            "checksum" | "checksum_algorithm" => {
                 parts.aws = parts.aws.clone().with_checksum(value.parse::<Checksum>()?);
             }
             "role_arn" => parts.role_arn = Some(value.to_owned()),
@@ -491,6 +547,27 @@ struct Parts {
     role_duration: Option<Duration>,
     sts_endpoint: Option<String>,
     sts_region: Option<String>,
+    profile: Option<String>,
+    mfa_serial: Option<String>,
+    source_profile: Option<String>,
+    credential_source: Option<CredentialSource>,
+    web_identity_token_file: Option<String>,
+    credential_process: Option<String>,
+    config_file: Option<String>,
+    credentials_file: Option<String>,
+    ca_bundle: Option<String>,
+    use_fips: Option<bool>,
+    use_dualstack: Option<bool>,
+    sts_regional: Option<bool>,
+    metadata_disabled: Option<bool>,
+    metadata_endpoint: Option<String>,
+    metadata_timeout: Option<Duration>,
+    metadata_attempts: Option<u32>,
+    sso_start_url: Option<String>,
+    sso_region: Option<String>,
+    sso_account_id: Option<String>,
+    sso_role_name: Option<String>,
+    sso_session: Option<String>,
     sse_type: Option<String>,
     sse_key: Option<String>,
     sse_md5: Option<String>,
@@ -533,26 +610,8 @@ impl Parts {
             }
             options = options.with_credentials(credentials);
         }
-        let mut aws = self.aws;
-        if let Some(role_arn) = &self.role_arn {
-            let mut role = AssumedRole::new(role_arn);
-            if let Some(session) = &self.role_session {
-                role = role.with_session_name(session);
-            }
-            if let Some(external_id) = &self.external_id {
-                role = role.with_external_id(external_id);
-            }
-            if let Some(duration) = self.role_duration {
-                role = role.with_duration(duration);
-            }
-            if let Some(region) = &self.sts_region {
-                role = role.with_region(region);
-            }
-            if let Some(endpoint) = &self.sts_endpoint {
-                role = role.with_endpoint(endpoint);
-            }
-            aws = aws.with_assumed_role(role);
-        }
+        let session = self.session(options.session())?;
+        options = options.with_session(session);
         // An Entra ID application is three values or none of them, so it is
         // assembled here rather than one property at a time.
         let mut azure = self.azure;
@@ -574,9 +633,117 @@ impl Parts {
             options = options.with_encryption(encryption);
         }
         Ok(options
-            .with_aws(aws)
+            .with_aws(self.aws)
             .with_google(self.google)
             .with_azure(azure))
+    }
+
+    /// `session` with what was collected about AWS's own identity set on it.
+    fn session(&self, session: &crate::aws::Session) -> Result<crate::aws::Session> {
+        let mut session = session.clone();
+        if let Some(profile) = &self.profile {
+            session = session.with_profile(profile);
+        }
+        if let Some(command) = &self.credential_process {
+            session = session.with_credential_process(command);
+        }
+        if let Some(path) = &self.config_file {
+            session = session.with_config_file(path);
+        }
+        if let Some(path) = &self.credentials_file {
+            session = session.with_credentials_file(path);
+        }
+        if let Some(path) = &self.ca_bundle {
+            session = session.with_ca_bundle(path);
+        }
+        if let Some(fips) = self.use_fips {
+            session = session.with_use_fips_endpoint(fips);
+        }
+        if let Some(dualstack) = self.use_dualstack {
+            session = session.with_use_dualstack_endpoint(dualstack);
+        }
+        if let Some(regional) = self.sts_regional {
+            session = session.with_sts_regional_endpoints(regional);
+        }
+        if let Some(disabled) = self.metadata_disabled {
+            session = session.with_metadata_disabled(disabled);
+        }
+        if let Some(endpoint) = &self.metadata_endpoint {
+            session = session.with_metadata_endpoint(endpoint);
+        }
+        if let Some(timeout) = self.metadata_timeout {
+            session = session.with_metadata_timeout(timeout);
+        }
+        if let Some(attempts) = self.metadata_attempts {
+            session = session.with_metadata_attempts(attempts);
+        }
+        // An STS endpoint stated without a role still says where STS is.
+        if let (Some(endpoint), None) = (&self.sts_endpoint, &self.role_arn) {
+            session = session.with_service_endpoint_url("sts", endpoint);
+        }
+        if let Some(role_arn) = &self.role_arn {
+            let mut role = AssumedRole::new(role_arn);
+            if let Some(name) = &self.role_session {
+                role = role.with_session_name(name);
+            }
+            if let Some(external_id) = &self.external_id {
+                role = role.with_external_id(external_id);
+            }
+            if let Some(duration) = self.role_duration {
+                role = role.with_duration(duration);
+            }
+            if let Some(region) = &self.sts_region {
+                role = role.with_region(region);
+            }
+            if let Some(endpoint) = &self.sts_endpoint {
+                role = role.with_endpoint(endpoint);
+            }
+            if let Some(serial) = &self.mfa_serial {
+                role = role.with_mfa_serial(serial);
+            }
+            if let Some(source) = &self.source_profile {
+                role = role.with_source_profile(source);
+            }
+            if let Some(source) = self.credential_source {
+                role = role.with_credential_source(source);
+            }
+            if let Some(path) = &self.web_identity_token_file {
+                role = role.with_web_identity_token_file(path);
+            }
+            session = session.with_assumed_role(role);
+        }
+        // A sign-in is four values or none of them, so it is assembled here
+        // rather than one property at a time.
+        let named = [
+            ("sso_start_url", &self.sso_start_url),
+            ("sso_region", &self.sso_region),
+            ("sso_account_id", &self.sso_account_id),
+            ("sso_role_name", &self.sso_role_name),
+        ];
+        if self.sso_session.is_some() || named.iter().any(|(_, value)| value.is_some()) {
+            let missing: Vec<&str> = named
+                .iter()
+                .filter(|(_, value)| value.is_none())
+                .map(|(key, _)| *key)
+                .collect();
+            if !missing.is_empty() {
+                return Err(refusal(&format!(
+                    "an IAM Identity Center sign-in needs {}",
+                    missing.join(", ")
+                )));
+            }
+            let mut sso = Sso::new(
+                self.sso_start_url.as_deref().unwrap_or_default(),
+                self.sso_region.as_deref().unwrap_or_default(),
+                self.sso_account_id.as_deref().unwrap_or_default(),
+                self.sso_role_name.as_deref().unwrap_or_default(),
+            );
+            if let Some(name) = &self.sso_session {
+                sso = sso.with_session_name(name);
+            }
+            session = session.with_sso(sso);
+        }
+        Ok(session)
     }
 }
 
@@ -629,6 +796,15 @@ fn flag(name: &str, value: &str) -> Result<bool> {
         _ => Err(refusal(&format!(
             "expected a boolean for {name}, got {value}"
         ))),
+    }
+}
+
+/// Whether STS is reached in the region: `regional`, `legacy`, or a boolean.
+fn regional(name: &str, value: &str) -> Result<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "regional" => Ok(true),
+        "legacy" => Ok(false),
+        _ => flag(name, value),
     }
 }
 

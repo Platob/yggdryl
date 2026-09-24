@@ -4,8 +4,15 @@
 //! how long the client waits before trying again are all settled before a
 //! single request goes out - so they are pinned here, with no store to answer,
 //! beside what the requests themselves look like on the wire.
+//!
+//! On Amazon S3 the region, the endpoint and the addressing style also come
+//! from the [`Session`] the options carry - its profile, its environment, its
+//! FIPS and dual-stack switches - so those readings are pinned here too, each
+//! over a session whose files are text and whose environment is handed over,
+//! so nothing of the machine's own decides.
 
 use yggdryl::Url;
+use yggdryl::aws::Session;
 use yggdryl::internals::s3_client::{
     Client, DEFAULT_REGION, Endpoint, RETRY_BACKOFF, backoff, bucket_region_of,
     total_of_content_range,
@@ -19,6 +26,43 @@ fn url(text: &str) -> Url {
 /// Options that consult nothing outside the test.
 fn sealed() -> S3Options {
     S3Options::default().with_environment(false)
+}
+
+/// A session that reads nothing but the configuration file `config`, and
+/// consults no environment.
+///
+/// The options a client is built with seal a session they carry anyway when
+/// they consult no environment themselves; text needs no environment, so the
+/// profile it spells is read either way.
+fn profiled(config: &str) -> Session {
+    Session::new()
+        .with_environment(false)
+        .with_config_text(config)
+}
+
+/// Options that consult an environment, carrying a session whose environment
+/// is exactly `variables` and whose shared files are `config` and nothing -
+/// so what the AWS tools would read from the machine is what the test says.
+///
+/// The options sweep no prefix, so no variable of this process becomes a
+/// knob; and they are anonymous, so the Google and Azure halves of the client
+/// look for no identity of their own on the machine. Who signs plays no part
+/// in where a request goes.
+fn ambient(variables: &[(&str, &str)], config: &str) -> S3Options {
+    let session = Session::new()
+        .with_variables(variables.iter().copied())
+        .with_config_text(config)
+        .with_credentials_text("")
+        .with_metadata_disabled(true);
+    S3Options::default()
+        .with_environment_prefixes(std::iter::empty::<String>())
+        .with_anonymous(true)
+        .with_session(session)
+}
+
+/// The client `location` and `options` describe.
+fn client(location: &str, options: S3Options) -> Client {
+    Client::new(&url(location), options).expect("a client")
 }
 
 #[test]
@@ -102,6 +146,329 @@ fn explicit_credentials_beat_a_url_that_carries_its_own() {
         .expect("a signer")
         .expect("credentials");
     assert_eq!(signer, "other");
+}
+
+#[test]
+fn a_profile_that_asks_for_path_style_addresses_an_aws_location_in_the_path() {
+    let session =
+        profiled("[profile trading]\nregion = eu-west-3\ns3 =\n  addressing_style = path\n")
+            .with_profile("trading");
+    let path_style = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(session.clone()),
+    );
+    assert_eq!(path_style.region(), "eu-west-3");
+    assert_eq!(
+        path_style.host_header("trades"),
+        "s3.eu-west-3.amazonaws.com",
+        "the bucket leaves the host"
+    );
+    assert_eq!(
+        path_style.path("trades", "lake/part.parquet"),
+        "/trades/lake/part.parquet"
+    );
+
+    // The options' own choice wins over the profile's.
+    let explicit = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_path_style(false).with_session(session),
+    );
+    assert_eq!(
+        explicit.host_header("trades"),
+        "trades.s3.eu-west-3.amazonaws.com"
+    );
+
+    // And `virtual` is a choice too: it holds even for the dotted bucket that
+    // is otherwise kept in the path.
+    let virtual_hosted = client(
+        "s3://my.trades/part.parquet",
+        sealed().with_session(profiled(
+            "[default]\nregion = eu-west-3\ns3 =\n  addressing_style = virtual\n",
+        )),
+    );
+    assert_eq!(
+        virtual_hosted.host_header("my.trades"),
+        "my.trades.s3.eu-west-3.amazonaws.com"
+    );
+}
+
+#[test]
+fn a_session_asking_for_fips_or_dual_stack_reaches_that_published_host() {
+    let host = |session: Session| {
+        client(
+            "s3://trades/lake/part.parquet",
+            sealed().with_session(session),
+        )
+        .host_header("trades")
+    };
+    let stated = Session::new()
+        .with_environment(false)
+        .with_region("eu-west-3");
+    assert_eq!(
+        host(stated.with_use_fips_endpoint(true)),
+        "trades.s3-fips.eu-west-3.amazonaws.com",
+        "virtual hosted, on the FIPS host"
+    );
+    assert_eq!(
+        host(stated.with_use_dualstack_endpoint(true)),
+        "trades.s3.dualstack.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host(
+            stated
+                .with_use_fips_endpoint(true)
+                .with_use_dualstack_endpoint(true)
+        ),
+        "trades.s3-fips.dualstack.eu-west-3.amazonaws.com"
+    );
+
+    // The profile's own switches reach the same hosts: `use_fips_endpoint`
+    // at its top level, and the `s3` table's dual-stack and accelerate ones.
+    assert_eq!(
+        host(profiled(
+            "[default]\nregion = eu-west-3\nuse_fips_endpoint = true\n"
+        )),
+        "trades.s3-fips.eu-west-3.amazonaws.com"
+    );
+    assert_eq!(
+        host(profiled(
+            "[default]\nregion = eu-west-3\ns3 =\n  use_dualstack_endpoint = true\n"
+        )),
+        "trades.s3.dualstack.eu-west-3.amazonaws.com"
+    );
+    let accelerated = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(profiled(
+            "[default]\nregion = eu-west-3\ns3 =\n  use_accelerate_endpoint = true\n",
+        )),
+    );
+    assert_eq!(
+        accelerated.host_header("trades"),
+        "trades.s3-accelerate.amazonaws.com",
+        "acceleration has one host for every region"
+    );
+    assert_eq!(
+        accelerated.region(),
+        "eu-west-3",
+        "and still signs for the bucket's"
+    );
+}
+
+#[test]
+fn a_china_region_is_addressed_on_the_china_partition() {
+    let china = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(
+            Session::new()
+                .with_environment(false)
+                .with_region("cn-north-1"),
+        ),
+    );
+    assert_eq!(china.region(), "cn-north-1");
+    assert_eq!(
+        china.host_header("trades"),
+        "trades.s3.cn-north-1.amazonaws.com.cn",
+        "virtual hosted, because the partition's host is AWS's own"
+    );
+    assert_eq!(
+        china.path("trades", "lake/part.parquet"),
+        "/lake/part.parquet"
+    );
+}
+
+#[test]
+fn the_region_comes_from_the_sessions_profile_when_the_url_and_options_name_none() {
+    let session = profiled("[profile trading]\nregion = ap-southeast-2\n").with_profile("trading");
+    let from_profile = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(session.clone()),
+    );
+    assert_eq!(from_profile.region(), "ap-southeast-2");
+    assert_eq!(
+        from_profile.host_header("trades"),
+        "trades.s3.ap-southeast-2.amazonaws.com"
+    );
+
+    // A region the session states outright beats its profile's.
+    let stated = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(session.with_region("eu-central-1")),
+    );
+    assert_eq!(stated.region(), "eu-central-1");
+
+    // The location's own region comes ahead of the session's, and an explicit
+    // one ahead of both.
+    let from_url = client(
+        "s3://trades.s3.eu-west-3.amazonaws.com/lake/part.parquet",
+        sealed().with_session(session.clone()),
+    );
+    assert_eq!(from_url.region(), "eu-west-3");
+    let explicit = client(
+        "s3://trades.s3.eu-west-3.amazonaws.com/lake/part.parquet",
+        sealed().with_region("us-west-2").with_session(session),
+    );
+    assert_eq!(explicit.region(), "us-west-2");
+
+    // A profile the session names that neither file holds names no region,
+    // and the default stands.
+    let unwritten = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(
+            profiled("[profile other]\nregion = eu-west-1\n").with_profile("trading"),
+        ),
+    );
+    assert_eq!(unwritten.region(), DEFAULT_REGION);
+}
+
+#[test]
+fn options_that_consult_no_environment_seal_the_session_they_carry() {
+    // The session would read its region and its S3 endpoint out of the
+    // environment it was handed; the options say no environment decides, so
+    // neither does.
+    let session = Session::new()
+        .with_variables([
+            ("AWS_REGION", "eu-west-3"),
+            ("AWS_ENDPOINT_URL_S3", "http://localhost:9000"),
+        ])
+        .with_config_text("")
+        .with_credentials_text("");
+    let sealed_client = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(session),
+    );
+    assert_eq!(sealed_client.region(), DEFAULT_REGION);
+    assert_eq!(
+        sealed_client.host_header("trades"),
+        "trades.s3.us-east-1.amazonaws.com"
+    );
+    assert_eq!(sealed_client.scheme(), "https");
+}
+
+#[test]
+fn the_s3_endpoint_the_sessions_environment_names_is_the_one_addressed() {
+    // The service's own variable beats the generic one, as the AWS tools
+    // read them, and an endpoint that is not AWS's is addressed path style.
+    let named = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[
+                ("AWS_ENDPOINT_URL_S3", "http://localhost:9000"),
+                ("AWS_ENDPOINT_URL", "http://localhost:9999"),
+                ("AWS_REGION", "eu-west-3"),
+            ],
+            "",
+        ),
+    );
+    assert_eq!(named.scheme(), "http");
+    assert_eq!(named.host_header("trades"), "localhost:9000");
+    assert_eq!(
+        named.path("trades", "lake/part.parquet"),
+        "/trades/lake/part.parquet"
+    );
+    assert_eq!(named.region(), "eu-west-3");
+
+    // The generic one, when the service names none of its own.
+    let generic = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[("AWS_ENDPOINT_URL", "http://localhost:9999")], ""),
+    );
+    assert_eq!(generic.host_header("trades"), "localhost:9999");
+
+    // `AWS_DEFAULT_REGION` when `AWS_REGION` is unset, and
+    // `AWS_S3_FORCE_PATH_STYLE` out of the same environment.
+    let regional = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[
+                ("AWS_DEFAULT_REGION", "ap-south-1"),
+                ("AWS_S3_FORCE_PATH_STYLE", "true"),
+            ],
+            "",
+        ),
+    );
+    assert_eq!(regional.region(), "ap-south-1");
+    assert_eq!(
+        regional.host_header("trades"),
+        "s3.ap-south-1.amazonaws.com"
+    );
+    assert_eq!(
+        regional.path("trades", "lake/part.parquet"),
+        "/trades/lake/part.parquet"
+    );
+
+    // An explicit endpoint on the options wins over the environment's.
+    let explicit = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[("AWS_ENDPOINT_URL_S3", "http://localhost:9000")], "")
+            .with_endpoint("http://localhost:9500"),
+    );
+    assert_eq!(explicit.host_header("trades"), "localhost:9500");
+}
+
+#[test]
+fn an_endpoint_stated_on_a_session_is_honoured_by_options_that_consult_no_environment() {
+    let stated = client(
+        "s3://trades/lake/part.parquet",
+        sealed().with_session(
+            Session::new()
+                .with_environment(false)
+                .with_service_endpoint_url("s3", "http://localhost:9300/"),
+        ),
+    );
+    assert_eq!(stated.host_header("trades"), "localhost:9300");
+    assert_eq!(
+        stated.path("trades", "lake/part.parquet"),
+        "/trades/lake/part.parquet",
+        "a bare host is addressed path style"
+    );
+}
+
+#[test]
+fn the_profiles_services_section_names_the_s3_endpoint_unless_configured_ones_are_ignored() {
+    const CONFIG: &str = "[default]\nregion = ap-southeast-2\nendpoint_url = http://localhost:9100\n\
+                          services = lake\n\n[services lake]\ns3 =\n  endpoint_url = http://localhost:9200\n";
+
+    // The `[services]` entry for S3 beats the profile's `endpoint_url`.
+    let serviced = client("s3://trades/lake/part.parquet", ambient(&[], CONFIG));
+    assert_eq!(serviced.host_header("trades"), "localhost:9200");
+    assert_eq!(serviced.region(), "ap-southeast-2");
+
+    // Without one, the profile's `endpoint_url` serves every service.
+    let profiled_endpoint = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[], "[default]\nendpoint_url = http://localhost:9100\n"),
+    );
+    assert_eq!(profiled_endpoint.host_header("trades"), "localhost:9100");
+
+    // The environment's variable beats both files.
+    let variable = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[("AWS_ENDPOINT_URL_S3", "http://localhost:9000")], CONFIG),
+    );
+    assert_eq!(variable.host_header("trades"), "localhost:9000");
+
+    // And a process that ignores configured endpoints reaches the published
+    // host, whichever of the two says so.
+    let ignored = client(
+        "s3://trades/lake/part.parquet",
+        ambient(&[("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "true")], CONFIG),
+    );
+    assert_eq!(
+        ignored.host_header("trades"),
+        "trades.s3.ap-southeast-2.amazonaws.com"
+    );
+    let ignored_by_profile = client(
+        "s3://trades/lake/part.parquet",
+        ambient(
+            &[],
+            "[default]\nregion = ap-southeast-2\nendpoint_url = http://localhost:9100\n\
+             ignore_configured_endpoint_urls = true\n",
+        ),
+    );
+    assert_eq!(
+        ignored_by_profile.host_header("trades"),
+        "trades.s3.ap-southeast-2.amazonaws.com"
+    );
 }
 
 #[test]

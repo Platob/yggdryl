@@ -1,13 +1,12 @@
 //! The knobs that are Amazon S3's own.
 //!
-//! Everything here is a fact about S3 or about the AWS tools' configuration,
-//! and so has no counterpart on the other two stores: the shared configuration
-//! profile, whether a payload is hashed for the signature, the role a request
-//! is signed as, the storage class an object lands in, and who pays for a
-//! request. A knob all three stores have lives on
-//! [`S3Options`](super::super::S3Options) instead.
-
-use super::sts::AssumedRole;
+//! Everything here is a fact about an S3 request, and so has no counterpart
+//! on the other two stores: whether a payload is hashed for the signature,
+//! the storage class an object lands in, who pays for a request, and the
+//! checksum stored beside an object. A knob all three stores have lives on
+//! [`S3Options`](super::super::S3Options) instead, and who signs - the
+//! profile, the role, the sign-in - is the [`Session`](crate::aws::Session)
+//! the options carry.
 
 /// How this backend reaches Amazon S3 in particular.
 ///
@@ -16,18 +15,15 @@ use super::sts::AssumedRole;
 ///
 /// let options = S3Options::default().with_aws(
 ///     AwsOptions::default()
-///         .with_profile("trading")
 ///         .with_storage_class("INTELLIGENT_TIERING")
 ///         .with_requester_pays(true),
 /// );
-/// assert_eq!(options.aws().profile(), Some("trading"));
 /// assert_eq!(options.aws().storage_class(), Some("INTELLIGENT_TIERING"));
+/// assert!(options.aws().requester_pays());
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct AwsOptions {
-    profile: Option<String>,
     payload_signing: Option<bool>,
-    assumed_role: Option<AssumedRole>,
     storage_class: Option<String>,
     requester_pays: bool,
     checksum: Option<Checksum>,
@@ -123,13 +119,6 @@ impl std::str::FromStr for Checksum {
 }
 
 impl AwsOptions {
-    /// Read `profile` from the shared AWS files instead of `AWS_PROFILE`.
-    #[must_use]
-    pub fn with_profile(mut self, profile: impl Into<String>) -> Self {
-        self.profile = Some(profile.into());
-        self
-    }
-
     /// Sign the body of every write, or send it as `UNSIGNED-PAYLOAD`.
     ///
     /// Signing hashes the whole value with SHA-256 so the store can verify
@@ -141,18 +130,6 @@ impl AwsOptions {
     #[must_use]
     pub const fn with_payload_signing(mut self, signing: bool) -> Self {
         self.payload_signing = Some(signing);
-        self
-    }
-
-    /// Sign requests as `role` rather than as the keys that were found.
-    ///
-    /// The credential chain still answers, and what it answers is what signs
-    /// the *exchange*: one STS request trades those keys for the role's, and
-    /// the session it hands back is what reaches the container. It expires, so
-    /// it is traded again shortly before it does rather than per request.
-    #[must_use]
-    pub fn with_assumed_role(mut self, role: AssumedRole) -> Self {
-        self.assumed_role = Some(role);
         self
     }
 
@@ -184,19 +161,9 @@ impl AwsOptions {
         self
     }
 
-    /// The explicit profile name.
-    pub fn profile(&self) -> Option<&str> {
-        self.profile.as_deref()
-    }
-
     /// The explicit payload-signing choice.
     pub const fn payload_signing(&self) -> Option<bool> {
         self.payload_signing
-    }
-
-    /// The role requests are signed as, when one was named.
-    pub const fn assumed_role(&self) -> Option<&AssumedRole> {
-        self.assumed_role.as_ref()
     }
 
     /// The storage class writes ask for, when one was named.
@@ -216,14 +183,8 @@ impl AwsOptions {
 
     /// Fill from `ambient` every knob this one does not set for itself.
     pub(crate) fn under(mut self, ambient: &Self) -> Self {
-        if self.profile.is_none() {
-            self.profile = ambient.profile.clone();
-        }
         if self.payload_signing.is_none() {
             self.payload_signing = ambient.payload_signing;
-        }
-        if self.assumed_role.is_none() {
-            self.assumed_role = ambient.assumed_role.clone();
         }
         if self.storage_class.is_none() {
             self.storage_class = ambient.storage_class.clone();

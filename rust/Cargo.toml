@@ -25,7 +25,13 @@ iceberg = ["parquet", "dep:iceberg-official", "dep:uuid"]
 # local or schema-only consumer never pays. Every protocol is spoken directly -
 # SigV4, OAuth 2.0 bearer tokens, and Azure Shared Key over a synchronous
 # HTTP/1.1 client - so no SDK, runtime, or async executor rides in.
-s3 = ["dep:hmac", "dep:md-5", "dep:ring", "dep:sha2", "dep:ureq"]
+# Who this process is to AWS: the credential chain the AWS tools walk, the
+# shared configuration files, IAM Identity Center (SSO) sign-in, STS role
+# exchanges, and Signature Version 4. Not default for the same reason as
+# `s3`: it is the signed HTTPS client. `s3` implies it, because every S3
+# request signs with what it answers.
+aws = ["dep:hmac", "dep:ring", "dep:sha2", "dep:ureq"]
+s3 = ["aws", "dep:md-5"]
 # The crate's own modules, reachable by `rust/tests/` alone. Every test lives
 # in `tests/`, and the handful that pin something a caller cannot reach - a
 # signing step, a format reader, a canonical rewrite - turn this on. No
@@ -73,9 +79,10 @@ memchr = "2.7"
 quick-xml = { version = "=0.41.0", default-features = false }
 regex = "1.11"
 # RSASSA-PKCS1-v1_5 with SHA-256, for the JWT a Google service-account key
-# signs to obtain a token. The TLS stack this feature already compiles brings
-# `ring` in, so naming it costs no crate a build was not paying, and it reads
-# a PKCS#8 key directly - no second key parser.
+# signs to obtain a token, and SHA-1 for the file names the AWS tools key
+# their SSO and role caches by. The TLS stack these features already compile
+# brings `ring` in, so naming it costs no crate a build was not paying, and it
+# reads a PKCS#8 key directly - no second key parser.
 ring = { version = "0.17", optional = true }
 regex-automata = "0.4"
 regex-syntax = "0.8"

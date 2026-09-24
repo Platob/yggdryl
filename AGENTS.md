@@ -288,7 +288,7 @@ directions against an outside implementation.
 
 Every member has `src/`, `tests/`, `benchmarks/`; root owns pins and lints with
 `default-members = ["rust"]`; features are `default = []`, `parquet`,
-`iceberg` (implies `parquet`), `s3`. Examples live in docs - no `examples/`
+`iceberg` (implies `parquet`), `aws`, `s3` (implies `aws`). Examples live in docs - no `examples/`
 dir. The crate is flat: every type and every shared trait, enum or value is a
 root file, and `value/` - the contracts a datatype, a field and a value each
 owe the root that holds them - is the one folder among them; every
@@ -338,6 +338,9 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `utf8.rs`, `ascii.rs`, `cp1252.rs` | one root file per charset that has string leaves, each holding that charset's codec and its six leaves together. `utf8.rs`: the UTF-8 decode, transcribe, pending and fault rules under the `utf-8` name, and `Utf8String` through `SizedUtf8String` with `utf8()`, `large_utf8()`, `utf8_view()`, `large_utf8_view()`, `fixed_utf8(w)`, `sized_utf8(n)`. `ascii.rs`: the `ascii_len` scan, `decode`/`encode` and their `_into` forms, `text`, the `us-ascii` name, the `ascii_text`/`ascii_bytes`/`ascii_repertoire` helpers, the `ascii_packed`/`ascii_value`/`packed_width` pair the codes and `StringEnum` ride on, and the six ASCII leaves. `cp1252.rs`: a thin codec over `charset::single_byte` with `tables::CP1252` under the `windows-1252` name, and the six windows-1252 leaves. Each owns its leaves' `DataType` constructors, its `LEAVES` list, and the decode and encode that `StringType::read_text` and `StringType::encode` in `string.rs` dispatch to; only `ascii.rs` judges a repertoire (`ascii_repertoire`) and holds the `i128` packing; `Charset` and `StringType` dispatch to them and duplicate nothing |
 | `charset.rs` + `charset/` | the `Charset` vocabulary beside what every code page shares: `single_byte` and the generated `tables.rs` own the code pages, `utf16` owns UTF-16, `bom` the byte-order mark, `Decoder`/`Reader`/`Writer`/`sink` the chunked doors, `Transcoded` the decoding handle. The three charsets with string leaves are root files; every other code page reaches `single_byte` through `Charset` and is not a public module of its own |
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
+| `auth/` | what every identity provider shares, private and under the `aws` feature: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
+| `aws/` | who this process is to AWS, and where AWS is, for every consumer that signs an AWS request: `session.rs` the one door - `Session`, what a caller states, the rest resolved lazily once and cached, the credential chain walked in botocore's order with every configured-but-broken source recorded and passed over rather than failing the walk, a temporary set refreshed before it lapses and kept while a refresh fails until it has - `credentials.rs` the `Credentials` value and the JSON document the metadata services and a `credential_process` answer, `environment.rs` (under `s3`) the variables the session reads for itself and the S3 sweep leaves to it, `profile.rs` the `~/.aws/config` and `~/.aws/credentials` reading (`[profile x]`, `[sso-session x]`, `[services x]`, indented tables, the credentials file winning) and `Profile`, `sts.rs` `AssumedRole` with `AssumeRole`, `AssumeRoleWithWebIdentity` and the `~/.aws/cli/cache` the CLI shares, `sso.rs` the IAM Identity Center token cache, its refresh, the device sign-in and the portal exchange, `process.rs`, `container.rs` and `metadata.rs` the three remaining sources, `sigv4.rs` Signature Version 4 for every service; under the non-default `aws` feature, which `s3` implies |
+| `xml.rs` | the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element; each reader names its own vocabulary over it; private, under the `aws` feature with its first reader |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -1001,14 +1004,20 @@ with no SDK, runtime, or object-store layer.
 
 `Provider` is the sole dispatcher: one value says which store answers, and every
 place the three differ reads it and nothing else. A dialect owns only what its
-store spells for itself - `aws/` the credential chain, the STS exchange, the
-shared files and the S3 XML; `google/` the Application Default Credentials
-chain, the RS256 assertion, and the JSON API; `azure/` the Shared Key signature,
-the SAS and bearer paths, and the Blob XML. `sigv4.rs` and `xml.rs` are shared
-because Signature Version 4 and the `<Error>` document are not one store's
-alone; `answer.rs` holds what an answer *says* in shapes no store owns, so the
-transport, the retry, the staging model, the listing pipeline and the three
-roles are written once.
+store spells for itself - `aws/` the S3 request knobs and the S3 XML; `google/`
+the Application Default Credentials chain, the RS256 assertion, and the JSON
+API; `azure/` the Shared Key signature, the SAS and bearer paths, and the Blob
+XML. Who an S3 request signs as is not the dialect's: it is the root `aws/`
+module's `Session`, carried by `S3Options::with_session`, narrowed by what the
+options say explicitly (anonymous, a pair, a pair the location carries) and
+sealed by `with_environment(false)`; the client reads the region, the endpoint
+(`AWS_ENDPOINT_URL_S3`, the profile's `[services]` entry), the addressing
+style, the FIPS and dual-stack hosts and the payload-signing policy off it, and
+walks its chain once more when a store answers `ExpiredToken`. The S3 backend's
+`xml.rs` holds the `<Error>` document both XML stores answer with over the
+crate's root scanner; `answer.rs` holds what an answer *says* in shapes no store
+owns, so the transport, the retry, the staging model, the listing pipeline and
+the three roles are written once.
 
 `S3Options` holds what all three stores have; `AwsOptions`, `GoogleOptions`
 and `AzureOptions` hold what one has, so a knob has exactly one owner. A
