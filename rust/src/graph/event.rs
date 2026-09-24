@@ -130,7 +130,7 @@ impl Default for MarketElementData {
             currency: Ccy::none(),
             quantity: Decimal18::ZERO,
             unit: String::new(),
-            side: Side::unknown(),
+            side: Side::Unknown,
             isincode: None,
             cusipcode: None,
             sedolcode: None,
@@ -295,10 +295,11 @@ impl MarketElement for MarketElementData {
     fn set_isincode(&mut self, isincode: Option<IsinCode>) {
         self.isincode = isincode;
         if self.cusipcode.is_none() {
-            self.cusipcode = self
-                .isincode
-                .as_ref()
-                .and_then(super::instrument::embedded_cusip);
+            self.cusipcode = self.isincode.as_ref().and_then(|isin| {
+                crate::securityid::embedded(isin)
+                    .find(|id| id.sectype().as_str() == "CUSIP")
+                    .and_then(|id| CusipCode::new(id.code()).ok())
+            });
         }
     }
 
@@ -1085,7 +1086,7 @@ fn copy_market<T: MarketElement + ?Sized, E: MarketElement + ?Sized>(this: &mut 
     this.set_currency(other.get_currency().clone());
     this.set_quantity(other.get_quantity());
     this.set_unit(other.get_unit().to_owned());
-    this.set_side(other.get_side().clone());
+    this.set_side(*other.get_side());
     this.set_isincode(other.get_isincode().cloned());
     this.set_cusipcode(other.get_cusipcode().cloned());
     this.set_sedolcode(other.get_sedolcode().cloned());

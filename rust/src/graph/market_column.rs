@@ -226,7 +226,7 @@ impl MarketColumn {
             Self::Currency => Some(element.get_currency().clone().into()),
             Self::Quantity => Some(element.get_quantity().into()),
             Self::Unit => Some(Scalar::from(element.get_unit())),
-            Self::Side => Some(element.get_side().clone().into()),
+            Self::Side => Some((*element.get_side()).into()),
             Self::IsinCode => element.get_isincode().cloned().map(Scalar::from),
             Self::CusipCode => element.get_cusipcode().cloned().map(Scalar::from),
             Self::SedolCode => element.get_sedolcode().cloned().map(Scalar::from),
@@ -296,7 +296,7 @@ impl MarketColumn {
             }
             Self::Side => {
                 if let Some(held) = match value {
-                    Scalar::Side(held) => Some(held.clone()),
+                    Scalar::Side(held) => Some(*held),
                     other => other.as_str().and_then(Side::from_spelling),
                 } {
                     element.set_side(held);

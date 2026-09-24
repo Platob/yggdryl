@@ -755,7 +755,7 @@ mod structural_hash {
     use yggdryl::internals::hashing_stable::stable_hash_of;
     use yggdryl::{DataType, Scalar};
 
-    const PINNED: [(&str, u64); 99] = [
+    const PINNED: [(&str, u64); 100] = [
         ("utf8", 0x5ab6cab83f73e718),
         ("large_utf8", 0xc049e53a48cbfe3b),
         ("utf8_view", 0xf4813115041b88d1),
@@ -894,6 +894,9 @@ mod structural_hash {
             "map(field(\"entries\",struct(field(\"key\",ascii,nullable=false,metadata={}),field(\"value\",sized_binary(4),nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=false)",
             0x1d162143e847fd91,
         ),
+        // Appended when the unit code landed: the `Shape` arm sits at the end
+        // of that enum, so every row above keeps its value.
+        ("unit", 0x9c1c8fe3b6bd3cdb),
     ];
 
     #[test]

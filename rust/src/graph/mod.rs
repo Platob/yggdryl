@@ -858,7 +858,6 @@ pub mod column;
 pub mod element;
 pub mod event;
 pub mod execution;
-pub(crate) mod instrument;
 pub mod iterator;
 pub mod market_column;
 pub mod order;

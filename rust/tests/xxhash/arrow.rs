@@ -337,6 +337,10 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("0"), Scalar::from("6"), Scalar::Null]),
             ),
             (
+                Field::new("unit", DataType::Unit, true),
+                Scalar::from_sequence([Scalar::from("Shares"), Scalar::from("Lots"), Scalar::Null]),
+            ),
+            (
                 Field::new("uuid", DataType::Uuid, true),
                 Scalar::from_sequence([
                     DataType::uuid()

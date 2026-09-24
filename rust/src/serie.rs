@@ -552,6 +552,8 @@ pub enum Serie {
     BloombergCode(Arc<Utf8StringSerie>),
     /// A column of `FIGICode` values, stored as their UTF-8 text.
     FIGICode(Arc<Utf8StringSerie>),
+    /// A column of `Unit` values, stored as their UTF-8 text.
+    Unit(Arc<Utf8StringSerie>),
     /// A column of UUIDs, sixteen fixed bytes each.
     Uuid(Arc<FixedBytesSerie>),
     /// A column of series: 32-bit offsets over one item column.
@@ -664,6 +666,7 @@ macro_rules! column {
             Serie::SedolCode($column) => $answer,
             Serie::BloombergCode($column) => $answer,
             Serie::FIGICode($column) => $answer,
+            Serie::Unit($column) => $answer,
             Serie::Uuid($column) => $answer,
             Serie::Serie($column) => $answer,
             Serie::SerieView($column) => $answer,
@@ -929,6 +932,10 @@ macro_rules! column_mut {
                 $answer
             }
             Serie::FIGICode(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Unit(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1348,6 +1355,7 @@ impl Leaf for Utf8StringSerie {
             DataType::SedolCode => Serie::SedolCode(Arc::new(self)),
             DataType::BloombergCode => Serie::BloombergCode(Arc::new(self)),
             DataType::FIGICode => Serie::FIGICode(Arc::new(self)),
+            DataType::Unit => Serie::Unit(Arc::new(self)),
             _ => Serie::Utf8String(Arc::new(self)),
         }
     }
@@ -1372,7 +1380,8 @@ impl Leaf for Utf8StringSerie {
             | Serie::CusipCode(held)
             | Serie::SedolCode(held)
             | Serie::BloombergCode(held)
-            | Serie::FIGICode(held) => Some(held.as_ref()),
+            | Serie::FIGICode(held)
+            | Serie::Unit(held) => Some(held.as_ref()),
             _ => None,
         }
     }
@@ -1397,7 +1406,8 @@ impl Leaf for Utf8StringSerie {
             | Serie::CusipCode(held)
             | Serie::SedolCode(held)
             | Serie::BloombergCode(held)
-            | Serie::FIGICode(held) => Some(Arc::make_mut(held)),
+            | Serie::FIGICode(held)
+            | Serie::Unit(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -2919,6 +2929,7 @@ impl Serie {
                 Arc::make_mut(mine).append(theirs)
             }
             (Self::FIGICode(mine), Self::FIGICode(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Unit(mine), Self::Unit(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Uuid(mine), Self::Uuid(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Serie(mine), Self::Serie(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::SerieView(mine), Self::SerieView(theirs)) => Arc::make_mut(mine).append(theirs),

@@ -2402,7 +2402,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 46] = [
+    let seeds: [(DataTypeId, Scalar); 47] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2446,6 +2446,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
+        (DataTypeId::Unit, Scalar::from("Shares")),
         (
             DataTypeId::Uuid,
             Scalar::from("123e4567-e89b-12d3-a456-426614174000"),
@@ -4066,5 +4067,89 @@ fn instrument_codes_construct_and_classify_without_allocating() {
     });
     free("CFI inference", || {
         assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+    });
+}
+
+#[test]
+fn idmap_reads_and_inline_inserts_allocate_nothing() {
+    use yggdryl::IdMap;
+    assert_eq!(std::mem::size_of::<IdMap>(), 56);
+    let mut ids = IdMap::new();
+    ids.insert("ACCOUNT", "ACC-1").unwrap();
+    ids.insert("user", "U-1").unwrap();
+    free("an IdMap read of a held key", || {
+        assert_eq!(ids.get(black_box("account")), Some("ACC-1"));
+    });
+    free("an IdMap read of an absent key", || {
+        assert_eq!(ids.get(black_box("desk")), None);
+    });
+    free("an IdMap read of a key no door accepts", || {
+        assert_eq!(ids.get(black_box("caf\u{e9}")), None);
+    });
+    free("an IdMap first_of", || {
+        assert_eq!(
+            ids.first_of(black_box(&["desk", "user"])),
+            Some(("USER", "U-1"))
+        );
+    });
+    // A 12-byte key and a 10-byte value are one 23-byte entry, the widest
+    // SmolStr holds inline, into the second inline slot of the map.
+    free("an inline IdMap insert", || {
+        let mut ids = IdMap::new();
+        assert!(ids.insert("ZONE", "Z").unwrap());
+        assert!(
+            ids.insert(black_box("accountident"), black_box("ABCDEFGHIJ"))
+                .unwrap()
+        );
+        assert_eq!(ids.len(), 2);
+        black_box(&ids);
+    });
+}
+
+#[test]
+fn securityid_construction_is_inline_for_every_checked_code() {
+    use yggdryl::{SecType, SecurityId, SecurityIds};
+    assert_eq!(std::mem::size_of::<SecurityId>(), 24);
+    for (key, code) in [
+        ("ISIN", "US0378331005"),
+        ("CUSIP", "037833100"),
+        ("SEDOL", "0263494"),
+        ("FIGI", "BBG000B9XRY4"),
+        ("WKN", "716460"),
+        ("VALOR", "3886335"),
+        ("BLOOMBERG", "AAPL US Equity"),
+    ] {
+        let sectype = SecType::read(key).unwrap();
+        free(&format!("constructing {key}:{code}"), || {
+            let id = SecurityId::new(black_box(sectype.clone()), black_box(code)).unwrap();
+            assert!(id.is_inline());
+            assert_eq!(id.sectype().as_str(), key);
+            black_box(id.code());
+        });
+    }
+    let bloomberg = SecType::read("A").unwrap();
+    let widest = "B".repeat(32);
+    costs("constructing a 32-byte Bloomberg identifier", 1, || {
+        let id = SecurityId::new(bloomberg.clone(), black_box(widest.as_str())).unwrap();
+        assert!(!id.is_inline());
+        black_box(id);
+    });
+    assert!(
+        SecurityId::new(bloomberg.clone(), &"B".repeat(33)).is_err(),
+        "33 bytes are refused"
+    );
+    let heap = SecurityId::new(bloomberg, &widest).unwrap();
+    free("cloning a heap Bloomberg identifier", || {
+        black_box(heap.clone());
+    });
+
+    let mut ids = SecurityIds::default();
+    ids.insert(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap());
+    ids.insert(heap.clone());
+    free("a SecurityIds read through every spelling", || {
+        assert_eq!(ids.get(black_box("4")), Some("US0378331005"));
+        assert_eq!(ids.get(black_box("isin")), Some("US0378331005"));
+        assert_eq!(ids.get(black_box("bbgsymb")), Some(widest.as_str()));
+        assert_eq!(ids.get(black_box("sedol")), None);
     });
 }

@@ -186,6 +186,9 @@ pub enum DataTypeId {
     BloombergCode = 0x7b,
     /// ANSI X9.145 Financial Instrument Global Identifier, twelve ASCII bytes.
     FIGICode = 0x7c,
+    /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
+    /// thirty-two ASCII bytes.
+    Unit = 0x7d,
     // Uuid: 0x80..0x8f
     /// One 128-bit universally unique identifier.
     Uuid = 0x81,
@@ -223,7 +226,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 84] = [
+    pub const ALL: [Self; 85] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -293,6 +296,7 @@ impl DataTypeId {
         Self::SedolCode,
         Self::BloombergCode,
         Self::FIGICode,
+        Self::Unit,
         Self::Uuid,
         Self::Serie,
         Self::LargeSerie,
@@ -366,6 +370,7 @@ impl DataTypeId {
             Self::Side => "side",
             Self::State => "state",
             Self::TimeInForce => "timeinforce",
+            Self::Unit => "unit",
             Self::Uuid => "uuid",
             Self::LargeBinaryView => "large_binary_view",
             Self::SizedBinary => "sized_binary",
@@ -642,7 +647,7 @@ impl DataTypeId {
     /// for a CUSIP, ten for a state, twelve for an ISIN, and thirty-two for
     /// a Bloomberg identifier - the one whose width is only a bound, because
     /// a ticker, a market and a yellow key have no fixed length between
-    /// them. It is a
+    /// them - and for a unit, which takes the same bound. It is a
     /// maximum, not a layout - a code stores as the text it is - and it is
     /// what the value rule holds a cell to and what
     /// [`crate::DataType::ascii_packed`] pads into.
@@ -659,7 +664,7 @@ impl DataTypeId {
             Self::CusipCode => Some(9),
             Self::State => Some(10),
             Self::IsinCode | Self::FIGICode => Some(12),
-            Self::BloombergCode => Some(32),
+            Self::BloombergCode | Self::Unit => Some(32),
             _ => None,
         }
     }

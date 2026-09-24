@@ -896,7 +896,8 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => {
+        | D::TimeInForce
+        | D::Unit => {
             if value.is_code() && value.id() == dtype.id() {
                 return Ok((value.clone(), false));
             }
@@ -928,6 +929,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Side => Scalar::Side(crate::Side::read(text)?),
                 D::State => Scalar::State(crate::State::read(text)?),
                 D::TimeInForce => Scalar::TimeInForce(crate::TimeInForce::new(text)?),
+                D::Unit => Scalar::Unit(crate::Unit::new(text)?),
                 _ => unreachable!("registered code matched above"),
             };
             Ok((canonical, true))
@@ -1720,7 +1722,8 @@ fn validate_dtype_value(
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => match ascii_bytes(value) {
+        | D::TimeInForce
+        | D::Unit => match ascii_bytes(value) {
             // A side and a state are read by their spelling, which may be
             // longer than the value it names; the width holds the value.
             Some(bytes) if matches!(dtype, D::Side | D::State) => ascii_text_sized(None, bytes)

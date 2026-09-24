@@ -4731,11 +4731,64 @@ impl Scalar
   pub const fn figi() -> Self
   pub type FIGICodeField = FieldOf<FIGICodeType>;
 
+### yggdryl::idmap  [rust/src/idmap.rs]  (identifiers keyed by name: the accounts, users and alternate ids a market states beside its instrument codes)
+  pub struct IdMap(SmallVec<[SmolStr; 2]>)  (a small sorted map of ASCII values under upper-cased ASCII keys; one entry per key, `[key len][KEY][value]` in one buffer inline up to 23 bytes; keys 1 to 32 bytes folded to upper case on every door, values trimmed 1 to 64 bytes; `null`, `none`, `n/a`, `[n/a]` and empty add nothing; 56 bytes; Clone, Debug, Default, Eq, PartialEq, Hash, Display `{KEY=value, ...}`)
+  pub fn new() -> Self
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn get(&self, key: &str) -> Option<&str>  (binary search after folding the key on the stack; nothing allocates)
+  pub fn contains_key(&self, key: &str) -> bool
+  pub fn insert(&mut self, key: &str, value: &str) -> Result<bool>  (fill only: false when the key is held or the value states nothing; refusals are `InvalidRecord` located on the key, naming the rule)
+  pub fn set(&mut self, key: &str, value: &str) -> Result<bool>  (replace; true when the map changed; a value that states nothing changes nothing)
+  pub fn remove(&mut self, key: &str) -> Option<SmolStr>  (the value)
+  pub fn iter(&self) -> impl ExactSizeIterator<Item = (&str, &str)> + DoubleEndedIterator  (key order)
+  pub fn merge(&mut self, other: &Self) -> bool  (linear union, this side wins; whether anything was added)
+  pub fn first_of(&self, keys: &[&str]) -> Option<(&str, &str)>  (the first of `keys` held, as the key held and its value)
+  pub fn clear(&mut self)
+  pub fn dtype() -> DataType  (a sorted map of required utf8 keys to required utf8 values)
+  pub fn to_scalar(&self) -> Scalar  (a sorted-map scalar)
+  pub fn from_scalar(scalar: &Scalar) -> Result<Self>  (refuses anything but a mapping, and a duplicate, unsorted, null, null-like or non-text key or value, each with a located `InvalidRecord`)
+
+### yggdryl::securityid  [rust/src/securityid.rs]  (security identifiers: the source that names an instrument, the code it gives, the sorted set a market states, the national number an ISIN embeds, and what one ordered lifecycle learns between them)
+  pub struct SecType(SmolStr)  (upper-cased ASCII 1 to 32 bytes; the thirty-three FIX `SecurityIDSource(22)` sources are `KNOWN`, any other key is kept upper-cased; `TICKER` is never a source; Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Display)
+  pub const KNOWN: [(&'static str, char); 33]  (key and one-character code, in the code set's order: CUSIP 1 .. DTI Y)
+  pub fn read(text: &str) -> Result<Self>  (a one-character code unfolded, a known key in any case, a code-set name folded, or any other ASCII text upper-cased; refusals located on the text, `TICKER` pointed at `set_ticker`)
+  pub fn from_field_name(name: &str) -> Option<Self>  (a leading `#` dropped, the name folded; `[security] + alias + [code | id | number]` where the alias is a known key or a code-set name; `ticker`, `symbol`, `symbolticker` and `leg*`, `underlying*`, `contra*`, `related*`, `benchmark*` name none)
+  pub fn fix_source(&self) -> Option<char>
+  pub fn from_fix_source(code: char) -> Option<Self>
+  pub fn as_str(&self) -> &str
+  pub fn is_known(&self) -> bool
+  pub fn max_code_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FIGI 12, WKN 6, VALOR 9, ISOCCY 3, ISOCTRY 2, `BLOOMBERG_WIDTH` 32 otherwise)
+  pub fn validate_code(&self, code: &str) -> Result<()>  (the checked code's own constructor for ISIN, CUSIP, SEDOL and FIGI; WKN six of `[0-9A-HJ-NP-Z]`; VALOR one to nine digits without a leading zero; BLOOMBERG keeps case and inner spaces; otherwise printable ASCII within the width; no source takes an empty or null-like code)
+  pub struct SecurityId(SmolStr)  (one buffer: a known source is one tag byte, its index in `KNOWN` plus one, an unknown source `0x7F`, one length byte and the key; the code follows; every byte ASCII; 24 bytes, inline up to 23; Clone, Debug, Eq, Hash, PartialEq, Display `KEY:CODE`, Ord on the source then the code, never the tag)
+  pub fn new(key: SecType, code: &str) -> Result<Self>  (the code trimmed and validated by its source; a case-folding source's code is held upper-cased)
+  pub fn sectype(&self) -> SecType  (a known source comes from the table, no allocation)
+  pub fn code(&self) -> &str
+  pub fn is_inline(&self) -> bool
+  pub struct SecurityIds(SmallVec<[SecurityId; 2]>)  (the identifiers an instrument is stated under, strictly sorted by source, one code per source; `Deref<Target = [SecurityId]>`, `IntoIterator` by reference; 56 bytes; Clone, Debug, Default, Eq, PartialEq, Hash)
+  pub fn get(&self, key: &str) -> Option<&str>  (through `SecType::read`, so `get("4") == get("isin")`)
+  pub fn get_id(&self, key: &str) -> Option<&SecurityId>
+  pub fn contains_key(&self, key: &str) -> bool
+  pub fn insert(&mut self, id: SecurityId) -> bool  (fill)
+  pub fn set(&mut self, id: SecurityId) -> bool  (replace; true when the set changed)
+  pub fn remove(&mut self, key: &SecType) -> Option<SecurityId>
+  pub fn merge(&mut self, other: &Self) -> bool  (two-pointer union, this side wins; whether anything was added)
+  pub fn iter(&self) -> std::slice::Iter<'_, SecurityId>
+  pub fn len(&self) -> usize
+  pub fn is_empty(&self) -> bool
+  pub fn dtype() -> DataType  (`IdMap::dtype`)
+  pub fn to_scalar(&self) -> Scalar
+  pub fn from_scalar(scalar: &Scalar) -> Result<Self>  (as `IdMap::from_scalar`, each source read through `SecType::read` and each code validated by it)
+  pub fn embedded(isin: &IsinCode) -> impl Iterator<Item = SecurityId>  (the national number a canonical ISIN carries: US and CA a CUSIP in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a SEDOL in positions 4 to 11, DE behind `000` a WKN in positions 5 to 11, CH and LI a Valor number in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
+
 ### yggdryl::side  [rust/src/side.rs]
-  pub struct Side(SmolStr)  (one validated code; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
-  pub fn unknown() -> Self
-  pub fn is_bid(&self) -> bool
-  pub fn is_ask(&self) -> bool
+  pub enum Side  (#[repr(u8)], one byte: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd` in FIX `Side(54)` code order; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  (`read` over any text)
+  pub fn as_str(&self) -> &'static str  (the stored spelling, `BUY`, `SSHORT`, `UNKNOWN`)
+  pub const fn storage(&self) -> &'static SmolStr
+  pub const fn fix_code(&self) -> Option<char>  (`1`..=`9`, `A`..=`H`; `None` for `Unknown`)
+  pub const fn is_bid(&self) -> bool
+  pub const fn is_ask(&self) -> bool
   pub fn read(spelling: &str) -> Result<Self>
   pub fn from_spelling(spelling: &str) -> Option<Self>
   pub type SideField = FieldOf<SideType>;
@@ -4755,7 +4808,17 @@ impl Scalar
 
 ### yggdryl::timeinforce  [rust/src/timeinforce.rs]
   pub struct TimeInForce(SmolStr)  (one validated code; `TimeInForceType` marks its field, `TimeInForceField` is `FieldOf<TimeInForceType>`)
+  pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming `TimeInForce(59)`)
+  pub fn from_spelling(spelling: &str) -> Option<Self>  (the code unfolded, else the shipped name folded, else the value as stated up to eight ASCII bytes; stores the code)
+  pub const TIMEINFORCE_CODES: [(&str, &str); 13]  (the shipped `config/fix/codesets/timeinforcecodeset.json`, code and name, in code order)
   pub type TimeInForceField = FieldOf<TimeInForceType>;
+
+### yggdryl::unit  [rust/src/unit.rs]
+  pub struct Unit(SmolStr)  (one validated code; `UnitType` marks its field, `UnitField` is `FieldOf<UnitType>`)
+  pub fn none() -> Self
+  pub fn is_none(&self) -> bool
+  pub const fn unit() -> Self
+  pub type UnitField = FieldOf<UnitType>;
 
 ### yggdryl::code  [rust/src/code.rs]  (CodeValue, the contract every registered code answers, is under yggdryl::value)
   macro_rules! code_leaf  (the validated newtype and its Display)

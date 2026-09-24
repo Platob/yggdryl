@@ -352,7 +352,8 @@ mod limits {
                 | DataType::FIGICode
                 | DataType::Side
                 | DataType::State
-                | DataType::TimeInForce => {
+                | DataType::TimeInForce
+                | DataType::Unit => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }
@@ -472,7 +473,8 @@ mod limits {
                 | DataType::FIGICode
                 | DataType::Side
                 | DataType::State
-                | DataType::TimeInForce => {
+                | DataType::TimeInForce
+                | DataType::Unit => {
                     self.add_offsets(rows, 4)?;
                     self.add_fixed_rows(rows, dtype.code_width().unwrap_or_default())?;
                 }

@@ -171,6 +171,7 @@ nav:
       - Side: types/codes/side.md
       - State: types/codes/state.md
       - Time in force: types/codes/timeinforce.md
+      - Unit: types/codes/unit.md
     - Nested:
       - types/nested/index.md
       - Struct: types/nested/struct.md

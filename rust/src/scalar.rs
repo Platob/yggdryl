@@ -66,7 +66,7 @@ use crate::value::Children;
 use crate::version::Version;
 use crate::{
     BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce, decimal,
+    State, TimeInForce, Unit, decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -300,6 +300,8 @@ pub enum Scalar {
     Variant(crate::Variant),
     /// ANSI X9.145 Financial Instrument Global Identifier.
     FIGICode(FIGICode),
+    /// The unit a quantity is stated in.
+    Unit(Unit),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -736,6 +738,7 @@ impl<'de> Deserialize<'de> for Scalar {
             Variant(Arc<[u8]>, Arc<[u8]>),
             #[serde(rename = "figi")]
             FIGICode(SmolStr),
+            Unit(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -786,6 +789,9 @@ impl<'de> Deserialize<'de> for Scalar {
                 .map_err(serde::de::Error::custom),
             StructuralWire::FIGICode(value) => crate::FIGICode::new(value)
                 .map(Self::FIGICode)
+                .map_err(D::Error::custom),
+            StructuralWire::Unit(value) => crate::Unit::new(value)
+                .map(Self::Unit)
                 .map_err(D::Error::custom),
             StructuralWire::SedolCode(value) => crate::SedolCode::new(value)
                 .map(Self::SedolCode)
@@ -1038,7 +1044,8 @@ impl Ord for Scalar {
             | Self::CusipCode(_)
             | Self::SedolCode(_)
             | Self::BloombergCode(_)
-            | Self::FIGICode(_) => code_key(self).cmp(&code_key(other)),
+            | Self::FIGICode(_)
+            | Self::Unit(_) => code_key(self).cmp(&code_key(other)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
             Self::Timezone(left) => same_kind!(Self::Timezone(right) => left.cmp(right)),
@@ -1136,7 +1143,8 @@ impl Hash for Scalar {
             | Self::CusipCode(_)
             | Self::SedolCode(_)
             | Self::BloombergCode(_)
-            | Self::FIGICode(_) => code_key(self).hash(state),
+            | Self::FIGICode(_)
+            | Self::Unit(_) => code_key(self).hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
             Self::Timezone(value) => value.hash(state),
@@ -1223,6 +1231,7 @@ macro_rules! code_scalars {
             | $crate::Scalar::SedolCode(_)
             | $crate::Scalar::BloombergCode(_)
             | $crate::Scalar::FIGICode(_)
+            | $crate::Scalar::Unit(_)
     };
 }
 
@@ -1338,7 +1347,8 @@ const fn value_rank(value: &Scalar) -> u8 {
         | Scalar::CusipCode(_)
         | Scalar::SedolCode(_)
         | Scalar::BloombergCode(_)
-        | Scalar::FIGICode(_) => 18,
+        | Scalar::FIGICode(_)
+        | Scalar::Unit(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
         Scalar::Timezone(_) => 21,
@@ -1421,6 +1431,7 @@ impl Scalar {
             Self::SedolCode(_) => DataTypeId::SedolCode,
             Self::BloombergCode(_) => DataTypeId::BloombergCode,
             Self::FIGICode(_) => DataTypeId::FIGICode,
+            Self::Unit(_) => DataTypeId::Unit,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
             Self::Timezone(_) => DataTypeId::Timezone,
@@ -1498,6 +1509,7 @@ impl Scalar {
             Self::SedolCode(_) => DataTypeId::SedolCode.as_str(),
             Self::BloombergCode(_) => DataTypeId::BloombergCode.as_str(),
             Self::FIGICode(_) => DataTypeId::FIGICode.as_str(),
+            Self::Unit(_) => DataTypeId::Unit.as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
             Self::Timezone(_) => "timezone",
@@ -1758,6 +1770,7 @@ impl Scalar {
             Self::SedolCode(value) => Some(value.storage()),
             Self::BloombergCode(value) => Some(value.storage()),
             Self::FIGICode(value) => Some(value.storage()),
+            Self::Unit(value) => Some(value.storage()),
             _ => None,
         }
     }
@@ -2010,6 +2023,7 @@ impl Scalar {
             | Self::SedolCode(_)
             | Self::BloombergCode(_)
             | Self::FIGICode(_)
+            | Self::Unit(_)
             | Self::Uuid(_)
             | Self::Version(_)
             | Self::Url(_)

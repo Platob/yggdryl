@@ -17,9 +17,9 @@ A code is not a string with a charset - a currency is ISO 4217 the way a [URL](.
 | Storage | The text itself: nothing padded, nothing to trim, so a column dictionary-encodes and carries string statistics like any other text |
 | Identity | The extension *name*, never the storage: `yggdryl.ccy` over `utf8` is a currency, and the same `utf8` under `yggdryl.string` or under no name at all is the text it is |
 | Value rank | The twelve share one value rank, so what separates two codes of the same bytes is the identity their datatypes sort by: `Side("BUY")` and `TimeInForce("BUY")` are two values |
-| Rust only | `DataType::CODES`, the twelve leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
+| Rust only | `DataType::CODES`, the thirteen leaf value types, `CodeValue` and its `merge_with`, `Scalar::code_storage` and `Scalar::is_code` |
 
-The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the twelve is then one file of its own, holding its datatype, its field marker and its value in that order.
+The contract every registered code answers lives in `rust/src/code.rs`: the `CodeValue` trait - `WIDTH`, `as_str`, `storage`, `merge_with` - and the two crate-internal builders `code_leaf!` and `code_value!` that a code file declares its value with. Each of the thirteen is then one file of its own, holding its datatype, its field marker and its value in that order.
 
 ## Pages
 
@@ -37,6 +37,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 | [Side](side.md) | FIX `Side(54)`, read by spelling | 8 | `yggdryl.side` |
 | [State](state.md) | A ranked lifecycle over FIX and a scheduler | 10 | `yggdryl.state` |
 | [TimeInForce](timeinforce.md) | FIX `TimeInForce(59)`, the wire value | 8 | `yggdryl.timeinforce` |
+| [Unit](unit.md) | FIX `UnitOfMeasure(996)`, the text it is | 32 | `yggdryl.unit` |
 
 ## What every code answers
 

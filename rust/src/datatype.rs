@@ -285,6 +285,9 @@ pub enum DataType {
     BloombergCode,
     /// ANSI X9.145 Financial Instrument Global Identifier.
     FIGICode,
+    /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
+    /// thirty-two ASCII bytes.
+    Unit,
 }
 
 impl DataType {
@@ -399,6 +402,7 @@ impl DataType {
             Self::Side => DataTypeId::Side,
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
+            Self::Unit => DataTypeId::Unit,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::Url => DataTypeId::Url,
@@ -768,6 +772,7 @@ enum Shape<'a> {
     SedolCode,
     BloombergCode,
     FIGICode,
+    Unit,
 }
 
 impl<'a> Shape<'a> {
@@ -840,6 +845,7 @@ impl<'a> Shape<'a> {
             D::SedolCode => Self::SedolCode,
             D::BloombergCode => Self::BloombergCode,
             D::FIGICode => Self::FIGICode,
+            D::Unit => Self::Unit,
         }
     }
 }
@@ -967,6 +973,7 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::BloombergCode => 64,
         DataType::Urn => 65,
         DataType::FIGICode => 66,
+        DataType::Unit => 68,
     }
 }
 
@@ -1226,7 +1233,8 @@ mod arrow {
                 | R::FIGICode
                 | R::Side
                 | R::State
-                | R::TimeInForce => code::code_arrow_storage(self)?,
+                | R::TimeInForce
+                | R::Unit => code::code_arrow_storage(self)?,
                 R::Version => VersionType::arrow_storage(),
                 R::Url | R::Urn => UriType::arrow_storage(),
                 R::Timezone => TimezoneType::arrow_storage(),

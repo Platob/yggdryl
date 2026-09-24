@@ -8,8 +8,8 @@
 //! [`DataType`].
 //!
 //! Some names resolve to their own datatype: `ccy`, `country`, `mic`,
-//! `cfi`, `side`, `state`, and `timeinforce`. These registered codes carry an
-//! identity as well as their storage width.
+//! `cfi`, `side`, `state`, `timeinforce`, and `unit`. These registered codes
+//! carry an identity as well as their storage width.
 //!
 //! The vocabulary follows the FIX Latest datatype table, plus `mic` -
 //! ISO 10383's name for what FIX calls `Exchange`. The dictionary generator
@@ -29,6 +29,7 @@
 //! | `Exchange`, `mic` | String | `mic` | ISO 10383 MIC, exactly 4 bytes |
 //! | `cfi` | - | `cfi` | ISO 10962, exactly 6 bytes |
 //! | `Side` | char | `side` | a code set the standard declares, 4 bytes |
+//! | `UnitOfMeasure` | String | `unit` | the unit a quantity is stated in, at most 32 bytes |
 //! | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 //! | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 //! | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |
@@ -133,6 +134,8 @@ impl DataType {
         // is a word the Arrow or SQL grammar owns.
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),
+        // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.
+        ("unit", DataType::Unit),
         // The rest are names over a fixed US-ASCII width, which is all they
         // need.
         ("language", fixed_ascii(2)),

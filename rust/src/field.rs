@@ -21,7 +21,7 @@ use crate::{
     Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType, MimeTypeType,
     NullType, RunEndType, SedolCodeType, SerieType, SideType, StateType, StringType, StructType,
     TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UriType, UuidType, VariantType, VersionType,
+    UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1641,6 +1641,7 @@ field_leaves! {
     [SedolCode] => SedolCodeField / SedolCodeType,
     [BloombergCode] => BloombergCodeField / BloombergCodeType,
     [FIGICode] => FIGICodeField / FIGICodeType,
+    [Unit] => UnitField / UnitType,
 }
 
 // A field compares and hashes as the leaf it holds. Two fields of different

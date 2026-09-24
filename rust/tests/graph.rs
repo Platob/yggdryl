@@ -10,9 +10,6 @@ mod column;
 mod element;
 #[path = "graph/execution.rs"]
 mod execution;
-#[cfg(feature = "internals")]
-#[path = "graph/instrument.rs"]
-mod instrument;
 #[path = "graph/iterator.rs"]
 mod iterator;
 #[path = "graph/market_column.rs"]

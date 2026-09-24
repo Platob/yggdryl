@@ -12,7 +12,7 @@ use crate::string::is_text_storage;
 use crate::{
     BLOOMBERG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH,
     FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
-    TIMEINFORCE_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    TIMEINFORCE_WIDTH, UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -179,6 +179,7 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
         DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
+        DataType::Unit => code_array::<UNIT_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
         DataType::Version => Arc::new(StringArray::from(
             values
@@ -535,6 +536,7 @@ read_code!(
     read_side => Side,
     read_state => State,
     read_time_in_force => TimeInForce,
+    read_unit => Unit,
 );
 
 /// Emit one reader per unnumbered leaf in text or binary storage.
@@ -644,6 +646,7 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::Side => read_side,
         DataType::State => read_state,
         DataType::TimeInForce => read_time_in_force,
+        DataType::Unit => read_unit,
         DataType::Version => read_version,
         DataType::Url => read_url,
         DataType::Urn => read_urn,
@@ -815,7 +818,8 @@ pub(crate) fn value_from_array(
         | DataType::FIGICode
         | DataType::Side
         | DataType::State
-        | DataType::TimeInForce => cell!(StringArray, text_reading(dtype)?),
+        | DataType::TimeInForce
+        | DataType::Unit => cell!(StringArray, text_reading(dtype)?),
         DataType::Serie(child) => {
             list_value(child, downcast::<ListArray>(array)?.value(index).as_ref())?
         }

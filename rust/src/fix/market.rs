@@ -570,7 +570,7 @@ fn trade_execution(
     }
 
     let mut event = base.clone();
-    event.set_side(side.clone());
+    event.set_side(side);
     if let Some(value) = entry_decimal(occurrence, 1009, path(1009, "SideLastQty"))? {
         event.set_lastqty(Some(value));
         event.set_quantity(value);
@@ -953,7 +953,7 @@ fn build_book_operation(
             .side
             .as_deref()
             .and_then(Side::from_spelling)
-            .unwrap_or_else(Side::unknown),
+            .unwrap_or(Side::Unknown),
     };
     if let Some(unix) = entry_unix(entry, event.get_currunix(), &path)? {
         if msgtype == "W" {

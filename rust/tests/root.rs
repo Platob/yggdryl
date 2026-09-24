@@ -76,6 +76,8 @@ mod floating;
 mod geospatial;
 #[path = "root/gzip.rs"]
 mod gzip;
+#[path = "root/idmap.rs"]
+mod idmap;
 #[path = "root/int256.rs"]
 mod int256;
 #[path = "root/integer.rs"]
@@ -122,12 +124,16 @@ mod regex;
 mod scalar;
 #[path = "root/scheme.rs"]
 mod scheme;
+#[path = "root/securityid.rs"]
+mod securityid;
 #[path = "root/sedol_code.rs"]
 mod sedol_code;
 #[path = "root/serde.rs"]
 mod serde;
 #[path = "root/serie.rs"]
 mod serie;
+#[path = "root/side.rs"]
+mod side;
 #[path = "root/state.rs"]
 mod state;
 #[path = "root/string.rs"]
@@ -148,6 +154,8 @@ mod timezone;
 mod typed;
 #[path = "root/union.rs"]
 mod union;
+#[path = "root/unit.rs"]
+mod unit;
 #[path = "root/utf8.rs"]
 mod utf8;
 #[path = "root/uuid.rs"]

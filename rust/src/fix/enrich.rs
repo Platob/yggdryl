@@ -81,9 +81,9 @@ use std::vec;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
-use crate::graph::instrument::InstrumentCodes;
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator};
+use crate::securityid::SecurityIdRegistry;
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar, State, StructType, Uuid};
 
 use super::msg::FixMsg;
@@ -1029,7 +1029,7 @@ impl Event for LifecycleMessage {
 /// missing instrument codes learned only from messages already observed.
 struct Prepared {
     source: vec::IntoIter<FixMsg>,
-    codes: InstrumentCodes,
+    codes: SecurityIdRegistry,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -1043,7 +1043,7 @@ impl Prepared {
         let capacity = source.len().min(4_096);
         Self {
             source: source.into_iter(),
-            codes: InstrumentCodes::default(),
+            codes: SecurityIdRegistry::default(),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -1058,7 +1058,7 @@ impl Iterator for Prepared {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            self.codes.enrich(&mut message);
+            crate::securityid::enrich(&mut self.codes, &mut message);
             return Some(message.into());
         }
     }

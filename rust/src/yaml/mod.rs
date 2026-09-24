@@ -741,6 +741,7 @@ fn is_plain_key(key: &Scalar) -> bool {
             | Scalar::SedolCode(_)
             | Scalar::BloombergCode(_)
             | Scalar::FIGICode(_)
+            | Scalar::Unit(_)
             | Scalar::Uuid(_)
             | Scalar::Version(_)
             | Scalar::Url(_)

@@ -59,7 +59,7 @@ use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
     BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
     MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
-    code_refusal, recognized_arrow_extension,
+    UNIT_WIDTH, code_refusal, recognized_arrow_extension,
 };
 use crate::{BytesType, DataType, Field, Scalar};
 
@@ -2519,6 +2519,13 @@ impl ArrayCastPlan {
                     budget,
                 )?,
                 DataType::TimeInForce => ingest_code_array::<TIMEINFORCE_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Unit => ingest_code_array::<UNIT_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

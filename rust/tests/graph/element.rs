@@ -1483,7 +1483,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
     );
     assert_eq!(bare.get_currency(), &Ccy::none());
     assert_eq!(bare.get_unit(), "");
-    assert_eq!(bare.get_side(), &Side::unknown());
+    assert_eq!(bare.get_side(), &Side::Unknown);
 
     // One walk reads all three traits through the market event object, and
     // the timed readings are the market event's too.
@@ -1509,7 +1509,7 @@ fn a_market_element_answers_its_five_facts_and_is_still_an_event() {
 fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let mut first = trade(10);
     first.set_currency(Ccy::none());
-    first.set_side(Side::unknown());
+    first.set_side(Side::Unknown);
     first.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
     first.set_isincode(Some(IsinCode::new("US0378331005").expect("an ISIN")));
     first.finalize();
@@ -2120,7 +2120,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
 
     // A bid alone is a party willing to pay: a buy at the bid.
     let mut bid = MarketEventData::at(at(10));
-    assert_eq!(bid.get_side(), &Side::unknown());
+    assert_eq!(bid.get_side(), &Side::Unknown);
     bid.set_bidpx(Some(decimal("101.5")));
     bid.set_bidqty(Some(Decimal18::from_int(200)));
     bid.set_bidcurrency(Some(currency("USD")));
@@ -2157,7 +2157,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     two.set_bidpx(Some(decimal("101")));
     two.set_askpx(Some(decimal("102")));
     two.fill_market();
-    assert_eq!(two.get_side(), &Side::unknown());
+    assert_eq!(two.get_side(), &Side::Unknown);
     assert_eq!(two.get_price(), Decimal18::ZERO);
 
     // A side the element states is its own, whatever lane it quotes: a
@@ -2175,7 +2175,7 @@ fn a_single_sided_quote_names_its_side_and_fills_the_market_from_its_lane() {
     traded.set_lastpx(Some(decimal("100")));
     traded.set_bidpx(Some(decimal("99")));
     traded.fill_market();
-    assert_eq!(traded.get_side(), &Side::unknown());
+    assert_eq!(traded.get_side(), &Side::Unknown);
     assert_eq!(traded.get_price(), decimal("100"));
 
     // Filling twice changes nothing the first run did not.
@@ -2207,7 +2207,7 @@ fn a_quote_following_another_says_its_own_side_from_its_own_lanes() {
     let two = quote(20, Some("102"), Some("103"))
         .with_previous(&first)
         .expect("the next quote");
-    assert_eq!(two.get_side(), &Side::unknown(), "two lanes name no side");
+    assert_eq!(two.get_side(), &Side::Unknown, "two lanes name no side");
     assert_eq!(two.get_price(), Decimal18::ZERO);
 
     let offer = quote(30, None, Some("104"))

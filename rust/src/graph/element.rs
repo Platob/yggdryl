@@ -1774,16 +1774,17 @@ pub trait MarketElement: Element {
         Self: Sized,
     {
         if self.get_cusipcode().is_none() {
-            if let Some(cusip) = self
-                .get_isincode()
-                .and_then(super::instrument::embedded_cusip)
-            {
+            if let Some(cusip) = self.get_isincode().and_then(|isin| {
+                crate::securityid::embedded(isin)
+                    .find(|id| id.sectype().as_str() == "CUSIP")
+                    .and_then(|id| CusipCode::new(id.code()).ok())
+            }) {
                 self.set_cusipcode(Some(cusip));
             }
         }
         // Only a quote: an element pricing itself - an order at its price, a
         // trade at its last - is about that, and a lane beside it is context.
-        if self.get_side() == &Side::unknown()
+        if self.get_side() == &Side::Unknown
             && self.get_price() == Decimal18::ZERO
             && self.get_lastpx().is_none()
             && self.get_avgpx().is_none()
@@ -2295,8 +2296,8 @@ fn chain_market<E: MarketElement + ?Sized>(this: &mut E, previous: &E) -> bool {
     // names it and two name none - so the chain's is not its to take.
     if lanes_stated(this) == (false, false) {
         changed |= moved(
-            this.get_side().clone(),
-            better(this.get_side().clone(), previous.get_side(), false),
+            *this.get_side(),
+            better(*this.get_side(), previous.get_side(), false),
             |side| this.set_side(side),
         );
     }
@@ -2522,8 +2523,8 @@ fn merge_market<E: MarketElement + ?Sized>(this: &mut E, other: &E, later: bool)
         |currency| this.set_currency(currency),
     );
     changed |= moved(
-        this.get_side().clone(),
-        better(this.get_side().clone(), other.get_side(), later),
+        *this.get_side(),
+        better(*this.get_side(), other.get_side(), later),
         |side| this.set_side(side),
     );
     changed |= moved(

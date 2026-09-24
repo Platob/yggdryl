@@ -1394,7 +1394,7 @@ impl FixMsg {
             event.set_exprtime(exprtime);
         }
         event.set_tradable(tradable);
-        event.set_side(side.unwrap_or_else(Side::unknown));
+        event.set_side(side.unwrap_or(Side::Unknown));
         event.set_currency(currency.unwrap_or_else(Ccy::none));
         event.set_unit(unit.unwrap_or_default());
         event.set_tif(tif);

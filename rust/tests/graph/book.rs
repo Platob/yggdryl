@@ -1461,7 +1461,7 @@ fn decimal_means_do_not_overflow_representable_results() {
 #[test]
 fn a_failed_iterator_group_emits_only_the_error() {
     let mut invalid = operation("quote", "IBM", "BAD", 1, "Buy", "99", 1, "New");
-    invalid.set_side(Side::unknown());
+    invalid.set_side(Side::Unknown);
     // The bid lane its buy filled would name that side again: an operation
     // with no side is one quoting no single lane either.
     invalid.set_bidpx(None);

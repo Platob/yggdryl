@@ -63,7 +63,7 @@ use crate::metadata::{FIELD_ENUM_KEY, parse_string_enum};
 use crate::parser::Parser;
 use crate::{
     BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 
 use crate::parser;
@@ -507,22 +507,23 @@ pub(crate) mod casts {
             )?
         };
         let source = downcast::<StringArray>(text.as_ref())?;
-        // The column is the target's own storage once every cell passes; a cell
-        // that fails is an error when strict, and under `safe` a null the
-        // rebuild below writes. Nothing is copied when the column already holds
-        // what the code promises, which is what a column written as this code
-        // always does.
-        let mut every_cell_passes = true;
+        // The column is the target's own storage once every cell reads as
+        // itself; a cell that reads as another spelling - a side's name for
+        // its stored value - or fails is what the rebuild below writes, an
+        // error when strict and under `safe` a null. Nothing is copied when
+        // the column already holds what the code promises, which is what a
+        // column written as this code always does.
+        let mut every_cell_reads_as_itself = true;
         for index in 0..source.len() {
-            if is_exposed(exposure, index)
-                && source.is_valid(index)
-                && code_cell::<WIDTH>(field, index, source.value(index).as_bytes(), safe)?.is_none()
-            {
-                every_cell_passes = false;
-                break;
+            if is_exposed(exposure, index) && source.is_valid(index) {
+                let cell = source.value(index);
+                if code_cell::<WIDTH>(field, index, cell.as_bytes(), safe)? != Some(cell) {
+                    every_cell_reads_as_itself = false;
+                    break;
+                }
             }
         }
-        if every_cell_passes {
+        if every_cell_reads_as_itself {
             return Ok(text);
         }
         code_text_array::<WIDTH>(field, source.len(), safe, exposure, budget, |index| {
@@ -583,6 +584,16 @@ pub(crate) mod casts {
             Ok(text) => text,
             Err(error) => return refused(error.to_string()),
         };
+        // A side is read by its spelling and the column holds the explicit
+        // value the spelling names: `Buy` and `1` land as `BUY`, and a cell
+        // that names no side is refused here exactly as the scalar door
+        // refuses it, never stored.
+        if matches!(field.dtype(), DataType::Side) {
+            return match crate::Side::read(text) {
+                Ok(side) => Ok(Some(side.as_str())),
+                Err(error) => refused(error.to_string()),
+            };
+        }
         // A securities identifier carries its own check, and a column of them
         // holds the canonical spelling: what a cast lets in is what a read
         // answers, so the check digit and the case are settled here rather
@@ -672,6 +683,7 @@ impl DataType {
         ("timeinforce", DataType::TimeInForce, TIMEINFORCE_WIDTH),
         ("bloomberg", DataType::BloombergCode, BLOOMBERG_WIDTH),
         ("figi", DataType::FIGICode, FIGI_WIDTH),
+        ("unit", DataType::Unit, UNIT_WIDTH),
     ];
 }
 
@@ -2394,13 +2406,17 @@ impl StringEnum {
         "95TIMEOUT",
     ];
 
-    /// FIX's `TimeInForceCodeSet`, the union across every version, sorted.
+    /// FIX's `TimeInForceCodeSet` as the shipped registry declares it, sorted.
     ///
     /// The wire values rather than the names, exactly as [`Self::SIDES`] is:
     /// a code set's value is what a message carries, and the name is what a
-    /// dictionary translates it to.
+    /// dictionary translates it to. The names are
+    /// [`TIMEINFORCE_CODES`](crate::TIMEINFORCE_CODES), which
+    /// [`TimeInForce::from_spelling`](crate::TimeInForce::from_spelling)
+    /// reads a name through; a value outside the listing is held, never
+    /// refused.
     pub const TIMESINFORCE: &'static [&'static str] = &[
-        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D",
+        "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C",
     ];
 
     /// The prebuilt vocabularies, by the logical name that spells them.

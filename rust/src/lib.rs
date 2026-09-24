@@ -64,6 +64,7 @@ pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
+pub mod idmap;
 pub(crate) mod int256;
 pub mod integer;
 pub mod interval;
@@ -100,6 +101,7 @@ pub mod runend;
 pub mod s3;
 mod scalar;
 mod scheme;
+pub mod securityid;
 pub mod sedol_code;
 pub(crate) mod serde;
 pub mod serie;
@@ -118,6 +120,7 @@ pub mod txhash;
 mod typed;
 pub mod union;
 mod union_mode;
+pub mod unit;
 pub mod uri;
 pub mod utf8;
 pub mod uuid;
@@ -236,6 +239,7 @@ pub use floating::*;
 pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
+pub use idmap::IdMap;
 pub use integer::*;
 pub use interval::*;
 pub use isin_code::*;
@@ -252,6 +256,7 @@ pub use pretty::Pretty;
 pub use runend::*;
 pub use scalar::Scalar;
 pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
+pub use securityid::{SecType, SecurityId, SecurityIds};
 pub use sedol_code::*;
 pub use serie::*;
 pub use side::*;
@@ -266,6 +271,7 @@ pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};
 pub use typed::{FieldRecord, FieldScalar, UncheckedFieldScalar};
 pub use union::*;
+pub use unit::*;
 pub use uuid::*;
 pub(crate) use uuid::{
     UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
@@ -324,7 +330,6 @@ pub mod internals {
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
     pub use crate::fs::local::internals as fs_local;
-    pub use crate::graph::instrument::internals as graph_instrument;
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
@@ -386,6 +391,7 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
+    pub use crate::securityid::internals as securityid;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;

@@ -208,12 +208,13 @@ A FIX `Side(54)` wire code, the specification's own name, and the stored value a
 | `8` | `CROSS` | `G` | `BORROW` |
 | | | `H` | `SELLUND` |
 
-`UNKNOWN` is the eighteenth stored value: a side stated as none. `Side::from_spelling` answers the value or nothing; `Side::read` is the same reading as a refusal. Rust only - the bindings reach the identical reading through the value door above. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these values through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
+`UNKNOWN` is the eighteenth stored value: a side stated as none, `Side::Unknown`, the variant a `Side` defaults to. A `Side` is a one-byte enum whose variants stand in FIX's code order, `Side::Buy` through `Side::SellUnd`; `as_str` is the stored spelling, `fix_code` the wire character and `None` for `Unknown`. `Side::from_spelling` answers the value or nothing; `Side::read` is the same reading as a refusal. Rust only - the bindings reach the identical reading through the value door above. A dialect's own code maps as its dictionary says, because FIX's `Side(54)` reaches these values through the name the [code set it reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives each code.
 
 ```rust
 use yggdryl::Side;
 
-assert_eq!(Side::from_spelling("1").unwrap().as_str(), "BUY");
+assert_eq!(Side::from_spelling("1"), Some(Side::Buy));
+assert_eq!(Side::Buy.fix_code(), Some('1'));
 assert_eq!(Side::from_spelling("SellShort").unwrap().as_str(), "SSHORT");
 assert_eq!(Side::from_spelling("sshort").unwrap().as_str(), "SSHORT");
 assert_eq!(Side::from_spelling("H").unwrap().as_str(), "SELLUND");
@@ -222,7 +223,7 @@ assert!(Side::from_spelling("X").is_none());
 // `read` is the same reading as a refusal naming the spelling.
 assert_eq!(Side::read("Buy")?.as_str(), "BUY");
 assert!(Side::read("X").is_err());
-assert_eq!(Side::unknown().as_str(), "UNKNOWN");
+assert_eq!(Side::Unknown.as_str(), "UNKNOWN");
 ```
 
 ## Which lane of a quote
@@ -239,7 +240,7 @@ assert!(!Side::read("SellShort")?.is_bid());
 // A cross, `OPPOSITE` and a side stated as none take no lane.
 assert!(!Side::read("Cross")?.is_bid() && !Side::read("Cross")?.is_ask());
 assert!(!Side::read("Opposite")?.is_ask());
-assert!(!Side::unknown().is_bid() && !Side::unknown().is_ask());
+assert!(!Side::Unknown.is_bid() && !Side::Unknown.is_ask());
 ```
 
 ## `UNKNOWN` states no side
@@ -249,7 +250,7 @@ assert!(!Side::unknown().is_bid() && !Side::unknown().is_ask());
 ```rust
 use yggdryl::{CodeValue, Side};
 
-assert_eq!(Side::unknown().merge_with(&Side::read("1")?).as_str(), "BUY");
+assert_eq!(Side::Unknown.merge_with(&Side::read("1")?).as_str(), "BUY");
 // Anything stated stands.
 assert_eq!(Side::read("BUY")?.merge_with(&Side::read("SELL")?).as_str(), "BUY");
 ```
