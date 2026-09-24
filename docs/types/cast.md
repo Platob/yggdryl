@@ -7,9 +7,9 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Key | Value |
 | --- | --- |
 | Owns | `ArrowCastPlan`, `ArrowCastOptions`, `Nullability`, `Representation`; `validate_value` and `canonicalize_value` for rows |
-| Ways in | `Serie::cast` for a column in hand; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
+| Ways in | `Serie::cast` for a column in hand; `ChunkedSerie::cast` for chunked columns, one plan over every chunk, and `ArrowCastPlan::apply_chunked` for a held one; `Serie::from_arrow_array`, `from_arrow_batch`, `from_arrow_reader` for Arrow buffers; `SerieReader::from_arrow_reader` for a stream; an `ArrowCastPlan` held and applied wherever one cast repeats |
 | Target | The field, never the source. A `DataType` target is its required `value` field (`dtype.required_field("value")`), so a refusal names `$.value` |
-| Returns | A `Serie` under the target field. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
+| Returns | A `Serie` under the target field - a `ChunkedSerie` of as many chunks from `ChunkedSerie::cast` and `apply_chunked`. A typed read is a narrowing of it: `as_int64().values()`, `as_utf8()`, `as_date32()`, `as_fixed_bytes()` |
 | Exact input | The identity plan: the same buffers, and a column already under the target is itself |
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
@@ -22,7 +22,7 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | Batch children | Target order, ASCII-case-insensitive names |
 | Proof | A landed column holds only rows its field accepts; an extension label is never proof of that ([What a landing proves](#what-a-landing-proves)) |
 | Errors | The dot/bracket path of the first misfit, from the cast root: `$.users[].zip`; a column is its own first segment, `$.id` |
-| Bindings | `Serie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
+| Bindings | `Serie`, `ChunkedSerie`, `SerieReader` and `ArrowCastPlan` in Rust, Python and JavaScript, the three options by name; `Scalar` rows in Rust and Python |
 
 ## Use
 
@@ -653,7 +653,8 @@ Everything a cast decides from two fields - which source child answers which tar
 child order, the recursive type dispatch, the target's Arrow projection, the kernel options - is a
 function of those fields alone. `ArrowCastPlan` is that work made once: `compile` from a source
 field, a target field and the options; `preflight` to exercise the whole recursion over no rows;
-`apply` per column of the source layout, each landing a `Serie` under the target. A batch's schema
+`apply` per column of the source layout, each landing a `Serie` under the target, and `apply_chunked`
+per chunked column, every chunk under the one plan. A batch's schema
 is a source as the record it lays out as: `Field::from_arrow_schema("row", &schema)`. The plan is
 immutable and `Send + Sync`, so one serves every column of a stream and every thread of a
 parallel scan; only the masks, offsets, and dictionary reachability a column actually carries vary.

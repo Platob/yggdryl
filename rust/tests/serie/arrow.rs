@@ -12,7 +12,8 @@ use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, DataType, Field, Nullability, Scalar, Serie, SerieReader, StructType,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, Nullability, Scalar, Serie, SerieReader,
+    StructType,
 };
 
 /// The options a refusal is pinned under: a present value is never nulled
@@ -1409,6 +1410,164 @@ fn a_run_and_a_record_column_holding_an_absent_row_are_no_stream() {
     assert!(refusal.to_string().contains("1 absent rows"), "{refusal}");
 }
 
+/// The quotes of [`quote_batch`] held as two chunks - both rows, then the
+/// second again - under the root the batch names.
+fn chunked_quotes() -> ChunkedSerie {
+    let batch = quote_batch();
+    ChunkedSerie::from_arrow_reader(
+        None,
+        batch_reader(batch.schema(), vec![batch.clone(), batch.slice(1, 1)]),
+        ArrowCastOptions::new(),
+    )
+    .expect("two batches")
+}
+
+#[test]
+fn a_held_chunked_record_column_reads_as_the_stream_of_its_chunks() {
+    let chunked = chunked_quotes();
+    let series = SerieReader::from_chunked(chunked.clone()).expect("a record column");
+    assert_eq!(series.field(), &quotes_root());
+    let yielded = series
+        .collect::<Result<Vec<Serie>, _>>()
+        .expect("every chunk");
+    assert_eq!(yielded, chunked.chunks());
+    for (record, chunk) in yielded.iter().zip(chunked.chunks()) {
+        let (Some(record), Some(chunk)) = (record.child("id"), chunk.child("id")) else {
+            panic!("every chunk has its ids");
+        };
+        assert!(
+            record
+                .require_arrow_array()
+                .expect("ids")
+                .to_data()
+                .buffers()[0]
+                .ptr_eq(
+                    &chunk
+                        .require_arrow_array()
+                        .expect("ids")
+                        .to_data()
+                        .buffers()[0]
+                ),
+            "nothing is copied"
+        );
+    }
+
+    // Its transport face is one batch per chunk, in order.
+    let batches = SerieReader::from_chunked(chunked)
+        .expect("a record column")
+        .into_arrow_reader()
+        .collect::<Result<Vec<RecordBatch>, _>>()
+        .expect("every batch reads");
+    assert_eq!(
+        batches
+            .iter()
+            .map(RecordBatch::num_rows)
+            .collect::<Vec<_>>(),
+        [2, 1]
+    );
+    assert!(
+        batches
+            .iter()
+            .all(|batch| batch.schema() == quote_batch().schema())
+    );
+    assert_eq!(batches[1], quote_batch().slice(1, 1));
+}
+
+#[test]
+fn a_held_chunked_leaf_column_is_the_one_child_of_a_record_per_chunk() {
+    let price = Field::new("price", DataType::Int64, false);
+    let chunked = ChunkedSerie::from_arrow_arrays(
+        Some(&price),
+        [
+            prices(),
+            Arc::new(Int64Array::from(vec![128_i64])) as ArrayRef,
+        ],
+        ArrowCastOptions::new(),
+    )
+    .expect("two chunks");
+    let series = SerieReader::from_chunked(chunked.clone()).expect("a leaf is one column");
+    assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
+    assert!(!series.field().is_nullable());
+    assert_eq!(
+        series.field().dtype().as_fields().map(<[Field]>::to_vec),
+        Some(vec![price])
+    );
+    let yielded = series
+        .collect::<Result<Vec<Serie>, _>>()
+        .expect("every chunk");
+    assert_eq!(yielded.len(), 2);
+    for (record, chunk) in yielded.iter().zip(chunked.chunks()) {
+        assert_eq!(record.len(), chunk.len());
+        assert_eq!(record.child("price"), Some(chunk));
+    }
+
+    let rows = SerieReader::from_chunked(chunked)
+        .expect("a leaf is one column")
+        .into_arrow_reader()
+        .map(|batch| batch.expect("a batch reads").num_rows())
+        .collect::<Vec<_>>();
+    assert_eq!(rows, [3, 1]);
+}
+
+#[test]
+fn a_chunked_record_column_holding_an_absent_row_is_no_stream() {
+    let root = quotes_root().with_nullable(true);
+    let records = StructArray::new(
+        vec![
+            ArrowField::new("id", ArrowDataType::Int64, false),
+            ArrowField::new("symbol", ArrowDataType::Utf8, false),
+        ]
+        .into(),
+        vec![
+            Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+            Arc::new(StringArray::from(vec!["AAPL", "MSFT"])),
+        ],
+        Some(NullBuffer::from(vec![true, false])),
+    );
+    let present: ArrayRef = Arc::new(StructArray::from(quote_batch()));
+    let chunked = ChunkedSerie::from_arrow_arrays(
+        Some(&root),
+        [Arc::clone(&present), Arc::new(records) as ArrayRef],
+        ArrowCastOptions::new(),
+    )
+    .expect("a nullable record column");
+    let refusal = SerieReader::from_chunked(chunked).expect_err("a table states no row validity");
+    assert!(refusal.to_string().contains("1 absent rows"), "{refusal}");
+
+    // Every row present, a nullable root streams as the required record
+    // its batches are.
+    let present = ChunkedSerie::from_arrow_arrays(Some(&root), [present], ArrowCastOptions::new())
+        .expect("one chunk");
+    assert_eq!(present.field(), &root);
+    let series = SerieReader::from_chunked(present).expect("every row present");
+    assert_eq!(series.field(), &quotes_root());
+    assert_eq!(series.count(), 1);
+}
+
+#[test]
+fn an_empty_chunked_column_is_the_empty_stream_of_its_root() {
+    let empty = ChunkedSerie::empty(quotes_root()).expect("a record field");
+    let series = SerieReader::from_chunked(empty.clone()).expect("no chunk");
+    assert_eq!(series.field(), &quotes_root());
+    assert_eq!(series.count(), 0);
+    let transport = SerieReader::from_chunked(empty)
+        .expect("no chunk")
+        .into_arrow_reader();
+    assert_eq!(transport.schema(), quote_batch().schema());
+    assert_eq!(transport.count(), 0);
+
+    let price = Field::new("price", DataType::Int64, false);
+    let series =
+        SerieReader::from_chunked(ChunkedSerie::empty(price.clone()).expect("a leaf field"))
+            .expect("no chunk");
+    assert_eq!(series.field().name(), yggdryl::media::DEFAULT_ROOT_NAME);
+    assert_eq!(
+        series.field().dtype().as_fields().map(<[Field]>::to_vec),
+        Some(vec![price])
+    );
+    assert_eq!(series.count(), 0);
+}
+
 #[test]
 fn a_duration32_column_reads_back_as_duration32_values() {
     // Arrow lays out one duration width, so the column's storage is 64-bit
@@ -1437,4 +1596,31 @@ fn a_duration32_column_reads_back_as_duration32_values() {
         );
         assert_eq!(column.scalar(1).unwrap(), Scalar::Null);
     }
+}
+
+#[test]
+fn the_held_root_is_one_rule_every_held_door_names_its_field_by() {
+    // A record keeps its own name, required; any other field is the one
+    // child of the `row` record, named as it is.
+    let root = quotes_root();
+    let optional = root.clone().with_nullable(true);
+    assert_eq!(SerieReader::root_of(&root).unwrap(), root);
+    assert_eq!(SerieReader::root_of(&optional).unwrap(), root);
+    let price = Field::new("price", DataType::Int64, false);
+    let wrapped = SerieReader::root_of(&price).unwrap();
+    assert_eq!(wrapped.name(), "row");
+    assert!(!wrapped.is_nullable());
+    assert_eq!(wrapped.fields().len(), 1);
+    assert_eq!(wrapped.get_field_at(0), Some(&price));
+
+    let column = Serie::from_scalars(price.clone(), [Scalar::from(1_i64)]).unwrap();
+    assert_eq!(
+        SerieReader::from_serie(column.clone()).unwrap().field(),
+        &wrapped
+    );
+    let chunked = ChunkedSerie::from_serie(column).unwrap();
+    assert_eq!(
+        SerieReader::from_chunked(chunked).unwrap().field(),
+        &wrapped
+    );
 }

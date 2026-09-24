@@ -152,17 +152,19 @@ the Arrow C Stream interface, so a read and a write both stay lazy. The Node
 package crosses into Apache Arrow JS through copied IPC, because Arrow JS does
 not expose a C Data consumer.
 
-Every value crossing Arrow is a `Serie`: one row, a column or a held table,
-carrying the exact `Field` that types it, and a stream of them is a
-`SerieReader`. `IOMedia::read_arrow`/`write_arrow` read and write a
-`SerieReader` whatever the handle holds - a record encoding as its batch stream,
-a JSON, JSON Lines, YAML, or TOML document as the one batch its rows parse
-into. In Python `Serie.from_` and `SerieReader.from_` are the one entry point
-every columnar runtime crosses: a `pyarrow` container, a pandas or polars frame
-or series, a NumPy array, or anything exporting the Arrow C data or stream
-protocol, the declared `Field` casting it in Rust. The
+Every value crossing Arrow is a `Serie` - one row, a column or a held table,
+carrying the exact `Field` that types it - a `ChunkedSerie` where a chunked
+column or a table of several batches stays apart - a `pyarrow.ChunkedArray`,
+`Serie` columns of one `Field` - or a `SerieReader`, a stream of them. `IOMedia::read_arrow`/`write_arrow`
+read and write a `SerieReader` whatever the handle holds - a record encoding
+as its batch stream, a JSON, JSON Lines, YAML, or TOML document as the one
+batch its rows parse into. In Python `Serie.from_`, `ChunkedSerie.from_` and
+`SerieReader.from_` share the one recognition every columnar runtime crosses: a `pyarrow` container, a
+pandas or polars frame or series, a NumPy array, or anything exporting the
+Arrow C data or stream protocol, the declared `Field` casting it in Rust. The
 [Serie page](docs/types/serie.md#arrow-every-columnar-runtime-in) has the
-doors and their edges.
+doors and their edges, and the
+[Chunked serie page](docs/types/chunked-serie.md) the chunked ones.
 
 ## Resource identifiers
 

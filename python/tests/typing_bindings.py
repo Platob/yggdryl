@@ -1912,3 +1912,57 @@ assert len(serie_run) == 3 and serie_row is not None and serie_window is not Non
 assert serie_arrow is not None and serie_rows and serie_field is not None
 assert serie_offsets and serie_leg is not None and serie_range is not None
 assert serie_names and serie_scalar_serie is not None
+
+# A chunked serie: many columns under one field, held apart - a chunked
+# array, or a table of one batch per chunk.
+chunked_prices: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_chunked_array(
+    pa.chunked_array([[1, 2], [3]]), Field("price", "int64"), safe=False
+)
+chunked_table: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_reader(
+    pa.Table.from_batches([source_batch, source_batch]), nullability="strict"
+)
+chunked_from: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_(source_batch)
+chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
+    [serie_column], Field("price", "int64"), representation="bits"
+)
+chunked_empty: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.empty(Field("price", "int64"))
+chunked_one: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(serie_column)
+chunked_chunks: list[yggdryl.Serie] = chunked_prices.chunks
+chunked_chunk: yggdryl.Serie | None = chunked_prices.chunk(0)
+chunked_count: int = chunked_prices.num_chunks
+chunked_field: Field = chunked_prices.field
+chunked_dtype: DataType = chunked_prices.dtype
+chunked_row: Scalar = chunked_prices[0]
+chunked_window: yggdryl.ChunkedSerie = chunked_prices[1:]
+chunked_slice: yggdryl.ChunkedSerie = chunked_prices.slice(0, 2)
+chunked_column: yggdryl.ChunkedSerie | None = chunked_table.child("value")
+chunked_children: list[yggdryl.ChunkedSerie] = chunked_table.children()
+chunked_path: yggdryl.ChunkedSerie | None = chunked_table.get_child_by_path("value")
+chunked_joined: yggdryl.Serie = chunked_prices.into_serie()
+chunked_cast: yggdryl.ChunkedSerie = chunked_prices.cast(DataType("float64"), safe=False)
+chunked_arrow: pa.ChunkedArray = chunked_prices.into_arrow_chunked_array()
+chunked_arrow_table: pa.Table = chunked_table.into_arrow_table()
+chunked_arrow_reader: pa.RecordBatchReader = chunked_table.into_arrow_reader()
+chunked_rows: list[Scalar] = chunked_prices.rows()
+chunked_values: list[Any] = chunked_prices.as_py()
+chunked_get: Scalar | None = chunked_prices.get(5)
+chunked_prices.push_chunk(serie_column, nullability="strict")
+chunked_reader: SerieReader = SerieReader.from_chunked(chunked_prices)
+chunked_plan: yggdryl.ChunkedSerie = ArrowCastPlan(
+    Field("price", "int64"), Field("price", "float64")
+).apply(chunked_prices)
+chunked_serie_plan: Serie = ArrowCastPlan(
+    Field("price", "int64"), Field("price", "float64")
+).apply(serie_column)
+chunked_equal: bool = chunked_prices == serie_column
+chunked_ordered: bool = chunked_prices < serie_column
+assert chunked_count == 2 and chunked_chunks and chunked_chunk is not None
+assert chunked_field is not None and chunked_dtype is not None and chunked_row is not None
+assert len(chunked_window) == 2 and len(chunked_slice) == 2 and chunked_column is not None
+assert chunked_children and chunked_path is not None and chunked_joined is not None
+assert chunked_cast is not None and chunked_arrow is not None and chunked_rows
+assert chunked_arrow_table is not None and chunked_arrow_reader is not None
+assert chunked_values and chunked_get is None and chunked_reader is not None
+assert chunked_plan is not None and chunked_serie_plan is not None
+assert chunked_from is not None and chunked_series is not None and chunked_empty.is_empty()
+assert chunked_one is not None and not chunked_equal and not chunked_ordered

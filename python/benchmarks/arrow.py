@@ -37,7 +37,7 @@ from collections.abc import Callable
 
 import pyarrow as pa
 
-from yggdryl import ArrowCastPlan, Field, IOBase, Scalar, Serie, SerieReader
+from yggdryl import ArrowCastPlan, ChunkedSerie, Field, IOBase, Scalar, Serie, SerieReader
 
 ROW_COUNT = 4_096
 # `Limits::default().max_documents()` is 1,024, and JSON Lines yields one
@@ -59,6 +59,9 @@ TEXT_TABLE = TABLE.slice(0, TEXT_ROW_COUNT)
 TEXT_ROWS = TEXT_TABLE.to_pylist()
 COLUMN = BATCH.column("size")
 CHUNKED = pa.chunked_array([COLUMN[: ROW_COUNT // 2], COLUMN[ROW_COUNT // 2 :]])
+CHUNKED_TABLE = pa.Table.from_batches(
+    [BATCH.slice(0, ROW_COUNT // 2), BATCH.slice(ROW_COUNT // 2)]
+)
 SCALAR = pa.scalar(125, pa.int64())
 ONE_ROW = pa.array([125], type=pa.int64())
 
@@ -93,6 +96,9 @@ BATCH_PLAN = ArrowCastPlan(SCHEMA, DECLARED_ROOT)
 HELD_BATCH = Serie.from_(BATCH)
 HELD_COLUMN = Serie.from_(COLUMN)
 HELD_SCALAR = Serie.from_(SCALAR)
+# The same two halves kept apart: a chunked array and a table of two batches.
+HELD_CHUNKED = ChunkedSerie.from_(CHUNKED)
+HELD_CHUNKED_TABLE = ChunkedSerie.from_(CHUNKED_TABLE)
 # A reader wraps a held leaf as a record before applying its declared root.
 # Naming this fixture explicitly keeps the cast independent of Array inference.
 HELD_READER_COLUMN = Serie.from_arrow_array(
@@ -234,9 +240,22 @@ def _cases(
         ("from RecordBatch", lambda: Serie.from_(BATCH), small),
         ("from Array", lambda: Serie.from_(COLUMN), small),
         ("from ChunkedArray (yggdryl)", lambda: Serie.from_(CHUNKED), bulk),
-        # Combining is what the chunked arm does before it pairs, so this one
-        # really is the same work minus the wrapper.
+        # `Serie.from_` lands each chunk and joins them once - what
+        # `ChunkedSerie.into_serie` is - so combining is the same join minus
+        # the crossing.
         ("from ChunkedArray (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
+        # Kept apart, each chunk or batch crosses on its own, buffers shared,
+        # and nothing is joined: no PyArrow work stands beside it.
+        (
+            "ChunkedSerie from ChunkedArray",
+            lambda: ChunkedSerie.from_(CHUNKED),
+            small,
+        ),
+        (
+            "ChunkedSerie from Table of two batches",
+            lambda: ChunkedSerie.from_(CHUNKED_TABLE),
+            small,
+        ),
         ("from Scalar", lambda: Serie.from_(SCALAR), small),
         (
             "from RecordBatchReader (yggdryl)",
@@ -316,6 +335,22 @@ def _cases(
             bulk,
         ),
         ("cast a held column", lambda: HELD_COLUMN.cast(DECLARED_COLUMN), bulk),
+        # One plan over both chunks, beside PyArrow's cast of the same two.
+        (
+            "ChunkedSerie.cast, declared (yggdryl)",
+            lambda: HELD_CHUNKED.cast(DECLARED_COLUMN),
+            bulk,
+        ),
+        (
+            "ChunkedSerie.cast, declared (pyarrow)",
+            lambda: CHUNKED.cast(pa.float64()),
+            bulk,
+        ),
+        (
+            "ArrowCastPlan.apply, ChunkedArray",
+            lambda: COLUMN_PLAN.apply(CHUNKED),
+            bulk,
+        ),
         # Construction plans the record cast; only the first-batch row executes it.
         (
             "SerieReader held column, declared root",
@@ -371,6 +406,28 @@ def _cases(
             small,
         ),
         ("into_arrow_array", lambda: HELD_COLUMN.into_arrow_array(), small),
+        (
+            "into_arrow_chunked_array (yggdryl)",
+            lambda: HELD_CHUNKED.into_arrow_chunked_array(),
+            small,
+        ),
+        (
+            "into_arrow_chunked_array (pyarrow)",
+            lambda: pa.chunked_array(CHUNKED.chunks, type=CHUNKED.type),
+            small,
+        ),
+        (
+            "ChunkedSerie into_arrow_table (yggdryl)",
+            lambda: HELD_CHUNKED_TABLE.into_arrow_table(),
+            small,
+        ),
+        (
+            "ChunkedSerie into_arrow_table (pyarrow)",
+            lambda: pa.Table.from_batches(CHUNKED_TABLE.to_batches(), schema=SCHEMA),
+            small,
+        ),
+        ("ChunkedSerie into_serie (yggdryl)", lambda: HELD_CHUNKED.into_serie(), bulk),
+        ("ChunkedSerie into_serie (pyarrow)", lambda: CHUNKED.combine_chunks(), bulk),
         ("into_arrow_scalar (yggdryl)", lambda: HELD_SCALAR.into_arrow_scalar(), small),
         ("into_arrow_scalar (pyarrow)", lambda: ONE_ROW[0], small),
     ]

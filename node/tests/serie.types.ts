@@ -1,5 +1,6 @@
 import {
   BatchReader,
+  ChunkedSerie,
   Field,
   FixedSizeSerieSerie,
   LargeSerieSerie,
@@ -50,11 +51,17 @@ for (const serie of series) {
 const stream: BatchReader = series.intoArrowReader()
 // A held column is a stream of the one record serie it is.
 const held: SerieReader = SerieReader.fromSerie(records)
+// A held chunked column is a stream of one record serie per chunk.
+const chunked: SerieReader = SerieReader.fromChunked(ChunkedSerie.fromSerie(records))
 
 // @ts-expect-error a held stream takes a Serie, not an Arrow table
 SerieReader.fromSerie(table)
 // @ts-expect-error the private native bridge is hidden
 SerieReader._fromSerieNative
+// @ts-expect-error a stream of chunks takes a ChunkedSerie, not a Serie
+SerieReader.fromChunked(records)
+// @ts-expect-error the private native bridge is hidden
+SerieReader._fromChunkedNative
 
 // @ts-expect-error an Arrow door takes an Arrow Vector, not a JavaScript array
 Serie.fromArrowArray([0])
@@ -191,3 +198,10 @@ void back
 void typedBy
 void stream
 void held
+void chunked
+
+// A serie compares against a chunked serie by the rows.
+const chunkedRows: boolean = wide.equals(ChunkedSerie.fromSerie(wide))
+const chunkedOrder: number = wide.compare(ChunkedSerie.fromSerie(wide))
+void chunkedRows
+void chunkedOrder

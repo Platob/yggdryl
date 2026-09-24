@@ -7,11 +7,12 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const arrow = require('apache-arrow')
-const { ArrowCastPlan, Field, Serie, StructSerie, fields } = require('yggdryl')
+const { ArrowCastPlan, ChunkedSerie, Field, Serie, StructSerie, fields } = require('yggdryl')
 
 test('the private natives stay outside the public surface', () => {
   assert.equal(Object.hasOwn(ArrowCastPlan, '_compileNative'), false)
   assert.equal('_applyNative' in ArrowCastPlan.prototype, false)
+  assert.equal('_applyChunkedNative' in ArrowCastPlan.prototype, false)
   assert.throws(() => new ArrowCastPlan(), /no `constructor`/)
 })
 
@@ -39,7 +40,7 @@ test('one plan casts every column of its source layout', () => {
   )
   // A run has no layout for a plan to read.
   assert.throws(() => plan.apply(new Serie([1])), /run/)
-  assert.throws(() => plan.apply([1, 2]), /ArrowCastPlan.apply takes a Serie/)
+  assert.throws(() => plan.apply([1, 2]), /ArrowCastPlan.apply takes a Serie or a ChunkedSerie/)
 
   // An equal layout is the identity, and hands the column back.
   const same = ArrowCastPlan.compile(source, 'id: int32 not null')
@@ -115,5 +116,30 @@ test('an Arrow JS schema, table or batch is a record source named row', () => {
   assert.throws(
     () => ArrowCastPlan.compile(table.schema, required, { nullability: 'strict' }),
     /required Arrow field \$\.venue is missing from the source/,
+  )
+})
+
+test('one plan casts every chunk of a chunked column, kept apart', () => {
+  const source = fields.int32('id', { nullable: false })
+  const target = fields.int64('id', { nullable: false })
+  const plan = ArrowCastPlan.compile(source, target)
+  const chunked = ChunkedSerie.fromSeries(
+    [Serie.fromScalars(source, [1, 2]), Serie.fromScalars(source, [3])],
+    source,
+  )
+
+  const cast = plan.apply(chunked)
+  assert.ok(cast instanceof ChunkedSerie)
+  assert.equal(cast.numChunks, 2)
+  assert.ok(cast.field.equals(target))
+  assert.deepEqual(cast.asJs(), [1, 2, 3])
+
+  // An identity plan hands the chunked column back as it is, and a foreign
+  // layout is refused before any chunk.
+  const same = ArrowCastPlan.compile(source, source)
+  assert.ok(same.apply(chunked).equals(chunked))
+  assert.throws(
+    () => plan.apply(ChunkedSerie.fromSerie(Serie.fromScalars(fields.utf8('id'), ['1']))),
+    /compiled for/,
   )
 })

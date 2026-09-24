@@ -35,10 +35,10 @@ use yggdryl::graph::{
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, Charset, DataType, DataTypeId, Decimal18, Field, FieldPath, FieldRecord,
-    FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64, MediaType, MimeType,
-    PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit, Timezone, Value, Variant,
-    Version,
+    ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal18, Field,
+    FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64,
+    MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit,
+    Timezone, Value, Variant, Version,
 };
 use yggdryl::{
     Bytes, INLINE_BYTES, INLINE_CAPACITY, Str, StringType, StructType, UncheckedFieldScalar, Uuid,
@@ -1670,6 +1670,295 @@ fn cloning_a_column_allocates_nothing() {
             black_box(black_box(&held).clone());
         });
     }
+}
+
+/// The int64 column of [`leaf_columns`] at `rows` rows, held as `cuts`
+/// chunks of equal length sliced out of it.
+fn chunked_counts(rows: usize, cuts: usize) -> ChunkedSerie {
+    let (counts, _) = leaf_columns(rows);
+    let size = rows / cuts;
+    let chunked = ChunkedSerie::from_series(
+        None,
+        (0..cuts).map(|chunk| counts.slice(chunk * size, size).expect("a chunk")),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field");
+    assert_eq!((chunked.len(), chunked.num_chunks()), (rows, cuts));
+    chunked
+}
+
+#[test]
+fn reading_through_a_chunked_leaf_allocates_nothing() {
+    // A row is found by a binary search over the chunk ends and read out of
+    // the chunk that holds it, so a chunked read costs exactly what the
+    // same read on the chunk costs - nothing, for a leaf - however many
+    // rows and chunks there are.
+    for (rows, cuts) in [(4_usize, 2_usize), (16_384, 8)] {
+        let chunked = chunked_counts(rows, cuts);
+        let size = rows / cuts;
+        let middle = rows / 2;
+        let absent = 1;
+        let expected = Scalar::from(i64::try_from(middle).expect("a row count"));
+
+        let chunk = &chunked.chunks()[middle / size];
+        free(&format!("a cell of one of {cuts} chunks"), || {
+            assert_eq!(
+                black_box(chunk)
+                    .scalar(black_box(middle % size))
+                    .expect("in range"),
+                expected
+            );
+        });
+        free(
+            &format!("len and null_count on {rows} rows in {cuts} chunks"),
+            || {
+                assert_eq!(black_box(&chunked).len(), rows);
+                assert!(!black_box(&chunked).is_empty());
+                assert_eq!(black_box(&chunked).num_chunks(), cuts);
+                assert_eq!(black_box(&chunked).null_count(), (rows + 1) / 3);
+                black_box(black_box(&chunked).field());
+            },
+        );
+        free(&format!("is_null on {rows} rows in {cuts} chunks"), || {
+            assert!(
+                !black_box(&chunked)
+                    .is_null(black_box(middle))
+                    .expect("in range")
+            );
+            assert!(
+                black_box(&chunked)
+                    .is_null(black_box(absent))
+                    .expect("in range")
+            );
+        });
+        free(&format!("scalar on {rows} rows in {cuts} chunks"), || {
+            assert_eq!(
+                black_box(&chunked)
+                    .scalar(black_box(middle))
+                    .expect("in range"),
+                expected
+            );
+            assert_eq!(
+                black_box(&chunked)
+                    .scalar(black_box(absent))
+                    .expect("in range"),
+                Scalar::Null
+            );
+        });
+        free(&format!("get on {rows} rows in {cuts} chunks"), || {
+            assert_eq!(
+                black_box(&chunked).get(black_box(middle)).as_ref(),
+                Some(&expected)
+            );
+            assert_eq!(black_box(&chunked).get(black_box(rows)), None);
+        });
+        free(
+            &format!("the first row of a walk over {cuts} chunks"),
+            || {
+                assert_eq!(black_box(&chunked).iter().next(), Some(Scalar::from(0_i64)));
+            },
+        );
+    }
+}
+
+#[test]
+fn cloning_or_slicing_a_chunked_leaf_costs_its_two_vectors_and_nothing_per_row() {
+    // A chunked serie is its chunks and their ends, two vectors beside one
+    // shared field: a clone copies the two and bumps a pointer per chunk.
+    // A window keeps the chunks it reaches in two new vectors, sliced where
+    // it cuts one - the leaf's own one handle - and whole, a pointer bump,
+    // where it does not. Every count is the same at four rows and at sixteen
+    // thousand; a count that followed the rows would be a copy.
+    for (rows, cuts) in [(4_usize, 2_usize), (16_384, 8)] {
+        let chunked = chunked_counts(rows, cuts);
+        let size = rows / cuts;
+
+        costs(&format!("cloning {rows} rows in {cuts} chunks"), 2, || {
+            black_box(black_box(&chunked).clone());
+        });
+        costs(&format!("slicing a chunk of {size} rows"), 1, || {
+            black_box(
+                black_box(&chunked.chunks()[0])
+                    .slice(1, size - 1)
+                    .expect("inside the chunk"),
+            );
+        });
+        costs(
+            &format!("slicing inside one of {cuts} chunks of {size} rows"),
+            3,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .slice(1, size - 1)
+                        .expect("inside the first chunk"),
+                );
+            },
+        );
+        costs(
+            &format!("a window of one whole chunk of {size} rows"),
+            2,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .slice(size, size)
+                        .expect("the second chunk"),
+                );
+            },
+        );
+        // The chunks a window reaches are counted before they are kept, so
+        // the whole window costs the two vectors however many chunks it
+        // spans: two at two chunks, and two at eight.
+        costs(
+            &format!("a window of every one of {cuts} chunks of {size} rows"),
+            2,
+            || {
+                black_box(black_box(&chunked).slice(0, rows).expect("the whole"));
+            },
+        );
+        // One array handle per chunk, beside the vector that holds them.
+        costs(
+            &format!("the arrays of {cuts} chunks of {size} rows"),
+            1 + cuts,
+            || {
+                black_box(black_box(&chunked).into_arrow_arrays());
+            },
+        );
+    }
+}
+
+/// The record column of [`leaf_columns`] at `rows` rows, held as `cuts`
+/// chunks of equal length sliced out of it.
+fn chunked_records(rows: usize, cuts: usize) -> ChunkedSerie {
+    let (counts, symbols) = leaf_columns(rows);
+    let root = Field::new(
+        "row",
+        DataType::from(
+            StructType::from_fields([
+                counts.field().expect("a column").clone(),
+                symbols.field().expect("a column").clone(),
+            ])
+            .expect("two named children"),
+        ),
+        false,
+    );
+    let records = Serie::from_scalars(
+        root,
+        (0..rows).map(|index| {
+            Scalar::from_sequence([
+                counts.scalar(index).expect("in range"),
+                symbols.scalar(index).expect("in range"),
+            ])
+        }),
+    )
+    .expect("a record column");
+    let size = rows / cuts;
+    ChunkedSerie::from_series(
+        None,
+        (0..cuts).map(|chunk| records.slice(chunk * size, size).expect("a chunk")),
+        ArrowCastOptions::new(),
+    )
+    .expect("chunks under one field")
+}
+
+#[test]
+fn a_chunked_child_is_its_two_vectors_whatever_the_rows_or_chunks() {
+    // A child is the child of every chunk - a pointer bump each - moved
+    // into one vector of chunks sized up front and one of their ends, so it
+    // costs two at two chunks and at eight, at ninety-six rows and at
+    // sixteen thousand. `children` is that per child, beside the one
+    // vector holding them.
+    for (rows, cuts) in [(96_usize, 2_usize), (96, 8), (16_384, 2), (16_384, 8)] {
+        let chunked = chunked_records(rows, cuts);
+        let path = FieldPath::from_str("symbol").expect("a path");
+        costs(
+            &format!("a child of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(black_box(&chunked).child("count").expect("a child"));
+            },
+        );
+        costs(
+            &format!("a child at of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(black_box(&chunked).child_at(1).expect("a child"));
+            },
+        );
+        costs(
+            &format!("a path of {rows} rows in {cuts} chunks"),
+            2,
+            || {
+                black_box(
+                    black_box(&chunked)
+                        .get_child_by_path(&path)
+                        .expect("a child"),
+                );
+            },
+        );
+        costs(
+            &format!("the children of {rows} rows in {cuts} chunks"),
+            5,
+            || {
+                black_box(black_box(&chunked).children());
+            },
+        );
+    }
+}
+
+#[test]
+fn a_chunked_cast_compiles_one_plan_and_applies_it_per_chunk() {
+    // A cast compiles its plan once and applies it to every chunk, so eight
+    // chunks cost six applications more than two - never six compilations.
+    // The same holds for chunks cast in by `from_series`, whose one plan
+    // serves the run of chunks under one source field. An identity plan
+    // hands a chunked serie under its own field back as the two vectors of
+    // a clone, and a held chunked column crosses into a stream without a
+    // row read: the same count at ninety-six rows as at sixteen thousand.
+    let wide = Field::new("count", DataType::Float64, true);
+    let options = ArrowCastOptions::new();
+    let mut streamed = Vec::new();
+    for rows in [96_usize, 16_384] {
+        let two = chunked_counts(rows, 2);
+        let eight = chunked_counts(rows, 8);
+        let plan = ArrowCastPlan::compile(two.field(), &wide, options).expect("int64 widens");
+        let (apply, _) = counted(|| plan.apply(&eight.chunks()[0]).expect("a chunk casts"));
+        let (casting_two, _) = counted(|| two.cast(&wide, options).expect("two chunks cast"));
+        let (casting_eight, _) = counted(|| eight.cast(&wide, options).expect("eight chunks cast"));
+        assert_eq!(
+            casting_eight - casting_two,
+            6 * apply,
+            "a cast of {rows} rows compiled per chunk"
+        );
+
+        let (from_two, _) = counted(|| {
+            ChunkedSerie::from_series(Some(&wide), two.chunks().to_vec(), options)
+                .expect("two chunks cast in")
+        });
+        let (from_eight, _) = counted(|| {
+            ChunkedSerie::from_series(Some(&wide), eight.chunks().to_vec(), options)
+                .expect("eight chunks cast in")
+        });
+        assert_eq!(
+            from_eight - from_two,
+            6 * apply,
+            "chunks of {rows} rows cast in compiled per chunk"
+        );
+
+        let identity =
+            ArrowCastPlan::compile(two.field(), two.field(), options).expect("an identity");
+        costs(&format!("an identity plan over {rows} rows"), 2, || {
+            black_box(identity.apply_chunked(black_box(&eight)).expect("itself"));
+        });
+
+        let records = chunked_records(rows, 8);
+        let (stream, _) =
+            counted(|| yggdryl::SerieReader::from_chunked(records.clone()).expect("a stream"));
+        streamed.push(stream);
+    }
+    assert_eq!(
+        streamed[0], streamed[1],
+        "a held chunked column read a row on its way into a stream"
+    );
 }
 
 #[test]

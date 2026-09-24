@@ -9,7 +9,16 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 const binding = require('yggdryl')
-const { BatchReader, DataType, Field, Serie, SerieReader, StructSerie, fields } = binding
+const {
+  BatchReader,
+  ChunkedSerie,
+  DataType,
+  Field,
+  Serie,
+  SerieReader,
+  StructSerie,
+  fields,
+} = binding
 
 const trades = () =>
   fields.struct('row', [Field.from('id: int64'), Field.from('symbol: utf8')], {
@@ -37,6 +46,7 @@ test('the private Arrow bridges stay outside the public surface', () => {
   }
   assert.equal(Object.hasOwn(SerieReader, '_fromArrowReaderNative'), false)
   assert.equal(Object.hasOwn(SerieReader, '_fromSerieNative'), false)
+  assert.equal(Object.hasOwn(SerieReader, '_fromChunkedNative'), false)
   assert.equal('_nextNative' in SerieReader.prototype, false)
   // The retired Field and DataType casts have no alias.
   for (const name of [
@@ -410,6 +420,58 @@ test('a held record column with an absent row, and a run, are refused', () => {
   )
 })
 
+test('a held chunked column is a stream of one record serie per chunk', () => {
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  const chunked = ChunkedSerie.fromArrowBatch(source, trades())
+  assert.equal(chunked.numChunks, 2)
+
+  const reader = SerieReader.fromChunked(chunked)
+  assert.ok(reader.field.equals(trades()))
+  const series = [...reader]
+  assert.equal(series.length, chunked.numChunks)
+  assert.ok(series.every((serie) => serie instanceof StructSerie))
+  assert.ok(series.every((serie, index) => serie.equals(chunked.chunk(index))))
+  assert.deepEqual([...reader], [])
+
+  // Handed back as a reader, each chunk is the one batch it is.
+  const table = SerieReader.fromChunked(chunked).intoArrowReader().intoTable()
+  assert.equal(table.batches.length, chunked.numChunks)
+  assert.deepEqual(
+    table.batches.map((batch) => batch.numRows),
+    [2, 1],
+  )
+  assert.deepEqual([...table.getChild('symbol')], ['AAPL', 'MSFT', 'NVDA'])
+
+  // A leaf column's chunks are each the one child of a `row` record.
+  const leaf = SerieReader.fromChunked(chunked.child('id'))
+  assert.equal(leaf.field.name, 'row')
+  assert.deepEqual(
+    [...leaf].map((records) => records.child('id').asJs()),
+    [[1, 2], [3]],
+  )
+
+  // No chunk is the empty stream of the root.
+  const empty = SerieReader.fromChunked(ChunkedSerie.empty(trades()))
+  assert.ok(empty.field.equals(trades()))
+  assert.deepEqual([...empty], [])
+
+  // A record chunk with an absent row is refused, and a chunked serie is
+  // the one input this door takes.
+  const nullable = Field.from('row: struct<id: int64>')
+  const absent = ChunkedSerie.fromSerie(Serie.fromScalars(nullable, [{ id: 1n }, null]))
+  assert.throws(
+    () => SerieReader.fromChunked(absent),
+    /record column "row" holds 1 absent rows, which a table cannot state/,
+  )
+  assert.throws(
+    () => SerieReader.fromChunked(chunked.intoSerie()),
+    /SerieReader\.fromChunked takes a ChunkedSerie/,
+  )
+})
+
 test('a column casts once under another field, and a run is refused', () => {
   const ids = Serie.fromScalars(fields.int32('id'), [1, 2, null])
   const wide = ids.cast(fields.int64('id'))
@@ -457,4 +519,30 @@ test('an Arrow scalar is exactly one row of a column', () => {
     /exactly one row, got 2/,
   )
   assert.throws(() => new Serie([1]).intoArrowScalar(), /run/)
+})
+
+test('a serie compares against a chunked serie by the rows, on either side', () => {
+  const { ChunkedSerie } = binding
+  const price = fields.int64('price', { nullable: false })
+  const serie = Serie.fromScalars(price, [125n, 126n, 127n])
+  const chunked = ChunkedSerie.fromSeries(
+    [Serie.fromScalars(price, [125n, 126n]), Serie.fromScalars(price, [127n])],
+    price,
+  )
+  assert.ok(serie.equals(chunked))
+  assert.ok(chunked.equals(serie))
+  assert.equal(serie.compare(chunked), 0)
+  assert.equal(serie.compare(chunked.slice(0, 2)), 1)
+  assert.equal(chunked.slice(0, 2).compare(serie), -1)
+  assert.throws(() => serie.equals([125n]), /Serie.equals takes a ChunkedSerie or a Serie/)
+  assert.equal('_equalsNative' in Serie.prototype, false)
+  assert.equal('_compareNative' in Serie.prototype, false)
+
+  // A held record streams under its own name, whichever door hands it out.
+  const trades = Field.from('trades: struct<id: int64 not null> not null')
+  const records = Serie.fromScalars(trades, [[1n]])
+  assert.equal(records.intoArrowReader().field.name, 'trades')
+  assert.equal(ChunkedSerie.fromSerie(records).intoArrowReader().field.name, 'trades')
+  assert.equal(SerieReader.fromSerie(records).field.name, 'trades')
+  assert.equal(serie.intoArrowReader().field.name, 'row')
 })

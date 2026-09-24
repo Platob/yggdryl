@@ -606,6 +606,70 @@ pub(crate) fn child_of(
     })
 }
 
+/// The field an Arrow array of no declared field is the column of: its own
+/// layout, named `item`, nullable where the caller read an absent row - its
+/// logical nulls, so a null behind a dictionary key, a run or a union member
+/// counts as one.
+///
+/// # Errors
+///
+/// Returns an error when the layout imports as no datatype.
+pub(crate) fn item_field(storage: &arrow_schema::DataType, nullable: bool) -> crate::Result<Field> {
+    Ok(Field::new(
+        "item",
+        DataType::from_arrow_datatype(storage)?,
+        nullable,
+    ))
+}
+
+/// Whether `holds` answers for `storage` or any datatype nested in it.
+pub(crate) fn storage_holds(
+    storage: &arrow_schema::DataType,
+    holds: &impl Fn(&arrow_schema::DataType) -> bool,
+) -> bool {
+    use arrow_schema::DataType as A;
+    holds(storage)
+        || match storage {
+            A::List(item)
+            | A::LargeList(item)
+            | A::ListView(item)
+            | A::LargeListView(item)
+            | A::FixedSizeList(item, _)
+            | A::Map(item, _) => storage_holds(item.data_type(), holds),
+            A::Struct(fields) => fields
+                .iter()
+                .any(|field| storage_holds(field.data_type(), holds)),
+            A::Union(members, _) => members
+                .iter()
+                .any(|(_, member)| storage_holds(member.data_type(), holds)),
+            A::Dictionary(key, values) => storage_holds(key, holds) || storage_holds(values, holds),
+            A::RunEndEncoded(run_ends, values) => {
+                storage_holds(run_ends.data_type(), holds)
+                    || storage_holds(values.data_type(), holds)
+            }
+            _ => false,
+        }
+}
+
+/// The storage an empty column of `field` lays out as, refusing a union of
+/// no member wherever one lies: Arrow builds no empty column of one - it
+/// reads the first member's type id - so none is laid out.
+fn empty_storage(field: &Field) -> crate::Result<arrow_schema::DataType> {
+    let storage = field.as_arrow_field_ref()?.data_type();
+    let memberless = |node: &arrow_schema::DataType| matches!(node, arrow_schema::DataType::Union(members, _) if members.is_empty());
+    if storage_holds(storage, &memberless) {
+        return Err(Error::Unsupported {
+            kind: "serie",
+            reason: format!(
+                "column {:?} lays out as {storage}, and a union of no member lays out no column",
+                field.name()
+            ),
+        }
+        .into());
+    }
+    Ok(storage.clone())
+}
+
 /// Land one array as the column of `field`, under what its caller proved.
 ///
 /// A value a leaf refuses is named by the row of `array` it lies in and
@@ -831,6 +895,46 @@ pub(crate) fn record_root(field: &Field) -> crate::Result<Field> {
     )
 }
 
+/// The schema a column of `field` crosses into a table under: a record's
+/// own children, or the one column of a [`DEFAULT_ROOT_NAME`] root.
+///
+/// Decided by the field once, so every batch of a chunked column shares it.
+pub(crate) fn batch_schema(field: &Field) -> Result<SchemaRef> {
+    arrow_schema_from_field(&SerieReader::root_of(field)?)
+}
+
+/// One column's rows as the batch `schema` states, where `schema` is
+/// [`batch_schema`]'s answer for the column's field.
+///
+/// A record column's children are the columns; any other column is the one
+/// column. A batch states no row validity, so a record column holding an
+/// absent row is refused rather than having that absence dropped.
+pub(crate) fn batch_under(schema: &SchemaRef, serie: &Serie) -> Result<RecordBatch> {
+    let field = serie.require_field()?;
+    let array = serie.require_arrow_array()?;
+    if field.dtype().as_fields().is_none() {
+        return Ok(RecordBatch::try_new(Arc::clone(schema), vec![array])?);
+    }
+    let absent = array.null_count();
+    if absent != 0 {
+        return Err(Error::IncompatibleSchema(format!(
+            "record column {:?} holds {absent} absent rows, which a table cannot state",
+            field.name()
+        )));
+    }
+    let Some(records) = array.as_any().downcast_ref::<StructArray>() else {
+        return Err(Error::IncompatibleSchema(format!(
+            "record column {:?} does not lay out as a struct array",
+            field.name()
+        )));
+    };
+    Ok(RecordBatch::try_new_with_options(
+        Arc::clone(schema),
+        records.columns().to_vec(),
+        &RecordBatchOptions::new().with_row_count(Some(array.len())),
+    )?)
+}
+
 impl Serie {
     /// Take one Arrow array as a column: of its own field, or cast into
     /// `field`.
@@ -861,13 +965,8 @@ impl Serie {
         options: ArrowCastOptions,
     ) -> Result<Self> {
         let Some(field) = field else {
-            let dtype = DataType::from_arrow_datatype(array.data_type())?;
-            let nullable = array.null_count() != 0;
-            return land(
-                Arc::new(Field::new("item", dtype, nullable)),
-                array,
-                &Proof::Unproven,
-            );
+            let item = item_field(array.data_type(), array.logical_null_count() != 0)?;
+            return land(Arc::new(item), array, &Proof::Unproven);
         };
         if lands_as_is(field.dtype())
             && field.as_arrow_field_ref()?.data_type() == array.data_type()
@@ -898,7 +997,7 @@ impl Serie {
     /// this crate keeps no column for.
     pub fn empty(field: impl Into<Arc<Field>>) -> crate::Result<Self> {
         let field = field.into();
-        let storage = field.as_arrow_field_ref()?.data_type().clone();
+        let storage = empty_storage(&field)?;
         Ok(land(field, new_empty_array(&storage), &Proof::Proven)?)
     }
 
@@ -913,7 +1012,7 @@ impl Serie {
     /// [`Self::empty`] carries the rule.
     pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> crate::Result<Self> {
         let field = field.into();
-        let storage = field.as_arrow_field_ref()?.data_type().clone();
+        let storage = empty_storage(&field)?;
         let array = match storage {
             arrow_schema::DataType::Dictionary(..)
             | arrow_schema::DataType::RunEndEncoded(..)
@@ -1028,33 +1127,23 @@ impl Serie {
 
     /// Drain one Arrow batch stream into the record column of its rows.
     ///
-    /// This is [`SerieReader::from_arrow_reader`] collected: every batch is
-    /// cast by the reader's one plan, and the landed columns are joined once.
-    /// The whole stream is held - a column is one contiguous set of buffers,
-    /// so the bound is the stream itself.
+    /// This is [`ChunkedSerie::from_arrow_reader`](crate::ChunkedSerie::from_arrow_reader)
+    /// joined by [`ChunkedSerie::into_serie`](crate::ChunkedSerie::into_serie):
+    /// every batch is cast by the reader's one plan, and the landed columns
+    /// are joined once. The whole stream is held - a column is one
+    /// contiguous set of buffers, so the bound is the stream itself.
     ///
     /// # Errors
     ///
-    /// [`SerieReader::from_arrow_reader`] carries the rule, and the reader
-    /// carries its own.
+    /// [`SerieReader::from_arrow_reader`] carries the rule, the reader
+    /// carries its own, and the join refuses what
+    /// [`ChunkedSerie::into_serie`](crate::ChunkedSerie::into_serie) does.
     pub fn from_arrow_reader(
         root: Option<&Field>,
         reader: BatchReader,
         options: ArrowCastOptions,
     ) -> Result<Self> {
-        let series = SerieReader::from_arrow_reader(root, reader, options)?;
-        let root = Arc::clone(&series.root);
-        let landed = series.collect::<Result<Vec<Self>>>()?;
-        let arrays = landed
-            .iter()
-            .map(Self::require_arrow_array)
-            .collect::<crate::Result<Vec<ArrayRef>>>()?;
-        if arrays.is_empty() {
-            return Ok(Self::empty(root)?);
-        }
-        let borrowed: Vec<&dyn Array> = arrays.iter().map(AsRef::as_ref).collect();
-        let joined = arrow_select::concat::concat(&borrowed)?;
-        land(root, joined, &Proof::Proven)
+        crate::ChunkedSerie::from_arrow_reader(root, reader, options)?.into_serie()
     }
 
     /// This column under `target`: cast once, for a column in hand.
@@ -1090,26 +1179,8 @@ impl Serie {
     /// Returns an error for a run, which names no layout, and for a record
     /// column holding an absent row.
     pub fn into_arrow_batch(&self) -> Result<RecordBatch> {
-        let field = self.require_field()?;
-        let array = self.require_arrow_array()?;
-        let Some(records) = array.as_any().downcast_ref::<StructArray>() else {
-            let root = record_root(field)?;
-            let schema = arrow_schema_from_field(&root)?;
-            return Ok(RecordBatch::try_new(schema, vec![array])?);
-        };
-        let absent = records.null_count();
-        if absent != 0 {
-            return Err(Error::IncompatibleSchema(format!(
-                "record column {:?} holds {absent} absent rows, which a table cannot state",
-                field.name()
-            )));
-        }
-        let schema = arrow_schema_from_field(&field.clone().with_nullable(false))?;
-        Ok(RecordBatch::try_new_with_options(
-            schema,
-            records.columns().to_vec(),
-            &RecordBatchOptions::new().with_row_count(Some(array.len())),
-        )?)
+        let schema = batch_schema(self.require_field()?)?;
+        batch_under(&schema, self)
     }
 
     /// This column's one row as Arrow's scalar datum, sharing its buffers.
@@ -1158,8 +1229,33 @@ pub struct SerieReader {
 enum Source {
     /// A stream, each batch cast by the reader's plan as it arrives.
     Stream(BatchReader),
-    /// One column already held, yielded as it stands.
-    Held(Serie),
+    /// Record columns already held, each yielded as it stands.
+    Held(std::vec::IntoIter<Serie>),
+}
+
+/// The record root a held column of `field` streams under, shared.
+fn held_root(field: &Field) -> crate::Result<Arc<Field>> {
+    Ok(Arc::new(SerieReader::root_of(field)?))
+}
+
+/// One held column as the record column it streams as under `root`,
+/// nothing cast, copied or read.
+fn held_record(root: &Arc<Field>, serie: Serie) -> Result<Serie> {
+    let rows = serie.len();
+    let record = match serie.as_struct() {
+        Some(records) => {
+            let absent = crate::SerieValue::null_count(records);
+            if absent != 0 {
+                return Err(Error::IncompatibleSchema(format!(
+                    "record column {:?} holds {absent} absent rows, which a table cannot state",
+                    serie.require_field()?.name()
+                )));
+            }
+            structure::StructSerie::new(Arc::clone(root), records.children().to_vec(), None, rows)
+        }
+        None => structure::StructSerie::new(Arc::clone(root), vec![serie], None, rows),
+    };
+    Ok(crate::SerieValue::into_serie(record))
 }
 
 impl SerieReader {
@@ -1208,36 +1304,39 @@ impl SerieReader {
     /// Returns an error for a run, which names no layout, and for a record
     /// column holding an absent row, which a table cannot state.
     pub fn from_serie(serie: Serie) -> Result<Self> {
-        let field = serie.require_field()?;
-        let rows = serie.len();
-        let (root, record) = match serie.as_struct() {
-            Some(records) => {
-                let absent = crate::SerieValue::null_count(records);
-                if absent != 0 {
-                    return Err(Error::IncompatibleSchema(format!(
-                        "record column {:?} holds {absent} absent rows, which a table cannot state",
-                        field.name()
-                    )));
-                }
-                let root = Arc::new(field.clone().with_nullable(false));
-                let children = records.children().to_vec();
-                (
-                    Arc::clone(&root),
-                    structure::StructSerie::new(root, children, None, rows),
-                )
-            }
-            None => {
-                let root = Arc::new(record_root(field)?);
-                (
-                    Arc::clone(&root),
-                    structure::StructSerie::new(root, vec![serie], None, rows),
-                )
-            }
-        };
+        let root = held_root(serie.require_field()?)?;
+        let record = held_record(&root, serie)?;
+        Self::held(root, vec![record])
+    }
+
+    /// Read a held chunked column as the stream of its chunks, one record
+    /// column per chunk.
+    ///
+    /// A record's chunks are the batches they are; any other field's chunks
+    /// are each the one child of a [`DEFAULT_ROOT_NAME`] record, named as
+    /// it is - the rule [`Self::from_serie`] states, applied per chunk.
+    /// Nothing is cast, copied or read, and a chunked serie of no chunks is
+    /// the empty stream of its root.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a record chunk holding an absent row, which a
+    /// table cannot state.
+    pub fn from_chunked(chunked: crate::ChunkedSerie) -> Result<Self> {
+        let root = held_root(chunked.field())?;
+        let mut records = Vec::with_capacity(chunked.num_chunks());
+        for chunk in chunked.chunks() {
+            records.push(held_record(&root, chunk.clone())?);
+        }
+        Self::held(root, records)
+    }
+
+    /// The stream of `records`, each already a record column under `root`.
+    fn held(root: Arc<Field>, records: Vec<Serie>) -> Result<Self> {
         let plan = ArrowCastPlan::compile(&root, &root, ArrowCastOptions::default())?;
         let schema = arrow_schema_from_field(&root)?;
         Ok(Self {
-            inner: Some(Source::Held(crate::SerieValue::into_serie(record))),
+            inner: Some(Source::Held(records.into_iter())),
             root,
             plan,
             schema,
@@ -1247,6 +1346,29 @@ impl SerieReader {
     /// The record every yielded column is typed by.
     pub fn field(&self) -> &Field {
         &self.root
+    }
+
+    /// The record root a held column of `field` crosses into a table under:
+    /// a record's own field, required, or the [`DEFAULT_ROOT_NAME`] record it
+    /// is the one child of, named as it is.
+    ///
+    /// This is the one rule [`Self::from_serie`] and [`Self::from_chunked`]
+    /// name their [`Self::field`] by, and [`Serie::into_arrow_batch`],
+    /// [`Serie::into_arrow_reader`] and
+    /// [`ChunkedSerie::into_arrow_reader`](crate::ChunkedSerie::into_arrow_reader)
+    /// project their schema from, so a binding that names a reader's root
+    /// reads it here rather than restating it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a record of the one child cannot be declared -
+    /// a field a record refuses as a child.
+    pub fn root_of(field: &Field) -> crate::Result<Field> {
+        if field.dtype().as_fields().is_some() {
+            Ok(field.clone().with_nullable(false))
+        } else {
+            record_root(field)
+        }
     }
 
     /// The stream's transport face: its batches reconciled to the root and
@@ -1261,14 +1383,13 @@ impl SerieReader {
                 plan: self.plan,
                 schema: self.schema,
             }),
-            Some(Source::Held(serie)) => {
-                let batch = serie
-                    .into_arrow_batch()
-                    .map_err(|error| ArrowError::ExternalError(Box::new(error)));
-                Box::new(RecordBatchIterator::new(
-                    std::iter::once(batch),
-                    self.schema,
-                ))
+            Some(Source::Held(records)) => {
+                let schema = Arc::clone(&self.schema);
+                let batches = records.map(move |record| {
+                    batch_under(&schema, &record)
+                        .map_err(|error| ArrowError::ExternalError(Box::new(error)))
+                });
+                Box::new(RecordBatchIterator::new(batches, self.schema))
             }
             None => batch_reader(self.schema, []),
         }
@@ -1281,11 +1402,12 @@ impl Iterator for SerieReader {
     fn next(&mut self) -> Option<Self::Item> {
         let reader = match self.inner.as_mut()? {
             Source::Stream(reader) => reader,
-            Source::Held(_) => {
-                let Some(Source::Held(serie)) = self.inner.take() else {
-                    return None;
-                };
-                return Some(Ok(serie));
+            Source::Held(records) => {
+                let next = records.next();
+                if next.is_none() {
+                    self.inner = None;
+                }
+                return next.map(Ok);
             }
         };
         let pulled = reader.next();

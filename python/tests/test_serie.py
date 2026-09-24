@@ -24,6 +24,7 @@ import pytest
 import yggdryl
 from yggdryl import (
     ArrowCastPlan,
+    ChunkedSerie,
     DataType,
     Field,
     IOBase,
@@ -541,6 +542,11 @@ class TestFrom:
     def test_a_chunked_column_is_combined_rather_than_truncated(self) -> None:
         assert len(Serie.from_(pa.chunked_array([[1, 2], [3]]))) == 3
 
+    def test_a_chunkless_chunked_array_is_the_empty_column_of_its_type(self) -> None:
+        column = Serie.from_(pa.chunked_array([], pa.int64()))
+        assert len(column) == 0
+        assert column.field == Field("item", "int64", nullable=False)
+
     def test_a_reader_crosses_without_being_pulled(self) -> None:
         reader = SerieReader.from_(quote_table().to_reader())
         assert reader.field == Field.from_arrow_schema(quote_table().schema)
@@ -808,6 +814,89 @@ class TestReaderFrom:
         assert [source.exports for source in sources] == [1, 0]
         assert [batch.child("id").as_py() for batch in reader] == [[1], [2]]
         assert [source.exports for source in sources] == [1, 1]
+
+
+class TestChunked:
+    """Chunks - a ``ChunkedSerie`` or a ``pyarrow.ChunkedArray`` - on the one ladder."""
+
+    @staticmethod
+    def chunked() -> ChunkedSerie:
+        return ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1, 2], [3]]), price())
+
+    def test_serie_from_is_the_one_join(self) -> None:
+        joined = Serie.from_(self.chunked())
+        assert type(joined) is Serie
+        assert joined.field == price()
+        assert joined.as_py() == [1, 2, 3]
+        assert joined == self.chunked()
+        declared = Serie.from_(self.chunked(), "price: float64 not null")
+        assert declared.field == Field("price", "float64", nullable=False)
+        assert Serie.from_(pa.chunked_array([[1], [2, 3]])).as_py() == [1, 2, 3]
+
+    def test_one_chunk_joins_as_itself_sharing_its_buffers(self) -> None:
+        array = pa.array([1, 2], pa.int64())
+        joined = Serie.from_(pa.chunked_array([array]))
+        assert buffer_locations(joined.into_arrow_array()) == buffer_locations(array)
+
+    def test_a_stream_of_chunks_is_one_record_column_per_chunk(self) -> None:
+        root = Field("row", DataType.from_fields([price()]), nullable=False)
+        for reader in (
+            SerieReader.from_chunked(self.chunked()),
+            SerieReader.from_(self.chunked()),
+        ):
+            assert reader.field == root
+            pulled = list(reader)
+            assert [len(serie) for serie in pulled] == [2, 1]
+            assert all(type(serie) is StructSerie for serie in pulled)
+            assert [serie.child("price").as_py() for serie in pulled] == [[1, 2], [3]]
+
+        # A chunked array streams one item per chunk, its column named `item`.
+        streamed = SerieReader.from_(pa.chunked_array([[1, 2], [3]]))
+        assert [serie.child("item").as_py() for serie in streamed] == [[1, 2], [3]]
+
+    def test_a_record_chunk_is_the_batch_it_is(self) -> None:
+        records = ChunkedSerie.from_arrow_reader(pa.Table.from_batches([quotes(), quotes()]))
+        reader = SerieReader.from_chunked(records)
+        assert reader.field == records.field
+        assert list(reader) == records.chunks
+        batches = SerieReader.from_chunked(records).into_arrow_reader()
+        assert [batch.num_rows for batch in batches] == [2, 2]
+
+    def test_a_root_is_applied_to_every_chunk(self) -> None:
+        root = Field("row", "struct<price: float64 not null>", nullable=False)
+        reader = SerieReader.from_(self.chunked(), root)
+        assert reader.field == root
+        pulled = list(reader)
+        assert len(pulled) == 2
+        assert all(serie.field == root for serie in pulled)
+        assert [serie.child("price").as_py() for serie in pulled] == [[1.0, 2.0], [3.0]]
+
+    def test_no_chunk_is_the_empty_stream_of_its_root(self) -> None:
+        reader = SerieReader.from_chunked(ChunkedSerie.empty(price()))
+        assert reader.field == Field("row", DataType.from_fields([price()]), nullable=False)
+        assert list(reader) == []
+
+    def test_a_record_chunk_holding_an_absent_row_is_refused(self) -> None:
+        records = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[{"id": 1}, None]]))
+        with pytest.raises(ValueError, match="absent rows"):
+            SerieReader.from_chunked(records)
+        with pytest.raises(ValueError, match="absent rows"):
+            SerieReader.from_(records)
+
+    def test_a_scalar_holds_the_joined_column(self) -> None:
+        value = Scalar.from_(self.chunked())
+        assert value.kind == "serie"
+        assert value.as_py() == [1, 2, 3]
+        assert value.as_serie() == Serie.from_scalars(price(), [1, 2, 3])
+
+    def test_a_chunked_serie_is_written_one_batch_per_chunk(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        records = ChunkedSerie.from_arrow_reader(pa.Table.from_batches([quotes(), quotes()]))
+        handle = IOBase(tmp_path / "quotes.arrows")
+        handle.write_arrow(records)
+        assert [len(serie) for serie in handle.read_arrow()] == [2, 2]
+        assert Serie.from_(handle.read_arrow()) == records
 
 
 class TestHandles:

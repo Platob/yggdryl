@@ -2,7 +2,9 @@
 
 A ``Serie`` is many values, as a schema-free run or as the Arrow buffers of
 one field; ``SerieReader`` is the same over a stream: one record ``Serie``
-per batch, each cast by one plan.
+per batch, each cast by one plan; ``ChunkedSerie`` is many ``Serie`` columns
+under one field, held apart - a ``pyarrow.ChunkedArray``, or a
+``pyarrow.Table`` of one batch per chunk.
 
 A serie datatype is that column as a value: one item field repeated, in one
 of five layouts - ``serie`` and ``large_serie`` cut by 32- or 64-bit
@@ -21,6 +23,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypeVar
 
 from ._native import (
+    ChunkedSerie,
     DataType,
     Field,
     FixedSizeSerieSerie,
@@ -124,6 +127,7 @@ def large_serie_view(
 
 
 __all__ = [
+    "ChunkedSerie",
     "FixedSizeSerieField",
     "FixedSizeSerieSerie",
     "LargeSerieField",

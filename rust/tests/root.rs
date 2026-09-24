@@ -30,6 +30,8 @@ mod cast;
 mod cfi_code;
 #[path = "root/charset.rs"]
 mod charset;
+#[path = "root/chunked_serie.rs"]
+mod chunked_serie;
 #[path = "root/code.rs"]
 mod code;
 #[path = "root/codec.rs"]

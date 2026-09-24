@@ -12,7 +12,8 @@
 //!
 //! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
 //! native `BatchReader`, every batch cast by the one plan the core compiled
-//! when the reader was built, or the one record serie a held column is.
+//! when the reader was built, the one record serie a held column is, or one
+//! per chunk of a held chunked column.
 
 use std::borrow::Cow;
 use std::io::Cursor;
@@ -29,6 +30,7 @@ use yggdryl::{
     ArrowCastOptions, Field as CoreField, FieldPath, Scalar, Serie, SerieReader, SerieValue,
 };
 
+use crate::chunked_serie::JsChunkedSerie;
 use crate::datatype::JsDataType;
 use crate::field::JsField;
 use crate::iomedia::{JsBatchReader, encoded};
@@ -68,6 +70,15 @@ impl Generator for JsSerieIterator {
     }
 }
 
+impl JsSerieIterator {
+    /// Iterate rows already built, in order.
+    pub(crate) fn from_rows(rows: Vec<Scalar>) -> Self {
+        Self {
+            inner: rows.into_iter(),
+        }
+    }
+}
+
 impl JsSerie {
     /// Wrap one native serie for JavaScript.
     pub(crate) const fn from_core(inner: Serie) -> Self {
@@ -76,7 +87,7 @@ impl JsSerie {
 }
 
 /// Read a JavaScript index as a row position.
-fn position(index: f64, name: &str) -> Result<usize> {
+pub(crate) fn position(index: f64, name: &str) -> Result<usize> {
     let index = crate::exact_u64(index, name)?;
     usize::try_from(index)
         .map_err(|_| napi_error(format!("{name} {index} exceeds this platform's range")))
@@ -101,7 +112,7 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
 
 /// The schema and batches of one Arrow IPC stream; an empty stream names no
 /// schema and is refused.
-fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
+pub(crate) fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     if bytes.is_empty() {
         return Err(napi_error("Arrow IPC input is empty and has no schema"));
     }
@@ -118,14 +129,25 @@ fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
 /// One column under `field` as the one-column Arrow IPC stream Arrow JS
 /// reads a vector from.
 fn arrow_array_ipc(field: &CoreField, array: ArrayRef) -> Result<Buffer> {
+    arrow_arrays_ipc(field, vec![array])
+}
+
+/// Columns under `field` as the one-column Arrow IPC stream Arrow JS reads
+/// one vector from, one batch - one `Data` of the vector - per column.
+pub(crate) fn arrow_arrays_ipc(field: &CoreField, arrays: Vec<ArrayRef>) -> Result<Buffer> {
     let schema = Arc::new(Schema::new([field
         .clone()
         .into_arrow_field_ref()
         .map_err(napi_error)?]));
-    let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
-    let batch =
-        RecordBatch::try_new_with_options(schema, vec![array], &options).map_err(napi_error)?;
-    encoded(&batch.schema(), std::slice::from_ref(&batch))
+    let batches = arrays
+        .into_iter()
+        .map(|array| {
+            let options = RecordBatchOptions::new().with_row_count(Some(array.len()));
+            RecordBatch::try_new_with_options(Arc::clone(&schema), vec![array], &options)
+                .map_err(napi_error)
+        })
+        .collect::<Result<Vec<RecordBatch>>>()?;
+    encoded(&schema, &batches)
 }
 
 /// The column a one-column Arrow IPC stream holds, through the core array
@@ -614,19 +636,38 @@ impl JsSerie {
     #[napi]
     pub fn into_arrow_reader(&self) -> Result<JsBatchReader> {
         let reader = self.inner.into_arrow_reader().map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(reader, "row"))
+        let root = SerieReader::root_of(self.inner.require_field().map_err(napi_error)?)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, root.name()))
     }
 
-    /// Whether two series hold equal rows, whichever leaf holds them.
-    #[napi]
-    pub fn equals(&self, other: &JsSerie) -> bool {
-        self.inner == other.inner
+    /// Whether the rows equal another serie's, or a chunked serie's,
+    /// whichever leaf or cut holds them.
+    #[napi(js_name = "_equalsNative", skip_typescript)]
+    pub fn equals_native(
+        &self,
+        other: Either<ClassInstance<'_, JsSerie>, ClassInstance<'_, JsChunkedSerie>>,
+    ) -> bool {
+        match other {
+            Either::A(serie) => self.inner == serie.inner,
+            Either::B(chunked) => self.inner == chunked.inner,
+        }
     }
 
-    /// Order two series by their rows, as the core defines it.
-    #[napi]
-    pub fn compare(&self, other: &JsSerie) -> i32 {
-        crate::ordering_value(self.inner.cmp(&other.inner))
+    /// Order the rows against another serie's, or a chunked serie's, as the
+    /// core defines it.
+    #[napi(js_name = "_compareNative", skip_typescript)]
+    pub fn compare_native(
+        &self,
+        other: Either<ClassInstance<'_, JsSerie>, ClassInstance<'_, JsChunkedSerie>>,
+    ) -> Result<i32> {
+        let ordering = match other {
+            Either::A(serie) => Some(self.inner.cmp(&serie.inner)),
+            Either::B(chunked) => self.inner.partial_cmp(&chunked.inner),
+        };
+        ordering
+            .map(crate::ordering_value)
+            .ok_or_else(|| napi_error("the rows of a serie and a chunked serie have no order"))
     }
 
     /// A copy sharing the buffers; writing either copies them once.
@@ -888,6 +929,17 @@ impl JsSerieReader {
     #[napi(factory, js_name = "_fromSerieNative", skip_typescript)]
     pub fn from_serie(serie: &JsSerie) -> Result<Self> {
         SerieReader::from_serie(serie.inner.clone())
+            .map(Self::from_core)
+            .map_err(napi_error)
+    }
+
+    /// Read a held chunked column as the stream of its chunks, one record
+    /// serie per chunk: a record's chunks as they stand, any other field's
+    /// each the one child of a record named `row`. Nothing is cast or
+    /// copied; a record chunk holding an absent row is refused.
+    #[napi(factory, js_name = "_fromChunkedNative", skip_typescript)]
+    pub fn from_chunked(chunked: &JsChunkedSerie) -> Result<Self> {
+        SerieReader::from_chunked(chunked.inner.clone())
             .map(Self::from_core)
             .map_err(napi_error)
     }

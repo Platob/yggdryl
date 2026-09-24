@@ -503,7 +503,7 @@ mod plan {
     use crate::budget::MaterializationBudget;
     use crate::media::DEFAULT_ROOT_NAME;
     use crate::serie::{Proof, land};
-    use crate::{Field, Serie};
+    use crate::{ChunkedSerie, Field, Serie};
 
     use super::{ArrayCastPlan, ArrowCastOptions, Deferred, PlanRules, downcast};
     use crate::path::Path;
@@ -729,18 +729,7 @@ mod plan {
         /// [`Nullability::Strict`](super::Nullability::Strict).
         pub fn apply(&self, serie: &Serie) -> Result<Serie> {
             let field = serie.require_field()?;
-            let layout = field.as_arrow_field_ref()?;
-            let same_layout = layout.data_type() == self.source.data_type()
-                && (matches!(self.source.data_type(), ArrowDataType::Struct(_))
-                    || same_extension(layout, &self.source));
-            if !same_layout {
-                return Err(Error::IncompatibleSchema(format!(
-                    "column {:?} lays out as {}, and this cast plan was compiled for {}",
-                    field.name(),
-                    layout.data_type(),
-                    self.source.data_type()
-                )));
-            }
+            self.require_layout(field)?;
             if self.identity && field == self.target.as_ref() {
                 return Ok(serie.clone());
             }
@@ -748,6 +737,48 @@ mod plan {
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, &mut budget)?;
             land(Arc::clone(&self.target), cast, &self.serie)
+        }
+
+        /// Casts every chunk of a chunked column whose field lays out as
+        /// [`Self::as_source`], keeping the chunks apart: [`Self::apply`]
+        /// per chunk under this one plan, so a table of a thousand batches
+        /// compiles nothing. An identity plan hands the chunked column
+        /// itself back when the target is its own field.
+        ///
+        /// # Errors
+        ///
+        /// [`Self::apply`]'s, raised for the field before any chunk and for
+        /// the first chunk a value or an absent row refuses.
+        pub fn apply_chunked(&self, chunked: &ChunkedSerie) -> Result<ChunkedSerie> {
+            self.require_layout(chunked.field())?;
+            if self.identity && chunked.field() == self.target.as_ref() {
+                return Ok(chunked.clone());
+            }
+            let mut chunks = Vec::with_capacity(chunked.num_chunks());
+            for chunk in chunked.chunks() {
+                chunks.push(self.apply(chunk)?);
+            }
+            Ok(ChunkedSerie::from_landed(Arc::clone(&self.target), chunks))
+        }
+
+        /// Refuse a field that does not lay out as the source, naming both.
+        ///
+        /// A name and a nullability may differ from the source's; the storage
+        /// and the extension identity may not.
+        fn require_layout(&self, field: &Field) -> Result<()> {
+            let layout = field.as_arrow_field_ref()?;
+            let same_layout = layout.data_type() == self.source.data_type()
+                && (matches!(self.source.data_type(), ArrowDataType::Struct(_))
+                    || same_extension(layout, &self.source));
+            if same_layout {
+                return Ok(());
+            }
+            Err(Error::IncompatibleSchema(format!(
+                "column {:?} lays out as {}, and this cast plan was compiled for {}",
+                field.name(),
+                layout.data_type(),
+                self.source.data_type()
+            )))
         }
 
         /// Casts foreign buffers of the source layout as transport: the array
