@@ -43,6 +43,13 @@ fn vendored(count: usize) -> Vec<Field> {
         .collect()
 }
 
+/// A venue dictionary of `count` fields alone, each a stamped member of
+/// [`venue`]: what the storage measurements carry in the smoke corpus, where
+/// the seed beside it would only repeat the tracked seed's own load.
+pub(crate) fn venue_dialect(count: usize) -> FixRegistry {
+    FixRegistry::from_fields(vendored(count)).expect("the generated dictionary has no conflict")
+}
+
 /// The tracked seed beside a venue dictionary of `count` fields, in the one
 /// namespace, each venue field a stamped member of [`venue`].
 pub(crate) fn two_dialects(count: usize) -> FixRegistry {

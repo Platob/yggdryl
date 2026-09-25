@@ -4286,7 +4286,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "yggdryl"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-buffer 59.2.0",
@@ -4334,7 +4334,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-cli"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "clap",
  "crossterm",
@@ -4344,7 +4344,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-node"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-ipc 59.2.0",
@@ -4360,7 +4360,7 @@ dependencies = [
 
 [[package]]
 name = "yggdryl-python"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "arrow-array 59.2.0",
  "arrow-data 59.2.0",

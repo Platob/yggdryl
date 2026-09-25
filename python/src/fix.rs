@@ -3413,7 +3413,7 @@ impl PyFixCapture {
 
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as OD9EOEDJ400)` - or `None`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)` - or `None`.
     #[getter]
     fn msgoriginator(&self) -> Option<&str> {
         self.inner.msgoriginator()

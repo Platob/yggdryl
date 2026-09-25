@@ -1423,7 +1423,7 @@ pub struct FixCaptureView {
     pub msgsesseventid: Either<String, Null>,
     /// The plugin the message came into a bridge through, as the bridge's
     /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-    /// (OMS_X1_OrderOut as OD9EOEDJ400)`; also `byTag(65066)`.
+    /// (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65066)`.
     #[napi(ts_type = "string | null")]
     pub msgoriginator: Either<String, Null>,
     /// The conversation a bridge filed the message under - a

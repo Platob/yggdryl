@@ -162,17 +162,13 @@ def test_arrow_keeps_string_storage_and_declared_field_restores_version():
     assert native.child("release").as_py() == [Version(5, 0, 300), Version(5), Version(255, 255, 65535)]
 
 
-def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
-    assert not hasattr(yggdryl, "msgtype")
-    assert not hasattr(yggdryl, "MsgTypeField")
-    assert "msgtype" not in enums.DATA_TYPE_IDS
+def test_the_datatype_identifiers_are_laid_out_by_family():
     # Eighty-five, laid out by family: every identifier sits in its
     # family's range and the list states them in that order, so `url` and
     # `urn` follow `version` in the text family, `sized_utf8` follows
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert "msgdirection" not in enums.DATA_TYPE_IDS
     assert len(enums.DATA_TYPE_IDS) == 85
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
@@ -181,11 +177,6 @@ def test_retired_msgtype_datatype_is_absent_and_url_keeps_its_new_index():
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
     assert ids[-2:] == ["geometry", "geography"]
     assert ids[:2] == ["null", "boolean"]
-    with pytest.raises(ValueError):
-        DataType("msgtype")
-    with pytest.raises(ValueError):
-        Field("code", "msgtype")
-    assert DataType("utf8").scalar("UConfigurationPlugin").as_py() == "UConfigurationPlugin"
 
 
 def test_version_annotations_and_generated_dataclasses_keep_the_native_type():

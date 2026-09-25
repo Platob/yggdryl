@@ -3938,6 +3938,16 @@ fn a_long_transcoded_cell_costs_its_buffer_and_its_handle() {
     });
 }
 
+/// The committed dictionary, read once for the tests that start from it.
+fn committed_registry() -> &'static FixRegistry {
+    static REGISTRY: std::sync::OnceLock<FixRegistry> = std::sync::OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
+        let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
+        FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
+    })
+}
+
 #[test]
 fn default_aliases_allocation_profile_is_idempotent() {
     // Before direct reindexing, the first pass made 313,853,260 allocations
@@ -3948,13 +3958,7 @@ fn default_aliases_allocation_profile_is_idempotent() {
     // generation but remains below the cost of cloning the full catalog.
     const FIRST_MAX_ALLOCATIONS: usize = 2_500_000;
     const REPEATED_MAX_ALLOCATIONS: usize = 4_096;
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
-    let loaded_at = Instant::now();
-    let registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
-    let load_elapsed = loaded_at.elapsed();
-
-    let first_input = registry.clone();
+    let first_input = committed_registry().clone();
     let first_at = Instant::now();
     let (first_allocations, registered) = counted(|| {
         first_input
@@ -3997,16 +4001,14 @@ fn default_aliases_allocation_profile_is_idempotent() {
         "offerpx"
     );
     eprintln!(
-        "default_aliases: load={load_elapsed:?}; first={first_allocations} allocations, \
+        "default_aliases: first={first_allocations} allocations, \
          {first_elapsed:?}; repeated={repeated_allocations} allocations, {repeated_elapsed:?}"
     );
 }
 
 #[test]
 fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let folder = yggdryl::local::LocalFolder::new(root).expect("the local seed path");
-    let mut registry = FixRegistry::from_handle(&folder).expect("the committed dictionary loads");
+    let mut registry = committed_registry().clone();
     let mut gross = registry.field_by_tag(381).expect("GrossTradeAmt").clone();
     gross
         .as_fix_mut()
