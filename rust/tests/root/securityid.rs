@@ -586,9 +586,11 @@ mod internal {
         codes.enrich(&mut later);
         assert_eq!(later.get_cficode(), precise.get_cficode());
         assert_eq!(code(&later, "sedol"), code(&precise, "sedol"));
-        assert_eq!(
-            first.get_cficode().unwrap().as_str(),
-            "ESXXXX",
+        // A holder keeps a detailed classification or none, so the coarse
+        // one `first` was given never stood, and the learned one did not
+        // reach back into it either.
+        assert!(
+            first.get_cficode().is_none(),
             "earlier snapshots stay unchanged"
         );
         let mut coarse = apple();

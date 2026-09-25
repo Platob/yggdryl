@@ -3263,13 +3263,18 @@ mod internal {
         sorted.sort_unstable();
         assert_eq!(sorted, answered, "published {published:?}");
         // And it is stated in the order the wire states it: the header, the
-        // lifted band in tag order, the trailer, then the text.
+        // lifted band in tag order - the six FX parts of a price among it -
+        // the trailer, then the text.
+        let trailer = published.len() - 4;
+        assert_eq!(published.len(), 35);
         assert_eq!(&published[..8], [8, 35, 49, 56, 34, 43, 52, 385]);
-        assert_eq!(&published[25..], [93, 89, 10, 58]);
+        assert_eq!(&published[trailer..], [93, 89, 10, 58]);
         assert!(
-            published[8..25].windows(2).all(|pair| pair[0] < pair[1]),
+            published[8..trailer]
+                .windows(2)
+                .all(|pair| pair[0] < pair[1]),
             "the lifted band is swept in tag order: {:?}",
-            &published[8..25]
+            &published[8..trailer]
         );
         // Every one of them is a tag no content row keeps.
         let registry = committed();
