@@ -4,7 +4,7 @@ use criterion::{Criterion, Throughput};
 use yggdryl::local::LocalFolder;
 use yggdryl::{DataType, FixRegistry, Url};
 
-use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects};
+use super::{DIALECT_FIELDS, scratch, seed, seed_root, two_dialects, venue_dialect};
 
 /// A folder holding `shards` shards of ten fields each, built outside the
 /// timer.
@@ -27,6 +27,8 @@ fn sharded(shards: i32) -> (std::path::PathBuf, LocalFolder) {
 
 pub fn benchmarks(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("fix/store");
+    // Whether this is the measured corpus rather than the smoke one.
+    let full = crate::bench_profile::corpus(1, 0) == 1;
 
     // Open and full load against shard count.
     let mut built = Vec::new();
@@ -63,8 +65,13 @@ pub fn benchmarks(criterion: &mut Criterion) {
 
     // Two dictionaries in one registry: the venue's fields land in the same
     // shards as the standard ones, membership written on each and read back
-    // with it, nothing keyed by dialect.
-    let mixed = two_dialects(DIALECT_FIELDS);
+    // with it, nothing keyed by dialect. The smoke corpus writes the venue's
+    // alone, which reaches the same doors without a second seed-sized store.
+    let mixed = if full {
+        two_dialects(DIALECT_FIELDS)
+    } else {
+        venue_dialect(DIALECT_FIELDS)
+    };
     let mixed_root = scratch("two-branches");
     let mut mixed_folder = LocalFolder::new(&mixed_root).expect("a local folder");
     mixed.commit(&mut mixed_folder).expect("the shards written");
@@ -91,8 +98,11 @@ pub fn benchmarks(criterion: &mut Criterion) {
     });
 
     // The first-call cost of the default resolved from an explicit location:
-    // the URL parse, the folder handle, and the load it redirects to.
-    let location = seed_root().to_string_lossy().into_owned();
+    // the URL parse, the folder handle, and the load it redirects to - over
+    // the seed, and over the hundred shards in the smoke corpus, which redirect
+    // the same way without loading the seed a second time.
+    let location = if full { seed_root() } else { built[2].clone() };
+    let location = location.to_string_lossy().into_owned();
     group.throughput(Throughput::Elements(u64::try_from(seed().len()).unwrap()));
     group.bench_function("autoload_location_seed", |bencher| {
         bencher.iter(|| {
@@ -106,16 +116,26 @@ pub fn benchmarks(criterion: &mut Criterion) {
         });
     });
     let catalog = seed();
-    let snapshot = catalog.into_json().expect("the complete catalog snapshot");
+    // The complete catalog, and in the smoke corpus the hundred-shard
+    // dictionary: a snapshot and a digest walk every field the same way at
+    // any size.
+    let serialized = if full {
+        catalog.clone()
+    } else {
+        hundred.clone()
+    };
+    let snapshot = serialized
+        .into_json()
+        .expect("the complete catalog snapshot");
     group.throughput(Throughput::Bytes(snapshot.len() as u64));
     group.bench_function("from_json_seed", |bencher| {
         bencher.iter(|| black_box(FixRegistry::from_json(black_box(&snapshot)).unwrap()));
     });
     group.bench_function("into_json_seed", |bencher| {
-        bencher.iter(|| black_box(catalog.into_json().unwrap()));
+        bencher.iter(|| black_box(serialized.into_json().unwrap()));
     });
     group.bench_function("stable_hash_seed_one_state_allocation", |bencher| {
-        bencher.iter(|| black_box(catalog.stable_hash()));
+        bencher.iter(|| black_box(serialized.stable_hash()));
     });
     group.throughput(Throughput::Elements(1));
     // A group by its own name, and by the counter that opens it: the two
