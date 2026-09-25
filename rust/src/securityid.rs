@@ -844,6 +844,12 @@ pub(crate) struct SecurityIdRegistry {
     by_isin: HashMap<SecurityId, Learned>,
     reserved_bytes: usize,
     byte_budget: usize,
+    /// Sources whose code names one listing of an instrument - its ISIN
+    /// with a market and a currency - rather than the instrument the ISIN
+    /// numbers. One ISIN has as many listings as markets, so what one
+    /// message states under such a source is no association to fill onto
+    /// another, and none is learned.
+    listings: SmallVec<[SecType; 2]>,
 }
 
 impl Default for SecurityIdRegistry {
@@ -852,11 +858,21 @@ impl Default for SecurityIdRegistry {
             by_isin: HashMap::new(),
             reserved_bytes: 0,
             byte_budget: MAX_REGISTRY_BYTES,
+            listings: SmallVec::new(),
         }
     }
 }
 
 impl SecurityIdRegistry {
+    /// A registry that never learns an association under one of
+    /// `listings`, the sources naming a listing rather than an instrument.
+    pub(crate) fn with_listings(listings: impl IntoIterator<Item = SecType>) -> Self {
+        Self {
+            listings: listings.into_iter().collect(),
+            ..Self::default()
+        }
+    }
+
     /// The retained slot for `isin`, registering it only after a checked
     /// reservation. A rejected registration does not clone the key or ask
     /// the map to reserve.
@@ -877,18 +893,28 @@ impl SecurityIdRegistry {
     }
 
     /// Learn what `ids` and `cfi` state about the instrument `ids` names by
-    /// its ISIN: one association per stated source, at most
+    /// its ISIN: one association per stated source but a listing's, at most
     /// `MAX_KEYS_PER_INSTRUMENT` of them, and the classification where it
     /// is detailed. Nothing without an ISIN.
     pub(crate) fn learn(&mut self, ids: &SecurityIds, cfi: Option<&CfiCode>) {
         let Some(isin) = ids.get_id("ISIN") else {
             return;
         };
+        let learnable: SmallVec<[&SecurityId; 8]> = ids
+            .iter()
+            .filter(|id| {
+                id.key_str() != "ISIN"
+                    && !self
+                        .listings
+                        .iter()
+                        .any(|listing| listing.as_str() == id.key_str())
+            })
+            .collect();
         let Some(learned) = self.learned_for(isin) else {
             return;
         };
         learned.cfi.classify(cfi);
-        for id in ids.iter().filter(|id| id.key_str() != "ISIN") {
+        for id in learnable {
             let position = learned
                 .keys
                 .iter()
@@ -1000,6 +1026,7 @@ pub mod internals {
                 by_isin: HashMap::new(),
                 reserved_bytes: 0,
                 byte_budget,
+                listings: SmallVec::new(),
             })
         }
 
@@ -1010,6 +1037,7 @@ pub mod internals {
                 by_isin: HashMap::new(),
                 reserved_bytes: usize::MAX,
                 byte_budget: usize::MAX,
+                listings: SmallVec::new(),
             })
         }
 

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
-use yggdryl::graph::{Event, Market, MarketOperation};
+use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::local::LocalFolder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -526,13 +526,15 @@ fn a_cfi_and_a_security_type_state_each_other() {
 #[test]
 fn the_crates_market_and_state_columns_are_stated_on_the_message() {
     let reader = reader();
+    // Where it last traded, then where it was routed, then where it is
+    // listed.
     for (line, market) in [
         (
             &b"8=FIX.4.4|35=D|11=A|207=XSWX|100=XNAS|30=XLON|10=0|"[..],
-            "XSWX",
+            "XLON",
         ),
-        (b"8=FIX.4.4|35=D|11=A|100=XNAS|30=XLON|10=0|", "XNAS"),
-        (b"8=FIX.4.4|35=D|11=A|30=XLON|10=0|", "XLON"),
+        (b"8=FIX.4.4|35=D|11=A|207=XSWX|100=XNAS|10=0|", "XNAS"),
+        (b"8=FIX.4.4|35=D|11=A|207=XSWX|10=0|", "XSWX"),
     ] {
         let held = settled(&reader, line);
         assert_eq!(miccode(&held).as_deref(), Some(market));

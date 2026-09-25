@@ -126,7 +126,7 @@ fn a_decimal_named_child_is_re_expressed_under_the_registry_field() {
 }
 
 #[test]
-fn two_children_reaching_one_field_merge_into_the_most_complete() {
+fn an_alias_fills_its_field_only_where_the_canonical_spelling_states_nothing() {
     // The canonical key states an absence: the alias fills the one column.
     let latest = built(
         undated_registry(),
@@ -139,25 +139,30 @@ fn two_children_reaching_one_field_merge_into_the_most_complete() {
     assert_eq!(names(&latest), ["symbol", "execbroker"]);
     assert_eq!(latest.by_tag(76).unwrap(), Scalar::from("BRKR"));
 
-    // Both stated and different: both are kept, because nothing that
-    // arrived is lost - under the one column the tag names, in the order
-    // the row stated them.
-    let latest = built(
-        undated_registry(),
-        &[("execbroker", "ONE"), ("ExecutingBroker", "TWO")],
-    );
-    assert_eq!(names(&latest), ["execbroker"]);
-    assert_eq!(
-        latest.by_tag(76).unwrap(),
-        Scalar::from_sequence([Scalar::from("ONE"), Scalar::from("TWO")])
-    );
-
-    // Both stated and equal once re-typed: one child.
-    let latest = built(
-        undated_registry(),
-        &[("execbroker", "ONE"), ("ExecutingBroker", "ONE")],
-    );
-    assert_eq!(names(&latest), ["execbroker"]);
+    // The canonical key states a value: it keeps the column the tag names
+    // alone, and the alias is a child of its own spelling - whether or not
+    // the two agree, because the rule reads which spelling arrived and
+    // never what it holds.
+    for alias in ["TWO", "ONE"] {
+        let latest = built(
+            undated_registry(),
+            &[("execbroker", "ONE"), ("ExecutingBroker", alias)],
+        );
+        assert_eq!(names(&latest), ["execbroker", "executingbroker"], "{alias}");
+        assert_eq!(latest.by_tag(76).unwrap(), Scalar::from("ONE"), "{alias}");
+        let at = latest
+            .as_field()
+            .index_of("executingbroker")
+            .expect("the alias child");
+        assert_eq!(
+            latest.as_field().fields()[at].get_metadata("FIX:alias"),
+            Some("execbroker")
+        );
+        assert_eq!(
+            latest.as_value().as_sequence().expect("a row")[at],
+            Scalar::from(alias)
+        );
+    }
 }
 
 #[test]

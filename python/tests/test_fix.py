@@ -44,7 +44,7 @@ from yggdryl.fix import (
     FixMessages,
     FixMsg,
     FixRegistry,
-    MarketOperationEventData,
+    OperationEventData,
     MsgType,
     fix_crate_fields,
     fix_schema,
@@ -443,13 +443,14 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     by_side = {execution["side"]: execution for execution in book["executions"]}
     assert set(by_side) == {"BUY", "SELL"}
     buy, sell = by_side["BUY"], by_side["SELL"]
-    assert (buy["price"], sell["price"]) == (
+    # A trade-capture side states no price and no quantity: its last
+    # executed price and quantity are lastpx and lastqty, and the two
+    # nullable columns carry the null.
+    assert (buy["price"], sell["price"]) == (None, None)
+    assert (buy["quantity"], sell["quantity"]) == (None, None)
+    assert (buy["lastpx"], sell["lastpx"]) == (
         decimal.Decimal("101.25"),
         decimal.Decimal("101.25"),
-    )
-    assert (buy["quantity"], sell["quantity"]) == (
-        decimal.Decimal("4"),
-        decimal.Decimal("6"),
     )
     assert (buy["lastqty"], sell["lastqty"]) == (
         decimal.Decimal("4"),
@@ -1213,17 +1214,19 @@ def test_the_crate_map_group_is_a_group_a_message_may_reference(tmp_path: Any) -
 REPO = pathlib.Path(__file__).resolve().parent.parent.parent
 SEED = REPO / "config" / "fix"
 
-# What the crate itself adds beside the specification: 28 definitions in tag
-# order from 65003, 27 scalar graph/category/identifier facts and one Map
+# What the crate itself adds beside the specification: 40 definitions in tag
+# order from 65003, 39 scalar graph/category/identifier facts and one Map
 # group. ISIN, Bloomberg, FIGI and MIC are crate columns, the first three
-# views of the message's security identifiers; CFI remains FIX's standard
-# tag 461, as do prices, quantities and lanes.
-CRATED = 28
-# What ``FixRegistry()`` holds: those 27 scalar crate fields, SendingTime (52)
+# views of the message's security identifiers; a bridge's originating plugin
+# and conversation are columns too, while its eight identifiers and two
+# instrument names stay content; CFI remains FIX's standard tag 461, as do
+# prices, quantities and lanes.
+CRATED = 40
+# What ``FixRegistry()`` holds: those 39 scalar crate fields, SendingTime (52)
 # and TransactTime (60), and the Map group. ``len`` counts groups; iteration
-# walks the 29 scalars alone.
-SEEDED = 30
-SEEDED_SCALARS = 29
+# walks the 41 scalars alone.
+SEEDED = 42
+SEEDED_SCALARS = 41
 
 # The one intake clock undated test bytes take, so a parse repeats; replay
 # never consults now.
@@ -1442,6 +1445,87 @@ def test_direction_rules_cross_as_a_list() -> None:
     assert "FIX:directions" not in field.metadata
 
 
+def test_identifier_map_keys_cross_as_a_list(seed: FixRegistry) -> None:
+    """One record per key a field names a message by, and the registry's table."""
+    field = Field("OrderID", "utf8")
+    field.fix.tag = 37
+    assert field.fix.idmap == []
+
+    sources = [{"map": "altids", "key": "ORDERID", "follow": True, "role": None}]
+    field.fix.idmap = [{"map": "altids", "key": "ORDERID", "follow": True}]
+    assert field.fix.idmap == sources
+    assert field.metadata["FIX:idmap"] == '[{"map":"altids","key":"ORDERID","follow":true}]'
+
+    # A follow flag belongs to an alternate identifier alone, and a refused
+    # list leaves the field as it was.
+    with pytest.raises(ValueError, match="altids only"):
+        field.fix.idmap = [{"map": "accountids", "key": "ORDERID", "follow": True}]
+    with pytest.raises(ValueError, match="upper-case"):
+        field.fix.idmap = [{"map": "altids", "key": "orderid"}]
+    assert field.fix.idmap == sources
+    field.fix.idmap = []
+    assert "FIX:idmap" not in field.metadata
+
+    # The committed dictionary compiles every field's once: OrderID follows,
+    # PartyID names three maps by the role of the occurrence stating it.
+    table = seed.idmap_sources()
+    assert {"tag": 37, "map": "altids", "key": "ORDERID", "follow": True, "role": None} in table
+    assert [(row["map"], row["key"], row["role"]) for row in table if row["tag"] == 448] == [
+        ("accountids", "CUSTOMERACCOUNT", "24"),
+        ("userids", "ENTERINGTRADER", "36"),
+        ("userids", "EXECUTINGTRADER", "12"),
+    ]
+    assert seed.get_field_by_tag(65070).fix.idmap == [
+        {"map": "altids", "key": "PARENTORDERID", "follow": True, "role": None}
+    ]
+
+    # A bridge's own identifiers land in the maps their fields name.
+    codec = _fixed(seed)
+    message = next(
+        codec.parse_line(
+            b"8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|"
+            b"PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|"
+        )
+    )
+    assert message.accountids == {"OMSDEALERACCOUNT": "ACC1"}
+    assert message.userids == {"OMSUSERID": "trader1"}
+    assert message.altids == {
+        "EXECID": "E1",
+        "ORDERID": "O1",
+        "PARENTORDERID": "P1",
+        "ULTRADERCLORDID": "U1",
+    }
+
+
+def test_a_bridge_line_names_the_plugin_and_conversation_on_the_capture(
+    seed: FixRegistry,
+) -> None:
+    """Provenance the capture holds and the fixed row states, never content."""
+    codec = _fixed(seed)
+    frame = b"8=FIX.4.4|35=8|17=E1|37=O1|10=0|"
+    bare = next(codec.parse_line(frame))
+    named = next(
+        codec.parse_line(
+            b"Execution report from PLUGIN_A type trade {conversationId: c-1} " + frame
+        )
+    )
+    assert named.capture().msgoriginator == "PLUGIN_A"
+    assert named.capture().conversationid == "c-1"
+    assert named.by_tag(65066).as_py() == "PLUGIN_A"
+    assert named.by_tag(65067).as_py() == "c-1"
+    assert bare.capture().msgoriginator is None
+    assert bare.capture().conversationid is None
+    assert named.into_bytes(124) == bare.into_bytes(124)
+    assert named.currhashcode == bare.currhashcode
+    assert named.capture() != bare.capture()
+
+    schema = fix_schema(seed)
+    row = named.into_row(schema)
+    assert row.as_py()[schema.index_of("msgoriginator")] == "PLUGIN_A"
+    assert row.as_py()[schema.index_of("conversationid")] == "c-1"
+    assert FixMsg.from_row(schema, row, seed).capture() == named.capture()
+
+
 def test_tag_and_identifier_keys_refuse_bool_and_narrowing(seed: FixRegistry) -> None:
     field = Field("Symbol", "utf8")
     with pytest.raises(TypeError, match="not bool"):
@@ -1613,8 +1697,9 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     """Each column says what it derives from and what it holds, on the field."""
     fields = {field.name: field for field in fix_crate_fields()}
     assert len(fields) == CRATED
-    # In tag order, one block from 65003: 27 scalar event, category and
-    # normalized-identifier facts plus the one Map. ISIN, Bloomberg, FIGI
+    # In tag order, one block from 65003: 39 scalar event, category,
+    # normalized-identifier, bridge-provenance, bridge-identifier and
+    # bridge-instrument facts plus the one Map. ISIN, Bloomberg, FIGI
     # and MIC are crate columns; CUSIP (65057), SEDOL (65058) and the
     # identifiers Map (65020) are retired, their tags never reused; CFI
     # keeps FIX's standard tag 461. Price, quantity and lanes remain their
@@ -1648,10 +1733,22 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         "execunix",
         "recdunix",
         "msgsesseventid",
+        "msgoriginator",
+        "conversationid",
+        "omsdealeraccount",
+        "omsuserid",
+        "parentorderid",
+        "parentclordid",
+        "omsdealerparentorderid",
+        "exchangeclientorderid",
+        "transversalkey",
+        "ultraderclordid",
+        "omsinstrumentid",
+        "ullinkinstrumentid",
     ]
     tags = [field.fix.tag for field in fields.values()]
     assert tags == sorted(tags)
-    assert tags[0] == UNIX_TAG and tags[-1] == 65065
+    assert tags[0] == UNIX_TAG and tags[-1] == 65077
     assert all(field.fix.branches == [] for field in fields.values())
     assert all(field.description is not None for field in fields.values())
 
@@ -2215,7 +2312,7 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert capture.msgsesseventid is None
 
     event = message.event()
-    assert isinstance(event, MarketOperationEventData)
+    assert isinstance(event, OperationEventData)
     # The transaction stands one second from the sending clock, which is
     # exactly the codec's default delay, so the two are the one event said
     # twice and the more exact saying of it dates the message.

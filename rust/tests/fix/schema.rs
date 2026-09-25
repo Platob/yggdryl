@@ -5,7 +5,7 @@ use super::SoleMessage;
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
     DataType, Field, FixCodec, FixRegistry, Scalar, StructType, fix_column_of, fix_schema,
 };
@@ -49,8 +49,10 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
     // MsgCat, two optional event clocks, the session event and three
     // normalized identifiers - ISIN, Bloomberg, FIGI - join the existing
     // standard CFI column; the identifiers map and the CUSIP and SEDOL
-    // columns are retired, their tags never reused.
-    assert_eq!(tags.len(), 119);
+    // columns are retired, their tags never reused; the six FX parts of a
+    // price - 194, 195, 188 to 191 - are columns of their own; a bridge's
+    // originating plugin and conversation join the message band.
+    assert_eq!(tags.len(), 127);
     // The row is read in bands rather than by tag number: when it happened,
     // which event it is, which message carried it, which instrument it is
     // about, which order it belongs to, what it states, how it went, the
@@ -91,7 +93,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
         "which event"
     );
     assert_eq!(
-        &tags[23..35],
+        &tags[23..37],
         [
             8,
             35,
@@ -102,12 +104,15 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
             43,
             yggdryl::MSGDIRECTION_TAG_NAME.0,
             yggdryl::MSGPLUGINID_TAG_NAME.0,
+            yggdryl::MSGORIGINATOR_TAG_NAME.0,
             yggdryl::MSGCTXID_TAG_NAME.0,
             yggdryl::MSGSESSIONID_TAG_NAME.0,
             yggdryl::MSGSESSEVENTID_TAG_NAME.0,
+            yggdryl::CONVERSATIONID_TAG_NAME.0,
         ],
-        "which message, over which session - the session event it was \
-         delivered as right after the session that delivered it"
+        "which message, over which session - the plugin it came from right \
+         after the bridge's own, the session event it was delivered as right \
+         after the session that delivered it, then the conversation"
     );
     // And not where the capture read it: the object a line came out of is
     // the reader's word about the line, carried beside the row with the body
@@ -143,7 +148,7 @@ fn the_fixed_schema_keeps_existing_tags_and_appends_the_settled_identity_fields(
 
     let (registry, _) = reader();
     let schema = fix_schema(&registry, "fix").unwrap();
-    assert_eq!(schema.fields().len(), 124);
+    assert_eq!(schema.fields().len(), 132);
     let names: Vec<_> = schema.fields().iter().map(Field::name).collect();
     // The frame closes the row: the trailer, then the bridge's own keys, then
     // the arrival record and the counter that counts it.
@@ -501,7 +506,7 @@ fn a_row_fills_every_column_by_tag_and_never_shifts() {
         at(&row, &schema, 44).as_decimal(),
         Some((yggdryl::i256::from_i128(12_500_000_000_000_000_000), 18))
     );
-    assert_eq!(order_px.to_string(), "12.5");
+    assert_eq!(order_px.map(|px| px.to_string()).as_deref(), Some("12.5"));
 
     // A message that carried almost nothing has the same columns in the same
     // places, which is what makes two rows of one capture comparable.

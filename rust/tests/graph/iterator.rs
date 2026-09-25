@@ -4,7 +4,7 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
-use yggdryl::graph::{Element, Event, EventIterator, MarketOperation, MarketOperationEventData};
+use yggdryl::graph::{Element, Event, EventIterator, Operation, OperationEventData};
 use yggdryl::{State, Uuid};
 
 use super::element::filled;
@@ -33,8 +33,8 @@ fn ms(unix: i64) -> i64 {
 }
 
 /// One event of the thing `order` identifies across its life, at `ms`.
-fn incarnation(order: &str, ms: i64) -> MarketOperationEventData {
-    let mut event = MarketOperationEventData::at(at(ms));
+fn incarnation(order: &str, ms: i64) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
     event.set_crosscode(order.to_owned());
     event.finalize();
     event
@@ -42,8 +42,8 @@ fn incarnation(order: &str, ms: i64) -> MarketOperationEventData {
 
 /// An event of `order` at `ms` going by one name, so two events at one
 /// instant are two events.
-fn named(order: &str, ms: i64, scheme: &str, name: &str) -> MarketOperationEventData {
-    let mut event = MarketOperationEventData::at(at(ms));
+fn named(order: &str, ms: i64, scheme: &str, name: &str) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
     event.set_crosscode(order.to_owned());
     event
         .insert_altid(scheme, name)
@@ -53,8 +53,8 @@ fn named(order: &str, ms: i64, scheme: &str, name: &str) -> MarketOperationEvent
 }
 
 /// An event at `ms` going by `names` and stating no cross code of its own.
-fn anonymous(ms: i64, names: &[(&str, &str)]) -> MarketOperationEventData {
-    let mut event = MarketOperationEventData::at(at(ms));
+fn anonymous(ms: i64, names: &[(&str, &str)]) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
     for (scheme, name) in names {
         event
             .insert_altid(scheme, name)
@@ -66,7 +66,7 @@ fn anonymous(ms: i64, names: &[(&str, &str)]) -> MarketOperationEventData {
 
 /// Where each event the walk yields stands: its instant, its place, and the
 /// instant of the predecessor it names, in milliseconds.
-fn places(walk: impl Iterator<Item = MarketOperationEventData>) -> Vec<(i64, u64, Option<i64>)> {
+fn places(walk: impl Iterator<Item = OperationEventData>) -> Vec<(i64, u64, Option<i64>)> {
     walk.map(|event| {
         (
             ms(event.get_currunix()),
@@ -80,7 +80,7 @@ fn places(walk: impl Iterator<Item = MarketOperationEventData>) -> Vec<(i64, u64
 /// The chains alive after a walk, by cross code and the live instant, in
 /// one order.
 fn alive(
-    walk: &EventIterator<MarketOperationEventData, std::vec::IntoIter<MarketOperationEventData>>,
+    walk: &EventIterator<OperationEventData, std::vec::IntoIter<OperationEventData>>,
 ) -> Vec<(String, i64)> {
     let mut alive = walk
         .alive()
@@ -131,7 +131,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     // A walk over the walked answers the same chain.
     assert!(walk.next().is_none());
     let walked = vec![first.clone(), other.clone(), second.clone(), third.clone()];
-    let again: Vec<MarketOperationEventData> = EventIterator::new(walked, true).collect();
+    let again: Vec<OperationEventData> = EventIterator::new(walked, true).collect();
     assert_eq!(again, [first, other, second, third]);
     // Both orders are still alive, the latest incarnation of each.
     assert_eq!(
@@ -152,7 +152,7 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
         named("O-100", 40, EXEC_ID, "E-4"),
     ];
     let walk = EventIterator::new(arrived, false);
-    let walked: Vec<MarketOperationEventData> = walk.collect();
+    let walked: Vec<OperationEventData> = walk.collect();
     assert_eq!(
         places(walked.iter().cloned()),
         [
@@ -289,10 +289,10 @@ fn replay_keeps_the_carried_execution_clock_without_redating_inherited_state() {
 fn an_element_with_no_cross_identity_stands_under_its_own() {
     // Two elements that are nothing elsewhere follow nothing: each is its
     // own identity, and nothing arrives under it but a restatement.
-    let mut first = MarketOperationEventData::at(at(10));
+    let mut first = OperationEventData::at(at(10));
     first.finalize();
     assert_eq!(first.get_crossuuid(), first.get_curruuid());
-    let mut second = MarketOperationEventData::at(at(20));
+    let mut second = OperationEventData::at(at(20));
     second.finalize();
     // A restatement of the first: the same event, said again.
     let arrived = vec![first.clone(), second, first.clone()];
@@ -509,7 +509,7 @@ fn the_walk_states_its_size_and_is_fused() {
     assert!(sorted.next().is_none());
     assert!(sorted.next().is_none());
     // A walk over an empty source is alive to nothing.
-    let mut empty = EventIterator::new(Vec::<MarketOperationEventData>::new(), false);
+    let mut empty = EventIterator::new(Vec::<OperationEventData>::new(), false);
     assert!(empty.next().is_none());
     assert_eq!(empty.alive().count(), 0);
 }
@@ -519,10 +519,10 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
     // The grid is aligned on the epoch. A first observation just before its
     // boundary becomes live at that observation, then is copied at zero;
     // it is never copied into the earlier step where it did not yet exist.
-    let mut before = MarketOperationEventData::at(-1);
+    let mut before = OperationEventData::at(-1);
     before.set_crosscode("O-100".to_owned());
     before.finalize();
-    let mut after = MarketOperationEventData::at(1);
+    let mut after = OperationEventData::at(1);
     after.set_crosscode("O-900".to_owned());
     after.finalize();
     let walked: Vec<_> = EventIterator::new(vec![before, after], true)
@@ -794,13 +794,13 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
 /// records it opened.
 #[cfg(feature = "internals")]
 mod naming {
-    use yggdryl::graph::{Element, EventIterator, MarketOperation, MarketOperationEventData};
+    use yggdryl::graph::{Element, EventIterator, Operation, OperationEventData};
     use yggdryl::internals::graph_iterator::{
         name_records, named_identities, named_identity, named_schemes, retire, settle,
     };
 
-    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> MarketOperationEventData {
-        let mut event = MarketOperationEventData::at(unix);
+    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> OperationEventData {
+        let mut event = OperationEventData::at(unix);
         event.set_crosscode(cross.to_owned());
         event
             .insert_altid(scheme, name)
@@ -813,7 +813,7 @@ mod naming {
     fn retiring_the_last_name_removes_its_whole_index() {
         let event = named("A", 1, "VENUEORDERID", "A-1");
         let identity = event.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketOperationEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
         settle(&mut walk, identity, &event, event.get_curruuid());
         assert_eq!(named_schemes(&walk), 1);
         assert_eq!(named_identities(&walk), 1);
@@ -829,7 +829,7 @@ mod naming {
         let second = named("B", 2, "VENUEORDERID", "SHARED");
         let first_identity = first.get_crossuuid();
         let second_identity = second.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketOperationEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
 
         for turn in 0..64 {
             let (identity, event) = if turn % 2 == 0 {

@@ -24,8 +24,8 @@ use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
 
 use yggdryl::Uuid as CoreUuid;
 use yggdryl::graph::{
-    Element, Event, Lane as CoreLane, Market, MarketOperation,
-    MarketOperationEventData as CoreMarketOperationEventData,
+    Element, Event, Lane as CoreLane, Market, Operation,
+    OperationEventData as CoreOperationEventData,
 };
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
@@ -665,6 +665,25 @@ impl PyFixRegistry {
             .codesets()
             .map(|set| set.name().to_owned())
             .collect()
+    }
+
+    /// Every field that names a message by an identifier, one record per
+    /// key its `FIX:idmap` states: `{"tag", "map", "key", "follow",
+    /// "role"}`, in tag order. A message rebuilds its `accountids`,
+    /// `userids` and `altids` from these, and an operation that follows
+    /// another carries the `altids` keys whose record follows.
+    fn idmap_sources<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        let mut records = Vec::new();
+        for (tag, source) in self.inner.idmap_sources() {
+            let record = PyDict::new(py);
+            record.set_item("tag", tag)?;
+            record.set_item("map", source.map().as_str())?;
+            record.set_item("key", source.key())?;
+            record.set_item("follow", source.follows())?;
+            record.set_item("role", source.role())?;
+            records.push(record);
+        }
+        Ok(records)
     }
 
     /// State the members of the code set `name`, replacing what it held.
@@ -1925,8 +1944,8 @@ impl PyFixMsg {
     ///
     /// A copy at the moment it is asked for, so a message written afterwards
     /// leaves it behind; the same facts are the message's own properties.
-    fn event(&self) -> PyMarketOperationEventData {
-        PyMarketOperationEventData {
+    fn event(&self) -> PyOperationEventData {
+        PyOperationEventData {
             inner: self.inner.event().clone(),
         }
     }
@@ -2068,11 +2087,11 @@ impl PyFixMsg {
             .collect()
     }
 
-    /// The price the message states, as a decimal; zero where it states
-    /// none.
+    /// The price the message states, as a decimal; `None` where it states
+    /// none. Never a last executed price, which `lastpx` answers.
     #[getter]
-    fn price(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
+    fn price(&self) -> Option<PyScalar> {
+        self.inner.get_price().map(decimal_scalar)
     }
 
     /// The currency, as the `currency` code it is; `XXX` where none is
@@ -2082,11 +2101,11 @@ impl PyFixMsg {
         code_scalar(self.inner.get_currency())
     }
 
-    /// The quantity the message states, as a decimal; zero where it states
-    /// none.
+    /// The quantity the message states, as a decimal; `None` where it
+    /// states none. Never a last executed quantity, which `lastqty` answers.
     #[getter]
-    fn quantity(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    fn quantity(&self) -> Option<PyScalar> {
+        self.inner.get_quantity().map(decimal_scalar)
     }
 
     /// The unit the quantity is counted in, as spelled; empty where the
@@ -2134,10 +2153,65 @@ impl PyFixMsg {
         self.inner.get_lastpx().map(decimal_scalar)
     }
 
+    /// What the message states that its reading could not take as it
+    /// stands, each as `(field, reason)` in arrival order: a value that
+    /// would not type, a counter disagreeing with its group, what the last
+    /// settle dropped. Never a column.
+    #[getter]
+    fn anomalies(&self) -> Vec<(String, String)> {
+        self.inner
+            .anomalies()
+            .iter()
+            .map(|held| (held.field().to_owned(), held.reason().to_owned()))
+            .collect()
+    }
+
     /// The quantity it last traded, `LastQty(32)`; `None` where none.
     #[getter]
     fn lastqty(&self) -> Option<PyScalar> {
         self.inner.get_lastqty().map(decimal_scalar)
+    }
+
+    /// FIX's own `LastSpotRate(194)`, the spot rate of the last price, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn lastspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().lastspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `LastForwardPoints(195)`, the forward points of the last price, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn lastforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().lastforwardpoints().map(decimal_scalar)
+    }
+
+    /// FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn bidspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().bidspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn bidforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().bidforwardpoints().map(decimal_scalar)
+    }
+
+    /// FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn offerspotrate(&self) -> Option<PyScalar> {
+        self.inner.lifted().offerspotrate().map(decimal_scalar)
+    }
+
+    /// FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as a decimal; `None` where the message
+    /// states none.
+    #[getter]
+    fn offerforwardpoints(&self) -> Option<PyScalar> {
+        self.inner.lifted().offerforwardpoints().map(decimal_scalar)
     }
 
     /// The price it averaged, `AvgPx(6)`; `None` where none.
@@ -3337,6 +3411,22 @@ impl PyFixCapture {
         self.inner.msgsesseventid()
     }
 
+    /// The plugin the message came into a bridge through, as the bridge's
+    /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
+    /// (OMS_X1_OrderOut as OD9EOEDJ400)` - or `None`.
+    #[getter]
+    fn msgoriginator(&self) -> Option<&str> {
+        self.inner.msgoriginator()
+    }
+
+    /// The conversation a bridge filed the message under - a
+    /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
+    /// of its log line - or `None`.
+    #[getter]
+    fn conversationid(&self) -> Option<&str> {
+        self.inner.conversationid()
+    }
+
     fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
         let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
             return py.NotImplemented();
@@ -3354,6 +3444,8 @@ impl PyFixCapture {
             self.inner.msgctxid(),
             self.inner.msgsessionid(),
             self.inner.msgsesseventid(),
+            self.inner.msgoriginator(),
+            self.inner.conversationid(),
         )
             .hash(&mut state);
         crate::python_hash(state.finish())
@@ -3389,18 +3481,18 @@ impl PyFixCapture {
 /// spellings; the security identifiers and the three identifier maps
 /// `dict`s in key order; a lane a `dict` of its six slots, or `None`.
 #[pyclass(
-    name = "MarketOperationEventData",
+    name = "OperationEventData",
     module = "yggdryl._native",
     frozen,
     skip_from_py_object
 )]
 #[derive(Clone)]
-pub(crate) struct PyMarketOperationEventData {
-    inner: CoreMarketOperationEventData,
+pub(crate) struct PyOperationEventData {
+    inner: CoreOperationEventData,
 }
 
 #[pymethods]
-impl PyMarketOperationEventData {
+impl PyOperationEventData {
     /// The event's `UUIDv7` identity: its millisecond and sequence lead an
     /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
     /// `crosshashcode`.
@@ -3512,10 +3604,11 @@ impl PyMarketOperationEventData {
         self.inner.get_snapunix()
     }
 
-    /// The price, as a decimal; zero where none is stated.
+    /// The price stated, as a decimal; `None` where none is. Never a last
+    /// executed price, which `lastpx` answers.
     #[getter]
-    fn price(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_price()))
+    fn price(&self) -> Option<PyScalar> {
+        self.inner.get_price().map(decimal_scalar)
     }
 
     /// The currency, as the `currency` code it is; `XXX` where none is
@@ -3525,10 +3618,11 @@ impl PyMarketOperationEventData {
         code_scalar(self.inner.get_currency())
     }
 
-    /// The quantity, as a decimal; zero where none is stated.
+    /// The quantity stated, as a decimal; `None` where none is. Never a
+    /// last executed quantity, which `lastqty` answers.
     #[getter]
-    fn quantity(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_quantity()))
+    fn quantity(&self) -> Option<PyScalar> {
+        self.inner.get_quantity().map(decimal_scalar)
     }
 
     /// The unit the quantity is counted in, as spelled; empty where none
@@ -3708,7 +3802,7 @@ impl PyMarketOperationEventData {
 
     fn __repr__(&self) -> String {
         format!(
-            "MarketOperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
+            "OperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
             self.inner.get_curruuid(),
             self.inner.get_currunix(),
             self.inner.get_state().as_str(),

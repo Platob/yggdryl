@@ -8,7 +8,7 @@ A day of session log is a table. This page is the road from one to the other: [`
 | --- | --- |
 | Owns | `FixCodec` and its `parse_*` readers, `fix_schema`, `fix_schema_carrying`, `fix_schema_tags`, `fix_column_of`, `fix_column_tags`, `FixMsg::into_row`, `fix_crate_fields` |
 | Columns | named by the field's folded canonical name - `msgtype`, never `35` and never `msg_type`; the display spelling stays on the field's `display`, the tag on its `FIX:tag`, and a named group column's counter on its `FIX:counter` |
-| Shape | the crate's own clocks, identities, category and normalized instrument codes with the `metadata` Map group; the standard header, with crate `msgcat` immediately after `msgtype`; the fields a consumer reads, four Serie groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 119 tags from `fix_schema_tags`, 124 columns with the shipped registry, each Serie group adding its column beside its counter |
+| Shape | the crate's own clocks, identities, category and normalized instrument codes with the `metadata` Map group; the standard header, with crate `msgcat` immediately after `msgtype`; the fields a consumer reads, four Serie groups, the trailer, FIX's own `msgdirection`, then the one `fixentries` group under the `nofixentries` that counts it: 127 tags from `fix_schema_tags`, 132 columns with the shipped registry, each Serie group adding its column beside its counter |
 | Identifiers | the names a message goes by are no column of the row: its [identifier maps](message.md#the-identifier-maps) are read off the FIX fields that state them, and its security identifiers off `SecurityID(48)` under its source, the `secaltids` group and the crated `isincode`, `bloombergcode` and `figicode` views |
 | Non-null | `beginstring`, `currunix`, `creaunix`, `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` - the instants the identity is settled against and the identity it settles to; every other column is nullable, `state` among them - stated on every row a message writes, `00UNKNOWN` where nothing states one, but a [state](../types/codes/state.md#the-rank-leads) has no neutral member to fill an empty cell with, `sendingtime` among them, because the row states tag 52 only where the message did: a clock intake stood in with is not a fact of the message, and the instant it was settled into has a column of its own |
 | Decided | before the first row is read, from the dictionary alone; never inferred from the data |
@@ -417,9 +417,10 @@ A proprietary group that reuses a standard counter but maps none of that standar
     let header = schema.index_of("beginstring").expect("the band opens");
     assert_eq!(&columns[header..header + 4], ["beginstring", "msgtype", "msgcat", "msgseqnum"]);
     assert_eq!(columns.last(), Some(&"fixentries"));
-    // FIGI adds one protocol tag and its projected column.
-    assert_eq!(fix_schema_tags().len(), 119);
-    assert_eq!(columns.len(), 124);
+    // A bridge's originating plugin and conversation are columns of the
+    // message band; its identifiers and instrument names stay content.
+    assert_eq!(fix_schema_tags().len(), 127);
+    assert_eq!(columns.len(), 132);
     assert_eq!(&fix_schema_tags()[header..header + 4], [8, 35, 65054, 34]);
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -450,9 +451,10 @@ A proprietary group that reuses a standard counter but maps none of that standar
     header = columns.index("beginstring")
     assert columns[header:header + 4] == ["beginstring", "msgtype", "msgcat", "msgseqnum"]
     assert columns[-1] == "fixentries"
-    # FIGI adds one protocol tag and its projected column.
-    assert len(fix_schema_tags()) == 119
-    assert len(columns) == 124
+    # A bridge's originating plugin and conversation are columns of the
+    # message band; its identifiers and instrument names stay content.
+    assert len(fix_schema_tags()) == 127
+    assert len(columns) == 132
     assert fix_schema_tags()[header:header + 4] == [8, 35, 65054, 34]
 
     # The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -480,9 +482,10 @@ A proprietary group that reuses a standard counter but maps none of that standar
     const header = schema.indexOf('beginstring')
     assert.deepEqual(columns.slice(header, header + 4), ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'])
     assert.equal(columns[columns.length - 1], 'fixentries')
-    // FIGI adds one protocol tag and its projected column.
-    assert.equal(fix.schemaTags().length, 119)
-    assert.equal(columns.length, 124)
+    // A bridge's originating plugin and conversation are columns of the
+    // message band; its identifiers and instrument names stay content.
+    assert.equal(fix.schemaTags().length, 127)
+    assert.equal(columns.length, 132)
     assert.deepEqual(fix.schemaTags().slice(header, header + 4), [8, 35, 65054, 34])
 
     // The spelling stays on the field, so a renderer shows `MsgType` over `msgtype`.
@@ -511,7 +514,7 @@ An entry says what the message states and only that. A bridge packing a whole oc
 
 ## The crate's own columns
 
-Twenty-seven scalar definitions and one Map group carry the facts no dictionary publishes: what the [event](../graph.md) a message is states, what the capture stated about its line, the message category and four normalized instrument codes whose standard FIX representation is contextual. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 28 in tag order. Their tags run from 65003 - `CRATE_TAG_MIN` (65000) starts the reserved block, and its retired slots are never reused: `identifiers` (65020), `cusipcode` (65057) and `sedolcode` (65058) among them - `CURRUNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `metadata` is the one group, reached by `field_by_counter(65049)` or by name. On a message every definition but `sourceurl` is a [typed fact](message.md#typed-tags): held by the event or capture, reached by its tag, and never in the content row. `sourceurl` is the capture's own column - what a *reader* said about the line rather than what the line said - and neither a message nor the fixed row holds it: it leads the row as [one of the capture's own](#a-captures-own-columns-lead-the-row), beside the body the line was cut from and its place in the object.
+Thirty-nine scalar definitions and one Map group carry the facts no dictionary publishes: what the [event](../graph.md) a message is states, what the capture stated about its line, the message category, four normalized instrument codes whose standard FIX representation is contextual, the plugin and conversation a bridge's log line names, and the eight identifiers and two instruments a bridge names in words of its own. Every registry holds them from construction and the [store](store.md) writes them, so a dump is the whole row and a stored copy is read past in favour of the constructed one: `fix_crate_fields` lists all 40 in tag order. Their tags run from 65003 - `CRATE_TAG_MIN` (65000) starts the reserved block, and its retired slots are never reused: `identifiers` (65020), `cusipcode` (65057) and `sedolcode` (65058) among them - `CURRUNIX_TAG_NAME` and its siblings hold each `(tag, name)` pair, and `is_crate_tag` tests ownership. `metadata` is the one group, reached by `field_by_counter(65049)` or by name. On a message every definition but `sourceurl` and the ten a bridge names in its own words - 65068 to 65077 - is a [typed fact](message.md#typed-tags): held by the event or capture, reached by its tag, and never in the content row. Those ten stay content, kept among a fixed row's residual entries rather than as columns: the eight identifiers each state their own [`FIX:idmap`](registry.md#a-field-names-a-message-by-its-identifiers) and land in the [identifier maps](message.md#the-identifier-maps) under their upper-cased names, and the two instrument names the row holds each as it arrived, a fixed row keeps it among its residual entries rather than as a column, and each folds into a `secaltids` occurrence under its own source - `OMSINSTRUMENTID`, `ULLINKINSTRUMENTID` - never over an occurrence the row states under that source and only where the source can hold it, a value past its 32 bytes an [anomaly](message.md#anomalies). `sourceurl` is the capture's own column - what a *reader* said about the line rather than what the line said - and neither a message nor the fixed row holds it: it leads the row as [one of the capture's own](#a-captures-own-columns-lead-the-row), beside the body the line was cut from and its place in the object.
 
 | Column | Display | Tag | Holds |
 | --- | --- | --- | --- |
@@ -531,20 +534,32 @@ Twenty-seven scalar definitions and one Map group carry the facts no dictionary 
 | `crossuuid` | `CrossUuid` | 65040 | the identity every message of one lifecycle shares, a `uuid`: the UUIDv8 of `crosshashcode`, or the message's own `curruuid` where it names no cross code; non-null |
 | `seqnum` | `SeqNum` | 65042 | the message's place in its chain, `uint64`: how many came before it; null where none did |
 | `crosscode` | `CrossCode` | 65048 | the identifier every message of one lifecycle shares: an explicit nonempty value, else the first nonempty `OrderID(37)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)` or `MDReqID(262)`; empty where none |
-| `metadata` | `Metadata` | 65049 | a nullable sorted Map of what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym`, `ullink.instrumentid` - each under the key as the bridge spelled it, folded |
+| `metadata` | `Metadata` | 65049 | a nullable sorted Map of what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.acronym`, `ullink.clientid` - each under the key as the bridge spelled it, folded; a namespaced spelling the dictionary holds whole, `ULLINK.INSTRUMENTID`, is that field instead |
 | `srcuuids` | `SrcUuids` | 65051 | the sorted unique identities of the elements this message was read from, a `serie<uuid>`: the [text line](../media/index.md#plain-text) it was parsed out of, stated by the line doors as the line's own `curruuid` before the message settles, and none for bytes; provenance, never its chain - no walk moves it - and outside the `currhashcode`, so the same bytes read from two lines are one message; never on the wire; nullable |
 | `state` | `State` | 65052 | the state the message reached, a ranked [state](../types/codes/state.md#the-rank-leads) code: `OrdStatus(39)`, else `ExecType(150)`, `00UNKNOWN` where neither states one; the furthest its chain knows once the [lifecycle](lifecycle.md) followed it, and a row stating one is the row's word; nullable, and never null on a row a message wrote |
 | `exprtime` | `ExprTime` | 65053 | when the current generation stops being good, a nanosecond UTC clock: `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)`; a newer message's explicit deadline wins even where earlier, else it inherits the predecessor's; nullable |
 | `msgcat` | `MsgCat` | 65054 | the message type's stable `int32` business-category ID, for example `10` for `ORDR`; placed immediately after `msgtype` in the fixed row and serialized as `marketoperationid` in a generic market operation |
 | `isincode` | `IsinCode` | 65055 | the `ISIN` entry of the message's [security identifiers](message.md#typed-tags), stated directly by a bridge or through `SecurityID(48)` under source `4` or a `secaltids` occurrence: a view of `get_securityids()`, row-stated when written; nullable |
 | `bloombergcode` | `BloombergCode` | 65059 | the `BLOOMBERG` entry of the message's security identifiers, stated directly or under source `A`: a view of `get_securityids()`, row-stated when written; nullable |
-| `miccode` | `MicCode` | 65060 | the validated MIC the message names for its market; nullable |
+| `miccode` | `MicCode` | 65060 | the MIC the message names for its market: a stated one, else `LastMkt(30)`, `ExDestination(100)`, the market a bridge's [instrument key](message.md#typed-tags) names, then `SecurityExchange(207)`, the first an ISO 10383 MIC - `MicCode::is_iso`, four upper-case letters or digits - so a venue's short code names none. A bridge's `INSTRUMENT[EXCHANGE]` is its alias and states it; a short code there, `S` or `TW`, is an [anomaly](message.md#anomalies) and stays a child of its own spelling while the ladder answers; nullable |
 | `figicode` | `FigiCode` | 65061 | the `FIGI` entry of the message's security identifiers, stated directly or under source `S`: a view of `get_securityids()`, row-stated when written; nullable |
 | `execunix` | `ExecUnix` | 65062 | the latest precise execution instant this lifecycle has reached, nanoseconds UTC: initially a stated crate value, else `ExecutionTimestamp(2749)`, else the first `TrdRegTimestamps(768)` occurrence whose `TrdRegTimestampType(770)` is `ExecutionTime`, else a bridge's `eventtimestamp`, else `TransactTime(60)` only where `FixMsg::is_execution` accepts the report. That includes an initial `35=AE` with `TradeReportTransType(487)` absent/New and `ExecType(150)` absent or execution-like; non-New/cancel/correct/reverse/status AE and `AD`, `AQ` or `AR` invent none. An accepted execution with no precise clock takes its `currunix` at intake, where it follows nothing yet, and later lifecycle events carry the clock without moving it backward; a lifecycle output read back with none is not refilled |
 | `recdunix` | `RecdUnix` | 65063 | the precise recording instant, nanoseconds UTC: a stated crate value, else the enclosing text line's `mtime`; nullable, absent for raw bytes or pairs, and never inferred from FIX sending or hop clocks |
 | `msgsesseventid` | `MsgSessEventId` | 65065 | the session event a bridge delivered the message as, `utf8`: `MsgType(35)`, `msgsessionid`, `msgctxid` and `MsgSeqNum(34)` joined by `:` as they are stated - `8:e7256476:9effef3e6a:1094` - where the three texts are nonempty and the sequence present, null otherwise; derived by the message whenever it settles and never read off a row, settled to one message and never carried along a chain, outside the `currhashcode`, and the key the lifecycle's [delivery merge](lifecycle.md#a-twin-is-not-a-successor) matches observations on; a capture fact |
+| `msgoriginator` | `MsgOriginator` | 65066 | the plugin a message came into a bridge through, as the bridge's own log line names it: `Message received: ... from (X as ...)`, `Execution report from X type ...`, or the `msgpluginid` that logged a `Receiving :` line; null where the line names none - `PLUGINORIGINATOR=OMSDealer` is content and stays so. Placed after `msgpluginid` in the message band, outside the `currhashcode`, and when two observations of one delivery merge the earlier one's stands, a differing later one an [anomaly](message.md#anomalies); a capture fact |
+| `conversationid` | `ConversationId` | 65067 | the conversation a bridge filed the message under: a `CONVERSATIONID` the message stated, else the `{conversationId: ...}` of its log line, a line naming another an anomaly; closes the message band after `msgsesseventid`, outside the `currhashcode`, and merges as `msgoriginator` does; a capture fact |
+| `omsdealeraccount` | `OmsDealerAccount` | 65068 | the account an OMS dealer books the order to: content, `accountids` under `OMSDEALERACCOUNT`; nullable |
+| `omsuserid` | `OmsUserId` | 65069 | the OMS user who entered the order: content, `userids` under `OMSUSERID`; nullable |
+| `parentorderid` | `ParentOrderId` | 65070 | the parent order's identifier: content, `altids` under `PARENTORDERID`, carried by a following operation; nullable |
+| `parentclordid` | `ParentClOrdId` | 65071 | the parent order's client identifier: content, `altids` under `PARENTCLORDID`, followed; nullable |
+| `omsdealerparentorderid` | `OmsDealerParentOrderId` | 65072 | the OMS dealer's parent order identifier: content, `altids` under `OMSDEALERPARENTORDERID`, followed; nullable |
+| `exchangeclientorderid` | `ExchangeClientOrderId` | 65073 | the exchange's client order identifier: content, `altids` under `EXCHANGECLIENTORDERID`, followed; nullable |
+| `transversalkey` | `TransversalKey` | 65074 | the key a bridge threads one order through every system with: content, `altids` under `TRANSVERSALKEY`, followed; nullable |
+| `ultraderclordid` | `UlTraderClOrdId` | 65075 | a trading screen's own client order identifier: content, `altids` under `ULTRADERCLORDID`, never carried by a following operation; nullable |
+| `omsinstrumentid` | `OmsInstrumentId` | 65076 | the instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - content, never a column of the fixed row, and a `secaltids` occurrence under the `OMSINSTRUMENTID` source; nullable |
+| `ullinkinstrumentid` | `UllinkInstrumentId` | 65077 | the instrument a ULLINK bridge names, its alias `ullink.instrumentid` the spelling the bridge writes: content, never a column of the fixed row, and a `secaltids` occurrence under the `ULLINKINSTRUMENTID` source; nullable |
 
-FIX keeps the market facts it names directly: the prices, quantities, currency, side, unit and quote lanes remain under their standard tags, as does the classification `CFICode(461)`. CFI therefore has no crate duplicate. The four crate code columns give typed locations for normalized identifiers without discarding the standard fields that stated them: `isincode`, `bloombergcode` and `figicode` are views of the message's security identifiers - `get_securityids()`, built at every settle from `SecurityID(48)` under `SecurityIDSource(22)`, each `secaltids` occurrence read through `SecType::read`, and the three crated views a row stated - and `miccode` is the market. A CUSIP or a SEDOL is one more security identifier under its own key, `ids.get("CUSIP")`, never a column of its own; the national number a canonical ISIN embeds is derived into a key the message does not state and reaches no field and no wire. `msgcat` similarly projects the symbolic category attached to `MsgType(35)` through the registry's code set into the generic integer `marketoperationid`, while `msgtype` remains the standard field.
+FIX keeps the market facts it names directly: the prices, quantities, currency, side, unit and quote lanes remain under their standard tags, as does the classification `CFICode(461)`. CFI therefore has no crate duplicate. The four crate code columns give typed locations for normalized identifiers without discarding the standard fields that stated them: `isincode`, `bloombergcode` and `figicode` are views of the message's security identifiers - `get_securityids()`, built at every settle as the [message states them](message.md#typed-tags) - and `miccode` is the market. A CUSIP or a SEDOL is one more security identifier under its own key, `ids.get("CUSIP")`, never a column of its own; the national number a canonical ISIN embeds is derived into a key the message does not state and reaches no field and no wire. `msgcat` similarly projects the symbolic category attached to `MsgType(35)` through the registry's code set into the generic integer `marketoperationid`, while `msgtype` remains the standard field.
 
 `currhashcode` is the one stored content identity and `crossuuid` the chain's; what each digests, and why a projection that adds or renames columns leaves them alone, is the [message's identity](../hashing.md). `FixMsg::digest` is a separate contract: the XXH3-128 of what the wire emits, so two identical orders read with two separators digest equal, and [`FixDedup`](arrow.md#a-pin-is-on-the-codec-a-stage-is-a-call) drops the second.
 
@@ -569,7 +584,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     use yggdryl::{CREAUNIX_TAG_NAME, FixCodec, FixRegistry, Scalar, TimeUnit, Timezone, CURRUNIX_TAG_NAME, fix_crate_fields};
 
     let fields = fix_crate_fields()?;
-    assert_eq!(fields.len(), 28);
+    assert_eq!(fields.len(), 40);
     // No partition column: how a layout is cut is the target's to decide.
     assert!(fields.iter().all(|field| !field.is_partition()));
     // The two identities are the crate's own uuid, the codes plain integers.
@@ -629,7 +644,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
 
     UNIX, CREAUNIX = 65003, 65023
     fields = list(fix_crate_fields())
-    assert len(fields) == 28
+    assert len(fields) == 40
     # No partition column: how a layout is cut is the target's to decide.
     assert not any(field.is_partition for field in fields)
     # The two identities are the crate's own uuid, the codes plain integers.
@@ -681,7 +696,7 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
 
     const [UNIX, CREAUNIX] = [65003, 65023]
     const fields = fix.crateFields()
-    assert.equal(fields.length, 28)
+    assert.equal(fields.length, 40)
     // No partition column: how a layout is cut is the target's to decide.
     assert.ok(fields.every((field) => !field.isPartition))
     // The two identities are the crate's own uuid, the codes plain integers.
@@ -1026,14 +1041,14 @@ What the pass leaves null it leaves null on purpose, and a reader needs to be ab
 
 ### The identifier maps are read off the row
 
-The [identifier maps](message.md#the-identifier-maps) `MarketOperation` answers - `get_accountids()`, `get_userids()` and `get_altids()` - are rebuilt at every settle from the fields that state them: `Account(1)`; `SenderSubID(50)` and `OnBehalfOfSubID(116)`; `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`; and the `PartyID(448)` of a `Parties` occurrence whose role is a customer account, an entering trader or an executing trader. Each entry sits under the upper-cased name of the field that stated it, and no column carries the maps: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to a map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares.
+The [identifier maps](message.md#the-identifier-maps) `Operation` answers - `get_accountids()`, `get_userids()` and `get_altids()` - are rebuilt at every settle from the fields that state them: `Account(1)`; `SenderSubID(50)` and `OnBehalfOfSubID(116)`; `OrderID(37)`, `SecondaryOrderID(198)`, `ClOrdID(11)`, `OrigClOrdID(41)`, `ExecID(17)`, `TrdMatchID(880)`, `QuoteID(117)`, `QuoteReqID(131)`, `MDReqID(262)` and `TradeID(1003)`; and the `PartyID(448)` of a `Parties` occurrence whose role is a customer account, an entering trader or an executing trader. Each entry sits under the upper-cased name of the field that stated it, and no column carries the maps: the fields do, so the fill changes neither the entries, the emitted bytes nor the digest, and a write to a map is a write to its field. It is what the [lifecycle](lifecycle.md#a-chain-is-named-by-its-cross-code) joins a chain by when a message spells no code the live one shares.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
-    use yggdryl::graph::{Element, MarketOperation};
+    use yggdryl::graph::{Element, Operation};
     use yggdryl::local::LocalFolder;
     use yggdryl::{FixCodec, FixRegistry};
 

@@ -5,8 +5,8 @@
 //! instant: a book level, a side's summary, an undated entry.
 //! [`MarketEventData`] adds the clocks and the state an [`Event`] answers, so
 //! it is a [`MarketEvent`]: a book, a level dated at an instant.
-//! [`MarketOperationData`] and [`MarketOperationEventData`] add the eight
-//! facts a [`MarketOperation`] states - its category, how long it stands,
+//! [`OperationData`] and [`OperationEventData`] add the eight
+//! facts a [`Operation`] states - its category, how long it stands,
 //! whether it can trade, its account, user and own identifiers, and its two
 //! lanes - to each, so an operation entry and an operation event embed the
 //! slim holder and convert to its view by a move, never a copy.
@@ -23,8 +23,8 @@
 //! let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 //! event.set_crosscode("O-1".to_owned());
 //! event.set_side(Side::Buy);
-//! event.set_price(Decimal18::from_int(101));
-//! event.set_quantity(Decimal18::from_int(5));
+//! event.set_price(Some(Decimal18::from_int(101)));
+//! event.set_quantity(Some(Decimal18::from_int(5)));
 //! event.set_currency(Ccy::new("USD")?);
 //! event.finalize();
 //! assert_ne!(event.get_currhashcode(), 0);
@@ -33,8 +33,8 @@
 //! let mut again = MarketEventData::at(1_700_000_000_000_000_000);
 //! again.set_crosscode("O-1".to_owned());
 //! again.set_side(Side::Buy);
-//! again.set_price(Decimal18::from_int(101));
-//! again.set_quantity(Decimal18::from_int(5));
+//! again.set_price(Some(Decimal18::from_int(101)));
+//! again.set_quantity(Some(Decimal18::from_int(5)));
 //! again.set_currency(Ccy::new("USD")?);
 //! again.finalize();
 //! assert_eq!(again.get_curruuid(), event.get_curruuid());
@@ -45,7 +45,7 @@
 use smol_str::SmolStr;
 
 use super::market::{Lane, Metadata, empty_metadata, restating_market, restating_operation};
-use super::{Element, Event, Market, MarketEvent, MarketOperation, MarketOperationEvent};
+use super::{Element, Event, Market, MarketEvent, Operation, OperationEvent};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::{Ccy, CfiCode, Decimal18, MicCode, Result, Side, State, TimeInForce, Unit, Uuid};
@@ -60,9 +60,9 @@ pub struct MarketData {
     currhashcode: u64,
     crosshashcode: u64,
     srcuuids: Vec<Uuid>,
-    price: Decimal18,
+    price: Option<Decimal18>,
     currency: Ccy,
-    quantity: Decimal18,
+    quantity: Option<Decimal18>,
     unit: Unit,
     side: Side,
     securityids: SecurityIds,
@@ -91,9 +91,9 @@ impl Default for MarketData {
             currhashcode: 0,
             crosshashcode: 0,
             srcuuids: Vec::new(),
-            price: Decimal18::ZERO,
+            price: None,
             currency: Ccy::none(),
-            quantity: Decimal18::ZERO,
+            quantity: None,
             unit: Unit::none(),
             side: Side::Unknown,
             securityids: SecurityIds::default(),
@@ -196,11 +196,11 @@ impl Element for MarketData {
 }
 
 impl Market for MarketData {
-    fn get_price(&self) -> Decimal18 {
+    fn get_price(&self) -> Option<Decimal18> {
         self.price
     }
 
-    fn set_price(&mut self, price: Decimal18) {
+    fn set_price(&mut self, price: Option<Decimal18>) {
         self.price = price;
     }
 
@@ -212,11 +212,11 @@ impl Market for MarketData {
         self.currency = currency;
     }
 
-    fn get_quantity(&self) -> Decimal18 {
+    fn get_quantity(&self) -> Option<Decimal18> {
         self.quantity
     }
 
-    fn set_quantity(&mut self, quantity: Decimal18) {
+    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
         self.quantity = quantity;
     }
 
@@ -261,8 +261,10 @@ impl Market for MarketData {
         self.cficode.as_ref()
     }
 
+    /// A market keeps only a detailed classification: a code that says
+    /// nothing past its category and group is stored as none.
     fn set_cficode(&mut self, code: Option<CfiCode>) {
-        self.cficode = code;
+        self.cficode = code.filter(|held| CfiCode::is_detailed(held.as_str()));
     }
 
     fn get_miccode(&self) -> Option<&MicCode> {
@@ -630,10 +632,10 @@ struct OperationFacts {
     ask: Option<Box<Lane>>,
 }
 
-/// `impl MarketOperation` over an [`OperationFacts`] field.
+/// `impl Operation` over an [`OperationFacts`] field.
 macro_rules! operation_facts {
     ($type:ty, $($field:ident).+) => {
-        impl MarketOperation for $type {
+        impl Operation for $type {
             fn get_marketoperationid(&self) -> Option<i32> {
                 self.$($field).+.marketoperationid
             }
@@ -710,12 +712,12 @@ macro_rules! operation_facts {
 /// [`MarketData`] with the operation's facts and no instant: an undated
 /// operation entry as plain fields.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct MarketOperationData {
+pub struct OperationData {
     market: MarketData,
     operation: OperationFacts,
 }
 
-impl MarketOperationData {
+impl OperationData {
     /// The slim market facts this entry holds.
     #[must_use]
     pub fn market(&self) -> &MarketData {
@@ -731,17 +733,17 @@ impl MarketOperationData {
     /// This entry dated at `unix`, nanoseconds since the Unix epoch: a
     /// move, finalized by the caller once the clocks are in.
     #[must_use]
-    pub fn at(self, unix: i64) -> MarketOperationEventData {
+    pub fn at(self, unix: i64) -> OperationEventData {
         let mut event = MarketEventData::from(self.market);
         event.currunix = unix;
-        MarketOperationEventData {
+        OperationEventData {
             event,
             operation: self.operation,
         }
     }
 }
 
-impl From<MarketData> for MarketOperationData {
+impl From<MarketData> for OperationData {
     /// The market facts with no operation fact stated.
     fn from(market: MarketData) -> Self {
         Self {
@@ -751,7 +753,7 @@ impl From<MarketData> for MarketOperationData {
     }
 }
 
-impl Element for MarketOperationData {
+impl Element for OperationData {
     fn get_curruuid(&self) -> Uuid {
         self.market.curruuid
     }
@@ -833,19 +835,19 @@ impl Element for MarketOperationData {
     }
 }
 
-delegate_market!(MarketOperationData, market);
-operation_facts!(MarketOperationData, operation);
+delegate_market!(OperationData, market);
+operation_facts!(OperationData, operation);
 
 /// [`MarketEventData`] with the operation's facts: a
-/// [`MarketOperationEvent`] as plain fields, what an order, a quote, an
+/// [`OperationEvent`] as plain fields, what an order, a quote, an
 /// execution and a message hold.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct MarketOperationEventData {
+pub struct OperationEventData {
     event: MarketEventData,
     operation: OperationFacts,
 }
 
-impl MarketOperationEventData {
+impl OperationEventData {
     /// An operation that happened at `unix`, nanoseconds since the Unix
     /// epoch, stating nothing else yet.
     #[must_use]
@@ -877,15 +879,15 @@ impl MarketOperationEventData {
 
     /// This operation without its clocks: a move.
     #[must_use]
-    pub fn into_entry(self) -> MarketOperationData {
-        MarketOperationData {
+    pub fn into_entry(self) -> OperationData {
+        OperationData {
             market: self.event.market,
             operation: self.operation,
         }
     }
 }
 
-impl From<MarketEventData> for MarketOperationEventData {
+impl From<MarketEventData> for OperationEventData {
     /// The event with no operation fact stated.
     fn from(event: MarketEventData) -> Self {
         Self {
@@ -895,7 +897,7 @@ impl From<MarketEventData> for MarketOperationEventData {
     }
 }
 
-impl Element for MarketOperationEventData {
+impl Element for OperationEventData {
     fn get_curruuid(&self) -> Uuid {
         self.event.get_curruuid()
     }
@@ -966,14 +968,13 @@ impl Element for MarketOperationEventData {
 }
 
 delegate_event!(
-    MarketOperationEventData,
+    OperationEventData,
     event,
-    restating = |this: MarketOperationEventData, live: &MarketOperationEventData| {
-        restating_operation(this, live)
-    }
+    restating =
+        |this: OperationEventData, live: &OperationEventData| { restating_operation(this, live) }
 );
-delegate_market!(MarketOperationEventData, event.market);
-operation_facts!(MarketOperationEventData, operation);
+delegate_market!(OperationEventData, event.market);
+operation_facts!(OperationEventData, operation);
 
 fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &E) {
     this.set_curruuid(other.get_curruuid());
@@ -1021,10 +1022,7 @@ fn copy_market<T: Market + ?Sized, E: Market + ?Sized>(this: &mut T, other: &E) 
     this.set_metadata(Some(other.get_metadata().clone()));
 }
 
-fn copy_operation<T: MarketOperation + ?Sized, E: MarketOperation + ?Sized>(
-    this: &mut T,
-    other: &E,
-) {
+fn copy_operation<T: Operation + ?Sized, E: Operation + ?Sized>(this: &mut T, other: &E) {
     this.set_marketoperationid(other.get_marketoperationid());
     this.set_tif(other.get_tif().cloned());
     this.set_tradable(other.get_tradable());
@@ -1059,7 +1057,7 @@ impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
     }
 }
 
-impl<E: Element + MarketOperation + ?Sized> From<&E> for MarketOperationData {
+impl<E: Element + Operation + ?Sized> From<&E> for OperationData {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1069,7 +1067,7 @@ impl<E: Element + MarketOperation + ?Sized> From<&E> for MarketOperationData {
     }
 }
 
-impl<E: MarketOperationEvent + ?Sized> From<&E> for MarketOperationEventData {
+impl<E: OperationEvent + ?Sized> From<&E> for OperationEventData {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);

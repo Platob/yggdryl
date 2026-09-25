@@ -27,9 +27,9 @@ it. The dictionary holds each set once and a merge folds two statements of one
 set together, so a code named, aliased or documented once is named for every
 field that reads it.
 
-The two remaining ``FIX:`` properties that hold a document - ``FIX:replacements``
-and ``FIX:directions`` - are written as the JSON arrays they are rather than as
-one escaped line; the crate restates each as its canonical compact text when it
+The remaining ``FIX:`` properties that hold a document - ``FIX:replacements``,
+``FIX:directions`` and ``FIX:idmap`` - are written as the JSON arrays they are
+rather than as one escaped line; the crate restates each as its canonical compact text when it
 reads the store back.
 
 The dictionary is one reading of the protocol rather than a history of it: a
@@ -961,6 +961,98 @@ REPLACEMENT_RULES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
 )
 
 
+# ---- Identifier maps: which key of which map a field names a message by ----
+#
+# A message goes by the names its fields state - the account it is booked
+# to, the user who entered it, the order's own identifiers - and which field
+# states which key is the crate's reading, not the specification's. Each
+# entry is written onto its field as a ``FIX:idmap`` document; the crate's
+# own bridge fields carry theirs in the crate dump. ``follow`` marks an
+# alternate identifier an operation that follows another carries forward, and
+# ``role`` the PartyRole(452) of the Parties occurrence whose PartyID(448)
+# states the key.
+
+
+def idmap(map_name: str, key: str, *, follow: bool = False, role: str | None = None) -> dict[str, Any]:
+    """One identifier-map entry, its keys in the order the crate reads them."""
+    entry: dict[str, Any] = {"map": map_name, "key": key}
+    if follow:
+        entry["follow"] = True
+    if role is not None:
+        entry["role"] = role
+    return entry
+
+
+IDMAP_SOURCES: tuple[tuple[int, list[dict[str, Any]]], ...] = (
+    (1, [idmap("accountids", "ACCOUNT")]),
+    (11, [idmap("altids", "CLORDID")]),
+    (17, [idmap("altids", "EXECID")]),
+    (37, [idmap("altids", "ORDERID", follow=True)]),
+    (41, [idmap("altids", "ORIGCLORDID")]),
+    (50, [idmap("userids", "SENDERSUBID")]),
+    (116, [idmap("userids", "ONBEHALFOFSUBID")]),
+    (117, [idmap("altids", "QUOTEID")]),
+    (131, [idmap("altids", "QUOTEREQID")]),
+    (198, [idmap("altids", "SECONDARYORDERID", follow=True)]),
+    (262, [idmap("altids", "MDREQID")]),
+    (448, [
+        idmap("accountids", "CUSTOMERACCOUNT", role="24"),
+        idmap("userids", "ENTERINGTRADER", role="36"),
+        idmap("userids", "EXECUTINGTRADER", role="12"),
+    ]),
+    (880, [idmap("altids", "TRDMATCHID")]),
+    (1003, [idmap("altids", "TRADEID")]),
+)
+
+# Spellings a bridge writes for a field that no FIX version ever wrote, each
+# an alias ranked after every spelling a version did: OrderID(37) arrives as a
+# bridge's market or OMS dealer order identifier.
+CRATE_NAMES: tuple[tuple[int, list[str]], ...] = (
+    (37, ["marketorderid", "omsdealerorderid"]),
+)
+
+
+def attach_identifier_maps(
+    catalog: dict[str, list[dict[str, Any]]],
+    code_values: dict[int, set[str]],
+) -> None:
+    """Write the identifier-map and crate-name tables onto their fields,
+    refusing an entry that does not resolve: every tag is a field, a key is
+    one to 32 upper-case letters or digits, ``follow`` sits on an ``altids``
+    entry, a ``role`` sits on PartyID(448) and is a PartyRole(452) code, and a
+    crate name is not already one of the field's."""
+    by_tag = {int(field["metadata"]["FIX:tag"]): field for field in catalog["fields"]}
+    for tag, entries in IDMAP_SOURCES:
+        if tag not in by_tag:
+            raise ValueError(f"idmap for unknown tag {tag}")
+        for entry in entries:
+            where = f"idmap of tag {tag}"
+            if entry["map"] not in ("accountids", "userids", "altids"):
+                raise ValueError(f"{where}: unknown map {entry['map']!r}")
+            if not re.fullmatch(r"[A-Z0-9]{1,32}", entry["key"]):
+                raise ValueError(f"{where}: key {entry['key']!r} is not upper-case letters or digits")
+            if entry.get("follow") and entry["map"] != "altids":
+                raise ValueError(f"{where}: only an altids entry follows")
+            if "role" in entry:
+                if tag != 448:
+                    raise ValueError(f"{where}: a role sits on PartyID(448) alone")
+                if entry["role"] not in code_values.get(452, set()):
+                    raise ValueError(f"{where}: {entry['role']!r} is not a PartyRole code")
+        metadata = by_tag[tag]["metadata"]
+        metadata["FIX:idmap"] = entries
+        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
+    for tag, names in CRATE_NAMES:
+        if tag not in by_tag:
+            raise ValueError(f"crate names for unknown tag {tag}")
+        metadata = by_tag[tag]["metadata"]
+        held = metadata.get("FIX:names", [])
+        for name in names:
+            if name in held or name == by_tag[tag]["name"]:
+                raise ValueError(f"crate name {name!r} of tag {tag} is already one of its names")
+        metadata["FIX:names"] = held + names
+        by_tag[tag]["metadata"] = dict(sorted(metadata.items()))
+
+
 def attach_replacements(
     catalog: dict[str, list[dict[str, Any]]],
     code_values: dict[int, set[str]],
@@ -1740,6 +1832,7 @@ def build(
         )
     catalog = build_catalog(latest, fields)
     attach_replacements(catalog, code_values, multi_valued)
+    attach_identifier_maps(catalog, code_values)
     attach_derivations(catalog, code_records)
     return catalog, code_sets
 

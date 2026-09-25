@@ -3031,10 +3031,27 @@ mod committed {
     /// row - so three definitions, three members of the fixed row and one
     /// group document are gone, and `isincode`, `bloombergcode` and
     /// `figicode` describe themselves as views of `securityids`.
+    /// It last moved when `orderid` took `marketorderid` and
+    /// `omsdealerorderid` as its `FIX:names`, in that order: a bridge's two
+    /// spellings of the order's own identifier fill `OrderID(37)` only where
+    /// neither the canonical name nor the tag did, so that one definition
+    /// hashes its two aliases and no other document, tag or count moved.
+    /// It last moved when a bridge's two instrument names became the crate's
+    /// `omsinstrumentid` (65076) and `ullinkinstrumentid` (65077): content
+    /// the row keeps, each folding into `secaltids` under its own source, and
+    /// neither a column of the fixed row - and `miccode` took the
+    /// `instrument[exchange]` spelling and says which fields its ladder reads.
+    /// It last moved when which field names a message by which identifier
+    /// became `FIX:idmap`, a property of the field: thirteen standard fields
+    /// and `PartyID(448)` under three `PartyRole(452)` codes state their map,
+    /// key and follow flag, and the crate gained ten fields - `msgoriginator`
+    /// (65066) and `conversationid` (65067), two typed members of the fixed
+    /// row read off a bridge's line, and the eight bridge identifiers 65068
+    /// to 65075, content the row keeps, each stating its own `FIX:idmap`.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 4_816_611_246_891_994_692);
+        assert_eq!(registry.stable_hash(), 1_297_145_350_983_584_410);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

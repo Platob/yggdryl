@@ -45,6 +45,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "TRADEID"
+        }
+      ],
       "FIX:tag": "1003",
       "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
       "display": "TradeID"

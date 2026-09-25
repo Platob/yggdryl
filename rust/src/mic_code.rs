@@ -69,6 +69,29 @@ impl MicCode {
         Self(SmolStr::new_static(Self::NONE))
     }
 
+    /// Whether `text` is shaped as an ISO 10383 code: exactly four of
+    /// `[A-Z0-9]`. A venue's own short code - `S`, `TW` - is not, and a
+    /// reading that takes the first market a message names skips it.
+    /// [`MicCode::new`] stays permissive, because a stored column may hold
+    /// a short code a venue wrote.
+    ///
+    /// ```
+    /// # use yggdryl::MicCode;
+    /// assert!(MicCode::is_iso("XSWX"));
+    /// assert!(MicCode::is_iso("RJEA"));
+    /// assert!(!MicCode::is_iso("S"));
+    /// assert!(!MicCode::is_iso("TW"));
+    /// assert!(!MicCode::is_iso("xswx"));
+    /// assert!(!MicCode::is_iso("XSWXX"));
+    /// ```
+    #[must_use]
+    pub fn is_iso(text: &str) -> bool {
+        text.len() == 4
+            && text
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+    }
+
     /// Resolves one dxFeed regional exchange code under the feed that defines
     /// it into its ISO 10383 MIC.
     ///

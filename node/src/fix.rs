@@ -45,9 +45,7 @@ use napi::bindgen_prelude::{
     Generator, JsObjectValue as _, Null, Object, Result, Status, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::graph::{
-    Element, Event, Lane, Market, MarketOperation, MarketOperationEvent, Metadata,
-};
+use yggdryl::graph::{Element, Event, Lane, Market, Metadata, Operation, OperationEvent};
 use yggdryl::{CfiCode, Decimal18, IdMap, MicCode, SecurityIds};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
@@ -163,6 +161,16 @@ pub struct FixCommitReport {
 /// and the group a specification adds where it has them. A key a member does
 /// not state is absent rather than empty, so a bare code is the two facts it
 /// is.
+/// One thing a message states that its reading could not take as it
+/// stands: the field it was stated under, and why.
+#[napi(object)]
+pub struct FixAnomalyView {
+    /// The dictionary's name for the field, else the key as it arrived.
+    pub field: String,
+    /// Why the reading could not take the value as it stands.
+    pub reason: String,
+}
+
 #[napi(object)]
 pub struct FixCode {
     /// The wire value this code stands for.
@@ -224,6 +232,21 @@ pub struct FixCodeSetView {
 /// The members are owned on the way across - a JavaScript value outlives the
 /// dictionary it was read from - and the stored escapes are decoded there,
 /// which is what `FixCode::from` does.
+/// One field that names a message by an identifier, and the key it states.
+#[napi(object, object_from_js = false)]
+pub struct FixIdMapSource {
+    /// The field's tag.
+    pub tag: i32,
+    /// The map it lands in: `accountids`, `userids` or `altids`.
+    pub map: String,
+    /// The upper-case key it lands under.
+    pub key: String,
+    /// Whether an operation that follows another carries it.
+    pub follow: bool,
+    /// On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it.
+    pub role: Option<String>,
+}
+
 fn codeset_view(set: CoreFixCodeSet<'_>) -> Result<FixCodeSetView> {
     Ok(FixCodeSetView {
         name: set.name().to_owned(),
@@ -701,6 +724,25 @@ impl JsFixRegistry {
             .collect()
     }
 
+    /// Every field that names a message by an identifier, one entry per key
+    /// its `FIX:idmap` states, in tag order. A message rebuilds its
+    /// `accountids`, `userids` and `altids` from these, and an operation
+    /// that follows another carries the `altids` keys whose entry follows.
+    #[napi]
+    pub fn idmap_sources(&self) -> Vec<FixIdMapSource> {
+        self.inner
+            .idmap_sources()
+            .iter()
+            .map(|(tag, source)| FixIdMapSource {
+                tag: *tag,
+                map: source.map().as_str().to_owned(),
+                key: source.key().to_owned(),
+                follow: source.follows(),
+                role: source.role().map(ToOwned::to_owned),
+            })
+            .collect()
+    }
+
     /// The symbolic name one wire value stands for in the set `name`.
     ///
     /// What a field's own `codeName` answered before a set had a name of its
@@ -1043,12 +1085,12 @@ pub struct FixEventView {
     /// The instant a snapshot was taken at, where one was.
     #[napi(ts_type = "bigint | null")]
     pub snapunix: Either<BigInt, Null>,
-    /// The price, as decimal text; `0` where none is stated.
-    pub price: String,
+    /// The price stated, as decimal text, or `null` where none is.
+    pub price: Either<String, Null>,
     /// The currency, `XXX` where none is stated.
     pub currency: String,
-    /// The quantity, as decimal text; `0` where none is stated.
-    pub quantity: String,
+    /// The quantity stated, as decimal text, or `null` where none is.
+    pub quantity: Either<String, Null>,
     /// The unit the quantity is counted in, empty where none is stated.
     pub unit: String,
     /// The side: the one stated, else the lane a single-sided quote states -
@@ -1184,7 +1226,7 @@ fn decimal_text(held: Option<Decimal18>) -> Either<String, Null> {
 /// The event's facts, read through the graph traits the holder answers -
 /// a message's own, so what it alone states, its metadata among it, is
 /// what crosses.
-fn event_view<E: MarketOperationEvent + ?Sized>(event: &E) -> Result<FixEventView> {
+fn event_view<E: OperationEvent + ?Sized>(event: &E) -> Result<FixEventView> {
     let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
     Ok(FixEventView {
         curruuid: event.get_curruuid().to_string(),
@@ -1203,9 +1245,9 @@ fn event_view<E: MarketOperationEvent + ?Sized>(event: &E) -> Result<FixEventVie
         prevunix: or_null(event.get_prevunix().map(instant)),
         prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
         snapunix: or_null(event.get_snapunix().map(instant)),
-        price: event.get_price().to_string(),
+        price: decimal_text(event.get_price()),
         currency: event.get_currency().as_str().to_owned(),
-        quantity: event.get_quantity().to_string(),
+        quantity: decimal_text(event.get_quantity()),
         unit: event.get_unit().as_str().to_owned(),
         side: event.get_side().as_str().to_owned(),
         securityids: securityids_view(event.get_securityids()),
@@ -1379,6 +1421,16 @@ pub struct FixCaptureView {
     /// `byTag(65065)`.
     #[napi(ts_type = "string | null")]
     pub msgsesseventid: Either<String, Null>,
+    /// The plugin the message came into a bridge through, as the bridge's
+    /// log line names it - `OMS_X1_OrderOut` in `Message received: ... from
+    /// (OMS_X1_OrderOut as OD9EOEDJ400)`; also `byTag(65066)`.
+    #[napi(ts_type = "string | null")]
+    pub msgoriginator: Either<String, Null>,
+    /// The conversation a bridge filed the message under - a
+    /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
+    /// of its log line; also `byTag(65067)`.
+    #[napi(ts_type = "string | null")]
+    pub conversationid: Either<String, Null>,
 }
 
 fn capture_view(capture: &FixCapture) -> FixCaptureView {
@@ -1387,6 +1439,8 @@ fn capture_view(capture: &FixCapture) -> FixCaptureView {
         msgctxid: or_null(capture.msgctxid().map(ToOwned::to_owned)),
         msgsessionid: or_null(capture.msgsessionid().map(ToOwned::to_owned)),
         msgsesseventid: or_null(capture.msgsesseventid().map(ToOwned::to_owned)),
+        msgoriginator: or_null(capture.msgoriginator().map(ToOwned::to_owned)),
+        conversationid: or_null(capture.conversationid().map(ToOwned::to_owned)),
     }
 }
 
@@ -1678,16 +1732,18 @@ impl JsFixMsg {
         self.inner.get_marketoperationid()
     }
 
-    /// The price, as decimal text; `0` where none is stated.
+    /// The price stated, as decimal text, or `null` where none is. Never a
+    /// last executed price, which `lastpx` answers.
     #[napi(getter)]
-    pub fn price(&self) -> String {
-        self.inner.get_price().to_string()
+    pub fn price(&self) -> Option<String> {
+        self.inner.get_price().map(|held| held.to_string())
     }
 
-    /// The quantity, as decimal text; `0` where none is stated.
+    /// The quantity stated, as decimal text, or `null` where none is. Never
+    /// a last executed quantity, which `lastqty` answers.
     #[napi(getter)]
-    pub fn quantity(&self) -> String {
-        self.inner.get_quantity().to_string()
+    pub fn quantity(&self) -> Option<String> {
+        self.inner.get_quantity().map(|held| held.to_string())
     }
 
     /// The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
@@ -1717,10 +1773,79 @@ impl JsFixMsg {
         self.inner.get_lastpx().map(|held| held.to_string())
     }
 
+    /// What the message states that its reading could not take as it
+    /// stands, in arrival order: a value that would not type, a counter
+    /// disagreeing with its group, what the last settle dropped.
+    #[napi(getter)]
+    pub fn anomalies(&self) -> Vec<FixAnomalyView> {
+        self.inner
+            .anomalies()
+            .iter()
+            .map(|held| FixAnomalyView {
+                field: held.field().to_owned(),
+                reason: held.reason().to_owned(),
+            })
+            .collect()
+    }
+
     /// The quantity it last traded, `LastQty(32)`, or `null`.
     #[napi(getter)]
     pub fn lastqty(&self) -> Option<String> {
         self.inner.get_lastqty().map(|held| held.to_string())
+    }
+
+    /// FIX's own `LastSpotRate(194)`, the spot rate of the last price, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn lastspotrate(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .lastspotrate()
+            .map(|held| held.to_string())
+    }
+
+    /// FIX's own `LastForwardPoints(195)`, the forward points of the last price, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn lastforwardpoints(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .lastforwardpoints()
+            .map(|held| held.to_string())
+    }
+
+    /// FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn bidspotrate(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .bidspotrate()
+            .map(|held| held.to_string())
+    }
+
+    /// FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn bidforwardpoints(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .bidforwardpoints()
+            .map(|held| held.to_string())
+    }
+
+    /// FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn offerspotrate(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .offerspotrate()
+            .map(|held| held.to_string())
+    }
+
+    /// FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as decimal text, or `null`.
+    #[napi(getter)]
+    pub fn offerforwardpoints(&self) -> Option<String> {
+        self.inner
+            .lifted()
+            .offerforwardpoints()
+            .map(|held| held.to_string())
     }
 
     /// The price it averaged, `AvgPx(6)`, or `null`.

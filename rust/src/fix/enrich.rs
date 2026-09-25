@@ -1025,9 +1025,13 @@ impl Prepared {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len().min(4_096);
+        // A bridge's instrument names state a listing - `dbi;ISIN_MIC_CCY` -
+        // and are no association of the ISIN alone.
+        let listings = super::crated::instrument_sources()
+            .filter_map(|(_, _, source)| crate::SecType::read(source).ok());
         Self {
             source: source.into_iter(),
-            codes: SecurityIdRegistry::default(),
+            codes: SecurityIdRegistry::with_listings(listings),
             seen: HashSet::with_capacity(capacity),
         }
     }

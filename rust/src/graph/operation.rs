@@ -1,20 +1,20 @@
 //! The one operation type: an order, a quote or an execution as a market
 //! operation event, with the book-control facts a market-data entry carries.
 //!
-//! [`Operation`] is what every market message expands to and what a book
-//! holds: its [`OperationKind`] says which, its [`MarketOperationEventData`]
+//! [`MarketOperation`] is what every market message expands to and what a book
+//! holds: its [`OperationKind`] says which, its [`OperationEventData`]
 //! holds every fact, and a boxed [`BookRef`] - absent on every operation that
 //! is not a market-data entry, so one pointer - holds the typed facts a book
 //! reads to place it: the update action, the scope, the position, and the
-//! price and size the entry stated for itself. [`OperationEntry`] is the same
+//! price and size the entry stated for itself. [`MarketOperationEntry`] is the same
 //! operation undated. A composite trade is [`Trade`](super::Trade), whose
 //! executions are operations of kind [`OperationKind::Execution`].
 
 use smol_str::SmolStr;
 
 use super::element::Staged;
-use super::event::{MarketOperationData, MarketOperationEventData};
-use super::{Element, Event, Market, MarketOperation, MarketOperationEvent};
+use super::event::{OperationData, OperationEventData};
+use super::{Element, Event, Market, Operation, OperationEvent};
 use crate::{Decimal18, Error, Result, Uuid};
 
 /// Which operation a value is: the stored `operationkind` of a row.
@@ -189,13 +189,13 @@ impl BookRef {
 
 /// One market operation: an order, a quote or an execution, dated.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Operation {
+pub struct MarketOperation {
     kind: OperationKind,
-    data: MarketOperationEventData,
+    data: OperationEventData,
     book: Option<Box<BookRef>>,
 }
 
-impl Operation {
+impl MarketOperation {
     /// An operation of `kind` over `data`, not yet finalized; a
     /// [`OperationKind::Trade`] is refused, because a trade root is a
     /// [`Trade`](super::Trade).
@@ -203,11 +203,11 @@ impl Operation {
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] for the trade kind.
-    pub fn new(kind: OperationKind, data: MarketOperationEventData) -> Result<Self> {
+    pub fn new(kind: OperationKind, data: OperationEventData) -> Result<Self> {
         if kind == OperationKind::Trade {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.operationkind"),
-                reason: SmolStr::new_static("a trade root is a Trade, not an Operation"),
+                reason: SmolStr::new_static("a trade root is a Trade, not an MarketOperation"),
             });
         }
         Ok(Self {
@@ -219,7 +219,7 @@ impl Operation {
 
     /// An order over `data`.
     #[must_use]
-    pub fn order(data: MarketOperationEventData) -> Self {
+    pub fn order(data: OperationEventData) -> Self {
         Self {
             kind: OperationKind::Order,
             data,
@@ -229,7 +229,7 @@ impl Operation {
 
     /// A quote over `data`.
     #[must_use]
-    pub fn quote(data: MarketOperationEventData) -> Self {
+    pub fn quote(data: OperationEventData) -> Self {
         Self {
             kind: OperationKind::Quote,
             data,
@@ -239,7 +239,7 @@ impl Operation {
 
     /// An execution over `data`.
     #[must_use]
-    pub fn execution(data: MarketOperationEventData) -> Self {
+    pub fn execution(data: OperationEventData) -> Self {
         Self {
             kind: OperationKind::Execution,
             data,
@@ -255,13 +255,13 @@ impl Operation {
 
     /// The facts this operation holds.
     #[must_use]
-    pub fn data(&self) -> &MarketOperationEventData {
+    pub fn data(&self) -> &OperationEventData {
         &self.data
     }
 
     /// The facts, moved out.
     #[must_use]
-    pub fn into_data(self) -> MarketOperationEventData {
+    pub fn into_data(self) -> OperationEventData {
         self.data
     }
 
@@ -308,34 +308,34 @@ impl Operation {
 
     /// This operation without its clocks and book control: a move.
     #[must_use]
-    pub fn entry(self) -> OperationEntry {
-        OperationEntry {
+    pub fn entry(self) -> MarketOperationEntry {
+        MarketOperationEntry {
             kind: self.kind,
             data: self.data.into_entry(),
         }
     }
 }
 
-impl Default for Operation {
+impl Default for MarketOperation {
     /// An order stating nothing, at the epoch.
     fn default() -> Self {
-        Self::order(MarketOperationEventData::default())
+        Self::order(OperationEventData::default())
     }
 }
 
-impl AsRef<MarketOperationEventData> for Operation {
-    fn as_ref(&self) -> &MarketOperationEventData {
+impl AsRef<OperationEventData> for MarketOperation {
+    fn as_ref(&self) -> &OperationEventData {
         &self.data
     }
 }
 
-impl AsMut<MarketOperationEventData> for Operation {
-    fn as_mut(&mut self) -> &mut MarketOperationEventData {
+impl AsMut<OperationEventData> for MarketOperation {
+    fn as_mut(&mut self) -> &mut OperationEventData {
         &mut self.data
     }
 }
 
-impl Element for Operation {
+impl Element for MarketOperation {
     fn get_curruuid(&self) -> Uuid {
         self.data.get_curruuid()
     }
@@ -428,39 +428,39 @@ impl Element for Operation {
 }
 
 delegate_event!(
-    Operation,
+    MarketOperation,
     data,
-    restating = |mut this: Operation, live: &Operation| {
+    restating = |mut this: MarketOperation, live: &MarketOperation| {
         let data = std::mem::take(&mut this.data).restating(&live.data);
         this.data = data;
         this.finalize();
         this
     },
-    is_execution = |this: &Operation| this.kind == OperationKind::Execution,
-    set_currunix = |this: &mut Operation, unix: i64| this.data.set_currunix(unix)
+    is_execution = |this: &MarketOperation| this.kind == OperationKind::Execution,
+    set_currunix = |this: &mut MarketOperation, unix: i64| this.data.set_currunix(unix)
 );
-delegate_market!(Operation, data);
-delegate_operation!(Operation, data);
+delegate_market!(MarketOperation, data);
+delegate_operation!(MarketOperation, data);
 
 /// One market operation undated: an order, a quote or an execution as an
 /// entry a book level holds or a walk states at an instant.
 #[derive(Clone, Debug, PartialEq)]
-pub struct OperationEntry {
+pub struct MarketOperationEntry {
     kind: OperationKind,
-    data: MarketOperationData,
+    data: OperationData,
 }
 
-impl OperationEntry {
+impl MarketOperationEntry {
     /// An entry of `kind` over `data`, not yet finalized.
     ///
     /// # Errors
     ///
     /// Returns [`Error::InvalidRecord`] for the trade kind.
-    pub fn new(kind: OperationKind, data: MarketOperationData) -> Result<Self> {
+    pub fn new(kind: OperationKind, data: OperationData) -> Result<Self> {
         if kind == OperationKind::Trade {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.operationkind"),
-                reason: SmolStr::new_static("a trade root is a Trade, not an OperationEntry"),
+                reason: SmolStr::new_static("a trade root is a Trade, not an MarketOperationEntry"),
             });
         }
         Ok(Self { kind, data })
@@ -474,21 +474,21 @@ impl OperationEntry {
 
     /// The facts this entry holds.
     #[must_use]
-    pub fn data(&self) -> &MarketOperationData {
+    pub fn data(&self) -> &OperationData {
         &self.data
     }
 
     /// The facts, moved out.
     #[must_use]
-    pub fn into_data(self) -> MarketOperationData {
+    pub fn into_data(self) -> OperationData {
         self.data
     }
 
     /// This entry dated at `unix`, nanoseconds since the Unix epoch, and
     /// finalized: a move.
     #[must_use]
-    pub fn at(self, unix: i64) -> Operation {
-        let mut operation = Operation {
+    pub fn at(self, unix: i64) -> MarketOperation {
+        let mut operation = MarketOperation {
             kind: self.kind,
             data: self.data.at(unix),
             book: None,
@@ -498,29 +498,29 @@ impl OperationEntry {
     }
 }
 
-impl Default for OperationEntry {
+impl Default for MarketOperationEntry {
     /// An order entry stating nothing.
     fn default() -> Self {
         Self {
             kind: OperationKind::Order,
-            data: MarketOperationData::default(),
+            data: OperationData::default(),
         }
     }
 }
 
-impl AsRef<MarketOperationData> for OperationEntry {
-    fn as_ref(&self) -> &MarketOperationData {
+impl AsRef<OperationData> for MarketOperationEntry {
+    fn as_ref(&self) -> &OperationData {
         &self.data
     }
 }
 
-impl AsMut<MarketOperationData> for OperationEntry {
-    fn as_mut(&mut self) -> &mut MarketOperationData {
+impl AsMut<OperationData> for MarketOperationEntry {
+    fn as_mut(&mut self) -> &mut OperationData {
         &mut self.data
     }
 }
 
-impl Element for OperationEntry {
+impl Element for MarketOperationEntry {
     fn get_curruuid(&self) -> Uuid {
         self.data.get_curruuid()
     }
@@ -607,5 +607,5 @@ impl Element for OperationEntry {
     }
 }
 
-delegate_market!(OperationEntry, data);
-delegate_operation!(OperationEntry, data);
+delegate_market!(MarketOperationEntry, data);
+delegate_operation!(MarketOperationEntry, data);

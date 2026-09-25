@@ -911,6 +911,8 @@ impl RowReader {
             direction_pin: codec.direction(),
             source,
             recdunix: None,
+            originator: None,
+            conversation: None,
         };
         let messages = codec.parse_row_with(extras, &payload, mtime, options);
         // The capture's own cells, read where the row states them: a null

@@ -1956,10 +1956,16 @@ export declare class FixMsg {
   get altids(): Record<string, string>
   /** The stable integer category of the market operation, or `null`. */
   get marketoperationid(): number | null
-  /** The price, as decimal text; `0` where none is stated. */
-  get price(): string
-  /** The quantity, as decimal text; `0` where none is stated. */
-  get quantity(): string
+  /**
+   * The price stated, as decimal text, or `null` where none is. Never a
+   * last executed price, which `lastpx` answers.
+   */
+  get price(): string | null
+  /**
+   * The quantity stated, as decimal text, or `null` where none is. Never
+   * a last executed quantity, which `lastqty` answers.
+   */
+  get quantity(): string | null
   /**
    * The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
    * where none is stated.
@@ -1977,8 +1983,26 @@ export declare class FixMsg {
    * FIX's own `LastPx(31)`.
    */
   get lastpx(): string | null
+  /**
+   * What the message states that its reading could not take as it
+   * stands, in arrival order: a value that would not type, a counter
+   * disagreeing with its group, what the last settle dropped.
+   */
+  get anomalies(): Array<FixAnomalyView>
   /** The quantity it last traded, `LastQty(32)`, or `null`. */
   get lastqty(): string | null
+  /** FIX's own `LastSpotRate(194)`, the spot rate of the last price, as decimal text, or `null`. */
+  get lastspotrate(): string | null
+  /** FIX's own `LastForwardPoints(195)`, the forward points of the last price, as decimal text, or `null`. */
+  get lastforwardpoints(): string | null
+  /** FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as decimal text, or `null`. */
+  get bidspotrate(): string | null
+  /** FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as decimal text, or `null`. */
+  get bidforwardpoints(): string | null
+  /** FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as decimal text, or `null`. */
+  get offerspotrate(): string | null
+  /** FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as decimal text, or `null`. */
+  get offerforwardpoints(): string | null
   /** The price it averaged, `AvgPx(6)`, or `null`. */
   get avgpx(): string | null
   /** How much of its quantity is done, `CumQty(14)`, or `null`. */
@@ -2437,6 +2461,13 @@ export declare class FixRegistry {
    * name through `codeset`, so nothing parses here.
    */
   codesetNames(): Array<string>
+  /**
+   * Every field that names a message by an identifier, one entry per key
+   * its `FIX:idmap` states, in tag order. A message rebuilds its
+   * `accountids`, `userids` and `altids` from these, and an operation
+   * that follows another carries the `altids` keys whose entry follows.
+   */
+  idmapSources(): Array<FixIdMapSource>
   /**
    * The symbolic name one wire value stands for in the set `name`.
    *
@@ -3920,6 +3951,17 @@ export declare class ProtocolField {
    * the regex crate refuses throws leaving the field unchanged.
    */
   set directions(values: Array<FixDirection>)
+  /**
+   * The identifier-map keys this field's value states, one per key; an
+   * absent property is an empty array.
+   */
+  get idmap(): Array<FixIdSource>
+  /**
+   * Record the keys; an empty array removes the property, and a key that
+   * is not one to 32 upper-case letters or digits, a follow flag off
+   * `altids`, or one key twice throws leaving the field unchanged.
+   */
+  set idmap(values: Array<FixIdSource>)
   /**
    * How this field's value is derived from the message where the message
    * states none: one expression over the message's fields, in its
@@ -6448,6 +6490,25 @@ export interface FileSelector {
 }
 
 /**
+ * One member of a FIX code set, as the plain object JavaScript reads and
+ * writes.
+ *
+ * The record a store writes under `codesets/<name>.json`: the wire value
+ * and the symbolic name every member states, and the spellings, the wording
+ * and the group a specification adds where it has them. A key a member does
+ * not state is absent rather than empty, so a bare code is the two facts it
+ * is.
+ * One thing a message states that its reading could not take as it
+ * stands: the field it was stated under, and why.
+ */
+export interface FixAnomalyView {
+  /** The dictionary's name for the field, else the key as it arrived. */
+  field: string
+  /** Why the reading could not take the value as it stands. */
+  reason: string
+}
+
+/**
  * What the capture stated about the line a message was read from, as
  * plain values.
  *
@@ -6483,18 +6544,20 @@ export interface FixCaptureView {
    * `byTag(65065)`.
    */
   msgsesseventid: string | null
+  /**
+   * The plugin the message came into a bridge through, as the bridge's
+   * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
+   * (OMS_X1_OrderOut as OD9EOEDJ400)`; also `byTag(65066)`.
+   */
+  msgoriginator: string | null
+  /**
+   * The conversation a bridge filed the message under - a
+   * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
+   * of its log line; also `byTag(65067)`.
+   */
+  conversationid: string | null
 }
 
-/**
- * One member of a FIX code set, as the plain object JavaScript reads and
- * writes.
- *
- * The record a store writes under `codesets/<name>.json`: the wire value
- * and the symbolic name every member states, and the spellings, the wording
- * and the group a specification adds where it has them. A key a member does
- * not state is absent rather than empty, so a bare code is the two facts it
- * is.
- */
 export interface FixCode {
   /** The wire value this code stands for. */
   value: string
@@ -6745,12 +6808,12 @@ export interface FixEventView {
   prevuuid: string | null
   /** The instant a snapshot was taken at, where one was. */
   snapunix: bigint | null
-  /** The price, as decimal text; `0` where none is stated. */
-  price: string
+  /** The price stated, as decimal text, or `null` where none is. */
+  price: string | null
   /** The currency, `XXX` where none is stated. */
   currency: string
-  /** The quantity, as decimal text; `0` where none is stated. */
-  quantity: string
+  /** The quantity stated, as decimal text, or `null` where none is. */
+  quantity: string | null
   /** The unit the quantity is counted in, empty where none is stated. */
   unit: string
   /**
@@ -6873,6 +6936,39 @@ export interface FixHeaderView {
    * and the last one `intoBytes` emits.
    */
   checksum: string | null
+}
+
+/**
+ * One borrowed code set, as the object JavaScript reads.
+ *
+ * The members are owned on the way across - a JavaScript value outlives the
+ * dictionary it was read from - and the stored escapes are decoded there,
+ * which is what `FixCode::from` does.
+ * One field that names a message by an identifier, and the key it states.
+ */
+export interface FixIdMapSource {
+  /** The field's tag. */
+  tag: number
+  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  map: string
+  /** The upper-case key it lands under. */
+  key: string
+  /** Whether an operation that follows another carries it. */
+  follow: boolean
+  /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
+  role?: string
+}
+
+/** One identifier-map key a FIX field's value states. */
+export interface FixIdSource {
+  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  map: string
+  /** The upper-case key it lands under. */
+  key: string
+  /** Whether an operation that follows another carries it; `altids` only. */
+  follow?: boolean
+  /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
+  role?: string
 }
 
 /**

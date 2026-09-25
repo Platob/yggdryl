@@ -12,10 +12,10 @@ use super::build::stated;
 use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::registry::FixMap;
-use super::{FixId, FixKey, FixRegistry};
+use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
 use crate::graph::{
-    Element, Event, Lane, Market, MarketEventData, MarketOperation, MarketOperationEvent,
-    MarketOperationEventData, Metadata,
+    Element, Event, Lane, Market, MarketEventData, Metadata, Operation, OperationEvent,
+    OperationEventData,
 };
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
@@ -178,7 +178,7 @@ pub struct FixMsg {
     ///
     /// Boxed, because the event is forty facts and a message is moved
     /// through every stream by value.
-    event: Box<MarketOperationEventData>,
+    event: Box<OperationEventData>,
     /// The standard header, typed.
     header: Box<FixHeader>,
     /// What the line said about the capture it was written for, typed: a
@@ -241,6 +241,14 @@ pub struct FixMsg {
     /// derived overlay - never on the wire, never in the arrival record - kept
     /// across settles and filling only a key the stated set leaves absent.
     derived: SecurityIds,
+    /// What the message states that its reading could not take as it
+    /// stands: the parse's refusals first - a value that would not type, a
+    /// counter disagreeing with its group - then what a settle dropped,
+    /// rebuilt by every settle behind the parse's and folded as a union when
+    /// messages merge. Never a column, never a digest input.
+    anomalies: Vec<super::FixAnomaly>,
+    /// How many of `anomalies` the parse recorded, which every settle keeps.
+    arrival_anomalies: usize,
 }
 
 /// Whether `held` is the four parts of a session event joined by `:`,
@@ -590,8 +598,13 @@ impl FixMsg {
         source: Option<Uuid>,
         official_time_delay_ns: i64,
     ) -> Result<Self> {
-        let super::build::Built { field, value, .. } = built;
-        Self::assemble(
+        let super::build::Built {
+            field,
+            value,
+            anomalies,
+            ..
+        } = built;
+        let mut message = Self::assemble(
             registry,
             field,
             value,
@@ -599,7 +612,10 @@ impl FixMsg {
             source,
             official_time_delay_ns,
             false,
-        )
+        )?;
+        message.arrival_anomalies = anomalies.len();
+        message.anomalies = anomalies;
+        Ok(message)
     }
 
     /// Builds a message from the content reconstructed out of a semantic row.
@@ -655,7 +671,7 @@ impl FixMsg {
         let held = value.as_sequence().ok_or_else(|| {
             identity::refused(field.name(), "a canonical Struct row", value.kind())
         })?;
-        let mut event = Box::new(MarketOperationEventData::default());
+        let mut event = Box::new(OperationEventData::default());
         if let Some(source) = source {
             event.set_srcuuids(vec![source]);
         }
@@ -771,6 +787,8 @@ impl FixMsg {
             entries: OnceLock::new(),
             carried: Vec::new(),
             derived: SecurityIds::default(),
+            anomalies: Vec::new(),
+            arrival_anomalies: 0,
         };
         // The instant the message happened: what it states, else when the
         // transaction it reports happened, else when it was sent - the one
@@ -1017,6 +1035,30 @@ impl FixMsg {
         })
     }
 
+    /// What the message states that its reading could not take as it
+    /// stands, in arrival order: the parse's refusals - a value that would
+    /// not type, a counter disagreeing with its group - then what the last
+    /// settle dropped. Read off the message beside the row: never a column,
+    /// never part of the code it digests to. Two statements of one message
+    /// merge them as a union, the reference's first.
+    #[must_use]
+    pub fn anomalies(&self) -> &[super::FixAnomaly] {
+        &self.anomalies
+    }
+
+    /// Takes the parse's anomalies of another statement of this message
+    /// into this one's, each once, so a merge loses no refusal either side
+    /// recorded; what a settle drops is this message's own to record again.
+    fn fold_anomalies(&mut self, other: &Self) {
+        for anomaly in &other.anomalies[..other.arrival_anomalies] {
+            if !self.anomalies[..self.arrival_anomalies].contains(anomaly) {
+                self.anomalies
+                    .insert(self.arrival_anomalies, anomaly.clone());
+                self.arrival_anomalies += 1;
+            }
+        }
+    }
+
     /// Settles the identity from what the message states: the cross code
     /// where it names none yet, the cross codes in step with it, the code
     /// the content digests to, and the identity the instant and that code
@@ -1029,6 +1071,7 @@ impl FixMsg {
     /// `sync_session_event_identifier` states their joined values as the
     /// capture's `msgsesseventid` without making it content.
     pub(super) fn settle(&mut self) {
+        self.anomalies.truncate(self.arrival_anomalies);
         self.sync_session_event_identifier();
         if self.event.get_crosscode().is_empty() {
             let code = identity::CROSS_TAGS.iter().find_map(|tag| {
@@ -1145,7 +1188,47 @@ impl FixMsg {
         debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
         crate::graph::market::merge_operation_event_into_reference(&mut self, other);
+        self.fold_anomalies(other);
+        self.fold_provenance(other);
         Ok(self)
+    }
+
+    /// Keeps the provenance the earlier observation of this session event
+    /// states - its originator, its conversation - over the later one's,
+    /// and a later one stating something else is kept as an anomaly beside
+    /// the merged message, as a refusal the parse recorded is.
+    fn fold_provenance(&mut self, other: &Self) {
+        let other_earlier = crate::graph::element::right_is_reference(
+            other.get_recdunix(),
+            other.get_currunix(),
+            self.get_recdunix(),
+            self.get_currunix(),
+        );
+        for (tag, name) in [
+            super::MSGORIGINATOR_TAG_NAME,
+            super::CONVERSATIONID_TAG_NAME,
+        ] {
+            let (mine, theirs) = (self.capture.provenance(tag), other.capture.provenance(tag));
+            let (earlier, later) = if other_earlier {
+                (theirs, mine)
+            } else {
+                (mine, theirs)
+            };
+            let kept = earlier.or(later).map(SmolStr::new);
+            if let (Some(earlier), Some(later)) = (earlier, later) {
+                if earlier != later {
+                    let anomaly = super::FixAnomaly::new(
+                        name,
+                        format!("states {later} where an earlier observation states {earlier}"),
+                    );
+                    if !self.anomalies[..self.arrival_anomalies].contains(&anomaly) {
+                        self.anomalies.insert(self.arrival_anomalies, anomaly);
+                        self.arrival_anomalies += 1;
+                    }
+                }
+            }
+            self.capture.set_provenance(tag, kept.as_deref());
+        }
     }
 
     /// Whether an explicitly stated `ExecType(150)` reports an execution.
@@ -1293,30 +1376,49 @@ impl FixMsg {
         let tif = word(identity::TIMEINFORCE_TAG);
         // The instrument: what it is classified as, what it is called, and
         // its identifiers under the sources that name them.
+        // The detailed classification the chain reaches, or none: a coarse
+        // stated code is not a classification the market keeps.
         let cficode = self
             .classification()
-            .and_then(|held| CfiCode::new(&held).ok())
-            .or_else(|| word(super::cfi::CFICODE_TAG).and_then(|held| CfiCode::new(&held).ok()));
+            .and_then(|held| CfiCode::new(&held).ok());
+        debug_assert!(
+            cficode
+                .as_ref()
+                .is_none_or(|held| CfiCode::is_detailed(held.as_str())),
+            "the classification chain answers a detailed code or none"
+        );
         let symbolticker = word(55).filter(|held| held != "[N/A]" && held != "[N/A");
-        // The security identifiers FIX states, under the source that names
-        // each, with a crated column's row-stated entry kept over them.
-        let mut securityids = self.stated_securityids();
-        for (bit, key) in [
-            (ROW_STATED_ISIN, "ISIN"),
-            (ROW_STATED_BLOOMBERG, "BLOOMBERG"),
-            (ROW_STATED_FIGI, "FIGI"),
-        ] {
-            if row_stated & bit != 0 {
-                if let Some(id) = self.event.get_securityids().get_id(key) {
-                    securityids.set(id.clone());
+        // The security identifiers the message states, each source filling
+        // only the keys the ones before it left absent.
+        let (mut securityids, dropped) = self.stated_securityids(row_stated);
+        // The instrument a bridge's own key names fills only what the fields
+        // left open, and is never written back: a part its type refuses is
+        // skipped.
+        let named = instrument_key(&securityids);
+        if let Some(named) = &named {
+            if securityids.get("ISIN").is_none() {
+                if let Ok(isin) =
+                    SecType::read("ISIN").and_then(|key| SecurityId::new(key, &named.isin))
+                {
+                    securityids.insert(isin);
                 }
             }
         }
-        // The market it is listed on, routed to, or last traded on.
-        let miccode = word(207)
-            .or_else(|| word(100))
-            .or_else(|| word(30))
-            .and_then(|held| MicCode::new(&held).ok());
+        let currency =
+            currency.or_else(|| named.as_ref().and_then(|named| Ccy::new(&named.ccy).ok()));
+        // The market it last traded on, was routed to, the one the
+        // instrument key names, else the one it is listed on - each an ISO
+        // 10383 MIC, a venue's own short code naming none.
+        let iso = |held: String| {
+            MicCode::is_iso(&held)
+                .then(|| MicCode::new(&held).ok())
+                .flatten()
+        };
+        let miccode = word(30)
+            .and_then(iso)
+            .or_else(|| word(100).and_then(iso))
+            .or_else(|| named.map(|named| named.mic).and_then(iso))
+            .or_else(|| word(207).and_then(iso));
         // Whether it could trade, from whichever status says so, in the
         // codes FIX's own enumerations state. A status that is about
         // something else - a code neither list names - says nothing either
@@ -1363,6 +1465,16 @@ impl FixMsg {
         let prevpx = number(140);
         let (bidpx, bidqty) = (number(132), number(134));
         let (askpx, askqty) = (number(133), number(135));
+        // The FX parts of the prices, each from its own lifted slot: the
+        // last price's, and each lane's.
+        let (spotrate, forwardpoints) =
+            (self.lifted.lastspotrate(), self.lifted.lastforwardpoints());
+        let (bidspotrate, bidforwardpoints) =
+            (self.lifted.bidspotrate(), self.lifted.bidforwardpoints());
+        let (askspotrate, askforwardpoints) = (
+            self.lifted.offerspotrate(),
+            self.lifted.offerforwardpoints(),
+        );
 
         let event = &mut *self.event;
         // Assigned rather than filled: a write can change what the FIX
@@ -1371,21 +1483,25 @@ impl FixMsg {
         if let Some(marketoperationid) = marketoperationid {
             event.set_marketoperationid(Some(marketoperationid));
         }
-        event.set_price(price.unwrap_or(Decimal18::ZERO));
-        event.set_quantity(orderqty.or(quantity).unwrap_or(Decimal18::ZERO));
+        event.set_price(price);
+        event.set_quantity(orderqty.or(quantity));
         event.set_lastpx(lastpx);
         event.set_lastqty(lastqty);
         event.set_avgpx(avgpx);
         event.set_cumqty(cumqty);
         event.set_leavesqty(leavesqty);
         event.set_prevpx(prevpx);
-        // FIX states a lane's price and quantity; its currency and unit are
-        // read off the side by the fill, so the lanes are rebuilt whole here
-        // with the rest of what derives.
+        event.set_spotrate(spotrate);
+        event.set_forwardpoints(forwardpoints);
+        // FIX states a lane's price, quantity and FX parts; its currency and
+        // unit are read off the side by the fill, so the lanes are rebuilt
+        // whole here with the rest of what derives.
         event.set_bid(
             Lane {
                 price: bidpx,
                 quantity: bidqty,
+                spotrate: bidspotrate,
+                forwardpoints: bidforwardpoints,
                 ..Lane::default()
             }
             .stated(),
@@ -1394,6 +1510,8 @@ impl FixMsg {
             Lane {
                 price: askpx,
                 quantity: askqty,
+                spotrate: askspotrate,
+                forwardpoints: askforwardpoints,
                 ..Lane::default()
             }
             .stated(),
@@ -1418,6 +1536,9 @@ impl FixMsg {
         if row_stated & ROW_STATED_MIC == 0 {
             event.set_miccode(miccode);
         }
+        // What the stated identifiers dropped, recorded once the readings
+        // above no longer borrow the message.
+        self.anomalies.extend(dropped);
         if row_stated & ROW_STATED_STATE == 0 {
             event.set_state(state.unwrap_or_else(State::unknown));
         }
@@ -1449,30 +1570,113 @@ impl FixMsg {
     /// check digit does not close falls through to the alternate rather
     /// than answering for it - which is what a number one digit off is: not
     /// that security.
-    /// The security identifiers the message states: the primary
-    /// `SecurityID(48)` under its `SecurityIDSource(22)`, then each
+    /// The security identifiers the message states, in rank order: the
+    /// primary `SecurityID(48)` under its `SecurityIDSource(22)`, then each
     /// `secaltids` occurrence, each source read through [`SecType::read`],
-    /// each code validated, the first stated code under a key kept.
-    fn stated_securityids(&self) -> SecurityIds {
+    /// then the crated `isincode`, `bloombergcode` and `figicode` views the
+    /// row stated (`row_stated`), then each unmapped field whose name names
+    /// a source. Each code is validated and the first stated code under a
+    /// key kept.
+    fn stated_securityids(&self, row_stated: u16) -> (SecurityIds, Vec<super::FixAnomaly>) {
         let mut ids = SecurityIds::default();
-        let mut state = |source: Option<SmolStr>, code: Option<SmolStr>| {
-            if let (Some(source), Some(code)) = (source, code) {
-                if let Ok(key) = SecType::read(&source) {
-                    if let Ok(id) = SecurityId::new(key, &code) {
+        let mut anomalies = Vec::new();
+        // Fill only: the same code twice under one key is one entry, and a
+        // later different code under a filled key is dropped with an
+        // anomaly, staying on the wire as it arrived.
+        let mut insert = |field: &str, key: SecType, code: &str| match SecurityId::new(key, code) {
+            Ok(id) => {
+                let key = id.sectype();
+                match ids.get(key.as_str()) {
+                    Some(held) if held != id.code() => anomalies.push(super::FixAnomaly::new(
+                        field,
+                        format!(
+                            "states {key}:{} where {key}:{held} is already stated",
+                            id.code()
+                        ),
+                    )),
+                    Some(_) => {}
+                    None => {
                         ids.insert(id);
                     }
                 }
             }
+            Err(error) => anomalies.push(super::FixAnomaly::new(field, error.to_string())),
+        };
+        let mut state = |field: &str, source: Option<SmolStr>, code: Option<SmolStr>| {
+            if let (Some(source), Some(code)) = (source, code) {
+                if let Ok(key) = SecType::read(&source) {
+                    insert(field, key, &code);
+                }
+            }
         };
         state(
+            "securityid",
             self.get_by_tag(22).as_ref().and_then(scalar_text),
             self.get_by_tag(48).as_ref().and_then(scalar_text),
         );
         for occurrence in self.group_members("secaltids", &["securityaltidsource", "securityaltid"])
         {
-            state(occurrence[0].clone(), occurrence[1].clone());
+            state("secaltids", occurrence[0].clone(), occurrence[1].clone());
         }
-        ids
+        // A crated column's row-stated entry is the crate's own statement,
+        // ranked after the wire's and before a name a bridge happened to
+        // spell.
+        for (bit, key, name) in [
+            (ROW_STATED_ISIN, "ISIN", super::ISINCODE_TAG_NAME.1),
+            (
+                ROW_STATED_BLOOMBERG,
+                "BLOOMBERG",
+                super::BLOOMBERGCODE_TAG_NAME.1,
+            ),
+            (ROW_STATED_FIGI, "FIGI", super::FIGICODE_TAG_NAME.1),
+        ] {
+            if row_stated & bit != 0 {
+                if let Some(id) = self.event.get_securityids().get_id(key) {
+                    insert(name, id.sectype(), id.code());
+                }
+            }
+        }
+        // A top-level field no dictionary names, whose name names an
+        // identifier source - `#ISINCODE`, `cusip_code` - states an entry
+        // after the wire's own: trimmed, validated, never a grouped member,
+        // and left on the wire as it arrived. An empty or null-like value
+        // states nothing.
+        // The name is asked first: it names no source for almost every child,
+        // and only a child whose name does is looked for in the tag index,
+        // so the scan allocates nothing to know which children a tag maps.
+        if let Some(cells) = self.value.as_sequence() {
+            for (at, (child, cell)) in self.field.fields().iter().zip(cells).enumerate() {
+                if child.name().contains('.') {
+                    continue;
+                }
+                let Some(key) = SecType::from_field_name(child.name()) else {
+                    continue;
+                };
+                if self.tags.iter().any(|(_, mapped)| *mapped == at) {
+                    continue;
+                }
+                let Some(text) = scalar_text(cell)
+                    .map(|held| held.trim().to_owned())
+                    .filter(|held| !held.is_empty() && !is_null_like(held))
+                else {
+                    continue;
+                };
+                insert(child.name(), key, &text);
+            }
+        }
+        // A crate field naming an instrument states it through the
+        // occurrence its rule folds it into; a value its source cannot hold -
+        // past the width, not a code - folded nothing and is kept as an
+        // anomaly.
+        for (tag, name, source) in super::crated::instrument_sources() {
+            let Some(text) = self.get_by_tag(tag).as_ref().and_then(scalar_text) else {
+                continue;
+            };
+            if let Err(error) = SecType::read(source).and_then(|key| SecurityId::new(key, &text)) {
+                anomalies.push(super::FixAnomaly::new(name, error.to_string()));
+            }
+        }
+        (ids, anomalies)
     }
 
     /// The stated members of each occurrence of a root repeating group, in
@@ -1514,34 +1718,61 @@ impl FixMsg {
     }
 
     /// Rebuilds the account, user and alternate identifier maps from the
-    /// fields that state them, at every settle.
+    /// fields that state them, at every settle: each of the registry's
+    /// [`idmap_sources`](FixRegistry::idmap_sources) in turn, a field's own
+    /// value or the `PartyID(448)` of every `Parties` occurrence under the
+    /// entry's role. The first value a key is stated with fills it; a later
+    /// different one states nothing and is kept as an anomaly.
     fn rebuild_idmaps(&mut self) {
-        let mut accountids = IdMap::new();
-        let mut userids = IdMap::new();
-        let mut altids = IdMap::new();
-        for (kind, key, tag) in IDMAP_SOURCES {
-            let Some(value) = self.get_by_tag(tag).as_ref().and_then(scalar_text) else {
-                continue;
+        let mut maps = [IdMap::new(), IdMap::new(), IdMap::new()];
+        let mut parties: Option<Vec<Vec<Option<SmolStr>>>> = None;
+        let mut dropped = Vec::new();
+        let registry = Arc::clone(&self.registry);
+        for (tag, source) in registry.idmap_sources() {
+            let stated: Vec<SmolStr> = match source.role() {
+                None => self
+                    .get_by_tag(*tag)
+                    .as_ref()
+                    .and_then(scalar_text)
+                    .into_iter()
+                    .collect(),
+                Some(role) => parties
+                    .get_or_insert_with(|| self.group_members("parties", &["partyrole", "partyid"]))
+                    .iter()
+                    .filter(|occurrence| occurrence[0].as_deref() == Some(role))
+                    .filter_map(|occurrence| occurrence[1].clone())
+                    .collect(),
             };
-            let map = match kind {
-                IdMapKind::Account => &mut accountids,
-                IdMapKind::User => &mut userids,
-                IdMapKind::Alt => &mut altids,
-            };
-            let _ = map.insert(key, &value);
+            let map = &mut maps[source.map() as usize];
+            for value in stated {
+                if crate::code::is_null_like(&value) {
+                    continue;
+                }
+                match map.get(source.key()) {
+                    Some(held) if held != value => {
+                        let field = if source.role().is_some() {
+                            "parties"
+                        } else {
+                            registry.get_field_by_tag(*tag).map_or("", Field::name)
+                        };
+                        dropped.push(super::FixAnomaly::new(
+                            field,
+                            format!(
+                                "states {}:{value} where {}:{held} is already stated",
+                                source.key(),
+                                source.key()
+                            ),
+                        ));
+                    }
+                    Some(_) => {}
+                    None => {
+                        let _ = map.insert(source.key(), &value);
+                    }
+                }
+            }
         }
-        for occurrence in self.group_members("parties", &["partyrole", "partyid"]) {
-            let (Some(role), Some(id)) = (&occurrence[0], &occurrence[1]) else {
-                continue;
-            };
-            let (map, key) = match role.as_str() {
-                "24" => (&mut accountids, "CUSTOMERACCOUNT"),
-                "36" => (&mut userids, "ENTERINGTRADER"),
-                "12" => (&mut userids, "EXECUTINGTRADER"),
-                _ => continue,
-            };
-            let _ = map.insert(key, id);
-        }
+        self.anomalies.extend(dropped);
+        let [accountids, userids, altids] = maps;
         let _ = self.event.set_accountids(accountids);
         let _ = self.event.set_userids(userids);
         let _ = self.event.set_altids(altids);
@@ -1576,13 +1807,19 @@ impl FixMsg {
         }
     }
 
-    /// The source field one identifier-map key is stated by, or a located
-    /// refusal where the dictionary names none.
-    fn idmap_source(kind: IdMapKind, key: &str) -> Result<i32> {
-        IDMAP_SOURCES
+    /// The top-level field one identifier-map key is stated by, or a
+    /// located refusal where the dictionary names none: a party role's key
+    /// is its group's to state, and no field writes it.
+    fn idmap_source(&self, kind: FixIdMapKind, key: &str) -> Result<i32> {
+        self.registry
+            .idmap_sources()
             .iter()
-            .find(|(held, name, _)| *held == kind && name.eq_ignore_ascii_case(key))
-            .map(|(_, _, tag)| *tag)
+            .find(|(_, source)| {
+                source.role().is_none()
+                    && source.map() == kind
+                    && source.key().eq_ignore_ascii_case(key)
+            })
+            .map(|(tag, _)| *tag)
             .ok_or_else(|| Error::InvalidRecord {
                 path: format_smolstr!("$.{}.{key}", kind.as_str()),
                 reason: SmolStr::new_static("no FIX field states this key; it cannot be written"),
@@ -1722,7 +1959,7 @@ impl FixMsg {
     /// The event this message is: every fact the three graph traits answer,
     /// held as fields.
     #[must_use]
-    pub const fn event(&self) -> &MarketOperationEventData {
+    pub const fn event(&self) -> &OperationEventData {
         &self.event
     }
 
@@ -1954,8 +2191,8 @@ impl FixMsg {
     /// // message is *about* is read off them.
     /// msg.set(44, Scalar::from("82.5"))?;
     /// msg.set(38, Scalar::from(100_i64))?;
-    /// assert_eq!(msg.get_price().to_string(), "82.5");
-    /// assert_eq!(msg.get_quantity().to_string(), "100");
+    /// assert_eq!(msg.get_price().map(|px| px.to_string()).as_deref(), Some("82.5"));
+    /// assert_eq!(msg.get_quantity().map(|qty| qty.to_string()).as_deref(), Some("100"));
     /// assert_eq!(msg.as_field().fields().len(), 1);
     ///
     /// // A tag no dictionary explains is kept under its decimal spelling.
@@ -2800,6 +3037,38 @@ const DIGEST_ENTRY_STACK_INDICES: usize = 128;
 /// Equal names retain their arrival order, which keeps occurrences of one
 /// repeating group distinct while making a reconstructed Struct's members
 /// answer the same code as the parsed message's.
+/// The three parts an instrument key names.
+struct InstrumentKey {
+    isin: String,
+    mic: String,
+    ccy: String,
+}
+
+/// The first `{ISIN}_{MIC}_{CCY}` a security identifier under a key ending
+/// `INSTRUMENTID` spells after its last `;` - `dbi;CH0012214059_XSWX_CHF` -
+/// shaped twelve, four and three ASCII alphanumerics, each part unchecked
+/// until its own type reads it.
+fn instrument_key(ids: &SecurityIds) -> Option<InstrumentKey> {
+    ids.iter().find_map(|id| {
+        if !id.sectype().as_str().ends_with("INSTRUMENTID") {
+            return None;
+        }
+        let tail = id.code().rsplit(';').next()?;
+        let mut parts = tail.split('_');
+        let (isin, mic, ccy) = (parts.next()?, parts.next()?, parts.next()?);
+        let shaped = |part: &str, width: usize| {
+            part.len() == width && part.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        };
+        (parts.next().is_none() && shaped(isin, 12) && shaped(mic, 4) && shaped(ccy, 3)).then(
+            || InstrumentKey {
+                isin: isin.to_owned(),
+                mic: mic.to_owned(),
+                ccy: ccy.to_owned(),
+            },
+        )
+    })
+}
+
 fn feed_entries(state: &mut crate::xxhash::Xxh3, entries: &[FixEntry]) {
     if entries
         .windows(2)
@@ -3015,7 +3284,7 @@ impl From<FixMsg> for Result<FixMsg> {
     }
 }
 
-impl From<FixMsg> for MarketOperationEventData {
+impl From<FixMsg> for OperationEventData {
     /// Moves the message's market operation out without re-reading or
     /// cloning any FIX content.
     fn from(message: FixMsg) -> Self {
@@ -3052,6 +3321,8 @@ impl Clone for FixMsg {
             entries: self.entries.clone(),
             carried: self.carried.clone(),
             derived: self.derived.clone(),
+            anomalies: self.anomalies.clone(),
+            arrival_anomalies: self.arrival_anomalies,
         }
     }
 }
@@ -3171,7 +3442,9 @@ impl Element for FixMsg {
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
-        self.merging_operation_event(other)
+        let mut merged = self.merging_operation_event(other)?;
+        merged.fold_anomalies(other);
+        Some(merged)
     }
 }
 
@@ -3282,11 +3555,11 @@ impl Event for FixMsg {
 }
 
 impl Market for FixMsg {
-    fn get_price(&self) -> Decimal18 {
+    fn get_price(&self) -> Option<Decimal18> {
         self.event.get_price()
     }
 
-    fn set_price(&mut self, px: Decimal18) {
+    fn set_price(&mut self, px: Option<Decimal18>) {
         self.forced = true;
         self.event.set_price(px);
     }
@@ -3300,11 +3573,11 @@ impl Market for FixMsg {
         self.event.set_currency(currency);
     }
 
-    fn get_quantity(&self) -> Decimal18 {
+    fn get_quantity(&self) -> Option<Decimal18> {
         self.event.get_quantity()
     }
 
-    fn set_quantity(&mut self, qty: Decimal18) {
+    fn set_quantity(&mut self, qty: Option<Decimal18>) {
         self.forced = true;
         self.event.set_quantity(qty);
     }
@@ -3514,7 +3787,7 @@ impl Market for FixMsg {
     }
 }
 
-impl MarketOperation for FixMsg {
+impl Operation for FixMsg {
     fn get_marketoperationid(&self) -> Option<i32> {
         self.event.get_marketoperationid()
     }
@@ -3547,7 +3820,7 @@ impl MarketOperation for FixMsg {
     }
 
     fn set_accountids(&mut self, ids: IdMap) -> Result<()> {
-        self.write_idmap(IdMapKind::Account, &ids)?;
+        self.write_idmap(FixIdMapKind::Accounts, &ids)?;
         self.event.set_accountids(ids)
     }
 
@@ -3555,7 +3828,7 @@ impl MarketOperation for FixMsg {
         if self.event.get_accountids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::Account, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Accounts, key)?;
         self.set_unsettled(tag, Scalar::from(value))?;
         self.event.insert_accountid(key, value)
     }
@@ -3564,7 +3837,7 @@ impl MarketOperation for FixMsg {
         if !self.event.get_accountids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::Account, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Accounts, key)?;
         self.set_unsettled(tag, Scalar::Null)?;
         self.event.remove_accountid(key)
     }
@@ -3574,7 +3847,7 @@ impl MarketOperation for FixMsg {
     }
 
     fn set_userids(&mut self, ids: IdMap) -> Result<()> {
-        self.write_idmap(IdMapKind::User, &ids)?;
+        self.write_idmap(FixIdMapKind::Users, &ids)?;
         self.event.set_userids(ids)
     }
 
@@ -3582,7 +3855,7 @@ impl MarketOperation for FixMsg {
         if self.event.get_userids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::User, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Users, key)?;
         self.set_unsettled(tag, Scalar::from(value))?;
         self.event.insert_userid(key, value)
     }
@@ -3591,7 +3864,7 @@ impl MarketOperation for FixMsg {
         if !self.event.get_userids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::User, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Users, key)?;
         self.set_unsettled(tag, Scalar::Null)?;
         self.event.remove_userid(key)
     }
@@ -3601,7 +3874,7 @@ impl MarketOperation for FixMsg {
     }
 
     fn set_altids(&mut self, ids: IdMap) -> Result<()> {
-        self.write_idmap(IdMapKind::Alt, &ids)?;
+        self.write_idmap(FixIdMapKind::Alts, &ids)?;
         self.event.set_altids(ids)
     }
 
@@ -3609,7 +3882,7 @@ impl MarketOperation for FixMsg {
         if self.event.get_altids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::Alt, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Alts, key)?;
         self.set_unsettled(tag, Scalar::from(value))?;
         self.event.insert_altid(key, value)
     }
@@ -3618,9 +3891,17 @@ impl MarketOperation for FixMsg {
         if !self.event.get_altids().contains_key(key) {
             return Ok(false);
         }
-        let tag = Self::idmap_source(IdMapKind::Alt, key)?;
+        let tag = self.idmap_source(FixIdMapKind::Alts, key)?;
         self.set_unsettled(tag, Scalar::Null)?;
         self.event.remove_altid(key)
+    }
+
+    /// The registry's own answer: an `altids` key whose `FIX:idmap` entry
+    /// follows.
+    fn is_followed_altid(&self, key: &str) -> bool {
+        self.registry.idmap_sources().iter().any(|(_, source)| {
+            source.follows() && source.map() == FixIdMapKind::Alts && source.key() == key
+        })
     }
 
     fn get_bid(&self) -> Option<&Lane> {
@@ -3645,24 +3926,24 @@ impl MarketOperation for FixMsg {
 impl FixMsg {
     /// Writes every entry of `ids` to its source field and removes the
     /// entries the message holds that `ids` does not.
-    fn write_idmap(&mut self, kind: IdMapKind, ids: &IdMap) -> Result<()> {
+    fn write_idmap(&mut self, kind: FixIdMapKind, ids: &IdMap) -> Result<()> {
         let held = match kind {
-            IdMapKind::Account => self.event.get_accountids().clone(),
-            IdMapKind::User => self.event.get_userids().clone(),
-            IdMapKind::Alt => self.event.get_altids().clone(),
+            FixIdMapKind::Accounts => self.event.get_accountids().clone(),
+            FixIdMapKind::Users => self.event.get_userids().clone(),
+            FixIdMapKind::Alts => self.event.get_altids().clone(),
         };
         // A key no top-level field states - a party role's - is rebuilt from
         // its group at the next settle and has nothing to null here.
         for (key, _) in held.iter() {
             if !ids.contains_key(key) {
-                if let Ok(tag) = Self::idmap_source(kind, key) {
+                if let Ok(tag) = self.idmap_source(kind, key) {
                     self.set_unsettled(tag, Scalar::Null)?;
                 }
             }
         }
         for (key, value) in ids.iter() {
             if held.get(key) != Some(value) {
-                let tag = Self::idmap_source(kind, key)?;
+                let tag = self.idmap_source(kind, key)?;
                 self.set_unsettled(tag, Scalar::from(value))?;
             }
         }
@@ -3686,43 +3967,13 @@ impl FixMsg {
     }
 }
 
-/// Which identifier map a source field fills.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum IdMapKind {
-    Account,
-    User,
-    Alt,
+/// Whether `text` is one of the spellings a wire uses for no value at all.
+fn is_null_like(text: &str) -> bool {
+    matches!(
+        text.to_ascii_uppercase().as_str(),
+        "NULL" | "NONE" | "N/A" | "[N/A]" | "NA" | "-"
+    )
 }
-
-impl IdMapKind {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Account => "accountids",
-            Self::User => "userids",
-            Self::Alt => "altids",
-        }
-    }
-}
-
-/// The top-level fields that state an identifier-map entry, each under the
-/// key it fills: the dictionary's `FIX:idmap` sources, held here until the
-/// bridge fields join them. Party roles are read from the `parties` group
-/// beside these.
-const IDMAP_SOURCES: [(IdMapKind, &str, i32); 13] = [
-    (IdMapKind::Account, "ACCOUNT", 1),
-    (IdMapKind::User, "SENDERSUBID", 50),
-    (IdMapKind::User, "ONBEHALFOFSUBID", 116),
-    (IdMapKind::Alt, "ORDERID", 37),
-    (IdMapKind::Alt, "SECONDARYORDERID", 198),
-    (IdMapKind::Alt, "CLORDID", 11),
-    (IdMapKind::Alt, "ORIGCLORDID", 41),
-    (IdMapKind::Alt, "EXECID", 17),
-    (IdMapKind::Alt, "TRDMATCHID", 880),
-    (IdMapKind::Alt, "QUOTEID", 117),
-    (IdMapKind::Alt, "QUOTEREQID", 131),
-    (IdMapKind::Alt, "MDREQID", 262),
-    (IdMapKind::Alt, "TRADEID", 1003),
-];
 
 /// The row-stated bit of the crated column a security-identifier key
 /// stands for, where one does.

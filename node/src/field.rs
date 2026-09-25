@@ -42,6 +42,30 @@ pub struct FixDirection {
     pub patterns: Vec<String>,
 }
 
+/// One identifier-map key a FIX field's value states.
+#[napi(object)]
+pub struct FixIdSource {
+    /// The map it lands in: `accountids`, `userids` or `altids`.
+    pub map: String,
+    /// The upper-case key it lands under.
+    pub key: String,
+    /// Whether an operation that follows another carries it; `altids` only.
+    pub follow: Option<bool>,
+    /// On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it.
+    pub role: Option<String>,
+}
+
+impl FixIdSource {
+    pub(crate) fn from_core(source: &yggdryl::FixIdSource) -> Self {
+        Self {
+            map: source.map().as_str().to_owned(),
+            key: source.key().to_owned(),
+            follow: Some(source.follows()),
+            role: source.role().map(ToOwned::to_owned),
+        }
+    }
+}
+
 /// Metadata as `[{key, value}]` entries or one plain object.
 pub type MetadataInput = Either<Vec<MetadataEntry>, HashMap<String, String>>;
 
@@ -2127,6 +2151,45 @@ impl JsProtocolField {
             .inner
             .as_fix_mut()
             .set_directions(&rules)
+            .map_err(napi_error)
+    }
+
+    /// The identifier-map keys this field's value states, one per key; an
+    /// absent property is an empty array.
+    #[napi(getter)]
+    pub fn idmap(&self, env: Env) -> Result<Vec<FixIdSource>> {
+        self.require_fix(env, "idmap")?;
+        self.field
+            .inner
+            .as_fix()
+            .idmap()
+            .map(|source| Ok(FixIdSource::from_core(&source.map_err(napi_error)?)))
+            .collect()
+    }
+
+    /// Record the keys; an empty array removes the property, and a key that
+    /// is not one to 32 upper-case letters or digits, a follow flag off
+    /// `altids`, or one key twice throws leaving the field unchanged.
+    #[napi(setter)]
+    pub fn set_idmap(&mut self, env: Env, values: Vec<FixIdSource>) -> Result<()> {
+        self.require_fix(env, "idmap")?;
+        let mut sources = Vec::with_capacity(values.len());
+        for value in values {
+            let map = value
+                .map
+                .parse::<yggdryl::FixIdMapKind>()
+                .map_err(napi_error)?;
+            let mut source = yggdryl::FixIdSource::new(map, value.key)
+                .with_follow(value.follow.unwrap_or(false));
+            if let Some(role) = value.role {
+                source = source.with_role(role);
+            }
+            sources.push(source);
+        }
+        self.field
+            .inner
+            .as_fix_mut()
+            .set_idmap(&sources)
             .map_err(napi_error)
     }
 

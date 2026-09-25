@@ -9,16 +9,16 @@
 //! [`Event`] is an element that also happened at one instant and stands in
 //! one state. [`market`] holds the two that stand in a market: [`Market`]
 //! is the slim reading any plain struct gives cheaply - the instrument, the
-//! side, the price and quantity, what it last traded - and
-//! [`MarketOperation`] adds what an operation states: its category, how long
+//! side, the price and quantity it states, its last executed price and quantity - and
+//! [`Operation`] adds what an operation states: its category, how long
 //! it stands, its account, user and own identifiers, and its two lanes.
-//! [`MarketEvent`] and [`MarketOperationEvent`] are the blankets over an
+//! [`MarketEvent`] and [`OperationEvent`] are the blankets over an
 //! event that is one or the other. The traits state signatures and the
 //! provided readings - no storage - so a message, a chain entry and a
 //! lifecycle incarnation can each be an element without the graph owning
-//! any of them; [`MarketData`], [`MarketEventData`], [`MarketOperationData`]
-//! and [`MarketOperationEventData`] hold the facts as plain fields for the
-//! holder that wants nothing more, and [`Operation`] is the one operation
+//! any of them; [`MarketData`], [`MarketEventData`], [`OperationData`]
+//! and [`OperationEventData`] hold the facts as plain fields for the
+//! holder that wants nothing more, and [`MarketOperation`] is the one operation
 //! type - an order, a quote or an execution by its [`OperationKind`] - a
 //! [`Book`] holds. The one walk, [`EventIterator`], reads operations in
 //! their order and states each as the one after the live element it
@@ -127,10 +127,10 @@ macro_rules! delegate_event {
 macro_rules! delegate_market {
     ($type:ty, $($field:ident).+) => {
         impl $crate::graph::Market for $type {
-            fn get_price(&self) -> $crate::Decimal18 {
+            fn get_price(&self) -> Option<$crate::Decimal18> {
                 $crate::graph::Market::get_price(&self.$($field).+)
             }
-            fn set_price(&mut self, price: $crate::Decimal18) {
+            fn set_price(&mut self, price: Option<$crate::Decimal18>) {
                 $crate::graph::Market::set_price(&mut self.$($field).+, price);
             }
             fn get_currency(&self) -> &$crate::Ccy {
@@ -139,10 +139,10 @@ macro_rules! delegate_market {
             fn set_currency(&mut self, currency: $crate::Ccy) {
                 $crate::graph::Market::set_currency(&mut self.$($field).+, currency);
             }
-            fn get_quantity(&self) -> $crate::Decimal18 {
+            fn get_quantity(&self) -> Option<$crate::Decimal18> {
                 $crate::graph::Market::get_quantity(&self.$($field).+)
             }
-            fn set_quantity(&mut self, quantity: $crate::Decimal18) {
+            fn set_quantity(&mut self, quantity: Option<$crate::Decimal18>) {
                 $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity);
             }
             fn get_unit(&self) -> &$crate::Unit {
@@ -263,83 +263,83 @@ macro_rules! delegate_market {
     };
 }
 
-/// `impl MarketOperation` forwarding every fact to a field that is a
-/// `MarketOperation`.
+/// `impl Operation` forwarding every fact to a field that is a
+/// `Operation`.
 macro_rules! delegate_operation {
     ($type:ty, $($field:ident).+) => {
-        impl $crate::graph::MarketOperation for $type {
+        impl $crate::graph::Operation for $type {
             fn get_marketoperationid(&self) -> Option<i32> {
-                $crate::graph::MarketOperation::get_marketoperationid(&self.$($field).+)
+                $crate::graph::Operation::get_marketoperationid(&self.$($field).+)
             }
             fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
-                $crate::graph::MarketOperation::set_marketoperationid(
+                $crate::graph::Operation::set_marketoperationid(
                     &mut self.$($field).+,
                     marketoperationid,
                 );
             }
             fn get_tif(&self) -> Option<&$crate::TimeInForce> {
-                $crate::graph::MarketOperation::get_tif(&self.$($field).+)
+                $crate::graph::Operation::get_tif(&self.$($field).+)
             }
             fn set_tif(&mut self, tif: Option<$crate::TimeInForce>) {
-                $crate::graph::MarketOperation::set_tif(&mut self.$($field).+, tif);
+                $crate::graph::Operation::set_tif(&mut self.$($field).+, tif);
             }
             fn get_tradable(&self) -> Option<bool> {
-                $crate::graph::MarketOperation::get_tradable(&self.$($field).+)
+                $crate::graph::Operation::get_tradable(&self.$($field).+)
             }
             fn set_tradable(&mut self, tradable: Option<bool>) {
-                $crate::graph::MarketOperation::set_tradable(&mut self.$($field).+, tradable);
+                $crate::graph::Operation::set_tradable(&mut self.$($field).+, tradable);
             }
             fn get_accountids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::MarketOperation::get_accountids(&self.$($field).+)
+                $crate::graph::Operation::get_accountids(&self.$($field).+)
             }
             fn set_accountids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::MarketOperation::set_accountids(&mut self.$($field).+, ids)
+                $crate::graph::Operation::set_accountids(&mut self.$($field).+, ids)
             }
             fn insert_accountid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::insert_accountid(
+                $crate::graph::Operation::insert_accountid(
                     &mut self.$($field).+,
                     key,
                     value,
                 )
             }
             fn remove_accountid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::remove_accountid(&mut self.$($field).+, key)
+                $crate::graph::Operation::remove_accountid(&mut self.$($field).+, key)
             }
             fn get_userids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::MarketOperation::get_userids(&self.$($field).+)
+                $crate::graph::Operation::get_userids(&self.$($field).+)
             }
             fn set_userids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::MarketOperation::set_userids(&mut self.$($field).+, ids)
+                $crate::graph::Operation::set_userids(&mut self.$($field).+, ids)
             }
             fn insert_userid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::insert_userid(&mut self.$($field).+, key, value)
+                $crate::graph::Operation::insert_userid(&mut self.$($field).+, key, value)
             }
             fn remove_userid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::remove_userid(&mut self.$($field).+, key)
+                $crate::graph::Operation::remove_userid(&mut self.$($field).+, key)
             }
             fn get_altids(&self) -> &$crate::idmap::IdMap {
-                $crate::graph::MarketOperation::get_altids(&self.$($field).+)
+                $crate::graph::Operation::get_altids(&self.$($field).+)
             }
             fn set_altids(&mut self, ids: $crate::idmap::IdMap) -> $crate::Result<()> {
-                $crate::graph::MarketOperation::set_altids(&mut self.$($field).+, ids)
+                $crate::graph::Operation::set_altids(&mut self.$($field).+, ids)
             }
             fn insert_altid(&mut self, key: &str, value: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::insert_altid(&mut self.$($field).+, key, value)
+                $crate::graph::Operation::insert_altid(&mut self.$($field).+, key, value)
             }
             fn remove_altid(&mut self, key: &str) -> $crate::Result<bool> {
-                $crate::graph::MarketOperation::remove_altid(&mut self.$($field).+, key)
+                $crate::graph::Operation::remove_altid(&mut self.$($field).+, key)
             }
             fn get_bid(&self) -> Option<&$crate::graph::Lane> {
-                $crate::graph::MarketOperation::get_bid(&self.$($field).+)
+                $crate::graph::Operation::get_bid(&self.$($field).+)
             }
             fn set_bid(&mut self, lane: Option<$crate::graph::Lane>) {
-                $crate::graph::MarketOperation::set_bid(&mut self.$($field).+, lane);
+                $crate::graph::Operation::set_bid(&mut self.$($field).+, lane);
             }
             fn get_ask(&self) -> Option<&$crate::graph::Lane> {
-                $crate::graph::MarketOperation::get_ask(&self.$($field).+)
+                $crate::graph::Operation::get_ask(&self.$($field).+)
             }
             fn set_ask(&mut self, lane: Option<$crate::graph::Lane>) {
-                $crate::graph::MarketOperation::set_ask(&mut self.$($field).+, lane);
+                $crate::graph::Operation::set_ask(&mut self.$($field).+, lane);
             }
         }
     };
@@ -363,13 +363,14 @@ pub mod trade;
 pub use book::{Book, BookControl, BookInput, BookIterator, BookSide, GLOBAL_SYMBOL};
 pub use column::EventColumn;
 pub use element::{Element, Event};
-pub use event::{MarketData, MarketEventData, MarketOperationData, MarketOperationEventData};
+pub use event::{MarketData, MarketEventData, OperationData, OperationEventData};
 pub use iterator::EventIterator;
 pub use market::{
-    FOLLOWED_ALTIDS, Lane, Market, MarketEvent, MarketOperation, MarketOperationEvent, Metadata,
-    empty_metadata,
+    FOLLOWED_ALTIDS, Lane, Market, MarketEvent, Metadata, Operation, OperationEvent, empty_metadata,
 };
 pub use market_column::MarketColumn;
-pub use operation::{BookRef, MdUpdateAction, Operation, OperationEntry, OperationKind};
+pub use operation::{
+    BookRef, MarketOperation, MarketOperationEntry, MdUpdateAction, OperationKind,
+};
 pub use operation_column::OperationColumn;
 pub use trade::Trade;

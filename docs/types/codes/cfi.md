@@ -236,6 +236,17 @@ assert_eq!(CfiCode::coarse('E', None).as_deref(), Some("EMXXXX"));
 assert_eq!(CfiCode::coarse('X', None), None);
 ```
 
+A classified code that says nothing past its category and group - `ESXXXX` - is coarse. `CfiCode::is_detailed` answers whether one of positions 3 to 6 is stated, which is what a market reading that keeps only detailed codes asks. Rust only.
+
+```rust
+use yggdryl::CfiCode;
+
+assert!(CfiCode::is_detailed("ESVUFR"));
+assert!(CfiCode::is_detailed("ESVXXX"));
+assert!(!CfiCode::is_detailed("ESXXXX"));
+assert!(!CfiCode::is_detailed("XXXXXX"));
+```
+
 ## Two statements of one instrument
 
 `CfiCode::merged` folds two classifications position by position: within one `(category, group)` a stated attribute fills an unknown one, and two different stated attributes answer `X`, because ambiguity answers nothing. Two different categories or groups are two subjects rather than one disagreement, so they answer nothing at all. [`merge_with`](index.md#the-code-family-value) is that reading as the `CodeValue` leaf contract states it - the merged code where the two describe one instrument, this code as it is where they do not. Rust only.

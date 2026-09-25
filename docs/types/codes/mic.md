@@ -210,6 +210,20 @@ assert_eq!(MicCode::none().merge_with(&MicCode::new("XPAR")?).as_str(), "XPAR");
 assert_eq!(MicCode::new("XPAR")?.merge_with(&MicCode::new("XLON")?).as_str(), "XPAR");
 ```
 
+## A venue's short code is no ISO MIC
+
+`MicCode::new` stays permissive, because a stored column may hold the short code a venue wrote - `S`, `TW`. `MicCode::is_iso` is the stricter question a reading asks when it takes the first market a message names: exactly four upper-case ASCII letters or digits. The FIX [market ladder](../../fix/capture.md#the-crates-own-columns) reads by it. Rust only.
+
+```rust
+use yggdryl::MicCode;
+
+assert!(MicCode::is_iso("XSWX"));
+assert!(!MicCode::is_iso("S"));
+assert!(!MicCode::is_iso("xswx"));
+// Permissive where a column already holds what a venue wrote.
+assert_eq!(MicCode::new("TW")?.as_str(), "TW");
+```
+
 ## The ISO 10383 registry
 
 `StringEnum::MICS` ships with the package, reached by either logical name - `mic` or FIX's `Exchange` - because they name one thing. Python declares it over the width as `yggdryl.enums.MIC`. A declared vocabulary, never a gate: a market the registry has not published yet is stored rather than refused.

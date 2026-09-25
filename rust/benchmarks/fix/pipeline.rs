@@ -32,7 +32,7 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
-    Book, BookInput, BookIterator, Element, Event, Market, MarketOperation, MdUpdateAction,
+    Book, BookInput, BookIterator, Element, Event, Market, MdUpdateAction, Operation,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
@@ -592,7 +592,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         .collect();
     let trade_operations = std::iter::repeat_n(trade_operation, MARKET_REPEATS).collect::<Vec<_>>();
     let entry_of = |input: &BookInput| match input {
-        BookInput::Operation(operation) => operation.clone(),
+        BookInput::MarketOperation(operation) => operation.clone(),
         other => panic!("the snapshot fixture expands to entries, got {other:?}"),
     };
     let mut dense_operations = Vec::with_capacity(MARKET_DEPTH);
@@ -608,7 +608,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         book.action = Some(MdUpdateAction::New);
         operation.set_book(Some(book));
         operation.finalize();
-        dense_operations.push(BookInput::Operation(operation));
+        dense_operations.push(BookInput::MarketOperation(operation));
     }
     let mut dense_book = Book::new(dense_operations[0].currunix(), "AAPL");
     dense_book
@@ -622,11 +622,11 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     book.action = Some(MdUpdateAction::Change);
     dense_update.set_book(Some(book));
     dense_update.finalize();
-    let dense_update = BookInput::Operation(dense_update);
+    let dense_update = BookInput::MarketOperation(dense_update);
     let mut dense_execution = entry_of(&operations[2]);
     dense_execution.set_currunix(update_unix);
     dense_execution.finalize();
-    let dense_execution = BookInput::Operation(dense_execution);
+    let dense_execution = BookInput::MarketOperation(dense_execution);
 
     let mut group = criterion.benchmark_group("fix/pipeline/market");
     group.throughput(Throughput::Elements(1));

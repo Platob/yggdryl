@@ -1458,7 +1458,7 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_event: fix.MarketOperationEventData = fix_message.event()
+fix_message_event: fix.OperationEventData = fix_message.event()
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
@@ -1475,9 +1475,9 @@ fix_message_seqnum: int = fix_message.seqnum
 fix_message_prevuuid: Scalar | None = fix_message.prevuuid
 fix_message_srcuuids: list[Scalar] = fix_message.srcuuids
 fix_message_marketoperationid: int | None = fix_message.marketoperationid
-fix_message_price: Scalar = fix_message.price
+fix_message_price: Scalar | None = fix_message.price
 fix_message_currency: Scalar = fix_message.currency
-fix_message_quantity: Scalar = fix_message.quantity
+fix_message_quantity: Scalar | None = fix_message.quantity
 fix_message_unit: str = fix_message.unit
 fix_message_side: Scalar = fix_message.side
 fix_message_securityids: dict[str, str] = fix_message.securityids
@@ -1543,8 +1543,8 @@ fix_event_prevunix: int | None = fix_message_event.prevunix
 fix_event_prevuuid: Scalar | None = fix_message_event.prevuuid
 fix_event_snapunix: int | None = fix_message_event.snapunix
 fix_event_marketoperationid: int | None = fix_message_event.marketoperationid
-fix_event_price: Scalar = fix_message_event.price
-fix_event_quantity: Scalar = fix_message_event.quantity
+fix_event_price: Scalar | None = fix_message_event.price
+fix_event_quantity: Scalar | None = fix_message_event.quantity
 fix_event_lastpx: Scalar | None = fix_message_event.lastpx
 fix_event_lastqty: Scalar | None = fix_message_event.lastqty
 fix_event_avgpx: Scalar | None = fix_message_event.avgpx
@@ -1795,7 +1795,7 @@ assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert isinstance(fix_message_wire_text, str)
-assert isinstance(fix_message_event, fix.MarketOperationEventData)
+assert isinstance(fix_message_event, fix.OperationEventData)
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text

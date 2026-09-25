@@ -8,7 +8,9 @@ use yggdryl::graph::{
     Book, BookInput, Element, Event, Market, MarketOperation, MdUpdateAction, Operation,
     OperationKind,
 };
-use yggdryl::{DataType, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType};
+use yggdryl::{
+    DataType, Decimal18, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType,
+};
 
 fn message(line: &[u8]) -> FixMsg {
     fixed_codec(committed_registry())
@@ -16,10 +18,15 @@ fn message(line: &[u8]) -> FixMsg {
         .expect("one FIX message")
 }
 
+/// The decimal text of a stated price or quantity, `None` where none is.
+fn text(value: Option<Decimal18>) -> Option<String> {
+    value.map(|held| held.to_string())
+}
+
 /// The operation an input is; a trade or a control is a fixture mistake.
-fn operation_of(input: &BookInput) -> &Operation {
+fn operation_of(input: &BookInput) -> &MarketOperation {
     match input {
-        BookInput::Operation(operation) => operation,
+        BookInput::MarketOperation(operation) => operation,
         other => panic!("expected an operation, got {other:?}"),
     }
 }
@@ -90,8 +97,12 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
         panic!("one composite trade")
     };
     assert_eq!(trade.get_marketoperationid(), Some(21));
-    assert_eq!(trade.get_price().to_string(), "101.25");
-    assert_eq!(trade.get_quantity().to_string(), "10");
+    // A trade capture states no price and no quantity of its own: what it
+    // last executed at, and how much, are `lastpx` and `lastqty`, and
+    // neither stands in for the price or the quantity.
+    assert_eq!((trade.get_price(), trade.get_quantity()), (None, None));
+    assert_eq!(text(trade.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(trade.get_lastqty()).as_deref(), Some("10"));
 
     let [buy, sell] = trade.executions() else {
         panic!("one execution per stated trade side")
@@ -99,10 +110,15 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
     assert_eq!(buy.kind(), OperationKind::Execution);
-    assert_eq!(buy.get_price().to_string(), "101.25");
-    assert_eq!(sell.get_price().to_string(), "101.25");
-    assert_eq!(buy.get_quantity().to_string(), "4");
-    assert_eq!(sell.get_quantity().to_string(), "6");
+    // Each side keeps `SideLastQty(1009)` as its last executed quantity
+    // only, beside the trade's last executed price: a side states no
+    // price and no quantity, and nothing invents one.
+    assert_eq!((buy.get_price(), sell.get_price()), (None, None));
+    assert_eq!((buy.get_quantity(), sell.get_quantity()), (None, None));
+    assert_eq!(text(buy.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(sell.get_lastpx()).as_deref(), Some("101.25"));
+    assert_eq!(text(buy.get_lastqty()).as_deref(), Some("4"));
+    assert_eq!(text(sell.get_lastqty()).as_deref(), Some("6"));
     assert_eq!(buy.get_altids().get("SIDEEXECID"), Some("BUY-EXEC"));
     assert_eq!(sell.get_altids().get("SIDEEXECID"), Some("SELL-EXEC"));
     assert_eq!(buy.get_altids().get("ORDERID"), Some("BUY-ORDER"));
@@ -289,7 +305,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_eq!(derived.get_marketoperationid(), Some(14));
     assert!(matches!(
         derived.market_operations().unwrap().as_slice(),
-        [BookInput::Operation(operation)] if operation.kind() == OperationKind::Quote
+        [BookInput::MarketOperation(operation)] if operation.kind() == OperationKind::Quote
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
@@ -433,10 +449,10 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     assert_eq!(books.len(), 2);
     assert_eq!(books[0].bid().best_price().unwrap().to_string(), "100");
     assert_eq!(books[0].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(books[0].get_price().to_string(), "101");
+    assert_eq!(text(books[0].get_price()).as_deref(), Some("101"));
     assert_eq!(books[1].bid().best_price().unwrap().to_string(), "101");
     assert_eq!(books[1].ask().best_price().unwrap().to_string(), "102");
-    assert_eq!(books[1].get_price().to_string(), "101.5");
+    assert_eq!(text(books[1].get_price()).as_deref(), Some("101.5"));
     assert_eq!(books[1].executions().len(), 1);
     assert_eq!(
         books[1]
@@ -589,32 +605,32 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         assert_eq!(operation.get_altids().get("ORDERID"), Some("O1"));
         assert_eq!(operation.get_seqnum(), index as u64);
         assert_eq!(
-            operation.get_price().to_string(),
-            ["100", "100", "101"][index]
+            text(operation.get_price()).as_deref(),
+            Some(["100", "100", "101"][index])
         );
         assert_eq!(
-            operation.get_quantity().to_string(),
-            ["10", "11", "11"][index]
+            text(operation.get_quantity()).as_deref(),
+            Some(["10", "11", "11"][index])
         );
         if index < 2 {
             assert!(operation.get_side().is_bid());
             let bid = operation.get_bid().expect("the bid lane");
-            assert_eq!(bid.price, Some(operation.get_price()));
-            assert_eq!(bid.quantity, Some(operation.get_quantity()));
+            assert_eq!(bid.price, operation.get_price());
+            assert_eq!(bid.quantity, operation.get_quantity());
             assert_eq!(operation.get_ask(), None);
         } else {
             assert!(operation.get_side().is_ask());
             let ask = operation.get_ask().expect("the ask lane");
-            assert_eq!(ask.price, Some(operation.get_price()));
-            assert_eq!(ask.quantity, Some(operation.get_quantity()));
+            assert_eq!(ask.price, operation.get_price());
+            assert_eq!(ask.quantity, operation.get_quantity());
             assert_eq!(operation.get_bid(), None);
         }
     }
     for pair in versions.windows(2) {
         assert_eq!(pair[1].get_prevuuid(), Some(pair[0].get_curruuid()));
         assert_eq!(pair[1].get_prevunix(), Some(pair[0].get_currunix()));
-        assert_eq!(pair[1].get_prevpx(), Some(pair[0].get_price()));
-        assert_eq!(pair[1].get_prevqty(), Some(pair[0].get_quantity()));
+        assert_eq!(pair[1].get_prevpx(), pair[0].get_price());
+        assert_eq!(pair[1].get_prevqty(), pair[0].get_quantity());
     }
     assert_eq!(versions[0].get_prevuuid(), None);
     // The book control each entry stated rides with it, typed: what the
@@ -643,6 +659,9 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
 #[test]
 fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     let codec = fixed_codec(committed_registry()).with_batch_row_size(1);
+    // The delete states its price like any operation a side takes: a
+    // level is a price, and a delete stating none is refused rather than
+    // given a zero.
     let messages = [
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|37=O1|270=100|271=10|10=0|".as_slice(),
         b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=1|279=2|269=0|278=B1|10=0|".as_slice(),
@@ -671,8 +690,8 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
     assert_eq!(deleted.get_seqnum(), previous.get_seqnum() + 1);
-    assert_eq!(deleted.get_prevpx(), Some(previous.get_price()));
-    assert_eq!(deleted.get_prevqty(), Some(previous.get_quantity()));
+    assert_eq!(deleted.get_prevpx(), previous.get_price());
+    assert_eq!(deleted.get_prevqty(), previous.get_quantity());
 }
 
 #[test]
@@ -706,8 +725,14 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
         let operation = book.bid().live().next().unwrap();
         assert_eq!(operation.kind(), OperationKind::Order);
         assert_eq!(operation.get_ticker(), Some("AAPL"));
-        assert_eq!(operation.get_price().to_string(), ["100", "101"][index]);
-        assert_eq!(operation.get_quantity().to_string(), ["5", "6"][index]);
+        assert_eq!(
+            text(operation.get_price()).as_deref(),
+            Some(["100", "101"][index])
+        );
+        assert_eq!(
+            text(operation.get_quantity()).as_deref(),
+            Some(["5", "6"][index])
+        );
     }
 }
 
@@ -720,7 +745,7 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     .expect("a full refresh");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
     assert_eq!(operations[0].kind(), OperationKind::Quote);
     assert_eq!(operations[1].kind(), OperationKind::Order);
     assert_eq!(operations[2].kind(), OperationKind::Execution);
@@ -729,8 +754,8 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     assert!(operations[0].get_crosscode().ends_with("|MDEntryID=B1"));
     assert!(operations[1].get_crosscode().ends_with("|MDEntryID=A1"));
     assert!(operations[2].get_crosscode().ends_with("|MDEntryID=T1"));
-    assert_eq!(operations[0].get_price().to_string(), "100");
-    assert_eq!(operations[1].get_quantity().to_string(), "12");
+    assert_eq!(text(operations[0].get_price()).as_deref(), Some("100"));
+    assert_eq!(text(operations[1].get_quantity()).as_deref(), Some("12"));
     assert_eq!(operations[0].get_ticker(), Some("AAPL"));
     assert_eq!(operations[1].get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(
@@ -828,7 +853,7 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     .expect("incremental operations");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&Operation> = inputs.iter().map(operation_of).collect();
+    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
     assert_eq!(operations[0].action(), Some(MdUpdateAction::New));
     assert_eq!(operations[1].action(), Some(MdUpdateAction::Change));
     assert_eq!(operations[2].action(), Some(MdUpdateAction::Delete));
@@ -968,16 +993,16 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
         .unwrap();
     book.add_operations(size_only).unwrap();
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.get_price().to_string(), "100");
-    assert_eq!(live.get_quantity().to_string(), "11");
+    assert_eq!(text(live.get_price()).as_deref(), Some("100"));
+    assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 
     let price_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=5|269=0|278=B1|270=101|10=0|")
         .into_market_operations()
         .unwrap();
     book.add_operations(price_only).unwrap();
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.get_price().to_string(), "101");
-    assert_eq!(live.get_quantity().to_string(), "11");
+    assert_eq!(text(live.get_price()).as_deref(), Some("101"));
+    assert_eq!(text(live.get_quantity()).as_deref(), Some("11"));
 }
 
 #[test]
@@ -1000,12 +1025,12 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     book.add_operations(change).unwrap();
     assert_eq!(book.bid().len(), 1);
     assert_eq!(
-        book.bid().live().next().unwrap().get_price().to_string(),
-        "100"
+        text(book.bid().live().next().unwrap().get_price()).as_deref(),
+        Some("100")
     );
     assert_eq!(
-        book.bid().live().next().unwrap().get_quantity().to_string(),
-        "11"
+        text(book.bid().live().next().unwrap().get_quantity()).as_deref(),
+        Some("11")
     );
 
     let error = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|271=12|10=0|")
@@ -1124,4 +1149,89 @@ fn a_snapshot_holding_its_entries_as_a_column_answers_the_parsed_operations() {
             .expect("the entries read from a column"),
         expected
     );
+}
+
+#[test]
+fn an_fx_execution_is_lifted_prices_as_spot_plus_points_and_reaches_the_books_executions() {
+    // The forward's two parts are lifted under their own tags; `LastPx(31)`,
+    // stated by nobody, derives as their sum; the market reads both parts.
+    let held = message(
+        b"8=FIX.4.4|35=8|17=E1|37=O1|55=EURUSD|54=1|32=1000000|150=F|194=1.25|195=0.0025|10=0|",
+    );
+    assert_eq!(text(held.lifted().lastspotrate()).as_deref(), Some("1.25"));
+    assert_eq!(
+        text(held.lifted().lastforwardpoints()).as_deref(),
+        Some("0.0025")
+    );
+    assert_eq!(
+        text(held.get_lastpx()).as_deref(),
+        Some("1.2525"),
+        "31 is their sum"
+    );
+    assert_eq!(text(held.get_spotrate()).as_deref(), Some("1.25"));
+    assert_eq!(text(held.get_forwardpoints()).as_deref(), Some("0.0025"));
+    assert_eq!(
+        held.get_price(),
+        None,
+        "an execution states no price of its own"
+    );
+    assert!(
+        held.entries()
+            .iter()
+            .all(|entry| entry.tag() != 194 && entry.tag() != 195),
+        "a lifted tag is a holder's, never an entry"
+    );
+    assert_eq!(held.by_tag(194).unwrap(), super::decimal("1.25"));
+    assert_eq!(held.by_tag(195).unwrap(), super::decimal("0.0025"));
+
+    // The execution reaches a book with its FX parts.
+    let inputs = held.into_market_operations().expect("an execution");
+    assert_eq!(inputs.len(), 1);
+    let books = yggdryl::graph::BookIterator::new(inputs.into_iter(), 0, false)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(books.len(), 1);
+    let [execution] = books[0].executions() else {
+        panic!("one execution on the book")
+    };
+    assert_eq!(text(execution.get_spotrate()).as_deref(), Some("1.25"));
+    assert_eq!(
+        text(execution.get_forwardpoints()).as_deref(),
+        Some("0.0025")
+    );
+    assert_eq!(text(execution.get_lastpx()).as_deref(), Some("1.2525"));
+}
+
+#[test]
+fn a_quotes_fx_parts_land_on_its_two_lanes() {
+    let held = message(
+        b"8=FIX.4.4|35=S|117=Q1|55=EURUSD|132=1.2|134=1000000|133=1.21|135=1000000|188=1.19|189=0.01|190=1.2|191=0.011|10=0|",
+    );
+    let bid = held.get_bid().expect("a bid lane");
+    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
+    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
+    let ask = held.get_ask().expect("an ask lane");
+    assert_eq!(text(ask.spotrate).as_deref(), Some("1.2"));
+    assert_eq!(text(ask.forwardpoints).as_deref(), Some("0.011"));
+    assert_eq!(
+        held.get_spotrate(),
+        None,
+        "a two-lane quote states no last price of its own"
+    );
+}
+
+#[test]
+fn a_levels_fx_parts_read_onto_its_lane() {
+    let held = message(
+        b"8=FIX.4.4|35=W|55=EURUSD|268=1|269=0|278=B1|270=1.2|271=100|1026=1.19|1027=0.01|10=0|",
+    );
+    let inputs = held.into_market_operations().expect("one level");
+    let level = operation_of(&inputs[0]);
+    assert_eq!(text(level.get_spotrate()).as_deref(), Some("1.19"));
+    assert_eq!(text(level.get_forwardpoints()).as_deref(), Some("0.01"));
+    let bid = level.get_bid().expect("the level is a bid lane");
+    assert_eq!(text(bid.price).as_deref(), Some("1.2"));
+    assert_eq!(text(bid.spotrate).as_deref(), Some("1.19"));
+    assert_eq!(text(bid.forwardpoints).as_deref(), Some("0.01"));
 }

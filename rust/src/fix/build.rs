@@ -238,6 +238,12 @@ struct Slot {
     /// repeating group is a slot of its own, so a group nests to any depth
     /// a wire or a bridge packs it.
     occurrences: Vec<Vec<Member>>,
+    /// The alias that filled this slot, as it arrived, with its rank in the
+    /// field's `FIX:names`; `None` where the canonical name or the tag did,
+    /// or nothing has yet. An alias fills a field only where neither the
+    /// canonical name nor the tag arrived, the first alias in `FIX:names`
+    /// order wins over a later one, and a loser is its own unmapped child.
+    filler: Option<(SmolStr, usize)>,
 }
 
 /// One member of one occurrence: a value, or a group nested inside it.
@@ -254,6 +260,7 @@ impl Slot {
             tag,
             known,
             values: SlotValues::Empty,
+            filler: None,
             group: true,
             occurrences: Vec::new(),
         }
@@ -457,6 +464,11 @@ pub(super) struct RowExtras<'row> {
     /// clock a message stating no `SendingTime(52)` is dated by where no
     /// fill reaches tag 52, ahead of the codec's default.
     pub(super) recdunix: Option<i64>,
+    /// The plugin the prose in front of the payload says the message came
+    /// into the bridge through.
+    pub(super) originator: Option<&'row str>,
+    /// The conversation the prose in front of the payload files it under.
+    pub(super) conversation: Option<&'row str>,
 }
 
 /// What a row stated, owned, for the messages it answers for.
@@ -479,6 +491,10 @@ pub(super) struct RowStamp {
     source: Option<crate::Uuid>,
     /// When the carrier recorded the row.
     recdunix: Option<i64>,
+    /// The plugin the row's prose names the message's arrival through.
+    originator: Option<SmolStr>,
+    /// The conversation the row's prose files the message under.
+    conversation: Option<SmolStr>,
 }
 
 impl RowStamp {
@@ -489,6 +505,8 @@ impl RowStamp {
             && extras.direction.is_none()
             && extras.source.is_none()
             && extras.recdunix.is_none()
+            && extras.originator.is_none()
+            && extras.conversation.is_none()
         {
             return None;
         }
@@ -502,6 +520,8 @@ impl RowStamp {
             direction: extras.direction.map(SmolStr::new),
             source: extras.source,
             recdunix: extras.recdunix,
+            originator: extras.originator.map(SmolStr::new),
+            conversation: extras.conversation.map(SmolStr::new),
         }))
     }
 
@@ -526,6 +546,8 @@ impl RowStamp {
             direction_pin: None,
             source: self.source,
             recdunix: self.recdunix,
+            originator: self.originator.as_deref(),
+            conversation: self.conversation.as_deref(),
         }
     }
 
@@ -563,6 +585,8 @@ impl RowExtras<'static> {
         direction_pin: None,
         source: None,
         recdunix: None,
+        originator: None,
+        conversation: None,
     };
 }
 
@@ -601,6 +625,15 @@ fn resolve<'registry>(
 ) -> Option<(&'registry Field, i32)> {
     let field = if let Some(tag) = super::field::parse_tag(key) {
         registry.get_field_by_tag(tag)
+    } else if let Some(named) = key
+        .contains(['.', '['])
+        .then(|| registry.get_scalar_by_name(key))
+        .flatten()
+    {
+        // A spelling the path grammar reads as steps - `ULLINK.INSTRUMENTID`,
+        // `INSTRUMENT[EXCHANGE]` - is a name first where the dictionary
+        // holds it whole.
+        Some(named)
     } else {
         let path = crate::FieldPath::from_str(key).ok()?;
         registry.get_field_by_path(&path)
@@ -630,6 +663,11 @@ fn lookup(registry: &FixRegistry, memo: &Memo, key: &str) -> Lookup {
             }
         }
     })
+}
+
+/// A key as a child is named: [`folded_name`], from bytes.
+pub(super) fn folded_key(key: &[u8]) -> String {
+    folded_name(&String::from_utf8_lossy(key))
 }
 
 /// The version a message is said to be read at when nothing decided one.
@@ -701,6 +739,10 @@ pub(super) struct Builder<'registry> {
     /// finishes. Best-effort fields never enter this bounded error slot.
     failure: Option<Error>,
     composed: Vec<Composed>,
+    /// What this build could not read as it stands - a value that would not
+    /// type, a counter disagreeing with its group - in arrival order, kept
+    /// on the message beside the row.
+    anomalies: Vec<super::FixAnomaly>,
 }
 
 /// The pair one fold records, as the line wrote it.
@@ -764,11 +806,18 @@ impl<'registry> Builder<'registry> {
             arrival: None,
             failure: None,
             composed: Vec::new(),
+            anomalies: Vec::new(),
         }
     }
 
     /// Numeric counters open schema-scoped groups; indexed/name keys retain
     /// their explicit addressing. Only received pairs advance or allocate rows.
+    /// Keeps what the reading judged the row stated that it could not take
+    /// - a `#` twin disagreeing with its bare key - among the build's own.
+    pub(super) fn note(&mut self, anomalies: Vec<super::FixAnomaly>) {
+        self.anomalies.extend(anomalies);
+    }
+
     pub(super) fn push_pairs(&mut self, pairs: &[FixPair], absent: impl Fn(&[u8], &[u8]) -> bool) {
         let mut cursor = 0;
         while let Some(pair) = pairs.get(cursor) {
@@ -1201,7 +1250,7 @@ impl<'registry> Builder<'registry> {
     /// because a line asks it for every value and a capture asks it a
     /// million times. A field with no such declaration is read directly.
     fn typed(
-        &self,
+        &mut self,
         field: &Field,
         source: Option<&'registry Field>,
         raw: &[u8],
@@ -1212,8 +1261,18 @@ impl<'registry> Builder<'registry> {
         // control byte a bridge left in a value is not part of it. The entry
         // keeps the decode as it was, which is what the anomaly reads.
         let cleaned = cleaned(text);
-        self.typed_value(field, source, raw, &cleaned)
-            .unwrap_or(Scalar::Null)
+        match self.typed_value(field, source, raw, &cleaned) {
+            Ok(value) => value,
+            Err(error) => {
+                // The refusal, then what arrived: the text the row could not
+                // take is the fact worth reading beside the null.
+                self.anomalies.push(super::FixAnomaly::new(
+                    field.name(),
+                    format!("{error}, got {cleaned:?}"),
+                ));
+                Scalar::Null
+            }
+        }
     }
 
     /// The shared conversion before best-effort callers discard a refusal.
@@ -1366,6 +1425,38 @@ impl<'registry> Builder<'registry> {
             located = self.known(key);
             self.field_from(key, located.field, self.scope())
         };
+        // A key that reaches a field by one of its `FIX:names` rather than
+        // by its canonical name or its tag is an alias, ranked as the
+        // dictionary lists it.
+        let alias: Option<(SmolStr, usize)> = source.and_then(|declared| {
+            if super::field::parse_tag(key).is_some() || crate::folds_equal(key, declared.name()) {
+                return None;
+            }
+            declared
+                .as_fix()
+                .names()
+                .position(|name| crate::folds_equal(name, key))
+                .map(|rank| (SmolStr::from(folded_name(key)), rank))
+        });
+        // A market an alias spells is an ISO 10383 MIC or no statement of
+        // the field: a venue's own short code there stays its own child,
+        // refused by name, and the market ladder answers instead.
+        if let Some((spelling, _)) = alias
+            .as_ref()
+            .filter(|_| tag == super::MICCODE_TAG_NAME.0 && !crate::MicCode::is_iso(text.trim()))
+        {
+            self.anomalies.push(super::FixAnomaly::new(
+                spelling.clone(),
+                format!("expected an ISO 10383 MIC, got {text:?}"),
+            ));
+            self.record(unresolved(0));
+            let mut own = DataType::utf8().nullable_field(spelling.clone());
+            // A plain key and value: the one refusal a metadata insert has
+            // is a shape no spelling here takes.
+            let _ = own.insert_metadata(super::field::ALIAS_OF, field.name());
+            self.slot_for(own, 0, false).values.push(Scalar::from(text));
+            return;
+        }
         let counter = self.counter_from(&located);
         if counter
             .as_ref()
@@ -1385,14 +1476,63 @@ impl<'registry> Builder<'registry> {
             return;
         }
         let value = self.typed_root(&field, source, tag, raw, text);
-        self.record(if source.is_some() {
-            tag
-        } else {
-            unresolved(tag)
-        });
-        self.slot_for(field, tag, source.is_some())
-            .values
-            .push(value);
+        let known = source.is_some();
+        // Which spelling stands: the canonical name or the tag over any
+        // alias, the earlier alias in `FIX:names` over a later one, and two
+        // arrivals of one spelling both, as a repeated tag stays two.
+        let demoted = {
+            let slot = self.slot_for(field.clone(), tag, known);
+            let empty = matches!(slot.values, SlotValues::Empty);
+            match (empty, slot.filler.as_ref(), alias.as_ref()) {
+                (true, _, _) => {
+                    slot.filler = alias.clone();
+                    slot.values.push(value);
+                    None
+                }
+                (false, None, None) | (false, Some(_), Some(_))
+                    if slot.filler.as_ref().map(|held| held.1)
+                        == alias.as_ref().map(|held| held.1) =>
+                {
+                    slot.values.push(value);
+                    None
+                }
+                // The slot holds an alias and the canonical name, or an
+                // earlier alias, arrives: the newcomer takes the slot and
+                // the old value keeps its own spelling.
+                (false, Some((spelling, rank)), newer)
+                    if newer.is_none_or(|(_, new_rank)| *new_rank < *rank) =>
+                {
+                    let spelling = spelling.clone();
+                    let held = std::mem::replace(&mut slot.values, SlotValues::One(value));
+                    slot.filler = alias.clone();
+                    Some((spelling, held))
+                }
+                // The slot is already the canonical's or an earlier alias's:
+                // the newcomer is its own child.
+                (false, _, Some((spelling, _))) => Some((spelling.clone(), SlotValues::One(value))),
+                (false, _, None) => {
+                    slot.values.push(value);
+                    None
+                }
+            }
+        };
+        match demoted {
+            None => self.record(if known { tag } else { unresolved(tag) }),
+            Some((spelling, values)) => {
+                self.record(unresolved(0));
+                // Its own spelling would resolve back to the field it did
+                // not fill, so the child says what it is: an alias that lost,
+                // which the tag resolution leaves where it stands.
+                let mut own = DataType::utf8().nullable_field(spelling);
+                // A plain key and value: the one refusal a metadata insert has
+                // is a shape no spelling here takes.
+                let _ = own.insert_metadata(super::field::ALIAS_OF, field.name());
+                let own = self.slot_for(own, 0, false);
+                for held in values.as_slice() {
+                    own.values.push(held.clone());
+                }
+            }
+        }
         // The counter's child is built first, so the count keeps the column
         // its own field names; the group it heads is opened after it, empty
         // until a member arrives - located, indexed or numbered.
@@ -1697,6 +1837,7 @@ impl<'registry> Builder<'registry> {
                     values: SlotValues::Empty,
                     group: false,
                     occurrences: Vec::new(),
+                    filler: None,
                 });
                 self.slots.last_mut().expect("just pushed")
             }
@@ -1760,6 +1901,7 @@ impl<'registry> Builder<'registry> {
             mut slots,
             failure,
             composed,
+            mut anomalies,
             ..
         } = self;
         if let Some(error) = failure {
@@ -1781,6 +1923,7 @@ impl<'registry> Builder<'registry> {
                 values: SlotValues::One(value),
                 group: false,
                 occurrences: Vec::new(),
+                filler: None,
             });
         }
         // Each slot's place is read once, as a rank, rather than once per
@@ -1835,6 +1978,18 @@ impl<'registry> Builder<'registry> {
                 tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
             }) {
                 let count = i32::try_from(held).unwrap_or(i32::MAX);
+                // The number that arrived and the occurrences the group
+                // holds are two readings of one line: where they disagree,
+                // the group's is the row's and the disagreement is kept.
+                if let Some(stated) = values[at]
+                    .as_i64()
+                    .filter(|stated| *stated != i64::from(count))
+                {
+                    anomalies.push(super::FixAnomaly::new(
+                        fields[at].name(),
+                        format!("states {stated}, the group holds {held}"),
+                    ));
+                }
                 if let Ok(value) = fields[at].scalar(Scalar::from(count)) {
                     values[at] = value;
                 }
@@ -1850,6 +2005,7 @@ impl<'registry> Builder<'registry> {
             value: Scalar::from_sequence(values),
             tags,
             composed,
+            anomalies,
         })
     }
 }
@@ -1861,6 +2017,8 @@ pub(super) struct Built {
     pub(super) value: Scalar,
     pub(super) tags: Vec<(i32, usize)>,
     composed: Vec<Composed>,
+    /// What the build could not read as it stands, in arrival order.
+    pub(super) anomalies: Vec<super::FixAnomaly>,
 }
 
 impl Built {

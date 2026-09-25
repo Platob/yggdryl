@@ -6,7 +6,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::iter::FusedIterator;
 use std::vec;
 
-use super::{Element, Event, MarketOperationEvent};
+use super::{Element, Event, OperationEvent};
 use crate::{State, Uuid};
 
 /// The elements a walk reads, in the order it reads them.
@@ -81,14 +81,14 @@ enum Source<E, I> {
 /// leaves snapshot instants as they came.
 ///
 /// ```
-/// use yggdryl::graph::{Element, EventIterator, Event, MarketOperationEventData};
+/// use yggdryl::graph::{Element, EventIterator, Event, OperationEventData};
 /// use yggdryl::State;
 ///
 /// // One order's life as three events sharing its cross code, plus one
 /// // event of another order: a market event orders by instant and follows
 /// // by the timed reading.
 /// let event = |order: &str, unix: i64, state: &str| {
-///     let mut event = MarketOperationEventData::at(unix);
+///     let mut event = OperationEventData::at(unix);
 ///     event.set_crosscode(order.to_owned());
 ///     event.set_state(State::from_spelling(state).expect("a shipped state"));
 ///     event.finalize();
@@ -179,7 +179,7 @@ struct Live<E> {
 
 impl<E, I> EventIterator<E, I>
 where
-    E: MarketOperationEvent + Clone,
+    E: OperationEvent + Clone,
     I: Iterator<Item = E>,
 {
     /// Opens a walk over `elements`.
@@ -430,7 +430,7 @@ where
 
 impl<E, I> Iterator for EventIterator<E, I>
 where
-    E: MarketOperationEvent + Clone,
+    E: OperationEvent + Clone,
     I: Iterator<Item = E>,
 {
     type Item = E;
@@ -512,7 +512,7 @@ where
 
 impl<E, I> FusedIterator for EventIterator<E, I>
 where
-    E: MarketOperationEvent + Clone,
+    E: OperationEvent + Clone,
     I: FusedIterator<Item = E>,
 {
 }
@@ -561,13 +561,13 @@ pub mod internals {
     //! retiring a name forgets exactly the records it opened.
     use super::EventIterator;
     use crate::Uuid;
-    use crate::graph::MarketOperationEvent;
+    use crate::graph::OperationEvent;
 
     /// Settle `element` as the element alive under `identity`, arriving as
     /// `arrived`.
     pub fn settle<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid, element: &E, arrived: Uuid)
     where
-        E: MarketOperationEvent + Clone,
+        E: OperationEvent + Clone,
         I: Iterator<Item = E>,
     {
         walk.settle(identity, element, arrived);
@@ -576,7 +576,7 @@ pub mod internals {
     /// Retire the element alive under `identity`, answering whether one was.
     pub fn retire<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid) -> bool
     where
-        E: MarketOperationEvent + Clone,
+        E: OperationEvent + Clone,
         I: Iterator<Item = E>,
     {
         walk.retire(identity).is_some()

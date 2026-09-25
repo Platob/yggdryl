@@ -6,6 +6,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "accountids",
+          "key": "ACCOUNT"
+        }
+      ],
       "FIX:tag": "1",
       "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
       "display": "Account"
@@ -132,6 +138,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "CLORDID"
+        }
+      ],
       "FIX:tag": "11",
       "description": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field.",
       "display": "ClOrdID"
@@ -211,6 +223,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "EXECID"
+        }
+      ],
       "FIX:tag": "17",
       "description": "Unique identifier of execution message as assigned by sell-side (broker, exchange, ECN) (will be 0 (zero) for ExecType (150)=I (Order Status)).",
       "display": "ExecID"
@@ -529,6 +547,17 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "ORDERID",
+          "follow": true
+        }
+      ],
+      "FIX:names": [
+        "marketorderid",
+        "omsdealerorderid"
+      ],
       "FIX:replacements": [
         {
           "plan": "select orderid as massactionreportid where :msgtype = 'r'"
@@ -614,6 +643,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "ORIGCLORDID"
+        }
+      ],
       "FIX:tag": "41",
       "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
       "display": "OrigClOrdID"
@@ -826,6 +861,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "userids",
+          "key": "SENDERSUBID"
+        }
+      ],
       "FIX:tag": "50",
       "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
       "display": "SenderSubID"

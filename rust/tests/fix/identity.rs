@@ -243,7 +243,7 @@ mod identifiers {
     use std::sync::Arc;
 
     use super::SoleMessage;
-    use yggdryl::graph::MarketOperation;
+    use yggdryl::graph::Operation;
     use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
     fn tagged(name: &str, tag: i32) -> Field {

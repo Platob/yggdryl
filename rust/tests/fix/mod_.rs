@@ -3091,7 +3091,7 @@ mod internal {
 
     #[test]
     fn a_message_states_each_market_number_once_and_reads_the_market_off_its_codes() {
-        use yggdryl::graph::{Market, MarketOperation};
+        use yggdryl::graph::{Market, Operation};
 
         let codec = deriving();
         let held = codec
@@ -3105,12 +3105,9 @@ mod internal {
         }
         assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
         assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
-        // And what the message is *about* is what the trait reads off them.
-        assert_eq!(held.get_price(), yggdryl::Decimal18::parse("82.5").unwrap());
-        assert_eq!(
-            held.get_quantity(),
-            yggdryl::Decimal18::parse("300").unwrap()
-        );
+        // And what the message states is what the trait reads off them.
+        assert_eq!(held.get_price(), yggdryl::Decimal18::parse("82.5").ok());
+        assert_eq!(held.get_quantity(), yggdryl::Decimal18::parse("300").ok());
         // `Quantity(53)` is the newer spelling and its own slot: a line that
         // said `53=` holds it there, and `OrderQty` stays empty.
         assert!(held.get_by_tag(53).is_none());
@@ -3121,8 +3118,8 @@ mod internal {
         assert!(spelled.get_by_tag(38).is_none());
         assert_eq!(
             spelled.get_quantity(),
-            yggdryl::Decimal18::parse("300").unwrap(),
-            "and the quantity the message is about reads either spelling"
+            yggdryl::Decimal18::parse("300").ok(),
+            "and the quantity the message states reads either spelling"
         );
         // The last trade is its own fact beside them, under FIX's own tag.
         assert_eq!(held.get_lastpx(), yggdryl::Decimal18::parse("82.5").ok());

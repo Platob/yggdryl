@@ -2,7 +2,7 @@
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookInput, Element, Event, Market, MarketOperationEventData, Operation, OperationKind, Trade,
+    BookInput, Element, Event, Market, MarketOperation, OperationEventData, OperationKind, Trade,
 };
 use yggdryl::{Decimal18, Side};
 
@@ -11,8 +11,8 @@ fn event(
     crosscode: &str,
     symbol: Option<&str>,
     recdunix: Option<i64>,
-) -> MarketOperationEventData {
-    let mut event = MarketOperationEventData::at(unix);
+) -> OperationEventData {
+    let mut event = OperationEventData::at(unix);
     event.set_crosscode(crosscode.to_owned());
     event.set_ticker(symbol.map(SmolStr::new));
     event.set_recdunix(recdunix);
@@ -31,15 +31,15 @@ fn execution(
     creaunix: Option<i64>,
     recdunix: Option<i64>,
     execunix: Option<i64>,
-) -> Operation {
+) -> MarketOperation {
     let mut event = event(unix, crosscode, symbol, recdunix);
     event.set_side(Side::read(side).unwrap());
-    event.set_price(Decimal18::from_int(price));
+    event.set_price(Some(Decimal18::from_int(price)));
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
     event.set_execunix(execunix);
     event.finalize();
-    Operation::execution(event)
+    MarketOperation::execution(event)
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
     let error = Trade::from_parts(root.clone(), vec![unknown]).unwrap_err();
     assert!(error.to_string().contains("executions[0].side"), "{error}");
 
-    let order = Operation::order(
+    let order = MarketOperation::order(
         execution(10, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None).into_data(),
     );
     let error = Trade::from_parts(root.clone(), vec![order]).unwrap_err();
@@ -213,7 +213,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .find(|held| held.get_crosscode() == "E-1")
             .unwrap()
             .get_price(),
-        Decimal18::from_int(101),
+        Some(Decimal18::from_int(101)),
         "the later-recorded child leads its merge"
     );
     assert_eq!(merged.get_seqnum(), 4);
@@ -251,10 +251,10 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .get_price()
     };
     let alone = right.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&alone), Decimal18::from_int(101));
+    assert_eq!(e1_price(&alone), Some(Decimal18::from_int(101)));
     assert_eq!(alone.get_recdunix(), Some(15));
     let folded = merged.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&folded), Decimal18::from_int(105));
+    assert_eq!(e1_price(&folded), Some(Decimal18::from_int(105)));
     assert_eq!(folded.get_recdunix(), Some(10));
 }
 

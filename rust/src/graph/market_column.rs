@@ -32,9 +32,9 @@ pub enum MarketColumn {
     CfiCode,
     /// The market it trades on.
     MicCode,
-    /// The price of the last trade it reports.
+    /// The last executed price it reports.
     LastPx,
-    /// The quantity of the last trade it reports.
+    /// The last executed quantity it reports.
     LastQty,
     /// The average price of what it traded.
     AvgPx,
@@ -167,10 +167,7 @@ impl MarketColumn {
     /// element states, if only as nothing.
     #[must_use]
     pub const fn nullable(self) -> bool {
-        !matches!(
-            self,
-            Self::Price | Self::Currency | Self::Quantity | Self::Unit | Self::Side
-        )
+        !matches!(self, Self::Currency | Self::Unit | Self::Side)
     }
 
     /// The column as a field, named, typed and displayed.
@@ -205,9 +202,9 @@ impl MarketColumn {
     /// states none.
     pub fn fact<E: Market + ?Sized>(self, element: &E) -> Option<Scalar> {
         match self {
-            Self::Price => Some(element.get_price().into()),
+            Self::Price => element.get_price().map(Scalar::from),
             Self::Currency => Some(element.get_currency().clone().into()),
-            Self::Quantity => Some(element.get_quantity().into()),
+            Self::Quantity => element.get_quantity().map(Scalar::from),
             Self::Unit => Some(element.get_unit().clone().into()),
             Self::Side => Some(element.get_side().into()),
             Self::SecurityIds => {
@@ -243,21 +240,27 @@ impl MarketColumn {
     pub fn record<E: Market + ?Sized>(self, element: &mut E, value: &Scalar) {
         let decimal = || Decimal18::from_scalar(value);
         match self {
-            Self::Price => {
-                if let Some(held) = decimal() {
-                    element.set_price(held);
+            Self::Price => match value {
+                Scalar::Null => element.set_price(None),
+                _ => {
+                    if let Some(held) = decimal() {
+                        element.set_price(Some(held));
+                    }
                 }
-            }
+            },
             Self::Currency => {
                 if let Some(held) = currency_of(value) {
                     element.set_currency(held);
                 }
             }
-            Self::Quantity => {
-                if let Some(held) = decimal() {
-                    element.set_quantity(held);
+            Self::Quantity => match value {
+                Scalar::Null => element.set_quantity(None),
+                _ => {
+                    if let Some(held) = decimal() {
+                        element.set_quantity(Some(held));
+                    }
                 }
-            }
+            },
             Self::Unit => {
                 let unit = match value {
                     Scalar::Unit(held) => Some(held.clone()),

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{Element, Event, Market, MarketOperation};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
@@ -1512,6 +1512,43 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         ambiguous[2].get_securityids().get("FIGI").is_none(),
         "a conflicting association stays unknown"
     );
+}
+
+#[test]
+fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
+    // `OMSINSTRUMENTID` states a listing - the ISIN, its market and its
+    // currency - and one ISIN has as many listings as markets: what one
+    // message names it by is no association to fill onto another. The
+    // Bloomberg code beside it is the instrument's and is learned.
+    let codec = codec();
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=CH0012214059|{body}|10=0|"
+        )
+    };
+    let walked: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(2, "").as_bytes()),
+            codec.parse_fix_line(
+                line(
+                    1,
+                    "bloombergcode=HOLN SW|OMSINSTRUMENTID=dbi;CH0012214059_XSWX_CHF",
+                )
+                .as_bytes(),
+            ),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        walked[0].get_securityids().get("OMSINSTRUMENTID"),
+        Some("dbi;CH0012214059_XSWX_CHF"),
+        "the message stating it keeps it"
+    );
+    assert_eq!(
+        walked[1].get_securityids().get("BLOOMBERG"),
+        Some("HOLN SW")
+    );
+    assert_eq!(walked[1].get_securityids().get("OMSINSTRUMENTID"), None);
 }
 
 #[test]

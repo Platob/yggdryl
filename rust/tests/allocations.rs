@@ -31,7 +31,7 @@ use smol_str::SmolStr;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
     Book, BookInput, BookIterator, Element, Event, EventColumn, Market, MarketEventData,
-    MarketOperationEventData, Operation, Trade,
+    MarketOperation, OperationEventData, Trade,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -817,10 +817,10 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
 
 #[test]
 fn typed_market_operation_and_entry_conversions_move_without_allocating() {
-    let mut event = MarketOperationEventData::at(1);
+    let mut event = OperationEventData::at(1);
     event.set_crosscode("ORDER-1".to_owned());
     event.finalize();
-    let mut operation = Some(Operation::order(event));
+    let mut operation = Some(MarketOperation::order(event));
     let (into_entry, entry) = counted(|| operation.take().expect("one operation").entry());
     assert_eq!(into_entry, 0, "operation to entry allocated");
 
@@ -830,8 +830,8 @@ fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     black_box(operation);
 }
 
-fn allocation_trade_parts(executions: usize) -> (MarketOperationEventData, Vec<Operation>) {
-    let mut root = MarketOperationEventData::at(1);
+fn allocation_trade_parts(executions: usize) -> (OperationEventData, Vec<MarketOperation>) {
+    let mut root = OperationEventData::at(1);
     root.set_crosscode("ALLOC-TRADE".to_owned());
     root.set_ticker(Some(SmolStr::new("ALLOC")));
     root.set_state(State::read("Filled").expect("the shipped filled state"));
@@ -839,13 +839,13 @@ fn allocation_trade_parts(executions: usize) -> (MarketOperationEventData, Vec<O
     let executions = (0..executions)
         .rev()
         .map(|index| {
-            let mut event = MarketOperationEventData::at(1);
+            let mut event = OperationEventData::at(1);
             event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
             event.set_ticker(Some(SmolStr::new("ALLOC")));
             event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
             event.set_state(State::read("Filled").expect("the shipped filled state"));
             event.finalize();
-            Operation::execution(event)
+            MarketOperation::execution(event)
         })
         .collect();
     (root, executions)
@@ -875,15 +875,15 @@ fn allocation_book_operation(
     quantity: i64,
     state: &str,
 ) -> BookInput {
-    let mut event = MarketOperationEventData::at(unix);
+    let mut event = OperationEventData::at(unix);
     event.set_crosscode(code.into());
     event.set_ticker(Some(SmolStr::new("ALLOC")));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_price(Decimal18::from_int(100));
-    event.set_quantity(Decimal18::from_int(quantity));
+    event.set_price(Some(Decimal18::from_int(100)));
+    event.set_quantity(Some(Decimal18::from_int(quantity)));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
-    let mut quote = Operation::quote(event);
+    let mut quote = MarketOperation::quote(event);
     quote.finalize();
     quote.into()
 }

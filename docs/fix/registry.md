@@ -17,6 +17,7 @@
 | History | The dictionary holds one reading of each tag; a spelling an earlier version used is written beside it in the field's `FIX:names`, and a field FIX retired is still in the dictionary under its own tag |
 | Replacements | What FIX retired and what stands in for it is the crate's own [table](#what-the-specification-retired), applied as a [parse](message.md#restated-under-the-dictionary) restates a message; a registry states a rule of its own on the field as `FIX:replacements`, which wins whole over the table for that field, and `FIX:deprecated` marks the field FIX Latest removed, whose value is restated and then nulled |
 | Directions | Tag 385's field may carry `FIX:directions`: per code of the set, the `regex::bytes` patterns applied to the prose in front of a payload that name it; a field carrying none reads by the crate's defaults, so a dictionary that ships a table states its own |
+| Identifier maps | A scalar may carry `FIX:idmap`: the [identifier-map keys](#a-field-names-a-message-by-its-identifiers) its value states - map, key, whether a following operation carries it, and on `PartyID(448)` the `PartyRole(452)` of the occurrence stating it; `idmap_sources` compiles every field's once |
 | Identifiers | `FIX:identifiers` declares a component's direct scalar identifiers, resolved to canonical member names in component order; a `MsgType` compiles their selection once |
 | Definition tags | Components and Serie/LargeSerie groups carry a `FIX:tag` derived from their name into `[100000, 1100000)`; a reference occurrence never restates it. A crate Map group instead has one reserved tag, also its counter, with no scalar counterpart |
 | Doors | one family, and every category answers it: `field_by_tag`, `field_by_name`, `field_by_id`, `field_by_path`, `field_by_counter` and the generic `field`, each with its `get_` twin; `insert` files a Struct as a component, a Serie/LargeSerie of a Struct or a Map as a group, anything else as a scalar, and `update`, `add_field`, `merge_with` and `remove` take any of the three |
@@ -28,8 +29,8 @@
 | Iteration | Scalar fields iterate tag-major, the tag's holder first, then id; named categories and message singletons have deterministic native order |
 | Ownership | Rust borrows definitions. Python and Node views retain the native registry; mutation refuses while a codec, message, singleton, or active iterator shares it |
 | Snapshot | `into_json` / `from_json` preserve the vocabularies and the three categories - `{codesets, fields, components, groups}` and no other key, the sets leading so a reader holds them before it meets a field naming one - with each field's membership inside its metadata; stable hashes include that complete state |
-| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 28 definitions from tag 65003: 27 scalar fields and the sorted Map group `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 29 scalar fields and one group: 30 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
-| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 29 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
+| Crate definitions | The [crate listing](capture.md#the-crates-own-columns) has 40 definitions from tag 65003: 39 scalar fields and the sorted Map group `metadata(65049)`. `new()` registers every one beside `SendingTime(52)` and `TransactTime(60)`, so an empty registry holds 41 scalar fields and one group: 42 definitions. A [store](store.md) writes these builtins like any other definition, and a stored one can never override the constructed one |
+| Standard clocks | `new()` seeds `SendingTime(52)` and `TransactTime(60)` as ordinary nanosecond UTC fields; they account for two of the empty registry's 41 scalar definitions. A loaded dictionary defining either supplies its own matching layout |
 
 ## Use
 
@@ -1195,6 +1196,25 @@ rather than a refusal that would fail the message.
 
 Deliberately not derived, because the answer would be a guess: no amount whose scale depends on a convention the message does not state - `GrossTradeAmt(381)` from a percent-of-par price, an FX gross amount absent `SettlPriceFxRateCalc(2366)`, `NetMoney(118)` through `CommType(13)` and every `MiscFeeBasis(891)`; and nothing that needs a second message - `OrigClOrdID(41)`, `ListID(66)`, a bust's effect on `CumQty(14)` - because those are facts about a chain, and chains are the [lifecycle's](lifecycle.md).
 
+## A field names a message by its identifiers
+
+A message goes by the names its fields state - the account it is booked to, the user who entered it, its order's and its parent order's identifiers - and which field states which is a fact about the field, so it travels on the field as `FIX:idmap`: one canonical document of entries, each the map the value lands in, the upper-case key it lands under, whether an operation that follows another carries it, and - on `PartyID(448)` - the `PartyRole(452)` of the `Parties` occurrence that states it. A message rebuilds its three [identifier maps](message.md#the-identifier-maps) from the dictionary's table at every settle.
+
+```text
+OrderID(37)   [{"map":"altids","key":"ORDERID","follow":true}]
+PartyID(448)  [{"map":"accountids","key":"CUSTOMERACCOUNT","role":"24"},{"map":"userids","key":"ENTERINGTRADER","role":"36"},{"map":"userids","key":"EXECUTINGTRADER","role":"12"}]
+```
+
+| Contract | Rule |
+| --- | --- |
+| Key | `FIX:idmap`, read with `FixField::idmap() -> FixIdSources` - each item a `Result<FixIdSource>`: `map() -> FixIdMapKind`, `key()`, `follows()`, `role()` - and written with `FixFieldMut::set_idmap(&[FixIdSource])`, an empty list removing it; Python and JavaScript `field.fix.idmap` cross it as `{map, key, follow, role}` records, `follow` and `role` optional going in |
+| Map | `accountids`, `userids` or `altids` - `FixIdMapKind::ALL`, read ASCII case folded |
+| Key text | one to 32 upper-case ASCII letters or digits, the width an `IdMap` key holds; one map and key once per field |
+| Follow | on `altids` alone, because an account and a user always follow; what an entry marks is what `Operation::is_followed_altid` answers for a message and the lifecycle carries forward |
+| Role | a `PartyRole(452)` code of ASCII letters and digits, and only on `PartyID(448)` - a registry refuses one on any other tag, naming the field |
+| Compiled | `FixRegistry::idmap_sources() -> &[(i32, FixIdSource)]`, every field's entries beside its tag in tag order, compiled once and forgotten by every change to the fields; Python `idmap_sources()` and JavaScript `idmapSources()` answer `{tag, map, key, follow, role}` records, JavaScript leaving `role` out where the entry states none |
+| Shipped | the generator writes the standard fields' from `IDMAP_SOURCES` in `scripts/generate_fix_dictionary.py`, validated against the dictionary at generation; the crate's eight bridge identifiers, 65068 to 65075, state their own |
+
 ## One merge, with a rule per key
 
 `update` on a scalar merges the same identifier: incoming scalar metadata wins, aliases and alternate tags combine under native validation, and canonical spelling is retained. `update` on a component or a group instead replaces the entire supplied definition while preserving its identity.
@@ -1281,7 +1301,7 @@ Registration states the set tag 35 reads by - the one the field names, else `msg
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 27 crate scalar fields and one Map group beside the two seeded clocks, so `len()` is 30. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 29 crate scalar fields and one Map group beside the two seeded clocks, so `len()` is 32. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `LocalFolder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

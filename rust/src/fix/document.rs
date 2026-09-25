@@ -202,6 +202,19 @@ impl<'doc> Cursor<'doc> {
         Ok(word)
     }
 
+    /// Reads one JSON flag: `true` or `false`.
+    #[inline]
+    pub(super) fn read_flag(&mut self, key: &'static str) -> Scan<bool> {
+        let rest = &self.document.as_bytes()[self.position..];
+        for (spelling, flag) in [(&b"true"[..], true), (&b"false"[..], false)] {
+            if rest.starts_with(spelling) {
+                self.position += spelling.len();
+                return Ok(flag);
+            }
+        }
+        Err(Refusal::NotAWord(key))
+    }
+
     /// Reads one nested array, handing back the text between its brackets.
     ///
     /// A list of fills is the one array these documents hold whose elements
@@ -570,6 +583,12 @@ impl Writer {
         self.string(value)
     }
 
+    /// Writes one flag-valued key.
+    pub(super) fn flag(&mut self, first: bool, key: &str, value: bool) {
+        self.key(first, key);
+        self.text.push_str(if value { "true" } else { "false" });
+    }
+
     /// Writes one string, escaping it only when it needs escaping.
     ///
     /// Almost every value these documents hold is a word - a FIX name, a code
@@ -691,6 +710,8 @@ pub(super) enum Kind {
     Directions,
     /// [`super::replacements`], under `FIX:replacements`.
     Replacements,
+    /// [`super::idmap`], under `FIX:idmap`.
+    IdMap,
     /// [`FixField::names`](super::FixField::names), under `FIX:names`.
     Names,
     /// [`FixField::tags`](super::FixField::tags), under `FIX:tags`.
@@ -710,9 +731,10 @@ enum Shape {
 
 impl Kind {
     /// Every property a store crosses this way.
-    pub(super) const ALL: [Self; 4] = [
+    pub(super) const ALL: [Self; 5] = [
         Self::Directions,
         Self::Replacements,
+        Self::IdMap,
         Self::Names,
         Self::Tags,
     ];
@@ -722,6 +744,7 @@ impl Kind {
         match self {
             Self::Directions => "FIX:directions",
             Self::Replacements => "FIX:replacements",
+            Self::IdMap => "FIX:idmap",
             Self::Names => "FIX:names",
             Self::Tags => "FIX:tags",
         }
@@ -737,6 +760,7 @@ impl Kind {
         match self {
             Self::Directions => "fix directions",
             Self::Replacements => "fix replacements",
+            Self::IdMap => "fix idmap",
             Self::Names => "fix names",
             Self::Tags => "fix tags",
         }
@@ -752,6 +776,7 @@ impl Kind {
         match self {
             Self::Directions => Shape::Entries(&super::directions::KEYS),
             Self::Replacements => Shape::Entries(&super::replacements::KEYS),
+            Self::IdMap => Shape::Entries(&super::idmap::KEYS),
             Self::Names => Shape::Words,
             Self::Tags => Shape::Tags,
         }

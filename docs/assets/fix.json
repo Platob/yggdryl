@@ -96,16 +96,16 @@
     ]
   },
   "kpi": {
-    "fields": 6268,
+    "fields": 6280,
     "groups": 581,
     "enumFields": 2027,
     "codesets": 736,
     "codes": 7751,
-    "aliases": 43,
+    "aliases": 47,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 124,
+    "columns": 132,
     "memberships": 0,
     "dialects": 0,
     "datatypes": 25,
@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1927
+        1939
       ],
       [
         "decimal128(38,18)",
@@ -220,6 +220,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ACCOUNT",
+              "map": "accountids"
+            }
+          ],
           "FIX:tag": "1",
           "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
           "display": "Account"
@@ -346,6 +352,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "CLORDID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "11",
           "description": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field.",
           "display": "ClOrdID"
@@ -425,6 +437,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "EXECID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "17",
           "description": "Unique identifier of execution message as assigned by sell-side (broker, exchange, ECN) (will be 0 (zero) for ExecType (150)=I (Order Status)).",
           "display": "ExecID"
@@ -743,6 +761,17 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "ORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:names": [
+            "marketorderid",
+            "omsdealerorderid"
+          ],
           "FIX:replacements": [
             {
               "plan": "select orderid as massactionreportid where :msgtype = 'r'"
@@ -828,6 +857,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ORIGCLORDID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "41",
           "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
           "display": "OrigClOrdID"
@@ -1040,6 +1075,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "SENDERSUBID",
+              "map": "userids"
+            }
+          ],
           "FIX:tag": "50",
           "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
           "display": "SenderSubID"
@@ -1921,6 +1962,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ONBEHALFOFSUBID",
+              "map": "userids"
+            }
+          ],
           "FIX:tag": "116",
           "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
           "display": "OnBehalfOfSubID"
@@ -1933,6 +1980,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "QUOTEID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "117",
           "description": "Unique identifier for quote",
           "display": "QuoteID"
@@ -2126,6 +2179,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "QUOTEREQID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "131",
           "description": "Unique identifier for a QuoteRequest(35=R).",
           "display": "QuoteReqID"
@@ -3024,6 +3083,13 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "SECONDARYORDERID",
+              "map": "altids"
+            }
+          ],
           "FIX:replacements": [
             {
               "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
@@ -3923,6 +3989,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "MDREQID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "262",
           "description": "Unique identifier for Market Data Request",
           "display": "MDReqID"
@@ -6343,6 +6415,23 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "CUSTOMERACCOUNT",
+              "map": "accountids",
+              "role": "24"
+            },
+            {
+              "key": "ENTERINGTRADER",
+              "map": "userids",
+              "role": "36"
+            },
+            {
+              "key": "EXECUTINGTRADER",
+              "map": "userids",
+              "role": "12"
+            }
+          ],
           "FIX:tag": "448",
           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
           "display": "PartyID"
@@ -11886,6 +11975,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "TRDMATCHID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "880",
           "description": "Identifier assigned by a matching system to a match event that results in multiple executions or trades.",
           "display": "TrdMatchID"
@@ -13436,6 +13531,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "TRADEID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "1003",
           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
           "display": "TradeID"
@@ -79630,8 +79731,11 @@
           "type": "mic"
         },
         "metadata": {
+          "FIX:names": [
+            "instrument[exchange]"
+          ],
           "FIX:tag": "65060",
-          "description": "The normalized market MIC the message identifies.",
+          "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC; a bridge's INSTRUMENT[EXCHANGE] states it.",
           "display": "MicCode"
         },
         "name": "miccode",
@@ -79690,6 +79794,218 @@
           "display": "MsgSessEventId"
         },
         "name": "msgsesseventid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65066",
+          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+          "display": "MsgOriginator"
+        },
+        "name": "msgoriginator",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65067",
+          "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
+          "display": "ConversationId"
+        },
+        "name": "conversationid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "OMSDEALERACCOUNT",
+              "map": "accountids"
+            }
+          ],
+          "FIX:tag": "65068",
+          "description": "The account an OMS dealer books the order to, as the bridge stated it.",
+          "display": "OmsDealerAccount"
+        },
+        "name": "omsdealeraccount",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "OMSUSERID",
+              "map": "userids"
+            }
+          ],
+          "FIX:tag": "65069",
+          "description": "The OMS user who entered the order, as the bridge stated it.",
+          "display": "OmsUserId"
+        },
+        "name": "omsuserid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "PARENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65070",
+          "description": "The parent order's identifier, as the bridge stated it.",
+          "display": "ParentOrderId"
+        },
+        "name": "parentorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "PARENTCLORDID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65071",
+          "description": "The parent order's client identifier, as the bridge stated it.",
+          "display": "ParentClOrdId"
+        },
+        "name": "parentclordid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "OMSDEALERPARENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65072",
+          "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
+          "display": "OmsDealerParentOrderId"
+        },
+        "name": "omsdealerparentorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "EXCHANGECLIENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65073",
+          "description": "The exchange's client order identifier, as the bridge stated it.",
+          "display": "ExchangeClientOrderId"
+        },
+        "name": "exchangeclientorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "TRANSVERSALKEY",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65074",
+          "description": "The key a bridge threads one order through every system with, as it stated it.",
+          "display": "TransversalKey"
+        },
+        "name": "transversalkey",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ULTRADERCLORDID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65075",
+          "description": "A trading screen's own client order identifier, as the bridge stated it.",
+          "display": "UlTraderClOrdId"
+        },
+        "name": "ultraderclordid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:replacements": [
+            {
+              "doc": "OmsInstrumentId names an instrument under the OMSINSTRUMENTID source",
+              "plan": "select [{securityaltid: omsinstrumentid, securityaltidsource: 'OMSINSTRUMENTID'}] as secaltids where length(omsinstrumentid) <= 32"
+            }
+          ],
+          "FIX:tag": "65076",
+          "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
+          "display": "OmsInstrumentId"
+        },
+        "name": "omsinstrumentid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:names": [
+            "ullink.instrumentid"
+          ],
+          "FIX:replacements": [
+            {
+              "doc": "UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source",
+              "plan": "select [{securityaltid: ullinkinstrumentid, securityaltidsource: 'ULLINKINSTRUMENTID'}] as secaltids where length(ullinkinstrumentid) <= 32"
+            }
+          ],
+          "FIX:tag": "65077",
+          "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
+          "display": "UllinkInstrumentId"
+        },
+        "name": "ullinkinstrumentid",
         "nullable": true
       }
     ],
@@ -291457,6 +291773,13 @@
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
+        "c": "msgoriginator",
+        "t": 65066,
+        "n": "MsgOriginator",
+        "y": "utf8",
+        "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
+      },
+      {
         "c": "msgctxid",
         "t": 65008,
         "n": "MsgCtxId",
@@ -291476,6 +291799,13 @@
         "n": "MsgSessEventId",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
+      },
+      {
+        "c": "conversationid",
+        "t": 65067,
+        "n": "ConversationId",
+        "y": "utf8",
+        "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
       },
       {
         "c": "symbol",
@@ -291524,7 +291854,7 @@
         "t": 65060,
         "n": "MicCode",
         "y": "mic",
-        "x": "The normalized market MIC the message identifies."
+        "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC; a bridge's INSTRUMENT[EXCHANGE] states it."
       },
       {
         "c": "securitytype",
@@ -291828,6 +292158,48 @@
         "x": "Quantity of offer"
       },
       {
+        "c": "lastspotrate",
+        "t": 194,
+        "n": "LastSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "F/X spot rate."
+      },
+      {
+        "c": "lastforwardpoints",
+        "t": 195,
+        "n": "LastForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "F/X forward points added to LastSpotRate(194). May be a negative value. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199."
+      },
+      {
+        "c": "bidspotrate",
+        "t": 188,
+        "n": "BidSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "Bid F/X spot rate."
+      },
+      {
+        "c": "bidforwardpoints",
+        "t": 189,
+        "n": "BidForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "Bid F/X forward points added to spot rate. May be a negative value."
+      },
+      {
+        "c": "offerspotrate",
+        "t": 190,
+        "n": "OfferSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "Offer F/X spot rate."
+      },
+      {
+        "c": "offerforwardpoints",
+        "t": 191,
+        "n": "OfferForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "Offer F/X forward points added to spot rate. May be a negative value."
+      },
+      {
         "c": "state",
         "t": 65052,
         "n": "State",
@@ -291901,7 +292273,7 @@
         "c": "parties",
         "t": 209321,
         "n": "Parties",
-        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
+        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:idmap\":\"[{\\\"map\\\":\\\"accountids\\\",\\\"key\\\":\\\"CUSTOMERACCOUNT\\\",\\\"role\\\":\\\"24\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"ENTERINGTRADER\\\",\\\"role\\\":\\\"36\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"EXECUTINGTRADER\\\",\\\"role\\\":\\\"12\\\"}]\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
         "x": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole"
       },
       {
@@ -292357,7 +292729,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -292638,7 +293012,7 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "10.5",
+        "price": null,
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
@@ -292667,7 +293041,7 @@
           "ORDERID": "O-9"
         },
         "bid": {
-          "price": "10.5",
+          "price": null,
           "spotrate": null,
           "forwardpoints": null,
           "currency": null,
@@ -292693,7 +293067,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -292819,6 +293195,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -293135,7 +293512,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -294374,6 +294753,8 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"ORDERID\",\"follow\":true}]",
+                          "FIX:names": "[\"marketorderid\",\"omsdealerorderid\"]",
                           "FIX:replacements": "[{\"plan\":\"select orderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "37",
                           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
@@ -294387,6 +294768,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"SECONDARYORDERID\",\"follow\":true}]",
                           "FIX:replacements": "[{\"plan\":\"select secondaryorderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "198",
                           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
@@ -294412,6 +294794,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"TRADEID\"}]",
                           "FIX:tag": "1003",
                           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
                           "display": "TradeID"
@@ -295482,6 +295865,7 @@
                                   },
                                   "metadata": {
                                     "FIX:field": "partyid",
+                                    "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                                     "FIX:tag": "448",
                                     "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                                     "display": "PartyID"
@@ -296192,9 +296576,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -296237,7 +296621,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296490,9 +296876,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -296549,7 +296935,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296733,9 +297121,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -296778,7 +297166,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296895,9 +297285,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -296940,7 +297330,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -297087,9 +297479,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -297132,7 +297524,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": "Incorrect data format for value",
       "metadata": {},
@@ -297402,7 +297796,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -297728,7 +298124,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -297984,7 +298382,7 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "USD",
         "quantity": "100",
         "unit": "",
@@ -298038,7 +298436,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298391,16 +298791,16 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "GBP",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {
           "ISIN": "GB00BN7SWP63",
           "SEDOL": "BN7SWP6"
         },
-        "cficode": "FXXXXX",
+        "cficode": null,
         "miccode": "XLON",
         "lastpx": null,
         "lastqty": null,
@@ -298439,7 +298839,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298595,6 +298997,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -298765,7 +299168,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298939,7 +299344,7 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
@@ -298993,7 +299398,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299156,7 +299563,7 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
         "quantity": "100",
         "unit": "",
@@ -299208,7 +299615,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299362,9 +299771,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "BUY",
         "securityids": {},
@@ -299407,7 +299816,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299454,6 +299865,7 @@
                 "type": "string"
               },
               "metadata": {
+                "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"ACCOUNT\"}]",
                 "FIX:tag": "1",
                 "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
                 "display": "Account"
@@ -299491,6 +299903,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -299583,9 +299996,9 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "price": "0",
+        "price": null,
         "currency": "XXX",
-        "quantity": "0",
+        "quantity": null,
         "unit": "",
         "side": "UNKNOWN",
         "securityids": {},
@@ -299630,7 +300043,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299862,7 +300277,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},

@@ -356,6 +356,17 @@
         }
       },
       {
+        "name": "msgoriginator",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "msgoriginator",
+          "FIX:tag": "65066"
+        }
+      },
+      {
         "name": "msgctxid",
         "dtype": {
           "type": "null"
@@ -386,6 +397,17 @@
         "metadata": {
           "FIX:field": "msgsesseventid",
           "FIX:tag": "65065"
+        }
+      },
+      {
+        "name": "conversationid",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "conversationid",
+          "FIX:tag": "65067"
         }
       },
       {
@@ -936,6 +958,72 @@
         "metadata": {
           "FIX:field": "offersize",
           "FIX:tag": "135"
+        }
+      },
+      {
+        "name": "lastspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "lastspotrate",
+          "FIX:tag": "194"
+        }
+      },
+      {
+        "name": "lastforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "lastforwardpoints",
+          "FIX:tag": "195"
+        }
+      },
+      {
+        "name": "bidspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "bidspotrate",
+          "FIX:tag": "188"
+        }
+      },
+      {
+        "name": "bidforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "bidforwardpoints",
+          "FIX:tag": "189"
+        }
+      },
+      {
+        "name": "offerspotrate",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "offerspotrate",
+          "FIX:tag": "190"
+        }
+      },
+      {
+        "name": "offerforwardpoints",
+        "dtype": {
+          "type": "null"
+        },
+        "nullable": true,
+        "metadata": {
+          "FIX:field": "offerforwardpoints",
+          "FIX:tag": "191"
         }
       },
       {

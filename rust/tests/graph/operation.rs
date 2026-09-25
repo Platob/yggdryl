@@ -4,20 +4,20 @@
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookRef, Element, Event, Market, MarketOperation, MarketOperationData,
-    MarketOperationEventData, MdUpdateAction, Operation, OperationEntry, OperationKind,
+    BookRef, Element, Event, Market, MarketOperation, MarketOperationEntry, MdUpdateAction,
+    Operation, OperationData, OperationEventData, OperationKind,
 };
 use yggdryl::{Ccy, Decimal18, Error, Side, State, TimeInForce, Unit, Uuid};
 
 /// One filled order as a foreign caller would state it, finalized.
-fn full_order() -> MarketOperationEventData {
-    let mut data = MarketOperationEventData::at(1_700_000_000_000_000_000);
+fn full_order() -> OperationEventData {
+    let mut data = OperationEventData::at(1_700_000_000_000_000_000);
     data.set_crosscode("O-100".to_owned());
     data.set_srcuuids(vec![Uuid::from_v8(7)]);
     data.set_state(State::from_spelling("Filled").expect("a shipped state"));
-    data.set_price(Decimal18::from_int(82));
+    data.set_price(Some(Decimal18::from_int(82)));
     data.set_currency(Ccy::new("USD").expect("a currency"));
-    data.set_quantity(Decimal18::from_int(10));
+    data.set_quantity(Some(Decimal18::from_int(10)));
     data.set_unit(Unit::new("lot").expect("a unit"));
     data.set_side(Side::read("Buy").expect("a side"));
     data.set_lastpx(Some(Decimal18::from_int(81)));
@@ -65,13 +65,13 @@ fn the_kinds_spell_themselves_and_read_back_ignoring_case() {
 
 #[test]
 fn a_trade_root_is_refused_as_an_operation_and_as_an_entry() {
-    let error = Operation::new(OperationKind::Trade, full_order()).unwrap_err();
+    let error = MarketOperation::new(OperationKind::Trade, full_order()).unwrap_err();
     assert!(
         matches!(&error, Error::InvalidRecord { path, .. } if path == "$.operationkind"),
         "{error}"
     );
     let error =
-        OperationEntry::new(OperationKind::Trade, MarketOperationData::default()).unwrap_err();
+        MarketOperationEntry::new(OperationKind::Trade, OperationData::default()).unwrap_err();
     assert!(
         matches!(&error, Error::InvalidRecord { path, .. } if path == "$.operationkind"),
         "{error}"
@@ -81,9 +81,12 @@ fn a_trade_root_is_refused_as_an_operation_and_as_an_entry() {
         OperationKind::Quote,
         OperationKind::Execution,
     ] {
-        assert_eq!(Operation::new(kind, full_order()).unwrap().kind(), kind);
         assert_eq!(
-            OperationEntry::new(kind, MarketOperationData::default())
+            MarketOperation::new(kind, full_order()).unwrap().kind(),
+            kind
+        );
+        assert_eq!(
+            MarketOperationEntry::new(kind, OperationData::default())
                 .unwrap()
                 .kind(),
             kind
@@ -94,26 +97,26 @@ fn a_trade_root_is_refused_as_an_operation_and_as_an_entry() {
 #[test]
 fn the_kind_says_whether_an_operation_is_an_execution_whatever_its_state() {
     let source = full_order();
-    let order = Operation::order(source.clone());
+    let order = MarketOperation::order(source.clone());
     assert!(
         source.is_execution(),
         "the holder reads its lifecycle state"
     );
     assert!(!order.is_execution(), "the kind wins over a filled state");
-    assert!(!Operation::quote(source.clone()).is_execution());
-    let unknown = MarketOperationEventData::at(23);
+    assert!(!MarketOperation::quote(source.clone()).is_execution());
+    let unknown = OperationEventData::at(23);
     assert!(!unknown.is_execution());
-    assert!(Operation::execution(unknown).is_execution());
+    assert!(MarketOperation::execution(unknown).is_execution());
     assert_eq!(order.kind(), OperationKind::Order);
     assert_eq!(
-        Operation::quote(source.clone()).kind(),
+        MarketOperation::quote(source.clone()).kind(),
         OperationKind::Quote
     );
     assert_eq!(
-        Operation::execution(source).kind(),
+        MarketOperation::execution(source).kind(),
         OperationKind::Execution
     );
-    let default = Operation::default();
+    let default = MarketOperation::default();
     assert_eq!(default.kind(), OperationKind::Order);
     assert_eq!(default.get_currunix(), 0);
 }
@@ -121,7 +124,7 @@ fn the_kind_says_whether_an_operation_is_an_execution_whatever_its_state() {
 #[test]
 fn an_operation_delegates_every_reading_to_its_data_and_hands_it_back() {
     let source = full_order();
-    let operation = Operation::order(source.clone());
+    let operation = MarketOperation::order(source.clone());
     assert_eq!(operation.data(), &source);
     assert_eq!(operation.get_lastpx(), source.get_lastpx());
     assert_eq!(operation.get_lastqty(), source.get_lastqty());
@@ -143,7 +146,7 @@ fn an_operation_delegates_every_reading_to_its_data_and_hands_it_back() {
 #[test]
 fn an_entry_is_the_operation_undated_and_dates_again_at_an_instant() {
     let source = full_order();
-    let mut operation = Operation::order(source.clone());
+    let mut operation = MarketOperation::order(source.clone());
     operation.finalize();
     assert_ne!(
         operation.get_curruuid(),
@@ -161,7 +164,7 @@ fn an_entry_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(entry.get_crosscode(), "O-100");
     // The entry keeps the identity the operation derived - its kind is in
     // it - not the holder's own.
-    let expected = MarketOperationData::from(operation.data());
+    let expected = OperationData::from(operation.data());
     assert_eq!(entry.data(), &expected);
     assert_ne!(entry.get_curruuid(), source.get_curruuid());
 
@@ -190,15 +193,15 @@ fn an_entry_is_the_operation_undated_and_dates_again_at_an_instant() {
     assert_eq!(back, again, "and back to the same entry");
 
     // The kind travels both ways.
-    let execution = Operation::execution(source).entry();
+    let execution = MarketOperation::execution(source).entry();
     assert_eq!(execution.kind(), OperationKind::Execution);
     assert!(execution.at(5).is_execution());
-    assert_eq!(OperationEntry::default().kind(), OperationKind::Order);
+    assert_eq!(MarketOperationEntry::default().kind(), OperationKind::Order);
 }
 
 #[test]
 fn the_book_control_rides_typed_beside_the_operation_and_digests_into_it() {
-    let bare = Operation::order(full_order());
+    let bare = MarketOperation::order(full_order());
     assert_eq!(bare.book(), None);
     assert_eq!(bare.action(), None);
     assert_eq!(bare.scope(), "");
@@ -284,17 +287,17 @@ fn the_update_action_reads_the_fix_code_the_name_and_the_legacy_snapshot() {
 
 #[test]
 fn an_operation_follows_and_merges_through_its_holder_and_keeps_its_kind() {
-    let mut first = MarketOperationEventData::at(1_000_000);
+    let mut first = OperationEventData::at(1_000_000);
     first.set_crosscode("O-100".to_owned());
-    first.set_price(Decimal18::from_int(80));
+    first.set_price(Some(Decimal18::from_int(80)));
     first.finalize();
-    let first = Operation::order(first);
+    let first = MarketOperation::order(first);
 
-    let mut second = MarketOperationEventData::at(2_000_000);
+    let mut second = OperationEventData::at(2_000_000);
     second.set_crosscode("O-100".to_owned());
-    second.set_price(Decimal18::from_int(81));
+    second.set_price(Some(Decimal18::from_int(81)));
     second.finalize();
-    let second = Operation::order(second)
+    let second = MarketOperation::order(second)
         .with_previous(&first)
         .expect("the later order follows");
     assert_eq!(second.get_prevuuid(), Some(first.get_curruuid()));
@@ -303,7 +306,7 @@ fn an_operation_follows_and_merges_through_its_holder_and_keeps_its_kind() {
     assert_eq!(second.kind(), OperationKind::Order);
 
     // Two kinds over one holder are two operations, and never merge.
-    let mut quote = Operation::quote(second.data().clone());
+    let mut quote = MarketOperation::quote(second.data().clone());
     quote.finalize();
     assert_ne!(quote.get_curruuid(), second.get_curruuid());
     assert!(second.clone().merge_with(&quote).is_none());

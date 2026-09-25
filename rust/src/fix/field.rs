@@ -15,6 +15,7 @@ use super::FixId;
 use super::constants::MSGCATEGORIES;
 use super::directions::{FixDirection, FixDirections};
 use super::document::{Cursor, Numbers, Words, Writer, is_word, repeated_number, repeated_word};
+use super::idmap::{FixIdSource, FixIdSources};
 use super::replacements::{FixReplacement, FixReplacements};
 use crate::expression::Term;
 use crate::folds_equal;
@@ -25,6 +26,11 @@ use crate::{DataType, Error, FixField, FixFieldMut, Result};
 const BRANCHES: &str = "branches";
 /// The canonical tag.
 const TAG: &str = "tag";
+/// The key on a message child that is an alias spelling which did not fill
+/// its field - the canonical name or an earlier alias arrived too - naming
+/// that field: the child stays its own, re-emits as it arrived, and the tag
+/// resolution leaves it where it stands.
+pub(super) const ALIAS_OF: &str = "FIX:alias";
 /// The full key the canonical tag is stored under.
 pub(super) const TAG_KEY: &str = "FIX:tag";
 /// The alternate tags, a JSON array of tags, highest priority first.
@@ -51,6 +57,8 @@ const REPLACEMENTS: &str = "replacements";
 /// The rules naming a code of this field's set from the prose in front of a
 /// payload; tag 385's.
 const DIRECTIONS: &str = "directions";
+/// The identifier-map keys this field's value states.
+const IDMAP: &str = "idmap";
 /// How this field's value is derived from the message where the message
 /// states none: the canonical text of one term over the message's fields.
 const DERIVATION: &str = "derivation";
@@ -452,6 +460,34 @@ impl<'field> FixField<'field> {
     /// ```
     pub fn directions(&self) -> FixDirections<'field> {
         FixDirections::over(self.get(DIRECTIONS))
+    }
+
+    /// Walks the identifier-map keys this field's value states, in document
+    /// order: each the map it lands in, the key it lands under, whether a
+    /// following operation carries it, and - on `PartyID(448)` - the
+    /// `PartyRole(452)` of the occurrence stating it. The registry compiles
+    /// every field's once into [`FixRegistry::idmap_sources`](crate::FixRegistry::idmap_sources).
+    /// An absent property yields nothing.
+    ///
+    /// ```
+    /// use yggdryl::DataType;
+    /// use yggdryl::fix::{FixIdMapKind, FixIdSource};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let mut order = DataType::utf8().nullable_field("orderid");
+    /// order.as_fix_mut().set_tag(37)?;
+    /// let source = FixIdSource::new(FixIdMapKind::Alts, "ORDERID").with_follow(true);
+    /// order.as_fix_mut().set_idmap(&[source.clone()])?;
+    /// assert_eq!(
+    ///     order.get_metadata("FIX:idmap"),
+    ///     Some(r#"[{"map":"altids","key":"ORDERID","follow":true}]"#)
+    /// );
+    /// assert_eq!(order.as_fix().idmap().collect::<yggdryl::Result<Vec<_>>>()?, [source]);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn idmap(&self) -> FixIdSources<'field> {
+        FixIdSources::over(self.get(IDMAP))
     }
 
     /// The term this field's value is derived from the message with, where
@@ -1068,6 +1104,25 @@ impl FixFieldMut<'_> {
         }
         let rendered = FixDirections::render(directions)?;
         self.store(DIRECTIONS, rendered)
+    }
+
+    /// Writes the identifier-map keys this field's value states; an empty
+    /// list removes the property.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Parse`] when a source states a key that is not one
+    /// to 32 upper-case letters or digits, a follow flag on a map that is not
+    /// `altids`, a role that is not a code of letters and digits, or one key
+    /// of one map twice;
+    /// either leaves the field unchanged.
+    pub fn set_idmap(&mut self, sources: &[FixIdSource]) -> Result<()> {
+        if sources.is_empty() {
+            self.remove(IDMAP);
+            return Ok(());
+        }
+        let rendered = FixIdSources::render(sources)?;
+        self.store(IDMAP, rendered)
     }
 
     /// Removes the direction rules, answering what they held.

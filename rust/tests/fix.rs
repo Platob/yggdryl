@@ -370,8 +370,12 @@ fn decimal(text: &str) -> yggdryl::Scalar {
     yggdryl::Scalar::from(yggdryl::Decimal18::parse(text).expect("an exact number"))
 }
 
+#[path = "fix/alias_rule.rs"]
+mod alias_rule;
 #[path = "fix/aliases.rs"]
 mod aliases;
+#[path = "fix/anomaly.rs"]
+mod anomaly;
 #[path = "fix/batch.rs"]
 mod batch;
 #[path = "fix/cfb.rs"]
@@ -403,6 +407,8 @@ mod global;
 mod group_plan;
 #[path = "fix/identity.rs"]
 mod identity;
+#[path = "fix/idmap.rs"]
+mod idmap;
 #[path = "fix/latest.rs"]
 mod latest;
 #[path = "fix/market.rs"]
@@ -423,6 +429,8 @@ mod registry;
 mod retired;
 #[path = "fix/schema.rs"]
 mod schema;
+#[path = "fix/securityids.rs"]
+mod securityids;
 #[path = "fix/store.rs"]
 mod store;
 #[path = "fix/ulbridge.rs"]

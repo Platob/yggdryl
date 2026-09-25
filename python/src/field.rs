@@ -2727,6 +2727,75 @@ impl PyProtocolField {
             .map_err(value_error)
     }
 
+    /// The identifier-map keys this field's value states, one record per
+    /// key: `{"map", "key", "follow", "role"}` - the map it lands in
+    /// (`accountids`, `userids` or `altids`), the upper-case key, whether an
+    /// operation that follows another carries it, and on `PartyID(448)` the
+    /// `PartyRole(452)` code of the occurrence stating it, else `None`.
+    ///
+    /// Assigning records - `follow` and `role` optional - replaces them, and
+    /// an empty iterable removes the property; a key that is not one to 32
+    /// upper-case letters or digits, a follow flag off `altids`, or one key
+    /// twice is a `ValueError` that leaves the field unchanged.
+    #[getter]
+    fn idmap<'py>(&self, py: Python<'py>) -> PyResult<Vec<Bound<'py, PyDict>>> {
+        self.require_fix("idmap")?;
+        let field = self.borrow_field(py)?;
+        let mut records = Vec::new();
+        for source in field.inner.as_fix().idmap() {
+            let source = source.map_err(value_error)?;
+            let record = PyDict::new(py);
+            record.set_item("map", source.map().as_str())?;
+            record.set_item("key", source.key())?;
+            record.set_item("follow", source.follows())?;
+            record.set_item("role", source.role())?;
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    #[setter]
+    fn set_idmap(&self, sources: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.require_fix("idmap")?;
+        let mut held = Vec::new();
+        for item in sources.try_iter()? {
+            let item = item?;
+            let map = item
+                .get_item("map")?
+                .extract::<String>()?
+                .parse::<yggdryl::FixIdMapKind>()
+                .map_err(value_error)?;
+            let key = item.get_item("key")?.extract::<String>()?;
+            let optional = |name: &str| -> PyResult<Option<Bound<'_, PyAny>>> {
+                match item.get_item(name) {
+                    Ok(value) if !value.is_none() => Ok(Some(value)),
+                    Ok(_) => Ok(None),
+                    Err(error)
+                        if error.is_instance_of::<pyo3::exceptions::PyKeyError>(item.py()) =>
+                    {
+                        Ok(None)
+                    }
+                    Err(error) => Err(error),
+                }
+            };
+            let follow = optional("follow")?
+                .map(|value| value.extract::<bool>())
+                .transpose()?
+                .unwrap_or(false);
+            let mut source = yggdryl::FixIdSource::new(map, key).with_follow(follow);
+            if let Some(role) = optional("role")? {
+                source = source.with_role(role.extract::<String>()?);
+            }
+            held.push(source);
+        }
+        let mut field = self.borrow_field_mut(sources.py())?;
+        field
+            .inner
+            .as_fix_mut()
+            .set_idmap(&held)
+            .map_err(value_error)
+    }
+
     /// How this field's value is derived from the message where the message
     /// states none: one expression over the message's fields, in its
     /// canonical text, or `None` for a field nothing derives.
