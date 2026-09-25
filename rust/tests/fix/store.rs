@@ -3041,10 +3041,13 @@ mod committed {
     /// (65066) and `conversationid` (65067), two typed members of the fixed
     /// row read off a bridge's line, and the eight bridge identifiers 65068
     /// to 65075, content the row keeps, each stating its own `FIX:idmap`.
+    /// It last moved when `miccode`'s ladder read FIX 4.2's Reuters exchange
+    /// mnemonics beside ISO 10383 MICs: that one description says so, and no
+    /// other document, tag or count moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 1_297_145_350_983_584_410);
+        assert_eq!(registry.stable_hash(), 1_645_965_135_168_375_719);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

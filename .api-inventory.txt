@@ -4781,6 +4781,7 @@ impl Scalar
   pub struct MicCode(SmolStr)  (one validated code; `MicCodeType` marks its field, `MicCodeField` is `FieldOf<MicCodeType>`)
   pub fn none() -> Self
   pub fn from_dxfeed_exchange_code(feed: DxFeedExchangeFeed, code: impl AsRef<str>) -> Result<Self>
+  pub fn from_reuters_exchange_code(code: impl AsRef<str>) -> Result<Self>  (FIX 4.2 Appendix C / RIC suffix, case-sensitive, to the MIC carrying the market)
   pub fn is_iso(text: &str) -> bool  (exactly four upper-case ASCII letters or digits: an ISO 10383 MIC, where `new` stays permissive for a venue's short code)
   pub const fn mic() -> Self
   pub type MicCodeField = FieldOf<MicCodeType>;

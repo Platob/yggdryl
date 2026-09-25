@@ -289,6 +289,21 @@ assert_eq!(
 assert!(MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err());
 ```
 
+## A Reuters exchange mnemonic names one market
+
+`MicCode::from_reuters_exchange_code(code)` resolves a Reuters exchange mnemonic - the suffix of a RIC, and the value [FIX 4.2's Appendix C](https://www.onixs.biz/fix-dictionary/4.2/app_c.html) gives `LastMkt(30)`, `ExDestination(100)` and `SecurityExchange(207)` - into its ISO 10383 MIC. The mnemonic is case-sensitive: `B` is Boston and `b` Belfox, `D` Dusseldorf and `d` Eurex Germany. A market that closed resolves to the MIC that carries it on (Pacific `P` to `ARCX`); a row naming a segment, a scheme or no market (`TH`, `0`, `11`) and a closed market ISO never carried on are refused. The FIX market ladder reads each of those three tags as an ISO MIC, else as a mnemonic, so an order routed with `100=TW` names `XTAI`. Rust only.
+
+```rust
+use yggdryl::MicCode;
+
+assert_eq!(MicCode::from_reuters_exchange_code("L")?.as_str(), "XLON");
+assert_eq!(MicCode::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
+// Case is part of the mnemonic.
+assert_eq!(MicCode::from_reuters_exchange_code("b")?.as_str(), "XBRD");
+// Third Market is a scheme, not a market with a MIC.
+assert!(MicCode::from_reuters_exchange_code("TH").is_err());
+```
+
 ## Edges
 
 - `at most 4 bytes` is the refusal, whatever the source: a scalar, a cast row, or `ascii_packed`. The refusal names the code's own width, not the next ASCII one up.
