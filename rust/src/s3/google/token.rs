@@ -10,16 +10,19 @@
 //! A token expires, so it is obtained again shortly before it does rather than
 //! per request, and nothing at all is read until the first request needs one.
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine as _;
 
 use super::options::GoogleOptions;
+use crate::auth::{Bearer, Lease, instant, variable};
 use crate::{Error, Result, Scalar};
 
 /// How long before a token lapses it is obtained again.
 const REFRESH_MARGIN: Duration = Duration::from_secs(5 * 60);
+/// After a token could not be obtained, how long before it is asked for
+/// again rather than the failure answered once more.
+const RETRY_PAUSE: Duration = Duration::from_secs(30);
 /// The lifetime a signed assertion asks for; Google refuses more.
 const ASSERTION_LIFETIME: u64 = 3600;
 /// Where an assertion or a refresh token is exchanged, when a document names
@@ -41,28 +44,6 @@ const METADATA_TIMEOUT: Duration = Duration::from_secs(2);
 const IAM_CREDENTIALS_HOST: &str = "https://iamcredentials.googleapis.com";
 /// The largest token document read from any of these endpoints.
 const MAX_ANSWER: u64 = 256 * 1024;
-
-/// One access token, and when it stops being usable.
-#[derive(Clone, Debug)]
-pub(crate) struct Token {
-    /// The bearer value, which is never rendered.
-    value: String,
-    /// When it lapses, when the answer said.
-    expires_at: Option<SystemTime>,
-}
-
-impl Token {
-    /// The bearer value.
-    pub(crate) fn value(&self) -> &str {
-        &self.value
-    }
-
-    /// Whether this is close enough to lapsing to obtain another.
-    fn is_stale(&self, now: SystemTime) -> bool {
-        self.expires_at
-            .is_some_and(|expiry| expiry <= now + REFRESH_MARGIN)
-    }
-}
 
 /// A credentials document, in whichever of the shapes it was written.
 #[derive(Clone)]
@@ -110,7 +91,7 @@ enum Source {
 pub(crate) struct TokenCache {
     source: Source,
     scope: String,
-    held: Mutex<Option<Token>>,
+    held: Lease<Bearer>,
 }
 
 impl TokenCache {
@@ -126,7 +107,12 @@ impl TokenCache {
         Ok(Self {
             source,
             scope,
-            held: Mutex::new(None),
+            held: Lease::new(
+                "Google bearer token",
+                REFRESH_MARGIN,
+                RETRY_PAUSE,
+                RETRY_PAUSE,
+            ),
         })
     }
 
@@ -171,7 +157,9 @@ impl TokenCache {
         })
     }
 
-    /// The token to authorize with now, obtaining one if what is held lapses.
+    /// The token to authorize with now, obtaining one if what is held
+    /// lapses, and keeping what is held when obtaining another fails while it
+    /// still stands.
     ///
     /// `None` is anonymous, which is a valid way to reach a public bucket
     /// rather than a failure.
@@ -183,30 +171,18 @@ impl TokenCache {
         &self,
         agent: &ureq::Agent,
         now: SystemTime,
-    ) -> Result<Option<Token>> {
+    ) -> Result<Option<Bearer>> {
         if matches!(self.source, Source::Anonymous) {
             return Ok(None);
         }
-        let mut held = self.held.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(token) = held.as_ref() {
-            if !token.is_stale(now) {
-                return Ok(Some(token.clone()));
-            }
-        }
-        let fresh = self.obtain(agent, now)?;
-        *held = Some(fresh.clone());
-        drop::<MutexGuard<'_, _>>(held);
-        Ok(Some(fresh))
+        self.held.get(now, || self.obtain(agent, now).map(Some))
     }
 
     /// Ask this cache's source for a token.
-    fn obtain(&self, agent: &ureq::Agent, now: SystemTime) -> Result<Token> {
+    fn obtain(&self, agent: &ureq::Agent, now: SystemTime) -> Result<Bearer> {
         match &self.source {
             Source::Anonymous => unreachable!("an anonymous client asks for no token"),
-            Source::Fixed(value) => Ok(Token {
-                value: value.clone(),
-                expires_at: None,
-            }),
+            Source::Fixed(value) => Ok(Bearer::new(value.clone(), None)),
             Source::Metadata { host } => from_metadata(agent, host, now),
             Source::Document(credential) => credential.token(agent, &self.scope, now),
         }
@@ -273,7 +249,7 @@ impl Credential {
     }
 
     /// Trade this credential for an access token.
-    fn token(&self, agent: &ureq::Agent, scope: &str, now: SystemTime) -> Result<Token> {
+    fn token(&self, agent: &ureq::Agent, scope: &str, now: SystemTime) -> Result<Bearer> {
         match self {
             Self::ServiceAccount {
                 email,
@@ -327,7 +303,7 @@ impl Credential {
                     url,
                     "application/json",
                     body.as_bytes(),
-                    &[("authorization", &format!("Bearer {}", held.value))],
+                    &[("authorization", &format!("Bearer {}", held.value()))],
                 )?;
                 // The exchange answers an RFC 3339 instant rather than a
                 // lifetime, which is the one place these two differ.
@@ -337,13 +313,13 @@ impl Credential {
                     .get_key_str("accessToken")
                     .and_then(Scalar::as_str)
                     .ok_or_else(|| refusal("expected accessToken in the impersonation answer"))?;
-                Ok(Token {
-                    value: token.to_owned(),
-                    expires_at: value
+                Ok(Bearer::new(
+                    token,
+                    value
                         .get_key_str("expireTime")
                         .and_then(Scalar::as_str)
-                        .and_then(instant_of),
-                })
+                        .and_then(instant),
+                ))
             }
         }
     }
@@ -418,7 +394,7 @@ fn pkcs8_of(pem: &str) -> Result<Vec<u8>> {
 }
 
 /// Exchange a form body at a token endpoint.
-fn exchange(agent: &ureq::Agent, url: &str, body: &str, now: SystemTime) -> Result<Token> {
+fn exchange(agent: &ureq::Agent, url: &str, body: &str, now: SystemTime) -> Result<Bearer> {
     let answer = post(
         agent,
         url,
@@ -430,7 +406,7 @@ fn exchange(agent: &ureq::Agent, url: &str, body: &str, now: SystemTime) -> Resu
 }
 
 /// The instance's own token, from the metadata server.
-fn from_metadata(agent: &ureq::Agent, host: &str, now: SystemTime) -> Result<Token> {
+fn from_metadata(agent: &ureq::Agent, host: &str, now: SystemTime) -> Result<Bearer> {
     // Plain HTTP by design: the link-local address is the authority, and the
     // header is what a confused deputy cannot forge on the instance's behalf.
     let url = format!("http://{host}{METADATA_PATH}");
@@ -456,7 +432,7 @@ fn from_metadata(agent: &ureq::Agent, host: &str, now: SystemTime) -> Result<Tok
 }
 
 /// Read `{"access_token": ..., "expires_in": ...}`.
-fn read_token(body: &[u8], now: SystemTime) -> Result<Token> {
+fn read_token(body: &[u8], now: SystemTime) -> Result<Bearer> {
     let value = crate::json::from_bytes(body)
         .map_err(|error| refusal(&format!("expected an access token: {error}")))?;
     let token = value
@@ -466,10 +442,10 @@ fn read_token(body: &[u8], now: SystemTime) -> Result<Token> {
     let lifetime = value
         .get_key_str("expires_in")
         .and_then(|value| value.as_str().and_then(|text| text.parse::<u64>().ok()));
-    Ok(Token {
-        value: token.to_owned(),
-        expires_at: lifetime.map(|seconds| now + Duration::from_secs(seconds)),
-    })
+    Ok(Bearer::new(
+        token,
+        lifetime.map(|seconds| now + Duration::from_secs(seconds)),
+    ))
 }
 
 /// One `POST`, reading a bounded answer and turning a refusal into an error.
@@ -528,32 +504,12 @@ fn form(pairs: &[(&str, &str)]) -> String {
         .map(|(name, value)| {
             format!(
                 "{}={}",
-                super::super::sigv4::encode_query_component(name),
-                super::super::sigv4::encode_query_component(value)
+                crate::aws::sigv4::encode_query_component(name),
+                crate::aws::sigv4::encode_query_component(value)
             )
         })
         .collect::<Vec<_>>()
         .join("&")
-}
-
-/// Read one RFC 3339 instant in UTC, which is how an impersonated token states
-/// its expiry.
-fn instant_of(text: &str) -> Option<SystemTime> {
-    let text = text.trim().strip_suffix('Z')?;
-    let (date, time) = text.split_once('T')?;
-    let mut date = date.splitn(3, '-');
-    let year: i64 = date.next()?.parse().ok()?;
-    let month: u32 = date.next()?.parse().ok()?;
-    let day: u32 = date.next()?.parse().ok()?;
-    let mut time = time.splitn(3, ':');
-    let hour: u64 = time.next()?.parse().ok()?;
-    let minute: u64 = time.next()?.parse().ok()?;
-    let second: f64 = time.next()?.parse().ok()?;
-    let days = super::super::aws::credentials::days_from_civil(year, month, day);
-    let seconds = days.checked_mul(86_400)? + (hour * 3600 + minute * 60) as i64 + second as i64;
-    u64::try_from(seconds)
-        .ok()
-        .map(|seconds| UNIX_EPOCH + Duration::from_secs(seconds))
 }
 
 /// The credentials document the environment names, when it names one.
@@ -608,14 +564,6 @@ fn read_document(path: &std::path::Path) -> Result<String> {
             path.display()
         ))
     })
-}
-
-/// One environment variable, empty read as unset.
-fn variable(name: &str) -> Option<String> {
-    std::env::var(name)
-        .ok()
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
 }
 
 /// Refuse something about obtaining a token.

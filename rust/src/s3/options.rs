@@ -15,11 +15,11 @@
 
 use std::time::Duration;
 
-use super::aws::credentials::Credentials;
 use super::aws::options::AwsOptions;
 use super::azure::options::AzureOptions;
 use super::encryption::Encryption;
 use super::google::options::GoogleOptions;
+use crate::aws::{Credentials, Session};
 
 /// Part size when nothing else is said: 16 MiB, well above S3's 5 MiB floor
 /// and a multiple of Google's 256 KiB one.
@@ -57,6 +57,13 @@ const DEFAULT_ENVIRONMENT_PREFIXES: [&str; 4] = ["AWS_", "GOOGLE_", "AZURE_", "Y
 /// | region | recognized hostname | `AWS_REGION`, `AWS_DEFAULT_REGION` | `~/.aws/config` | `us-east-1` |
 /// | credentials | `s3://key:secret@bucket/` | each store's own names | `~/.aws/credentials`, a Google credentials document | the instance's own identity, then anonymous |
 ///
+/// On Amazon S3 the last three columns are one thing: the
+/// [`Session`](crate::aws::Session) the options carry, which walks the
+/// credential chain the AWS tools walk, reads `~/.aws/config` for the region
+/// and the endpoint, and trades for a role or an IAM Identity Center sign-in
+/// when the profile names one. [`Self::with_session`] hands one over, and a
+/// session shared by many handles resolves and refreshes once for all of them.
+///
 /// ```
 /// use std::time::Duration;
 ///
@@ -93,6 +100,7 @@ pub struct S3Options {
     container_creation: bool,
     container_deletion: bool,
     metadata: Vec<(String, String)>,
+    session: Session,
     aws: AwsOptions,
     google: GoogleOptions,
     azure: AzureOptions,
@@ -122,6 +130,7 @@ impl Default for S3Options {
             container_creation: true,
             container_deletion: true,
             metadata: Vec::new(),
+            session: Session::new(),
             aws: AwsOptions::default(),
             google: GoogleOptions::default(),
             azure: AzureOptions::default(),
@@ -343,6 +352,18 @@ impl S3Options {
         self
     }
 
+    /// Sign as, and resolve AWS's own configuration through, `session`.
+    ///
+    /// The session is what the credential chain, the profile, a role and a
+    /// sign-in belong to; an explicit credential pair or `with_anonymous` on
+    /// these options still wins over what it would answer, and
+    /// [`Self::with_environment`] off seals it too.
+    #[must_use]
+    pub fn with_session(mut self, session: Session) -> Self {
+        self.session = session;
+        self
+    }
+
     /// Set the knobs that are Amazon S3's own.
     #[must_use]
     pub fn with_aws(mut self, options: AwsOptions) -> Self {
@@ -454,6 +475,11 @@ impl S3Options {
         &self.metadata
     }
 
+    /// The AWS session requests sign as.
+    pub const fn session(&self) -> &Session {
+        &self.session
+    }
+
     /// The knobs that are Amazon S3's own.
     pub const fn aws(&self) -> &AwsOptions {
         &self.aws
@@ -512,6 +538,8 @@ impl std::fmt::Debug for S3Options {
             .field("container_creation", &self.container_creation)
             .field("container_deletion", &self.container_deletion)
             .field("metadata", &self.metadata)
+            // `Session` redacts what it holds.
+            .field("session", &self.session)
             .field("aws", &self.aws)
             .field("google", &self.google)
             // `AzureOptions` redacts its own secrets.

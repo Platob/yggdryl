@@ -1883,17 +1883,16 @@ pub struct ZipPath
       with_timeout, with_connect_timeout, with_encryption, with_proxy,
       with_container_creation, with_container_deletion, with_default_metadata,
       with_environment_prefix, with_environment_prefixes, with_environment,
-      with_aws, with_google, with_azure, with_properties, under
+      with_session, with_aws, with_google, with_azure, with_properties, under
   pub fn endpoint, region, credentials, anonymous, path_style, part_size,
       multipart_threshold, list_page_size, max_attempts, timeout, connect_timeout,
       reads_environment, encryption, environment_prefixes, proxy,
-      container_creation, container_deletion, default_metadata, aws, google, azure,
+      container_creation, container_deletion, default_metadata, session, aws, google, azure,
       environment_properties, from_environment, from_properties
 
   pub struct AwsOptions
-  pub fn with_profile, with_payload_signing, with_assumed_role, with_storage_class,
-      with_requester_pays, with_checksum
-  pub fn profile, payload_signing, assumed_role, storage_class, requester_pays, checksum
+  pub fn with_payload_signing, with_storage_class, with_requester_pays, with_checksum
+  pub fn payload_signing, storage_class, requester_pays, checksum
   pub enum Checksum { Crc32, Sha256 }
 
   pub struct GoogleOptions
@@ -1915,11 +1914,7 @@ pub struct ZipPath
       federated_token_file, managed_identity, authority_host, api_version,
       blob_type, access_tier, data_lake, endpoint
 
-  pub struct Credentials
-  pub fn new, with_session_token, with_expiry, access_key_id, session_token, expires_at
-  pub struct AssumedRole
-  pub fn new, with_session_name, with_external_id, with_duration, with_region,
-      with_endpoint, role_arn, session_name, external_id, duration, region, endpoint
+  pub use crate::aws::Credentials  (the pair every store's explicit keys are handed over as)
 
   pub enum Encryption { Default, Managed, Kms(KmsKey), Customer(CustomerKey), Scope(String) }
   pub fn managed, kms, kms_default, customer, scope, is_default,
@@ -1929,6 +1924,50 @@ pub struct ZipPath
       bucket_key, dual_layer
   pub struct CustomerKey
   pub fn new, from_base64, from_base64_checked, encoded, checksum, digest
+
+### yggdryl::aws  [rust/src/aws/mod.rs]
+  (behind the `aws` feature, which `s3` implies: who this process is to AWS, and where AWS is)
+  pub struct Session  (Clone shares the resolved state; Debug redacts)
+  pub fn new
+  pub fn with_profile, with_region, with_credentials, with_anonymous, with_assumed_role,
+      with_sso, with_credential_process, with_endpoint_url, with_config_file,
+      with_credentials_file, with_config_text, with_credentials_text, with_directory,
+      with_variables, with_environment, with_metadata_endpoint, with_metadata_disabled,
+      with_metadata_timeout, with_metadata_attempts, with_sso_login, with_mfa_prompt,
+      with_use_fips_endpoint, with_use_dualstack_endpoint, with_sts_regional_endpoints,
+      with_ca_bundle
+  pub fn assumed_role, sso, anonymous, reads_environment, sso_login
+  pub fn variable, profile_name, directory, config_file, credentials_file, profile,
+      available_profiles, region, instance_region, endpoint_url, use_fips_endpoint,
+      use_dualstack_endpoint, sts_regional_endpoints, sts_endpoint, max_attempts, ca_bundle
+  pub fn credentials(&self, now: SystemTime) -> Result<Option<Credentials>>
+  pub fn credential_source, invalidate, login
+  pub type MfaPrompt = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
+  pub struct Credentials  [rust/src/aws/credentials.rs]
+  pub fn new, with_session_token, with_expiry, with_account_id, access_key_id, session_token,
+      expires_at, account_id, is_temporary
+
+  pub struct Profile  [rust/src/aws/profile.rs]
+  pub fn name, get, flag, nested, s3, iter, region, output, endpoint_url, service_endpoint_url,
+      sso_session_name, credentials, credential_process, assumed_role, sso
+
+  pub struct AssumedRole  [rust/src/aws/sts.rs]
+  pub fn new, with_session_name, with_external_id, with_duration, with_region, with_endpoint,
+      with_mfa_serial, with_source_profile, with_credential_source, with_web_identity_token_file
+  pub fn role_arn, session_name, external_id, duration, region, endpoint, mfa_serial,
+      source_profile, credential_source, web_identity_token_file
+  pub enum CredentialSource { Environment, Ec2InstanceMetadata, EcsContainer }
+  pub const fn as_str(&self) -> &'static str
+  impl Display, FromStr
+
+  pub struct Sso  [rust/src/aws/sso.rs]
+  pub fn new, with_session_name, with_scopes, start_url, region, account_id, role_name,
+      session_name, scopes
+  pub enum SsoLogin { Never, Stderr, Handler(Arc<dyn Fn(&DeviceAuthorization) + Send + Sync>) }
+  pub struct DeviceAuthorization
+  pub fn verification_uri, verification_uri_complete, user_code, expires_in, interval
+  impl Display
 
 ### yggdryl::zip  [rust/src/zip/mod.rs]
   pub fn mount(handle: Holder) -> Holder

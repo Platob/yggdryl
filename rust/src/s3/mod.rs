@@ -37,7 +37,10 @@
 //! have - an endpoint, a region, credentials, timeouts, retries, part sizes,
 //! encryption - and [`AwsOptions`], [`GoogleOptions`], and [`AzureOptions`]
 //! hold what one has. A knob therefore has exactly one owner, and nothing
-//! pretends the three stores are one store.
+//! pretends the three stores are one store. Who this process is to AWS (the
+//! profile, the credential chain, a role, an IAM Identity Center sign-in) is
+//! not the store's knob at all but the [`Session`](crate::aws::Session) every
+//! AWS request signs with, reached through [`S3Options::with_session`].
 //!
 //! # The design goal is the request count
 //!
@@ -115,10 +118,10 @@ mod path;
 mod properties;
 mod provider;
 mod request;
-pub(crate) mod sigv4;
 pub(crate) mod xml;
 
-pub use aws::{AssumedRole, AwsOptions, Checksum, Credentials};
+pub use crate::aws::Credentials;
+pub use aws::{AwsOptions, Checksum};
 pub use azure::{AzureOptions, BlobType};
 pub use client::StatsSnapshot;
 pub use encryption::{CustomerKey, Encryption, KmsKey};

@@ -1,9 +1,11 @@
-//! AWS Signature Version 4 for Amazon S3 requests (header-based authorization, single chunk).
+//! AWS Signature Version 4 (header-based authorization, single chunk).
 //!
-//! Pure: `std`, `sha2` and `hmac` only. The client builds the wire request, hands its parts to
-//! [`Signer::sign`], and adds the headers it gets back. S3 differs from the generic `SigV4`
-//! rules in two places this module honors: the canonical URI is the path exactly as sent (encoded
-//! once, never re-encoded), and `x-amz-content-sha256` is always signed.
+//! Pure: `std`, `sha2` and `hmac` only. A client builds the wire request, hands its parts to
+//! [`Signer::sign`], and adds the headers it gets back. The scope names the service - `s3` for
+//! the object store, `sts` for the exchange that trades a role for a credential set - and S3's
+//! two departures from the generic rules are honored for every service: the canonical URI is the
+//! path exactly as sent (encoded once, never re-encoded), and `x-amz-content-sha256` is always
+//! signed.
 
 use std::fmt::Write as _;
 use std::sync::{Mutex, PoisonError};
@@ -17,6 +19,7 @@ use sha2::{Digest, Sha256};
 ///
 /// S3 accepts it in place of a real digest; the transport is then what
 /// guarantees the body arrived intact.
+#[cfg(feature = "s3")]
 pub(crate) const UNSIGNED_PAYLOAD: &str = "UNSIGNED-PAYLOAD";
 
 /// SHA-256 of the empty payload, lowercase hex.
@@ -40,6 +43,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 /// Percent-encode one raw object key for the request path: every segment is encoded with the
 /// `SigV4` unreserved set (`A-Z a-z 0-9 - _ . ~` kept, everything else `%XX` uppercase hex), `/`
 /// separators kept. Never double-encodes (input is raw text, not already-encoded).
+#[cfg(feature = "s3")]
 pub(crate) fn encode_key(key: &str) -> String {
     encode(key, true)
 }
@@ -68,7 +72,8 @@ pub(crate) fn canonical_query(query: &[(String, String)]) -> String {
 /// before the epoch reads as the epoch.
 pub(crate) fn amz_date(now: SystemTime) -> (String, String) {
     let seconds = now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    let (year, month, day) = civil_from_days(seconds / 86_400);
+    let (year, month, day) =
+        crate::timezone::civil_from_days(i64::try_from(seconds / 86_400).unwrap_or(i64::MAX));
     let date = format!("{year:04}{month:02}{day:02}");
     let (hour, minute, second) = (seconds / 3600 % 24, seconds / 60 % 60, seconds % 60);
     let datetime = format!("{date}T{hour:02}{minute:02}{second:02}Z");
@@ -94,6 +99,7 @@ pub(crate) struct Signer {
 
 impl Signer {
     /// Bind credentials to `region`; no key is derived until the first [`Signer::sign`].
+    #[cfg(feature = "s3")]
     pub(crate) fn new(
         access_key_id: impl Into<String>,
         secret_access_key: impl Into<String>,
@@ -332,32 +338,12 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     mac.finalize().into_bytes().into()
 }
 
-/// Proleptic Gregorian `(year, month, day)` of a day count since 1970-01-01.
-pub(crate) fn civil_from_days(days: u64) -> (u64, u64, u64) {
-    // Howard Hinnant's algorithm, shifted so eras start on March 1st, 0000.
-    let shifted = days + 719_468;
-    let era = shifted / 146_097;
-    let day_of_era = shifted - era * 146_097;
-    let year_of_era =
-        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-    let shifted_month = (5 * day_of_year + 2) / 153;
-    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
-    let month = if shifted_month < 10 {
-        shifted_month + 3
-    } else {
-        shifted_month - 9
-    };
-    let year = year_of_era + era * 400 + u64::from(month <= 2);
-    (year, month, day)
-}
-
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/s3/sigv4.rs` pins and a caller cannot reach.
+    //! What `rust/tests/aws/sigv4.rs` pins and a caller cannot reach.
     //!
-    //! The signature is what every S3 request stands or falls on, so it is
+    //! The signature is what every AWS request stands or falls on, so it is
     //! pinned against AWS's own published example vectors - which means
     //! reaching the canonical request and the string to sign, not only the
     //! headers that come out. Each item here forwards to the real one, so
@@ -369,6 +355,7 @@ pub mod internals {
     pub const EMPTY_PAYLOAD_SHA256: &str = super::EMPTY_PAYLOAD_SHA256;
 
     /// What `x-amz-content-sha256` carries when the body is not hashed.
+    #[cfg(feature = "s3")]
     pub const UNSIGNED_PAYLOAD: &str = super::UNSIGNED_PAYLOAD;
 
     /// Lowercase hex SHA-256 of `bytes`.
@@ -377,6 +364,7 @@ pub mod internals {
     }
 
     /// Percent-encode one raw object key for the request path.
+    #[cfg(feature = "s3")]
     pub fn encode_key(key: &str) -> String {
         super::encode_key(key)
     }
@@ -424,7 +412,8 @@ pub mod internals {
             session_token: Option<String>,
             region: impl Into<String>,
         ) -> Self {
-            Self(super::Signer::new(
+            Self(super::Signer::for_service(
+                "s3",
                 access_key_id,
                 secret_access_key,
                 session_token,

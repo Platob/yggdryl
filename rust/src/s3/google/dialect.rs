@@ -43,7 +43,7 @@ pub(crate) fn upload_path(bucket: &str) -> String {
 
 /// One path segment, with every reserved byte escaped - `/` included.
 fn segment(value: &str) -> String {
-    super::super::sigv4::encode_query_component(value)
+    crate::aws::sigv4::encode_query_component(value)
 }
 
 /// Read one object's metadata: the JSON resource, not its bytes.

@@ -7,13 +7,18 @@
 //! knobs. What these check is that each of them lands on the same knob, that a
 //! name two stores share reaches both, that a value which will not parse is
 //! heard here rather than at the store, and that a knob this client cannot
-//! honor is refused rather than dropped.
+//! honor is refused rather than dropped. Who a request signs as is the
+//! [`Session`](yggdryl::aws::Session) the options carry, so the AWS identity
+//! properties - the profile, the role, the sign-in, the files, the endpoint
+//! switches, the metadata service - are read back off that session.
 
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use yggdryl::Url;
+use yggdryl::aws::{AssumedRole, CredentialSource, Sso};
 use yggdryl::internals::s3_client::Client;
-use yggdryl::s3::{AssumedRole, AzureOptions, Credentials, Encryption, Provider, S3Options};
+use yggdryl::s3::{AzureOptions, Credentials, Encryption, Provider, S3Options};
 
 #[test]
 fn a_pyiceberg_catalogs_properties_reach_every_knob_they_name() {
@@ -88,7 +93,11 @@ fn the_aws_environment_names_are_the_same_knobs_again() {
     assert_eq!(options.region(), Some("us-east-1"));
     assert_eq!(options.endpoint(), Some("https://s3.example.io"));
     assert_eq!(options.path_style(), Some(true), "two prefixes are peeled");
-    assert_eq!(options.aws().profile(), Some("trading"));
+    assert_eq!(
+        options.session().profile_name(),
+        "trading",
+        "a profile a property names is the session's"
+    );
     assert_eq!(
         options.credentials().map(|keys| keys.access_key_id()),
         Some("AKIAIOSFODNN7EXAMPLE")
@@ -123,12 +132,12 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     ])
     .expect("readable properties");
 
-    let role = options.aws().assumed_role().expect("a role");
+    let role = options.session().assumed_role().expect("a role");
     assert_eq!(
         role.role_arn(),
         "arn:aws:iam::123456789012:role/lake-reader"
     );
-    assert_eq!(role.session_name(), "power-desk");
+    assert_eq!(role.session_name(), Some("power-desk"));
     assert_eq!(role.external_id(), Some("desk-42"));
     assert_eq!(role.duration(), Duration::from_secs(7200));
     assert_eq!(role.endpoint(), Some("https://sts.eu-west-1.amazonaws.com"));
@@ -137,8 +146,260 @@ fn a_role_is_assembled_from_the_properties_that_describe_it() {
     let options = S3Options::from_properties([("role_arn", "arn:x"), ("role_duration", "60")])
         .expect("readable properties");
     assert_eq!(
-        options.aws().assumed_role().map(AssumedRole::duration),
+        options.session().assumed_role().map(AssumedRole::duration),
         Some(Duration::from_secs(900))
+    );
+    // A role with no name of its own gets one per exchange, so none is read
+    // back.
+    assert_eq!(
+        options
+            .session()
+            .assumed_role()
+            .and_then(AssumedRole::session_name),
+        None
+    );
+}
+
+#[test]
+fn a_roles_source_device_region_and_token_file_are_read_onto_the_role() {
+    let options = S3Options::from_properties([
+        ("role_arn", "arn:aws:iam::123456789012:role/lake-reader"),
+        ("mfa_serial", "arn:aws:iam::123456789012:mfa/desk"),
+        ("source_profile", "base"),
+        ("sts_region", "eu-west-3"),
+    ])
+    .expect("readable properties");
+    let role = options.session().assumed_role().expect("a role");
+    assert_eq!(
+        role.mfa_serial(),
+        Some("arn:aws:iam::123456789012:mfa/desk")
+    );
+    assert_eq!(role.source_profile(), Some("base"));
+    assert_eq!(role.region(), Some("eu-west-3"));
+    assert_eq!(role.credential_source(), None);
+    assert_eq!(role.web_identity_token_file(), None);
+
+    // The environment's own spellings reach the same role.
+    let options = S3Options::from_properties([
+        ("AWS_ROLE_ARN", "arn:aws:iam::123456789012:role/lake-writer"),
+        ("AWS_ROLE_SESSION_NAME", "loader"),
+        ("credential_source", "ec2instancemetadata"),
+        ("AWS_WEB_IDENTITY_TOKEN_FILE", "/var/run/secrets/eks/token"),
+    ])
+    .expect("readable properties");
+    let role = options.session().assumed_role().expect("a role");
+    assert_eq!(
+        role.role_arn(),
+        "arn:aws:iam::123456789012:role/lake-writer"
+    );
+    assert_eq!(role.session_name(), Some("loader"));
+    assert_eq!(
+        role.credential_source(),
+        Some(CredentialSource::Ec2InstanceMetadata),
+        "the three sources are read in any case"
+    );
+    assert_eq!(
+        role.web_identity_token_file(),
+        Some(Path::new("/var/run/secrets/eks/token"))
+    );
+
+    // A source the files do not have is refused by name rather than read as
+    // no source at all.
+    let refused =
+        S3Options::from_properties([("credential_source", "Laptop")]).expect_err("a refusal");
+    assert!(refused.to_string().contains("EcsContainer"), "{refused}");
+
+    // Without a role to describe, a role's parts assemble nothing.
+    let options = S3Options::from_properties([
+        ("mfa_serial", "arn:aws:iam::123456789012:mfa/desk"),
+        ("source_profile", "base"),
+    ])
+    .expect("readable properties");
+    assert!(options.session().assumed_role().is_none());
+}
+
+#[test]
+fn an_identity_center_sign_in_is_four_properties_or_none_of_them() {
+    let options = S3Options::from_properties([
+        ("sso_start_url", "https://trading.awsapps.com/start"),
+        ("sso_region", "eu-west-1"),
+        ("sso_account_id", "123456789012"),
+        ("sso_role_name", "LakeReader"),
+        ("sso_session", "trading"),
+    ])
+    .expect("readable properties");
+    assert_eq!(
+        options.session().sso(),
+        Some(
+            &Sso::new(
+                "https://trading.awsapps.com/start",
+                "eu-west-1",
+                "123456789012",
+                "LakeReader"
+            )
+            .with_session_name("trading")
+        )
+    );
+
+    // The legacy shape names no session, and is a sign-in all the same.
+    let legacy = S3Options::from_properties([
+        ("AWS_SSO_START_URL", "https://trading.awsapps.com/start"),
+        ("AWS_SSO_REGION", "eu-west-1"),
+        ("AWS_SSO_ACCOUNT_ID", "123456789012"),
+        ("AWS_SSO_ROLE_NAME", "LakeReader"),
+    ])
+    .expect("readable properties");
+    let sso = legacy.session().sso().expect("a sign-in");
+    assert_eq!(sso.role_name(), "LakeReader");
+    assert_eq!(sso.session_name(), None);
+
+    // Part of one is refused, naming exactly what is missing, rather than a
+    // sign-in that fails at the portal.
+    let refused = S3Options::from_properties([
+        ("sso_start_url", "https://trading.awsapps.com/start"),
+        ("sso_region", "eu-west-1"),
+    ])
+    .expect_err("a refusal");
+    let message = refused.to_string();
+    assert!(
+        message.contains("needs sso_account_id, sso_role_name"),
+        "{message}"
+    );
+    let refused = S3Options::from_properties([("sso_session", "trading")]).expect_err("a refusal");
+    let message = refused.to_string();
+    assert!(
+        message.contains("needs sso_start_url, sso_region, sso_account_id, sso_role_name"),
+        "{message}"
+    );
+
+    // And nothing said is no sign-in.
+    assert!(S3Options::default().session().sso().is_none());
+}
+
+#[test]
+fn a_credential_process_named_by_property_is_what_the_session_runs() {
+    let options = S3Options::from_properties([(
+        "credential_process",
+        "yggdryl-no-such-credential-helper --profile lake",
+    )])
+    .expect("readable properties");
+
+    // A session that consults nothing else runs the process and nothing
+    // more, and a program no machine has is a refusal naming it - which is
+    // the proof the property reached the session that signs.
+    let refused = options
+        .session()
+        .with_environment(false)
+        .credentials(SystemTime::now())
+        .expect_err("a program no machine has");
+    let message = refused.to_string();
+    assert!(message.contains("credential process"), "{message}");
+    assert!(
+        message.contains("yggdryl-no-such-credential-helper"),
+        "{message}"
+    );
+}
+
+#[test]
+fn the_aws_files_and_endpoint_switches_reach_the_session() {
+    let options = S3Options::from_properties([
+        ("config_file", "/etc/aws/config"),
+        ("shared_credentials_file", "/etc/aws/credentials"),
+        ("ca_bundle", "/etc/ssl/lake.pem"),
+        ("use_fips_endpoint", "true"),
+        ("AWS_USE_DUALSTACK_ENDPOINT", "yes"),
+    ])
+    .expect("readable properties");
+    let session = options.session();
+    assert_eq!(
+        session.config_file(),
+        Some(PathBuf::from("/etc/aws/config"))
+    );
+    assert_eq!(
+        session.credentials_file(),
+        Some(PathBuf::from("/etc/aws/credentials"))
+    );
+    assert_eq!(
+        session.ca_bundle(),
+        Some(PathBuf::from("/etc/ssl/lake.pem"))
+    );
+    assert!(session.use_fips_endpoint());
+    assert!(session.use_dualstack_endpoint());
+    // Sealed, so no endpoint the machine configures can answer instead.
+    assert_eq!(
+        session.with_environment(false).sts_endpoint("eu-west-1"),
+        "https://sts-fips.eu-west-1.api.aws"
+    );
+
+    // `legacy` keeps the global STS host for the regions that had it, and
+    // only for them; `regional` and a boolean say the other thing.
+    let legacy = S3Options::from_properties([("sts_regional_endpoints", "legacy")])
+        .expect("readable properties")
+        .session()
+        .with_environment(false);
+    assert!(!legacy.sts_regional_endpoints());
+    assert_eq!(
+        legacy.sts_endpoint("eu-west-1"),
+        "https://sts.amazonaws.com"
+    );
+    assert_eq!(
+        legacy.sts_endpoint("ap-east-1"),
+        "https://sts.ap-east-1.amazonaws.com"
+    );
+    for regional in ["regional", "true"] {
+        let session = S3Options::from_properties([("sts_regional_endpoints", regional)])
+            .expect("readable properties")
+            .session()
+            .with_environment(false);
+        assert!(session.sts_regional_endpoints(), "{regional}");
+        assert_eq!(
+            session.sts_endpoint("eu-west-1"),
+            "https://sts.eu-west-1.amazonaws.com",
+            "{regional}"
+        );
+    }
+    let refused = S3Options::from_properties([("sts_regional_endpoints", "sometimes")])
+        .expect_err("a refusal");
+    assert!(refused.to_string().contains("boolean"), "{refused}");
+}
+
+#[test]
+fn the_instance_metadata_properties_reach_the_session_and_disabled_asks_nothing() {
+    // The fixture store stands in for the metadata service's address: it is
+    // no metadata service, so it answers nothing a region is read from, but
+    // every question the session sends it is counted.
+    let store = crate::mod_::store();
+    let endpoint = store.endpoint();
+    let asked = |disabled: &str| {
+        let options = S3Options::from_properties([
+            ("ec2_metadata_disabled", disabled),
+            ("ec2_metadata_service_endpoint", endpoint.as_str()),
+            ("metadata_service_timeout", "2"),
+            ("metadata_service_num_attempts", "1"),
+        ])
+        .expect("readable properties");
+        // Everything else the session would read is handed over empty, so
+        // nothing of the machine's own environment or files decides.
+        let session = options
+            .session()
+            .with_variables::<&str, &str>([])
+            .with_config_text("")
+            .with_credentials_text("");
+        store.clear_requests();
+        let region = session.instance_region();
+        (region, store.request_count())
+    };
+
+    assert_eq!(
+        asked("true"),
+        (None, 0),
+        "a disabled service is never asked, wherever it is"
+    );
+    let (region, requests) = asked("false");
+    assert_eq!(region, None, "the store is no metadata service");
+    assert!(
+        requests > 0,
+        "an enabled service is asked at the endpoint the property names"
     );
 }
 
@@ -290,6 +551,42 @@ fn the_environment_is_swept_rather_than_looked_up_by_name() {
             .environment_prefixes()
             .len(),
         5
+    );
+
+    // The variables the AWS tools read for themselves are the session's, read
+    // with those tools' own precedence, so the sweep under `AWS_` never lists
+    // one - whatever this process happens to hold.
+    let swept = S3Options::default()
+        .with_environment_prefixes(["AWS_"])
+        .environment_properties();
+    for native in [
+        "PROFILE",
+        "DEFAULT_PROFILE",
+        "ACCESS_KEY_ID",
+        "SECRET_ACCESS_KEY",
+        "SESSION_TOKEN",
+        "REGION",
+        "DEFAULT_REGION",
+        "CONFIG_FILE",
+        "SHARED_CREDENTIALS_FILE",
+        "ENDPOINT_URL",
+        "ROLE_ARN",
+        "WEB_IDENTITY_TOKEN_FILE",
+        "EC2_METADATA_DISABLED",
+        "CA_BUNDLE",
+    ] {
+        assert!(
+            !swept.iter().any(|(name, _)| name == native),
+            "AWS_{native} is the session's, not the sweep's: {:?}",
+            swept.iter().map(|(name, _)| name).collect::<Vec<_>>()
+        );
+    }
+    assert!(
+        !swept
+            .iter()
+            .any(|(name, _)| name.starts_with("ENDPOINT_URL_")),
+        "no service's own endpoint either: {:?}",
+        swept.iter().map(|(name, _)| name).collect::<Vec<_>>()
     );
 }
 

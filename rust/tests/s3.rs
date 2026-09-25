@@ -1,20 +1,24 @@
 //! One test file per file under `rust/src/s3/` that pins something of its
-//! own, mirrored file for file: [`client`], [`sigv4`] and [`xml`] here, the
-//! three files each dialect owns under [`aws`] and [`azure`]. Beside them are
-//! the suites that drive the backend whole rather than one of its files -
-//! [`accounting`], [`dialects`], [`encryption`], [`properties`], [`protocol`]
-//! and [`roles`].
+//! own, mirrored file for file: [`client`], [`encryption`], [`file`],
+//! [`folder`], [`options`], [`path`], [`properties`], [`provider`] and
+//! [`xml`] here, and the files each dialect owns under [`aws`] and
+//! [`azure`]. Who a request signs as - the credential chain, the profile, a
+//! role, a sign-in - and the Signature Version 4 signing itself are the root
+//! `aws` module's, so they are pinned under `rust/tests/aws/` (the signing in
+//! `rust/tests/aws/sigv4.rs`); what stays here is how the S3 backend wires a
+//! session in, which the suites above drive over a socket.
 //!
 //! The whole backend is behind the `s3` feature, so every module here
 //! carries that cfg; the ones that pin something a caller cannot reach - the
-//! signing, the two XML vocabularies, the credential chain's own readings, the
-//! addressing - carry the `internals` cfg beside it and reach the crate through
-//! `yggdryl::internals`. Everything else reaches it through `yggdryl::` like
-//! any other caller.
+//! two XML vocabularies, the addressing, the payload-signing policy - carry
+//! the `internals` cfg beside it, on the module or on a module inside the
+//! file, and reach the crate through `yggdryl::internals`. Everything else
+//! reaches it through `yggdryl::` like any other caller.
 //!
 //! [`server`] is not a suite either: it is the in-process store that speaks
-//! all three dialects, declared here once so every suite over a socket shares
-//! one fixture, and [`mod_`] is the handle-building that goes with it.
+//! all three dialects, and answers STS's `AssumeRole` on the same endpoint,
+//! declared here once so every suite over a socket shares one fixture, and
+//! [`mod_`] is the handle-building that goes with it.
 
 #[cfg(feature = "s3")]
 #[path = "support/server.rs"]
@@ -53,9 +57,6 @@ mod properties;
 #[cfg(feature = "s3")]
 #[path = "s3/provider.rs"]
 mod provider;
-#[cfg(all(feature = "s3", feature = "internals"))]
-#[path = "s3/sigv4.rs"]
-mod sigv4;
 #[cfg(all(feature = "s3", feature = "internals"))]
 #[path = "s3/xml.rs"]
 mod xml;

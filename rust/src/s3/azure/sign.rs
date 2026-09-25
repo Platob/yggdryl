@@ -219,7 +219,8 @@ pub(crate) fn http_date(now: std::time::SystemTime) -> String {
         .unwrap_or_default()
         .as_secs();
     let days = seconds / 86_400;
-    let (year, month, day) = super::super::sigv4::civil_from_days(days);
+    let (year, month, day) =
+        crate::timezone::civil_from_days(i64::try_from(days).unwrap_or(i64::MAX));
     // 1970-01-01 was a Thursday, which is index 4.
     let weekday = DAYS[usize::try_from((days + 4) % 7).unwrap_or(0)];
     let month_name = MONTHS[usize::try_from(month.saturating_sub(1))

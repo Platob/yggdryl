@@ -3,6 +3,11 @@ mod bench_profile;
 
 mod measurement;
 
+// Who an AWS request signs as. The module is a non-default feature, so the
+// group compiles in only when it is.
+#[cfg(feature = "aws")]
+#[path = "holder/aws.rs"]
+mod aws;
 #[path = "holder/buffered.rs"]
 mod buffered;
 #[path = "holder/calls.rs"]
@@ -39,8 +44,16 @@ mod s3 {
     }
 }
 
+/// The identity group when the module is not compiled in: nothing to
+/// register.
+#[cfg(not(feature = "aws"))]
+mod aws {
+    pub(crate) fn identity_benchmarks(_: &mut criterion::Criterion) {}
+}
+
 criterion_group!(
     holder,
+    aws::identity_benchmarks,
     fs::local_parity::local_parity_benchmarks,
     fs::bytes::byte_benchmarks,
     fs::record::record_benchmarks,

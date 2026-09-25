@@ -21,13 +21,14 @@ use std::time::{Duration, SystemTime};
 use base64::Engine as _;
 
 use super::answer::{ListPage, S3Meta};
-use super::aws::credentials::{CredentialCache, CredentialSource, Credentials, variable};
 use super::aws::xml;
 use super::encryption::Encryption;
 use super::options::S3Options;
 use super::provider::Provider;
 use super::request::Request;
-use super::sigv4::{self, Signer};
+use crate::auth::{is_true, variable};
+use crate::aws::sigv4::{self, Signer};
+use crate::aws::{Credentials, Session};
 use crate::{Error, Result, Url};
 
 /// The region assumed when nothing names one; also the signing region for the
@@ -228,9 +229,12 @@ pub(super) struct Client {
     scheme: crate::Scheme,
     /// The signing region, which a redirect can correct once.
     region: RwLock<String>,
-    credentials: CredentialCache,
-    /// The signer for the current key and region, rebuilt when either changes.
-    signer: Mutex<Option<(String, String, Arc<Signer>)>>,
+    /// Who the AWS requests sign as: the caller's session, narrowed by what
+    /// the options said explicitly.
+    session: Session,
+    /// The signer for the current credential set and region, rebuilt when
+    /// either changes.
+    signer: Mutex<Option<(Credentials, String, Arc<Signer>)>>,
     /// The bearer token Google's dialect authorizes with, obtained on the first
     /// request that needs one and refreshed shortly before it lapses.
     tokens: super::google::token::TokenCache,
@@ -249,8 +253,8 @@ impl Client {
     /// Build the client `url` and `options` describe, touching nothing.
     ///
     /// Endpoint, region, and addressing style are settled here from what the
-    /// URL and the options say; the credential chain is not walked until the
-    /// first request needs to sign one.
+    /// URL, the options and the session's files say; the credential chain is
+    /// not walked until the first request needs to sign one.
     ///
     /// # Errors
     ///
@@ -285,42 +289,21 @@ impl Client {
         // A shape this store does not have is refused here rather than
         // silently dropped or discovered from the store on the first write.
         options.encryption().validate(provider)?;
-        let endpoint = Self::endpoint_of(provider, url, &options, handed.as_ref())?;
+        let session = Self::session_of(provider, url, &options);
+        let tls = session.tls_config()?;
+        let options = Self::under_profile(options, &session);
+        let endpoint = Self::endpoint_of(provider, url, &options, &session, handed.as_ref())?;
         // The account the endpoint settled on is what a shared-key signature
         // names, so it is read back rather than resolved a second time.
         let endpoint_account = endpoint.account.clone();
-        let region = Self::region_of(url, &options);
-        let credentials = if options.anonymous() {
-            CredentialSource::Anonymous
-        } else if let Some(explicit) = options.credentials() {
-            CredentialSource::Fixed(explicit.clone())
-        } else if let Some(from_url) = Self::url_credentials(url) {
-            CredentialSource::Fixed(from_url)
-        } else if options.reads_environment() {
-            CredentialSource::Chain {
-                profile: options.aws().profile().map(str::to_owned),
-            }
-        } else {
-            CredentialSource::Anonymous
-        };
-        // A role wraps whatever answered rather than replacing it: those keys
-        // are what signs the exchange, and the session it hands back is what
-        // signs the bucket.
-        let credentials = match options.aws().assumed_role() {
-            Some(role) => CredentialSource::Role {
-                role: Box::new(role.clone()),
-                base: Box::new(credentials),
-                region: region.clone(),
-            },
-            None => credentials,
-        };
+        let region = Self::region_of(url, &options, &session);
         Ok(Self {
-            agent: Self::agent(&options),
+            agent: Self::agent(&options, tls),
             provider,
             endpoint,
             scheme: url.scheme().clone(),
             region: RwLock::new(region),
-            credentials: CredentialCache::new(credentials),
+            session,
             signer: Mutex::new(None),
             tokens: super::google::token::TokenCache::new(
                 options.google(),
@@ -330,12 +313,8 @@ impl Client {
             azure: super::azure::auth::Authorization::new(
                 options.azure(),
                 endpoint_account.as_deref(),
-                handed
-                    .as_ref()
-                    .map(super::aws::credentials::Credentials::access_key_id),
-                handed
-                    .as_ref()
-                    .map(super::aws::credentials::Credentials::secret_access_key),
+                handed.as_ref().map(Credentials::access_key_id),
+                handed.as_ref().map(Credentials::secret_access_key),
                 options.anonymous(),
             )?,
             options,
@@ -350,11 +329,11 @@ impl Client {
     /// A client whose transport matches the defaults shares one process-wide
     /// agent, so many handles against one store share connections rather than
     /// each opening its own.
-    fn agent(options: &S3Options) -> ureq::Agent {
-        if !options.has_custom_transport() {
+    fn agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> ureq::Agent {
+        if !options.has_custom_transport() && tls.is_none() {
             return shared_agent().clone();
         }
-        build_agent(options)
+        build_agent(options, tls)
     }
 
     /// Bytes per part, clamped to what this store accepts.
@@ -387,6 +366,56 @@ impl Client {
     /// Keys per bulk delete on this store.
     pub(super) const fn delete_batch(&self) -> usize {
         self.provider.max_delete_batch()
+    }
+
+    /// The AWS session this client signs with: the caller's, narrowed by what
+    /// the options say explicitly - anonymous, a credential pair, a pair the
+    /// location carries - and sealed when the options consult no environment.
+    ///
+    /// A session left as it was is shared with every other client built on
+    /// it, so the chain is walked and a role traded once for all of them.
+    fn session_of(provider: Provider, url: &Url, options: &S3Options) -> Session {
+        let mut session = options.session().clone();
+        if !options.reads_environment() && session.reads_environment() {
+            session = session.with_environment(false);
+        }
+        if !matches!(provider, Provider::Aws) {
+            return session;
+        }
+        // The region the options state is the region a role is traded in.
+        if let (Some(region), None) = (options.region(), session.stated_region()) {
+            session = session.with_region(region);
+        }
+        if options.anonymous() {
+            return session.with_anonymous(true);
+        }
+        if let Some(explicit) = options.credentials() {
+            return session.with_credentials(explicit.clone());
+        }
+        if let Some(from_url) = Self::url_credentials(url) {
+            return session.with_credentials(from_url);
+        }
+        session
+    }
+
+    /// The knobs the profile states for S3 that the caller left unset: the
+    /// `s3` table's `payload_signing_enabled`, and `max_attempts`.
+    fn under_profile(mut options: S3Options, session: &Session) -> S3Options {
+        if options.aws().payload_signing().is_none() {
+            if let Some(signing) = session
+                .profile()
+                .and_then(|profile| profile.s3("payload_signing_enabled").map(is_true))
+            {
+                let aws = options.aws().clone().with_payload_signing(signing);
+                options = options.with_aws(aws);
+            }
+        }
+        if options.max_attempts() == S3Options::default().max_attempts() {
+            if let Some(attempts) = session.max_attempts() {
+                options = options.with_max_attempts(attempts);
+            }
+        }
+        options
     }
 
     /// The Azure storage account a location addresses, if any.
@@ -424,6 +453,7 @@ impl Client {
         provider: Provider,
         url: &Url,
         options: &S3Options,
+        session: &Session,
         handed: Option<&Credentials>,
     ) -> Result<Endpoint> {
         // An explicitly configured endpoint wins: it is a deliberate choice
@@ -432,16 +462,12 @@ impl Client {
         // is the location a caller handed over rather than a default.
         let explicit = options.endpoint().map(str::to_owned);
         let from_url = url.store_endpoint().map(str::to_owned);
-        let ambient = options
-            .reads_environment()
-            .then(|| Self::ambient_endpoint(provider, options))
-            .flatten()
-            .or_else(|| options.azure().endpoint().map(str::to_owned));
+        let ambient = Self::ambient_endpoint(provider, options, session);
         let account = Self::azure_account(provider, url, options, handed);
         let named = explicit.or(from_url).or(ambient);
         let (scheme, host, port) = match named {
             Some(endpoint) => Self::split_endpoint(&endpoint)?,
-            None => Self::published_host(provider, url, options, account.as_deref())?,
+            None => Self::published_host(provider, url, options, session, account.as_deref())?,
         };
         let lowered = host.to_ascii_lowercase();
         let path_style = match provider {
@@ -456,13 +482,21 @@ impl Client {
                 options
                     .path_style()
                     .or_else(|| {
-                        options
-                            .reads_environment()
-                            .then(|| variable("AWS_S3_FORCE_PATH_STYLE"))
-                            .flatten()
-                            .map(|value| {
-                                matches!(value.to_ascii_lowercase().as_str(), "true" | "1")
-                            })
+                        session
+                            .variable("AWS_S3_FORCE_PATH_STYLE")
+                            .map(|value| is_true(&value))
+                    })
+                    .or_else(|| {
+                        match session
+                            .profile()?
+                            .s3("addressing_style")?
+                            .to_ascii_lowercase()
+                            .as_str()
+                        {
+                            "path" => Some(true),
+                            "virtual" => Some(false),
+                            _ => None,
+                        }
                     })
                     .unwrap_or(!aws || bucket_has_dot)
             }
@@ -490,28 +524,41 @@ impl Client {
         })
     }
 
-    /// The endpoint the environment and a store's own files name.
-    fn ambient_endpoint(provider: Provider, options: &S3Options) -> Option<String> {
-        match provider {
-            Provider::Aws => variable("AWS_ENDPOINT_URL_S3")
-                .or_else(|| variable("AWS_ENDPOINT_URL"))
-                .or_else(|| super::aws::profile::load(options.aws().profile()).endpoint_url),
+    /// The endpoint the environment and a store's own files name, and the
+    /// one stated on the session or the Azure options where the options
+    /// consult no environment.
+    fn ambient_endpoint(
+        provider: Provider,
+        options: &S3Options,
+        session: &Session,
+    ) -> Option<String> {
+        let from_environment = match provider {
+            // `AWS_ENDPOINT_URL_S3`, `AWS_ENDPOINT_URL`, the profile's
+            // `[services]` entry, then its `endpoint_url`: the session's
+            // reading, which is the AWS tools' own - and on a session that
+            // consults no environment, an endpoint stated on it and nothing
+            // else, so the session is asked either way.
+            Provider::Aws => return session.endpoint_url("s3"),
             // `STORAGE_EMULATOR_HOST` is what every Google client reads, and
             // the value is a bare host as often as a URL.
-            Provider::Google => variable("STORAGE_EMULATOR_HOST")
+            Provider::Google if options.reads_environment() => variable("STORAGE_EMULATOR_HOST")
                 .or_else(|| variable("GOOGLE_CLOUD_STORAGE_EMULATOR_HOST"))
                 .or_else(|| variable("STORAGE_API_ENDPOINT")),
-            Provider::Azure => variable("AZURE_STORAGE_BLOB_ENDPOINT")
-                .or_else(|| variable("AZURE_STORAGE_ENDPOINT"))
-                .or_else(|| {
-                    variable("AZURE_STORAGE_CONNECTION_STRING").and_then(|text| {
-                        super::azure::options::AzureOptions::default()
-                            .with_connection_string(&text)
-                            .endpoint()
-                            .map(str::to_owned)
+            Provider::Azure if options.reads_environment() => {
+                variable("AZURE_STORAGE_BLOB_ENDPOINT")
+                    .or_else(|| variable("AZURE_STORAGE_ENDPOINT"))
+                    .or_else(|| {
+                        variable("AZURE_STORAGE_CONNECTION_STRING").and_then(|text| {
+                            super::azure::options::AzureOptions::default()
+                                .with_connection_string(&text)
+                                .endpoint()
+                                .map(str::to_owned)
+                        })
                     })
-                }),
-        }
+            }
+            Provider::Google | Provider::Azure => None,
+        };
+        from_environment.or_else(|| options.azure().endpoint().map(str::to_owned))
     }
 
     /// The host the store publishes, when nothing named another.
@@ -519,12 +566,37 @@ impl Client {
         provider: Provider,
         url: &Url,
         options: &S3Options,
+        session: &Session,
         account: Option<&str>,
     ) -> Result<(String, String, Option<u16>)> {
         let host = match provider {
+            // The regional host, or the FIPS, dual-stack or accelerate one
+            // the session's configuration asks for, on the partition the
+            // region belongs to.
             Provider::Aws => {
-                let region = Self::region_of(url, options);
-                format!("s3.{region}.amazonaws.com")
+                let region = Self::region_of(url, options, session);
+                let profile = session.profile();
+                let table = |key: &str| {
+                    profile
+                        .as_ref()
+                        .and_then(|profile| profile.s3(key).map(is_true))
+                        .unwrap_or(false)
+                };
+                let fips = session.use_fips_endpoint();
+                let dualstack = session.use_dualstack_endpoint() || table("use_dualstack_endpoint");
+                let suffix = if region.starts_with("cn-") {
+                    "amazonaws.com.cn"
+                } else {
+                    "amazonaws.com"
+                };
+                match (table("use_accelerate_endpoint"), fips, dualstack) {
+                    (true, _, true) => "s3-accelerate.dualstack.amazonaws.com".to_owned(),
+                    (true, _, false) => "s3-accelerate.amazonaws.com".to_owned(),
+                    (false, true, true) => format!("s3-fips.dualstack.{region}.{suffix}"),
+                    (false, true, false) => format!("s3-fips.{region}.{suffix}"),
+                    (false, false, true) => format!("s3.dualstack.{region}.{suffix}"),
+                    (false, false, false) => format!("s3.{region}.{suffix}"),
+                }
             }
             Provider::Google => "storage.googleapis.com".to_owned(),
             Provider::Azure => {
@@ -587,22 +659,15 @@ impl Client {
         Ok((scheme, host, port))
     }
 
-    /// The signing region the URL and options name.
-    fn region_of(url: &Url, options: &S3Options) -> String {
+    /// The signing region the URL, the options and the session name.
+    fn region_of(url: &Url, options: &S3Options, session: &Session) -> String {
         options
             .region()
             .map(str::to_owned)
             .or_else(|| url.region().map(str::to_owned))
-            .or_else(|| {
-                options
-                    .reads_environment()
-                    .then(|| {
-                        variable("AWS_REGION")
-                            .or_else(|| variable("AWS_DEFAULT_REGION"))
-                            .or_else(|| super::aws::profile::load(options.aws().profile()).region)
-                    })
-                    .flatten()
-            })
+            // `AWS_REGION`, `AWS_DEFAULT_REGION`, then the profile's own,
+            // and none of them when the options consult no environment.
+            .or_else(|| session.region())
             .unwrap_or_else(|| DEFAULT_REGION.to_owned())
     }
 
@@ -655,13 +720,15 @@ impl Client {
     /// `None` when the client is anonymous, which is a valid way to reach a
     /// public bucket rather than a failure.
     fn signer(&self, now: SystemTime) -> Result<Option<Arc<Signer>>> {
-        let Some(credentials) = self.credentials.resolve(&self.agent, now)? else {
+        let Some(credentials) = self.session.credentials(now)? else {
             return Ok(None);
         };
         let region = self.region();
         let mut slot = self.signer.lock().map_err(|_| poisoned())?;
-        if let Some((key, signed_region, signer)) = slot.as_ref() {
-            if key == credentials.access_key_id() && *signed_region == region {
+        if let Some((signed, signed_region, signer)) = slot.as_ref() {
+            // The whole set, not the key alone: a refreshed session can keep
+            // its access key id and change its secret or its token.
+            if *signed == credentials && *signed_region == region {
                 return Ok(Some(signer.clone()));
             }
         }
@@ -671,11 +738,7 @@ impl Client {
             credentials.session_token().map(str::to_owned),
             &region,
         ));
-        *slot = Some((
-            credentials.access_key_id().to_owned(),
-            region,
-            signer.clone(),
-        ));
+        *slot = Some((credentials, region, signer.clone()));
         Ok(Some(signer))
     }
 
@@ -739,12 +802,17 @@ impl Client {
     fn send(&self, request: &Request<'_>) -> Result<Answer> {
         let mut attempt = 0;
         let mut redirected = false;
+        let mut refreshed = false;
         loop {
             attempt += 1;
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let outcome = self.attempt(request);
+            // Who signs is settled before the attempt, so a credential
+            // refusal is its own typed failure rather than a transport
+            // failure retried with backoff.
+            let (target, headers) = self.prepare(request, Some(request.body), SystemTime::now())?;
+            let outcome = self.attempt(request, &target, &headers);
             let answer = match outcome {
                 Ok(answer) => answer,
                 Err(error) => {
@@ -771,6 +839,9 @@ impl Client {
                     }
                 }
             }
+            if self.refresh_on_expiry(&answer, &mut refreshed)? {
+                continue;
+            }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
                 self.pause(attempt, retry_after(&answer));
                 continue;
@@ -778,6 +849,40 @@ impl Client {
             self.settle(&answer, attempt);
             return Ok(answer);
         }
+    }
+
+    /// Whether a refusal says the credential set the request was signed with
+    /// has lapsed - a session the store knows expired before the session
+    /// thought it would - in which case the chain is walked again and the
+    /// request signed once more, once.
+    fn refresh_on_expiry(&self, answer: &Answer, refreshed: &mut bool) -> Result<bool> {
+        if *refreshed
+            || !matches!(self.provider, Provider::Aws)
+            || !matches!(answer.status, 400 | 403)
+        {
+            return Ok(false);
+        }
+        let Some(code) = super::xml::parse_error(&answer.body).map(|error| error.code) else {
+            return Ok(false);
+        };
+        if !matches!(
+            code.as_str(),
+            "ExpiredToken" | "ExpiredTokenException" | "InvalidToken" | "TokenRefreshRequired"
+        ) {
+            return Ok(false);
+        }
+        *refreshed = true;
+        let mut signer = self.signer.lock().map_err(|_| poisoned())?;
+        // Only the set this request was signed with is forgotten: another
+        // client on the same session may already hold a fresh one.
+        match signer.as_ref() {
+            Some((signed, _, _)) => {
+                self.session.invalidate_if(signed.access_key_id());
+            }
+            None => self.session.invalidate(),
+        }
+        *signer = None;
+        Ok(true)
     }
 
     /// The wire target and the headers one attempt goes out with.
@@ -880,19 +985,17 @@ impl Client {
     }
 
     /// Sign and send one attempt.
-    fn attempt(&self, request: &Request<'_>) -> std::result::Result<Answer, ureq::Error> {
-        let now = SystemTime::now();
-        // A credential chain that failed is reported as a transport failure,
-        // which is what it is from the request's point of view.
-        let (target, headers) = self
-            .prepare(request, Some(request.body), now)
-            .map_err(|error| ureq::Error::Io(std::io::Error::other(error.to_string())))?;
-
+    fn attempt(
+        &self,
+        request: &Request<'_>,
+        target: &str,
+        headers: &[(String, String)],
+    ) -> std::result::Result<Answer, ureq::Error> {
         self.stats.record(request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
-            .uri(&target);
-        for (name, value) in &headers {
+            .uri(target);
+        for (name, value) in headers {
             wire = wire.header(name.as_str(), value.as_str());
         }
         let wire = wire.body(request.body).map_err(ureq::Error::Http)?;
@@ -933,12 +1036,14 @@ impl Client {
     fn stream(&self, request: &Request<'_>) -> Result<Streamed> {
         let mut attempt = 0;
         let mut redirected = false;
+        let mut refreshed = false;
         loop {
             attempt += 1;
             if attempt > 1 {
                 self.stats.retries.fetch_add(1, Ordering::Relaxed);
             }
-            let opened = self.open_stream(request);
+            let (target, headers) = self.prepare(request, None, SystemTime::now())?;
+            let opened = self.open_stream(request, &target, &headers);
             let (status, headers, mut reader) = match opened {
                 Ok(opened) => opened,
                 Err(error) => {
@@ -977,6 +1082,9 @@ impl Client {
                         }
                     }
                 }
+                if self.refresh_on_expiry(&answer, &mut refreshed)? {
+                    continue;
+                }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
                     self.pause(attempt, retry_after(&answer));
                     continue;
@@ -993,16 +1101,17 @@ impl Client {
     }
 
     /// One attempt at opening a streamed response.
-    fn open_stream(&self, request: &Request<'_>) -> std::result::Result<Streamed, ureq::Error> {
-        let now = SystemTime::now();
-        let (target, headers) = self
-            .prepare(request, None, now)
-            .map_err(|error| ureq::Error::Io(std::io::Error::other(error.to_string())))?;
+    fn open_stream(
+        &self,
+        request: &Request<'_>,
+        target: &str,
+        headers: &[(String, String)],
+    ) -> std::result::Result<Streamed, ureq::Error> {
         self.stats.record(request.method);
         let mut wire = ureq::http::Request::builder()
             .method(request.method)
-            .uri(&target);
-        for (name, value) in &headers {
+            .uri(target);
+        for (name, value) in headers {
             wire = wire.header(name.as_str(), value.as_str());
         }
         let wire = wire.body(()).map_err(ureq::Error::Http)?;
@@ -2375,7 +2484,7 @@ const MAX_DOCUMENT: u64 = 32 * 1024 * 1024;
 /// The process-wide connection pool, shared by every default-configured client.
 fn shared_agent() -> &'static ureq::Agent {
     static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| build_agent(&S3Options::default()))
+    AGENT.get_or_init(|| build_agent(&S3Options::default(), None))
 }
 
 /// Build an agent for `options`.
@@ -2385,7 +2494,7 @@ fn shared_agent() -> &'static ureq::Agent {
 /// stops answering - but a global deadline is re-checked around every read and
 /// write, which costs more per request than the whole of signing one. Per
 /// phase, the bound is free.
-fn build_agent(options: &S3Options) -> ureq::Agent {
+fn build_agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> ureq::Agent {
     let mut builder = ureq::Agent::config_builder()
             // Statuses are read, never raised: a store says what it means in
             // the status and a document, and this client maps both itself.
@@ -2406,6 +2515,12 @@ fn build_agent(options: &S3Options) -> ureq::Agent {
     // untouched otherwise so `HTTPS_PROXY` and `NO_PROXY` keep deciding.
     if let Some(proxy) = options.proxy().and_then(|uri| ureq::Proxy::new(uri).ok()) {
         builder = builder.proxy(Some(proxy));
+    }
+    // The bundle `AWS_CA_BUNDLE` names is trusted in place of the platform's
+    // roots, which is what reaching a private endpoint through a private
+    // authority needs.
+    if let Some(tls) = tls {
+        builder = builder.tls_config(tls);
     }
     ureq::Agent::new_with_config(builder.build())
 }

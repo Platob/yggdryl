@@ -3782,7 +3782,7 @@ assert_eq!(azure.key(), "part.parquet");
 
 ### Configuration
 
-Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins.
+Each unset knob is found in the URL, then the environment, then the store's own files, then a default; `with_environment(false)` leaves only explicit values and the URL. The environment is swept under `AWS_`, `GOOGLE_`, `AZURE_` and `YGGDRYL_`, or any prefix added, and an explicit value always wins. The variables the AWS tools read for themselves - `AWS_PROFILE`, `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_ENDPOINT_URL_S3` and the rest - are not swept: they are the [session's](#aws-identity), read with the precedence those tools give them.
 
 ```rust
 use yggdryl::s3::{Credentials, S3Options};
@@ -3883,7 +3883,9 @@ Names match loosely - case, `-`, `_` and `.` are one, and a store or tool prefix
 
 | store | knob | names |
 | --- | --- | --- |
-| Amazon S3 | profile, role | `profile`, `role_arn`, `role_session_name`, `external_id`, `sts_endpoint` |
+| Amazon S3 | profile, role | `profile`, `role_arn`, `role_session_name`, `external_id`, `mfa_serial`, `source_profile`, `credential_source`, `web_identity_token_file`, `sts_endpoint`, `sts_regional_endpoints` |
+| | sign-in, files | `sso_start_url`, `sso_region`, `sso_account_id`, `sso_role_name`, `sso_session`, `credential_process`, `config_file`, `shared_credentials_file`, `ca_bundle` |
+| | endpoints, metadata | `use_fips_endpoint`, `use_dualstack_endpoint`, `ec2_metadata_disabled`, `ec2_metadata_service_endpoint`, `metadata_service_timeout`, `metadata_service_num_attempts` |
 | | signing, class, payer, checksum | `payload_signing`, `storage_class`, `requester_pays`, `checksum_algorithm` (`CRC32` or `SHA256`) |
 | Google | project, billing | `project_id`, `gcs.project-id`, `GOOGLE_CLOUD_PROJECT`, `user_project`, `quota_project_id` |
 | | identity | `credentials_file`, `GOOGLE_APPLICATION_CREDENTIALS`, `credentials_json`, `access_token`, `impersonate_service_account` |
@@ -3894,28 +3896,119 @@ Names match loosely - case, `-`, `_` and `.` are one, and a store or tool prefix
 
 Sizes may carry a unit (`8MiB`, `32 MB`); durations are seconds.
 
-### Identity and permissions
+### AWS identity
 
-An assumed AWS role or an impersonated Google service account is asked for once and reused until it nears expiry; Azure's equivalent is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
+Who the process is to AWS - the profile, the region, the endpoint a service is reached at, and the credential set every request signs with - is one `Session` in `yggdryl::aws`, resolved the way the AWS tools resolve it and shared by every handle built on it. `S3Options::with_session` hands one over; an explicit credential pair or `with_anonymous` on the options still wins, and `with_environment(false)` seals it. Behind the `aws` feature, which `s3` implies.
+
+```text
+Session::new()                                   // states nothing; resolves lazily, once, and caches
+  .with_profile(name).with_region(region)        // else AWS_DEFAULT_PROFILE, AWS_PROFILE, AWS_REGION, the profile's own
+  .with_credentials(keys).with_anonymous(true)   // an explicit set, or none
+  .with_assumed_role(role).with_sso(sso)         // a role or a sign-in, as a profile would state one
+  .with_sso_login(prompt).with_mfa_prompt(ask)   // how a person is asked, when one is needed
+  .with_variables(pairs).with_environment(false) // another environment, or none at all
+session.credentials(now) -> Result<Option<Credentials>>   // the chain, walked once, refreshed in time
+session.profile() / region() / endpoint_url("s3") / sts_endpoint(region) / login()
+```
+
+The chain is botocore's, in botocore's order: an explicit set; an explicit role, signed by its `source_profile` or `credential_source`, else by whatever the rest of the chain answers; the environment (`AWS_ACCESS_KEY_ID`, with `AWS_CREDENTIAL_EXPIRATION` and `AWS_ACCOUNT_ID`); a profile that assumes a role through `source_profile`, `credential_source` or a web identity token; IAM Identity Center through the sign-in `aws sso login` cached; the credentials file; a `credential_process`; the configuration file; the legacy boto files; the container endpoint; the instance metadata service. Where botocore fails on the first source that is configured and broken, the session records why and walks on, and refuses only when every source has been asked - naming each. A temporary set is replaced fifteen minutes before it lapses, a refresh that fails keeps the set in hand until it has actually lapsed, and a store answering `ExpiredToken` makes the client walk the chain once more before it gives up. Assumed-role and SSO sessions are read from and written to `~/.aws/cli/cache` and `~/.aws/sso/cache` in the AWS CLI's own shape, so a sign-in or an MFA code the CLI already obtained serves this crate, and the other way round.
 
 ```rust
-use std::time::Duration;
+use yggdryl::aws::{AssumedRole, Credentials, Session};
+use yggdryl::s3::S3Options;
 
-use yggdryl::s3::{AssumedRole, AwsOptions, GoogleOptions, S3Options};
-
+// A sealed session states everything and consults nothing.
 let role = AssumedRole::new("arn:aws:iam::123456789012:role/lake-reader")
     .with_session_name("power-desk")
-    .with_external_id("desk-42")
-    .with_duration(Duration::from_secs(3600));
-let options =
-    S3Options::default().with_aws(AwsOptions::default().with_assumed_role(role));
+    .with_external_id("desk-42");
+let session = Session::new()
+    .with_environment(false)
+    .with_region("eu-west-3")
+    .with_credentials(Credentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI"))
+    .with_assumed_role(role);
 assert_eq!(
-    options.aws().assumed_role().map(AssumedRole::session_name),
+    session.assumed_role().and_then(AssumedRole::session_name),
     Some("power-desk")
 );
+assert_eq!(session.sts_endpoint("eu-west-3"), "https://sts.eu-west-3.amazonaws.com");
 
-// Google's shape: whatever the credential chain answers signs one call to
-// `iamcredentials`, and the token that call returns is what reaches the store.
+// The options carry it, and every handle built on them shares its answers.
+let options = S3Options::default().with_session(session.clone());
+assert_eq!(options.session().region().as_deref(), Some("eu-west-3"));
+```
+
+```rust
+use yggdryl::aws::Session;
+
+// The files, read the way the AWS tools read them: `[profile x]` in the
+// configuration file, indented tables, `[sso-session]` and `[services]`.
+let session = Session::new()
+    .with_environment(false)
+    .with_config_text(
+        "[profile trading]\nregion = eu-west-3\nsso_session = desk\n\
+         sso_account_id = 123456789012\nsso_role_name = LakeReader\n\
+         s3 =\n  addressing_style = path\n\n\
+         [sso-session desk]\nsso_start_url = https://trading.awsapps.com/start\n\
+         sso_region = eu-west-1\n",
+    )
+    .with_profile("trading");
+let profile = session.profile().expect("the profile the text spells");
+assert_eq!(profile.region(), Some("eu-west-3"));
+assert_eq!(profile.s3("addressing_style"), Some("path"));
+let sso = profile.sso()?.expect("a sign-in");
+assert_eq!(sso.start_url(), "https://trading.awsapps.com/start");
+assert_eq!(sso.session_name(), Some("desk"));
+assert_eq!(session.region().as_deref(), Some("eu-west-3"));
+```
+
+```rust
+use yggdryl::aws::Session;
+
+// Another environment in place of the process's own, and no file read where
+// none is.
+let session = Session::new()
+    .with_variables([
+        ("AWS_REGION", "ap-southeast-1"),
+        ("AWS_ENDPOINT_URL_S3", "http://localhost:9000/"),
+        ("AWS_USE_FIPS_ENDPOINT", "true"),
+    ])
+    .with_directory("/nonexistent/.aws");
+assert_eq!(session.region().as_deref(), Some("ap-southeast-1"));
+assert_eq!(session.endpoint_url("s3").as_deref(), Some("http://localhost:9000"));
+assert_eq!(session.endpoint_url("sts"), None);
+assert_eq!(
+    session.sts_endpoint("ap-southeast-1"),
+    "https://sts-fips.ap-southeast-1.amazonaws.com"
+);
+```
+
+```{ .rust .no_run }
+use std::sync::Arc;
+
+use yggdryl::IOBase;
+use yggdryl::aws::{Session, SsoLogin};
+use yggdryl::s3::{self, S3Options};
+
+// A sign-in nobody made yet: the session is told how to show it, performs
+// the device flow, files the token where `aws sso login` would, and trades
+// it for the profile's role.
+let session = Session::new()
+    .with_profile("trading")
+    .with_sso_login(SsoLogin::Handler(Arc::new(|authorization| {
+        eprintln!("{authorization}");
+    })));
+let part = s3::file_with(
+    "s3://trades/lake/part.parquet",
+    S3Options::default().with_session(session),
+)?;
+let _ = part.read_range_bytes(0, 8)?;
+```
+
+Google's shape is the same idea on `GoogleOptions`: whatever the credential chain answers signs one call to `iamcredentials`, and the token that call returns is what reaches the store; Azure's is an Entra ID application on `AzureOptions`. Container creation and deletion can be forbidden, refused without a request.
+
+```rust
+use yggdryl::s3::{GoogleOptions, S3Options};
+
 let options = S3Options::default().with_google(
     GoogleOptions::default().with_impersonation("lake-reader@trading.iam.gserviceaccount.com"),
 );

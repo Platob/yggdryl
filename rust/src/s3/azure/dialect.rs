@@ -119,14 +119,14 @@ pub(crate) fn batch_body(
     let mut body = String::new();
     for (index, key) in keys.iter().enumerate() {
         let prefix = if account_in_path {
-            format!("/{}", super::super::sigv4::encode_key(account))
+            format!("/{}", crate::aws::sigv4::encode_key(account))
         } else {
             String::new()
         };
         let path = format!(
             "{prefix}/{}/{}",
-            super::super::sigv4::encode_key(container),
-            super::super::sigv4::encode_key(key)
+            crate::aws::sigv4::encode_key(container),
+            crate::aws::sigv4::encode_key(key)
         );
         let headers = vec![
             ("x-ms-version".to_owned(), version.to_owned()),
