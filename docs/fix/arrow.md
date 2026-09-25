@@ -670,6 +670,17 @@ What a message costs after it is built, each pass over fresh clones of the 6,080
 
 A row pays `into_row` and its share of the batch; it pays for the walk only when the caller composes that [stage](#a-pin-is-on-the-codec-a-stage-is-a-call), and for the fill inside the parse that built it. Reading a message against the fixed schema is a lookup per column, most of them misses answered by a name table the message builds on its first projection, and a FIX column a message implied rather than stated one evaluation of the dictionary's derivation; the batch is the rows canonicalized and built into one `RecordBatch`, of which the arrival record is the one nested column. The fill inside a parse is every child resolved against the dictionary once, the specification's retirements of its tags applied from the crate's table and the rules a registry states of its own read borrowed, then the registry's [derivations](registry.md#a-field-carries-how-it-is-derived). The exact shipped set selects the direct native plan from canonical metadata and expected shapes, retaining no generic schema or expression tree and constructing no generic working row per message; a registry with any custom difference automatically takes its terms compiled and bound once, gathered into one working row per message by tag and swept to the same fixpoint. Both land everything derived in one rebuild. The walk is a chain lookup, one statement of the predecessor's identity, instant and place, and the identity settled again. The digest is a hash over the arrival record and nothing else.
 
+`decoded_lifecycle` is the walk a bridge capture pays: the messages of the decoded line stream, each carrying its row header's session, context, sequence and recording clock, walked with no parse in front. Most of a bridge's lines are one session event observed again at another hop, so the walk folds every observation of an event into one reference before it chains anything, and a fold merges content - both rows unpacked, merged, sorted and repacked. An observation whose row, lifted facts and text equal a content the reference already merged adds nothing to that union, so it folds its event facts, anomalies and provenance alone; `a_content_merged_once_folds_nothing_more_when_delivered_again` in `rust/tests/fix/ulbridge.rs` pins that a repeated content moves nothing. What the walk still pays is the redating: a frame stating no `SendingTime(52)` is dated by its `TransactTime(60)` and settled again, digest included. Release build, thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.80 GHz, 4 cores, 15 GiB, rustc 1.94.1, 6,016 messages, both sides measured back to back:
+
+| pass | before | after |
+| --- | --- | --- |
+| `decoded_lifecycle`, the walk over the decoded capture | 1.888 s | 622 ms |
+| `decoded_lines_lifecycle`, the decoded capture parsed and walked | 5.231 s | 3.651 s |
+
+```bash
+cargo bench -p yggdryl --bench fix -- 'fix/pipeline/(decoded_lifecycle|decoded_lines_lifecycle)$'
+```
+
 Regenerate with:
 
 ```bash
