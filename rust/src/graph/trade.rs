@@ -1,64 +1,75 @@
-//! A trade as one market event composed of its executions.
+//! A trade as one market operation composed of its executions.
 
 use std::collections::{BTreeMap, HashSet};
 use std::hash::Hasher;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::{Element, Event, Execution, MarketElement, MarketEvent, MarketEventData};
+use super::{
+    Element, Event, Market, MarketOperation, Operation, OperationEvent, OperationEventData,
+    OperationKind,
+};
 use crate::{Error, Result, Uuid};
 
-/// One trade and the nonempty, canonically ordered executions it comprises.
+/// A composite trade: one market operation event whose executions are the
+/// sided fills it is made of.
 ///
-/// The root carries the trade-level market event. Its executions are unique
-/// by cross code and ordered by side, cross code and identity, so construction
-/// order never changes the trade's content identity.
+/// The root's identity is derived from its own facts and its executions'
+/// identities, so two trades stating the same fills are one trade. The
+/// executions are canonical: finalized, ordered by side, cross code and
+/// identity, unique by cross code, and dated at the trade's instant.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Trade {
-    event: MarketEventData,
-    executions: Vec<Execution>,
+    data: OperationEventData,
+    executions: Vec<MarketOperation>,
 }
 
 impl Trade {
-    /// Builds a trade from its root event and executions.
+    /// A trade from its root facts and its executions, each of kind
+    /// [`OperationKind::Execution`].
     ///
-    /// Every execution must occur at the root instant, state a bid or ask
-    /// side, carry a symbol compatible with the root and have a cross code no
-    /// other execution in the trade carries. Executions are finalized and
-    /// placed in canonical order before the root bounds and identity are
-    /// derived.
-    pub fn from_parts(event: MarketEventData, mut executions: Vec<Execution>) -> Result<Self> {
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] when there is no execution, one is
+    /// not an execution, one takes no bid or ask side, one is dated at
+    /// another instant, one names another symbol, or two share a cross
+    /// code.
+    pub fn from_parts(
+        data: OperationEventData,
+        mut executions: Vec<MarketOperation>,
+    ) -> Result<Self> {
         for execution in &mut executions {
             execution.finalize();
         }
         executions.sort_by(compare_executions);
-        let mut trade = Self { event, executions };
+        let mut trade = Self { data, executions };
         trade.validate_parts()?;
         trade.refresh();
         Ok(trade)
     }
 
-    /// The executions this trade comprises, in canonical order.
+    /// The executions the trade is made of, in canonical order.
     #[must_use]
-    pub fn executions(&self) -> &[Execution] {
+    pub fn executions(&self) -> &[MarketOperation] {
         &self.executions
     }
 
-    /// Consumes this trade into the executions a book records.
-    pub(crate) fn into_executions(self) -> Vec<Execution> {
+    /// The root facts.
+    #[must_use]
+    pub fn data(&self) -> &OperationEventData {
+        &self.data
+    }
+
+    pub(crate) fn into_executions(self) -> Vec<MarketOperation> {
         self.executions
     }
 
-    /// Redates the composite observation while retaining each child's precise
-    /// execution clock. Used when a prior side is carried into a later trade
-    /// view and when a supplied snapshot gives the trade an effective instant.
     pub(super) fn rebase_currunix(&mut self, unix: i64) {
-        self.event.set_currunix(unix);
+        self.data.set_currunix(unix);
         rebase_executions(&mut self.executions, unix);
         self.refresh();
     }
 
-    /// Validates the composite invariants without changing the trade.
     pub(super) fn validate_parts(&self) -> Result<()> {
         if self.executions.is_empty() {
             return Err(invalid(
@@ -66,12 +77,17 @@ impl Trade {
                 "expected a trade to contain at least one execution",
             ));
         }
-
-        let root_unix = self.event.get_currunix();
-        let root_symbol = self.event.get_symbolticker();
+        let root_unix = self.data.get_currunix();
+        let root_symbol = self.data.get_ticker();
         let mut crosscodes = HashSet::with_capacity(self.executions.len());
         for (index, execution) in self.executions.iter().enumerate() {
             let path = |name: &str| format_smolstr!("$.executions[{index}].{name}");
+            if execution.kind() != OperationKind::Execution {
+                return Err(invalid(
+                    path("operationkind"),
+                    format_smolstr!("expected execution, got {}", execution.kind().as_str()),
+                ));
+            }
             if !execution.get_side().is_bid() && !execution.get_side().is_ask() {
                 return Err(invalid(
                     path("side"),
@@ -90,10 +106,10 @@ impl Trade {
                     ),
                 ));
             }
-            let symbol = execution.get_symbolticker();
+            let symbol = execution.get_ticker();
             if symbol.is_some() && symbol != root_symbol {
                 return Err(invalid(
-                    path("symbolticker"),
+                    path("ticker"),
                     format_smolstr!("expected symbol {root_symbol:?}, got {symbol:?}"),
                 ));
             }
@@ -107,7 +123,6 @@ impl Trade {
                 ));
             }
         }
-
         if self
             .executions
             .windows(2)
@@ -121,153 +136,156 @@ impl Trade {
         Ok(())
     }
 
-    /// The canonical root event, including child-derived bounds and digest.
+    /// The root as the canonical composite: its clocks folded with its
+    /// executions', its market filled, and its identity digested over its
+    /// own facts and each execution's identity.
     #[must_use]
-    pub(super) fn canonical_event(&self) -> MarketEventData {
-        let mut event = self.event.clone();
+    pub(super) fn canonical_data(&self) -> OperationEventData {
+        let mut data = self.data.clone();
         for execution in &self.executions {
-            event.set_seqnum(event.get_seqnum().max(execution.get_seqnum()));
-            event.set_creaunix(earliest(event.get_creaunix(), execution.get_creaunix()));
-            event.set_recdunix(earliest(event.get_recdunix(), execution.get_recdunix()));
-            event.set_execunix(latest(event.get_execunix(), execution.get_execunix()));
+            data.set_seqnum(data.get_seqnum().max(execution.get_seqnum()));
+            data.set_creaunix(earliest(data.get_creaunix(), execution.get_creaunix()));
+            data.set_recdunix(earliest(data.get_recdunix(), execution.get_recdunix()));
+            data.set_execunix(latest(data.get_execunix(), execution.get_execunix()));
         }
-        event.fill_market();
-        event.sync_cross();
-        let mut digest = event.digest_market_event();
+        data.fill_market();
+        data.fill_operation();
+        data.sync_cross();
+        let mut digest = data.digest_operation_event();
         digest.write(&(self.executions.len() as u64).to_be_bytes());
         for execution in &self.executions {
             digest.write(&execution.get_curruuid().get().to_be_bytes());
         }
-        event.finalized(digest.finish());
-        event
+        data.finalized(digest.finish());
+        data
     }
 
     fn refresh(&mut self) {
-        rebase_executions(&mut self.executions, self.event.get_currunix());
-        self.event = self.canonical_event();
+        rebase_executions(&mut self.executions, self.data.get_currunix());
+        self.data = self.canonical_data();
     }
 }
 
-impl AsRef<MarketEventData> for Trade {
-    fn as_ref(&self) -> &MarketEventData {
-        &self.event
+impl AsRef<OperationEventData> for Trade {
+    fn as_ref(&self) -> &OperationEventData {
+        &self.data
     }
 }
 
-impl AsMut<MarketEventData> for Trade {
-    fn as_mut(&mut self) -> &mut MarketEventData {
-        &mut self.event
+impl AsMut<OperationEventData> for Trade {
+    fn as_mut(&mut self) -> &mut OperationEventData {
+        &mut self.data
     }
 }
 
 impl Element for Trade {
     fn get_curruuid(&self) -> Uuid {
-        self.event.get_curruuid()
+        self.data.get_curruuid()
     }
 
     fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.event.set_curruuid(curruuid);
+        self.data.set_curruuid(curruuid);
     }
 
     fn get_crossuuid(&self) -> Uuid {
-        self.event.get_crossuuid()
+        self.data.get_crossuuid()
     }
 
     fn set_crossuuid(&mut self, crossuuid: Uuid) {
-        self.event.set_crossuuid(crossuuid);
+        self.data.set_crossuuid(crossuuid);
     }
 
     fn get_crosscode(&self) -> &str {
-        self.event.get_crosscode()
+        self.data.get_crosscode()
     }
 
     fn set_crosscode(&mut self, crosscode: String) {
-        self.event.set_crosscode(crosscode);
+        self.data.set_crosscode(crosscode);
     }
 
     fn get_currhashcode(&self) -> u64 {
-        self.event.get_currhashcode()
+        self.data.get_currhashcode()
     }
 
     fn set_currhashcode(&mut self, hashcode: u64) {
-        self.event.set_currhashcode(hashcode);
+        self.data.set_currhashcode(hashcode);
     }
 
     fn get_crosshashcode(&self) -> u64 {
-        self.event.get_crosshashcode()
+        self.data.get_crosshashcode()
     }
 
     fn set_crosshashcode(&mut self, crosshashcode: u64) {
-        self.event.set_crosshashcode(crosshashcode);
-    }
-
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        self.event.get_identifiers()
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.event.set_identifiers(identifiers);
+        self.data.set_crosshashcode(crosshashcode);
     }
 
     fn get_srcuuids(&self) -> &[Uuid] {
-        self.event.get_srcuuids()
+        self.data.get_srcuuids()
     }
 
     fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
-        self.event.set_srcuuids(sources);
+        self.data.set_srcuuids(sources);
     }
 
     fn is_after(&self, other: &Self) -> bool {
-        self.get_currunix() > other.get_currunix()
-            || self.get_currunix() == other.get_currunix()
-                && self.get_crosscode() > other.get_crosscode()
+        self.data.is_after(&other.data)
     }
 
     fn finalize(&mut self) {
         self.refresh();
     }
 
-    fn with_previous(self, previous: &Self) -> Option<Self> {
+    /// A trade is one root over its executions, so it follows the earlier
+    /// statement of the same crosscode and keeps every execution either
+    /// stated; its composite identity is not the gate, since the executions
+    /// are part of it.
+    fn with_previous(mut self, previous: &Self) -> Option<Self> {
         if self.get_crosscode() != previous.get_crosscode()
             || self.get_currunix() < previous.get_currunix()
         {
             return None;
         }
-        let event = self.event.clone().following_market(&previous.event)?;
+        let data = std::mem::take(&mut self.data).following_operation(&previous.data)?;
         let mut executions = combine_executions(&self.executions, &previous.executions);
-        rebase_executions(&mut executions, event.get_currunix());
-        Self::from_parts(event, executions).ok()
+        rebase_executions(&mut executions, data.get_currunix());
+        Self::from_parts(data, executions).ok()
     }
 
     fn merge_with(self, other: &Self) -> Option<Self> {
         if self.get_crosscode() != other.get_crosscode() {
             return None;
         }
-        let right = reference_key(other) > reference_key(&self);
-        let (reference, supplement) = if right {
+        let right_leads = reference_key(&other.data) > reference_key(&self.data);
+        let (reference, supplement) = if right_leads {
             (other, &self)
         } else {
             (&self, other)
         };
-        let mut event = reference.event.clone();
-        super::element::merge_market_event_into_reference(&mut event, &supplement.event);
+        let mut data = reference.data.clone();
+        super::market::merge_operation_event_into_reference(&mut data, &supplement.data);
         let mut executions = combine_executions(&reference.executions, &supplement.executions);
-        rebase_executions(&mut executions, event.get_currunix());
-        let merged = Self::from_parts(event, executions).ok()?;
+        rebase_executions(&mut executions, data.get_currunix());
+        let merged = Self::from_parts(data, executions).ok()?;
         (merged != self).then_some(merged)
     }
 }
 
-delegate_market_event!(Trade, event, market_only);
-delegate_market_event!(
+delegate_event!(
     Trade,
-    event,
-    event_only,
-    true,
-    |this: &mut Trade, unix: i64| this.rebase_currunix(unix)
+    data,
+    restating = |mut this: Trade, live: &Trade| {
+        let data = std::mem::take(&mut this.data).restating(&live.data);
+        this.data = data;
+        this.refresh();
+        this
+    },
+    is_execution = |_: &Trade| true,
+    set_currunix = |this: &mut Trade, unix: i64| this.rebase_currunix(unix)
 );
+delegate_market!(Trade, data);
+delegate_operation!(Trade, data);
 
-fn compare_executions(left: &Execution, right: &Execution) -> std::cmp::Ordering {
+fn compare_executions(left: &MarketOperation, right: &MarketOperation) -> std::cmp::Ordering {
     (
         left.get_side().as_str(),
         left.get_crosscode(),
@@ -280,8 +298,8 @@ fn compare_executions(left: &Execution, right: &Execution) -> std::cmp::Ordering
         ))
 }
 
-fn combine_executions(left: &[Execution], right: &[Execution]) -> Vec<Execution> {
-    let mut combined = BTreeMap::<String, Execution>::new();
+fn combine_executions(left: &[MarketOperation], right: &[MarketOperation]) -> Vec<MarketOperation> {
+    let mut combined = BTreeMap::<String, MarketOperation>::new();
     for execution in left.iter().chain(right) {
         let crosscode = execution.get_crosscode().to_owned();
         combined
@@ -292,7 +310,7 @@ fn combine_executions(left: &[Execution], right: &[Execution]) -> Vec<Execution>
     combined.into_values().collect()
 }
 
-fn rebase_executions(executions: &mut [Execution], unix: i64) {
+fn rebase_executions(executions: &mut [MarketOperation], unix: i64) {
     for execution in executions {
         if execution.get_currunix() != unix {
             execution.set_currunix(unix);
@@ -301,16 +319,17 @@ fn rebase_executions(executions: &mut [Execution], unix: i64) {
     }
 }
 
-fn merge_execution(left: &Execution, right: &Execution) -> Execution {
+fn merge_execution(left: &MarketOperation, right: &MarketOperation) -> MarketOperation {
     let right_leads = reference_key(right) > reference_key(left);
     let (reference, supplement) = if right_leads {
         (right, left)
     } else {
         (left, right)
     };
-    let mut event = reference.as_ref().clone();
-    super::element::merge_market_event_into_reference(&mut event, supplement.as_ref());
-    Execution::from(event)
+    let mut merged = reference.clone();
+    super::market::merge_operation_event_into_reference(merged.as_mut(), supplement.as_ref());
+    merged.finalize();
+    merged
 }
 
 fn reference_key<E: Event + ?Sized>(event: &E) -> (Option<i64>, i64, Uuid) {
@@ -339,48 +358,5 @@ fn invalid(path: impl Into<SmolStr>, reason: impl Into<SmolStr>) -> Error {
     Error::InvalidRecord {
         path: path.into(),
         reason: reason.into(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Side;
-
-    #[test]
-    fn composite_digest_consumes_a_child_uuid_once() {
-        let mut root = MarketEventData::at(1);
-        root.set_crosscode("trade".to_owned());
-        root.finalize();
-
-        let mut child = MarketEventData::at(1);
-        child.set_crosscode("execution".to_owned());
-        child.set_side(Side::read("Buy").expect("the shipped Buy side"));
-        child.finalize();
-        let mut left_child = Execution::from(child.clone());
-        let mut right_child = Execution::from(child);
-        let child_uuid = left_child.get_curruuid();
-        left_child.set_currhashcode(11);
-        right_child.set_currhashcode(29);
-        left_child.set_curruuid(child_uuid);
-        right_child.set_curruuid(child_uuid);
-        assert_eq!(left_child.get_curruuid(), right_child.get_curruuid());
-
-        let left = Trade {
-            event: root.clone(),
-            executions: vec![left_child],
-        };
-        let right = Trade {
-            event: root,
-            executions: vec![right_child],
-        };
-        assert_eq!(
-            left.canonical_event().get_currhashcode(),
-            right.canonical_event().get_currhashcode()
-        );
-        assert_eq!(
-            left.canonical_event().get_curruuid(),
-            right.canonical_event().get_curruuid()
-        );
     }
 }

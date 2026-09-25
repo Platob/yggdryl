@@ -970,8 +970,8 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
         .read_arrow_reader(&record_options)?
         .next()
         .unwrap()?;
-    // The seventeen event columns, then the body, then the header's captures.
-    assert_eq!(text_batch.schema().fields().len(), 20);
+    // The sixteen event columns, then the body, then the header's captures.
+    assert_eq!(text_batch.schema().fields().len(), 19);
     // The record's place in its chain is its row number, under `seqnum`.
     assert_eq!(
         text_batch
@@ -985,7 +985,7 @@ One record per line, or per framed chain under `framing`; a `rowheader` regex ca
     // The body is the record past the header the reader took off it.
     assert_eq!(
         text_batch
-            .column(17)
+            .column(16)
             .as_any()
             .downcast_ref::<StringArray>()
             .unwrap()

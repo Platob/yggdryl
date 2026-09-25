@@ -273,11 +273,15 @@ fn a_redelivery_of_one_order_is_one_order() {
 fn the_crate_carries_fields_of_its_own_from_65000() {
     let held = yggdryl::fix_crate_fields().expect("the crate's own fields");
     let names: Vec<&str> = held.iter().map(yggdryl::Field::name).collect();
-    // Thirty-one definitions: the event and capture facts, the execution and
+    // Forty definitions: the event and capture facts, the execution and
     // recording clocks, the session event a bridge delivered the message as,
-    // MsgCat, and six normalized identifiers whose standard FIX
-    // representation is contextual. CFI already has its own standard tag, so
-    // it adds no crate definition.
+    // where a bridge says it came from, MsgCat, three normalized identifiers
+    // - ISIN, Bloomberg, FIGI - whose standard FIX representation is
+    // contextual, and the identifiers and instruments a bridge names in
+    // words of its own; CUSIP and SEDOL are members of the
+    // security identifiers and the names a message goes by are its
+    // alternate identifiers, so neither has a crate definition. CFI already
+    // has its own standard tag, so it adds no crate definition.
     assert_eq!(
         names,
         [
@@ -286,7 +290,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "msgpluginid",
             "currhashcode",
             "crosshashcode",
-            "identifiers",
             "prevunix",
             "prevuuid",
             "creaunix",
@@ -304,14 +307,24 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "exprtime",
             "msgcat",
             "isincode",
-            "cusipcode",
-            "sedolcode",
             "bloombergcode",
             "miccode",
             "figicode",
             "execunix",
             "recdunix",
             "msgsesseventid",
+            "msgoriginator",
+            "conversationid",
+            "omsdealeraccount",
+            "omsuserid",
+            "parentorderid",
+            "parentclordid",
+            "omsdealerparentorderid",
+            "exchangeclientorderid",
+            "transversalkey",
+            "ultraderclordid",
+            "omsinstrumentid",
+            "ullinkinstrumentid",
         ]
     );
     let displays: Vec<Option<&str>> = held.iter().map(yggdryl::Field::display).collect();
@@ -323,7 +336,6 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("MsgPluginId"),
             Some("CurrHashCode"),
             Some("CrossHashCode"),
-            Some("Identifiers"),
             Some("PrevUnix"),
             Some("PrevUuid"),
             Some("CreaUnix"),
@@ -341,14 +353,24 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("ExprTime"),
             Some("MsgCat"),
             Some("IsinCode"),
-            Some("CusipCode"),
-            Some("SedolCode"),
             Some("BloombergCode"),
             Some("MicCode"),
             Some("FIGICode"),
             Some("ExecUnix"),
             Some("RecdUnix"),
             Some("MsgSessEventId"),
+            Some("MsgOriginator"),
+            Some("ConversationId"),
+            Some("OmsDealerAccount"),
+            Some("OmsUserId"),
+            Some("ParentOrderId"),
+            Some("ParentClOrdId"),
+            Some("OmsDealerParentOrderId"),
+            Some("ExchangeClientOrderId"),
+            Some("TransversalKey"),
+            Some("UlTraderClOrdId"),
+            Some("OmsInstrumentId"),
+            Some("UllinkInstrumentId"),
         ],
     );
     // The columns a message answers from what it said are typed as the thing
@@ -373,6 +395,24 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     for name in ["execunix", "recdunix"] {
         assert_eq!(typed(name), &clock, "{name}");
+        assert!(field(name).is_nullable(), "{name}");
+    }
+    // A bridge's own names are its text, as it stated them.
+    for (_, name) in [
+        yggdryl::MSGORIGINATOR_TAG_NAME,
+        yggdryl::CONVERSATIONID_TAG_NAME,
+        yggdryl::OMSDEALERACCOUNT_TAG_NAME,
+        yggdryl::OMSUSERID_TAG_NAME,
+        yggdryl::PARENTORDERID_TAG_NAME,
+        yggdryl::PARENTCLORDID_TAG_NAME,
+        yggdryl::OMSDEALERPARENTORDERID_TAG_NAME,
+        yggdryl::EXCHANGECLIENTORDERID_TAG_NAME,
+        yggdryl::TRANSVERSALKEY_TAG_NAME,
+        yggdryl::ULTRADERCLORDID_TAG_NAME,
+        yggdryl::OMSINSTRUMENTID_TAG_NAME,
+        yggdryl::ULLINKINSTRUMENTID_TAG_NAME,
+    ] {
+        assert_eq!(typed(name), &DataType::utf8(), "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
     // The session event a bridge delivered the message as is the text its
@@ -413,15 +453,14 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     // The arrival record is a group, so it has a counter like any other.
     assert_eq!(typed(yggdryl::NOFIXENTRIES_TAG_NAME.1), &DataType::Int32);
     assert!(field(yggdryl::NOFIXENTRIES_TAG_NAME.1).is_nullable());
-    // The names a message goes by and what a bridge stated under its own
-    // namespaces are the two Map groups, each its own counter.
-    for (tag, name) in [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME] {
-        assert_eq!(
-            typed(name),
-            &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
-        );
-        assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
-    }
+    // What a bridge stated under its own namespaces is the one Map group,
+    // with a counter of its own.
+    let (tag, name) = yggdryl::METADATA_TAG_NAME;
+    assert_eq!(
+        typed(name),
+        &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+    );
+    assert_eq!(field(name).as_fix().counter().unwrap(), Some(tag));
     // No partition column: how a layout is cut is the target's - an Iceberg
     // table takes an `hour` transform over `currunix` - and a materialized copy
     // of that instant was a second owner of it.
@@ -439,9 +478,10 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
         .filter_map(|field| field.as_fix().tag().ok().flatten())
         .collect();
     // 65064 held the merge reference's recording clock until the reference
-    // became the latest `recdunix` alone.
+    // became the latest `recdunix` alone; 65020 the `identifiers` Map, 65057
+    // and 65058 the CUSIP and SEDOL columns.
     for retired in [
-        65_000, 65_004, 65_016, 65_019, 65_024, 65_028, 65_036, 65_064,
+        65_000, 65_004, 65_016, 65_019, 65_020, 65_024, 65_028, 65_036, 65_057, 65_058, 65_064,
     ] {
         assert!(!tags.contains(&retired), "{retired} stays retired");
     }
@@ -465,6 +505,25 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     assert_eq!(yggdryl::CRATE_TAG_MIN, 65_000);
     assert_eq!(yggdryl::CROSSCODE_TAG_NAME.0, 65_048);
     assert_eq!(yggdryl::MSGSESSEVENTID_TAG_NAME, (65_065, "msgsesseventid"));
+    assert_eq!(
+        [
+            yggdryl::OMSINSTRUMENTID_TAG_NAME,
+            yggdryl::ULLINKINSTRUMENTID_TAG_NAME
+        ],
+        [(65_076, "omsinstrumentid"), (65_077, "ullinkinstrumentid")]
+    );
+    assert_eq!(
+        [
+            yggdryl::MSGORIGINATOR_TAG_NAME,
+            yggdryl::CONVERSATIONID_TAG_NAME,
+            yggdryl::TRANSVERSALKEY_TAG_NAME
+        ],
+        [
+            (65_066, "msgoriginator"),
+            (65_067, "conversationid"),
+            (65_074, "transversalkey")
+        ]
+    );
     assert_eq!(
         [
             yggdryl::CURRHASHCODE_TAG_NAME,
@@ -556,17 +615,16 @@ fn every_registry_holds_the_crates_fields_and_takes_them_again() {
         registered + 2,
         "standard clock seeds remain"
     );
-    for (tag, name) in [yggdryl::IDENTIFIERS_TAG_NAME, yggdryl::METADATA_TAG_NAME] {
-        let map = registry.get_field_by_counter(tag).unwrap();
-        assert_eq!(map.name(), name);
-        assert_eq!(
-            map.dtype(),
-            &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
-        );
-        assert_eq!(registry.get_field_by_name(name), Some(map));
-        // A Map group is its own counter: no scalar stands beside it.
-        assert!(registry.get_field_by_tag(tag).is_none());
-    }
+    let (tag, name) = yggdryl::METADATA_TAG_NAME;
+    let map = registry.get_field_by_counter(tag).unwrap();
+    assert_eq!(map.name(), name);
+    assert_eq!(
+        map.dtype(),
+        &DataType::map_of(DataType::utf8(), DataType::utf8(), true).unwrap()
+    );
+    assert_eq!(registry.get_field_by_name(name), Some(map));
+    // A Map group is its own counter: no scalar stands beside it.
+    assert!(registry.get_field_by_tag(tag).is_none());
 }
 
 /// A fresh registry registers every one of the crate's own fields, and

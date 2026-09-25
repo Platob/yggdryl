@@ -1,5 +1,5 @@
 {
-  "version": "0.1.11",
+  "version": "0.1.12",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -96,19 +96,19 @@
     ]
   },
   "kpi": {
-    "fields": 6270,
-    "groups": 582,
+    "fields": 6280,
+    "groups": 581,
     "enumFields": 2027,
     "codesets": 736,
     "codes": 7751,
-    "aliases": 43,
+    "aliases": 47,
     "alternates": 0,
     "messages": 181,
     "components": 928,
-    "columns": 127,
+    "columns": 132,
     "memberships": 0,
     "dialects": 0,
-    "datatypes": 27,
+    "datatypes": 25,
     "dtypes": [
       [
         "int32",
@@ -116,7 +116,7 @@
       ],
       [
         "utf8",
-        1927
+        1939
       ],
       [
         "decimal128(38,18)",
@@ -183,10 +183,6 @@
         1
       ],
       [
-        "cusip",
-        1
-      ],
-      [
         "figi",
         1
       ],
@@ -196,10 +192,6 @@
       ],
       [
         "isin",
-        1
-      ],
-      [
-        "sedol",
         1
       ],
       [
@@ -228,6 +220,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ACCOUNT",
+              "map": "accountids"
+            }
+          ],
           "FIX:tag": "1",
           "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
           "display": "Account"
@@ -354,6 +352,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "CLORDID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "11",
           "description": "Unique identifier for Order as assigned by the buy-side (institution, broker, intermediary etc.) (identified by SenderCompID(49) or OnBehalfOfCompID(115) as appropriate). Uniqueness must be guaranteed within a single trading day. Firms, particularly those which electronically submit multi-day orders, trade globally or throughout market close periods, should ensure uniqueness across days, for example by embedding a date within the ClOrdID(11) field.",
           "display": "ClOrdID"
@@ -433,6 +437,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "EXECID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "17",
           "description": "Unique identifier of execution message as assigned by sell-side (broker, exchange, ECN) (will be 0 (zero) for ExecType (150)=I (Order Status)).",
           "display": "ExecID"
@@ -751,6 +761,17 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "ORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:names": [
+            "marketorderid",
+            "omsdealerorderid"
+          ],
           "FIX:replacements": [
             {
               "plan": "select orderid as massactionreportid where :msgtype = 'r'"
@@ -836,6 +857,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ORIGCLORDID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "41",
           "description": "ClOrdID (11) of the previous order (NOT the initial order of the day) as assigned by the institution, used to identify the previous order in cancel and cancel/replace requests.",
           "display": "OrigClOrdID"
@@ -1048,6 +1075,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "SENDERSUBID",
+              "map": "userids"
+            }
+          ],
           "FIX:tag": "50",
           "description": "Assigned value used to identify specific message originator (desk, trader, etc.)",
           "display": "SenderSubID"
@@ -1929,6 +1962,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ONBEHALFOFSUBID",
+              "map": "userids"
+            }
+          ],
           "FIX:tag": "116",
           "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
           "display": "OnBehalfOfSubID"
@@ -1941,6 +1980,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "QUOTEID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "117",
           "description": "Unique identifier for quote",
           "display": "QuoteID"
@@ -2134,6 +2179,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "QUOTEREQID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "131",
           "description": "Unique identifier for a QuoteRequest(35=R).",
           "display": "QuoteReqID"
@@ -3032,6 +3083,13 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "SECONDARYORDERID",
+              "map": "altids"
+            }
+          ],
           "FIX:replacements": [
             {
               "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"
@@ -3931,6 +3989,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "MDREQID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "262",
           "description": "Unique identifier for Market Data Request",
           "display": "MDReqID"
@@ -6351,6 +6415,23 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "CUSTOMERACCOUNT",
+              "map": "accountids",
+              "role": "24"
+            },
+            {
+              "key": "ENTERINGTRADER",
+              "map": "userids",
+              "role": "36"
+            },
+            {
+              "key": "EXECUTINGTRADER",
+              "map": "userids",
+              "role": "12"
+            }
+          ],
           "FIX:tag": "448",
           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
           "display": "PartyID"
@@ -11894,6 +11975,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "TRDMATCHID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "880",
           "description": "Identifier assigned by a matching system to a match event that results in multiple executions or trades.",
           "display": "TrdMatchID"
@@ -13444,6 +13531,12 @@
           "type": "string"
         },
         "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "TRADEID",
+              "map": "altids"
+            }
+          ],
           "FIX:tag": "1003",
           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
           "display": "TradeID"
@@ -79623,30 +79716,6 @@
       },
       {
         "dtype": {
-          "type": "cusip"
-        },
-        "metadata": {
-          "FIX:tag": "65057",
-          "description": "The normalized CUSIP the message identifies.",
-          "display": "CusipCode"
-        },
-        "name": "cusipcode",
-        "nullable": true
-      },
-      {
-        "dtype": {
-          "type": "sedol"
-        },
-        "metadata": {
-          "FIX:tag": "65058",
-          "description": "The normalized SEDOL the message identifies.",
-          "display": "SedolCode"
-        },
-        "name": "sedolcode",
-        "nullable": true
-      },
-      {
-        "dtype": {
           "type": "bloomberg"
         },
         "metadata": {
@@ -79662,8 +79731,11 @@
           "type": "mic"
         },
         "metadata": {
+          "FIX:names": [
+            "instrument[exchange]"
+          ],
           "FIX:tag": "65060",
-          "description": "The normalized market MIC the message identifies.",
+          "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC; a bridge's INSTRUMENT[EXCHANGE] states it.",
           "display": "MicCode"
         },
         "name": "miccode",
@@ -79722,6 +79794,218 @@
           "display": "MsgSessEventId"
         },
         "name": "msgsesseventid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65066",
+          "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+          "display": "MsgOriginator"
+        },
+        "name": "msgoriginator",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:tag": "65067",
+          "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
+          "display": "ConversationId"
+        },
+        "name": "conversationid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "OMSDEALERACCOUNT",
+              "map": "accountids"
+            }
+          ],
+          "FIX:tag": "65068",
+          "description": "The account an OMS dealer books the order to, as the bridge stated it.",
+          "display": "OmsDealerAccount"
+        },
+        "name": "omsdealeraccount",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "OMSUSERID",
+              "map": "userids"
+            }
+          ],
+          "FIX:tag": "65069",
+          "description": "The OMS user who entered the order, as the bridge stated it.",
+          "display": "OmsUserId"
+        },
+        "name": "omsuserid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "PARENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65070",
+          "description": "The parent order's identifier, as the bridge stated it.",
+          "display": "ParentOrderId"
+        },
+        "name": "parentorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "PARENTCLORDID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65071",
+          "description": "The parent order's client identifier, as the bridge stated it.",
+          "display": "ParentClOrdId"
+        },
+        "name": "parentclordid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "OMSDEALERPARENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65072",
+          "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
+          "display": "OmsDealerParentOrderId"
+        },
+        "name": "omsdealerparentorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "EXCHANGECLIENTORDERID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65073",
+          "description": "The exchange's client order identifier, as the bridge stated it.",
+          "display": "ExchangeClientOrderId"
+        },
+        "name": "exchangeclientorderid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "follow": true,
+              "key": "TRANSVERSALKEY",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65074",
+          "description": "The key a bridge threads one order through every system with, as it stated it.",
+          "display": "TransversalKey"
+        },
+        "name": "transversalkey",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:idmap": [
+            {
+              "key": "ULTRADERCLORDID",
+              "map": "altids"
+            }
+          ],
+          "FIX:tag": "65075",
+          "description": "A trading screen's own client order identifier, as the bridge stated it.",
+          "display": "UlTraderClOrdId"
+        },
+        "name": "ultraderclordid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:replacements": [
+            {
+              "doc": "OmsInstrumentId names an instrument under the OMSINSTRUMENTID source",
+              "plan": "select [{securityaltid: omsinstrumentid, securityaltidsource: 'OMSINSTRUMENTID'}] as secaltids where length(omsinstrumentid) <= 32"
+            }
+          ],
+          "FIX:tag": "65076",
+          "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
+          "display": "OmsInstrumentId"
+        },
+        "name": "omsinstrumentid",
+        "nullable": true
+      },
+      {
+        "dtype": {
+          "type": "string"
+        },
+        "metadata": {
+          "FIX:names": [
+            "ullink.instrumentid"
+          ],
+          "FIX:replacements": [
+            {
+              "doc": "UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source",
+              "plan": "select [{securityaltid: ullinkinstrumentid, securityaltidsource: 'ULLINKINSTRUMENTID'}] as secaltids where length(ullinkinstrumentid) <= 32"
+            }
+          ],
+          "FIX:tag": "65077",
+          "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
+          "display": "UllinkInstrumentId"
+        },
+        "name": "ullinkinstrumentid",
         "nullable": true
       }
     ],
@@ -235256,46 +235540,6 @@
       },
       {
         "dtype": {
-          "entries": {
-            "dtype": {
-              "fields": [
-                {
-                  "dtype": {
-                    "type": "string"
-                  },
-                  "metadata": {},
-                  "name": "key",
-                  "nullable": false
-                },
-                {
-                  "dtype": {
-                    "type": "string"
-                  },
-                  "metadata": {},
-                  "name": "value",
-                  "nullable": true
-                }
-              ],
-              "type": "struct"
-            },
-            "metadata": {},
-            "name": "entries",
-            "nullable": false
-          },
-          "keys_sorted": true,
-          "type": "map"
-        },
-        "metadata": {
-          "FIX:counter": "65020",
-          "FIX:tag": "65020",
-          "description": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened.",
-          "display": "Identifiers"
-        },
-        "name": "identifiers",
-        "nullable": true
-      },
-      {
-        "dtype": {
           "field": {
             "dtype": {
               "type": "null"
@@ -291466,13 +291710,6 @@
         "x": "The identities of the elements this message was read from: the text line it was parsed out of, and none for one parsed from raw bytes. Provenance, never lineage: no walk moves it."
       },
       {
-        "c": "identifiers",
-        "t": 65020,
-        "n": "Identifiers",
-        "y": "map(field(\"entries\",struct(field(\"key\",utf8,nullable=false,metadata={}),field(\"value\",utf8,nullable=true,metadata={})),nullable=false,metadata={}),keys_sorted=true)",
-        "x": "The names this message goes by, each under the canonical name of the field that stated it, in sorted order; repeating-group members are not flattened."
-      },
-      {
         "c": "beginstring",
         "t": 8,
         "n": "BeginString",
@@ -291536,6 +291773,13 @@
         "x": "The plugin that logged the line inside a bridge, as the bridge names it: the row's own msgpluginid column, never derived."
       },
       {
+        "c": "msgoriginator",
+        "t": 65066,
+        "n": "MsgOriginator",
+        "y": "utf8",
+        "x": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content."
+      },
+      {
         "c": "msgctxid",
         "t": 65008,
         "n": "MsgCtxId",
@@ -291555,6 +291799,13 @@
         "n": "MsgSessEventId",
         "y": "utf8",
         "x": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on."
+      },
+      {
+        "c": "conversationid",
+        "t": 65067,
+        "n": "ConversationId",
+        "y": "utf8",
+        "x": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content."
       },
       {
         "c": "symbol",
@@ -291585,20 +291836,6 @@
         "x": "The normalized ISIN the message identifies."
       },
       {
-        "c": "cusipcode",
-        "t": 65057,
-        "n": "CusipCode",
-        "y": "cusip",
-        "x": "The normalized CUSIP the message identifies."
-      },
-      {
-        "c": "sedolcode",
-        "t": 65058,
-        "n": "SedolCode",
-        "y": "sedol",
-        "x": "The normalized SEDOL the message identifies."
-      },
-      {
         "c": "bloombergcode",
         "t": 65059,
         "n": "BloombergCode",
@@ -291617,7 +291854,7 @@
         "t": 65060,
         "n": "MicCode",
         "y": "mic",
-        "x": "The normalized market MIC the message identifies."
+        "x": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC; a bridge's INSTRUMENT[EXCHANGE] states it."
       },
       {
         "c": "securitytype",
@@ -291921,6 +292158,48 @@
         "x": "Quantity of offer"
       },
       {
+        "c": "lastspotrate",
+        "t": 194,
+        "n": "LastSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "F/X spot rate."
+      },
+      {
+        "c": "lastforwardpoints",
+        "t": 195,
+        "n": "LastForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "F/X forward points added to LastSpotRate(194). May be a negative value. Expressed in decimal form. For example, 61.99 points is expressed and sent as 0.006199."
+      },
+      {
+        "c": "bidspotrate",
+        "t": 188,
+        "n": "BidSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "Bid F/X spot rate."
+      },
+      {
+        "c": "bidforwardpoints",
+        "t": 189,
+        "n": "BidForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "Bid F/X forward points added to spot rate. May be a negative value."
+      },
+      {
+        "c": "offerspotrate",
+        "t": 190,
+        "n": "OfferSpotRate",
+        "y": "decimal128(38,18)",
+        "x": "Offer F/X spot rate."
+      },
+      {
+        "c": "offerforwardpoints",
+        "t": 191,
+        "n": "OfferForwardPoints",
+        "y": "decimal128(38,18)",
+        "x": "Offer F/X forward points added to spot rate. May be a negative value."
+      },
+      {
         "c": "state",
         "t": 65052,
         "n": "State",
@@ -291994,7 +292273,7 @@
         "c": "parties",
         "t": 209321,
         "n": "Parties",
-        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
+        "y": "serie(field(\"party\",struct(field(\"partyid\",utf8,nullable=true,metadata={\"FIX:field\":\"partyid\",\"FIX:idmap\":\"[{\\\"map\\\":\\\"accountids\\\",\\\"key\\\":\\\"CUSTOMERACCOUNT\\\",\\\"role\\\":\\\"24\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"ENTERINGTRADER\\\",\\\"role\\\":\\\"36\\\"},{\\\"map\\\":\\\"userids\\\",\\\"key\\\":\\\"EXECUTINGTRADER\\\",\\\"role\\\":\\\"12\\\"}]\",\"FIX:tag\":\"448\",\"description\":\"Party identifier/code. See PartyIDSource (447) and PartyRole (452).\",\"display\":\"PartyID\"}),field(\"partyidsource\",utf8,nullable=true,metadata={\"FIX:codeset\":\"partyidsourcecodeset\",\"FIX:field\":\"partyidsource\",\"FIX:tag\":\"447\",\"description\":\"Identifies class or source of the PartyID (448) value. Required if PartyID is specified. Note: applicable values depend upon PartyRole (452) specified.\",\"display\":\"PartyIDSource\"}),field(\"partyrole\",int32,nullable=true,metadata={\"FIX:codeset\":\"partyrolecodeset\",\"FIX:field\":\"partyrole\",\"FIX:tag\":\"452\",\"description\":\"Identifies the type or role of the PartyID (448) specified.\",\"display\":\"PartyRole\"}),field(\"partyrolequalifier\",int32,nullable=true,metadata={\"FIX:codeset\":\"partydetailrolequalifiercodeset\",\"FIX:field\":\"partyrolequalifier\",\"FIX:tag\":\"2376\",\"description\":\"Used to further qualify the value of PartyRole(452).\",\"display\":\"PartyRoleQualifier\"}),field(\"nopartysubids\",int32,nullable=true,metadata={\"FIX:field\":\"nopartysubids\",\"FIX:tag\":\"802\",\"description\":\"Number of PartySubID (523)and PartySubIDType (803) entries\",\"display\":\"NoPartySubIDs\"}),field(\"partysubids\",serie(field(\"ptyssub\",struct(field(\"partysubid\",utf8,nullable=true,metadata={\"FIX:field\":\"partysubid\",\"FIX:tag\":\"523\",\"description\":\"Sub-identifier (e.g. Clearing Account for PartyRole (452)=Clearing Firm, Locate ID # for PartyRole=Locate/Lending Firm, etc). Not required when using PartyID (448), PartyIDSource (447), and PartyRole.\",\"display\":\"PartySubID\"}),field(\"partysubidtype\",int32,nullable=true,metadata={\"FIX:codeset\":\"partysubidtypecodeset\",\"FIX:field\":\"partysubidtype\",\"FIX:tag\":\"803\",\"description\":\"Type of PartySubID(523) value.\",\"display\":\"PartySubIDType\"})),nullable=false,metadata={\"FIX:component\":\"ptyssub\",\"display\":\"PtysSub\"})),nullable=true,metadata={\"FIX:component\":\"ptyssub\",\"FIX:counter\":\"802\",\"FIX:group\":\"partysubids\",\"display\":\"PartySubIDs\"})),nullable=false,metadata={\"FIX:component\":\"party\",\"display\":\"Party\"}))",
         "x": "Repeating group below should contain unique combinations of PartyID, PartyIDSource, and PartyRole"
       },
       {
@@ -292380,14 +292659,11 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-41fb-7000-89f4-5bed8409b04b",
+        "curruuid": "018d64aa-41fb-7000-b5a0-2dd0450542f5",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
-        "currhashcode": "1552028322371762267",
+        "currhashcode": "8271875879188171932",
         "crosshashcode": "16375975223314930669",
-        "identifiers": {
-          "clordid": "ORDER-1"
-        },
         "srcuuids": [],
         "currunix": "1706790896123000000",
         "state": "00UNKNOWN",
@@ -292399,9 +292675,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
         "price": "10.5",
+        "currency": "XXX",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": "XNAS",
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -292409,27 +292690,27 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": "XNAS",
-        "bidpx": "10.5",
-        "bidqty": "100",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {
+          "CLORDID": "ORDER-1"
+        },
+        "bid": {
+          "price": "10.5",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -292448,7 +292729,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -292713,15 +292996,11 @@
         }
       ],
       "event": {
-        "curruuid": "018d64aa-48ec-7000-b281-0d258bf3eec6",
+        "curruuid": "018d64aa-48ec-7000-ac53-c2bf29b5be7d",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "15767814526130349761",
+        "currhashcode": "3251788042527680580",
         "crosshashcode": "15690705969207961054",
-        "identifiers": {
-          "execid": "E-1",
-          "orderid": "O-9"
-        },
         "srcuuids": [],
         "currunix": "1706790897900000000",
         "state": "80FILLED",
@@ -292733,9 +293012,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 8,
-        "price": "10.5",
+        "price": null,
+        "currency": "XXX",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": "10.5",
         "lastqty": "100",
         "avgpx": "10.5",
@@ -292743,27 +293027,28 @@
         "leavesqty": "0",
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 8,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "10.5",
-        "bidqty": "100",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {
+          "EXECID": "E-1",
+          "ORDERID": "O-9"
+        },
+        "bid": {
+          "price": null,
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -292782,7 +293067,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -292908,6 +293195,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -293154,14 +293442,11 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-820a-4daef95824ce",
+        "curruuid": "018cc9ab-d1d0-7000-92f9-d9717c625dac",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
-        "currhashcode": "15017293511080440123",
+        "currhashcode": "1052799685060876345",
         "crosshashcode": "7987596581457795577",
-        "identifiers": {
-          "clordid": "ORDER-2"
-        },
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -293173,9 +293458,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
         "price": "41.25",
+        "currency": "XXX",
         "quantity": "50",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -293183,27 +293473,27 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "BRN",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "BRN",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "41.25",
-        "bidqty": "50",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {
+          "CLORDID": "ORDER-2"
+        },
+        "bid": {
+          "price": "41.25",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "50",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -293222,7 +293512,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -294461,6 +294753,8 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"ORDERID\",\"follow\":true}]",
+                          "FIX:names": "[\"marketorderid\",\"omsdealerorderid\"]",
                           "FIX:replacements": "[{\"plan\":\"select orderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "37",
                           "description": "Unique identifier for Order as assigned by sell-side (broker, exchange, ECN). Uniqueness must be guaranteed within a single trading day. Firms which accept multi-day orders should consider embedding a date within the OrderID field to assure uniqueness across days.",
@@ -294474,6 +294768,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"SECONDARYORDERID\",\"follow\":true}]",
                           "FIX:replacements": "[{\"plan\":\"select secondaryorderid as massactionreportid where :msgtype = 'r'\"}]",
                           "FIX:tag": "198",
                           "description": "Assigned by the party which accepts the order. Can be used to provide the OrderID (37) used by an exchange or executing system.",
@@ -294499,6 +294794,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"altids\",\"key\":\"TRADEID\"}]",
                           "FIX:tag": "1003",
                           "description": "The unique ID assigned to the trade entity once it is received or matched by the exchange or central counterparty.",
                           "display": "TradeID"
@@ -295569,6 +295865,7 @@
                                   },
                                   "metadata": {
                                     "FIX:field": "partyid",
+                                    "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                                     "FIX:tag": "448",
                                     "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                                     "display": "PartyID"
@@ -296268,7 +296565,6 @@
         "crosscode": "",
         "currhashcode": "10882375343426412268",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -296280,9 +296576,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 3,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296290,27 +296591,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "BRN",
+        "metadata": {},
+        "marketoperationid": 3,
         "tif": null,
         "tradable": null,
-        "symbolticker": "BRN",
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296329,7 +296621,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296571,7 +296865,6 @@
         "crosscode": "",
         "currhashcode": "12145694549879713580",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -296583,9 +296876,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 14,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296593,27 +296891,32 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "BRN",
+        "metadata": {},
+        "marketoperationid": 14,
         "tif": null,
         "tradable": null,
-        "symbolticker": "BRN",
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "41.2",
-        "bidqty": "500",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": "41.3",
-        "askqty": "500",
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": "41.2",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "500",
+          "unit": null
+        },
+        "ask": {
+          "price": "41.3",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "500",
+          "unit": null
+        }
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296632,7 +296935,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296805,7 +297110,6 @@
         "crosscode": "",
         "currhashcode": "14334419292297887460",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1706788800000000000",
         "state": "00UNKNOWN",
@@ -296817,9 +297121,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 18,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296827,27 +297136,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "symbolticker": null,
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -296866,7 +297166,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -296972,7 +297274,6 @@
         "crosscode": "",
         "currhashcode": "17855387864844002379",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1706790901000000000",
         "state": "00UNKNOWN",
@@ -296984,9 +297285,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 18,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -296994,27 +297300,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "symbolticker": null,
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.2",
@@ -297033,7 +297330,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -297169,7 +297468,6 @@
         "crosscode": "",
         "currhashcode": "14833405603331524372",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -297181,9 +297479,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 18,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297191,27 +297494,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 18,
         "tif": null,
         "tradable": null,
-        "symbolticker": null,
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297230,7 +297524,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": "Incorrect data format for value",
       "metadata": {},
@@ -297428,16 +297724,11 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-84df-cc22582310ad",
+        "curruuid": "018cc9ab-d1d0-7000-acc2-291357c03a4a",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "16965031851930824492",
+        "currhashcode": "3921516676199052491",
         "crosshashcode": "15690705969207961054",
-        "identifiers": {
-          "clordid": "ORDER-3",
-          "orderid": "O-9",
-          "origclordid": "ORDER-1"
-        },
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -297449,9 +297740,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
         "price": "10.75",
+        "currency": "XXX",
         "quantity": "150",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297459,27 +297755,29 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "10.75",
-        "bidqty": "150",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {
+          "CLORDID": "ORDER-3",
+          "ORDERID": "O-9",
+          "ORIGCLORDID": "ORDER-1"
+        },
+        "bid": {
+          "price": "10.75",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "150",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297498,7 +297796,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -297758,7 +298058,6 @@
         "crosscode": "",
         "currhashcode": "16395903705174682042",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -297770,9 +298069,17 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
         "price": "10.5",
+        "currency": "USD",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {
+          "CUSIP": "037833100",
+          "ISIN": "US0378331005"
+        },
+        "cficode": null,
+        "miccode": "XNAS",
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -297780,27 +298087,25 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": null,
-        "currency": "USD",
-        "unit": "",
-        "side": "BUY",
-        "isincode": "US0378331005",
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": "XNAS",
-        "bidpx": "10.5",
-        "bidqty": "100",
-        "bidcurrency": "USD",
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": "10.5",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": "USD",
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -297819,7 +298124,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298064,7 +298371,6 @@
         "crosscode": "",
         "currhashcode": "8149546502507768640",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298076,9 +298382,16 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
-        "price": "0",
+        "price": null,
+        "currency": "USD",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {
+          "FIGI": "BBG000BLNQ16"
+        },
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298086,27 +298399,25 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": null,
-        "currency": "USD",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": "BBG000BLNQ16",
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": "100",
-        "bidcurrency": "USD",
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": null,
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": "USD",
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298125,7 +298436,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298467,7 +298780,6 @@
         "crosscode": "",
         "currhashcode": "2548086238863956385",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298479,9 +298791,17 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 17,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "GBP",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {
+          "ISIN": "GB00BN7SWP63",
+          "SEDOL": "BN7SWP6"
+        },
+        "cficode": null,
+        "miccode": "XLON",
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298489,27 +298809,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "BRN",
+        "metadata": {},
+        "marketoperationid": 17,
         "tif": null,
         "tradable": null,
-        "symbolticker": "BRN",
-        "currency": "GBP",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": "GB00BN7SWP63",
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": "FXXXXX",
-        "miccode": "XLON",
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298528,7 +298839,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -298684,6 +298997,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -298791,7 +299105,6 @@
         "crosscode": "",
         "currhashcode": "12554896926520859798",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -298803,9 +299116,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 0,
         "price": "41.25",
+        "currency": "XXX",
         "quantity": "1200",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -298813,27 +299131,25 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "TTF",
+        "metadata": {},
+        "marketoperationid": 0,
         "tif": null,
         "tradable": null,
-        "symbolticker": "TTF",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "41.25",
-        "bidqty": "1200",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": "41.25",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "1200",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -298852,7 +299168,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299010,14 +299328,11 @@
         }
       ],
       "event": {
-        "curruuid": "018cc9ab-d1d0-7000-9bbb-a0ba29de81a2",
+        "curruuid": "018cc9ab-d1d0-7000-bb82-d47410dc40dc",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
-        "currhashcode": "3709385908500788596",
+        "currhashcode": "3401681675450978531",
         "crosshashcode": "7366101611310237723",
-        "identifiers": {
-          "clordid": "ORDER-4"
-        },
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299029,9 +299344,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
-        "price": "0",
+        "price": null,
+        "currency": "XXX",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299039,27 +299359,27 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": "100",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {
+          "CLORDID": "ORDER-4"
+        },
+        "bid": {
+          "price": null,
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299078,7 +299398,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299230,7 +299552,6 @@
         "crosscode": "",
         "currhashcode": "8066959481080282367",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299242,9 +299563,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
-        "price": "0",
+        "price": null,
+        "currency": "XXX",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299252,27 +299578,25 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": "100",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": null,
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299291,7 +299615,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299434,7 +299760,6 @@
         "crosscode": "",
         "currhashcode": "17689539441271598566",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299446,9 +299771,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299456,27 +299786,18 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299495,7 +299816,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299542,6 +299865,7 @@
                 "type": "string"
               },
               "metadata": {
+                "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"ACCOUNT\"}]",
                 "FIX:tag": "1",
                 "description": "Account mnemonic as agreed between buy and sell sides, e.g. broker and institution or investor/intermediary and fund manager.",
                 "display": "Account"
@@ -299579,6 +299903,7 @@
                           "type": "string"
                         },
                         "metadata": {
+                          "FIX:idmap": "[{\"map\":\"accountids\",\"key\":\"CUSTOMERACCOUNT\",\"role\":\"24\"},{\"map\":\"userids\",\"key\":\"ENTERINGTRADER\",\"role\":\"36\"},{\"map\":\"userids\",\"key\":\"EXECUTINGTRADER\",\"role\":\"12\"}]",
                           "FIX:tag": "448",
                           "description": "Party identifier/code. See PartyIDSource (447) and PartyRole (452).",
                           "display": "PartyID"
@@ -299660,7 +299985,6 @@
         "crosscode": "",
         "currhashcode": "14132669717197402441",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299672,9 +299996,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 0,
-        "price": "0",
-        "quantity": "0",
+        "price": null,
+        "currency": "XXX",
+        "quantity": null,
+        "unit": "",
+        "side": "UNKNOWN",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299682,27 +300011,20 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": null,
+        "metadata": {},
+        "marketoperationid": 0,
         "tif": null,
         "tradable": null,
-        "symbolticker": null,
-        "currency": "XXX",
-        "unit": "",
-        "side": "UNKNOWN",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": null,
-        "bidqty": null,
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {
+          "ACCOUNT": "ACCT-000117"
+        },
+        "userids": {},
+        "altids": {},
+        "bid": null,
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299721,7 +300043,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},
@@ -299890,7 +300214,6 @@
         "crosscode": "",
         "currhashcode": "15086527165268785016",
         "crosshashcode": "0",
-        "identifiers": {},
         "srcuuids": [],
         "currunix": "1704190530000000000",
         "state": "00UNKNOWN",
@@ -299902,9 +300225,14 @@
         "prevunix": null,
         "prevuuid": null,
         "snapunix": null,
-        "marketoperationid": 10,
         "price": "10.5",
+        "currency": "XXX",
         "quantity": "100",
+        "unit": "",
+        "side": "BUY",
+        "securityids": {},
+        "cficode": null,
+        "miccode": null,
         "lastpx": null,
         "lastqty": null,
         "avgpx": null,
@@ -299912,27 +300240,25 @@
         "leavesqty": null,
         "prevpx": null,
         "prevqty": null,
+        "spotrate": null,
+        "forwardpoints": null,
+        "ticker": "AAPL",
+        "metadata": {},
+        "marketoperationid": 10,
         "tif": "0",
         "tradable": null,
-        "symbolticker": "AAPL",
-        "currency": "XXX",
-        "unit": "",
-        "side": "BUY",
-        "isincode": null,
-        "cusipcode": null,
-        "sedolcode": null,
-        "bloombergcode": null,
-        "figicode": null,
-        "cficode": null,
-        "miccode": null,
-        "bidpx": "10.5",
-        "bidqty": "100",
-        "bidcurrency": null,
-        "bidunit": null,
-        "askpx": null,
-        "askqty": null,
-        "askcurrency": null,
-        "askunit": null
+        "accountids": {},
+        "userids": {},
+        "altids": {},
+        "bid": {
+          "price": "10.5",
+          "spotrate": null,
+          "forwardpoints": null,
+          "currency": null,
+          "quantity": "100",
+          "unit": null
+        },
+        "ask": null
       },
       "header": {
         "beginstring": "FIX.4.4",
@@ -299951,7 +300277,9 @@
         "msgpluginid": null,
         "msgctxid": null,
         "msgsessionid": null,
-        "msgsesseventid": null
+        "msgsesseventid": null,
+        "msgoriginator": null,
+        "conversationid": null
       },
       "text": null,
       "metadata": {},

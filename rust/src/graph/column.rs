@@ -2,27 +2,24 @@
 //!
 //! Every generated schema of an event - a [text line](crate::text::TextLine)
 //! read into a batch, a FIX message parsed out of it, a message the
-//! lifecycle chained - states these seventeen under one name and one datatype
+//! lifecycle chained - states these sixteen under one name and one datatype
 //! each, so the three join on them without a mapping: a message's
 //! `srcuuids` are the `curruuid` of the lines it was read from, and a
 //! chained message's `prevuuid` is the `curruuid` of the message before it. The names are the traits' own: what
 //! [`Element`](super::Element) and [`Event`] read and write under
 //! `get_`/`set_` is what a column is called.
 
-use std::collections::BTreeMap;
-
 use crate::{DataType, Field, Result, Scalar, State, TimeUnit, Timezone, Uuid};
 
 use super::Event;
 
-/// One column of the seventeen every graph event is stated in.
+/// One column of the sixteen every graph event is stated in.
 ///
 /// [`Self::ALL`] is the canonical order [`Self::fields`] and event-native
 /// schemas use: **when** it happened - the instant, then the instants it is
 /// read against - then **which**
 /// event it is - its identity, the chain's, the codes, what it follows, its
-/// place, what it was read from, the names it goes by - and last the state
-/// it reached.
+/// place, what it was read from - and last the state it reached.
 ///
 /// ```
 /// use yggdryl::graph::{EventColumn, MarketEventData, Element, Event};
@@ -30,10 +27,10 @@ use super::Event;
 ///
 /// # fn main() -> yggdryl::Result<()> {
 /// let fields = EventColumn::fields()?;
-/// assert_eq!(fields.len(), 17);
+/// assert_eq!(fields.len(), 16);
 /// assert_eq!(fields[0].name(), "currunix");
 /// assert_eq!(fields[7].name(), "curruuid");
-/// assert_eq!(fields[16].name(), "state");
+/// assert_eq!(fields[15].name(), "state");
 /// // What an event states under a column, and the same fact stated back.
 /// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
@@ -83,8 +80,6 @@ pub enum EventColumn {
     SeqNum,
     /// The identities this event was read from: provenance, never its chain.
     SrcUuids,
-    /// The names the event goes by, each under the scheme that issued it.
-    Identifiers,
     /// The state the event reached, ranked so it sorts by lifecycle:
     /// `00UNKNOWN` where nothing states one, so never absent on a row an
     /// event wrote; null only where a row states none, because a state has
@@ -94,7 +89,7 @@ pub enum EventColumn {
 
 impl EventColumn {
     /// Every column, in canonical event order.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 16] = [
         Self::CurrUnix,
         Self::CreaUnix,
         Self::ExecUnix,
@@ -110,7 +105,6 @@ impl EventColumn {
         Self::PrevUuid,
         Self::SeqNum,
         Self::SrcUuids,
-        Self::Identifiers,
         Self::State,
     ];
 
@@ -133,7 +127,6 @@ impl EventColumn {
             Self::PrevUuid => "prevuuid",
             Self::SeqNum => "seqnum",
             Self::SrcUuids => "srcuuids",
-            Self::Identifiers => "identifiers",
             Self::State => "state",
         }
     }
@@ -157,7 +150,6 @@ impl EventColumn {
             Self::PrevUuid => "PrevUuid",
             Self::SeqNum => "SeqNum",
             Self::SrcUuids => "SrcUuids",
-            Self::Identifiers => "Identifiers",
             Self::State => "State",
         }
     }
@@ -201,9 +193,6 @@ impl EventColumn {
             Self::SrcUuids => {
                 "The sorted unique identities of the elements this event was read from: provenance, never its chain - no walk moves it."
             }
-            Self::Identifiers => {
-                "The names this event goes by, each under the scheme that issued it, in sorted order."
-            }
             Self::State => {
                 "The state the event reached, ranked so it sorts by lifecycle; 00UNKNOWN where nothing states one, the furthest its chain knows once followed."
             }
@@ -239,7 +228,6 @@ impl EventColumn {
             Self::CrossCode => DataType::utf8(),
             Self::CurrHashCode | Self::CrossHashCode | Self::SeqNum => DataType::UInt64,
             Self::SrcUuids => DataType::serie(DataType::Uuid.required_field("srcuuid")),
-            Self::Identifiers => DataType::map_of(DataType::utf8(), DataType::utf8(), true)?,
             Self::State => DataType::State,
         })
     }
@@ -317,18 +305,6 @@ impl EventColumn {
             Self::PrevUuid => event.get_prevuuid().map(Scalar::Uuid),
             Self::SeqNum => (event.get_seqnum() != 0).then(|| Scalar::from(event.get_seqnum())),
             Self::SrcUuids => uuids_fact(event.get_srcuuids()),
-            Self::Identifiers => {
-                let identifiers = event.get_identifiers();
-                (!identifiers.is_empty()).then(|| {
-                    Scalar::from_mapping(identifiers.iter().map(|(scheme, identifier)| {
-                        (
-                            Scalar::from(scheme.as_str()),
-                            Scalar::from(identifier.as_str()),
-                        )
-                    }))
-                    .ok()
-                })?
-            }
             Self::State => Some(Scalar::State(event.get_state().clone())),
         }
     }
@@ -383,7 +359,6 @@ impl EventColumn {
             }),
             Self::SeqNum => event.set_seqnum(value.as_u64().unwrap_or(0)),
             Self::SrcUuids => event.set_srcuuids(uuids_of(value)),
-            Self::Identifiers => event.set_identifiers(identifiers_of(value)),
             Self::State => event.set_state(match value {
                 Scalar::State(state) => state.clone(),
                 other => other
@@ -411,22 +386,6 @@ fn uuids_of(value: &Scalar) -> Vec<Uuid> {
                 .filter_map(|item| match item.as_ref() {
                     Scalar::Uuid(uuid) => Some(*uuid),
                     _ => None,
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// The names one `map<utf8, utf8>` cell states, every other entry passed
-/// over; none for a cell stating no map.
-fn identifiers_of(value: &Scalar) -> BTreeMap<String, String> {
-    value
-        .as_mapping()
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(|(scheme, identifier)| {
-                    Some((scheme.as_str()?.to_owned(), identifier.as_str()?.to_owned()))
                 })
                 .collect()
         })

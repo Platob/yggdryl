@@ -290,30 +290,6 @@
     }
   },
   {
-    "name": "cusipcode",
-    "dtype": {
-      "type": "cusip"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65057",
-      "description": "The normalized CUSIP the message identifies.",
-      "display": "CusipCode"
-    }
-  },
-  {
-    "name": "sedolcode",
-    "dtype": {
-      "type": "sedol"
-    },
-    "nullable": true,
-    "metadata": {
-      "FIX:tag": "65058",
-      "description": "The normalized SEDOL the message identifies.",
-      "display": "SedolCode"
-    }
-  },
-  {
     "name": "bloombergcode",
     "dtype": {
       "type": "bloomberg"
@@ -332,8 +308,11 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:names": [
+        "instrument[exchange]"
+      ],
       "FIX:tag": "65060",
-      "description": "The normalized market MIC the message identifies.",
+      "description": "The normalized market MIC the message identifies: LastMkt, else ExDestination, the market a bridge's instrument key names or SecurityExchange, the first an ISO 10383 MIC; a bridge's INSTRUMENT[EXCHANGE] states it.",
       "display": "MicCode"
     }
   },
@@ -390,6 +369,218 @@
       "FIX:transient": "false",
       "description": "The session event a bridge delivered the message as: MsgType, the session instance, the message context and MsgSeqNum joined by `:`, where all four are stated. Derived and never content: the key two observations of one delivery merge on.",
       "display": "MsgSessEventId"
+    }
+  },
+  {
+    "name": "msgoriginator",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65066",
+      "description": "The plugin a message came into a bridge through, as the bridge's own log line names it: a message received from (X as ...), an execution report from X, or the plugin that logged a Receiving line. Provenance, never content.",
+      "display": "MsgOriginator"
+    }
+  },
+  {
+    "name": "conversationid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:tag": "65067",
+      "description": "The conversation a bridge filed the message under, as stated: a CONVERSATIONID field, else the {conversationId: ...} of the log line. Provenance, never content.",
+      "display": "ConversationId"
+    }
+  },
+  {
+    "name": "omsdealeraccount",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "accountids",
+          "key": "OMSDEALERACCOUNT"
+        }
+      ],
+      "FIX:tag": "65068",
+      "description": "The account an OMS dealer books the order to, as the bridge stated it.",
+      "display": "OmsDealerAccount"
+    }
+  },
+  {
+    "name": "omsuserid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "userids",
+          "key": "OMSUSERID"
+        }
+      ],
+      "FIX:tag": "65069",
+      "description": "The OMS user who entered the order, as the bridge stated it.",
+      "display": "OmsUserId"
+    }
+  },
+  {
+    "name": "parentorderid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "PARENTORDERID",
+          "follow": true
+        }
+      ],
+      "FIX:tag": "65070",
+      "description": "The parent order's identifier, as the bridge stated it.",
+      "display": "ParentOrderId"
+    }
+  },
+  {
+    "name": "parentclordid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "PARENTCLORDID",
+          "follow": true
+        }
+      ],
+      "FIX:tag": "65071",
+      "description": "The parent order's client identifier, as the bridge stated it.",
+      "display": "ParentClOrdId"
+    }
+  },
+  {
+    "name": "omsdealerparentorderid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "OMSDEALERPARENTORDERID",
+          "follow": true
+        }
+      ],
+      "FIX:tag": "65072",
+      "description": "The OMS dealer's parent order identifier, as the bridge stated it.",
+      "display": "OmsDealerParentOrderId"
+    }
+  },
+  {
+    "name": "exchangeclientorderid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "EXCHANGECLIENTORDERID",
+          "follow": true
+        }
+      ],
+      "FIX:tag": "65073",
+      "description": "The exchange's client order identifier, as the bridge stated it.",
+      "display": "ExchangeClientOrderId"
+    }
+  },
+  {
+    "name": "transversalkey",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "TRANSVERSALKEY",
+          "follow": true
+        }
+      ],
+      "FIX:tag": "65074",
+      "description": "The key a bridge threads one order through every system with, as it stated it.",
+      "display": "TransversalKey"
+    }
+  },
+  {
+    "name": "ultraderclordid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "ULTRADERCLORDID"
+        }
+      ],
+      "FIX:tag": "65075",
+      "description": "A trading screen's own client order identifier, as the bridge stated it.",
+      "display": "UlTraderClOrdId"
+    }
+  },
+  {
+    "name": "omsinstrumentid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:replacements": [
+        {
+          "plan": "select [{securityaltid: omsinstrumentid, securityaltidsource: 'OMSINSTRUMENTID'}] as secaltids where length(omsinstrumentid) <= 32",
+          "doc": "OmsInstrumentId names an instrument under the OMSINSTRUMENTID source"
+        }
+      ],
+      "FIX:tag": "65076",
+      "description": "The instrument an OMS bridge names, as it stated it - `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the OMSINSTRUMENTID source where that source can hold it.",
+      "display": "OmsInstrumentId"
+    }
+  },
+  {
+    "name": "ullinkinstrumentid",
+    "dtype": {
+      "type": "string"
+    },
+    "nullable": true,
+    "metadata": {
+      "FIX:names": [
+        "ullink.instrumentid"
+      ],
+      "FIX:replacements": [
+        {
+          "plan": "select [{securityaltid: ullinkinstrumentid, securityaltidsource: 'ULLINKINSTRUMENTID'}] as secaltids where length(ullinkinstrumentid) <= 32",
+          "doc": "UllinkInstrumentId names an instrument under the ULLINKINSTRUMENTID source"
+        }
+      ],
+      "FIX:tag": "65077",
+      "description": "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID source where that source can hold it.",
+      "display": "UllinkInstrumentId"
     }
   }
 ]

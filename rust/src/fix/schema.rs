@@ -46,7 +46,7 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Weak};
 
-use crate::graph::MarketElement;
+use crate::graph::Market;
 
 use smol_str::SmolStr;
 
@@ -82,19 +82,20 @@ pub const TRAILER_TAGS: [i32; 3] = [93, 89, 10];
 ///
 /// `Price(44)`, `OrderQty(38)` and `Quantity(53)` are columns of the ladder
 /// like the rest, each exact and stated once. What a message is *about* is
-/// what [`get_price`](crate::graph::MarketElement::get_price) and
-/// [`get_quantity`](crate::graph::MarketElement::get_quantity) read off them, and no
+/// what [`get_price`](crate::graph::Market::get_price) and
+/// [`get_quantity`](crate::graph::Market::get_quantity) read off them, and no
 /// column of this crate's restates either, because a row carrying both
 /// would carry one fact twice.
-pub const BODY_TAGS: [i32; 50] = [
+pub const BODY_TAGS: [i32; 56] = [
     // Who the message is about: the order's own chain, its parents, and the
     // reports and quotes that answer it.
     1, 11, 41, 526, 37, 198, 17, 1003, 131, 117, 693,
     // The instrument, and what the market says about trading it.
     55, 48, 22, 167, 762, 207, 461, 541, 460, 326, 340, 965, // The order.
     54, 40, 59, 854, 15, 120, // The quote's two lanes, which carry no side of their own.
-    132, 133, 134, 135, // What was done.
-    31, 32, 6, 14, 151, // When.
+    132, 133, 134, 135, 188, 189, 190,
+    191, // What was done, and the FX parts of the last price.
+    31, 32, 6, 14, 151, 194, 195, // When.
     60, 64, 75, 126, // How it went.
     39, 150, 297, 301, 368, 103, 102, 58,
 ];
@@ -159,13 +160,13 @@ const NOFIXENTRIES_COLUMN: &str = super::crated::NOFIXENTRIES_TAG_NAME.1;
 #[must_use]
 pub fn fix_schema_tags() -> Vec<i32> {
     use super::crated::{
-        CREAUNIX_TAG_NAME as CREAUNIX, CROSSCODE_TAG_NAME as CROSSCODE,
-        CROSSHASHCODE_TAG_NAME as CROSSHASHCODE, CROSSUUID_TAG_NAME as CROSSUUID,
-        CURRHASHCODE_TAG_NAME as HASHCODE, CURRUNIX_TAG_NAME as UNIX,
-        CURRUUID_TAG_NAME as CURRUUID, EXECUNIX_TAG_NAME as EXECUNIX,
-        EXPRTIME_TAG_NAME as EXPRTIME, IDENTIFIERS_TAG_NAME as IDENTIFIERS,
-        METADATA_TAG_NAME as METADATA, MSGCTXID_TAG_NAME as MSGCTXID,
-        MSGDIRECTION_TAG_NAME as MSGDIRECTION, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
+        CONVERSATIONID_TAG_NAME as CONVERSATIONID, CREAUNIX_TAG_NAME as CREAUNIX,
+        CROSSCODE_TAG_NAME as CROSSCODE, CROSSHASHCODE_TAG_NAME as CROSSHASHCODE,
+        CROSSUUID_TAG_NAME as CROSSUUID, CURRHASHCODE_TAG_NAME as HASHCODE,
+        CURRUNIX_TAG_NAME as UNIX, CURRUUID_TAG_NAME as CURRUUID, EXECUNIX_TAG_NAME as EXECUNIX,
+        EXPRTIME_TAG_NAME as EXPRTIME, METADATA_TAG_NAME as METADATA,
+        MSGCTXID_TAG_NAME as MSGCTXID, MSGDIRECTION_TAG_NAME as MSGDIRECTION,
+        MSGORIGINATOR_TAG_NAME as MSGORIGINATOR, MSGPLUGINID_TAG_NAME as MSGPLUGINID,
         MSGSESSEVENTID_TAG_NAME as MSGSESSEVENTID, MSGSESSIONID_TAG_NAME as MSGSESSIONID,
         PREVUNIX_TAG_NAME as PREVUNIX, PREVUUID_TAG_NAME as PREVUUID,
         RECDUNIX_TAG_NAME as RECDUNIX, SEQNUM_TAG_NAME as SEQNUM, SNAPUNIX_TAG_NAME as SNAPUNIX,
@@ -207,12 +208,12 @@ pub fn fix_schema_tags() -> Vec<i32> {
             PREVUUID.0,
             SEQNUM.0,
             SRCUUIDS.0,
-            IDENTIFIERS.0,
         ],
     );
     // Which message, over which session: what the frame says it is, who sent
-    // it to whom, which bridge handled it and the session event it delivered
-    // the message as. Not where this capture read
+    // it to whom, which bridge handled it and which of its plugins it came
+    // from, the session event it delivered the message as and the
+    // conversation that exchange belongs to. Not where this capture read
     // it: that is the reader's statement about the line and not the
     // message's about itself, so it travels as one of the capture's own
     // columns, beside the body and the row number, and no column of this row
@@ -229,9 +230,11 @@ pub fn fix_schema_tags() -> Vec<i32> {
             43,
             MSGDIRECTION.0,
             MSGPLUGINID.0,
+            MSGORIGINATOR.0,
             MSGCTXID.0,
             MSGSESSIONID.0,
             MSGSESSEVENTID.0,
+            CONVERSATIONID.0,
         ],
     );
     // Which instrument: what the venue calls it and the ticker that settled
@@ -244,8 +247,6 @@ pub fn fix_schema_tags() -> Vec<i32> {
             48,
             22,
             super::ISINCODE_TAG_NAME.0,
-            super::CUSIPCODE_TAG_NAME.0,
-            super::SEDOLCODE_TAG_NAME.0,
             super::BLOOMBERGCODE_TAG_NAME.0,
             super::FIGICODE_TAG_NAME.0,
             super::MICCODE_TAG_NAME.0,
@@ -269,18 +270,19 @@ pub fn fix_schema_tags() -> Vec<i32> {
     );
     // What it states: the side it takes, then one ladder of prices and one
     // of quantities, each from the number the message is about down through
-    // the ones it was read off - what it moved from, what it last traded,
+    // the ones it was read off - what it moved from, its last executed price and quantity,
     // where it has got to - then what those are counted and denominated in,
     // how the order was written, and last the quote's two lanes.
     //
     // Each number is FIX's own and appears once: `Price(44)`, `OrderQty(38)`
     // and `Quantity(53)` are columns like the rest of the ladder, and what a
-    // message is *about* is what [`MarketElement::get_price`] reads off them
+    // message is *about* is what [`Market::get_price`] reads off them
     // rather than a column restating one of them.
     band(
         &mut tags,
         &[
             54, 44, 140, 31, 6, 38, 53, 32, 14, 151, 996, 15, 120, 854, 40, 59, 132, 134, 133, 135,
+            194, 195, 188, 189, 190, 191,
         ],
     );
     // How it went: the ranked state the message reached - read off
@@ -304,7 +306,10 @@ pub fn fix_schema_tags() -> Vec<i32> {
         .iter()
         .filter_map(|field| field.as_fix().tag().ok().flatten())
         .filter(|tag| {
-            *tag != counter && *tag != METADATA.0 && !super::identity::is_capture_tag(*tag)
+            *tag != counter
+                && *tag != METADATA.0
+                && !super::identity::is_capture_tag(*tag)
+                && !super::crated::is_unprojected_tag(*tag)
         })
         .collect();
     band(&mut tags, &rest);
@@ -1648,6 +1653,24 @@ fn unknown_nested_from_entry(
     Ok((field, crate::Scalar::from_struct(named)?))
 }
 
+/// The scalar field `name` reaches only as one of its `FIX:names`: never
+/// its canonical name, which a residual entry spells only where it is that
+/// field. An untagged residual entry spelled so is an alias that did not
+/// fill the field - its winner took the tag.
+fn alias_lost_to<'registry>(
+    registry: &'registry FixRegistry,
+    name: &str,
+) -> Option<&'registry Field> {
+    let reached = registry.get_field_by_name(name)?;
+    (!reached.dtype().is_nested()
+        && !crate::folds_equal(reached.name(), name)
+        && reached
+            .as_fix()
+            .names()
+            .any(|alias| crate::folds_equal(alias, name)))
+    .then_some(reached)
+}
+
 /// One entry as the child it states and the value under it.
 ///
 /// `declared` is the field the enclosing level declares for it - a
@@ -1664,6 +1687,21 @@ fn child_from_entry(
     entry: &super::FixEntry,
     declared: Option<&Field>,
 ) -> Result<(Field, crate::Scalar)> {
+    if declared.is_none() && entry.tag() == 0 {
+        if let Some(lost_to) = alias_lost_to(registry, entry.name()) {
+            // The builder's demoted alias, rebuilt as it built one: a row
+            // carries no metadata, and without the mark the name would
+            // reach the field it did not fill and fold into it again.
+            let mut field = DataType::utf8().nullable_field(entry.held_name().clone());
+            // A plain key and value: the one refusal a metadata insert has
+            // is a shape no spelling here takes.
+            let _ = field.insert_metadata(super::field::ALIAS_OF, lost_to.name());
+            let value = entry
+                .value()
+                .map_or(crate::Scalar::Null, crate::Scalar::from);
+            return Ok((field, value));
+        }
+    }
     // A declared nested member is what the level declares; a declared
     // scalar is the dictionary's own field, as the builder states one,
     // rather than the reference the level declares it through. Then the

@@ -1512,7 +1512,8 @@ export type JsFilter = Filter
  * Every message it builds is settled as it is parsed: the typed facts are
  * lifted off the line, a nested `XmlData` is exploded into the message,
  * deprecated fields are restated to their latest aliases, the dictionary's
- * `FIX:derivation` rules run, the identifiers and the order lanes fill, and
+ * `FIX:derivation` rules run, the identifier maps, the security identifiers
+ * and the order lanes fill, and
  * the identity is derived. `SendingTime` is the message's valid tag 52,
  * else a row cell reaching that tag, else the `mtime` of the `TextLine` it
  * was read out of - on `parseTextArrowReader`, the row's `currunix` cell -
@@ -1929,14 +1930,47 @@ export declare class FixMsg {
    * for a message parsed from bytes.
    */
   get carried(): Record<string, Scalar>
-  /** The identifiers the message is known by, scheme to value, sorted. */
-  get identifiers(): Record<string, string>
+  /**
+   * The security identifiers the instrument goes by, source to code, in
+   * the core's key order: `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI`
+   * and any other source `SecurityIDSource(22)` or the `SecurityAltID`
+   * group names; empty where the message states none.
+   */
+  get securityids(): Record<string, string>
+  /**
+   * The accounts the message names, key to value, upper-cased and in key
+   * order: `Account(1)` and a `CUSTOMERACCOUNT` party; empty where none.
+   */
+  get accountids(): Record<string, string>
+  /**
+   * The users the message names, the same way: `SenderSubID(50)`,
+   * `OnBehalfOfSubID(116)`, an `ENTERINGTRADER` or `EXECUTINGTRADER`
+   * party.
+   */
+  get userids(): Record<string, string>
+  /**
+   * The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
+   * `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
+   * `TRADEID` and the rest the message states.
+   */
+  get altids(): Record<string, string>
   /** The stable integer category of the market operation, or `null`. */
   get marketoperationid(): number | null
-  /** The price, as decimal text; `0` where none is stated. */
-  get price(): string
-  /** The quantity, as decimal text; `0` where none is stated. */
-  get quantity(): string
+  /**
+   * The price stated, as decimal text, or `null` where none is. Never a
+   * last executed price, which `lastpx` answers.
+   */
+  get price(): string | null
+  /**
+   * The quantity stated, as decimal text, or `null` where none is. Never
+   * a last executed quantity, which `lastqty` answers.
+   */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, `UnitOfMeasure(996)`; empty
+   * where none is stated.
+   */
+  get unit(): string
   /**
    * The side: the one stated, else the lane a single-sided quote states -
    * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
@@ -1949,8 +1983,26 @@ export declare class FixMsg {
    * FIX's own `LastPx(31)`.
    */
   get lastpx(): string | null
+  /**
+   * What the message states that its reading could not take as it
+   * stands, in arrival order: a value that would not type, a counter
+   * disagreeing with its group, what the last settle dropped.
+   */
+  get anomalies(): Array<FixAnomalyView>
   /** The quantity it last traded, `LastQty(32)`, or `null`. */
   get lastqty(): string | null
+  /** FIX's own `LastSpotRate(194)`, the spot rate of the last price, as decimal text, or `null`. */
+  get lastspotrate(): string | null
+  /** FIX's own `LastForwardPoints(195)`, the forward points of the last price, as decimal text, or `null`. */
+  get lastforwardpoints(): string | null
+  /** FIX's own `BidSpotRate(188)`, the bid lane's spot rate, as decimal text, or `null`. */
+  get bidspotrate(): string | null
+  /** FIX's own `BidForwardPoints(189)`, the bid lane's forward points, as decimal text, or `null`. */
+  get bidforwardpoints(): string | null
+  /** FIX's own `OfferSpotRate(190)`, the ask lane's spot rate, as decimal text, or `null`. */
+  get offerspotrate(): string | null
+  /** FIX's own `OfferForwardPoints(191)`, the ask lane's forward points, as decimal text, or `null`. */
+  get offerforwardpoints(): string | null
   /** The price it averaged, `AvgPx(6)`, or `null`. */
   get avgpx(): string | null
   /** How much of its quantity is done, `CumQty(14)`, or `null`. */
@@ -1964,9 +2016,17 @@ export declare class FixMsg {
   get prevpx(): string | null
   /** The quantity that statement settled on, or `null`. */
   get prevqty(): string | null
+  /** The spot part of an FX forward price, as decimal text, or `null`. */
+  get spotrate(): string | null
   /**
-   * How long the message stands, `TimeInForce(59)`, as it states it, or
-   * `null`. What the code `1` names is the dictionary's to say.
+   * The forward points of an FX forward price, as decimal text, or
+   * `null`.
+   */
+  get forwardpoints(): string | null
+  /**
+   * How long the message stands, `TimeInForce(59)`, as the code it
+   * stores - `0` for a day order, a venue's own `GTX` as stated - or
+   * `null`. What the code names is the dictionary's to say.
    */
   get tif(): string | null
   /**
@@ -1976,26 +2036,10 @@ export declare class FixMsg {
    */
   get tradable(): boolean | null
   /**
-   * The ticker the instrument is known by, or `null` where it has none
-   * and the codes beside it are what name it.
+   * The ticker the instrument is known by, `Symbol(55)`, or `null` where
+   * it has none and the security identifiers are what name it.
    */
-  get symbolticker(): string | null
-  /**
-   * The instrument's ISIN, read off `SecurityID(48)` under its source or
-   * the `SecurityAltID` group, or `null` where no check digit closes one.
-   */
-  get isincode(): string | null
-  /** The instrument's CUSIP, read the same way, or `null`. */
-  get cusipcode(): string | null
-  /** The instrument's SEDOL, read the same way, or `null`. */
-  get sedolcode(): string | null
-  /** The instrument's Bloomberg identifier, read the same way, or `null`. */
-  get bloombergcode(): string | null
-  /**
-   * The instrument's FIGI, read off `SecurityID(48)` under source `S` or
-   * the `SecurityAltID` group, or `null` where none validates.
-   */
-  get figicode(): string | null
+  get ticker(): string | null
   /**
    * The instrument's classification, read off `CFICode(461)` and what the
    * message says about the security, or `null` where nothing does.
@@ -2006,6 +2050,14 @@ export declare class FixMsg {
    * `LastMkt(30)`, the first that names an ISO 10383 MIC.
    */
   get miccode(): string | null
+  /**
+   * The bid lane - what the message states a party will pay, in the
+   * currency and unit it states - or `null` where it states no slot of
+   * it. A buy order fills its own lane's size; a quote states both.
+   */
+  get bid(): FixLaneView | null
+  /** The ask lane, the same way. */
+  get ask(): FixLaneView | null
   /**
    * The value the root child an identifier names, or `null`.
    *
@@ -2196,8 +2248,8 @@ export declare class FixRegistry {
    * A registry holding the built-in definitions.
    *
    * Every registry holds the crate's own definitions - the scalar columns
-   * `fixCrateFields` lists, the `identifiers` and `metadata` Map groups
-   * and the `fixmsg` component that is the fixed row - and the standard
+   * `fixCrateFields` lists, the `metadata` Map group and the `fixmsg`
+   * component that is the fixed row - and the standard
    * `SendingTime` (52) and `TransactTime` (60) clock fields, seeded where
    * the dictionary defines no field of its own at those tags. A dictionary
    * loaded from a store, built from fields or left alone holds them alike,
@@ -2267,9 +2319,9 @@ export declare class FixRegistry {
    * its tag block, nine digits with leading zeros: tag 55 lands in
    * `fields/000000000.json`, tag 5001 in `fields/000000050.json`. The
    * crate's own definitions are written like every other - its tag block
-   * from 65000 is `fields/000000650.json`, its `identifiers` and
-   * `metadata` Map groups two documents under `groups/`, and the fixed row
-   * is `components/fixmsg.json` - so a store states the whole row; a
+   * from 65000 is `fields/000000650.json`, its `metadata` Map group one
+   * document under `groups/`, and the fixed row is
+   * `components/fixmsg.json` - so a store states the whole row; a
    * reader takes the definition it holds from construction over the
    * document it finds.
    *
@@ -2409,6 +2461,13 @@ export declare class FixRegistry {
    * name through `codeset`, so nothing parses here.
    */
   codesetNames(): Array<string>
+  /**
+   * Every field that names a message by an identifier, one entry per key
+   * its `FIX:idmap` states, in tag order. A message rebuilds its
+   * `accountids`, `userids` and `altids` from these, and an operation
+   * that follows another carries the `altids` keys whose entry follows.
+   */
+  idmapSources(): Array<FixIdMapSource>
   /**
    * The symbolic name one wire value stands for in the set `name`.
    *
@@ -3892,6 +3951,17 @@ export declare class ProtocolField {
    * the regex crate refuses throws leaving the field unchanged.
    */
   set directions(values: Array<FixDirection>)
+  /**
+   * The identifier-map keys this field's value states, one per key; an
+   * absent property is an empty array.
+   */
+  get idmap(): Array<FixIdSource>
+  /**
+   * Record the keys; an empty array removes the property, and a key that
+   * is not one to 32 upper-case letters or digits, a follow flag off
+   * `altids`, or one key twice throws leaving the field unchanged.
+   */
+  set idmap(values: Array<FixIdSource>)
   /**
    * How this field's value is derived from the message where the message
    * states none: one expression over the message's fields, in its
@@ -6420,6 +6490,25 @@ export interface FileSelector {
 }
 
 /**
+ * One member of a FIX code set, as the plain object JavaScript reads and
+ * writes.
+ *
+ * The record a store writes under `codesets/<name>.json`: the wire value
+ * and the symbolic name every member states, and the spellings, the wording
+ * and the group a specification adds where it has them. A key a member does
+ * not state is absent rather than empty, so a bare code is the two facts it
+ * is.
+ * One thing a message states that its reading could not take as it
+ * stands: the field it was stated under, and why.
+ */
+export interface FixAnomalyView {
+  /** The dictionary's name for the field, else the key as it arrived. */
+  field: string
+  /** Why the reading could not take the value as it stands. */
+  reason: string
+}
+
+/**
  * What the capture stated about the line a message was read from, as
  * plain values.
  *
@@ -6455,18 +6544,20 @@ export interface FixCaptureView {
    * `byTag(65065)`.
    */
   msgsesseventid: string | null
+  /**
+   * The plugin the message came into a bridge through, as the bridge's
+   * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
+   * (OMS_X1_OrderOut as OD9EOEDJ400)`; also `byTag(65066)`.
+   */
+  msgoriginator: string | null
+  /**
+   * The conversation a bridge filed the message under - a
+   * `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
+   * of its log line; also `byTag(65067)`.
+   */
+  conversationid: string | null
 }
 
-/**
- * One member of a FIX code set, as the plain object JavaScript reads and
- * writes.
- *
- * The record a store writes under `codesets/<name>.json`: the wire value
- * and the symbolic name every member states, and the spellings, the wording
- * and the group a specification adds where it has them. A key a member does
- * not state is absent rather than empty, so a bare code is the two facts it
- * is.
- */
 export interface FixCode {
   /** The wire value this code stands for. */
   value: string
@@ -6584,8 +6675,8 @@ export interface FixCommitReport {
  * `recdunix`, `prevunix`, `snapunix` and `exprtime`; the identities
  * `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
  * the `srcuuids` list of the lines it was read from; the `crosscode`, the
- * `seqnum` and the `state` reached; the `identifiers` and `metadata` Map
- * groups; what a bridge's capture states - `msgctxid`, `msgpluginid`,
+ * `seqnum` and the `state` reached; the `metadata` Map group; what a
+ * bridge's capture states - `msgctxid`, `msgpluginid`,
  * `msgsessionid` - and the `msgsesseventid` the session and the context
  * join to with the message type and sequence; the capture's own column,
  * `sourceurl`, which whoever read the line states on the row and no message
@@ -6638,13 +6729,18 @@ export interface FixEntryView {
  * The event a message is: every fact the graph traits answer, as plain
  * values.
  *
- * A UUID is its hyphenated text, a hash and an instant a `bigint` - the
- * instants nanoseconds since the Unix epoch, UTC - a price or a quantity its
- * decimal text, a currency, a side, a state and an instrument code the text
- * each is. What the event does not state is `null` where the core holds
- * nothing, and the core's own nothing where it holds a value that means
- * none: a price or a quantity of `0`, the `XXX` currency, an empty unit or
- * cross code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`.
+ * The sixteen event facts lead, then the nineteen market facts and the
+ * eight operation facts, each under the name its trait gives it. A UUID is
+ * its hyphenated text, a hash and an instant a `bigint` - the instants
+ * nanoseconds since the Unix epoch, UTC - a price, a quantity or an FX part
+ * its decimal text, a currency, a side, a state, a unit and an instrument
+ * code the text each is, a time in force the code it stores, and each
+ * identifier map a plain object in the core's key order. What the event
+ * does not state is `null` where the core holds nothing - a lane among it -
+ * and the core's own nothing where it holds a value that means none: a
+ * price or a quantity of `0`, the `XXX` currency, an empty unit or cross
+ * code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`, an
+ * empty map.
  */
 export interface FixEventView {
   /**
@@ -6671,8 +6767,6 @@ export interface FixEventView {
   currhashcode: bigint
   /** The XXH3-64 of the cross code, `0n` where there is none. */
   crosshashcode: bigint
-  /** The identifiers the message is known by, scheme to value, sorted. */
-  identifiers: Record<string, string>
   /**
    * The sorted unique UUIDs of the elements this one was read from: the
    * text line it was parsed out of, and none for one parsed from bytes.
@@ -6714,12 +6808,30 @@ export interface FixEventView {
   prevuuid: string | null
   /** The instant a snapshot was taken at, where one was. */
   snapunix: bigint | null
-  /** The stable integer category of the market operation, where known. */
-  marketoperationid: number | null
-  /** The price, as decimal text. */
-  price: string
-  /** The quantity, as decimal text. */
-  quantity: string
+  /** The price stated, as decimal text, or `null` where none is. */
+  price: string | null
+  /** The currency, `XXX` where none is stated. */
+  currency: string
+  /** The quantity stated, as decimal text, or `null` where none is. */
+  quantity: string | null
+  /** The unit the quantity is counted in, empty where none is stated. */
+  unit: string
+  /**
+   * The side: the one stated, else the lane a single-sided quote states -
+   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   */
+  side: string
+  /**
+   * The security identifiers the instrument goes by, source to code -
+   * `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI` and any other source
+   * the message states - in the core's key order; empty where it states
+   * none.
+   */
+  securityids: Record<string, string>
+  /** The instrument's CFI classification, where stated. */
+  cficode: string | null
+  /** The market the message names, where stated. */
+  miccode: string | null
   /** The last traded price, as decimal text, or `null`. */
   lastpx: string | null
   /** The last traded quantity, as decimal text, or `null`. */
@@ -6734,51 +6846,49 @@ export interface FixEventView {
   prevpx: string | null
   /** The preceding quantity, as decimal text, or `null`. */
   prevqty: string | null
-  /** The time-in-force spelling, or `null`. */
+  /** The spot part of an FX forward price, as decimal text, or `null`. */
+  spotrate: string | null
+  /**
+   * The forward points of an FX forward price, as decimal text, or
+   * `null`.
+   */
+  forwardpoints: string | null
+  /** The ticker the instrument is known by, or `null`. */
+  ticker: string | null
+  /**
+   * What a bridge stated under its own namespaces, key to value, sorted;
+   * empty where it stated none.
+   */
+  metadata: Record<string, string>
+  /** The stable integer category of the market operation, where known. */
+  marketoperationid: number | null
+  /**
+   * How long the message stands, `TimeInForce(59)`, as the code it
+   * stores - `0` for a day order - or `null`.
+   */
   tif: string | null
   /** Whether the instrument was tradable, or `null` where unstated. */
   tradable: boolean | null
-  /** The instrument ticker, or `null`. */
-  symbolticker: string | null
-  /** The currency, `XXX` where none is stated. */
-  currency: string
-  /** The unit the quantity is counted in, empty where none is stated. */
-  unit: string
   /**
-   * The side: the one stated, else the lane a single-sided quote states -
-   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
+   * The accounts the message names, key to value, upper-cased and in key
+   * order: `ACCOUNT` and a `CUSTOMERACCOUNT` party; empty where none.
    */
-  side: string
-  /** The instrument's ISIN, where stated. */
-  isincode: string | null
-  /** The instrument's CUSIP, where stated. */
-  cusipcode: string | null
-  /** The instrument's SEDOL, where stated. */
-  sedolcode: string | null
-  /** The instrument's Bloomberg code, where stated. */
-  bloombergcode: string | null
-  /** The instrument's FIGI, where stated. */
-  figicode: string | null
-  /** The instrument's CFI classification, where stated. */
-  cficode: string | null
-  /** The market the message names, where stated. */
-  miccode: string | null
-  /** The bid lane's price, where filled. */
-  bidpx: string | null
-  /** The bid lane's quantity, where filled. */
-  bidqty: string | null
-  /** The bid lane's currency, where filled. */
-  bidcurrency: string | null
-  /** The bid lane's unit, where filled. */
-  bidunit: string | null
-  /** The ask lane's price, where filled. */
-  askpx: string | null
-  /** The ask lane's quantity, where filled. */
-  askqty: string | null
-  /** The ask lane's currency, where filled. */
-  askcurrency: string | null
-  /** The ask lane's unit, where filled. */
-  askunit: string | null
+  accountids: Record<string, string>
+  /**
+   * The users the message names, the same way: `SENDERSUBID`,
+   * `ONBEHALFOFSUBID`, an `ENTERINGTRADER` or `EXECUTINGTRADER` party.
+   */
+  userids: Record<string, string>
+  /**
+   * The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
+   * `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
+   * `TRADEID` and the rest the message states.
+   */
+  altids: Record<string, string>
+  /** The bid lane, or `null` where the message states no slot of it. */
+  bid: FixLaneView | null
+  /** The ask lane, or `null` where the message states no slot of it. */
+  ask: FixLaneView | null
 }
 
 /**
@@ -6826,6 +6936,67 @@ export interface FixHeaderView {
    * and the last one `intoBytes` emits.
    */
   checksum: string | null
+}
+
+/**
+ * One borrowed code set, as the object JavaScript reads.
+ *
+ * The members are owned on the way across - a JavaScript value outlives the
+ * dictionary it was read from - and the stored escapes are decoded there,
+ * which is what `FixCode::from` does.
+ * One field that names a message by an identifier, and the key it states.
+ */
+export interface FixIdMapSource {
+  /** The field's tag. */
+  tag: number
+  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  map: string
+  /** The upper-case key it lands under. */
+  key: string
+  /** Whether an operation that follows another carries it. */
+  follow: boolean
+  /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
+  role?: string
+}
+
+/** One identifier-map key a FIX field's value states. */
+export interface FixIdSource {
+  /** The map it lands in: `accountids`, `userids` or `altids`. */
+  map: string
+  /** The upper-case key it lands under. */
+  key: string
+  /** Whether an operation that follows another carries it; `altids` only. */
+  follow?: boolean
+  /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
+  role?: string
+}
+
+/**
+ * One lane of a quote: what a party is willing to pay or be paid, each
+ * slot as the lane states it and `null` where it states nothing.
+ *
+ * A price, a quantity and the two FX parts of a forward price are decimal
+ * text, the currency and the unit the text each is. The bid and the ask of
+ * a `FixEventView` or a `FixMsg` are each one of these, or `null` where the
+ * message states no slot of that lane; a buy order fills its own lane's
+ * size, a quote states both.
+ */
+export interface FixLaneView {
+  /** The lane's price, as decimal text, or `null`. */
+  price: string | null
+  /** The spot part of an FX forward price, as decimal text, or `null`. */
+  spotrate: string | null
+  /**
+   * The forward points of an FX forward price, as decimal text, or
+   * `null`.
+   */
+  forwardpoints: string | null
+  /** The currency the lane is priced in, or `null`. */
+  currency: string | null
+  /** The lane's quantity, as decimal text, or `null`. */
+  quantity: string | null
+  /** The unit the lane's quantity is counted in, or `null`. */
+  unit: string | null
 }
 
 /**

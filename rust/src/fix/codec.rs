@@ -78,7 +78,12 @@ use super::{FixMessages, FixMsg, FixRegistry};
 
 /// One bridge row read into the pairs a build folds in, beside the message
 /// type it declared.
-type BridgeRow<'registry> = (Option<SmolStr>, Declared<'registry>, Vec<FixPair>);
+type BridgeRow<'registry> = (
+    Option<SmolStr>,
+    Declared<'registry>,
+    Vec<FixPair>,
+    Vec<super::FixAnomaly>,
+);
 
 /// One pair a reader outside this module hands the build: the key as it
 /// arrived, the value, and the dictionary's name for the field it fills
@@ -424,7 +429,7 @@ impl CaptureRole {
     /// A capture named for the capture's own column - `sourceurl` - is
     /// silent: what a reader says about a line is not something the message
     /// it holds says, so it fills no field here and is stated on the row by
-    /// whoever read it. A capture named for one of the seventeen event columns
+    /// whoever read it. A capture named for one of the sixteen event columns
     /// is silent too: it is the line's own fact - the place, the state, the
     /// instant the line reads off it - and the line states its identity as
     /// the message's source, which is all a line says about a message; the
@@ -1386,6 +1391,8 @@ impl FixCodec {
             direction_pin: None,
             source: source_of(line),
             recdunix: line.mtime()?,
+            originator: None,
+            conversation: None,
         };
         let page = line.body_bytes();
         if page.is_empty() {
@@ -1543,9 +1550,25 @@ impl FixCodec {
         let direction = extras
             .direction
             .or_else(|| self.msgdirection.read_prefix(&row[..opens.min(row.len())]));
+        // What the same prose says about where the message came from, read
+        // where it was located: the plugin a bridge's own sentence names it
+        // arriving through - on a `Receiving :` line, the one that logged it
+        // - and the conversation it files it under.
+        let prose = &row[..opens.min(row.len())];
+        let msgpluginid = extras
+            .fills
+            .iter()
+            .find(|fill| fill.tag == super::MSGPLUGINID_TAG_NAME.0)
+            .and_then(|fill| fill.value.as_str());
         let extras = RowExtras {
             direction: direction.or(extras.direction_pin),
             direction_pin: None,
+            originator: extras
+                .originator
+                .or_else(|| super::ulbridge::originator(prose, msgpluginid)),
+            conversation: extras
+                .conversation
+                .or_else(|| super::ulbridge::conversation(prose)),
             ..extras
         };
         let framed = framed_entries(entries.as_slice(), page.start() as usize + opens);
@@ -1728,8 +1751,9 @@ impl FixCodec {
         // `filter_map` that read it would drop the width the collect could
         // have reserved from. A wire frame marks nothing, so this is the
         // shape every captured line takes.
+        let mut conflicts = Vec::new();
         let pairs: Vec<FixPair> = if arrived.iter().any(|held| held.marked) {
-            self.judged_keys(&arrived)
+            self.judged_keys(&arrived, &mut conflicts)
                 .into_iter()
                 .zip(&arrived)
                 .filter_map(|(judged, held)| {
@@ -1743,7 +1767,14 @@ impl FixCodec {
                 .collect()
         };
         let (stated, message) = self.declared_of(&pairs);
-        self.build(&pairs, stated.as_deref(), message, &nested, extras)
+        self.build(
+            &pairs,
+            stated.as_deref(),
+            message,
+            &nested,
+            extras,
+            conflicts,
+        )
     }
 
     /// Parses one bridge row of `NAME=VALUE` pairs.
@@ -1794,8 +1825,8 @@ impl FixCodec {
     fn bridge_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
         let arrived = arrivals(entries);
         // The row's type was read while its groups were split under it.
-        let (stated, message, pairs) = self.bridge_pairs(&arrived);
-        self.build(&pairs, stated.as_deref(), message, &[], extras)
+        let (stated, message, pairs, conflicts) = self.bridge_pairs(&arrived);
+        self.build(&pairs, stated.as_deref(), message, &[], extras, conflicts)
     }
 
     /// One bridge row as the pairs the builder takes: `#` twins judged, and
@@ -1818,8 +1849,9 @@ impl FixCodec {
         // the bridge marked names the message exactly as a bare one does,
         // and one kept verbatim beside a bare type does not. A row with no
         // `#` at all judges nothing.
+        let mut conflicts = Vec::new();
         let kept: Vec<(Judged, &Arrived<'_>)> = self
-            .judged_keys(arrived)
+            .judged_keys(arrived, &mut conflicts)
             .into_iter()
             .zip(arrived)
             .filter_map(|(judged, held)| judged.map(|key| (key, held)))
@@ -1864,7 +1896,7 @@ impl FixCodec {
                 _ => resolved.push(key.pair(held.value.as_ref().clone())),
             }
         }
-        (msgtype, message, resolved)
+        (msgtype, message, resolved, conflicts)
     }
 
     /// Every arriving key with its `#` judged: the key to build under, or
@@ -1873,7 +1905,14 @@ impl FixCodec {
     /// Each `#` key is judged against the row's bare spellings, gathered
     /// once: a bridge row is mostly `#` keys, so the probed list stays short.
     /// A row with no `#` at all judges nothing.
-    fn judged_keys(&self, arrived: &[Arrived<'_>]) -> Vec<Option<Judged>> {
+    ///
+    /// A marked twin stating something else than its bare key is dropped all
+    /// the same - the bare key always stands - and kept in `conflicts`.
+    fn judged_keys(
+        &self,
+        arrived: &[Arrived<'_>],
+        conflicts: &mut Vec<super::FixAnomaly>,
+    ) -> Vec<Option<Judged>> {
         // A row that marked nothing judges nothing. The twin probe is one pass
         // over the row's bare spellings per marked key, so a wide frame that
         // marked none would otherwise pay a quadratic walk to learn that.
@@ -1886,7 +1925,7 @@ impl FixCodec {
         let bare = self.bare_spellings(arrived);
         arrived
             .iter()
-            .map(|held| self.hashed_key(held, arrived, &bare))
+            .map(|held| self.hashed_key(held, arrived, &bare, conflicts))
             .collect()
     }
 
@@ -1911,6 +1950,7 @@ impl FixCodec {
         held: &Arrived<'_>,
         arrived: &[Arrived<'_>],
         bare: &[Twin<'_>],
+        conflicts: &mut Vec<super::FixAnomaly>,
     ) -> Option<Judged> {
         if !held.marked {
             return Some(Judged::Ranged(held.key.clone()));
@@ -1931,7 +1971,37 @@ impl FixCodec {
             judge_hashed(stripped, bare)
         };
         match judged {
-            Hashed::Duplicate => None,
+            Hashed::Duplicate => {
+                let marked = line::trim_ascii(held.value());
+                let digest = stem_digest(stem_of(stripped));
+                // A marked counter counts the marked occurrences, which are
+                // numbered past the bare ones, so it says nothing against the
+                // bare count.
+                let counts_marked = arrived.iter().any(|other| {
+                    other.marked
+                        && group_index(line::trim_ascii(other.key()))
+                            .is_some_and(|(group, _)| folds_twin(group, stripped))
+                });
+                if counts_marked {
+                    return None;
+                }
+                if let Some((_, key, value)) = bare.iter().find(|(held_digest, key, _)| {
+                    *held_digest == digest && folds_twin(key, stripped)
+                }) {
+                    let value = line::trim_ascii(value);
+                    if value != marked {
+                        conflicts.push(super::FixAnomaly::new(
+                            super::build::folded_key(key),
+                            format!(
+                                "a #-marked twin states {:?} where the bare key states {:?}",
+                                String::from_utf8_lossy(marked),
+                                String::from_utf8_lossy(value)
+                            ),
+                        ));
+                    }
+                }
+                None
+            }
             Hashed::Bare => Some(Judged::Ranged(held.key.clone())),
             Hashed::Reindexed(offset) => {
                 let (stem, index) = group_index(stripped)?;
@@ -2129,7 +2199,7 @@ impl FixCodec {
                 .map(|(key, value)| (key.as_slice(), value.as_slice())),
         )?;
         let (stated, message) = self.declared_of(&pairs);
-        self.build(&pairs, stated.as_deref(), message, &[], extras)
+        self.build(&pairs, stated.as_deref(), message, &[], extras, Vec::new())
     }
 
     /// Chains a finite capture of messages: the lifecycle.
@@ -2231,7 +2301,14 @@ impl FixCodec {
             return Err(second_frame("fix", at));
         }
         let (stated, message) = self.declared_of(&pairs);
-        self.build(&pairs, stated.as_deref(), message, &[], RowExtras::NONE)
+        self.build(
+            &pairs,
+            stated.as_deref(),
+            message,
+            &[],
+            RowExtras::NONE,
+            Vec::new(),
+        )
     }
 
     /// The build a reader outside this module funnels into.
@@ -2254,7 +2331,7 @@ impl FixCodec {
     ) -> Result<FixMsg> {
         let pairs = spelled_pairs(pairs.iter().copied())?;
         let (stated, message) = self.declared_of(&pairs);
-        self.build(&pairs, stated.as_deref(), message, &[], extras)
+        self.build(&pairs, stated.as_deref(), message, &[], extras, Vec::new())
     }
 
     /// The one build every reader funnels into.
@@ -2271,6 +2348,7 @@ impl FixCodec {
         message: Declared<'_>,
         nested: &[TextBytes],
         extras: RowExtras<'_>,
+        conflicts: Vec<super::FixAnomaly>,
     ) -> Result<FixMsg> {
         // The version is the row's own, else what the line implies. A row
         // states one where the transport knew it and the frame did not, which
@@ -2285,6 +2363,7 @@ impl FixCodec {
             version,
             pairs.len(),
         );
+        builder.note(conflicts);
         // A stated absence produces no field and no entry: the key is read
         // as never having been sent. Filtering happens before typing, so
         // nothing tries to read `<null>` as a price and file the failure.
@@ -2313,6 +2392,26 @@ impl FixCodec {
                 value: &value,
             });
         }
+        // Where the line's prose says the message came from, as fills: a
+        // `CONVERSATIONID` the message stated stands.
+        for (tag, text) in [
+            (super::MSGORIGINATOR_TAG_NAME.0, extras.originator),
+            (super::CONVERSATIONID_TAG_NAME.0, extras.conversation),
+        ] {
+            let Some(text) = text else {
+                continue;
+            };
+            let field = self
+                .registry
+                .get_field_by_tag(tag)
+                .ok_or_else(|| Error::absent("FIX crate field", tag))?;
+            let value = Scalar::from(text);
+            builder.fill(&Fill {
+                field,
+                tag,
+                value: &value,
+            });
+        }
         // Tag 385 as a built child, where the line stated none of its own:
         // a fill, so a `385=` on the wire or a stated column stands.
         if let Some(code) = extras.direction {
@@ -2338,6 +2437,20 @@ impl FixCodec {
         // a child the dictionary does not name has no column, so one read
         // any later would be invisible to the batch door.
         built.compose(&self.registry)?;
+        // A conversation the message states outranks the one its line names,
+        // and the two disagreeing is kept beside the message.
+        if let Some(named) = extras.conversation {
+            let held = built
+                .index_of_tag(super::CONVERSATIONID_TAG_NAME.0, &self.registry)
+                .and_then(|at| built.value.get(at))
+                .and_then(|value| value.as_str().map(str::to_owned));
+            if let Some(held) = held.filter(|held| held != named) {
+                built.anomalies.push(super::FixAnomaly::new(
+                    super::CONVERSATIONID_TAG_NAME.1,
+                    format!("states {held} where its line names {named}"),
+                ));
+            }
+        }
         let stated = built
             .index_of_tag(52, &self.registry)
             .and_then(|at| built.value.get(at))
@@ -2428,7 +2541,9 @@ impl FixCodec {
         // and not against the frame's.
         let entries = self.entries(row).0.unwrap_or_default();
         let arrived = arrivals(entries.as_slice());
-        let (_, declared, held) = self.bridge_pairs(&arrived);
+        // A twin conflict inside a data field is that field's reading, and
+        // the field's own value stands whole on the arrival record.
+        let (_, declared, held, _) = self.bridge_pairs(&arrived);
         self.nest(builder, declared, &held, pinned);
     }
 

@@ -99,6 +99,12 @@ parquet = { version = "59.2.0", default-features = false, features = [
 ], optional = true }
 serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
 sha2 = { version = "0.11", optional = true }
+# Inline small collections: the two or three identifiers a market names an
+# instrument by, and the handful of ids a message states, held without a heap
+# allocation until they outgrow the inline slots. `union` lays the inline
+# slots and the heap pointer over one another, which is what keeps `IdMap`
+# and `SecurityIds` at 56 bytes; it needs Rust 1.49, well under the MSRV.
+smallvec = { version = "1", features = ["union"] }
 smol_str = { version = "=0.3.2", features = ["serde"] }
 # Raw snappy blocks for Avro containers; optional because the parquet crate is
 # what already pulls it, so it rides that feature rather than adding a crate.

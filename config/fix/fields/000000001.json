@@ -206,6 +206,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "userids",
+          "key": "ONBEHALFOFSUBID"
+        }
+      ],
       "FIX:tag": "116",
       "description": "Assigned value used to identify specific message originator (i.e. trader) if the message was delivered by a third party",
       "display": "OnBehalfOfSubID"
@@ -218,6 +224,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "QUOTEID"
+        }
+      ],
       "FIX:tag": "117",
       "description": "Unique identifier for quote",
       "display": "QuoteID"
@@ -411,6 +423,12 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "QUOTEREQID"
+        }
+      ],
       "FIX:tag": "131",
       "description": "Unique identifier for a QuoteRequest(35=R).",
       "display": "QuoteReqID"
@@ -1309,6 +1327,13 @@
     },
     "nullable": true,
     "metadata": {
+      "FIX:idmap": [
+        {
+          "map": "altids",
+          "key": "SECONDARYORDERID",
+          "follow": true
+        }
+      ],
       "FIX:replacements": [
         {
           "plan": "select secondaryorderid as massactionreportid where :msgtype = 'r'"

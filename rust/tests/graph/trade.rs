@@ -1,7 +1,8 @@
 //! `rust/src/graph/trade.rs`: a canonical composite trade and its executions.
 
+use smol_str::SmolStr;
 use yggdryl::graph::{
-    Element, Event, Execution, MarketElement, MarketEventData, MarketOperation, Trade,
+    BookInput, Element, Event, Market, MarketOperation, OperationEventData, OperationKind, Trade,
 };
 use yggdryl::{Decimal18, Side};
 
@@ -10,10 +11,10 @@ fn event(
     crosscode: &str,
     symbol: Option<&str>,
     recdunix: Option<i64>,
-) -> MarketEventData {
-    let mut event = MarketEventData::at(unix);
+) -> OperationEventData {
+    let mut event = OperationEventData::at(unix);
     event.set_crosscode(crosscode.to_owned());
-    event.set_symbolticker(symbol.map(str::to_owned));
+    event.set_ticker(symbol.map(SmolStr::new));
     event.set_recdunix(recdunix);
     event.finalize();
     event
@@ -30,15 +31,15 @@ fn execution(
     creaunix: Option<i64>,
     recdunix: Option<i64>,
     execunix: Option<i64>,
-) -> Execution {
+) -> MarketOperation {
     let mut event = event(unix, crosscode, symbol, recdunix);
     event.set_side(Side::read(side).unwrap());
-    event.set_price(Decimal18::from_int(price));
+    event.set_price(Some(Decimal18::from_int(price)));
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
     event.set_execunix(execunix);
     event.finalize();
-    Execution::from(event)
+    MarketOperation::execution(event)
 }
 
 #[test]
@@ -51,6 +52,15 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
     let error = Trade::from_parts(root.clone(), vec![unknown]).unwrap_err();
     assert!(error.to_string().contains("executions[0].side"), "{error}");
 
+    let order = MarketOperation::order(
+        execution(10, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None).into_data(),
+    );
+    let error = Trade::from_parts(root.clone(), vec![order]).unwrap_err();
+    assert!(
+        error.to_string().contains("executions[0].operationkind"),
+        "{error}"
+    );
+
     let late = execution(11, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None);
     let error = Trade::from_parts(root.clone(), vec![late]).unwrap_err();
     assert!(
@@ -61,7 +71,7 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
     let other_symbol = execution(10, "E-1", Some("MSFT"), "Buy", 100, 0, None, None, None);
     let error = Trade::from_parts(root.clone(), vec![other_symbol]).unwrap_err();
     assert!(
-        error.to_string().contains("executions[0].symbolticker"),
+        error.to_string().contains("executions[0].ticker"),
         "{error}"
     );
 
@@ -133,6 +143,12 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
             .collect::<Vec<_>>(),
         [("BUY", "E-A"), ("BUY", "E-B"), ("SELL", "E-S")]
     );
+    assert!(
+        first
+            .executions()
+            .iter()
+            .all(|held| held.kind() == OperationKind::Execution)
+    );
     assert_eq!(first.get_seqnum(), 7);
     assert_eq!(first.get_creaunix(), Some(12));
     assert_eq!(first.get_recdunix(), Some(16));
@@ -197,7 +213,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .find(|held| held.get_crosscode() == "E-1")
             .unwrap()
             .get_price(),
-        Decimal18::from_int(101),
+        Some(Decimal18::from_int(101)),
         "the later-recorded child leads its merge"
     );
     assert_eq!(merged.get_seqnum(), 4);
@@ -235,10 +251,10 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .get_price()
     };
     let alone = right.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&alone), Decimal18::from_int(101));
+    assert_eq!(e1_price(&alone), Some(Decimal18::from_int(101)));
     assert_eq!(alone.get_recdunix(), Some(15));
     let folded = merged.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&folded), Decimal18::from_int(105));
+    assert_eq!(e1_price(&folded), Some(Decimal18::from_int(105)));
     assert_eq!(folded.get_recdunix(), Some(10));
 }
 
@@ -351,10 +367,10 @@ fn timestamp_mutation_rebases_children_and_remains_arrow_valid() {
     assert_eq!(trade.executions()[0].get_currunix(), 51);
     assert_eq!(trade.executions()[0].get_execunix(), Some(47));
 
-    let mut operation = MarketOperation::from(trade);
-    operation.set_currunix(52);
-    let MarketOperation::Trade(trade) = &operation else {
-        panic!("the operation remains a trade")
+    trade.set_currunix(52);
+    let input = BookInput::from(trade);
+    let BookInput::Trade(trade) = &input else {
+        panic!("the input remains a trade")
     };
     assert!(
         trade
@@ -363,12 +379,14 @@ fn timestamp_mutation_rebases_children_and_remains_arrow_valid() {
             .all(|execution| execution.get_currunix() == 52)
     );
     assert_eq!(trade.executions()[0].get_execunix(), Some(47));
+    assert_eq!(input.currunix(), 52);
+    assert_eq!(input.book(), None, "a trade carries no book control");
 
-    let encoded = MarketOperation::arrow_reader([operation.clone()], Some(1), None).unwrap();
-    let decoded = MarketOperation::from_arrow_reader(encoded)
+    let encoded = BookInput::arrow_reader([input.clone()], Some(1), None).unwrap();
+    let decoded = BookInput::from_arrow_reader(encoded)
         .unwrap()
         .next()
         .unwrap()
         .unwrap();
-    assert_eq!(decoded, operation);
+    assert_eq!(decoded, input);
 }

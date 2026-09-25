@@ -15,13 +15,13 @@
 //! and sequence. Each belongs in a column: a scalar registers as a field,
 //! and the identifiers Map as a group of entries.
 //!
-//! The standard owns prices, quantities and classification. Six normalized
+//! The standard owns prices, quantities and classification. Four normalized
 //! instrument identifiers have crate columns because their FIX sources depend
-//! on an identifier source or exchange context. Parsing derives ISIN,
-//! Bloomberg, FIGI and MIC; CUSIP and SEDOL are direct semantic-row or setter
-//! facts, while FIX source `1` and `2` values stay in `SecurityID` or
-//! `secaltids`. The columns read the existing market event holder; they add no
-//! second value. `CFICode(461)` already names its classification, so it keeps
+//! on an identifier source or exchange context: ISIN, Bloomberg and FIGI are
+//! views of the message's security identifiers, and MIC is the market. A
+//! CUSIP or a SEDOL is one more security identifier under its own key, never
+//! a column of its own. The columns read the existing market holder; they add
+//! no second value. `CFICode(461)` already names its classification, so it keeps
 //! its standard tag. `MsgCat` projects the message component's symbolic
 //! `FIX:msgcat` metadata through the registry code set into the generic
 //! market operation's stable integer ID. State and expiry are event facts derived from the standard's
@@ -32,7 +32,7 @@
 //! stated in, [`EventColumn`]: each crate field here takes that column's
 //! datatype, display and wording, so a text line's batch, a FIX row and a
 //! chained message carry one column under one name, one datatype and one
-//! sentence, and join on it. Nine of the seventeen say more than the column
+//! sentence, and join on it. Nine of the sixteen say more than the column
 //! can - they name the FIX fields a value is read off, which is this
 //! module's to know and no other medium's - and those nine spell their own
 //! wording beside the tag.
@@ -85,7 +85,7 @@ use std::sync::{Arc, LazyLock};
 
 use smol_str::SmolStr;
 
-use crate::graph::{EventColumn, MarketColumn};
+use crate::graph::{EventColumn, OperationColumn};
 use crate::{DataType, Field, Result};
 
 /// The first tag this crate claims.
@@ -118,10 +118,6 @@ pub const CURRHASHCODE_TAG_NAME: (i32, &str) = (65_017, "currhashcode");
 /// The tag and name carrying the cross hash code: the XXH3-64 of the cross
 /// code, zero where the message names none.
 pub const CROSSHASHCODE_TAG_NAME: (i32, &str) = (65_018, "crosshashcode");
-
-/// The tag and name of the Map group carrying the names the message goes by,
-/// each under the field that stated it.
-pub const IDENTIFIERS_TAG_NAME: (i32, &str) = (65_020, "identifiers");
 
 /// The tag and name carrying when the message this one follows happened.
 pub const PREVUNIX_TAG_NAME: (i32, &str) = (65_021, "prevunix");
@@ -260,10 +256,6 @@ pub(super) fn msgcat_codeset() -> Option<Arc<str>> {
 }
 /// The tag and name carrying the normalized ISIN the message identifies.
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");
-/// The tag and name carrying the normalized CUSIP the message identifies.
-pub const CUSIPCODE_TAG_NAME: (i32, &str) = (65_057, "cusipcode");
-/// The tag and name carrying the normalized SEDOL the message identifies.
-pub const SEDOLCODE_TAG_NAME: (i32, &str) = (65_058, "sedolcode");
 /// The tag and name carrying the normalized Bloomberg identifier the message identifies.
 pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");
 /// The tag and name carrying the normalized market MIC the message identifies.
@@ -285,7 +277,62 @@ pub const RECDUNIX_TAG_NAME: (i32, &str) = (65_063, "recdunix");
 /// `MsgSeqNum(34)` joined by `:`, where all four are stated.
 pub const MSGSESSEVENTID_TAG_NAME: (i32, &str) = (65_065, "msgsesseventid");
 
-/// The graph event column one crate tag is, for the seventeen that are one.
+/// The tag and name carrying the plugin a message came into a bridge
+/// through, as the bridge's own log line names it: provenance the capture
+/// holds, never content and never a digest input.
+pub const MSGORIGINATOR_TAG_NAME: (i32, &str) = (65_066, "msgoriginator");
+
+/// The tag and name carrying the conversation a bridge filed the message
+/// under, as it stated it: provenance the capture holds, never content.
+pub const CONVERSATIONID_TAG_NAME: (i32, &str) = (65_067, "conversationid");
+
+/// The tag and name carrying the account an OMS dealer books the order to:
+/// content, and the `OMSDEALERACCOUNT` account.
+pub const OMSDEALERACCOUNT_TAG_NAME: (i32, &str) = (65_068, "omsdealeraccount");
+
+/// The tag and name carrying the OMS user who entered the order: content,
+/// and the `OMSUSERID` user.
+pub const OMSUSERID_TAG_NAME: (i32, &str) = (65_069, "omsuserid");
+
+/// The tag and name carrying the parent order's identifier: content, and
+/// the `PARENTORDERID` alternate identifier a following operation carries.
+pub const PARENTORDERID_TAG_NAME: (i32, &str) = (65_070, "parentorderid");
+
+/// The tag and name carrying the parent order's client identifier:
+/// content, and the `PARENTCLORDID` alternate identifier a following
+/// operation carries.
+pub const PARENTCLORDID_TAG_NAME: (i32, &str) = (65_071, "parentclordid");
+
+/// The tag and name carrying the OMS dealer's parent order identifier:
+/// content, and the `OMSDEALERPARENTORDERID` alternate identifier a
+/// following operation carries.
+pub const OMSDEALERPARENTORDERID_TAG_NAME: (i32, &str) = (65_072, "omsdealerparentorderid");
+
+/// The tag and name carrying the exchange's client order identifier:
+/// content, and the `EXCHANGECLIENTORDERID` alternate identifier a
+/// following operation carries.
+pub const EXCHANGECLIENTORDERID_TAG_NAME: (i32, &str) = (65_073, "exchangeclientorderid");
+
+/// The tag and name carrying the key a bridge threads one order through
+/// every system with: content, and the `TRANSVERSALKEY` alternate
+/// identifier a following operation carries.
+pub const TRANSVERSALKEY_TAG_NAME: (i32, &str) = (65_074, "transversalkey");
+
+/// The tag and name carrying a trading screen's own client order
+/// identifier: content, and the `ULTRADERCLORDID` alternate identifier.
+pub const ULTRADERCLORDID_TAG_NAME: (i32, &str) = (65_075, "ultraderclordid");
+
+/// The tag and name carrying the instrument an OMS bridge names, as it
+/// stated it: content the row keeps, folded into `secaltids` under its own
+/// source.
+pub const OMSINSTRUMENTID_TAG_NAME: (i32, &str) = (65_076, "omsinstrumentid");
+
+/// The tag and name carrying the instrument a ULLINK bridge names under
+/// `ULLINK.INSTRUMENTID`, as it stated it: content the row keeps, folded
+/// into `secaltids` under its own source.
+pub const ULLINKINSTRUMENTID_TAG_NAME: (i32, &str) = (65_077, "ullinkinstrumentid");
+
+/// The graph event column one crate tag is, for the sixteen that are one.
 ///
 /// The event facts a row states are read and written through the column,
 /// [`EventColumn::fact`] and [`EventColumn::record`], so a FIX row and a
@@ -302,7 +349,7 @@ pub fn event_column_of(tag: i32) -> Option<EventColumn> {
 /// The graph market column one crate tag is, where the FIX field and the
 /// generic market schema are two views of the same fact.
 #[must_use]
-pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
+pub fn market_column_of(tag: i32) -> Option<OperationColumn> {
     CRATED.iter().find_map(|held| match held.holds {
         Holds::Market { column, .. } if held.tag_name.0 == tag => Some(column),
         _ => None,
@@ -313,6 +360,37 @@ pub fn market_column_of(tag: i32) -> Option<MarketColumn> {
 #[must_use]
 pub const fn is_crate_tag(tag: i32) -> bool {
     tag >= CRATE_TAG_MIN && tag < CRATE_TAG_MAX
+}
+
+/// The crate's own fields that stay content: a bridge's own statements the
+/// dictionary names so a rule can read them, carried in the row as they
+/// arrived - neither a typed fact nor a column of the fixed row, so a fixed
+/// row keeps each among its residual entries.
+const UNPROJECTED: [i32; 10] = [
+    OMSDEALERACCOUNT_TAG_NAME.0,
+    OMSUSERID_TAG_NAME.0,
+    PARENTORDERID_TAG_NAME.0,
+    PARENTCLORDID_TAG_NAME.0,
+    OMSDEALERPARENTORDERID_TAG_NAME.0,
+    EXCHANGECLIENTORDERID_TAG_NAME.0,
+    TRANSVERSALKEY_TAG_NAME.0,
+    ULTRADERCLORDID_TAG_NAME.0,
+    OMSINSTRUMENTID_TAG_NAME.0,
+    ULLINKINSTRUMENTID_TAG_NAME.0,
+];
+
+/// Whether a crate tag is one [`UNPROJECTED`] names.
+pub(super) fn is_unprojected_tag(tag: i32) -> bool {
+    UNPROJECTED.contains(&tag)
+}
+
+/// The crate fields naming an instrument, each as its tag, its name and the
+/// source its value folds into `secaltids` under.
+pub(super) fn instrument_sources() -> impl Iterator<Item = (i32, &'static str, &'static str)> {
+    CRATED.iter().filter_map(|held| {
+        let (tag, name) = held.tag_name;
+        Some((tag, name, held.instrument?))
+    })
 }
 
 /// FIX's own tag and name for which way a message moved.
@@ -385,13 +463,13 @@ const ALWAYS_STATED: [i32; 6] = [
 
 /// Where one definition's datatype, display and wording come from.
 enum Holds {
-    /// One of the seventeen [`EventColumn`]s, which owns all three: a text
+    /// One of the sixteen [`EventColumn`]s, which owns all three: a text
     /// line's batch, a FIX row and a chained message then carry one column
     /// under one name, one datatype and one sentence, and join on it.
     Event(EventColumn),
     /// One of the generic market facts shared with graph operations.
     Market {
-        column: MarketColumn,
+        column: OperationColumn,
         display: &'static str,
     },
     /// A fact no graph event states - what a bridge's row header said and
@@ -425,6 +503,12 @@ struct Crated {
     fix_wording: Option<&'static str>,
     /// The spellings a registry also answers this field by.
     names: &'static [&'static str],
+    /// The source its value names an instrument under, where it names one:
+    /// the value folds into `secaltids` under that source.
+    instrument: Option<&'static str>,
+    /// The identifier map its value lands in, under which key, and whether
+    /// a following operation carries it.
+    idmap: Option<(super::FixIdMapKind, &'static str, bool)>,
     /// The registry vocabulary it reads by, where it reads by one.
     codeset: Option<&'static str>,
 }
@@ -437,6 +521,8 @@ impl Crated {
             holds: Holds::Event(column),
             fix_wording: None,
             names: &[],
+            instrument: None,
+            idmap: None,
             codeset: None,
         }
     }
@@ -444,7 +530,7 @@ impl Crated {
     /// One graph market column under the crate's own tag.
     const fn market(
         tag_name: (i32, &'static str),
-        column: MarketColumn,
+        column: OperationColumn,
         display: &'static str,
     ) -> Self {
         Self {
@@ -452,6 +538,8 @@ impl Crated {
             holds: Holds::Market { column, display },
             fix_wording: None,
             names: &[],
+            instrument: None,
+            idmap: None,
             codeset: None,
         }
     }
@@ -473,6 +561,8 @@ impl Crated {
             },
             fix_wording: None,
             names: &[],
+            instrument: None,
+            idmap: None,
             codeset: None,
         }
     }
@@ -487,6 +577,21 @@ impl Crated {
     /// The same definition, which a registry also answers by these spellings.
     const fn also_called(mut self, names: &'static [&'static str]) -> Self {
         self.names = names;
+        self
+    }
+
+    /// The same definition, naming an instrument under `source`: the one
+    /// `FIX:replacements` rule it carries folds its value into `secaltids`
+    /// under that source, where the source can hold it.
+    const fn naming_instrument(mut self, source: &'static str) -> Self {
+        self.instrument = Some(source);
+        self
+    }
+
+    /// The same definition, stating the `key` of `map` a message goes by,
+    /// carried by a following operation where `follow` says so.
+    const fn naming(mut self, map: super::FixIdMapKind, key: &'static str, follow: bool) -> Self {
+        self.idmap = Some((map, key, follow));
         self
     }
 
@@ -506,7 +611,7 @@ impl Crated {
         let (dtype, display, description) = match self.holds {
             Holds::Event(column) => (column.datatype()?, column.display(), column.description()),
             Holds::Market { column, display } => (
-                column.datatype(),
+                column.datatype()?,
                 display,
                 "The stable integer category of the market operation.",
             ),
@@ -533,6 +638,26 @@ impl Crated {
         if let Some(codeset) = self.codeset {
             field.as_fix_mut().set_codeset(codeset)?;
         }
+        if let Some((map, key, follow)) = self.idmap {
+            field
+                .as_fix_mut()
+                .set_idmap(&[super::FixIdSource::new(map, key).with_follow(follow)])?;
+        }
+        if let Some(source) = self.instrument {
+            // Never over an occurrence the row states under the source, and
+            // never past the width a code of the source may be: a value the
+            // source cannot hold stays where it arrived.
+            let width = crate::SecType::read(source)?.max_code_width();
+            let plan = format!(
+                "select [{{securityaltid: {name}, securityaltidsource: '{source}'}}] as \
+                 secaltids where length({name}) <= {width}"
+            );
+            let rule = super::FixReplacement::new(plan.parse()?).with_doc(format!(
+                "{} names an instrument under the {source} source",
+                display
+            ));
+            field.as_fix_mut().set_replacements(&[rule])?;
+        }
         if SETTLED_TO_ONE_MESSAGE.contains(&tag) {
             field.as_fix_mut().set_transient(false)?;
         }
@@ -545,7 +670,7 @@ impl Crated {
 /// The order is the tags', because that is the order a schema, a document
 /// and [`fix_crate_fields`] all walk them in. A row that only names a tag
 /// and a column is a column this crate adds nothing to but the tag.
-const CRATED: [Crated; 31] = [
+const CRATED: [Crated; 40] = [
     Crated::event(CURRUNIX_TAG_NAME, EventColumn::CurrUnix),
     Crated::own(
         MSGCTXID_TAG_NAME,
@@ -566,11 +691,6 @@ const CRATED: [Crated; 31] = [
          behind it.",
     ),
     Crated::event(CROSSHASHCODE_TAG_NAME, EventColumn::CrossHashCode),
-    Crated::event(IDENTIFIERS_TAG_NAME, EventColumn::Identifiers).saying(
-        "The names this message goes by, each under the canonical name of the \
-         field that stated it, in sorted order; repeating-group members are \
-         not flattened.",
-    ),
     Crated::event(PREVUNIX_TAG_NAME, EventColumn::PrevUnix),
     Crated::event(PREVUUID_TAG_NAME, EventColumn::PrevUuid),
     Crated::event(CREAUNIX_TAG_NAME, EventColumn::CreaUnix)
@@ -632,26 +752,18 @@ const CRATED: [Crated; 31] = [
          ValidUntilTime, ExpireDate or MaturityDate; a newer explicit \
          deadline replaces the one its chain carried.",
     ),
-    Crated::market(MSGCAT_TAG_NAME, MarketColumn::MarketOperationId, "MsgCat")
-        .saying("The stable integer code for the message type's business category.")
-        .reading(MSGCAT_CODESET_NAME),
+    Crated::market(
+        MSGCAT_TAG_NAME,
+        OperationColumn::MarketOperationId,
+        "MsgCat",
+    )
+    .saying("The stable integer code for the message type's business category.")
+    .reading(MSGCAT_CODESET_NAME),
     Crated::own(
         ISINCODE_TAG_NAME,
         || Ok(DataType::isin()),
         "IsinCode",
         "The normalized ISIN the message identifies.",
-    ),
-    Crated::own(
-        CUSIPCODE_TAG_NAME,
-        || Ok(DataType::cusip()),
-        "CusipCode",
-        "The normalized CUSIP the message identifies.",
-    ),
-    Crated::own(
-        SEDOLCODE_TAG_NAME,
-        || Ok(DataType::sedol()),
-        "SedolCode",
-        "The normalized SEDOL the message identifies.",
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,
@@ -663,8 +775,12 @@ const CRATED: [Crated; 31] = [
         MICCODE_TAG_NAME,
         || Ok(DataType::mic()),
         "MicCode",
-        "The normalized market MIC the message identifies.",
-    ),
+        "The normalized market MIC the message identifies: LastMkt, else \
+         ExDestination, the market a bridge's instrument key names or \
+         SecurityExchange, the first an ISO 10383 MIC; a bridge's \
+         INSTRUMENT[EXCHANGE] states it.",
+    )
+    .also_called(&["instrument[exchange]"]),
     Crated::own(
         FIGICODE_TAG_NAME,
         || Ok(DataType::figi()),
@@ -691,6 +807,100 @@ const CRATED: [Crated; 31] = [
          where all four are stated. Derived and never content: the key two \
          observations of one delivery merge on.",
     ),
+    Crated::own(
+        MSGORIGINATOR_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "MsgOriginator",
+        "The plugin a message came into a bridge through, as the bridge's own \
+         log line names it: a message received from (X as ...), an execution \
+         report from X, or the plugin that logged a Receiving line. Provenance, \
+         never content.",
+    ),
+    Crated::own(
+        CONVERSATIONID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "ConversationId",
+        "The conversation a bridge filed the message under, as stated: a \
+         CONVERSATIONID field, else the {conversationId: ...} of the log line. \
+         Provenance, never content.",
+    ),
+    Crated::own(
+        OMSDEALERACCOUNT_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "OmsDealerAccount",
+        "The account an OMS dealer books the order to, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Accounts, "OMSDEALERACCOUNT", false),
+    Crated::own(
+        OMSUSERID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "OmsUserId",
+        "The OMS user who entered the order, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Users, "OMSUSERID", false),
+    Crated::own(
+        PARENTORDERID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "ParentOrderId",
+        "The parent order's identifier, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "PARENTORDERID", true),
+    Crated::own(
+        PARENTCLORDID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "ParentClOrdId",
+        "The parent order's client identifier, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "PARENTCLORDID", true),
+    Crated::own(
+        OMSDEALERPARENTORDERID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "OmsDealerParentOrderId",
+        "The OMS dealer's parent order identifier, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "OMSDEALERPARENTORDERID", true),
+    Crated::own(
+        EXCHANGECLIENTORDERID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "ExchangeClientOrderId",
+        "The exchange's client order identifier, as the bridge stated it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "EXCHANGECLIENTORDERID", true),
+    Crated::own(
+        TRANSVERSALKEY_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "TransversalKey",
+        "The key a bridge threads one order through every system with, as it \
+         stated it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "TRANSVERSALKEY", true),
+    Crated::own(
+        ULTRADERCLORDID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "UlTraderClOrdId",
+        "A trading screen's own client order identifier, as the bridge stated \
+         it.",
+    )
+    .naming(super::FixIdMapKind::Alts, "ULTRADERCLORDID", false),
+    Crated::own(
+        OMSINSTRUMENTID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "OmsInstrumentId",
+        "The instrument an OMS bridge names, as it stated it - \
+         `dbi;CH0012214059_XSWX_CHF` - and a secaltids occurrence under the \
+         OMSINSTRUMENTID source where that source can hold it.",
+    )
+    .naming_instrument("OMSINSTRUMENTID"),
+    Crated::own(
+        ULLINKINSTRUMENTID_TAG_NAME,
+        || Ok(DataType::utf8()),
+        "UllinkInstrumentId",
+        "The instrument a ULLINK bridge names under ULLINK.INSTRUMENTID, as it \
+         stated it, and a secaltids occurrence under the ULLINKINSTRUMENTID \
+         source where that source can hold it.",
+    )
+    .also_called(&["ullink.instrumentid"])
+    .naming_instrument("ULLINKINSTRUMENTID"),
 ];
 
 /// Builds every field this crate defines, in tag order.
@@ -707,7 +917,7 @@ fn build() -> Result<Vec<Field>> {
 /// ```
 /// # fn main() -> yggdryl::Result<()> {
 /// let held = yggdryl::fix_crate_fields()?;
-/// assert_eq!(held.len(), 31);
+/// assert_eq!(held.len(), 40);
 /// assert_eq!(held[0].name(), "currunix");
 /// assert_eq!(held[0].display(), Some("CurrUnix"));
 /// // No partition column: how a layout is cut is the target's to decide -

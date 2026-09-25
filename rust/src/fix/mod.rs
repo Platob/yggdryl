@@ -134,6 +134,7 @@ use smol_str::{SmolStr, format_smolstr};
 use crate::{Error, Result};
 
 mod aliases;
+mod anomaly;
 mod cfi;
 // Batching is the crate's Arrow surface seen from FIX, so it exists exactly
 // where that surface does.
@@ -156,6 +157,7 @@ mod field;
 pub(crate) mod global;
 pub(crate) mod group_plan;
 pub(crate) mod identity;
+mod idmap;
 mod latest;
 mod market;
 pub(crate) mod memo;
@@ -170,21 +172,25 @@ pub(crate) mod schema;
 pub(crate) mod store;
 mod ulbridge;
 
+pub use anomaly::FixAnomaly;
 pub use codec::DEFAULT_PAYLOAD_COLUMN;
 pub use codec::{DEFAULT_NULL_VALUES, DEFAULT_REFUSED_MSGTYPES, FixCodec, SOH};
 pub use codes::{FixCode, FixCodeSet, FixCodeValue, FixCodes};
 pub(crate) use component::occurrence_name;
 pub use constants::{STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS};
 pub use crated::{
-    BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
-    CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
-    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME,
-    FIXMSG_TAG_NAME, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME,
-    PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME,
-    SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STATE_TAG_NAME, fix_crate_fields,
-    is_crate_tag,
+    BLOOMBERGCODE_TAG_NAME, CONVERSATIONID_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN,
+    CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
+    CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, EXCHANGECLIENTORDERID_TAG_NAME,
+    EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIXMSG_TAG_NAME, ISINCODE_TAG_NAME,
+    METADATA_TAG_NAME, MICCODE_TAG_NAME, MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    MSGTYPE_TAG_NAME, NOFIXENTRIES_TAG_NAME, OMSDEALERACCOUNT_TAG_NAME,
+    OMSDEALERPARENTORDERID_TAG_NAME, OMSINSTRUMENTID_TAG_NAME, OMSUSERID_TAG_NAME,
+    PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME, PREVUNIX_TAG_NAME, PREVUUID_TAG_NAME,
+    RECDUNIX_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME,
+    STATE_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULLINKINSTRUMENTID_TAG_NAME, ULTRADERCLORDID_TAG_NAME,
+    fix_crate_fields, is_crate_tag,
 };
 pub use digest::FixDedup;
 pub use direction::{MsgDirection, RECEIVE_PATTERNS, SEND_PATTERNS};
@@ -192,7 +198,8 @@ pub use directions::{FixDirection, FixDirectionEntry, FixDirections, FixPatterns
 pub use document::{Words, from_fix_document, into_fix_document};
 pub use entry::FixEntry;
 pub use field::FixSpellings;
-pub use identity::{FIX_TYPED_TAGS, FixCapture, FixHeader, FixLifted};
+pub use identity::{FIX_TYPED_TAGS, FixCapture, FixHeader, FixLifted, LiftedFx};
+pub use idmap::{FixIdMapKind, FixIdSource, FixIdSources};
 pub use market::FixMarketIterator;
 pub use messages::FixMessages;
 pub use msg::FixMsg;

@@ -11,7 +11,7 @@ mod residual {
     use std::sync::Arc;
 
     use super::SoleMessage;
-    use yggdryl::graph::{Element, Event, MarketElement};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::{DataType, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
     const LINE: &[u8] = b"8=FIX.4.4|35=D|11=A1|55=AAPL|38=100|59=0|9999=x|10=0|";

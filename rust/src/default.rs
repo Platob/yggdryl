@@ -239,6 +239,7 @@ pub(crate) fn preflight_schema_shape(dtype: &DataType, kind: &'static str) -> Re
             | DataType::Side
             | DataType::State
             | DataType::TimeInForce
+            | DataType::Unit
             | DataType::Uuid
             | DataType::Version
             | DataType::Url | DataType::Urn
@@ -353,7 +354,8 @@ fn plan_dtype<'a>(dtype: &'a DataType, path: &mut Vec<PathSegment<'a>>) -> Plann
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => scalar(DefaultPlan::String, false),
+        | D::TimeInForce
+        | D::Unit => scalar(DefaultPlan::String, false),
         D::Serie(_) | D::SerieView(_) | D::LargeSerie(_) | D::LargeSerieView(_) => {
             scalar(DefaultPlan::EmptySequence, false)
         }

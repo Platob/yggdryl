@@ -1,17 +1,22 @@
 //! Reading a FIX message as an instrument classification.
 //!
 //! What a CFI code *is* - its six positions, which letters each accepts, how
-//! two statements merge - belongs to the value and lives beside it in
-//! [`crate::CfiCode`]. This module is the other half: which
-//! FIX tags say something about a classification, and what each of them says.
+//! two statements merge, when it is detailed - belongs to the value and lives
+//! beside it in [`crate::CfiCode`]. This module is the other half: which FIX
+//! fields say something about a classification, and what each of them says.
 //!
 //! That split is the point. `CfiCode::merged` is the same fold whether the two
 //! codes came off a FIX wire, an ISIN registry or two columns of a table, so
 //! a FIX-shaped copy of it would be a second answer to one question. What is
-//! genuinely FIX's is the chain below: that `SecurityType(167)` is the only
-//! scalar tag naming a group, that `PutOrCall(201)` is the *group* of a
-//! listed option rather than an attribute, that `Product(460)` reaches a
-//! category and no further.
+//! genuinely FIX's is the chain below: that `CFICode(461)` is the
+//! classification of record, that a bridge states the detailed code beside a
+//! coarse one under its own `DETAILEDCFICODE`, and that `PutOrCall(201)` is
+//! the *group* of a listed option rather than an attribute.
+//!
+//! A market keeps only a detailed classification. `SecurityType(167)`,
+//! `Product(460)` and `SecurityIDSource(22)` reach a category or a group and
+//! no further, and a code that says nothing past its group - `ESXXXX` - is a
+//! coarse fact the market answers none for, so those steps are gone.
 
 use smol_str::SmolStr;
 
@@ -24,64 +29,9 @@ use crate::CfiCode;
 /// owner of one fact.
 pub(super) const CFICODE_TAG: i32 = 461;
 
-/// What `Product(460)` says the instrument is, as a category.
-///
-/// The complete shipped code set, all thirteen. `Product` names an asset
-/// class and nothing finer, so each answer is a category with no group -
-/// which [`coarse`] turns into that category's Others.
-///
-/// `OTHER` maps to `M`, the standard's own Others category, rather than to
-/// nothing: a message saying "some other kind of thing" has said something.
-fn category_of_product(product: i64) -> Option<char> {
-    Some(match product {
-        1 | 3 | 6 | 8 | 9 | 10 | 11 => 'D', // agency, corporate, government,
-        // loan, money market, mortgage, municipal - all debt
-        4 | 7 => 'T',  // currency and index are referential instruments
-        5 => 'E',      // equity
-        13 => 'L',     // financing
-        2 | 12 => 'M', // commodity and other
-        _ => return None,
-    })
-}
-
-/// What `SecurityType(167)` says the instrument is, as a category and a group.
-///
-/// `SecurityType` is a 194-code set and most of it names debt of one kind or
-/// another, which `Product` already answers coarsely; what this table adds is
-/// the codes that pin a *group*, because a group is the position `Product`
-/// can never reach. A code not here is not a gap in the chain - it falls
-/// through to `Product` and lands on the category's Others - so this grows by
-/// rows when a desk needs a finer answer than that.
-fn classification_of_security_type(security_type: &str) -> Option<(char, Option<char>)> {
-    Some(match security_type {
-        "CS" => ('E', Some('S')),                          // common stock
-        "PS" => ('E', Some('P')),                          // preferred stock
-        "CVPS" => ('E', Some('F')),                        // convertible preferred stock
-        "DR" | "ADR" => ('E', Some('D')),                  // depositary receipts
-        "LTD" => ('E', Some('L')),                         // limited partnership
-        "SMP" | "SCP" => ('E', Some('Y')),                 // structured participation
-        "MF" => ('C', Some('I')),                          // mutual fund
-        "ETF" => ('C', Some('E')),                         // exchange traded fund
-        "REIT" => ('C', Some('B')),                        // real estate investment trust
-        "CORP" | "CB" | "CPP" | "CMB" => ('D', Some('B')), // corporate bonds
-        "TBOND" | "TNOTE" | "GO" | "REV" | "USTB" => ('D', Some('B')),
-        "CONVBOND" | "CVB" => ('D', Some('C')), // convertible bonds
-        "MTN" => ('D', Some('T')),              // medium-term notes
-        "CD" | "CP" | "BA" | "TB" | "STN" => ('D', Some('Y')), // money market
-        "ABS" => ('D', Some('A')),              // asset-backed
-        "MBS" | "MPT" | "CMO" | "TBA" => ('D', Some('G')), // mortgage-backed
-        "MUNI" => ('D', Some('N')),             // municipal
-        "OPT" => ('O', None),                   // listed option
-        "FUT" => ('F', None),                   // future
-        "FWD" => ('J', None),                   // forward
-        "SWAP" | "IRS" | "CDS" => ('S', None),  // swaps
-        "WAR" => ('R', Some('W')),              // warrants
-        "RIGHT" => ('R', Some('S')),            // subscription rights
-        "FX" | "FXSPOT" => ('I', None),         // spot
-        "REPO" | "REVREPO" | "BUYSELL" | "SECLOAN" | "SECPLEDGE" => ('L', None),
-        _ => return None,
-    })
-}
+/// The names a bridge states the detailed classification under, beside a
+/// coarse `CFICode(461)`: the bare spelling and its `#`-marked twin.
+const DETAILED_NAMES: [&str; 2] = ["detailedcficode", "#detailedcficode"];
 
 /// What a `PutOrCall(201)` says, as a listed-option **group**.
 ///
@@ -100,52 +50,33 @@ fn option_group(put_or_call: i64) -> Option<char> {
     })
 }
 
-/// The category an `SecurityIDSource(22)` licenses, where it licenses one.
-///
-/// An identifier scheme is evidence about the instrument: a message whose
-/// `SecurityID` is an ISO 4217 currency code is describing a currency, and
-/// one whose identifier is a settlement-entity code is not describing an
-/// equity. Most schemes - ISIN, CUSIP, SEDOL, RIC, BloombergCode - are issued
-/// across every category and license nothing, which is the honest answer for
-/// them.
-fn category_of_id_source(source: &str) -> Option<char> {
-    Some(match source {
-        // ISO 4217 currency code: the instrument is a currency.
-        "6" => 'T',
-        // Clearing house / clearing organization contract.
-        "H" => 'F',
-        _ => return None,
-    })
-}
-
 impl super::FixMsg {
-    /// The instrument's classification, filled to the maximum the message
-    /// licenses.
+    /// The instrument's detailed classification, or none.
     ///
-    /// The chain, each step merged into the last through [`CfiCode::merged`](crate::CfiCode::merged)
-    /// so a later step can only *fill* what an earlier one left unknown:
+    /// The chain, each step merged into the last through
+    /// [`CfiCode::merged`](crate::CfiCode::merged) so a later step can only
+    /// *fill* what an earlier one left unknown:
     ///
     /// 1. a stated `CFICode(461)`, which is the instrument's classification
     ///    of record and outranks anything derived;
-    /// 2. `SecurityType(167)`, which is the only scalar tag that pins a
-    ///    group;
-    /// 3. `Product(460)`, which pins a category and leaves the group to that
-    ///    category's Others;
-    /// 4. `SecurityIDSource(22)`, where the identifier's scheme licenses a
-    ///    category at all;
-    /// 5. `PutOrCall(201)`, which is the *group* of a listed option - `OC`,
-    ///    `OP`, `OM` - rather than an attribute, and so refines a category
-    ///    `O` this chain reached only as far as its Others group.
+    /// 2. an unmapped `DETAILEDCFICODE` - the bare name or its `#`-marked
+    ///    twin - which a bridge states beside a coarse 461 and which fills
+    ///    the positions the stated code left unknown;
+    /// 3. `PutOrCall(201)`, which is the *group* of a listed option - `OC`,
+    ///    `OP`, `OM` - rather than an attribute, and so refines a stated
+    ///    Others group `OM` and nothing else.
+    ///
+    /// The answer is kept only where it is [detailed](crate::CfiCode::is_detailed):
+    /// a code that says nothing past its category and group - `ESXXXX` - is
+    /// a coarse fact the market answers none for, and a `SecurityType(167)`
+    /// or `Product(460)` alone, which never reach further than that, answer
+    /// none too.
     ///
     /// A step that names a different instrument than the one established -
     /// a different category or group - does not overwrite it and does not
-    /// merge: [`CfiCode::merged`](crate::CfiCode::merged) answers `None` and the step is dropped,
-    /// because a message stating `CFICode=ESXXXX` and `SecurityType=FUT` has
-    /// disagreed with itself and the stated classification is the one of
+    /// merge: [`CfiCode::merged`](crate::CfiCode::merged) answers `None` and
+    /// the step is dropped, because the stated classification is the one of
     /// record.
-    ///
-    /// `None` where the message licenses no category at all. That is the
-    /// honest answer and not `XXXXXX`: `X` is not a category.
     ///
     /// ```
     /// # fn main() -> yggdryl::Result<()> {
@@ -156,43 +87,56 @@ impl super::FixMsg {
     /// # let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(root)?)?);
     /// let reader = FixCodec::new(Arc::clone(&registry));
     ///
-    /// // A stated code is the classification of record.
+    /// // A stated detailed code is the classification of record.
     /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|461=ESVUFR|10=0|")?;
     /// assert_eq!(held.classification().as_deref(), Some("ESVUFR"));
     ///
-    /// // SecurityType alone pins a category and a group.
-    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|167=CS|10=0|")?;
-    /// assert_eq!(held.classification().as_deref(), Some("ESXXXX"));
+    /// // A coarse code answers none: it says nothing past its group.
+    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|461=ESXXXX|10=0|")?;
+    /// assert_eq!(held.classification(), None);
     ///
-    /// // A stated code that left attributes unknown takes what the rest says.
-    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|461=ESXXXX|167=CS|10=0|")?;
-    /// assert_eq!(held.classification().as_deref(), Some("ESXXXX"));
+    /// // The detailed code a bridge states beside it fills the gaps.
+    /// let held = reader.parse_fix_line(
+    ///     b"8=FIX.4.4|35=D|461=ESXXXX|DETAILEDCFICODE=ESVTFR|10=0|",
+    /// )?;
+    /// assert_eq!(held.classification().as_deref(), Some("ESVTFR"));
     ///
-    /// // An option and a put is `OP`, because call/put is the group here.
-    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|167=OPT|201=0|10=0|")?;
-    /// assert_eq!(held.classification().as_deref(), Some("OPXXXX"));
+    /// // A stated Others group and a put is `OP`: call/put is the group here.
+    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|461=OMAXXX|201=0|10=0|")?;
+    /// assert_eq!(held.classification().as_deref(), Some("OPAXXX"));
     ///
     /// // A stated group is never overwritten by a disagreeing 201.
     /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|461=OCAXXX|201=0|10=0|")?;
     /// assert_eq!(held.classification().as_deref(), Some("OCAXXX"));
     ///
-    /// // Product alone reaches the category, and its Others group.
-    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|460=5|10=0|")?;
-    /// assert_eq!(held.classification().as_deref(), Some("EMXXXX"));
-    ///
-    /// // Nothing classifying is no code, never XXXXXX.
-    /// let held = reader.parse_fix_line(b"8=FIX.4.4|35=D|55=AAPL|10=0|")?;
-    /// assert_eq!(held.classification(), None);
+    /// // SecurityType, Product and a symbol alone reach no detailed code.
+    /// for line in [
+    ///     &b"8=FIX.4.4|35=D|167=CS|10=0|"[..],
+    ///     b"8=FIX.4.4|35=D|461=ESXXXX|167=CS|10=0|",
+    ///     b"8=FIX.4.4|35=D|167=OPT|201=0|10=0|",
+    ///     b"8=FIX.4.4|35=D|460=5|10=0|",
+    ///     b"8=FIX.4.4|35=D|55=AAPL|10=0|",
+    /// ] {
+    ///     assert_eq!(reader.parse_fix_line(line)?.classification(), None);
+    /// }
     /// # Ok(())
     /// # }
     /// ```
     #[must_use]
     pub fn classification(&self) -> Option<SmolStr> {
-        let text = |tag: i32| {
-            self.get_by_tag(tag)
-                .filter(|held| !held.is_null())
+        let clean = |held: Option<crate::Scalar>| {
+            held.filter(|held| !held.is_null())
                 .and_then(|held| held.as_str().map(str::trim).map(str::to_ascii_uppercase))
                 .filter(|held| !held.is_empty())
+        };
+        let text = |tag: i32| clean(self.get_by_tag(tag));
+        // A detailed code a bridge states is a field no dictionary maps, so
+        // it is found among the row's own children by its spelling alone -
+        // exactly, else by the one child the fold reaches - and never asks
+        // the dictionary for a name it does not hold.
+        let named = |name: &str| {
+            let at = self.index_of_name(name)?;
+            clean(self.as_value().as_sequence()?.get(at).cloned())
         };
         let number = |tag: i32| {
             self.get_by_tag(tag)
@@ -204,10 +148,12 @@ impl super::FixMsg {
         // stated attribute over a derived one because the stated code leads,
         // and answers `X` where two steps disagree inside one instrument.
         let mut held: Option<SmolStr> = None;
-        let mut fold = |candidate: Option<SmolStr>| {
-            let Some(candidate) = candidate else { return };
+        let mut fold = |candidate: Option<String>| {
+            let Some(candidate) = candidate.filter(|held| CfiCode::is_classified(held)) else {
+                return;
+            };
             held = match &held {
-                None => Some(candidate),
+                None => Some(SmolStr::new(candidate)),
                 // A step describing a different instrument is dropped rather
                 // than merged: the classification of record stands.
                 Some(current) => {
@@ -215,52 +161,27 @@ impl super::FixMsg {
                 }
             };
         };
-        // Read once, because it is the group of a listed option rather than
-        // an attribute filled after the fact.
+        // `PutOrCall` refines a listed option stated as its Others group,
+        // before the code is read as one: `OM` and "a put" means `OP` rather
+        // than "an option of unspecified kind", and `OM` licenses no
+        // attribute of its own, so the stated attributes only read under
+        // the group 201 names. A group actually stated is never overwritten.
         let listed_option_group = number(201).and_then(option_group);
-        fold(
-            text(461)
-                .map(SmolStr::new)
-                .filter(|held| CfiCode::is_classified(held)),
-        );
-        fold(
-            text(167)
-                .as_deref()
-                .and_then(classification_of_security_type)
-                .and_then(|(category, group)| {
-                    let group = group.or(match category {
-                        'O' => listed_option_group,
-                        _ => None,
-                    });
-                    CfiCode::coarse(category, group)
-                }),
-        );
-        fold(
-            number(460)
-                .and_then(category_of_product)
-                .and_then(|category| CfiCode::coarse(category, None)),
-        );
-        fold(
-            text(22)
-                .as_deref()
-                .and_then(category_of_id_source)
-                .and_then(|category| CfiCode::coarse(category, None)),
-        );
-        // `PutOrCall` also refines a listed option this chain only reached
-        // coarsely: `OM` is the Others group `coarse` falls back to, so a
-        // message that said "an option" and "a put" means `OP` rather than
-        // "an option of unspecified kind". A group another step actually
-        // stated is never overwritten - only the fallback is.
-        if let (Some(current), Some(group)) = (held.clone(), listed_option_group) {
-            let mut spelled: Vec<char> = current.chars().collect();
-            if spelled.first() == Some(&'O') && spelled.get(1) == Some(&'M') && group != 'M' {
+        let refined = |code: String| match listed_option_group {
+            Some(group) if group != 'M' && code.starts_with("OM") => {
+                let mut spelled: Vec<char> = code.chars().collect();
                 spelled[1] = group;
-                let candidate: String = spelled.into_iter().collect();
-                if CfiCode::is_classified(&candidate) {
-                    held = Some(SmolStr::new(candidate));
-                }
+                spelled.into_iter().collect()
             }
-        }
-        held
+            _ => code,
+        };
+        fold(text(CFICODE_TAG).map(refined));
+        fold(
+            DETAILED_NAMES
+                .iter()
+                .find_map(|name| named(name))
+                .map(refined),
+        );
+        held.filter(|held| CfiCode::is_detailed(held))
     }
 }

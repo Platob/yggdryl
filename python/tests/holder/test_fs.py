@@ -35,7 +35,6 @@ EVENT_COLUMNS = [
     "prevuuid",
     "seqnum",
     "srcuuids",
-    "identifiers",
     "state",
 ]
 

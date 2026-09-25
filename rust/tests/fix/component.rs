@@ -139,31 +139,31 @@ fn merging_map_groups_preserves_layout_sortedness_and_key_nullability() {
 }
 
 #[test]
-fn altids_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
+fn metadata_has_exactly_one_nullable_sorted_column_without_a_scalar_counter() {
     let registry = FixRegistry::new();
     let schema = fix_schema(&registry, "fix").unwrap();
     let columns: Vec<_> = schema
         .fields()
         .iter()
-        .filter(|field| field.name() == "identifiers")
+        .filter(|field| field.name() == "metadata")
         .collect();
     assert_eq!(columns.len(), 1);
     let column = columns[0];
     assert!(column.is_nullable());
-    assert_eq!(column.as_fix().tag().unwrap(), Some(65_020));
-    assert_eq!(column.as_fix().counter().unwrap(), Some(65_020));
+    assert_eq!(column.as_fix().tag().unwrap(), Some(65_049));
+    assert_eq!(column.as_fix().counter().unwrap(), Some(65_049));
     let Some(map) = (column.dtype()).as_mapping() else {
-        panic!("identifiers is a Map")
+        panic!("metadata is a Map")
     };
     assert!(map.keys_sorted());
-    assert!(registry.get_field_by_tag(65_020).is_none());
+    assert!(registry.get_field_by_tag(65_049).is_none());
     assert_eq!(yggdryl::fix::GROUP_TAGS, [453, 454, 768, 1907]);
 }
 
 #[test]
 fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
     let registry = Arc::new(FixRegistry::new());
-    let group = registry.get_field_by_counter(65_020).unwrap().clone();
+    let group = registry.get_field_by_counter(65_049).unwrap().clone();
     let schema = StructType::from_fields([group])
         .map(DataType::from)
         .unwrap()
@@ -178,9 +178,9 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
         let empty = pairs.is_empty();
         let mapping = Scalar::from_mapping(pairs).unwrap();
         let source = fresh(Arc::clone(&registry), &schema, vec![mapping.clone()]);
-        // The identifiers are the event's own fact: a map stating none is
+        // The metadata are the event's own fact: a map stating none is
         // no fact, and one stating pairs answers them.
-        assert_eq!(source.get_by_tag(65_020), (!empty).then(|| mapping.clone()));
+        assert_eq!(source.get_by_tag(65_049), (!empty).then(|| mapping.clone()));
         let schema = source.as_field();
         let row = source.as_value();
         let msg = FixMsg::from_row(Arc::clone(&registry), schema, row).unwrap();
@@ -206,14 +206,14 @@ fn native_mapping_survives_message_rows_and_arrow_in_both_directions() {
 #[test]
 fn map_paths_distinguish_present_missing_and_absent_maps() {
     let registry = Arc::new(FixRegistry::new());
-    let schema = StructType::from_fields([registry.get_field_by_counter(65_020).unwrap().clone()])
+    let schema = StructType::from_fields([registry.get_field_by_counter(65_049).unwrap().clone()])
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
-    let key = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
-    let missing = yggdryl::FieldPath::from_str("identifiers['missing']").unwrap();
-    let named_child = yggdryl::FieldPath::from_str("identifiers.clordid").unwrap();
-    let indexed_child = yggdryl::FieldPath::from_str("identifiers[0]").unwrap();
+    let key = yggdryl::FieldPath::from_str("metadata['clordid']").unwrap();
+    let missing = yggdryl::FieldPath::from_str("metadata['missing']").unwrap();
+    let named_child = yggdryl::FieldPath::from_str("metadata.clordid").unwrap();
+    let indexed_child = yggdryl::FieldPath::from_str("metadata[0]").unwrap();
     let value_field = registry.field_by_path(&key).unwrap();
     assert_eq!(value_field.dtype(), &DataType::utf8());
     assert!(value_field.is_nullable());
@@ -221,14 +221,14 @@ fn map_paths_distinguish_present_missing_and_absent_maps() {
     for invalid in [&named_child, &indexed_child] {
         assert!(registry.get_field_by_path(invalid).is_none());
     }
-    // The identifiers a message goes by are names beside values, so a key
+    // The metadata a message goes by are names beside values, so a key
     // stating nothing is a key it does not go by: present and missing are
     // the two answers a path has.
     let value = Scalar::from("O-1");
     let mapping = Scalar::from_mapping([(Scalar::from("clordid"), value.clone())]).unwrap();
     let message = fresh(Arc::clone(&registry), &schema, vec![mapping]);
     assert_eq!(message.get_by_path(&key), Some(value.clone()));
-    assert_eq!(message.get("identifiers['clordid']"), Some(value));
+    assert_eq!(message.get("metadata['clordid']"), Some(value));
     assert_eq!(message.get_by_path(&missing), None);
     for invalid in [&named_child, &indexed_child] {
         assert_eq!(message.get_by_path(invalid), None);
@@ -247,9 +247,9 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
     let mut registry = FixRegistry::new();
     let mut label = DataType::utf8().nullable_field("label");
     label.as_fix_mut().set_tag(9001).unwrap();
-    label.as_fix_mut().set_names(["Identifiers"]).unwrap();
+    label.as_fix_mut().set_names(["Metadata"]).unwrap();
     registry.insert(label.clone()).unwrap();
-    let map = registry.get_field_by_counter(65_020).unwrap().clone();
+    let map = registry.get_field_by_counter(65_049).unwrap().clone();
     let schema = StructType::from_fields([label, map])
         .map(DataType::from)
         .unwrap()
@@ -263,14 +263,11 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
         &schema,
         vec![Scalar::from("stated-label"), mapping("O-1")],
     );
-    let root = yggdryl::FieldPath::from_str("Identifiers").unwrap();
-    let path = yggdryl::FieldPath::from_str("identifiers['clordid']").unwrap();
-    assert_eq!(
-        registry.field_by_name("Identifiers").unwrap().name(),
-        "label"
-    );
+    let root = yggdryl::FieldPath::from_str("Metadata").unwrap();
+    let path = yggdryl::FieldPath::from_str("metadata['clordid']").unwrap();
+    assert_eq!(registry.field_by_name("Metadata").unwrap().name(), "label");
     let declared = registry.field_by_path(&root).unwrap();
-    assert_eq!(declared, registry.get_field_by_counter(65_020).unwrap());
+    assert_eq!(declared, registry.get_field_by_counter(65_049).unwrap());
     let Some(map) = (declared.dtype()).as_mapping() else {
         panic!("the canonical Map owns the resolved path")
     };
@@ -278,10 +275,10 @@ fn canonical_map_names_win_over_scalar_aliases_for_reads_writes_and_paths() {
         registry.field_by_path(&path).unwrap(),
         &map.entries().fields()[1]
     );
-    assert_eq!(message.get_by_name("Identifiers"), Some(mapping("O-1")));
+    assert_eq!(message.get_by_name("Metadata"), Some(mapping("O-1")));
     assert_eq!(message.get_by_path(&root), Some(mapping("O-1")));
     assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-1")));
-    message.set("IDENTIFIERS", mapping("O-2")).unwrap();
+    message.set("METADATA", mapping("O-2")).unwrap();
     assert_eq!(message.get_by_path(&root), Some(mapping("O-2")));
     assert_eq!(message.get_by_path(&path), Some(Scalar::from("O-2")));
     assert_eq!(
@@ -302,20 +299,20 @@ fn map_and_component_roots_remain_ambiguous_despite_scalar_aliases() {
         if scalar_alias {
             let mut label = DataType::utf8().nullable_field("label");
             label.as_fix_mut().set_tag(9001).unwrap();
-            label.as_fix_mut().set_names(["Identifiers"]).unwrap();
+            label.as_fix_mut().set_names(["Metadata"]).unwrap();
             registry.insert(label).unwrap();
         }
         let component = StructType::from_fields([DataType::utf8().nullable_field("note")])
             .map(DataType::from)
             .unwrap()
-            .required_field("Identifiers");
+            .required_field("Metadata");
         registry.insert(component).unwrap();
-        assert!(registry.get_field_by_name("identifiers").is_some());
+        assert!(registry.get_field_by_name("metadata").is_some());
         for spelling in [
-            "identifiers",
-            "Identifiers",
-            "identifiers['clordid']",
-            "Identifiers.note",
+            "metadata",
+            "Metadata",
+            "metadata['clordid']",
+            "Metadata.note",
         ] {
             let path = yggdryl::FieldPath::from_str(spelling).unwrap();
             assert!(

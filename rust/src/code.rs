@@ -8,10 +8,11 @@ use crate::{
     BLOOMBERG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME,
     SEDOL_EXTENSION_NAME, SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME,
+    UNIT_EXTENSION_NAME,
 };
 use crate::{
     BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 use crate::{DataType, Error, Result};
 
@@ -26,8 +27,16 @@ use crate::{DataType, Error, Result};
 // ------------------------------------------------------------------------
 
 macro_rules! code_leaf {
+    // The one-line doc every code takes unless it states its own.
     ($name:ident, $width:expr) => {
-        #[doc = concat!("One validated `", stringify!($name), "` code.")]
+        $crate::code::code_leaf!(
+            $name,
+            $width,
+            doc = concat!("One validated `", stringify!($name), "` code.")
+        );
+    };
+    ($name:ident, $width:expr, doc = $doc:expr) => {
+        #[doc = $doc]
         #[repr(transparent)]
         #[derive(
             Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
@@ -158,6 +167,7 @@ impl DataType {
             Self::TimeInForce => Some("timeinforce"),
             Self::BloombergCode => Some("bloomberg"),
             Self::FIGICode => Some("figi"),
+            Self::Unit => Some("unit"),
             _ => None,
         }
     }
@@ -213,6 +223,7 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::State => Some(STATE_EXTENSION_NAME),
         DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
+        DataType::Unit => Some(UNIT_EXTENSION_NAME),
         _ => None,
     }
 }
@@ -236,6 +247,7 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
         SIDE_EXTENSION_NAME => Some(DataType::Side),
         STATE_EXTENSION_NAME => Some(DataType::State),
         TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
+        UNIT_EXTENSION_NAME => Some(DataType::Unit),
         _ => None,
     }
 }
@@ -280,6 +292,7 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::State => code_text::<STATE_WIDTH>(bytes),
         DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),
+        DataType::Unit => code_text::<UNIT_WIDTH>(bytes),
         _ => Err(code_refusal(dtype)),
     }
 }
@@ -297,6 +310,18 @@ pub(crate) fn code_refusal(dtype: &DataType) -> Error {
 
 pub(crate) use code_leaf;
 pub(crate) use code_value;
+
+/// Whether `text` is one of the spellings that state no value.
+///
+/// A feed writes `null`, `none`, `n/a` or `[n/a]` where it has nothing to
+/// say, and an identifier map or a security identifier reads any of them,
+/// in any case, as the absence they are rather than as a value.
+pub(crate) fn is_null_like(text: &str) -> bool {
+    text.is_empty()
+        || ["null", "none", "n/a", "[n/a]"]
+            .iter()
+            .any(|null| text.eq_ignore_ascii_case(null))
+}
 
 /// One spelling folded the way every name in this crate folds.
 pub(crate) fn folded_spelling(spelling: &str) -> SmolStr {

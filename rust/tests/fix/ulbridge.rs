@@ -16,7 +16,7 @@ mod dataset {
     use std::sync::Arc;
 
     use arrow_array::RecordBatch;
-    use yggdryl::graph::{Element, Event, MarketElement};
+    use yggdryl::graph::{Element, Event, Market};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -93,6 +93,169 @@ mod dataset {
             .collect()
     }
 
+    /// The instrument every named order flow of the capture reads as: its
+    /// ISIN, the MIC, the CFI and the time in force each message of it
+    /// states where it states one.
+    const FLOWS: [(&str, &str, Option<&str>, Option<&str>); 5] = [
+        // ABB, a trade capture's fills.
+        ("CH0012221716", "XSWX", Some("ESVTFR"), Some("0")),
+        // Novartis and Holcim, an OMS dealer's orders.
+        ("CH0012005267", "XSWX", Some("ESVTFR"), Some("0")),
+        ("CH0012214059", "XSWX", Some("ESVTFR"), Some("0")),
+        // A Taiwanese trade capture routed good till date.
+        ("TW0001605004", "RJEA", None, Some("6")),
+        // MediaTek, a cancel/replace reject whose market is the instrument
+        // key's.
+        ("TW0002454006", "XTAI", None, Some("0")),
+    ];
+
+    /// How many of the capture's messages carry a bridge row in their
+    /// `XmlData(213)`.
+    const NESTED: usize = 6;
+
+    #[test]
+    fn every_named_order_flow_reads_whole_end_to_end() {
+        use yggdryl::graph::Operation;
+        let codec = codec();
+        let lines = text_lines();
+        let bodies: std::collections::HashMap<yggdryl::Uuid, &str> = lines
+            .iter()
+            .map(|line| (line.get_curruuid(), line.body()))
+            .collect();
+        let messages = line_messages(&codec);
+        assert_eq!(messages.len(), ROWS);
+        for (isin, mic, cfi, tif) in FLOWS {
+            let flow: Vec<&FixMsg> = messages
+                .iter()
+                .filter(|held| held.get_securityids().get("ISIN") == Some(isin))
+                .collect();
+            assert!(!flow.is_empty(), "{isin} is in the capture");
+            let mics: Vec<&str> = flow
+                .iter()
+                .filter_map(|held| held.get_miccode().map(yggdryl::MicCode::as_str))
+                .collect();
+            assert!(
+                !mics.is_empty() && mics.iter().all(|held| *held == mic),
+                "{isin}: {mics:?}"
+            );
+            let cfis: Vec<&str> = flow
+                .iter()
+                .filter_map(|held| held.get_cficode().map(yggdryl::CfiCode::as_str))
+                .collect();
+            assert_eq!(cfis.first().copied(), cfi, "{isin}: {cfis:?}");
+            assert!(
+                cfis.iter().all(|held| Some(*held) == cfi),
+                "{isin}: {cfis:?}"
+            );
+            let tifs: Vec<String> = flow
+                .iter()
+                .filter_map(|held| held.get_tif().map(ToString::to_string))
+                .collect();
+            assert!(
+                tifs.iter().all(|held| Some(held.as_str()) == tif) && !tifs.is_empty(),
+                "{isin}: {tifs:?}"
+            );
+        }
+        let reread = super::fixed_codec(registry());
+        let mut nested = 0;
+        for message in &messages {
+            let body = message
+                .get_srcuuids()
+                .first()
+                .and_then(|source| bodies.get(source))
+                .copied()
+                .expect("every message names the line it was read from");
+            // No security identifier the line does not state, but the Valor a
+            // Swiss ISIN embeds.
+            for id in message.get_securityids().iter() {
+                if id.sectype().as_str() != "VALOR" {
+                    assert!(body.contains(id.code()), "{id} is stated: {body}");
+                }
+            }
+            // The ticker is the bare SYMBOL a bridge wrote, never a marked twin.
+            assert_eq!(
+                message.get_ticker(),
+                message.get_by_tag(55).as_ref().and_then(Scalar::as_str),
+                "{body}"
+            );
+            // ExecBroker(76) is one Parties occurrence under role 1, once.
+            if let Some(broker) = message.get_by_tag(76).as_ref().and_then(Scalar::as_str) {
+                let parties = message
+                    .entries()
+                    .iter()
+                    .find(|entry| entry.tag() == 453)
+                    .expect("ExecBroker states a party");
+                let landed = parties
+                    .entries()
+                    .iter()
+                    .filter(|occurrence| {
+                        let member = |tag: i32| {
+                            occurrence
+                                .entries()
+                                .iter()
+                                .find(|member| member.tag() == tag)
+                                .and_then(|member| member.value())
+                        };
+                        member(448) == Some(broker) && member(452) == Some("1")
+                    })
+                    .count();
+                assert_eq!(landed, 1, "{broker} lands once: {body}");
+            }
+            // The wire a message writes reads back as a wire stating as many
+            // pairs, and from there it is the wire it reads back as, byte for
+            // byte. The first reading may restate what a bridge row kept as
+            // it arrived: a numeric frame lays an occurrence's members out in
+            // the order the dictionary declares them, and translates a code
+            // the row spelled by name where its message type did not declare
+            // the field.
+            let wire = message.into_bytes(b'|');
+            // A frame carrying a bridge row in its data field lifts that
+            // row's facts onto the frame and re-emits them beside the field
+            // that still holds them, so its wire states them twice: the one
+            // shape a wire does not read back from, counted below.
+            if message.get_by_tag(213).is_some() {
+                nested += 1;
+                continue;
+            }
+            let again = reread
+                .parse_fix_line(&wire)
+                .unwrap_or_else(|error| panic!("{error}: {body}"))
+                .into_bytes(b'|');
+            let count = |wire: &[u8]| wire.split(|byte| *byte == b'|').count();
+            assert_eq!(count(&again), count(&wire), "{body}");
+            let settled = reread
+                .parse_fix_line(&again)
+                .expect("the wire reads back")
+                .into_bytes(b'|');
+            assert_eq!(
+                String::from_utf8_lossy(&settled),
+                String::from_utf8_lossy(&again),
+                "{body}"
+            );
+        }
+        assert_eq!(
+            nested, NESTED,
+            "the frames carrying a bridge row in XmlData(213)"
+        );
+        // Where the line says it, the plugin a message came in through, and
+        // never the bridge's own PLUGINORIGINATOR key, which stays content.
+        let received = messages
+            .iter()
+            .find(|held| held.capture().msgoriginator() == Some("OMS_X1_OrderOut"))
+            .expect("an order received from the OMS");
+        assert_eq!(
+            received
+                .get_by_name("pluginoriginator")
+                .and_then(|held| held.as_str().map(str::to_owned))
+                .as_deref(),
+            Some("OMSDealer")
+        );
+        assert_eq!(
+            received.capture().conversationid(),
+            Some("7702fe4b-5884-417f-b7ea-1f8aa7b3ef20")
+        );
+    }
+
     /// Every message the line door answers for the capture, in line order.
     fn line_messages(codec: &FixCodec) -> Vec<FixMsg> {
         codec
@@ -147,6 +310,11 @@ mod dataset {
             assert_eq!(after.get_srcuuids(), before.get_srcuuids(), "row {index}");
             assert_eq!(after.get_seqnum(), before.get_seqnum(), "row {index}");
             assert_eq!(after.get_state(), before.get_state(), "row {index}");
+            assert_eq!(
+                after.get_securityids(),
+                before.get_securityids(),
+                "row {index}"
+            );
             assert_eq!(
                 after.capture().msgsesseventid(),
                 before.capture().msgsesseventid(),
@@ -545,14 +713,11 @@ mod dataset {
             "the price the line stated, exact"
         );
         assert_eq!(
-            fill.get_price().to_string(),
-            "83.08",
-            "and the price the message is about, read off it"
+            fill.get_price().map(|px| px.to_string()).as_deref(),
+            Some("83.08"),
+            "and the price the message states, read off it"
         );
-        assert_eq!(
-            fill.get_isincode().map(|held| held.as_str()),
-            Some("CH0012221716")
-        );
+        assert_eq!(fill.get_securityids().get("ISIN"), Some("CH0012221716"));
         assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
         assert_eq!(fill.by_tag(460).unwrap().as_i128(), Some(5), "Product");
         assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
@@ -574,7 +739,11 @@ mod dataset {
                     == Some("XX0000000001".to_owned())
             })
             .expect("the anonymized line");
-        assert_eq!(masked.get_isincode(), None, "no ISIN off a masked one");
+        assert_eq!(
+            masked.get_securityids().get("ISIN"),
+            None,
+            "no ISIN off a masked one"
+        );
         assert!(
             masked.get_by_tag(470).is_none_or(|held| held.is_null()),
             "and no country either"
@@ -1772,5 +1941,162 @@ mod pipeline {
                 .count(),
             rows
         );
+    }
+}
+
+mod provenance {
+    //! What a bridge's log line says about where a message came from: the
+    //! plugin it arrived through and the conversation it is filed under -
+    //! provenance the capture holds, never content.
+
+    use yggdryl::FixMsg;
+    use yggdryl::graph::Element;
+
+    use super::SoleMessage;
+
+    fn read(line: &str) -> FixMsg {
+        super::fixed_codec(super::committed_registry())
+            .sole_line(line.as_bytes())
+            .expect("one message")
+    }
+
+    const FRAME: &str = "8=FIX.4.4|35=8|17=E1|37=O1|10=0|";
+
+    #[test]
+    fn a_log_line_names_the_plugin_a_message_came_through() {
+        for (prose, originator) in [
+            (
+                "Message received: Message type [execution report <trade>] from \
+                 (OMS_X1_OrderOut as OD9EOEDJ400) forwarded to (B as OD9EOEDJ400) ",
+                Some("OMS_X1_OrderOut"),
+            ),
+            (
+                "Execution report from OMS_X1_TradeCapture type trade for X. ",
+                Some("OMS_X1_TradeCapture"),
+            ),
+            // A Receiving line names the plugin that logged it, which a bare
+            // line states nowhere.
+            ("Receiving : ", None),
+            ("Sending : ", None),
+            ("", None),
+        ] {
+            let held = read(&format!("{prose}{FRAME}"));
+            assert_eq!(held.capture().msgoriginator(), originator, "{prose:?}");
+        }
+    }
+
+    #[test]
+    fn provenance_is_no_content() {
+        // The prose here states no direction, so the one difference between
+        // the two lines is what they say about where the message came from.
+        let bare = read(FRAME);
+        let named = read(&format!(
+            "Execution report from PLUGIN_A type trade {{conversationId: c-1}} {FRAME}"
+        ));
+        assert_eq!(named.capture().msgoriginator(), Some("PLUGIN_A"));
+        assert_eq!(named.capture().conversationid(), Some("c-1"));
+        assert_eq!(named.into_bytes(b'|'), bare.into_bytes(b'|'));
+        assert_eq!(named.get_currhashcode(), bare.get_currhashcode());
+        assert_eq!(named.get_curruuid(), bare.get_curruuid());
+    }
+
+    #[test]
+    fn a_stated_conversation_outranks_the_lines_and_a_disagreement_is_kept() {
+        let held = read(
+            "Execution report from A type trade {conversationId: c-line} \
+             8=FIX.4.4|35=8|17=E1|37=O1|CONVERSATIONID=c-body|10=0|",
+        );
+        assert_eq!(held.capture().conversationid(), Some("c-body"));
+        let anomalies: Vec<String> = held.anomalies().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            anomalies,
+            ["conversationid: states c-body where its line names c-line"]
+        );
+        // Agreeing, or naming an absence, is no anomaly.
+        for line in [
+            "Execution report from A type trade {conversationId: c-1} \
+             8=FIX.4.4|35=8|17=E1|37=O1|CONVERSATIONID=c-1|10=0|",
+            "Execution report from A type trade {conversationId: null} \
+             8=FIX.4.4|35=8|17=E1|37=O1|10=0|",
+        ] {
+            let held = read(line);
+            assert!(
+                held.anomalies().is_empty(),
+                "{line}: {:?}",
+                held.anomalies()
+            );
+        }
+    }
+
+    #[test]
+    fn two_observations_of_one_delivery_keep_the_earlier_provenance() {
+        let line = |plugin: &str, sent: &str| {
+            read(&format!(
+                "Execution report from {plugin} type trade {{conversationId: c-1}} \
+                 8=FIX.4.4|35=8|34=7|52=20260101-10:00:{sent}|17=E1|37=O1|\
+                 MSGSESSIONID=S1|MSGCTXID=C1|10=0|"
+            ))
+        };
+        let (earlier, later) = (line("PLUGIN_A", "00"), line("PLUGIN_B", "05"));
+        assert_eq!(
+            earlier.capture().msgsesseventid(),
+            later.capture().msgsesseventid()
+        );
+        assert!(earlier.capture().msgsesseventid().is_some());
+        let codec = super::fixed_codec(super::committed_registry());
+        for order in [[later.clone(), earlier.clone()], [earlier, later]] {
+            let walked: Vec<FixMsg> = codec
+                .lifecycle(order.into_iter().map(Ok))
+                .collect::<yggdryl::Result<_>>()
+                .expect("a walk");
+            assert_eq!(walked.len(), 1, "one delivery");
+            assert_eq!(walked[0].capture().msgoriginator(), Some("PLUGIN_A"));
+            assert_eq!(walked[0].capture().conversationid(), Some("c-1"));
+            let anomalies: Vec<String> = walked[0]
+                .anomalies()
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            assert!(
+                anomalies.contains(
+                    &"msgoriginator: states PLUGIN_B where an earlier observation states PLUGIN_A"
+                        .to_owned()
+                ),
+                "{anomalies:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_marked_twin_disagreeing_with_its_bare_key_is_kept_and_the_bare_stands() {
+        let held = read("MSGTYPE=D|CLORDID=A1|SYMBOL=2454|#SYMBOL=TW0002454006|");
+        assert_eq!(
+            held.get_by_tag(55)
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .as_deref(),
+            Some("2454")
+        );
+        let anomalies: Vec<String> = held.anomalies().iter().map(ToString::to_string).collect();
+        assert_eq!(
+            anomalies,
+            [r#"symbol: a #-marked twin states "TW0002454006" where the bare key states "2454""#]
+        );
+        // The same value twice, or a marked counter beside its marked
+        // occurrences, says nothing against the bare key.
+        for line in [
+            "MSGTYPE=D|CLORDID=A1|SYMBOL=2454|#SYMBOL=2454|",
+            "MSGTYPE=D|CLORDID=A1|NOPARTYIDS=1|NOPARTYIDS[0]=PARTYID=B1\u{2022}\u{2022}PARTYROLE=1|\
+             #NOPARTYIDS=1|#NOPARTYIDS[0]=PARTYID=B2\u{2022}\u{2022}PARTYROLE=3|",
+        ] {
+            let held = read(line);
+            assert!(
+                !held
+                    .anomalies()
+                    .iter()
+                    .any(|held| held.reason().contains("twin")),
+                "{line}: {:?}",
+                held.anomalies()
+            );
+        }
     }
 }

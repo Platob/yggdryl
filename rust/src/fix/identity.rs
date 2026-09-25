@@ -4,16 +4,18 @@
 use smol_str::SmolStr;
 
 use crate::Decimal18;
-use crate::graph::{MarketElement, MarketEventData};
+use crate::graph::{Market, OperationEventData};
+use crate::securityid::{SecType, SecurityId};
 use crate::{
-    BloombergCode, CusipCode, DataType, Error, FIGICode, Field, IsinCode, MicCode, Result, Scalar,
-    SedolCode, TimeUnit, Timezone, Value,
+    BloombergCode, DataType, Error, FIGICode, Field, IsinCode, MicCode, Result, Scalar, TimeUnit,
+    Timezone, Value,
 };
 
 use super::schema::CLOCK_DATATYPE;
 use super::{
-    FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, SOURCEURL_TAG_NAME,
+    CONVERSATIONID_TAG_NAME, FixRegistry, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME,
+    MSGORIGINATOR_TAG_NAME, MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME,
+    SOURCEURL_TAG_NAME,
 };
 
 /// The standard header and trailer facts every message holds typed, beside
@@ -232,6 +234,8 @@ pub struct FixCapture {
     msgctxid: Option<SmolStr>,
     msgsessionid: Option<SmolStr>,
     msgsesseventid: Option<SmolStr>,
+    msgoriginator: Option<SmolStr>,
+    conversationid: Option<SmolStr>,
 }
 
 impl FixCapture {
@@ -269,6 +273,44 @@ impl FixCapture {
         self.msgsesseventid = value;
     }
 
+    /// The plugin the message came into a bridge through, as the bridge's
+    /// own log line names it - `OMS_X1_OrderOut` in `Message received: ...
+    /// from (OMS_X1_OrderOut as OD9EOEDJ400)` - where the line names one.
+    #[must_use]
+    pub fn msgoriginator(&self) -> Option<&str> {
+        self.msgoriginator.as_deref()
+    }
+
+    /// The conversation a bridge filed the message under: a
+    /// `CONVERSATIONID` the message stated, else the `{conversationId: ..}`
+    /// of its log line.
+    #[must_use]
+    pub fn conversationid(&self) -> Option<&str> {
+        self.conversationid.as_deref()
+    }
+
+    /// The provenance one of [`MSGORIGINATOR_TAG_NAME`] and
+    /// [`CONVERSATIONID_TAG_NAME`] holds, by tag.
+    pub(super) fn provenance(&self, tag: i32) -> Option<&str> {
+        if tag == MSGORIGINATOR_TAG_NAME.0 {
+            self.msgoriginator()
+        } else if tag == CONVERSATIONID_TAG_NAME.0 {
+            self.conversationid()
+        } else {
+            None
+        }
+    }
+
+    /// States one provenance fact by tag, or unsays it.
+    pub(super) fn set_provenance(&mut self, tag: i32, value: Option<&str>) {
+        let value = value.map(SmolStr::new);
+        if tag == MSGORIGINATOR_TAG_NAME.0 {
+            self.msgoriginator = value;
+        } else if tag == CONVERSATIONID_TAG_NAME.0 {
+            self.conversationid = value;
+        }
+    }
+
     fn fact(&self, tag: i32) -> Option<Scalar> {
         let text = |held: &Option<SmolStr>| held.as_deref().map(Scalar::from);
         let is = |held: (i32, &str)| held.0 == tag;
@@ -280,6 +322,10 @@ impl FixCapture {
             text(&self.msgsessionid)
         } else if is(MSGSESSEVENTID_TAG_NAME) {
             text(&self.msgsesseventid)
+        } else if is(MSGORIGINATOR_TAG_NAME) {
+            text(&self.msgoriginator)
+        } else if is(CONVERSATIONID_TAG_NAME) {
+            text(&self.conversationid)
         } else {
             None
         }
@@ -301,6 +347,10 @@ impl FixCapture {
             self.msgsessionid = text();
         } else if is(MSGSESSEVENTID_TAG_NAME) {
             self.msgsesseventid = text();
+        } else if is(MSGORIGINATOR_TAG_NAME) {
+            self.msgoriginator = text();
+        } else if is(CONVERSATIONID_TAG_NAME) {
+            self.conversationid = text();
         } else {
             return false;
         }
@@ -327,7 +377,7 @@ pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 /// test of whether it reaches the wire, the arrival record or the code the
 /// message digests to. What a message *implies* about its market lives on
 /// the event, off these and off the row, and reaches none of the three.
-pub(super) const LIFTED_TAGS: [i32; 17] = [
+pub(super) const LIFTED_TAGS: [i32; 23] = [
     AVGPX_TAG,
     11,
     CUMQTY_TAG,
@@ -342,6 +392,12 @@ pub(super) const LIFTED_TAGS: [i32; 17] = [
     117,
     131,
     LEAVESQTY_TAG,
+    188,
+    189,
+    190,
+    191,
+    194,
+    195,
     198,
     262,
     1003,
@@ -357,13 +413,17 @@ pub(super) const AVGPX_TAG: i32 = 6;
 pub(super) const CUMQTY_TAG: i32 = 14;
 pub(super) const LEAVESQTY_TAG: i32 = 151;
 pub(super) const TIMEINFORCE_TAG: i32 = 59;
+/// `PartyID(448)`: the member of a `Parties` occurrence an identifier map
+/// reads under the occurrence's role.
+pub(super) const PARTYID_TAG: i32 = 448;
 
 /// The prices and quantities a message lifted, and the identifiers it is
 /// known by, each exactly as the message stated it.
 ///
-/// Eight exact numbers and nine identifiers, every one an `Option`: absent
-/// is "the message never said", and that is the only flag this holder
-/// needs, because nothing writes here but a tag.
+/// Eight exact numbers, the six FX parts of a price behind one pointer, and
+/// nine identifiers, every one an `Option`: absent is "the message never
+/// said", and that is the only flag this holder needs, because nothing
+/// writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
     price: Option<Decimal18>,
@@ -374,6 +434,8 @@ pub struct FixLifted {
     avgpx: Option<Decimal18>,
     cumqty: Option<Decimal18>,
     leavesqty: Option<Decimal18>,
+    /// The FX parts, boxed: most messages state none and pay one pointer.
+    fx: Option<Box<LiftedFx>>,
     clordid: Option<SmolStr>,
     origclordid: Option<SmolStr>,
     orderid: Option<SmolStr>,
@@ -385,7 +447,79 @@ pub struct FixLifted {
     tradeid: Option<SmolStr>,
 }
 
+/// The six FX parts of a price a message lifted: the spot rate and the
+/// forward points of its last price and of each of its two lanes, FIX's own
+/// `LastSpotRate(194)`, `LastForwardPoints(195)`, `BidSpotRate(188)`,
+/// `BidForwardPoints(189)`, `OfferSpotRate(190)` and `OfferForwardPoints(191)`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LiftedFx {
+    lastspotrate: Option<Decimal18>,
+    lastforwardpoints: Option<Decimal18>,
+    bidspotrate: Option<Decimal18>,
+    bidforwardpoints: Option<Decimal18>,
+    offerspotrate: Option<Decimal18>,
+    offerforwardpoints: Option<Decimal18>,
+}
+
+impl LiftedFx {
+    /// Whether every part is unstated, which is when the holder drops it.
+    fn is_empty(&self) -> bool {
+        self.lastspotrate.is_none()
+            && self.lastforwardpoints.is_none()
+            && self.bidspotrate.is_none()
+            && self.bidforwardpoints.is_none()
+            && self.offerspotrate.is_none()
+            && self.offerforwardpoints.is_none()
+    }
+}
+
 impl FixLifted {
+    /// Writes one FX part, allocating the parts on the first stated one and
+    /// dropping them when the last is cleared.
+    fn set_fx(&mut self, write: impl FnOnce(&mut LiftedFx)) {
+        let mut fx = self.fx.take().map(|held| *held).unwrap_or_default();
+        write(&mut fx);
+        if !fx.is_empty() {
+            self.fx = Some(Box::new(fx));
+        }
+    }
+
+    /// `LastSpotRate(194)`, where the message stated one.
+    #[must_use]
+    pub fn lastspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.lastspotrate)
+    }
+
+    /// `LastForwardPoints(195)`, where the message stated one.
+    #[must_use]
+    pub fn lastforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.lastforwardpoints)
+    }
+
+    /// `BidSpotRate(188)`, where the message stated one.
+    #[must_use]
+    pub fn bidspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.bidspotrate)
+    }
+
+    /// `BidForwardPoints(189)`, where the message stated one.
+    #[must_use]
+    pub fn bidforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.bidforwardpoints)
+    }
+
+    /// `OfferSpotRate(190)`, where the message stated one.
+    #[must_use]
+    pub fn offerspotrate(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.offerspotrate)
+    }
+
+    /// `OfferForwardPoints(191)`, where the message stated one.
+    #[must_use]
+    pub fn offerforwardpoints(&self) -> Option<Decimal18> {
+        self.fx.as_deref().and_then(|fx| fx.offerforwardpoints)
+    }
+
     /// `Price(44)`, where the message stated one.
     #[must_use]
     pub const fn price(&self) -> Option<Decimal18> {
@@ -503,6 +637,12 @@ impl FixLifted {
             AVGPX_TAG => self.avgpx.map(Scalar::from),
             CUMQTY_TAG => self.cumqty.map(Scalar::from),
             LEAVESQTY_TAG => self.leavesqty.map(Scalar::from),
+            194 => self.lastspotrate().map(Scalar::from),
+            195 => self.lastforwardpoints().map(Scalar::from),
+            188 => self.bidspotrate().map(Scalar::from),
+            189 => self.bidforwardpoints().map(Scalar::from),
+            190 => self.offerspotrate().map(Scalar::from),
+            191 => self.offerforwardpoints().map(Scalar::from),
             11 => text(&self.clordid),
             41 => text(&self.origclordid),
             37 => text(&self.orderid),
@@ -535,6 +675,30 @@ impl FixLifted {
             AVGPX_TAG => self.avgpx = number(),
             CUMQTY_TAG => self.cumqty = number(),
             LEAVESQTY_TAG => self.leavesqty = number(),
+            194 => {
+                let held = number();
+                self.set_fx(|fx| fx.lastspotrate = held);
+            }
+            195 => {
+                let held = number();
+                self.set_fx(|fx| fx.lastforwardpoints = held);
+            }
+            188 => {
+                let held = number();
+                self.set_fx(|fx| fx.bidspotrate = held);
+            }
+            189 => {
+                let held = number();
+                self.set_fx(|fx| fx.bidforwardpoints = held);
+            }
+            190 => {
+                let held = number();
+                self.set_fx(|fx| fx.offerspotrate = held);
+            }
+            191 => {
+                let held = number();
+                self.set_fx(|fx| fx.offerforwardpoints = held);
+            }
             11 => self.clordid = text(),
             41 => self.origclordid = text(),
             37 => self.orderid = text(),
@@ -592,7 +756,7 @@ pub(super) const TEXT_TAG: i32 = 58;
 /// walks with [`CRATE_TAG_MIN`](crate::CRATE_TAG_MIN) and
 /// [`CRATE_TAG_MAX`](crate::CRATE_TAG_MAX), and `sourceurl` is the one of
 /// them no message holds.
-pub const FIX_TYPED_TAGS: [i32; 29] = [
+pub const FIX_TYPED_TAGS: [i32; 35] = [
     WIRE_HEADER_TAGS[0],
     WIRE_HEADER_TAGS[1],
     WIRE_HEADER_TAGS[2],
@@ -618,6 +782,12 @@ pub const FIX_TYPED_TAGS: [i32; 29] = [
     LIFTED_TAGS[14],
     LIFTED_TAGS[15],
     LIFTED_TAGS[16],
+    LIFTED_TAGS[17],
+    LIFTED_TAGS[18],
+    LIFTED_TAGS[19],
+    LIFTED_TAGS[20],
+    LIFTED_TAGS[21],
+    LIFTED_TAGS[22],
     WIRE_TRAILER_TAGS[0],
     WIRE_TRAILER_TAGS[1],
     WIRE_TRAILER_TAGS[2],
@@ -650,10 +820,11 @@ pub(super) fn is_capture_tag(tag: i32) -> bool {
 /// or one of the FIX fields the message lifted.
 ///
 /// The capture's own columns are none of them: a message states nothing
-/// about the reading it arrived through.
+/// about the reading it arrived through. Nor is a crate field that stays
+/// content: the row holds it as it arrived.
 pub(super) fn is_typed_tag(tag: i32) -> bool {
     !is_capture_tag(tag)
-        && (super::is_crate_tag(tag)
+        && ((super::is_crate_tag(tag) && !super::crated::is_unprojected_tag(tag))
             || HEADER_TAGS.contains(&tag)
             || LIFTED_TAGS.contains(&tag)
             || tag == TEXT_TAG)
@@ -661,7 +832,7 @@ pub(super) fn is_typed_tag(tag: i32) -> bool {
 
 /// The four typed holders of a message, read and written by tag.
 pub(super) struct Typed<'msg> {
-    pub(super) event: &'msg MarketEventData,
+    pub(super) event: &'msg OperationEventData,
     pub(super) header: &'msg FixHeader,
     pub(super) capture: &'msg FixCapture,
     pub(super) lifted: &'msg FixLifted,
@@ -686,7 +857,7 @@ impl Typed<'_> {
 /// Records what one typed tag states on the holder that owns it; a null
 /// clears the fact. Whether the tag is a typed tag at all.
 pub(super) fn record(
-    event: &mut MarketEventData,
+    event: &mut OperationEventData,
     header: &mut FixHeader,
     capture: &mut FixCapture,
     lifted: &mut FixLifted,
@@ -708,34 +879,28 @@ pub(super) fn record(
 /// Records what one event column states on the event, through the column
 /// it is: a value the fact's type refuses is silence and a null clears the
 /// fact. Whether the tag is one the event holds.
-pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar) -> bool {
+pub(super) fn record_event(event: &mut OperationEventData, tag: i32, value: &Scalar) -> bool {
     match tag {
-        tag if tag == super::ISINCODE_TAG_NAME.0 => event.set_isincode(
+        tag if tag == super::ISINCODE_TAG_NAME.0 => record_securityid(
+            event,
+            "ISIN",
             IsinCode::from_scalar(value)
-                .cloned()
-                .or_else(|| value.as_str().and_then(|value| IsinCode::new(value).ok())),
+                .map(|code| code.as_str().to_owned())
+                .or_else(|| value.as_str().map(str::to_owned)),
         ),
-        tag if tag == super::CUSIPCODE_TAG_NAME.0 => event.set_cusipcode(
-            CusipCode::from_scalar(value)
-                .cloned()
-                .or_else(|| value.as_str().and_then(|value| CusipCode::new(value).ok())),
+        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => record_securityid(
+            event,
+            "BLOOMBERG",
+            BloombergCode::from_scalar(value)
+                .map(|code| code.as_str().to_owned())
+                .or_else(|| value.as_str().map(str::to_owned)),
         ),
-        tag if tag == super::SEDOLCODE_TAG_NAME.0 => event.set_sedolcode(
-            SedolCode::from_scalar(value)
-                .cloned()
-                .or_else(|| value.as_str().and_then(|value| SedolCode::new(value).ok())),
-        ),
-        tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => {
-            event.set_bloombergcode(BloombergCode::from_scalar(value).cloned().or_else(|| {
-                value
-                    .as_str()
-                    .and_then(|value| BloombergCode::new(value).ok())
-            }))
-        }
-        tag if tag == super::FIGICODE_TAG_NAME.0 => event.set_figicode(
+        tag if tag == super::FIGICODE_TAG_NAME.0 => record_securityid(
+            event,
+            "FIGI",
             FIGICode::from_scalar(value)
-                .cloned()
-                .or_else(|| value.as_str().and_then(|value| FIGICode::new(value).ok())),
+                .map(|code| code.as_str().to_owned())
+                .or_else(|| value.as_str().map(str::to_owned)),
         ),
         tag if tag == super::MICCODE_TAG_NAME.0 => event.set_miccode(
             MicCode::from_scalar(value)
@@ -760,7 +925,7 @@ pub(super) fn record_event(event: &mut MarketEventData, tag: i32, value: &Scalar
 /// What the event states for one event column, as the raw value the
 /// column's field types, or nothing where it states no fact: an empty name,
 /// an absent instant, identity or code.
-pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
+pub(super) fn event_fact(event: &OperationEventData, tag: i32) -> Option<Scalar> {
     if let Some(column) = super::crated::event_column_of(tag) {
         return column.fact(event);
     }
@@ -768,22 +933,21 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
         return column.fact(event);
     }
     match tag {
-        tag if tag == super::ISINCODE_TAG_NAME.0 => {
-            event.get_isincode().cloned().map(Scalar::IsinCode)
-        }
-        tag if tag == super::CUSIPCODE_TAG_NAME.0 => {
-            event.get_cusipcode().cloned().map(Scalar::CusipCode)
-        }
-        tag if tag == super::SEDOLCODE_TAG_NAME.0 => {
-            event.get_sedolcode().cloned().map(Scalar::SedolCode)
-        }
+        tag if tag == super::ISINCODE_TAG_NAME.0 => event
+            .get_securityids()
+            .get("ISIN")
+            .and_then(|code| IsinCode::new(code).ok())
+            .map(Scalar::IsinCode),
         tag if tag == super::BLOOMBERGCODE_TAG_NAME.0 => event
-            .get_bloombergcode()
-            .cloned()
+            .get_securityids()
+            .get("BLOOMBERG")
+            .and_then(|code| BloombergCode::new(code).ok())
             .map(Scalar::BloombergCode),
-        tag if tag == super::FIGICODE_TAG_NAME.0 => {
-            event.get_figicode().cloned().map(Scalar::FIGICode)
-        }
+        tag if tag == super::FIGICODE_TAG_NAME.0 => event
+            .get_securityids()
+            .get("FIGI")
+            .and_then(|code| FIGICode::new(code).ok())
+            .map(Scalar::FIGICode),
         tag if tag == super::MICCODE_TAG_NAME.0 => {
             event.get_miccode().cloned().map(Scalar::MicCode)
         }
@@ -792,6 +956,28 @@ pub(super) fn event_fact(event: &MarketEventData, tag: i32) -> Option<Scalar> {
 }
 
 /// The exact clock the two FIX clocks a row types are held under.
+/// Records one crated identifier column onto the security identifiers: a
+/// stated code replaces the entry under its key, a null removes it.
+fn record_securityid(event: &mut OperationEventData, key: &str, code: Option<String>) {
+    let key = SecType::read(key).expect("a known security-identifier source");
+    let mut ids = event.get_securityids().clone();
+    match code
+        .as_deref()
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+    {
+        Some(code) => {
+            if let Ok(id) = SecurityId::new(key, code) {
+                ids.set(id);
+            }
+        }
+        None => {
+            ids.remove(&key);
+        }
+    }
+    let _ = event.set_securityids(ids);
+}
+
 pub(super) fn required_dtype(tag: i32) -> Option<DataType> {
     matches!(tag, 52 | 60).then_some(CLOCK_DATATYPE)
 }
@@ -825,6 +1011,11 @@ pub(super) fn resolve_tag(field: &Field, registry: &FixRegistry) -> Result<Optio
     // field is answered off the dictionary's index rather than the
     // column's metadata.
     if !field.as_metadata().is_empty() {
+        // An alias spelling that did not fill its field is no field of the
+        // dictionary: its name would resolve to the one it lost to.
+        if field.get_metadata(super::field::ALIAS_OF).is_some() {
+            return Ok(None);
+        }
         if let Some(explicit) = registry.facts_of(field).and_then(|facts| facts.tag) {
             return Ok(Some(explicit));
         }

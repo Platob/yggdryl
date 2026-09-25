@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use yggdryl::arrow::BatchReader;
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{DataType, FixCodec, FixDedup, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
@@ -938,7 +938,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         older.capture().msgsesseventid(),
         Some("D:SESSION-A:CONTEXT-A:7")
     );
-    assert!(!older.get_identifiers().contains_key("msgsesseventid"));
+    assert!(!older.get_altids().contains_key("MSGSESSEVENTID"));
 
     let directly_merged = newer
         .clone()
@@ -947,7 +947,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
     assert!(directly_merged.get_prevuuid().is_none());
     assert_eq!(directly_merged.get_by_tag(55), Some(Scalar::from("MSFT")));
     assert_eq!(
-        directly_merged.get_isincode().map(|code| code.as_str()),
+        directly_merged.get_securityids().get("ISIN"),
         Some("US0378331005")
     );
     // The later recording (200) is the reference, and the merged event
@@ -1017,7 +1017,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
         assert_eq!(message.capture().msgctxid(), Some("CONTEXT-A"));
         assert_eq!(message.get_by_tag(55), Some(Scalar::from("MSFT")));
         assert_eq!(
-            message.get_isincode().map(|code| code.as_str()),
+            message.get_securityids().get("ISIN"),
             Some("US0378331005"),
             "the reference keeps its row and the full graph merge fills a missing market fact"
         );
@@ -1104,7 +1104,7 @@ fn lifecycle_fully_merges_one_session_event_on_the_latest_recording_base() {
             "the later recording of the pair folded last is the reference"
         );
         assert_eq!(
-            replayed[0].get_isincode().map(|code| code.as_str()),
+            replayed[0].get_securityids().get("ISIN"),
             Some("US0378331005"),
             "the folded pair still fills what the new reference omits"
         );
@@ -1470,7 +1470,7 @@ fn lifecycle_learns_in_event_order_and_fills_only_later_missing_instrument_codes
     assert_eq!(walked.len(), 2);
     assert_eq!(walked[0].header().msgseqnum(), Some(1));
     assert_eq!(
-        walked[1].get_bloombergcode().map(|code| code.as_str()),
+        walked[1].get_securityids().get("BLOOMBERG"),
         Some("AAPL US Equity")
     );
     assert_eq!(
@@ -1496,7 +1496,7 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert_eq!(
-        learned[1].get_figicode().map(|value| value.as_str()),
+        learned[1].get_securityids().get("FIGI"),
         Some("BBG000BLNQ16")
     );
 
@@ -1509,9 +1509,46 @@ fn lifecycle_learns_figi_by_isin_and_keeps_a_conflicting_association_ambiguous()
         .collect::<yggdryl::Result<_>>()
         .unwrap();
     assert!(
-        ambiguous[2].get_figicode().is_none(),
+        ambiguous[2].get_securityids().get("FIGI").is_none(),
         "a conflicting association stays unknown"
     );
+}
+
+#[test]
+fn lifecycle_learns_no_listing_a_bridge_names_its_instrument_by() {
+    // `OMSINSTRUMENTID` states a listing - the ISIN, its market and its
+    // currency - and one ISIN has as many listings as markets: what one
+    // message names it by is no association to fill onto another. The
+    // Bloomberg code beside it is the instrument's and is learned.
+    let codec = codec();
+    let line = |seq: i32, body: &str| {
+        format!(
+            "8=FIX.4.4|35=D|49=S|56=T|34={seq}|52=20260102-10:15:{seq:02}|11={seq}|isincode=CH0012214059|{body}|10=0|"
+        )
+    };
+    let walked: Vec<_> = codec
+        .lifecycle([
+            codec.parse_fix_line(line(2, "").as_bytes()),
+            codec.parse_fix_line(
+                line(
+                    1,
+                    "bloombergcode=HOLN SW|OMSINSTRUMENTID=dbi;CH0012214059_XSWX_CHF",
+                )
+                .as_bytes(),
+            ),
+        ])
+        .collect::<yggdryl::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        walked[0].get_securityids().get("OMSINSTRUMENTID"),
+        Some("dbi;CH0012214059_XSWX_CHF"),
+        "the message stating it keeps it"
+    );
+    assert_eq!(
+        walked[1].get_securityids().get("BLOOMBERG"),
+        Some("HOLN SW")
+    );
+    assert_eq!(walked[1].get_securityids().get("OMSINSTRUMENTID"), None);
 }
 
 #[test]

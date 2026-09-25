@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use yggdryl::CfiCode;
-use yggdryl::graph::MarketElement;
+use yggdryl::graph::Market;
 use yggdryl::{FixMsg, FixRegistry};
 
 fn registry() -> Arc<FixRegistry> {
@@ -118,23 +118,41 @@ fn a_partial_stated_code_takes_what_the_rest_of_the_message_adds() {
 }
 
 #[test]
-fn the_classification_column_is_the_one_the_event_holds() {
-    // One owner: tag 461 is the event's own, so the column, the lookup by
-    // tag and the graph reading all answer the one fact.
+fn the_column_states_fixs_code_and_the_event_holds_the_detailed_classification() {
+    // Tag 461 is FIX's own field: the column and the lookup by tag answer
+    // what the message states or the shipped derivation fills, coarse or
+    // not. The market keeps only a detailed classification, so the event
+    // answers none for a coarse code and the detailed code where one is
+    // stated beside it.
     let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|167=CS|48=US0378331005|22=4|10=0|");
-    let classified = classified(&held);
-    assert_eq!(classified.as_deref(), Some("ESXXXX"));
-    assert_eq!(
-        held.get_cficode().map(ToString::to_string),
-        classified,
-        "the event holds what the column states"
-    );
+    assert_eq!(classified(&held).as_deref(), Some("ESXXXX"));
     assert_eq!(
         held.by_tag(461).expect("the classification").as_str(),
-        classified.as_deref()
+        Some("ESXXXX")
+    );
+    assert_eq!(
+        held.get_cficode(),
+        None,
+        "a coarse code is no classification the market keeps"
     );
     assert!(
         held.as_field().index_of("cficode").is_some(),
         "the classification is FIX's own field and a column like any other"
+    );
+
+    let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESVTFR|10=0|");
+    assert_eq!(classified(&held).as_deref(), Some("ESVTFR"));
+    assert_eq!(
+        held.get_cficode().map(ToString::to_string).as_deref(),
+        Some("ESVTFR")
+    );
+
+    // A bridge states the detailed code beside the coarse one: the column
+    // keeps what FIX stated, the event takes the detail.
+    let held = enriched(b"8=FIX.4.4|35=D|11=A1|55=AAPL|461=ESXXXX|DETAILEDCFICODE=ESVTFR|10=0|");
+    assert_eq!(classified(&held).as_deref(), Some("ESXXXX"));
+    assert_eq!(
+        held.get_cficode().map(ToString::to_string).as_deref(),
+        Some("ESVTFR")
     );
 }

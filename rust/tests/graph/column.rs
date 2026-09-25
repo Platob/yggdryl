@@ -1,4 +1,4 @@
-//! `rust/src/graph/column.rs`: the seventeen columns every event schema opens
+//! `rust/src/graph/column.rs`: the sixteen columns every event schema opens
 //! with, each stating back exactly the fact it read.
 
 use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
@@ -21,7 +21,6 @@ fn every_column_states_back_what_it_read() {
     event.set_prevuuid(Some(Uuid::from_v8(5)));
     event.set_seqnum(6);
     event.set_srcuuids(vec![Uuid::from_v8(9)]);
-    event.set_identifiers([("OrderID".to_owned(), "O-1".to_owned())].into());
     event.set_state(State::read("Filled").expect("a state"));
     let mut again = MarketEventData::default();
     for column in EventColumn::ALL {
@@ -48,7 +47,6 @@ fn every_column_states_back_what_it_read() {
     assert_eq!(again.get_prevuuid(), Some(Uuid::from_v8(5)));
     assert_eq!(again.get_seqnum(), 6);
     assert_eq!(again.get_srcuuids(), event.get_srcuuids());
-    assert_eq!(again.get_identifiers(), event.get_identifiers());
     assert_eq!(again.get_state(), event.get_state());
 }
 
@@ -80,6 +78,7 @@ fn a_null_clears_and_nothing_stated_is_none() {
         .iter()
         .map(|column| column.name())
         .collect();
+    assert_eq!(EventColumn::ALL.len(), 16);
     assert_eq!(
         names,
         [
@@ -98,7 +97,6 @@ fn a_null_clears_and_nothing_stated_is_none() {
             "prevuuid",
             "seqnum",
             "srcuuids",
-            "identifiers",
             "state",
         ]
     );
@@ -106,6 +104,10 @@ fn a_null_clears_and_nothing_stated_is_none() {
     // The merge reference is chosen from `recdunix` alone, so no column
     // persists a separate reference recording clock any more.
     assert_eq!(EventColumn::of_name("refrecdunix"), None);
+    // The names an element went by left the event: a book control is typed
+    // on the operation and the names it goes by are its alternate
+    // identifiers, an operation column.
+    assert_eq!(EventColumn::of_name("identifiers"), None);
 }
 
 #[test]

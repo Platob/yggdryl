@@ -177,8 +177,8 @@ const capture = new arrow.Table({ body: arrow.vectorFromArray(LINES, new arrow.B
 const parsed = seedCodec.parseLine(Buffer.from(LINES[0])).next().value
 const orderType = registry.msgtype('D')
 const orderDeclaration = orderType.asField()
-if (parsed.identifiers.clordid !== 'ORDER-000000') {
-  throw new Error('a parse must carry the declared identifier onto the event')
+if (parsed.altids.CLORDID !== 'ORDER-000000') {
+  throw new Error('a parse must carry the stated order identifier onto the event')
 }
 if (orderType.identifierValues(parsed)[0][0].name !== 'clordid') {
   throw new Error('the compiled selector must reach the stated order identifier')
@@ -248,7 +248,8 @@ try {
   benchmark('fix/message_event', () => parsed.event())
   benchmark('fix/message_header', () => parsed.header())
   benchmark('fix/message_capture', () => parsed.capture())
-  benchmark('fix/message_identifiers', () => parsed.identifiers)
+  benchmark('fix/message_altids', () => parsed.altids)
+  benchmark('fix/message_securityids', () => parsed.securityids)
   benchmark('fix/message_metadata', () => parsed.metadata)
   benchmark('fix/message_curruuid', () => parsed.curruuid)
   benchmark('fix/message_currhashcode', () => parsed.currhashcode)

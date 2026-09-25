@@ -35,10 +35,13 @@ if TYPE_CHECKING:
     SideField: TypeAlias = TypedField[Literal["side"], str]
     StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
+    UnitField: TypeAlias = TypedField[Literal["unit"], str]
 else:
     CountryField = CcyField = MicCodeField = CfiCodeField = IsinCodeField = CusipCodeField = (
         SedolCodeField
-    ) = BloombergCodeField = FIGICodeField = SideField = StateField = TimeInForceField = Field
+    ) = BloombergCodeField = FIGICodeField = SideField = StateField = TimeInForceField = UnitField = (
+        Field
+    )
 
 _COUNTRY = simple_dtype("country")
 _CCY = simple_dtype("ccy")
@@ -52,6 +55,7 @@ _FIGI = simple_dtype("figi")
 _SIDE = simple_dtype("side")
 _STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
+_UNIT = simple_dtype("unit")
 
 
 def country(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> CountryField:
@@ -140,6 +144,12 @@ def timeinforce(
     return new_field(TimeInForceField, name, _TIMEINFORCE, nullable, metadata)
 
 
+def unit(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> UnitField:
+    """The unit a quantity is counted in, FIX ``UnitOfMeasure(996)``: ASCII up to 32 bytes."""
+
+    return new_field(UnitField, name, _UNIT, nullable, metadata)
+
+
 __all__ = [
     "BloombergCodeField",
     "CfiCodeField",
@@ -153,6 +163,7 @@ __all__ = [
     "SideField",
     "StateField",
     "TimeInForceField",
+    "UnitField",
     "bloomberg",
     "cfi",
     "country",
@@ -165,4 +176,5 @@ __all__ = [
     "side",
     "state",
     "timeinforce",
+    "unit",
 ]

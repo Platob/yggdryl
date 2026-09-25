@@ -875,6 +875,7 @@ impl fmt::Display for DataType {
             | D::Side
             | D::State
             | D::TimeInForce
+            | D::Unit
             | D::Uuid
             | D::Version
             | D::Timezone

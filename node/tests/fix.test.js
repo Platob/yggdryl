@@ -36,8 +36,8 @@
   // The crate's own definitions, which every registry holds from construction
   // beside the seeded SendingTime (52) and TransactTime (60) clocks. A
   // definition is filed by the shape it has: the columns are scalar fields,
-  // the `identifiers` and `metadata` Maps are groups, and the source UUID
-  // list is a registered scalar column.
+  // the `metadata` Map is a group, and the source UUID list is a registered
+  // scalar column.
   const CRATE = fix.crateFields()
   // Which category a definition lands in is the core's answer, not a shape a
   // test guesses: a snapshot states the three, so the fields it lists are the
@@ -1010,13 +1010,13 @@
     assert.deepEqual(tags.filter((tag) => tag >= 65000), CRATE_TAGS)
     assert.equal(tags.length, STORED + CRATE_SCALARS.length)
     // The definitions walk behind the scalars: the components and the groups
-    // the dictionary declares, the crate's two Map groups among them, each a
+    // the dictionary declares, the crate's Map group among them, each a
     // nested datatype and none of them a scalar the tag doors answer.
     const definitions = definitionsOf(registry)
     assert.ok(definitions.every((field) => field.dtype.kind === 'nested'))
     assert.equal(definitions.length + tags.length, registry.size)
     assert.ok(definitions.some((field) => field.name === 'parties'))
-    assert.ok(definitions.some((field) => field.name === 'identifiers'))
+    assert.ok(definitions.some((field) => field.name === 'metadata'))
   })
 
   test('the registry takes every storage location', () => {
@@ -1065,13 +1065,12 @@
     // A shard is named by its tag block, nine digits with leading zeros. The
     // crate's own fields are written too - a store states the whole row - and
     // their block from 65000 is one shard of its own, the fixed row is the
-    // `fixmsg` component and the crate's two Maps are two groups; the reload
+    // `fixmsg` component and the crate's metadata Map is a group; the reload
     // takes the definition every registry holds over the document it finds.
     assert.ok(shards.every((shard) => /^\d{9}\.json$/.test(shard)), shards.join(', '))
     assert.equal(shards.includes('000000000.json'), true)
     assert.equal(shards.includes('000000650.json'), true)
     assert.equal(fs.existsSync(path.join(dictionary, 'components', 'fixmsg.json')), true)
-    assert.equal(fs.existsSync(path.join(dictionary, 'groups', 'identifiers.json')), true)
     assert.equal(fs.existsSync(path.join(dictionary, 'groups', 'metadata.json')), true)
     assert.ok(fix.FixRegistry.fromHandle(dictionary).equals(reference))
     const reloaded = fix.FixRegistry.fromHandle(new IOBase(dictionary))
@@ -1340,7 +1339,8 @@
     assert.equal(message.seqnum, 0)
     assert.equal(message.prevuuid, null)
     assert.deepEqual(message.srcuuids, [])
-    assert.equal(message.price, '0')
+    // No `Price(44)` is no price stated: null, never a zero standing in.
+    assert.equal(message.price, null)
     // `OrderQty(38)` is the quantity the event is about, so the root's child
     // filled it rather than staying a column.
     assert.equal(message.quantity, '100')
@@ -1357,6 +1357,8 @@
       msgctxid: null,
       msgsessionid: null,
       msgsesseventid: null,
+      msgoriginator: null,
+      conversationid: null,
     })
 
     // A lookup reaches the row and the holders alike, always as a Scalar: a
@@ -1413,9 +1415,9 @@
     assert.throws(() => message.getById('55'), /into rust type `f64`/)
   })
 
-  test('the event view exposes every precise clock and market fact', () => {
+  test('the event view exposes every precise clock, market and operation fact', () => {
     const message = fixedCodec(seed()).parseFixLine(Buffer.from(
-      '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|52=20240102-10:15:30|11=A1|55=AAPL|54=1|15=USD|38=100|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|',
+      '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|50=TRADER|52=20240102-10:15:30|1=ACC-1|11=A1|37=O-1|55=AAPL|22=4|48=US0378331005|54=1|15=USD|38=100|996=Shares|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|',
     ))
     const event = message.event()
 
@@ -1437,7 +1439,45 @@
     assert.equal(event.prevqty, null)
     assert.equal(event.tif, '0')
     assert.equal(event.tradable, null)
-    assert.equal(event.symbolticker, 'AAPL')
+    // The market facts under their trait names: the instrument by its
+    // ticker and its security identifiers, source to code - the CUSIP an
+    // American ISIN embeds derived beside the stated ISIN - what it is
+    // priced and counted in, and the FX parts no FIX lift fills yet.
+    assert.equal(event.ticker, 'AAPL')
+    assert.equal(event.currency, 'USD')
+    assert.equal(event.unit, 'Shares')
+    assert.equal(event.side, 'BUY')
+    assert.deepEqual(event.securityids, { CUSIP: '037833100', ISIN: 'US0378331005' })
+    assert.equal(event.cficode, null)
+    assert.equal(event.miccode, null)
+    assert.equal(event.spotrate, null)
+    assert.equal(event.forwardpoints, null)
+    assert.deepEqual(event.metadata, {})
+    // The operation facts: each map built from the fields that state it,
+    // upper-cased keys in key order, and the lane a buy at a price fills
+    // for itself - the other lane is the other party's.
+    assert.deepEqual(event.accountids, { ACCOUNT: 'ACC-1' })
+    assert.deepEqual(event.userids, { SENDERSUBID: 'TRADER' })
+    assert.deepEqual(event.altids, { CLORDID: 'A1', ORDERID: 'O-1' })
+    assert.deepEqual(event.bid, {
+      price: '10.5', spotrate: null, forwardpoints: null, currency: 'USD', quantity: '100', unit: 'Shares',
+    })
+    assert.equal(event.ask, null)
+    // The message answers the same facts as getters.
+    for (const name of [
+      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'metadata',
+      'accountids', 'userids', 'altids', 'bid', 'ask',
+    ]) {
+      assert.deepEqual(message[name], event[name], name)
+    }
+    // The retired spellings are gone rather than aliased.
+    for (const gone of [
+      'identifiers', 'isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
+      'bidpx', 'bidqty', 'bidcurrency', 'bidunit', 'askpx', 'askqty', 'askcurrency', 'askunit',
+    ]) {
+      assert.equal(gone in event, false, gone)
+      assert.equal(gone in message, false, gone)
+    }
   })
 
   test('the entries are the content row read as a tree, and the wire is the header before them', () => {
@@ -1521,7 +1561,8 @@
     assert.equal(event.currhashcode, message.currhashcode)
     assert.equal(event.crosshashcode, message.crosshashcode)
     assert.equal(event.crosscode, message.crosscode)
-    assert.deepEqual(event.identifiers, message.identifiers)
+    assert.deepEqual(event.altids, message.altids)
+    assert.deepEqual(event.securityids, message.securityids)
     assert.equal(event.side, message.side)
     assert.equal(event.currunix, message.currunix)
     assert.equal(event.state, message.state)
@@ -1534,11 +1575,12 @@
     assert.equal('qty' in event, false)
     // A buy of a hundred at no price fills the bid lane's size and nothing
     // else; the other lane is the other party's.
-    assert.equal(event.bidqty, '100')
-    for (const lane of ['bidpx', 'bidcurrency', 'bidunit', 'askpx', 'askqty', 'askcurrency', 'askunit']) {
-      assert.equal(event[lane], null, lane)
-    }
-    for (const code of ['isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'cficode', 'miccode']) {
+    assert.deepEqual(event.bid, {
+      price: null, spotrate: null, forwardpoints: null, currency: null, quantity: '100', unit: null,
+    })
+    assert.equal(event.ask, null)
+    assert.deepEqual(event.securityids, {})
+    for (const code of ['cficode', 'miccode']) {
       assert.equal(event[code], null, code)
     }
     assert.equal(event.unit, '')
@@ -1573,7 +1615,7 @@
     assert.equal(message.crosscode, 'ORDER-1')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-1:CONTEXT-1:7')
     assert.equal(message.byTag(65065).asJs(), '8:SESSION-1:CONTEXT-1:7')
-    assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
+    assert.deepEqual(message.altids, { CLORDID: 'CLIENT-1', ORDERID: 'ORDER-1' })
     assert.equal(message.getByTag(55), null)
     assert.equal(message.getByName('venueownthing'), null)
     const contentHash = message.currhashcode
@@ -1583,7 +1625,7 @@
     message.set('msgsessionid', 'SESSION-2')
     assert.equal(message.capture().msgsessionid, 'SESSION-2')
     assert.equal(message.capture().msgsesseventid, '8:SESSION-2:CONTEXT-1:7')
-    assert.deepEqual(message.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
+    assert.deepEqual(message.altids, { CLORDID: 'CLIENT-1', ORDERID: 'ORDER-1' })
     assert.equal(message.currhashcode, contentHash)
     assert.equal(message.curruuid, contentUuid)
 
@@ -1610,24 +1652,82 @@
     assert.equal(row.asJs()[at], '8:SESSION-2:CONTEXT-2:7')
     const rebuilt = fix.FixMsg.fromRow(schema, row, registry)
     assert.equal(rebuilt.crosscode, message.crosscode)
-    assert.deepEqual(rebuilt.identifiers, message.identifiers)
+    assert.deepEqual(rebuilt.altids, message.altids)
     assert.deepEqual(rebuilt.capture(), message.capture())
     assert.ok(rebuilt.intoRow(schema).equals(row))
+  })
 
-    // A row written before the column existed states the key among the
-    // identifiers, length-prefixed: the column is its one owner now, so the
-    // settle drops that entry and derives the plain key again.
-    const legacy = row.asJs()
-    legacy[schema.indexOf('identifiers')] = new Map([
-      ['clordid', 'CLIENT-1'],
-      ['msgsesseventid', '1:8|9:SESSION-2|9:CONTEXT-2|7'],
-      ['orderid', 'ORDER-1'],
-    ])
-    legacy[at] = null
-    const upgraded = fix.FixMsg.fromRow(schema, legacy, registry)
-    assert.deepEqual(upgraded.identifiers, { clordid: 'CLIENT-1', orderid: 'ORDER-1' })
-    assert.equal(upgraded.capture().msgsesseventid, '8:SESSION-2:CONTEXT-2:7')
-    assert.equal(upgraded.currhashcode, message.currhashcode)
+  test('a bridge line names the plugin and conversation on the capture', () => {
+    // Provenance the capture holds and the fixed row states, never content.
+    const registry = seed()
+    const codec = fixedCodec(registry)
+    const frame = '8=FIX.4.4|35=8|17=E1|37=O1|10=0|'
+    const bare = codec.parseLine(Buffer.from(frame)).next().value
+    const named = codec
+      .parseLine(Buffer.from(`Execution report from PLUGIN_A type trade {conversationId: c-1} ${frame}`))
+      .next().value
+    assert.equal(named.capture().msgoriginator, 'PLUGIN_A')
+    assert.equal(named.capture().conversationid, 'c-1')
+    assert.equal(named.byTag(65066).asJs(), 'PLUGIN_A')
+    assert.equal(named.byTag(65067).asJs(), 'c-1')
+    assert.equal(bare.capture().msgoriginator, null)
+    assert.equal(bare.capture().conversationid, null)
+    assert.equal(named.intoText('|'), bare.intoText('|'))
+    assert.equal(named.currhashcode, bare.currhashcode)
+
+    const schema = fix.schema(registry)
+    const row = named.intoRow(schema)
+    assert.equal(row.asJs()[schema.indexOf('msgoriginator')], 'PLUGIN_A')
+    assert.equal(row.asJs()[schema.indexOf('conversationid')], 'c-1')
+    assert.deepEqual(fix.FixMsg.fromRow(schema, row, registry).capture(), named.capture())
+  })
+
+  test('identifier map keys cross as a typed list', () => {
+    const field = new Field('OrderID', 'utf8')
+    field.fix.tag = 37
+    assert.deepEqual(field.fix.idmap, [])
+
+    // One record per key a field names a message by; follow and role are
+    // optional going in, follow always stated coming out and role where one is.
+    field.fix.idmap = [{ map: 'altids', key: 'ORDERID', follow: true }]
+    assert.deepEqual(field.fix.idmap, [{ map: 'altids', key: 'ORDERID', follow: true }])
+    assert.equal(field.get('FIX:idmap'), '[{"map":"altids","key":"ORDERID","follow":true}]')
+
+    // A follow flag belongs to an alternate identifier alone, and a refused
+    // list leaves the field as it was.
+    assert.throws(() => {
+      field.fix.idmap = [{ map: 'accountids', key: 'ORDERID', follow: true }]
+    }, /altids only/)
+    assert.throws(() => {
+      field.fix.idmap = [{ map: 'altids', key: 'orderid' }]
+    }, /upper-case/)
+    assert.deepEqual(field.fix.idmap, [{ map: 'altids', key: 'ORDERID', follow: true }])
+    field.fix.idmap = []
+    assert.equal(field.has('FIX:idmap'), false)
+
+    // The committed dictionary compiles every field's once: OrderID follows,
+    // PartyID names three maps by the role of the occurrence stating it.
+    const registry = seed()
+    const table = registry.idmapSources()
+    assert.deepEqual(
+      table.find((row) => row.key === 'ORDERID'),
+      { tag: 37, map: 'altids', key: 'ORDERID', follow: true },
+    )
+    assert.deepEqual(
+      table.filter((row) => row.tag === 448).map((row) => [row.map, row.key, row.role]),
+      [['accountids', 'CUSTOMERACCOUNT', '24'], ['userids', 'ENTERINGTRADER', '36'], ['userids', 'EXECUTINGTRADER', '12']],
+    )
+
+    // A bridge's own identifiers land in the maps their fields name.
+    const message = fixedCodec(registry)
+      .parseLine(Buffer.from(
+        '8=FIX.4.4|35=8|17=E1|37=O1|OMSDEALERACCOUNT=ACC1|OMSUSERID=trader1|' +
+        'PARENTORDERID=P1|ULTRADERCLORDID=U1|10=0|',
+      ))
+      .next().value
+    assert.deepEqual(message.accountids, { OMSDEALERACCOUNT: 'ACC1' })
+    assert.deepEqual(message.userids, { OMSUSERID: 'trader1' })
+    assert.deepEqual(message.altids, { EXECID: 'E1', ORDERID: 'O1', PARENTORDERID: 'P1', ULTRADERCLORDID: 'U1' })
   })
 
   test("a line's session event joins its four values as stated", () => {
@@ -1643,7 +1743,7 @@
     // rather than among the names the message goes by.
     assert.equal(capture.msgsesseventid, '8:e7256476:9effef3e6a:1094')
     assert.equal(message.byTag(65065).asJs(), '8:e7256476:9effef3e6a:1094')
-    assert.equal('msgsesseventid' in message.identifiers, false)
+    assert.equal('msgsesseventid' in message.altids, false)
 
     // A part missing is no session event at all.
     for (const [body, captures] of [
@@ -1970,7 +2070,7 @@
     const line = '8=FIX.4.4|35=D|11=A|48=US0378331005|10=0|'
     const filled = reader.parseLine(Buffer.from(line)).next().value
     assert.equal(filled.byTag(22).toJSON(), '4')
-    assert.equal(filled.isincode, 'US0378331005')
+    assert.equal(filled.securityids.ISIN, 'US0378331005')
     assert.equal(filled.byTag(470).toJSON(), 'US')
     assert.equal(filled.byTag(59).toJSON(), '0', 'an order stating no time in force is a day order')
     // What the message now states is what it emits: the frame leads, the
@@ -1988,7 +2088,7 @@
     // A value no standard closes answers nothing rather than a guess.
     const opaque = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|')).next().value
     assert.equal(opaque.getByTag(22), null)
-    assert.equal(opaque.event().isincode, null)
+    assert.deepEqual(opaque.event().securityids, {})
   })
 
   test('the official time delay bounds which clock dates the message', () => {
@@ -2057,16 +2157,30 @@
     assert.equal(bid.quantity, '200')
     assert.equal(bid.currency, 'USD')
     assert.ok(!bid.intoText('|').includes('|54='))
+    // The lane itself crosses whole, each slot as stated and null where
+    // none is, and the other lane is the other party's.
+    assert.deepEqual(bid.bid, {
+      price: '101.5', spotrate: null, forwardpoints: null, currency: 'USD', quantity: '200', unit: null,
+    })
+    assert.equal(bid.ask, null)
 
     // An offer alone is a sell at the offer.
     const offer = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q2|55=AAPL|133=102|135=50|10=0|'))
     assert.equal(offer.side, 'SELL')
     assert.equal(offer.price, '102')
     assert.equal(offer.quantity, '50')
+    assert.deepEqual(offer.ask, {
+      price: '102', spotrate: null, forwardpoints: null, currency: null, quantity: '50', unit: null,
+    })
+    assert.deepEqual(offer.event().ask, offer.ask)
+    assert.equal(offer.bid, null)
 
     // Both lanes name no side; a stated side stands whatever lane it quotes.
     const two = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q3|55=AAPL|132=101|133=102|10=0|'))
     assert.equal(two.side, 'UNKNOWN')
+    assert.equal(two.bid.price, '101')
+    assert.equal(two.bid.quantity, null)
+    assert.equal(two.ask.price, '102')
     const stated = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=S|117=Q4|55=AAPL|54=2|132=101|10=0|'))
     assert.equal(stated.side, 'SELL')
   })
@@ -2135,11 +2249,11 @@
     const later = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=2|52=20260102-10:15:31|11=LATER|isincode=US0378331005|10=0|'))
     const earlier = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|11=EARLIER|isincode=US0378331005|bloombergcode=AAPL US Equity|10=0|'))
     const learned = [...codec.lifecycle([later, earlier])]
-    assert.equal(learned[1].bloombergcode, 'AAPL US Equity')
-    assert.equal(later.bloombergcode, null, 'the input is never enriched in place')
+    assert.equal(learned[1].securityids.BLOOMBERG, 'AAPL US Equity')
+    assert.equal('BLOOMBERG' in later.securityids, false, 'the input is never enriched in place')
     const schema = fix.schema(registry)
     const rebuilt = fix.FixMsg.fromRow(schema, learned[1].intoRow(schema), registry)
-    assert.equal(rebuilt.bloombergcode, 'AAPL US Equity')
+    assert.equal(rebuilt.securityids.BLOOMBERG, 'AAPL US Equity')
 
     const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
     const entries = expiring.entries()
@@ -2156,22 +2270,30 @@
   test('the fixed schema places category beside message type and normalized codes once', () => {
     const registry = seed()
     const schema = fix.schema(registry)
-    assert.equal(CRATE.length, 31)
-    assert.equal(CRATE_SCALARS.length, 29)
-    assert.equal(new fix.FixRegistry().size, 33)
-    assert.equal(scalars(new fix.FixRegistry()).length, 31)
-    assert.equal(schema.fieldLen, 127)
-    assert.equal(fix.schemaTags().length, 122)
+    assert.equal(CRATE.length, 40)
+    assert.equal(CRATE_SCALARS.length, 39)
+    assert.equal(new fix.FixRegistry().size, 42)
+    assert.equal(scalars(new fix.FixRegistry()).length, 41)
+    assert.equal(schema.fieldLen, 132)
+    assert.equal(fix.schemaTags().length, 127)
     const at = schema.indexOf('msgtype')
     assert.deepEqual(
       [schema.fieldAt(at - 1).name, schema.fieldAt(at).name, schema.fieldAt(at + 1).name, schema.fieldAt(at + 2).name],
       ['beginstring', 'msgtype', 'msgcat', 'msgseqnum'],
     )
-    for (const [name, tag] of [['isincode', 65055], ['cusipcode', 65057], ['sedolcode', 65058], ['bloombergcode', 65059], ['miccode', 65060], ['figicode', 65061]]) {
+    // The three crate views of the security identifiers keep their tags;
+    // the retired identifiers, cusipcode and sedolcode columns are gone and
+    // their tags are never reused.
+    for (const [name, tag] of [['isincode', 65055], ['bloombergcode', 65059], ['miccode', 65060], ['figicode', 65061]]) {
       assert.equal(schema.fieldAt(schema.indexOf(name)).fix.tag, tag, name)
     }
     assert.equal(schema.fieldAt(schema.indexOf('cficode')).fix.tag, 461)
-    assert.equal(fix.schemaTags().includes(65056), false)
+    for (const retired of [65020, 65056, 65057, 65058]) {
+      assert.equal(fix.schemaTags().includes(retired), false, String(retired))
+    }
+    for (const name of ['identifiers', 'cusipcode', 'sedolcode']) {
+      assert.equal(schema.indexOf(name), null, name)
+    }
   })
 
   test('security source S identifies FIGI while A remains Bloomberg', () => {
@@ -2180,24 +2302,24 @@
     const figi = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=D|52=20240102-10:15:30|22=S|48=BBG000BLNQ16|454=1|455=BBG000BLNQ16|456=S|10=0|',
     ))
-    assert.equal(figi.figicode, 'BBG000BLNQ16')
-    assert.equal(figi.event().figicode, 'BBG000BLNQ16')
-    assert.equal(figi.bloombergcode, null)
+    assert.equal(figi.securityids.FIGI, 'BBG000BLNQ16')
+    assert.equal(figi.event().securityids.FIGI, 'BBG000BLNQ16')
+    assert.equal('BLOOMBERG' in figi.securityids, false)
 
     const schema = fix.schema(registry)
     const rebuilt = fix.FixMsg.fromRow(schema, figi.intoRow(schema), registry)
-    assert.equal(rebuilt.figicode, 'BBG000BLNQ16')
+    assert.equal(rebuilt.securityids.FIGI, 'BBG000BLNQ16')
     assert.ok(rebuilt.intoRow(schema).equals(figi.intoRow(schema)))
 
     const bloomberg = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=D|52=20240102-10:15:30|22=A|48=AAPL US Equity|10=0|',
     ))
-    assert.equal(bloomberg.bloombergcode, 'AAPL US Equity')
-    assert.equal(bloomberg.figicode, null)
+    assert.equal(bloomberg.securityids.BLOOMBERG, 'AAPL US Equity')
+    assert.equal('FIGI' in bloomberg.securityids, false)
 
     const stated = figi.clone()
     stated.set(65061, 'BBG000BLNQ16')
-    assert.equal(stated.figicode, 'BBG000BLNQ16')
+    assert.equal(stated.securityids.FIGI, 'BBG000BLNQ16')
   })
 
   test('a parse restates deprecated fields to their latest aliases', () => {
@@ -2230,12 +2352,13 @@
     const names = [...latest.field.dtype.keys()]
     assert.equal(names.filter((name) => name === 'lastqty').length, 0, 'the event holds it')
     assert.ok(!names.includes('lastshares'))
-    // The event reads the report: the last price, the venue's order
-    // identifier as the cross code, the identifiers the message component
-    // declares.
-    assert.equal(latest.price, '10.5')
+    // The event reads the report: the last executed price as `lastpx` and
+    // no price stated, the venue's order identifier as the cross code, the
+    // names the report goes by.
+    assert.equal(latest.price, null)
+    assert.equal(latest.lastpx, '10.5')
     assert.equal(latest.crosscode, 'O1')
-    assert.deepEqual(latest.identifiers, { execid: 'E1', orderid: 'O1' })
+    assert.deepEqual(latest.altids, { EXECID: 'E1', ORDERID: 'O1' })
     // One pass, and the filling read the restated row: a report stating no time
     // in force is a day order, one fill's average is that fill's price, and what
     // it was worth is the quantity times the price.
@@ -2648,14 +2771,6 @@
     return column(table, name).map((held) => (held === null ? null : BigInt(JSON.parse(held))))
   }
 
-  function mapColumn(table, name) {
-    return Array.from(table.getChild(name), (value) => {
-      if (value === null) return null
-      assert.ok(value instanceof arrow.MapRow)
-      return [...value]
-    })
-  }
-
   function rowCounts(reader) {
     return [...reader].map((batch) => batch.numRows)
   }
@@ -2783,8 +2898,10 @@
     assert.equal(carried.capture().msgpluginid, 'venue')
     const spoken = '|#SYMBOL=TTF|#TECH.CLIENTID=MCFP2|'
     const [stated] = codec.parseTextLine(lined('venue', null, Buffer.from(spoken)))
-    // A bridge's own namespaced key is the message's metadata, folded once.
+    // A bridge's own namespaced key is the message's metadata, folded once,
+    // and the event states the same map under the market's name for it.
     assert.deepEqual(stated.metadata, { 'tech.clientid': 'MCFP2' })
+    assert.deepEqual(stated.event().metadata, { 'tech.clientid': 'MCFP2' })
     assert.equal(stated.capture().msgsessionid, null)
   })
 
@@ -3032,7 +3149,9 @@
     ))
     const reader = codec.bookArrowReader([snapshot, update])
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
-    assert.deepEqual(names.slice(-3), ['bid', 'ask', 'executions'])
+    // The book row: the event and market columns, the two sides, the
+    // executions, and the partitions its last snapshot replaced.
+    assert.deepEqual(names.slice(-4), ['bid', 'ask', 'executions', 'snapshotpartitions'])
     assert.ok(names.includes('price') && names.includes('quantity'))
     assert.ok(!names.includes('px') && !names.includes('qty'))
     const books = reader.intoTable()
@@ -3060,12 +3179,19 @@
     assert.deepEqual([...bySide.keys()].sort(), ['BUY', 'SELL'])
     assert.equal(buy.marketoperationid, 21)
     assert.equal(sell.marketoperationid, 21)
-    assert.equal(BigInt(buy.price.toString()), 10125n * 10n ** 16n)
-    assert.equal(BigInt(sell.price.toString()), 10125n * 10n ** 16n)
-    assert.equal(BigInt(buy.quantity.toString()), 4n * 10n ** 18n)
-    assert.equal(BigInt(sell.quantity.toString()), 6n * 10n ** 18n)
-    assert.equal(new Map(buy.identifiers).get('SideExecID'), 'BUY-EXEC')
-    assert.equal(new Map(sell.identifiers).get('SideExecID'), 'SELL-EXEC')
+    // A trade-capture side states no price and no quantity: its last
+    // executed price and quantity are `lastpx` and `lastqty`, and the two
+    // nullable columns carry the null.
+    assert.equal(buy.price, null)
+    assert.equal(sell.price, null)
+    assert.equal(buy.quantity, null)
+    assert.equal(sell.quantity, null)
+    assert.equal(BigInt(buy.lastpx.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(sell.lastpx.toString()), 10125n * 10n ** 16n)
+    assert.equal(BigInt(buy.lastqty.toString()), 4n * 10n ** 18n)
+    assert.equal(BigInt(sell.lastqty.toString()), 6n * 10n ** 18n)
+    assert.equal(new Map(buy.altids).get('SIDEEXECID'), 'BUY-EXEC')
+    assert.equal(new Map(sell.altids).get('SIDEEXECID'), 'SELL-EXEC')
     assert.notDeepEqual(buy.curruuid, sell.curruuid)
     assert.notDeepEqual(buy.crossuuid, sell.crossuuid)
     assert.notEqual(buy.crosscode, sell.crosscode)
@@ -3134,69 +3260,63 @@
     assert.deepEqual(first, second)
   })
 
-  test('the identifiers Map crosses native rows and Arrow as a nullable sorted Map', () => {
+  test('the names a message goes by are built from their source fields and have no column', () => {
     const registry = seed()
     const codec = reading(registry, { defaultSendingTime: SENDING })
     const schema = fix.schema(registry)
-    // A message states its identifiers as a typed fact: the map the event
-    // holds, read back as a plain object on the message and as a Map column
-    // in the row, sorted by the key the core sorts on.
+    // A message states the names it goes by as a typed fact: the map the
+    // event holds, read back as a plain object with upper-cased keys in the
+    // core's key order, built at every settle from `OrderID(37)`,
+    // `ClOrdID(11)`, `ExecID(17)` and the other source fields.
     const lines = [
       '8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|',
       '8=FIX.4.4|35=D|10=0|',
     ]
     const messages = lines.map((line) => one(codec, line))
-    assert.deepEqual(messages[0].identifiers, { clordid: 'C-001', execid: 'E-09', orderid: 'O-01' })
-    assert.deepEqual(Object.keys(messages[0].identifiers), ['clordid', 'execid', 'orderid'])
-    assert.deepEqual(messages[1].identifiers, {})
+    assert.deepEqual(messages[0].altids, { CLORDID: 'C-001', EXECID: 'E-09', ORDERID: 'O-01' })
+    assert.deepEqual(Object.keys(messages[0].altids), ['CLORDID', 'EXECID', 'ORDERID'])
+    assert.deepEqual(messages[1].altids, {})
+    assert.deepEqual(messages[0].accountids, {})
+    assert.deepEqual(messages[0].userids, {})
 
+    // No column of its own: the row states the source fields, and a row
+    // read back builds the same map from them.
     const table = codec.arrowReader(schema, messages).intoTable()
-    const mapping = table.schema.fields.find((field) => field.name === 'identifiers')
-    assert.equal(mapping.nullable, true)
-    assert.equal(mapping.type.typeId, arrow.Type.Map)
-    assert.equal(mapping.type.keysSorted, true)
-    const entries = mapping.type.children[0]
-    assert.equal(entries.nullable, false)
-    assert.equal(entries.type.children[0].nullable, false)
-    assert.equal(mapping.type.keyType.typeId, arrow.Type.Utf8)
-    assert.equal(mapping.type.valueType.typeId, arrow.Type.Utf8)
-    assert.deepEqual(mapColumn(table, 'identifiers'), [
-      [['clordid', 'C-001'], ['execid', 'E-09'], ['orderid', 'O-01']],
-      null,
-    ])
-
-    // And a row read back states the same facts.
+    for (const gone of ['identifiers', 'altids', 'accountids', 'userids', 'securityids']) {
+      assert.equal(table.schema.fields.some((field) => field.name === gone), false, gone)
+    }
     const restored = [...codec.messages(table)]
     assert.equal(restored.length, messages.length)
     for (const [at, held] of restored.entries()) {
-      assert.deepEqual(held.identifiers, messages[at].identifiers, `message ${at}`)
+      assert.deepEqual(held.altids, messages[at].altids, `message ${at}`)
       assert.ok(held.intoRow(schema).equals(messages[at].intoRow(schema)), `message ${at}`)
     }
 
-    // The bridge's own namespaced keys cross the same way, as `metadata`.
+    // The bridge's own namespaced keys cross as `metadata`, which does have
+    // a column.
     const bridged = one(codec, 'MSGTYPE=D|CLORDID=A|TECH.CLIENTID=X1|')
     assert.deepEqual(bridged.metadata, { 'tech.clientid': 'X1' })
     const held = [...codec.messages(codec.arrowReader(schema, [bridged]).intoTable())]
     assert.deepEqual(held[0].metadata, bridged.metadata)
   })
 
-  test('a scalar alias never takes the identifiers Map name', () => {
+  test('a scalar alias never takes the metadata Map name', () => {
     const scalar = fields.utf8('venueid')
     scalar.fix.tag = 9001
-    scalar.fix.names = ['Identifiers']
+    scalar.fix.names = ['Metadata']
     const registry = fix.FixRegistry.fromFields([scalar])
     // The scalar answers the folded name a lookup asks for; the group is
     // reached by its counter and by the path grammar.
-    assert.equal(registry.fieldByName('identifiers').name, 'venueid')
-    assert.equal(registry.fieldByCounter(65020).name, 'identifiers')
-    assert.equal(registry.fieldByPath('identifiers').name, 'identifiers')
+    assert.equal(registry.fieldByName('metadata').name, 'venueid')
+    assert.equal(registry.fieldByCounter(65049).name, 'metadata')
+    assert.equal(registry.fieldByPath('metadata').name, 'metadata')
     // A message carries the scalar in its row and the map as its own fact.
     const schema = fields.struct('row', [scalar, registry.fieldByTag(52)], { nullable: false })
     const value = new fix.FixMsg(schema, { venueid: 'scalar', sendingtime: SENDING }, registry)
     assert.equal(value.byTag(9001).asJs(), 'scalar')
-    assert.deepEqual(value.identifiers, {})
-    value.set(65020, new Map([['clordid', 'C-1']]))
-    assert.deepEqual(value.identifiers, { clordid: 'C-1' })
+    assert.deepEqual(value.metadata, {})
+    value.set(65049, new Map([['tech.clientid', 'X1']]))
+    assert.deepEqual(value.metadata, { 'tech.clientid': 'X1' })
     assert.equal(value.byTag(9001).asJs(), 'scalar')
     assert.equal(value.size, 1, 'the map is a fact, never a row child')
   })
@@ -3792,11 +3912,11 @@
     assert.ok(Object.keys(report.metadata).some((key) => key.startsWith('firm.')))
     assert.ok(Object.keys(report.metadata).every((key) => key === key.toLowerCase()))
     // The event reads the report: the instrument, the side, the price and the
-    // quantity, and the identifiers the message is known by.
-    assert.equal(report.event().isincode, 'CH0012214059')
+    // quantity, and the names the message goes by.
+    assert.equal(report.event().securityids.ISIN, 'CH0012214059')
     assert.equal(report.event().miccode, 'XSWX')
     assert.equal(report.side, 'BUY')
-    assert.ok(Object.keys(report.identifiers).includes('clordid'))
+    assert.ok(Object.keys(report.altids).includes('CLORDID'))
     // The parties merge to one group with the counter synced.
     const parties = report.entries().find((entry) => entry.tag === 453)
     assert.equal(parties.value, '8')
@@ -3893,7 +4013,8 @@
           crossuuid: event.crossuuid,
           crosscode: event.crosscode,
           crosshashcode: event.crosshashcode,
-          identifiers: event.identifiers,
+          altids: event.altids,
+          securityids: event.securityids,
           srcuuids: event.srcuuids,
           currunix: event.currunix,
           state: event.state,

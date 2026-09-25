@@ -1287,6 +1287,21 @@ impl FixRegistry {
         // The alternate names are read infallibly everywhere else, so this is
         // where a text the read would walk as nothing is refused.
         field.as_fix().validate_names()?;
+        // So is an identifier-map document; a role names a `Parties`
+        // occurrence, whose `PartyID(448)` is the one member it reads.
+        for source in field.as_fix().idmap() {
+            if source?.role().is_some()
+                && field.as_fix().tag()? != Some(super::identity::PARTYID_TAG)
+            {
+                return Err(Error::InvalidMetadataValue {
+                    key: "FIX:idmap".into(),
+                    reason: format_smolstr!(
+                        "expected a role only on PartyID(448), {} states one",
+                        field.name()
+                    ),
+                });
+            }
+        }
         let counter = field.as_fix().counter()?;
         let map_group = category == FixCategory::Groups
             && matches!(field.dtype(), DataType::Map(_) | DataType::SortedMap(_));

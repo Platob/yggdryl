@@ -447,6 +447,14 @@ test('a registered code is its own datatype over its standard width', () => {
   assert.equal(ccy.asciiPacked('USD'), DataType.fixedAscii(3).asciiPacked('USD'))
   assert.equal(ccy.asciiValue(0x555344n), 'USD')
   assert.throws(() => new DataType('country').asciiPacked('USD'), /at most 2 bytes/)
+  // The unit is held to thirty-two bytes, wider than any packing, so it is
+  // a code with no packed integer.
+  const unit = new DataType('unit')
+  assert.equal(unit.id, 'unit')
+  assert.equal(unit.kind, 'code')
+  assert.equal(unit.codeWidth, 32)
+  assert.equal(unit.fixedByteWidth, null)
+  assert.throws(() => unit.asciiPacked('A'), /at most 16 bytes/)
   const figi = DataType.fromString('figi')
   assert.equal(figi.scalar('bbg000blnq16').asJs(), 'BBG000BLNQ16')
   assert.throws(() => figi.scalar('BBG000BLNQ17'), /FIGI|check/i)

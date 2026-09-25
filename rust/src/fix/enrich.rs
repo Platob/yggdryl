@@ -73,7 +73,7 @@
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::iter::FusedIterator;
 use std::vec;
@@ -81,9 +81,9 @@ use std::vec;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Bound, Term};
-use crate::graph::instrument::InstrumentCodes;
 use crate::graph::iterator::order;
 use crate::graph::{Element, Event, EventIterator};
+use crate::securityid::SecurityIdRegistry;
 use crate::{DataType, Error, Field, FixCategory, Result, Scalar, State, StructType, Uuid};
 
 use super::msg::FixMsg;
@@ -606,14 +606,6 @@ pub(super) fn enrich_restated(registry: &FixRegistry, msg: FixMsg) -> crate::Res
     // compile is the pass's to report, since a dictionary whose rules do not
     // compile has no rules to fill by.
     registry.derivations()?.fill_all(&mut held)?;
-    if held.get_identifiers().is_empty() {
-        if let Some(component) = registry.get_msgtype(held.header().msgtype()) {
-            let identifiers = component.identifier_mapping(&held)?;
-            if !identifiers.is_null() {
-                held.set_unsettled(super::IDENTIFIERS_TAG_NAME.0, identifiers)?;
-            }
-        }
-    }
     // Settled once, at the end: a built message arrives unsettled, a
     // restatement leaves it so and the writes above land unsettled - so
     // every message is settled here, once, after everything the pass wrote.
@@ -867,14 +859,6 @@ impl Element for LifecycleMessage {
         self.message.set_crosshashcode(crosshashcode);
     }
 
-    fn get_identifiers(&self) -> &BTreeMap<String, String> {
-        self.message.get_identifiers()
-    }
-
-    fn set_identifiers(&mut self, identifiers: BTreeMap<String, String>) {
-        self.message.set_identifiers(identifiers);
-    }
-
     fn get_srcuuids(&self) -> &[Uuid] {
         self.message.get_srcuuids()
     }
@@ -1029,7 +1013,7 @@ impl Event for LifecycleMessage {
 /// missing instrument codes learned only from messages already observed.
 struct Prepared {
     source: vec::IntoIter<FixMsg>,
-    codes: InstrumentCodes,
+    codes: SecurityIdRegistry,
     /// At most one key per distinct delivery in this already collected finite
     /// capture. A late retransmission must remain a repeat after any number of
     /// intervening deliveries; retaining only a recent window loses that fact.
@@ -1041,9 +1025,13 @@ impl Prepared {
         // Reserve a small capture once, without reserving a giant repeated
         // capture's upper bound. Growth beyond this hint follows unique keys.
         let capacity = source.len().min(4_096);
+        // A bridge's instrument names state a listing - `dbi;ISIN_MIC_CCY` -
+        // and are no association of the ISIN alone.
+        let listings = super::crated::instrument_sources()
+            .filter_map(|(_, _, source)| crate::SecType::read(source).ok());
         Self {
             source: source.into_iter(),
-            codes: InstrumentCodes::default(),
+            codes: SecurityIdRegistry::with_listings(listings),
             seen: HashSet::with_capacity(capacity),
         }
     }
@@ -1058,7 +1046,7 @@ impl Iterator for Prepared {
             if !self.seen.insert(delivery_key(&message)) {
                 continue;
             }
-            self.codes.enrich(&mut message);
+            crate::securityid::enrich(&mut self.codes, &mut message);
             return Some(message.into());
         }
     }
@@ -1131,3 +1119,6 @@ pub mod internals {
     //! the type is named here so that signature is public.
     pub use super::Derivations;
 }
+
+crate::graph::delegate_market!(LifecycleMessage, message);
+crate::graph::delegate_operation!(LifecycleMessage, message);

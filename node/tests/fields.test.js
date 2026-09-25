@@ -263,6 +263,7 @@ test('typed field factories cover every native datatype variant', () => {
     ['side', fields.side('value')],
     ['state', fields.state('value')],
     ['timeinforce', fields.timeinforce('value')],
+    ['unit', fields.unit('value')],
     ['uuid', fields.uuid('value')],
     ['version', fields.version('value')],
     ['url', fields.url('value')],

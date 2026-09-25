@@ -1,12 +1,10 @@
-//! `rust/src/graph/iterator.rs`: the one walk over events: each event
-//! chained to the live one under its cross identity - or, where that is
-//! alive under nothing, under a name a live event goes by - the alive set
-//! kept as the lifecycle moves, and the caller's word on the order taken or
-//! the order made.
+//! `rust/src/graph/iterator.rs`: the one walk over market operation events:
+//! each event chained to the live one under its cross identity - or, where
+//! that is alive under nothing, under a name a live event goes by - the
+//! alive set kept as the lifecycle moves, and the caller's word on the order
+//! taken or the order made.
 
-use std::collections::BTreeMap;
-
-use yggdryl::graph::{Element, Event, EventIterator, MarketEventData};
+use yggdryl::graph::{Element, Event, EventIterator, Operation, OperationEventData};
 use yggdryl::{State, Uuid};
 
 use super::element::filled;
@@ -15,6 +13,13 @@ use super::element::filled;
 /// microsecond its instant falls in, and the instants below are spaced a
 /// whole millisecond apart, so no two of them ever share one.
 const MS: i64 = 1_000_000;
+
+/// The alternate-identifier keys the walk's fixtures go by: the order's own
+/// identifier, which a following event carries forward, and the client and
+/// execution identifiers, which name an event without following.
+const ORDER_ID: &str = "ORDERID";
+const CL_ORD_ID: &str = "CLORDID";
+const EXEC_ID: &str = "EXECID";
 
 /// An instant a derived identity holds: `ms` milliseconds after one
 /// evening in November 2023, UTC.
@@ -27,16 +32,9 @@ fn ms(unix: i64) -> i64 {
     (unix - at(0)) / MS
 }
 
-fn identifiers<const N: usize>(pairs: [(&str, &str); N]) -> BTreeMap<String, String> {
-    pairs
-        .into_iter()
-        .map(|(scheme, identifier)| (scheme.to_owned(), identifier.to_owned()))
-        .collect()
-}
-
 /// One event of the thing `order` identifies across its life, at `ms`.
-fn incarnation(order: &str, ms: i64) -> MarketEventData {
-    let mut event = MarketEventData::at(at(ms));
+fn incarnation(order: &str, ms: i64) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
     event.set_crosscode(order.to_owned());
     event.finalize();
     event
@@ -44,17 +42,31 @@ fn incarnation(order: &str, ms: i64) -> MarketEventData {
 
 /// An event of `order` at `ms` going by one name, so two events at one
 /// instant are two events.
-fn named(order: &str, ms: i64, scheme: &str, name: &str) -> MarketEventData {
-    let mut event = MarketEventData::at(at(ms));
+fn named(order: &str, ms: i64, scheme: &str, name: &str) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
     event.set_crosscode(order.to_owned());
-    event.set_identifiers(identifiers([(scheme, name)]));
+    event
+        .insert_altid(scheme, name)
+        .expect("a plain holder takes every key");
+    event.finalize();
+    event
+}
+
+/// An event at `ms` going by `names` and stating no cross code of its own.
+fn anonymous(ms: i64, names: &[(&str, &str)]) -> OperationEventData {
+    let mut event = OperationEventData::at(at(ms));
+    for (scheme, name) in names {
+        event
+            .insert_altid(scheme, name)
+            .expect("a plain holder takes every key");
+    }
     event.finalize();
     event
 }
 
 /// Where each event the walk yields stands: its instant, its place, and the
 /// instant of the predecessor it names, in milliseconds.
-fn places(walk: impl Iterator<Item = MarketEventData>) -> Vec<(i64, u64, Option<i64>)> {
+fn places(walk: impl Iterator<Item = OperationEventData>) -> Vec<(i64, u64, Option<i64>)> {
     walk.map(|event| {
         (
             ms(event.get_currunix()),
@@ -68,7 +80,7 @@ fn places(walk: impl Iterator<Item = MarketEventData>) -> Vec<(i64, u64, Option<
 /// The chains alive after a walk, by cross code and the live instant, in
 /// one order.
 fn alive(
-    walk: &EventIterator<MarketEventData, std::vec::IntoIter<MarketEventData>>,
+    walk: &EventIterator<OperationEventData, std::vec::IntoIter<OperationEventData>>,
 ) -> Vec<(String, i64)> {
     let mut alive = walk
         .alive()
@@ -82,7 +94,7 @@ fn alive(
 fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     let mut first = incarnation("O-100", 10);
     first.set_creaunix(Some(at(5)));
-    first.set_identifiers(identifiers([("ClOrdID", "C-1")]));
+    first.insert_altid(ORDER_ID, "O-100").unwrap();
     first.finalize();
     let arrived = vec![
         first,
@@ -104,9 +116,10 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     assert_eq!(second.get_seqnum(), 1);
     assert_eq!(second.get_crossuuid(), first.get_crossuuid());
     // Enriched by the element's own reading: the lifecycle carried forward,
-    // and the identity re-derived around it.
+    // the order's own identifier with it, and the identity re-derived
+    // around them.
     assert_eq!(second.get_creaunix(), Some(at(5)));
-    assert_eq!(second.get_identifiers()["ClOrdID"], "C-1");
+    assert_eq!(second.get_altids().get(ORDER_ID), Some("O-100"));
     assert_eq!(
         second.get_curruuid(),
         second.time_uuid().expect("an identity")
@@ -118,7 +131,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     // A walk over the walked answers the same chain.
     assert!(walk.next().is_none());
     let walked = vec![first.clone(), other.clone(), second.clone(), third.clone()];
-    let again: Vec<MarketEventData> = EventIterator::new(walked, true).collect();
+    let again: Vec<OperationEventData> = EventIterator::new(walked, true).collect();
     assert_eq!(again, [first, other, second, third]);
     // Both orders are still alive, the latest incarnation of each.
     assert_eq!(
@@ -135,11 +148,11 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
         incarnation("O-100", 20),
         // Two at one instant are neither after nor before each other, and
         // keep the order they arrived in.
-        named("O-100", 40, "ExecID", "E-5"),
-        named("O-100", 40, "ExecID", "E-4"),
+        named("O-100", 40, EXEC_ID, "E-5"),
+        named("O-100", 40, EXEC_ID, "E-4"),
     ];
     let walk = EventIterator::new(arrived, false);
-    let walked: Vec<MarketEventData> = walk.collect();
+    let walked: Vec<OperationEventData> = walk.collect();
     assert_eq!(
         places(walked.iter().cloned()),
         [
@@ -150,8 +163,8 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
             (40, 4, Some(40)),
         ]
     );
-    assert_eq!(walked[3].get_identifiers()["ExecID"], "E-5");
-    assert_eq!(walked[4].get_identifiers()["ExecID"], "E-4");
+    assert_eq!(walked[3].get_altids().get(EXEC_ID), Some("E-5"));
+    assert_eq!(walked[4].get_altids().get(EXEC_ID), Some("E-4"));
     assert_eq!(walked[4].get_prevuuid(), Some(walked[3].get_curruuid()));
 }
 
@@ -276,10 +289,10 @@ fn replay_keeps_the_carried_execution_clock_without_redating_inherited_state() {
 fn an_element_with_no_cross_identity_stands_under_its_own() {
     // Two elements that are nothing elsewhere follow nothing: each is its
     // own identity, and nothing arrives under it but a restatement.
-    let mut first = MarketEventData::at(at(10));
+    let mut first = OperationEventData::at(at(10));
     first.finalize();
     assert_eq!(first.get_crossuuid(), first.get_curruuid());
-    let mut second = MarketEventData::at(at(20));
+    let mut second = OperationEventData::at(at(20));
     second.finalize();
     // A restatement of the first: the same event, said again.
     let arrived = vec![first.clone(), second, first.clone()];
@@ -336,20 +349,42 @@ fn a_twin_of_the_live_element_restates_it_and_the_chain_grows_by_nothing() {
     );
     assert_eq!(walk.alive().count(), 1);
 
-    // A twin that knows more adds what it knows to the live one's place.
-    let mut named = incarnation("O-100", 20);
-    named.set_identifiers(identifiers([("ExecID", "E-2")]));
+    // A twin that knows more of the lifecycle adds what it knows to the
+    // live one's place: a clock is never in the identity, so the twin
+    // still arrives under it, and the identity stays where it was.
+    let mut dated = incarnation("O-100", 20);
+    dated.set_creaunix(Some(at(5)));
+    let arrived = vec![incarnation("O-100", 10), incarnation("O-100", 20), dated];
+    let mut walk = EventIterator::new(arrived, true);
+    walk.next().expect("the order");
+    let second = walk.next().expect("the fill");
+    assert_eq!(second.get_creaunix(), None);
+    let twin = walk.next().expect("the fill, dated");
+    assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
+    assert_eq!(twin.get_seqnum(), second.get_seqnum());
+    assert_eq!(twin.get_creaunix(), Some(at(5)));
+    assert_eq!(twin.get_curruuid(), second.get_curruuid());
+    assert_eq!(
+        walk.alive().next().map(Event::get_creaunix),
+        Some(Some(at(5))),
+        "the live one knows what the twin added"
+    );
+    // A statement going by a name the live one does not is another
+    // statement, not a twin: the names an operation goes by are part of
+    // what it states, so it arrives under an identity of its own and is
+    // the one after the fill.
+    let named = named("O-100", 20, EXEC_ID, "E-2");
     let arrived = vec![incarnation("O-100", 10), incarnation("O-100", 20), named];
     let mut walk = EventIterator::new(arrived, true);
     walk.next().expect("the order");
     let second = walk.next().expect("the fill");
-    let twin = walk.next().expect("the fill, named");
-    assert_eq!(twin.get_prevuuid(), second.get_prevuuid());
-    assert_eq!(twin.get_identifiers()["ExecID"], "E-2");
-    assert_ne!(twin.get_curruuid(), second.get_curruuid(), "it says more");
+    let successor = walk.next().expect("the fill, named");
+    assert_eq!(successor.get_prevuuid(), Some(second.get_curruuid()));
+    assert_eq!(successor.get_seqnum(), 2);
+    assert_eq!(successor.get_altids().get(EXEC_ID), Some("E-2"));
     assert_eq!(
         walk.alive().next().map(Element::get_curruuid),
-        Some(twin.get_curruuid())
+        Some(successor.get_curruuid())
     );
 
     // On a grid, source statements stay source statements. The owned views
@@ -382,10 +417,8 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     // `OrderID` of its own: the report's cross element is its own identity,
     // alive under nothing, so the name it shares with the live order is
     // the chain it belongs to.
-    let order = named("O-100", 10, "ClOrdID", "C-1");
-    let mut report = MarketEventData::at(at(20));
-    report.set_identifiers(identifiers([("ClOrdID", "C-1"), ("ExecID", "E-1")]));
-    report.finalize();
+    let order = named("O-100", 10, CL_ORD_ID, "C-1");
+    let report = anonymous(20, &[(CL_ORD_ID, "C-1"), (EXEC_ID, "E-1")]);
     assert_ne!(report.get_crossuuid(), order.get_crossuuid());
     let mut walk = EventIterator::new(vec![order, report], true);
     let order = walk.next().expect("the order");
@@ -399,19 +432,17 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
     assert_eq!(walk.alive().count(), 1);
     let live = walk.alive().next().expect("the report stands");
     assert_eq!(live.get_currunix(), at(20));
-    assert_eq!(live.get_identifiers()["ExecID"], "E-1");
+    assert_eq!(live.get_altids().get(EXEC_ID), Some("E-1"));
 
     // A name no live element goes by starts a chain of its own, and an
     // element whose own identity is alive stays under it whatever names
     // it shares.
-    let mut stranger = MarketEventData::at(at(30));
-    stranger.set_identifiers(identifiers([("ClOrdID", "C-9")]));
-    stranger.finalize();
-    let other = named("O-900", 40, "ClOrdID", "C-1");
+    let stranger = anonymous(30, &[(CL_ORD_ID, "C-9")]);
+    let other = named("O-900", 40, CL_ORD_ID, "C-1");
     let mut walk = EventIterator::new(
         vec![
-            named("O-100", 10, "ClOrdID", "C-1"),
-            named("O-900", 15, "ClOrdID", "C-2"),
+            named("O-100", 10, CL_ORD_ID, "C-1"),
+            named("O-900", 15, CL_ORD_ID, "C-2"),
             stranger,
             other,
         ],
@@ -429,13 +460,11 @@ fn an_element_under_no_live_identity_follows_the_live_one_it_shares_a_name_with(
 
     // A chain that ended took its names with it: a later report spelling
     // only the name starts afresh.
-    let mut fill = named("O-100", 20, "ClOrdID", "C-1");
+    let mut fill = named("O-100", 20, CL_ORD_ID, "C-1");
     fill.set_state(filled());
     fill.finalize();
-    let mut late = MarketEventData::at(at(30));
-    late.set_identifiers(identifiers([("ClOrdID", "C-1")]));
-    late.finalize();
-    let mut walk = EventIterator::new(vec![named("O-100", 10, "ClOrdID", "C-1"), fill, late], true);
+    let late = anonymous(30, &[(CL_ORD_ID, "C-1")]);
+    let mut walk = EventIterator::new(vec![named("O-100", 10, CL_ORD_ID, "C-1"), fill, late], true);
     walk.next().expect("the order");
     walk.next().expect("the fill");
     assert_eq!(walk.alive().count(), 0);
@@ -480,7 +509,7 @@ fn the_walk_states_its_size_and_is_fused() {
     assert!(sorted.next().is_none());
     assert!(sorted.next().is_none());
     // A walk over an empty source is alive to nothing.
-    let mut empty = EventIterator::new(Vec::<MarketEventData>::new(), false);
+    let mut empty = EventIterator::new(Vec::<OperationEventData>::new(), false);
     assert!(empty.next().is_none());
     assert_eq!(empty.alive().count(), 0);
 }
@@ -490,10 +519,10 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
     // The grid is aligned on the epoch. A first observation just before its
     // boundary becomes live at that observation, then is copied at zero;
     // it is never copied into the earlier step where it did not yet exist.
-    let mut before = MarketEventData::at(-1);
+    let mut before = OperationEventData::at(-1);
     before.set_crosscode("O-100".to_owned());
     before.finalize();
-    let mut after = MarketEventData::at(1);
+    let mut after = OperationEventData::at(1);
     after.set_crosscode("O-900".to_owned());
     after.finalize();
     let walked: Vec<_> = EventIterator::new(vec![before, after], true)
@@ -759,31 +788,32 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
 /// The name index a caller only ever sees the result of.
 ///
 /// An event arriving under no live identity finds its chain through a name a
-/// live event goes by, and the two maps that make that lookup are the walk's
-/// own; settling and retiring an identity directly is what pins that retiring
-/// a name forgets exactly the records it opened.
+/// live event goes by - one of its alternate identifiers - and the two maps
+/// that make that lookup are the walk's own; settling and retiring an
+/// identity directly is what pins that retiring a name forgets exactly the
+/// records it opened.
 #[cfg(feature = "internals")]
 mod naming {
-    use std::collections::BTreeMap;
-
-    use yggdryl::graph::{Element, EventIterator, MarketEventData};
+    use yggdryl::graph::{Element, EventIterator, Operation, OperationEventData};
     use yggdryl::internals::graph_iterator::{
         name_records, named_identities, named_identity, named_schemes, retire, settle,
     };
 
-    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> MarketEventData {
-        let mut event = MarketEventData::at(unix);
+    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> OperationEventData {
+        let mut event = OperationEventData::at(unix);
         event.set_crosscode(cross.to_owned());
-        event.set_identifiers(BTreeMap::from([(scheme.to_owned(), name.to_owned())]));
+        event
+            .insert_altid(scheme, name)
+            .expect("a plain holder takes every key");
         event.finalize();
         event
     }
 
     #[test]
     fn retiring_the_last_name_removes_its_whole_index() {
-        let event = named("A", 1, "venue-order", "A-1");
+        let event = named("A", 1, "VENUEORDERID", "A-1");
         let identity = event.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
         settle(&mut walk, identity, &event, event.get_curruuid());
         assert_eq!(named_schemes(&walk), 1);
         assert_eq!(named_identities(&walk), 1);
@@ -795,11 +825,11 @@ mod naming {
 
     #[test]
     fn alternating_name_ownership_keeps_one_reverse_record() {
-        let first = named("A", 1, "venue-order", "SHARED");
-        let second = named("B", 2, "venue-order", "SHARED");
+        let first = named("A", 1, "VENUEORDERID", "SHARED");
+        let second = named("B", 2, "VENUEORDERID", "SHARED");
         let first_identity = first.get_crossuuid();
         let second_identity = second.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<MarketEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
 
         for turn in 0..64 {
             let (identity, event) = if turn % 2 == 0 {
@@ -809,7 +839,7 @@ mod naming {
             };
             settle(&mut walk, identity, event, event.get_curruuid());
             assert_eq!(
-                named_identity(&walk, "venue-order", "SHARED"),
+                named_identity(&walk, "VENUEORDERID", "SHARED"),
                 Some(identity),
                 "the latest owner remains the lookup target"
             );

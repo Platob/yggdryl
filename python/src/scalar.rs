@@ -26,7 +26,7 @@ use yggdryl::interval::Interval;
 use yggdryl::string::{Str, StringType};
 use yggdryl::{
     BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce,
+    State, TimeInForce, Unit,
 };
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, Error as CoreError, Field as CoreField, Float16, Float32,
@@ -692,6 +692,9 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             .map_err(value_error),
         "timeinforce" => TimeInForce::new(payload()?.extract::<String>()?)
             .map(Scalar::TimeInForce)
+            .map_err(value_error),
+        "unit" => Unit::new(payload()?.extract::<String>()?)
+            .map(Scalar::Unit)
             .map_err(value_error),
         "uuid" => {
             let value = payload()?.extract::<String>()?;

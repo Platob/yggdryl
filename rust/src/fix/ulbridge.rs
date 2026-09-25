@@ -100,3 +100,62 @@
 /// # }
 /// ```
 pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}(?:_\d{3})?) \[(?P<msgthreadid>[1-9]\d*)(?:-(?P<msgsessionid>[0-9a-f]{8}):(?P<msgctxid>[0-9a-f]{10}):(?P<msgseqnum>\d+))?\] \[(?P<msgpluginid>[^\]]+)\] \((?P<level>[A-Z]+)\) ";
+
+/// The plugin a message came into the bridge through, as the prose in front
+/// of its payload names it, the first of three sentences that reads:
+///
+/// - `Message received: Message type [..] from (OMS_X1_OrderOut as
+///   OD9EOEDJ400) ...` - the plugin inside the parentheses;
+/// - `Execution report from OMS_X1_OrderOut type trade for ...` - the
+///   plugin the report came from;
+/// - `Receiving : 8=FIX...` - `msgpluginid`, the plugin that logged the
+///   line, which is the one the message arrived at.
+///
+/// Nothing where none reads. Provenance: a message states it nowhere, so it
+/// is never content and never an input of the code the message digests to.
+pub(super) fn originator<'a>(prose: &'a [u8], msgpluginid: Option<&'a str>) -> Option<&'a str> {
+    after(prose, b"Message received: ")
+        .and_then(|rest| after(rest, b" from ("))
+        .and_then(|rest| word_before(rest, b" as "))
+        .or_else(|| {
+            after(prose, b"Execution report from ").and_then(|rest| word_before(rest, b" type"))
+        })
+        .or_else(|| {
+            (contains(prose, b"Receiving :") || contains(prose, b"Receiving:"))
+                .then_some(msgpluginid)
+                .flatten()
+                .filter(|plugin| !plugin.is_empty())
+        })
+}
+
+/// The conversation the prose in front of a payload files the message under:
+/// the text of its `{conversationId: 7702fe4b-...}`, trimmed, and nothing
+/// where it states none or spells an absence.
+pub(super) fn conversation(prose: &[u8]) -> Option<&str> {
+    let rest = after(prose, b"{conversationId:")?;
+    let end = rest.iter().position(|byte| *byte == b'}')?;
+    let text = std::str::from_utf8(&rest[..end]).ok()?.trim();
+    (!text.is_empty() && !crate::code::is_null_like(text)).then_some(text)
+}
+
+/// What follows the first `needle` in `haystack`.
+fn after<'a>(haystack: &'a [u8], needle: &[u8]) -> Option<&'a [u8]> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+        .map(|at| &haystack[at + needle.len()..])
+}
+
+/// Whether `needle` occurs in `haystack`.
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    after(haystack, needle).is_some()
+}
+
+/// The one word `rest` opens with, ending where `terminator` does.
+fn word_before<'a>(rest: &'a [u8], terminator: &[u8]) -> Option<&'a str> {
+    let end = rest
+        .windows(terminator.len())
+        .position(|window| window == terminator)?;
+    let word = std::str::from_utf8(&rest[..end]).ok()?;
+    (!word.is_empty() && !word.contains(char::is_whitespace)).then_some(word)
+}

@@ -773,6 +773,11 @@ impl<'msg> Restater<'msg> {
     /// The registry field a child reaches: by its own tag, else by its name
     /// or alias, else by the decimal tag its name spells.
     fn resolve(&self, child: &Field) -> Option<&'msg Field> {
+        // An alias spelling that did not fill its field stays its own child:
+        // its name would reach the field it lost to.
+        if child.get_metadata(super::field::ALIAS_OF).is_some() {
+            return None;
+        }
         if let Some(tag) = tag_and_counter(self.registry, child).0 {
             if let Some(known) = self.msg.known_by_tag(tag) {
                 return Some(known);

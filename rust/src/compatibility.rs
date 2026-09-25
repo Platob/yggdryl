@@ -383,7 +383,8 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => Ok((D::utf8(), *dtype != D::Utf8String)),
+        | D::TimeInForce
+        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -524,7 +525,8 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => Ok((D::utf8(), *dtype != D::Utf8String)),
+        | D::TimeInForce
+        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -640,7 +642,8 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => Ok((D::utf8(), *dtype != D::Utf8String)),
+        | D::TimeInForce
+        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
         // Only Iceberg names an identifier type; everywhere else a UUID
         // rewrites to the hyphenated spelling it renders as.
         D::Uuid => Ok((D::utf8(), true)),
@@ -758,7 +761,8 @@ incompatible(
         | D::FIGICode
         | D::Side
         | D::State
-        | D::TimeInForce => Ok((D::utf8(), *dtype != D::Utf8String)),
+        | D::TimeInForce
+        | D::Unit => Ok((D::utf8(), *dtype != D::Utf8String)),
         D::Decimal32 { precision, scale }
         | D::Decimal64 { precision, scale }
         | D::Decimal128 { precision, scale } => {

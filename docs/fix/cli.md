@@ -191,7 +191,7 @@ The prompt marks unsaved changes with `*`; `save` writes them, `help` shows the 
 - `create` refuses a duplicate even when its supplied document is identical.
 - `update` requires an existing identity and is a full replacement.
 - Scalar fields require tags; a named definition whose document states none takes the tag derived from its name, inside `[100000, 1100000)`.
-- Wire group counters remain separate `int32` fields. The built-in `identifiers` (65020) and `metadata` (65049) Map groups have no scalar counter; a map's length is its cardinality.
+- Wire group counters remain separate `int32` fields. The built-in `metadata` (65049) Map group has no scalar counter; a map's length is its cardinality.
 - Deleting a referenced field, component, or group fails before saving, and so does deleting a code set a field still reads by; `codesets delete` names that field.
 - `fields create` and `fields update` refuse a `--codes` name the dictionary does not hold, so the set is written first and a field never names a vocabulary nothing states.
 - `ingest` creates by default and merges only when asked, because a new counterparty is a new catalog and a revised configuration is a change to one that exists; `sync` always folds.

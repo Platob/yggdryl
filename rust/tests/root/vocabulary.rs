@@ -188,6 +188,7 @@ mod logical {
             ("side", DataType::Side),
             ("state", DataType::State),
             ("timeinforce", DataType::TimeInForce),
+            ("unit", DataType::Unit),
             ("language", DataType::fixed_ascii(2).unwrap()),
             ("monthyear", DataType::fixed_ascii(8).unwrap()),
             ("tenor", DataType::fixed_ascii(8).unwrap()),

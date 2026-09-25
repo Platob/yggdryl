@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Element, Event, Market};
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextOptions, read_text_lines};
 use yggdryl::{FixCodec, FixMsg, FixRegistry, Timezone, Url};
@@ -89,7 +89,7 @@ fn main() -> yggdryl::Result<()> {
 fn describe(message: &FixMsg) -> String {
     let header = message.header();
     format!(
-        "{} {} price={} quantity={} {} | currunix={} state={} | curruuid={} chain={:?} seqnum={} prev={:?} | {}",
+        "{} {} price={:?} quantity={:?} {} | currunix={} state={} | curruuid={} chain={:?} seqnum={} prev={:?} | {}",
         header.msgtype(),
         message.get_side().as_str(),
         message.get_price(),

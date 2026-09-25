@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
-use yggdryl::graph::{Element, Event, MarketElement};
+use yggdryl::graph::{Event, Market, Operation};
 use yggdryl::holder::Buffer;
 use yggdryl::local::LocalFolder;
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -59,7 +59,7 @@ fn text(message: &FixMsg, tag: i32) -> Option<String> {
 /// The instrument's ISIN, as the trait derives it from `SecurityID(48)`
 /// under its source and the `SecurityAltID` group.
 fn isincode(message: &FixMsg) -> Option<String> {
-    message.get_isincode().map(|held| held.as_str().to_owned())
+    message.get_securityids().get("ISIN").map(ToOwned::to_owned)
 }
 
 /// The market, as the trait derives it from `SecurityExchange(207)`,
@@ -118,14 +118,10 @@ fn smarttrade_quote_and_mass_quote_ack_map_creation_time_and_quote_identifiers()
         assert_eq!(text(&message, 55).as_deref(), Some("EUR/USD"));
         assert_eq!(text(&message, 58).as_deref(), Some("MATCHED"));
         assert_eq!(
-            message
-                .get_identifiers()
-                .iter()
-                .map(|(name, value)| (name.as_str(), value.as_str()))
-                .collect::<Vec<_>>(),
+            message.get_altids().iter().collect::<Vec<_>>(),
             [
-                ("quoteid", "quote-20260814-1"),
-                ("quotereqid", "request-20260814-1"),
+                ("QUOTEID", "quote-20260814-1"),
+                ("QUOTEREQID", "request-20260814-1"),
             ]
         );
     }
@@ -170,14 +166,10 @@ fn smarttrade_ulbridge_rows_keep_quote_and_mass_quote_ack_as_two_deliveries() {
     assert_eq!(quote.capture().msgctxid(), Some("9f02625007"));
     assert_eq!(quote.get_creaunix(), Some(1_786_699_797_000_000_000));
     assert_eq!(
-        quote
-            .get_identifiers()
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.as_str()))
-            .collect::<Vec<_>>(),
+        quote.get_altids().iter().collect::<Vec<_>>(),
         [
-            ("quoteid", "quote-20260814-1"),
-            ("quotereqid", "request-20260814-1"),
+            ("QUOTEID", "quote-20260814-1"),
+            ("QUOTEREQID", "request-20260814-1"),
         ]
     );
     // The session event it was delivered as is the capture's, its four
@@ -309,12 +301,12 @@ fn an_identifier_names_the_standard_that_closes_it() {
     let cusip = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=037833100|10=0|");
     assert_eq!(text(&cusip, 22).as_deref(), Some("1"));
     assert_eq!(isincode(&cusip), None);
-    assert!(cusip.get_cusipcode().is_none());
+    assert_eq!(cusip.get_securityids().get("CUSIP"), Some("037833100"));
     assert_eq!(cusip.get_by_tag(470), None);
 
     let sedol = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=B0YBKJ7|10=0|");
     assert_eq!(text(&sedol, 22).as_deref(), Some("2"));
-    assert!(sedol.get_sedolcode().is_none());
+    assert_eq!(sedol.get_securityids().get("SEDOL"), Some("B0YBKJ7"));
 
     // Case does not change what a check digit closes.
     let folded = settled(&reader, b"8=FIX.4.4|35=D|11=A|48=us0378331005|10=0|");
@@ -345,16 +337,16 @@ fn an_identifier_names_the_standard_that_closes_it() {
     assert_eq!(text(&stated, 22).as_deref(), Some("1"));
     assert_eq!(isincode(&stated), None);
 
-    // The rules read codes. A bridge row spelling the source in its own
-    // word has stated one, which stands, and `isin` is not the code `4`: the
-    // dictionary names that code `ISINNumber`, so nothing translated it, and
-    // the ISIN rule reads the code alone.
+    // A bridge row spelling the source in its own word has stated one,
+    // which stands on the wire as spelled; the security identifiers read
+    // the source through `SecType::read`, which knows the name as well as
+    // the code, so the set names the ISIN the row stated.
     let worded = settled(
         &reader,
         b"MSGTYPE=D|CLORDID=A|SECURITYID=CH0012221716|SECURITYIDSOURCE=isin",
     );
     assert_eq!(text(&worded, 22).as_deref(), Some("isin"));
-    assert_eq!(isincode(&worded), None);
+    assert_eq!(isincode(&worded).as_deref(), Some("CH0012221716"));
 }
 
 #[test]
@@ -420,7 +412,7 @@ fn an_isin_reaches_its_normalized_column_from_wherever_the_message_put_it() {
     // the check digit does not close is nothing at all.
     let cusip = settled(&reader, &alternate("037833100", "1"));
     assert_eq!(isincode(&cusip), None);
-    assert!(cusip.get_cusipcode().is_none());
+    assert_eq!(cusip.get_securityids().get("CUSIP"), Some("037833100"));
     assert_eq!(cusip.get_by_tag(48), None);
     let masked = settled(&reader, &alternate("XX0000000001", "4"));
     assert_eq!(isincode(&masked), None);
@@ -534,13 +526,15 @@ fn a_cfi_and_a_security_type_state_each_other() {
 #[test]
 fn the_crates_market_and_state_columns_are_stated_on_the_message() {
     let reader = reader();
+    // Where it last traded, then where it was routed, then where it is
+    // listed.
     for (line, market) in [
         (
             &b"8=FIX.4.4|35=D|11=A|207=XSWX|100=XNAS|30=XLON|10=0|"[..],
-            "XSWX",
+            "XLON",
         ),
-        (b"8=FIX.4.4|35=D|11=A|100=XNAS|30=XLON|10=0|", "XNAS"),
-        (b"8=FIX.4.4|35=D|11=A|30=XLON|10=0|", "XLON"),
+        (b"8=FIX.4.4|35=D|11=A|207=XSWX|100=XNAS|10=0|", "XNAS"),
+        (b"8=FIX.4.4|35=D|11=A|207=XSWX|10=0|", "XSWX"),
     ] {
         let held = settled(&reader, line);
         assert_eq!(miccode(&held).as_deref(), Some(market));

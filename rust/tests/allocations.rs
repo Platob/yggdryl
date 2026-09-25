@@ -27,10 +27,11 @@ use std::time::Instant;
 
 use std::sync::Arc;
 
+use smol_str::SmolStr;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    Book, BookIterator, Element, Event, EventColumn, Execution, MarketElement, MarketEventData,
-    MarketOperation, Order, Quote, Trade,
+    Book, BookInput, BookIterator, Element, Event, EventColumn, Market, MarketEventData,
+    MarketOperation, OperationEventData, Trade,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -374,23 +375,26 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
 }
 
 #[test]
-fn market_following_clones_only_an_inherited_symbolticker() {
+fn market_following_allocates_nothing_for_an_inherited_ticker() {
     let mut previous = MarketEventData::at(1);
     previous.finalize();
     let next = MarketEventData::at(2);
     let (baseline, _) = counted(|| next.with_previous(&previous).unwrap());
 
-    previous.set_symbolticker(Some("AAPL".to_owned()));
+    previous.set_ticker(Some(SmolStr::new("AAPL")));
     previous.finalize();
     let next = MarketEventData::at(2);
     let (inherited, next) = counted(|| next.with_previous(&previous).unwrap());
-    assert_eq!(next.get_symbolticker(), Some("AAPL"));
-    assert_eq!(inherited, baseline + 1, "one owned inherited ticker");
+    assert_eq!(next.get_ticker(), Some("AAPL"));
+    // A ticker is a `SmolStr`: one of a symbol's length lives inline, so
+    // inheriting it copies and allocates nothing where the owned `String`
+    // it replaced cost one allocation.
+    assert_eq!(inherited, baseline, "an inherited inline ticker is a copy");
 
     let mut next = MarketEventData::at(2);
-    next.set_symbolticker(Some("MSFT".to_owned()));
+    next.set_ticker(Some(SmolStr::new("MSFT")));
     let (stated, next) = counted(|| next.with_previous(&previous).unwrap());
-    assert_eq!(next.get_symbolticker(), Some("MSFT"));
+    assert_eq!(next.get_ticker(), Some("MSFT"));
     assert_eq!(stated, baseline, "a stated ticker needs no clone");
 }
 
@@ -802,8 +806,8 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
     let codec = FixCodec::new(Arc::new(fix_registry(0)));
     for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
         let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
-        let (allocations, operation) = counted(|| MarketOperation::try_from(message).unwrap());
-        assert_eq!(operation.get_symbolticker(), Some("AAPL"));
+        let (allocations, operation) = counted(|| BookInput::try_from(message).unwrap());
+        assert_eq!(operation.event().get_ticker(), Some("AAPL"));
         assert_eq!(
             allocations, 0,
             "a direct operation moves its existing holder"
@@ -813,17 +817,11 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
 
 #[test]
 fn typed_market_operation_and_entry_conversions_move_without_allocating() {
-    let mut event = MarketEventData::at(1);
+    let mut event = OperationEventData::at(1);
     event.set_crosscode("ORDER-1".to_owned());
     event.finalize();
-    let mut operation = Some(MarketOperation::from(Order::from(event)));
-    let (into_entry, entry) = counted(|| {
-        operation
-            .take()
-            .expect("one operation")
-            .into_entry()
-            .expect("an order has an entry")
-    });
+    let mut operation = Some(MarketOperation::order(event));
+    let (into_entry, entry) = counted(|| operation.take().expect("one operation").entry());
     assert_eq!(into_entry, 0, "operation to entry allocated");
 
     let mut entry = Some(entry);
@@ -832,22 +830,22 @@ fn typed_market_operation_and_entry_conversions_move_without_allocating() {
     black_box(operation);
 }
 
-fn allocation_trade_parts(executions: usize) -> (MarketEventData, Vec<Execution>) {
-    let mut root = MarketEventData::at(1);
+fn allocation_trade_parts(executions: usize) -> (OperationEventData, Vec<MarketOperation>) {
+    let mut root = OperationEventData::at(1);
     root.set_crosscode("ALLOC-TRADE".to_owned());
-    root.set_symbolticker(Some("ALLOC".to_owned()));
+    root.set_ticker(Some(SmolStr::new("ALLOC")));
     root.set_state(State::read("Filled").expect("the shipped filled state"));
     root.finalize();
     let executions = (0..executions)
         .rev()
         .map(|index| {
-            let mut event = MarketEventData::at(1);
+            let mut event = OperationEventData::at(1);
             event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
-            event.set_symbolticker(Some("ALLOC".to_owned()));
+            event.set_ticker(Some(SmolStr::new("ALLOC")));
             event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
             event.set_state(State::read("Filled").expect("the shipped filled state"));
             event.finalize();
-            Execution::from(event)
+            MarketOperation::execution(event)
         })
         .collect();
     (root, executions)
@@ -876,16 +874,18 @@ fn allocation_book_operation(
     unix: i64,
     quantity: i64,
     state: &str,
-) -> MarketOperation {
-    let mut event = MarketEventData::at(unix);
+) -> BookInput {
+    let mut event = OperationEventData::at(unix);
     event.set_crosscode(code.into());
-    event.set_symbolticker(Some("ALLOC".to_owned()));
+    event.set_ticker(Some(SmolStr::new("ALLOC")));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_price(Decimal18::from_int(100));
-    event.set_quantity(Decimal18::from_int(quantity));
+    event.set_price(Some(Decimal18::from_int(100)));
+    event.set_quantity(Some(Decimal18::from_int(quantity)));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
-    Quote::from(event).into()
+    let mut quote = MarketOperation::quote(event);
+    quote.finalize();
+    quote.into()
 }
 
 fn allocation_book(entries: usize) -> Book {
@@ -2402,7 +2402,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 46] = [
+    let seeds: [(DataTypeId, Scalar); 47] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2446,6 +2446,7 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
+        (DataTypeId::Unit, Scalar::from("Shares")),
         (
             DataTypeId::Uuid,
             Scalar::from("123e4567-e89b-12d3-a456-426614174000"),
@@ -3334,10 +3335,13 @@ fn a_line_built_and_read_allocates_nothing_and_its_captures_once() {
         black_box(line.captures().len());
         black_box(line.capture(1));
     });
-    // The two captures are the two names this line goes by, and the digest
-    // owns them: each is a name and a value, over the map they are held in.
+    // The named captures are the line's own reading and no event fact: the
+    // digest feeds the state, the place, the predecessor and the body, all
+    // of them held already, so the code costs nothing. It cost six - a name
+    // and a value per capture, over their map - while the names an element
+    // went by were an event fact the digest fed.
     let (code, _) = counted(|| black_box(line.get_currhashcode()));
-    assert_eq!(code, 6, "a name and a value per capture, over their map");
+    assert_eq!(code, 0, "the code reads what the line already holds");
     free("the content code asked again", || {
         black_box(line.get_currhashcode());
     });
@@ -3564,19 +3568,21 @@ const OWNED_COPY_COSTS: [(usize, usize); 2] = [(16, 23), (1_024, 26)];
 /// is the page, and a line is the range of it the splitter cut, so the
 /// header off its front, the strips off its edges and the byte limit off
 /// its tail move two offsets and copy nothing. With the copy, the assertion
-/// below counts 36 for 16 rows and the same 13 over the copy for 1 024 -
+/// below counts 33 for 16 rows and the same 10 over the copy for 1 024 -
 /// after the two the buffer's first `url` costs, which [`text_lines_cost`]
 /// asks for before the counter is armed and which are in neither number.
 ///
-/// Four of the thirteen are the seventeen event columns the plan compiles once
-/// per read: the identity list, the names' map and the state's own type
-/// allocate as the columns are planned, and nothing of them per line.
+/// One of the ten is the sixteen event columns the plan compiles once per
+/// read: the identity list and the state's own type allocate as the
+/// columns are planned, and nothing of them per line. The count was
+/// thirteen while the event had an `identifiers` column: the names' map
+/// cost three as it was planned, and left with the column.
 ///
 /// A read now shares what it was addressed by rather than where that
 /// resolves to, and the count did not move: the location is a narrowing of
 /// the identifier rather than a second value beside it, so the read still
 /// holds one reference-counted source and a row still clones one handle.
-const TEXT_LINES_ONCE: usize = 13;
+const TEXT_LINES_ONCE: usize = 10;
 
 /// What a reader that keeps its lines pays on top: two per window it had to
 /// leave behind.
@@ -4066,5 +4072,89 @@ fn instrument_codes_construct_and_classify_without_allocating() {
     });
     free("CFI inference", || {
         assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+    });
+}
+
+#[test]
+fn idmap_reads_and_inline_inserts_allocate_nothing() {
+    use yggdryl::IdMap;
+    assert_eq!(std::mem::size_of::<IdMap>(), 56);
+    let mut ids = IdMap::new();
+    ids.insert("ACCOUNT", "ACC-1").unwrap();
+    ids.insert("user", "U-1").unwrap();
+    free("an IdMap read of a held key", || {
+        assert_eq!(ids.get(black_box("account")), Some("ACC-1"));
+    });
+    free("an IdMap read of an absent key", || {
+        assert_eq!(ids.get(black_box("desk")), None);
+    });
+    free("an IdMap read of a key no door accepts", || {
+        assert_eq!(ids.get(black_box("caf\u{e9}")), None);
+    });
+    free("an IdMap first_of", || {
+        assert_eq!(
+            ids.first_of(black_box(&["desk", "user"])),
+            Some(("USER", "U-1"))
+        );
+    });
+    // A 12-byte key and a 10-byte value are one 23-byte entry, the widest
+    // SmolStr holds inline, into the second inline slot of the map.
+    free("an inline IdMap insert", || {
+        let mut ids = IdMap::new();
+        assert!(ids.insert("ZONE", "Z").unwrap());
+        assert!(
+            ids.insert(black_box("accountident"), black_box("ABCDEFGHIJ"))
+                .unwrap()
+        );
+        assert_eq!(ids.len(), 2);
+        black_box(&ids);
+    });
+}
+
+#[test]
+fn securityid_construction_is_inline_for_every_checked_code() {
+    use yggdryl::{SecType, SecurityId, SecurityIds};
+    assert_eq!(std::mem::size_of::<SecurityId>(), 24);
+    for (key, code) in [
+        ("ISIN", "US0378331005"),
+        ("CUSIP", "037833100"),
+        ("SEDOL", "0263494"),
+        ("FIGI", "BBG000B9XRY4"),
+        ("WKN", "716460"),
+        ("VALOR", "3886335"),
+        ("BLOOMBERG", "AAPL US Equity"),
+    ] {
+        let sectype = SecType::read(key).unwrap();
+        free(&format!("constructing {key}:{code}"), || {
+            let id = SecurityId::new(black_box(sectype.clone()), black_box(code)).unwrap();
+            assert!(id.is_inline());
+            assert_eq!(id.sectype().as_str(), key);
+            black_box(id.code());
+        });
+    }
+    let bloomberg = SecType::read("A").unwrap();
+    let widest = "B".repeat(32);
+    costs("constructing a 32-byte Bloomberg identifier", 1, || {
+        let id = SecurityId::new(bloomberg.clone(), black_box(widest.as_str())).unwrap();
+        assert!(!id.is_inline());
+        black_box(id);
+    });
+    assert!(
+        SecurityId::new(bloomberg.clone(), &"B".repeat(33)).is_err(),
+        "33 bytes are refused"
+    );
+    let heap = SecurityId::new(bloomberg, &widest).unwrap();
+    free("cloning a heap Bloomberg identifier", || {
+        black_box(heap.clone());
+    });
+
+    let mut ids = SecurityIds::default();
+    ids.insert(SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap());
+    ids.insert(heap.clone());
+    free("a SecurityIds read through every spelling", || {
+        assert_eq!(ids.get(black_box("4")), Some("US0378331005"));
+        assert_eq!(ids.get(black_box("isin")), Some("US0378331005"));
+        assert_eq!(ids.get(black_box("bbgsymb")), Some(widest.as_str()));
+        assert_eq!(ids.get(black_box("sedol")), None);
     });
 }

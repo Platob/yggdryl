@@ -13,6 +13,7 @@ import {
   type FixEntryView,
   type FixEventView,
   type FixHeaderView,
+  type FixLaneView,
   type FixRegistry,
   type FixMessages,
   type MsgType,
@@ -168,12 +169,20 @@ const state: string = message.state
 const seqnum: number = message.seqnum
 const prevuuid: string | null = message.prevuuid
 const srcuuids: string[] = message.srcuuids
-const messageIdentifiers: Record<string, string> = message.identifiers
-const price: string = message.price
-const quantity: string = message.quantity
+const messageSecurityIds: Record<string, string> = message.securityids
+const messageAccountIds: Record<string, string> = message.accountids
+const messageUserIds: Record<string, string> = message.userids
+const messageAltIds: Record<string, string> = message.altids
+const price: string | null = message.price
+const quantity: string | null = message.quantity
+const unit: string = message.unit
 const side: string = message.side
 const currency: string = message.currency
-const figicode: string | null = message.figicode
+const ticker: string | null = message.ticker
+const spotrate: string | null = message.spotrate
+const forwardpoints: string | null = message.forwardpoints
+const bid: FixLaneView | null = message.bid
+const ask: FixLaneView | null = message.ask
 const messageCategory: number | null = message.msgcat
 const marketOperationId: number | null = message.marketoperationid
 // And the same facts on the event, with the instants and the lanes.
@@ -185,8 +194,8 @@ const eventPrevUnix: bigint | null = event.prevunix
 const eventSnap: bigint | null = event.snapunix
 const eventExpiry: bigint | null = event.exprtime
 const eventMarketOperationId: number | null = event.marketoperationid
-const eventPrice: string = event.price
-const eventQuantity: string = event.quantity
+const eventPrice: string | null = event.price
+const eventQuantity: string | null = event.quantity
 const eventLastPx: string | null = event.lastpx
 const eventLastQty: string | null = event.lastqty
 const eventAvgPx: string | null = event.avgpx
@@ -196,12 +205,19 @@ const eventPrevPx: string | null = event.prevpx
 const eventPrevQty: string | null = event.prevqty
 const eventTif: string | null = event.tif
 const eventTradable: boolean | null = event.tradable
-const eventSymbolTicker: string | null = event.symbolticker
-const eventIsin: string | null = event.isincode
-const eventFigi: string | null = event.figicode
-const eventBidPx: string | null = event.bidpx
-const eventAskCurrency: string | null = event.askcurrency
-const eventIdentifiers: Record<string, string> = event.identifiers
+const eventTicker: string | null = event.ticker
+const eventUnit: string = event.unit
+const eventSecurityIds: Record<string, string> = event.securityids
+const eventSpotRate: string | null = event.spotrate
+const eventForwardPoints: string | null = event.forwardpoints
+const eventMetadata: Record<string, string> = event.metadata
+const eventAccountIds: Record<string, string> = event.accountids
+const eventUserIds: Record<string, string> = event.userids
+const eventAltIds: Record<string, string> = event.altids
+const eventBid: FixLaneView | null = event.bid
+const eventAsk: FixLaneView | null = event.ask
+const eventBidPrice: string | null = eventBid === null ? null : eventBid.price
+const eventAskCurrency: string | null = eventAsk === null ? null : eventAsk.currency
 const eventSources: string[] = event.srcuuids
 const beginstring: string = header.beginstring
 const msgtype: string = header.msgtype
@@ -234,12 +250,20 @@ void seqnum
 void prevuuid
 void srcuuids
 void eventSources
-void messageIdentifiers
+void messageSecurityIds
+void messageAccountIds
+void messageUserIds
+void messageAltIds
 void price
 void quantity
+void unit
 void side
 void currency
-void figicode
+void ticker
+void spotrate
+void forwardpoints
+void bid
+void ask
 void messageCategory
 void marketOperationId
 void eventCurrunix
@@ -261,12 +285,19 @@ void eventPrevPx
 void eventPrevQty
 void eventTif
 void eventTradable
-void eventSymbolTicker
-void eventIsin
-void eventFigi
-void eventBidPx
+void eventTicker
+void eventUnit
+void eventSecurityIds
+void eventSpotRate
+void eventForwardPoints
+void eventMetadata
+void eventAccountIds
+void eventUserIds
+void eventAltIds
+void eventBid
+void eventAsk
+void eventBidPrice
 void eventAskCurrency
-void eventIdentifiers
 void beginstring
 void msgtype
 void sendercompid

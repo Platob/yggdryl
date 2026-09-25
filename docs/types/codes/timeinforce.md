@@ -185,7 +185,7 @@ The value is the wire code itself, under the time-in-force identity. Nothing is 
 
 ## The FIX vocabulary
 
-`StringEnum::TIMESINFORCE` is FIX's `TimeInForceCodeSet` as the union across every version, sorted: fourteen wire values, `0`-`9` and `A`-`D`. The shipped registry under `config/fix/codesets/timeinforcecodeset.json` is what names them for a dialect, and a [FIX column](../../fix/capture.md) reads a code through the name the [code set its own field reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives it.
+`StringEnum::TIMESINFORCE` is FIX's `TimeInForceCodeSet` as the shipped registry under `config/fix/codesets/timeinforcecodeset.json` declares it, sorted: thirteen wire values, `0`-`9` and `A`-`C`. `TIMEINFORCE_CODES` is the same set beside the name each code carries, which `TimeInForce::from_spelling` reads a name through, and a [FIX column](../../fix/capture.md) reads a code through the name the [code set its own field reads by](../../fix/registry.md#a-field-names-the-code-set-it-reads-by) gives it.
 
 | Value | Name |
 | --- | --- |
@@ -203,16 +203,23 @@ The value is the wire code itself, under the time-in-force identity. Nothing is 
 | `B` | Good for Auction (GFA) |
 | `C` | Good for this Month (GFM) |
 
-`D` is in the union `StringEnum::TIMESINFORCE` carries and is not named by the shipped code set, which is the whole reason the listing is a vocabulary rather than a gate: a value no version this build knows defines is held.
+The listing is a vocabulary rather than a gate: a value it does not carry - a venue's `GTX`, a `D` no shipped version names - is held as stated. `TimeInForce::from_spelling` reads a wire code unfolded, else a shipped name folded, else the value as stated, and stores the code; `TimeInForce::read` is the same reading as a refusal, naming `TimeInForce(59)`, for a value past eight bytes. It is the value an operation stands for: [`Operation::get_tif`](../../graph.md#contract) answers `Option<&TimeInForce>`, and `set_tif(TimeInForce::from_spelling("day"))` stores `0`. Rust only.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{DataType, StringEnum};
+    use yggdryl::{DataType, StringEnum, TIMEINFORCE_CODES, TimeInForce};
 
     let tifs = StringEnum::from_logical_name("timeinforce")?;
     assert_eq!(tifs.len(), StringEnum::TIMESINFORCE.len());
     assert!(StringEnum::TIMESINFORCE.contains(&"0"));
+    assert_eq!(TIMEINFORCE_CODES.len(), StringEnum::TIMESINFORCE.len());
+
+    // A code, a name folded, or a value kept as stated: the code is stored.
+    assert_eq!(TimeInForce::from_spelling("day").unwrap().as_str(), "0");
+    assert_eq!(TimeInForce::from_spelling("GoodTillCancel").unwrap().as_str(), "1");
+    assert_eq!(TimeInForce::from_spelling("GTX").unwrap().as_str(), "GTX");
+    assert!(TimeInForce::read("TOOLONGTIF").unwrap_err().to_string().contains("TimeInForce(59)"));
 
     // A value no version defines is held rather than refused, and it packs
     // and unpacks like any other.

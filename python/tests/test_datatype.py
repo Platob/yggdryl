@@ -1433,6 +1433,7 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "side": yggdryl.side("value"),
         "state": yggdryl.state("value"),
         "timeinforce": yggdryl.timeinforce("value"),
+        "unit": yggdryl.unit("value"),
         "geometry": yggdryl.geometry("value"),
         "geography": yggdryl.geography("value", "OGC:CRS84", "vincenty"),
     }

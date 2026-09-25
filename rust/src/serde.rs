@@ -600,6 +600,7 @@ enum DataTypeRef<'a> {
     // of this enum derives.
     #[serde(rename = "timeinforce")]
     TimeInForce {},
+    Unit {},
     Uuid {},
     Version {},
     Url {},
@@ -751,6 +752,7 @@ impl<'a> From<&'a DataType> for DataTypeRef<'a> {
             D::Side => Self::Side {},
             D::State => Self::State {},
             D::TimeInForce => Self::TimeInForce {},
+            D::Unit => Self::Unit {},
             D::Uuid => Self::Uuid {},
             D::Version => Self::Version {},
             D::Url => Self::Url {},
@@ -902,6 +904,7 @@ enum DataTypeWire {
     State {},
     #[serde(rename = "timeinforce")]
     TimeInForce {},
+    Unit {},
     Uuid {},
     Version {},
     Url {},
@@ -1035,6 +1038,7 @@ impl TryFrom<DataTypeWire> for DataType {
             DataTypeWire::Side {} => Self::Side,
             DataTypeWire::State {} => Self::State,
             DataTypeWire::TimeInForce {} => Self::TimeInForce,
+            DataTypeWire::Unit {} => Self::Unit,
             DataTypeWire::Uuid {} => Self::Uuid,
             DataTypeWire::Version {} => Self::Version,
             DataTypeWire::Url {} => Self::url(),
@@ -1171,6 +1175,7 @@ impl DataType {
             D::Side => tag("side"),
             D::State => tag("state"),
             D::TimeInForce => tag("timeinforce"),
+            D::Unit => tag("unit"),
             D::Uuid => tag("uuid"),
             D::Version => tag("version"),
             D::Url => tag("url"),
@@ -1450,6 +1455,7 @@ impl DataType {
             "side" => Self::Side,
             "state" => Self::State,
             "timeinforce" => Self::TimeInForce,
+            "unit" => Self::Unit,
             "uuid" => Self::Uuid,
             "version" => Self::Version,
             "url" => Self::url(),

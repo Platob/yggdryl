@@ -68,6 +68,7 @@ pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
 #[path = "iceberg/types.rs"]
 pub mod iceberg;
+pub mod idmap;
 pub(crate) mod int256;
 pub mod integer;
 pub mod interval;
@@ -104,6 +105,7 @@ pub mod runend;
 pub mod s3;
 mod scalar;
 mod scheme;
+pub mod securityid;
 pub mod sedol_code;
 pub(crate) mod serde;
 pub mod serie;
@@ -122,6 +124,7 @@ pub mod txhash;
 mod typed;
 pub mod union;
 mod union_mode;
+pub mod unit;
 pub mod uri;
 pub mod utf8;
 pub mod uuid;
@@ -156,21 +159,24 @@ pub use expression::{Expression, Filter, Plan, Selector, Term};
 pub use expression::{FieldPath, FieldSegment};
 pub use fix::MsgType;
 pub use fix::{
-    BLOOMBERGCODE_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN, CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME,
-    CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME, CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME,
-    CURRUUID_TAG_NAME, CUSIPCODE_TAG_NAME, DEFAULT_NULL_VALUES, DEFAULT_PAYLOAD_COLUMN,
-    DEFAULT_REFUSED_MSGTYPES, EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME,
-    FIX_TYPED_TAGS, FIXMSG_TAG_NAME, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec,
-    FixCodes, FixDedup, FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter,
-    FixHeader, FixId, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns, FixRegistry,
-    FixSpellings, IDENTIFIERS_TAG_NAME, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
-    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGPLUGINID_TAG_NAME,
-    MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME, PREVUNIX_TAG_NAME,
-    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SEDOLCODE_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME,
-    SOH, SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
-    STATE_TAG_NAME, ULBRIDGE_ROWHEADER, Words, fix_column_of, fix_column_tags, fix_crate_fields,
-    fix_schema, fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document,
-    is_crate_tag,
+    BLOOMBERGCODE_TAG_NAME, CONVERSATIONID_TAG_NAME, CRATE_TAG_MAX, CRATE_TAG_MIN,
+    CREAUNIX_TAG_NAME, CROSSCODE_TAG_NAME, CROSSHASHCODE_TAG_NAME, CROSSUUID_TAG_NAME,
+    CURRHASHCODE_TAG_NAME, CURRUNIX_TAG_NAME, CURRUUID_TAG_NAME, DEFAULT_NULL_VALUES,
+    DEFAULT_PAYLOAD_COLUMN, DEFAULT_REFUSED_MSGTYPES, EXCHANGECLIENTORDERID_TAG_NAME,
+    EXECUNIX_TAG_NAME, EXPRTIME_TAG_NAME, FIGICODE_TAG_NAME, FIX_TYPED_TAGS, FIXMSG_TAG_NAME,
+    FixAnomaly, FixCapture, FixCode, FixCodeSet, FixCodeValue, FixCodec, FixCodes, FixDedup,
+    FixDirection, FixDirectionEntry, FixDirections, FixEntry, FixFieldIter, FixHeader, FixId,
+    FixIdMapKind, FixIdSource, FixIdSources, FixKey, FixLifted, FixMessages, FixMsg, FixPatterns,
+    FixRegistry, FixSpellings, ISINCODE_TAG_NAME, METADATA_TAG_NAME, MICCODE_TAG_NAME,
+    MSGCAT_TAG_NAME, MSGCTXID_TAG_NAME, MSGDIRECTION_TAG_NAME, MSGORIGINATOR_TAG_NAME,
+    MSGPLUGINID_TAG_NAME, MSGSESSEVENTID_TAG_NAME, MSGSESSIONID_TAG_NAME, NOFIXENTRIES_TAG_NAME,
+    OMSDEALERACCOUNT_TAG_NAME, OMSDEALERPARENTORDERID_TAG_NAME, OMSINSTRUMENTID_TAG_NAME,
+    OMSUSERID_TAG_NAME, PARENTCLORDID_TAG_NAME, PARENTORDERID_TAG_NAME, PREVUNIX_TAG_NAME,
+    PREVUUID_TAG_NAME, RECDUNIX_TAG_NAME, SEQNUM_TAG_NAME, SNAPUNIX_TAG_NAME, SOH,
+    SOURCEURL_TAG_NAME, SRCUUIDS_TAG_NAME, STANDARD_HEADER_TAGS, STANDARD_TRAILER_TAGS,
+    STATE_TAG_NAME, TRANSVERSALKEY_TAG_NAME, ULBRIDGE_ROWHEADER, ULLINKINSTRUMENTID_TAG_NAME,
+    ULTRADERCLORDID_TAG_NAME, Words, fix_column_of, fix_column_tags, fix_crate_fields, fix_schema,
+    fix_schema_carrying, fix_schema_tags, from_fix_document, into_fix_document, is_crate_tag,
 };
 pub use int256::{i256, u256};
 pub use iobase::{ArrowWriteSession, overwrite_arrow_reader_default};
@@ -242,6 +248,7 @@ pub use floating::*;
 pub(crate) use geospatial::DEFAULT_CRS;
 pub(crate) use geospatial::GEOARROW_WKB_EXTENSION_NAME;
 pub use geospatial::*;
+pub use idmap::IdMap;
 pub use integer::*;
 pub use interval::*;
 pub use isin_code::*;
@@ -258,6 +265,7 @@ pub use pretty::Pretty;
 pub use runend::*;
 pub use scalar::Scalar;
 pub(crate) use scalar::{bytes_scalars, code_scalars, string_scalars};
+pub use securityid::{SecType, SecurityId, SecurityIds};
 pub use sedol_code::*;
 pub use serie::*;
 pub use side::*;
@@ -272,6 +280,7 @@ pub(crate) use timezone::TIMEZONE_EXTENSION_NAME;
 pub use timezone::{Timezone, TimezoneType};
 pub use typed::{FieldRecord, FieldScalar, UncheckedFieldScalar};
 pub use union::*;
+pub use unit::*;
 pub use uuid::*;
 pub(crate) use uuid::{
     UUID_EXTENSION_NAME, UUID_TEXT_LEN, uuid_bytes, uuid_parse, uuid_rendered, uuid_text,
@@ -355,7 +364,6 @@ pub mod internals {
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
     pub use crate::fs::local::internals as fs_local;
-    pub use crate::graph::instrument::internals as graph_instrument;
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
@@ -411,6 +419,7 @@ pub mod internals {
     #[cfg(feature = "s3")]
     pub use crate::s3::xml::internals as s3_xml;
     pub use crate::scalar::internals as scalar;
+    pub use crate::securityid::internals as securityid;
     pub use crate::serie::arrow::internals as serie_arrow;
     pub use crate::serie::layout::internals as serie_layout;
     pub use crate::temporal::internals as temporal;

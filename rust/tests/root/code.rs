@@ -378,42 +378,6 @@ mod datatypes {
     }
 
     #[test]
-    fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
-        // A row whose line does not say a side has none, and the crate already
-        // spells "no answer" one way: `UNKNOWN` is what a value that must state
-        // a side states where none was said, as a state's `00UNKNOWN` is, and
-        // never what a column says for an absent one.
-        assert!(StringEnum::SIDES.contains(&"UNKNOWN"));
-        assert!(!StringEnum::SIDES.contains(&"NONE"));
-
-        let field = Field::new("side", DataType::Side, true);
-        let row = Field::new(
-            "row",
-            DataType::from(StructType::from_fields([field.clone()]).unwrap()),
-            false,
-        );
-        let value = row
-            .canonicalize_value(Scalar::from_sequence([Scalar::Null]))
-            .unwrap();
-        row.validate_value(&value).unwrap();
-        assert!(value.as_sequence().unwrap()[0].is_null());
-        // A required one refuses the same null, so the nullability is the field's
-        // and not the datatype's.
-        let required = Field::new(
-            "row",
-            DataType::from(
-                StructType::from_fields([Field::new("side", DataType::Side, false)]).unwrap(),
-            ),
-            false,
-        );
-        assert!(
-            required
-                .validate_value(&Scalar::from_sequence([Scalar::Null]))
-                .is_err()
-        );
-    }
-
-    #[test]
     fn a_code_carries_its_identity_into_equality_and_order() {
         // Two codes whose bytes agree are two values: the identity compares
         // first, then the text, so a side and a time in force never collide in

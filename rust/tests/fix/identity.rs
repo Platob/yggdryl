@@ -9,8 +9,8 @@ use super::sequence;
 
 mod categories {
     use std::sync::Arc;
-    use yggdryl::graph::MarketElement;
-    use yggdryl::{CfiCode, CusipCode, FixMsg, IsinCode, Scalar, SedolCode};
+    use yggdryl::graph::Market;
+    use yggdryl::{CfiCode, FixMsg, IsinCode, Scalar};
 
     #[test]
     fn committed_messages_publish_one_four_byte_category() {
@@ -103,17 +103,13 @@ mod categories {
         let message = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=N|10=0|")
             .expect("a message without instrument codes");
-        assert!(message.get_isincode().is_none());
+        assert!(message.get_securityids().is_empty());
         assert!(message.get_cficode().is_none());
-        assert!(message.get_cusipcode().is_none());
-        assert!(message.get_sedolcode().is_none());
-        assert!(message.get_bloombergcode().is_none());
-        assert!(message.get_figicode().is_none());
         assert!(message.get_miccode().is_none());
     }
 
     #[test]
-    fn cusip_and_sedol_stay_in_fix_identifiers_without_normalized_lifting() {
+    fn cusip_and_sedol_are_security_identifiers_without_columns_of_their_own() {
         let registry = super::committed_registry();
         let codec = super::fixed_codec(Arc::clone(&registry));
         let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
@@ -126,15 +122,16 @@ mod categories {
             primary_id.as_ref().and_then(Scalar::as_str),
             Some("037833100")
         );
-        assert!(primary.get_cusipcode().is_none());
+        assert_eq!(primary.get_securityids().get("CUSIP"), Some("037833100"));
+        assert_eq!(primary.get_securityids().get("1"), Some("037833100"));
 
         let alternates = codec
             .parse_fix_line(
                 b"8=FIX.4.4|35=D|11=A|454=2|455=037833100|456=1|455=B0YBKJ7|456=2|10=0|",
             )
             .expect("CUSIP and SEDOL alternate identifiers");
-        assert!(alternates.get_cusipcode().is_none());
-        assert!(alternates.get_sedolcode().is_none());
+        assert_eq!(alternates.get_securityids().get("CUSIP"), Some("037833100"));
+        assert_eq!(alternates.get_securityids().get("SEDOL"), Some("B0YBKJ7"));
         let values = super::sequence(
             alternates
                 .by_name("secaltids")
@@ -150,17 +147,32 @@ mod categories {
             Some("B0YBKJ7")
         );
 
-        let row = alternates.into_row(&schema).expect("a fixed row");
-        let row = row.as_sequence().expect("a row");
-        for tag in [yggdryl::CUSIPCODE_TAG_NAME.0, yggdryl::SEDOLCODE_TAG_NAME.0] {
-            let at = yggdryl::fix_column_of(&schema, tag).expect("a normalized code column");
-            assert!(row[at].is_null(), "tag {tag} is not lifted");
+        // The crate lifts neither into a column of its own: the retired tags
+        // 65057 and 65058 name no column, and the set travels as
+        // `securityids` on the graph side.
+        for tag in [65_057, 65_058] {
+            assert!(
+                yggdryl::fix_column_of(&schema, tag).is_none(),
+                "tag {tag} is retired and never reused"
+            );
         }
 
+        // An ISIN carries its country's national number as a derived
+        // identifier: read off the set, never written to the wire.
         let isin = codec
             .parse_fix_line(b"8=FIX.4.4|35=D|11=I|22=4|48=US0378331005|10=0|")
             .expect("an ISIN carrying an embedded CUSIP");
-        assert!(isin.get_cusipcode().is_none());
+        assert_eq!(isin.get_securityids().get("ISIN"), Some("US0378331005"));
+        assert_eq!(isin.get_securityids().get("CUSIP"), Some("037833100"));
+        let wire = String::from_utf8(isin.into_bytes(b'|')).expect("ASCII");
+        assert!(
+            !wire.contains("455="),
+            "no alternate identifier was written: {wire}"
+        );
+        assert!(
+            !wire.contains("22=1"),
+            "and the primary still names the ISIN: {wire}"
+        );
     }
 
     #[test]
@@ -180,32 +192,14 @@ mod categories {
                 Scalar::IsinCode(IsinCode::new("US0378331005").expect("an ISIN")),
             )
             .expect("a normalized ISIN fact");
-        explicit
-            .set(
-                yggdryl::CUSIPCODE_TAG_NAME.0,
-                Scalar::CusipCode(CusipCode::new("037833100").expect("a CUSIP")),
-            )
-            .expect("a normalized CUSIP fact");
-        explicit
-            .set(
-                yggdryl::SEDOLCODE_TAG_NAME.0,
-                Scalar::SedolCode(SedolCode::new("B0YBKJ7").expect("a SEDOL")),
-            )
-            .expect("a normalized SEDOL fact");
         let row = explicit.into_row(&schema).expect("a fixed row");
         let rebuilt =
             FixMsg::from_row(Arc::clone(&registry), &schema, &row).expect("a rebuilt row");
+        assert_eq!(rebuilt.get_securityids().get("ISIN"), Some("US0378331005"));
         assert_eq!(
-            rebuilt.get_isincode().map(|value| value.as_str()),
-            Some("US0378331005")
-        );
-        assert_eq!(
-            rebuilt.get_cusipcode().map(|value| value.as_str()),
-            Some("037833100")
-        );
-        assert_eq!(
-            rebuilt.get_sedolcode().map(|value| value.as_str()),
-            Some("B0YBKJ7")
+            rebuilt.get_securityids().get("CUSIP"),
+            Some("037833100"),
+            "the national number the ISIN carries is derived again on the way back"
         );
 
         // The first row learns Bloomberg from the ordinary FIX pair. Removing
@@ -228,7 +222,7 @@ mod categories {
         let rebuilt =
             FixMsg::from_row(Arc::clone(&registry), &schema, &stored).expect("a rebuilt row");
         assert_eq!(
-            rebuilt.get_bloombergcode().map(|value| value.as_str()),
+            rebuilt.get_securityids().get("BLOOMBERG"),
             Some("AAPL US Equity")
         );
         let bloomberg_at = yggdryl::fix_column_of(&schema, yggdryl::BLOOMBERGCODE_TAG_NAME.0)
@@ -249,7 +243,7 @@ mod identifiers {
     use std::sync::Arc;
 
     use super::SoleMessage;
-    use yggdryl::graph::Element;
+    use yggdryl::graph::Operation;
     use yggdryl::{DataType, Error, Field, FixMsg, FixRegistry, Scalar, StructType, fix_schema};
 
     fn tagged(name: &str, tag: i32) -> Field {
@@ -729,14 +723,11 @@ mod identifiers {
         let line = b"8=FIX.4.4|35=8|37=O-01|11=C-001|17=E-09|10=0|";
         let read = codec.sole_line(line).unwrap();
         assert_eq!(
-            read.get_identifiers()
-                .iter()
-                .map(|(key, value)| (key.as_str(), value.as_str()))
-                .collect::<Vec<_>>(),
+            read.get_altids().iter().collect::<Vec<_>>(),
             [
-                ("clordid", "C-001"),
-                ("execid", "E-09"),
-                ("orderid", "O-01")
+                ("CLORDID", "C-001"),
+                ("EXECID", "E-09"),
+                ("ORDERID", "O-01")
             ]
         );
         // Filling them is not an arrival: the identifiers are the event's own
@@ -752,7 +743,7 @@ mod identifiers {
         let schema = fix_schema(&registry, "fix").unwrap();
         let row = read.into_row(&schema).unwrap();
         let rebuilt = FixMsg::from_row(Arc::clone(&registry), &schema, &row).unwrap();
-        assert_eq!(rebuilt.get_identifiers(), read.get_identifiers());
+        assert_eq!(rebuilt.get_altids(), read.get_altids());
         let array = yggdryl::Serie::from_scalars(schema.clone(), [row.clone()])
             .unwrap()
             .require_arrow_array()
@@ -768,22 +759,19 @@ mod identifiers {
         assert_eq!(roundtrip, row);
     }
 
-    /// A message whose component declares no identifier, or whose type no
-    /// component claims, goes by no name at all - never by a guess.
+    /// A message goes by every identifier a source field states, whatever
+    /// its type declares - the source table is the crate's, never the
+    /// component's - and by nothing where it states none.
     #[test]
-    fn a_message_declaring_no_identifier_goes_by_no_name() {
+    fn a_message_goes_by_the_identifiers_its_source_fields_state() {
         let codec = super::fixed_codec(super::committed_registry());
-        for line in [
-            b"8=FIX.4.4|35=ZZ|11=C-1|10=0|".as_slice(),
-            b"8=FIX.4.4|35=ZZ|10=0|",
-        ] {
-            let message = codec.sole_line(line).unwrap();
-            assert!(
-                message.get_identifiers().is_empty(),
-                "{}",
-                String::from_utf8_lossy(line)
-            );
-        }
+        let named = codec.sole_line(b"8=FIX.4.4|35=ZZ|11=C-1|10=0|").unwrap();
+        assert_eq!(
+            named.get_altids().iter().collect::<Vec<_>>(),
+            [("CLORDID", "C-1")]
+        );
+        let unnamed = codec.sole_line(b"8=FIX.4.4|35=ZZ|10=0|").unwrap();
+        assert!(unnamed.get_altids().is_empty());
     }
 
     /// An identifier inside a repeating group's occurrence is that occurrence's,
@@ -798,12 +786,13 @@ mod identifiers {
             )
             .unwrap();
         assert_eq!(
-            nested
-                .get_identifiers()
-                .iter()
-                .map(|(key, value)| (key.as_str(), value.as_str()))
-                .collect::<Vec<_>>(),
-            [("listid", "L-1")]
+            nested.get_altids().get("CLORDID"),
+            None,
+            "the occurrence's ClOrdID names the occurrence"
         );
+        // ListID(66) has no source in the crate's identifier table today, so
+        // the list goes by no alternate identifier until the dictionary's
+        // `FIX:idmap` names one.
+        assert_eq!(nested.get_altids().get("LISTID"), None);
     }
 }

@@ -52,7 +52,9 @@ def built(document: bytes) -> tuple[dict, dict]:
     """
     parsed = {source.source_id: {"fields": {}} for source in GENERATOR.SOURCES}
     parsed["orchestra-latest"] = GENERATOR.parse_orchestra(document)
-    with mock.patch.object(GENERATOR, "attach_replacements"), mock.patch.object(GENERATOR, "attach_derivations"):
+    with mock.patch.object(GENERATOR, "attach_replacements"), mock.patch.object(
+        GENERATOR, "attach_identifier_maps"
+    ), mock.patch.object(GENERATOR, "attach_derivations"):
         return GENERATOR.build(parsed)
 
 

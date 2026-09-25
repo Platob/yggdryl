@@ -717,11 +717,11 @@ mod text {
         assert_eq!(line.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
     }
 
-    /// The seventeen event columns every line batch opens with, in front of
+    /// The sixteen event columns every line batch opens with, in front of
     /// the line's own: the line is an event of the graph, and a message parsed
-    /// out of it contains the same seventeen under the same names and
+    /// out of it contains the same sixteen under the same names and
     /// datatypes.
-    const EVENT_COLUMNS: [&str; 17] = [
+    const EVENT_COLUMNS: [&str; 16] = [
         "currunix",
         "creaunix",
         "execunix",
@@ -737,7 +737,6 @@ mod text {
         "prevuuid",
         "seqnum",
         "srcuuids",
-        "identifiers",
         "state",
     ];
 
@@ -848,7 +847,7 @@ mod text {
     mod event {
         use std::sync::Arc;
 
-        use yggdryl::graph::{Element, Event, EventColumn, EventIterator};
+        use yggdryl::graph::{Element, Event, EventColumn};
         use yggdryl::text::{
             DEFAULT_TEXT_BATCH_BYTE_SIZE, DEFAULT_TEXT_BATCH_ROW_SIZE, TextBytes, TextEntries,
             TextLine, TextOptions, into_arrow_batch, read_text_lines,
@@ -914,12 +913,12 @@ mod text {
             assert_eq!(line.body_bytes().as_str(), Some("k=v|x=y"));
             assert_eq!(line.entries().map(yggdryl::text::TextEntries::len), Some(2));
             // The captures, in the order the header declares them, and the
-            // identifiers the named ones make.
+            // named captures the named ones make.
             assert_eq!(line.capture(0), Some("2026-01-02T10:15:30Z"));
             assert_eq!(line.capture(2), Some(PREVIOUS));
-            assert_eq!(line.get_identifiers()["state"], "Filled");
-            assert_eq!(line.get_identifiers()["prevuuid"], PREVIOUS);
-            assert_eq!(line.get_identifiers().len(), 3);
+            assert_eq!(line.named_captures()["state"], "Filled");
+            assert_eq!(line.named_captures()["prevuuid"], PREVIOUS);
+            assert_eq!(line.named_captures().len(), 3);
             // Captured facts read at their own types; the place and source facts
             // come from the line itself. This manually made line is row zero and
             // has no source.
@@ -953,11 +952,15 @@ mod text {
             );
             // Pinned as a number because no public door reproduces it: the
             // code leaves the capture that dates the line out, which
-            // `digest_event` feeds. It last moved when the code became the
+            // `digest_event` feeds. It moved when the code became the
             // event's own facts rather than the cross code, the row and the
             // body - the header's captures, its state, its place
-            // and what it follows, with the body behind them.
-            assert_eq!(line.get_currhashcode(), 9_607_804_996_582_312_670);
+            // and what it follows, with the body behind them. It last moved
+            // when the names an element went by left the event: the named
+            // captures are the line's own reading, no longer an event fact
+            // `digest_event` feeds, so the code is the state, the place, what
+            // it follows and the body.
+            assert_eq!(line.get_currhashcode(), 12_989_306_360_569_704_928);
             assert_eq!(line.get_curruuid(), line.time_uuid().expect("an identity"));
             // The one capture left out of the code is the one that dates the
             // line, because the instant is coupled with the code rather than
@@ -1013,7 +1016,7 @@ mod text {
             // from the event, so the capture is an ordinary one: its text is
             // the line's, and it names the line like any other capture.
             assert_eq!(line.capture(2), Some(THIRD));
-            assert_eq!(line.get_identifiers()["refrecdunix"], THIRD);
+            assert_eq!(line.named_captures()["refrecdunix"], THIRD);
 
             // A changed body drops every resolved reading.
             line.set_body(
@@ -1044,7 +1047,7 @@ mod text {
 
             // The two event captures feed the event columns themselves, not
             // duplicate text columns behind them: both are consumed, so the row
-            // is the seventeen, the body, and the one capture no event fact
+            // is the sixteen, the body, and the one capture no event fact
             // owns - `refrecdunix`, as the text the header matched. A row read
             // back states every one of the facts again.
             let source = self::line(
@@ -1085,7 +1088,7 @@ mod text {
             let back = yggdryl::text::from_arrow_batch(&batch, &options).expect("a line");
             assert_eq!(back[0].get_execunix(), Some(EXECUTED));
             assert_eq!(back[0].get_recdunix(), Some(RECORDED));
-            assert_eq!(back[0].get_identifiers()["refrecdunix"], THIRD);
+            assert_eq!(back[0].named_captures()["refrecdunix"], THIRD);
         }
 
         #[test]
@@ -1126,7 +1129,7 @@ mod text {
             assert_eq!(line.mtime().unwrap(), None);
             assert_eq!(line.get_currunix(), 0);
             assert!(line.captures().is_empty());
-            assert!(line.get_identifiers().is_empty());
+            assert!(line.named_captures().is_empty());
             assert_eq!(line.get_crosscode(), "");
             assert_eq!(line.get_crosshashcode(), 0);
             assert_eq!(line.get_crossuuid(), line.get_curruuid());
@@ -1535,12 +1538,25 @@ mod text {
                 line(&format!("{instant} [{state}] O-100 k=v"), &options)
                     .with_sourceuri(Arc::clone(&source))
             };
-            let arrived = vec![
+            let arrived = [
                 read("2026-01-02T10:15:30Z", "New"),
                 read("2026-01-02T10:15:31Z", "PartiallyFilled"),
                 read("2026-01-02T10:15:32Z", "Filled"),
             ];
-            let walked: Vec<TextLine> = EventIterator::new(arrived, true).collect();
+            // A text line is an event and not a market operation, so the one
+            // walk does not read it: its lineage is stated line by line
+            // through `with_previous`, which is what the walk does for the
+            // operations it reads.
+            let first = arrived[0].clone();
+            let second = arrived[1]
+                .clone()
+                .with_previous(&first)
+                .expect("the second line follows the first");
+            let third = arrived[2]
+                .clone()
+                .with_previous(&second)
+                .expect("the third line follows the second");
+            let walked: Vec<TextLine> = vec![first, second, third];
             let [first, second, third] = walked.as_slice() else {
                 panic!("three lines")
             };
@@ -1586,7 +1602,7 @@ mod text {
                 .iter()
                 .map(|field| field.name().as_str())
                 .collect();
-            // The batch opens with the seventeen event columns the line is stated
+            // The batch opens with the sixteen event columns the line is stated
             // in, and the body closes it. Captured facts feed their own event
             // columns - every capture this header declares is one, so no capture
             // column is left - while `seqnum` and `crosscode` state the line's
@@ -1629,7 +1645,12 @@ mod text {
             assert_eq!(back[0].get_curruuid(), lines[0].get_curruuid());
             assert_eq!(back[0].get_crossuuid(), lines[0].get_crossuuid());
             assert_eq!(back[0].get_currhashcode(), lines[0].get_currhashcode());
-            assert_eq!(back[0].get_identifiers(), lines[0].get_identifiers());
+            // The named captures are the line's own reading of its header, not
+            // a column of the batch: a line read back off a batch has a body
+            // and no header to read them from, and its code, which never fed
+            // them, is the same.
+            assert!(back[0].named_captures().is_empty());
+            assert_eq!(lines[0].named_captures().len(), 3);
         }
 
         #[test]

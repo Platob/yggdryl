@@ -555,6 +555,26 @@ impl CfiCode {
         Self::parsed(code).is_some()
     }
 
+    /// Whether `code` is classified and says something past its category
+    /// and group: at least one of positions 3 to 6 is not `X`. A code that
+    /// only classifies - `ESXXXX` - is coarse, and a market that keeps only
+    /// detailed codes answers none for it; an `X` inside a detailed code is
+    /// an attribute the standard leaves unknown and stays legal.
+    ///
+    /// ```
+    /// # use yggdryl::CfiCode;
+    /// assert!(CfiCode::is_detailed("ESVUFR"));
+    /// assert!(CfiCode::is_detailed("ESVXXX"));
+    /// assert!(!CfiCode::is_detailed("ESXXXX"));
+    /// assert!(!CfiCode::is_detailed("EMXXXX"));
+    /// assert!(!CfiCode::is_detailed("XXXXXX"));
+    /// ```
+    #[must_use]
+    pub fn is_detailed(code: &str) -> bool {
+        Self::parsed(code)
+            .is_some_and(|(_, _, attributes)| attributes.iter().any(|held| *held != Self::UNKNOWN))
+    }
+
     /// The category and group a well-formed code names, with its attributes.
     fn parsed(code: &str) -> Option<(&'static CfiCategory, &'static CfiGroup, [char; 4])> {
         let [category, group, a, b, c, d] = *code.as_bytes() else {

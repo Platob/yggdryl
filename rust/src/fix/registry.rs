@@ -369,6 +369,9 @@ pub struct FixRegistry {
     /// The names a message digests its lifted facts under, read off the
     /// fields once on the first digest and forgotten with the derivations.
     lifted_names: OnceLock<LiftedNames>,
+    /// Every field's `FIX:idmap`, read once on the first settle and
+    /// forgotten with the derivations.
+    idmap_sources: OnceLock<Vec<(i32, super::FixIdSource)>>,
 }
 
 /// The names [`FixMsg`](super::FixMsg) feeds its typed facts under when it
@@ -433,6 +436,7 @@ impl FixRegistry {
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
             lifted_names: OnceLock::new(),
+            idmap_sources: OnceLock::new(),
         };
         if let Some(document) = super::crated::msgcat_codeset() {
             registry.codesets.insert(
@@ -1483,6 +1487,7 @@ impl FixRegistry {
         self.unindex(position, position);
         self.derivations.take();
         self.lifted_names.take();
+        self.idmap_sources.take();
         // The field departing may be the last, which `index` never touches
         // again: the memo forgets what it answered for it here.
         self.memo.clear();
@@ -1805,6 +1810,7 @@ impl FixRegistry {
         // them, and what was answered off them, is forgotten here too.
         self.derivations.take();
         self.lifted_names.take();
+        self.idmap_sources.take();
         self.memo.clear();
         let Some(field) = self.fields.get(position) else {
             return;
@@ -1972,12 +1978,56 @@ impl FixRegistry {
     pub(super) fn forget_derivations(&mut self) {
         self.derivations.take();
         self.lifted_names.take();
+        self.idmap_sources.take();
         self.memo.clear();
     }
 
     /// What this dictionary has answered about itself.
     pub(super) fn memo(&self) -> &super::memo::Memo {
         &self.memo
+    }
+
+    /// The identifier-map sources the dictionary states, field by field in
+    /// iteration order: each the tag of the field whose value names a
+    /// message and the [`FIX:idmap`](crate::FixField::idmap) entry saying in
+    /// which map and under which key. A message rebuilds its
+    /// `accountids`, `userids` and `altids` from these at every settle, and
+    /// an operation that follows another carries the `altids` keys whose
+    /// entry follows. Compiled once and forgotten by every change to the
+    /// fields.
+    ///
+    /// ```
+    /// use yggdryl::FixRegistry;
+    /// use yggdryl::fix::FixIdMapKind;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let registry = FixRegistry::from_handle(&yggdryl::local::LocalFolder::new(
+    ///     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix"),
+    /// )?)?;
+    /// let (tag, order) = registry
+    ///     .idmap_sources()
+    ///     .iter()
+    ///     .find(|(_, source)| source.key() == "ORDERID")
+    ///     .expect("OrderID names the order");
+    /// assert_eq!((*tag, order.map(), order.follows()), (37, FixIdMapKind::Alts, true));
+    /// # Ok(())
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn idmap_sources(&self) -> &[(i32, super::FixIdSource)] {
+        self.idmap_sources.get_or_init(|| {
+            self.iter()
+                .filter_map(|field| Some((field.as_fix().tag().ok()??, field)))
+                .flat_map(|(tag, field)| {
+                    // Every document was read whole when the field was taken.
+                    field
+                        .as_fix()
+                        .idmap()
+                        .filter_map(Result::ok)
+                        .map(move |source| (tag, source))
+                })
+                .collect()
+        })
     }
 
     /// The names a message digests its lifted facts under, read once.
@@ -2026,6 +2076,7 @@ impl Clone for FixRegistry {
             memo: super::memo::Memo::new(),
             derivations: OnceLock::new(),
             lifted_names: OnceLock::new(),
+            idmap_sources: OnceLock::new(),
         }
     }
 }

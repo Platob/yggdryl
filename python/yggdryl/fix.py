@@ -15,7 +15,7 @@ component, a Serie of Structs or a Map a group, a message a component carrying
 has - and persists them as JSON shards through any ``IOBase`` location, the
 fixed row among them as ``components/fixmsg.json``. Every registry holds the
 crate's own definitions from construction - its columns from tag 65003 and the
-two Map groups ``identifiers`` and ``metadata`` - and seeds the standard clocks
+Map group ``metadata`` - and seeds the standard clocks
 ``SendingTime`` (52) and ``TransactTime`` (60) beside them as ordinary
 definitions a loaded dictionary may supply itself; ``len`` counts the scalar
 fields, the components and the groups, and iteration walks the scalars. A store
@@ -37,13 +37,16 @@ nothing at all when it refuses.
 :class:`FixMsg` is a typed market event with a content row. The typed facts
 live in three holders and two extras - :meth:`FixMsg.event`, the facts the
 core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
-``currhashcode``, ``crosshashcode``, ``identifiers``, ``currunix``,
-``state``, ``seqnum``, the lifecycle's ``creaunix``, ``exprtime``,
-``execunix``, ``recdunix``, ``prevunix``, ``prevuuid`` and
-``snapunix``, the market's integer ``marketoperationid``, ``price``, ``quantity``,
-last, average, cumulative, remaining and previous values, time in force,
-tradability, ticker, ``currency``, ``unit``, ``side``, its ISIN, CUSIP, SEDOL,
-Bloomberg, FIGI, CFI and MIC codes and the bid and ask lanes);
+``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
+the lifecycle's ``creaunix``, ``exprtime``, ``execunix``, ``recdunix``,
+``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
+``currency``, ``quantity``, ``unit``, ``side``, its ``securityids`` - one
+code under each source, ISIN, CUSIP, FIGI - its CFI and MIC codes, last,
+average, cumulative, remaining and previous values, spot rate and forward
+points, ``ticker`` and ``metadata``; the operation's integer
+``marketoperationid``, time in force, tradability, the ``accountids``,
+``userids`` and ``altids`` it names, each under the field that stated it,
+and the ``bid`` and ``ask`` lanes);
 :meth:`FixMsg.header`, the standard
 header (``beginstring``, ``msgtype``, ``sendercompid``, ``targetcompid``,
 ``msgseqnum``, ``sendingtime``, ``possdupflag``, ``msgdirection``); the
@@ -88,8 +91,8 @@ capture is context and stamps nothing; the line's own ``currunix`` - an
 ``recdunix``. A parse builds the message, lifts
 its typed facts, explodes a nested ``XmlData`` into it, restates deprecated
 fields to their latest aliases, runs the dictionary's ``FIX:derivation``
-rules, fills the identifiers the message component declares and an order's
-lanes, and settles the identity: ``SendingTime`` is the message's own, else
+rules, reads the identifier maps off the fields that state them, fills an
+order's lanes, and settles the identity: ``SendingTime`` is the message's own, else
 a row cell reaching tag 52, else the ``currunix`` of the line it was read out
 of, else the codec's ``default_sending_time``, else UTC now
 read once - a clock the parse supplied is never the message's own, so the
@@ -224,7 +227,7 @@ from ._native import (
     FixHeader,
     FixRegistry,
     FixMessages,
-    MarketEventData,
+    OperationEventData,
     MsgType,
     fix_crate_fields,
     fix_schema,
@@ -242,7 +245,7 @@ __all__ = [
     "FixHeader",
     "FixRegistry",
     "FixMessages",
-    "MarketEventData",
+    "OperationEventData",
     "MsgType",
     "fix_crate_fields",
     "fix_schema",

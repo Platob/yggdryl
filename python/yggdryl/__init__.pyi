@@ -119,6 +119,7 @@ from .codes import (
     SideField as SideField,
     StateField as StateField,
     TimeInForceField as TimeInForceField,
+    UnitField as UnitField,
     bloomberg as bloomberg,
     cfi as cfi,
     country as country,
@@ -131,6 +132,7 @@ from .codes import (
     side as side,
     state as state,
     timeinforce as timeinforce,
+    unit as unit,
 )
 from .decimal import (
     Decimal32Field as Decimal32Field,
