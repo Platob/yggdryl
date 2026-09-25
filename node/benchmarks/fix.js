@@ -245,9 +245,10 @@ try {
   benchmark('fix/codec_snapshot_ns', () => snapshotCodec.snapshotNs)
   benchmark('fix/identifier_values', () => orderType.identifierValues(parsed))
   // The typed holders, each read once into the plain object it crosses as.
-  benchmark('fix/message_event', () => parsed.event())
   benchmark('fix/message_header', () => parsed.header())
   benchmark('fix/message_capture', () => parsed.capture())
+  // The graph leaves a message expands to, built per call.
+  benchmark('fix/message_market_operations', () => parsed.marketOperations())
   benchmark('fix/message_altids', () => parsed.altids)
   benchmark('fix/message_securityids', () => parsed.securityids)
   benchmark('fix/message_metadata', () => parsed.metadata)

@@ -2691,7 +2691,7 @@ pub mod internals {
         super::ordered_group_union(union, &stated, group)
     }
 
-    /// The digest of a row's shape, with or without the documents it carries.
+    /// The digest of a row's shape.
     #[must_use]
     pub fn shape_digest(root: &Field) -> u64 {
         super::shape_digest(root)

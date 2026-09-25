@@ -75,7 +75,7 @@ impl OperationColumn {
     #[must_use]
     pub const fn display(self) -> &'static str {
         match self {
-            Self::MarketOperationId => "Market MarketOperation ID",
+            Self::MarketOperationId => "Market Operation ID",
             Self::TimeInForce => "Time In Force",
             Self::Tradable => "Tradable",
             Self::AccountIds => "Account IDs",

@@ -87,6 +87,23 @@ REPRESENTATIONS: tuple[str, ...] = tuple(_LISTING["representations"])
 #: The named points of the shared 0-to-9 compression scale.
 LEVELS: Mapping[str, int] = dict(_LISTING["levels"])
 
+#: Every leaf kind a ``graph.MarketData`` may hold, e.g. ``"order_event"``,
+#: ``"book_side"``: the ``MarketData.kinds`` spellings, in declaration order.
+MARKET_KINDS: tuple[str, ...] = tuple(_LISTING["market_kinds"])
+
+#: Every market-data update action a book entry states, FIX's own codes
+#: beside ``"snapshot"``.
+MD_UPDATE_ACTIONS: tuple[str, ...] = tuple(_LISTING["md_update_actions"])
+
+#: The sixteen columns every graph event is stated in, in schema order.
+EVENT_COLUMNS: tuple[str, ...] = tuple(_LISTING["event_columns"])
+
+#: The nineteen columns a market element states, in schema order.
+MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
+
+#: The eight columns a market operation states, in schema order.
+OPERATION_COLUMNS: tuple[str, ...] = tuple(_LISTING["operation_columns"])
+
 __all__ = [
     "AsciiCode",
     "CfiCode",
@@ -105,9 +122,14 @@ __all__ = [
     "DATA_TYPE_IDS",
     "DATA_TYPE_KINDS",
     "DIGEST_ALGORITHMS",
+    "EVENT_COLUMNS",
     "IO_KINDS",
     "LEVELS",
+    "MARKET_COLUMNS",
+    "MARKET_KINDS",
+    "MD_UPDATE_ACTIONS",
     "NULLABILITIES",
+    "OPERATION_COLUMNS",
     "REPRESENTATIONS",
     "TIME_UNITS",
     "UNION_MODES",

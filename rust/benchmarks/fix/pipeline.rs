@@ -32,7 +32,8 @@ use std::sync::Arc;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::book::ENTRY_ID;
 use yggdryl::graph::{
-    Book, BookInput, BookIterator, Element, Event, Market, MdUpdateAction, Operation,
+    BookEvent, BookIterator, Element, Event, ExecutionEvent, Market, MarketData, MdUpdateAction,
+    Operation, OrderEvent, QuoteEvent,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::media::RecordOptions;
@@ -596,7 +597,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     let [trade_operation] = expanded_trade.as_slice() else {
         panic!("the AE fixture must produce one operation");
     };
-    let BookInput::Trade(trade) = trade_operation else {
+    let MarketData::TradeEvent(trade) = trade_operation else {
         panic!("the AE fixture must produce a composite trade");
     };
     assert_eq!(trade.executions().len(), 2);
@@ -609,17 +610,16 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
             message
         })
         .collect::<Vec<_>>();
-    let operations: Vec<BookInput> = std::iter::repeat_n(snapshot_operations, MARKET_REPEATS)
+    let operations: Vec<MarketData> = std::iter::repeat_n(snapshot_operations, MARKET_REPEATS)
         .flatten()
         .collect();
     let trade_operations = std::iter::repeat_n(trade_operation, MARKET_REPEATS).collect::<Vec<_>>();
-    let entry_of = |input: &BookInput| match input {
-        BookInput::MarketOperation(operation) => operation.clone(),
-        other => panic!("the snapshot fixture expands to entries, got {other:?}"),
+    let quote_of = |value: &MarketData| {
+        QuoteEvent::try_from(value.clone()).expect("the snapshot fixture's bid is a quote")
     };
     let mut dense_operations = Vec::with_capacity(MARKET_DEPTH);
     for index in 0..MARKET_DEPTH {
-        let mut operation = entry_of(&operations[0]);
+        let mut operation = quote_of(&operations[0]);
         let identity = format!("DENSE-{index}");
         operation.set_crosscode(identity.clone());
         let _ = operation.remove_altid(ENTRY_ID);
@@ -630,13 +630,13 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         book.action = Some(MdUpdateAction::New);
         operation.set_book(Some(book));
         operation.finalize();
-        dense_operations.push(BookInput::MarketOperation(operation));
+        dense_operations.push(MarketData::from(operation));
     }
-    let mut dense_book = Book::new(dense_operations[0].currunix(), "AAPL");
+    let mut dense_book = BookEvent::new(quote_of(&dense_operations[0]).get_currunix(), "AAPL");
     dense_book
         .add_operations(dense_operations.clone())
         .expect("the dense initial book");
-    let mut dense_update = entry_of(&dense_operations[0]);
+    let mut dense_update = quote_of(&dense_operations[0]);
     let update_unix = dense_update.get_currunix() + 1;
     dense_update.set_currunix(update_unix);
     dense_update.set_state(State::read("Replaced").expect("the shipped replaced state"));
@@ -644,22 +644,23 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     book.action = Some(MdUpdateAction::Change);
     dense_update.set_book(Some(book));
     dense_update.finalize();
-    let dense_update = BookInput::MarketOperation(dense_update);
-    let mut dense_execution = entry_of(&operations[2]);
+    let dense_update = MarketData::from(dense_update);
+    let mut dense_execution = ExecutionEvent::try_from(operations[2].clone())
+        .expect("the snapshot fixture's trade entry is an execution");
     dense_execution.set_currunix(update_unix);
     dense_execution.finalize();
-    let dense_execution = BookInput::MarketOperation(dense_execution);
+    let dense_execution = MarketData::from(dense_execution);
 
     let mut group = criterion.benchmark_group("fix/pipeline/market");
     group.throughput(Throughput::Elements(1));
     group.bench_function("direct_fix_to_single_operation", |bencher| {
         bencher.iter_batched(
             || direct.clone(),
-            |message| BookInput::try_from(black_box(message)).expect("one order operation"),
+            |message| MarketData::try_from(black_box(message)).expect("one order operation"),
             BatchSize::SmallInput,
         );
     });
-    let previous = direct.event().clone();
+    let previous = OrderEvent::from(&direct);
     let mut next = previous.clone();
     next.set_currunix(previous.get_currunix() + 1);
     next.set_ticker(None);
@@ -710,7 +711,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
                 let operations = black_box(message)
                     .into_market_operations()
                     .expect("one composite trade operation");
-                let [BookInput::Trade(trade)] = operations.as_slice() else {
+                let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
                     panic!("the AE fixture must produce a composite trade");
                 };
                 black_box(trade.executions().len())
@@ -722,7 +723,7 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
     group.throughput(Throughput::Elements(operations.len() as u64));
     group.bench_function("book_add_operations", |bencher| {
         bencher.iter_batched(
-            || (Book::new(0, "AAPL"), operations.clone()),
+            || (BookEvent::new(0, "AAPL"), operations.clone()),
             |(mut book, operations)| {
                 book.add_operations(black_box(operations))
                     .expect("one atomic book update");
@@ -814,13 +815,13 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         bencher.iter_batched(
             || operations.clone(),
             |operations| {
-                let batches = BookInput::arrow_reader(
+                let batches = MarketData::arrow_reader(
                     black_box(operations),
                     Some(crate::bench_profile::corpus(1_024, 4)),
                     Some(4 * 1024 * 1024),
                 )
                 .expect("an operation Arrow reader");
-                BookInput::from_arrow_reader(batches)
+                MarketData::from_arrow_reader(batches)
                     .expect("the canonical operation schema")
                     .try_fold(0_usize, |count, operation| operation.map(|_| count + 1))
                     .expect("the operations roundtrip")
@@ -833,13 +834,13 @@ fn market_benchmarks(criterion: &mut Criterion, registry: Arc<FixRegistry>) {
         bencher.iter_batched(
             || trade_operations.clone(),
             |operations| {
-                let batches = BookInput::arrow_reader(
+                let batches = MarketData::arrow_reader(
                     black_box(operations),
                     Some(crate::bench_profile::corpus(1_024, 4)),
                     Some(4 * 1024 * 1024),
                 )
                 .expect("a trade-operation Arrow reader");
-                BookInput::from_arrow_reader(batches)
+                MarketData::from_arrow_reader(batches)
                     .expect("the canonical operation schema")
                     .try_fold(0_usize, |count, operation| operation.map(|_| count + 1))
                     .expect("the trade operations roundtrip")

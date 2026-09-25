@@ -364,6 +364,7 @@ pub mod internals {
     pub use crate::fix::schema::internals as fix_schema;
     pub use crate::fix::store::internals as fix_store;
     pub use crate::fs::local::internals as fs_local;
+    pub use crate::graph::facts::internals as graph_facts;
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;

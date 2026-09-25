@@ -12,21 +12,27 @@
 //! side, the price and quantity it states, its last executed price and quantity - and
 //! [`Operation`] adds what an operation states: its category, how long
 //! it stands, its account, user and own identifiers, and its two lanes.
-//! [`MarketEvent`] and [`OperationEvent`] are the blankets over an
-//! event that is one or the other. The traits state signatures and the
-//! provided readings - no storage - so a message, a chain entry and a
+//! What an [`Event`] that is also one of them answers is provided on
+//! [`Market`] and [`Operation`] themselves, gated `where Self: Event`,
+//! rather than a separate blanket trait. The traits state signatures and
+//! the provided readings - no storage - so a message, a chain entry and a
 //! lifecycle incarnation can each be an element without the graph owning
-//! any of them; [`MarketData`], [`MarketEventData`], [`OperationData`]
-//! and [`OperationEventData`] hold the facts as plain fields for the
-//! holder that wants nothing more, and [`MarketOperation`] is the one operation
-//! type - an order, a quote or an execution by its [`OperationKind`] - a
-//! [`Book`] holds. The one walk, [`EventIterator`], reads operations in
-//! their order and states each as the one after the live element it
-//! follows. [`EventColumn`] is the sixteen columns every generated schema
-//! of an event states, [`MarketColumn`] the nineteen of a market and
-//! [`OperationColumn`] the eight of an operation - one per fact the traits
-//! answer, under one name and one datatype each - so a text line's batch,
-//! a FIX row and a chained message join on them without a mapping.
+//! any of them; the crate-private `*Facts` holders store the facts of any
+//! market element or event as plain fields, and every leaf
+//! ([`OperationElement`]/[`OperationEvent`], [`TradeEvent`], [`BookEvent`],
+//! [`BookSide`]) holds one as its facts. [`OperationElement`] and
+//! [`OperationEvent`] are the one undated and one dated operation type - an
+//! order, a quote or an execution by the sealed [`OperationKind`] they are
+//! generic over - and [`MarketData`] is the one value over every leaf, read
+//! generically past the boundary that resolved it. [`BookEvent`] holds
+//! [`OrderEvent`]/[`QuoteEvent`] entries on its [`BookSide`]s. The one walk,
+//! [`EventIterator`], reads operations in their order and states each as
+//! the one after the live element it follows. [`EventColumn`] is the
+//! sixteen columns every generated schema of an event states,
+//! [`MarketColumn`] the nineteen of a market and [`OperationColumn`] the
+//! eight of an operation - one per fact the traits answer, under one name
+//! and one datatype each - so a text line's batch, a FIX row and a chained
+//! message join on them without a mapping.
 
 /// `impl Event` forwarding every accessor to a field that is an `Event`,
 /// with the readings a wrapper answers itself given as closures.
@@ -352,25 +358,29 @@ pub mod arrow;
 pub mod book;
 pub mod column;
 pub mod element;
-pub mod event;
+pub(crate) mod facts;
 pub mod iterator;
+pub mod kind;
 pub mod market;
 pub mod market_column;
+pub mod market_data;
 pub mod operation;
 pub mod operation_column;
 pub mod trade;
 
-pub use book::{Book, BookControl, BookInput, BookIterator, BookSide, GLOBAL_SYMBOL};
+pub use book::{
+    BookEvent, BookIterator, BookSide, GLOBAL_SYMBOL, SnapshotEvent, SnapshotPartition,
+};
 pub use column::EventColumn;
 pub use element::{Element, Event};
-pub use event::{MarketData, MarketEventData, OperationData, OperationEventData};
 pub use iterator::EventIterator;
-pub use market::{
-    FOLLOWED_ALTIDS, Lane, Market, MarketEvent, Metadata, Operation, OperationEvent, empty_metadata,
-};
+pub use kind::MarketKind;
+pub use market::{FOLLOWED_ALTIDS, Lane, Market, Metadata, Operation, empty_metadata};
 pub use market_column::MarketColumn;
+pub use market_data::MarketData;
 pub use operation::{
-    BookRef, MarketOperation, MarketOperationEntry, MdUpdateAction, OperationKind,
+    BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, OperationElement,
+    OperationEvent, OperationKind, Order, OrderEvent, OrderKind, Quote, QuoteEvent, QuoteKind,
 };
 pub use operation_column::OperationColumn;
-pub use trade::Trade;
+pub use trade::TradeEvent;

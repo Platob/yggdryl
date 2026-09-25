@@ -4,7 +4,7 @@
 //! alive set kept as the lifecycle moves, and the caller's word on the order
 //! taken or the order made.
 
-use yggdryl::graph::{Element, Event, EventIterator, Operation, OperationEventData};
+use yggdryl::graph::{Element, Event, EventIterator, ExecutionEvent, Operation, OrderEvent};
 use yggdryl::{State, Uuid};
 
 use super::element::filled;
@@ -33,8 +33,8 @@ fn ms(unix: i64) -> i64 {
 }
 
 /// One event of the thing `order` identifies across its life, at `ms`.
-fn incarnation(order: &str, ms: i64) -> OperationEventData {
-    let mut event = OperationEventData::at(at(ms));
+fn incarnation(order: &str, ms: i64) -> OrderEvent {
+    let mut event = OrderEvent::at(at(ms));
     event.set_crosscode(order.to_owned());
     event.finalize();
     event
@@ -42,8 +42,8 @@ fn incarnation(order: &str, ms: i64) -> OperationEventData {
 
 /// An event of `order` at `ms` going by one name, so two events at one
 /// instant are two events.
-fn named(order: &str, ms: i64, scheme: &str, name: &str) -> OperationEventData {
-    let mut event = OperationEventData::at(at(ms));
+fn named(order: &str, ms: i64, scheme: &str, name: &str) -> OrderEvent {
+    let mut event = OrderEvent::at(at(ms));
     event.set_crosscode(order.to_owned());
     event
         .insert_altid(scheme, name)
@@ -53,8 +53,8 @@ fn named(order: &str, ms: i64, scheme: &str, name: &str) -> OperationEventData {
 }
 
 /// An event at `ms` going by `names` and stating no cross code of its own.
-fn anonymous(ms: i64, names: &[(&str, &str)]) -> OperationEventData {
-    let mut event = OperationEventData::at(at(ms));
+fn anonymous(ms: i64, names: &[(&str, &str)]) -> OrderEvent {
+    let mut event = OrderEvent::at(at(ms));
     for (scheme, name) in names {
         event
             .insert_altid(scheme, name)
@@ -66,7 +66,7 @@ fn anonymous(ms: i64, names: &[(&str, &str)]) -> OperationEventData {
 
 /// Where each event the walk yields stands: its instant, its place, and the
 /// instant of the predecessor it names, in milliseconds.
-fn places(walk: impl Iterator<Item = OperationEventData>) -> Vec<(i64, u64, Option<i64>)> {
+fn places(walk: impl Iterator<Item = OrderEvent>) -> Vec<(i64, u64, Option<i64>)> {
     walk.map(|event| {
         (
             ms(event.get_currunix()),
@@ -79,9 +79,7 @@ fn places(walk: impl Iterator<Item = OperationEventData>) -> Vec<(i64, u64, Opti
 
 /// The chains alive after a walk, by cross code and the live instant, in
 /// one order.
-fn alive(
-    walk: &EventIterator<OperationEventData, std::vec::IntoIter<OperationEventData>>,
-) -> Vec<(String, i64)> {
+fn alive(walk: &EventIterator<OrderEvent, std::vec::IntoIter<OrderEvent>>) -> Vec<(String, i64)> {
     let mut alive = walk
         .alive()
         .map(|held| (held.get_crosscode().to_owned(), ms(held.get_currunix())))
@@ -131,7 +129,7 @@ fn a_sorted_walk_chains_each_element_to_the_live_one_under_its_identity() {
     // A walk over the walked answers the same chain.
     assert!(walk.next().is_none());
     let walked = vec![first.clone(), other.clone(), second.clone(), third.clone()];
-    let again: Vec<OperationEventData> = EventIterator::new(walked, true).collect();
+    let again: Vec<OrderEvent> = EventIterator::new(walked, true).collect();
     assert_eq!(again, [first, other, second, third]);
     // Both orders are still alive, the latest incarnation of each.
     assert_eq!(
@@ -152,7 +150,7 @@ fn an_unsorted_walk_sorts_by_the_elements_own_order_first_and_stably() {
         named("O-100", 40, EXEC_ID, "E-4"),
     ];
     let walk = EventIterator::new(arrived, false);
-    let walked: Vec<OperationEventData> = walk.collect();
+    let walked: Vec<OrderEvent> = walk.collect();
     assert_eq!(
         places(walked.iter().cloned()),
         [
@@ -214,26 +212,30 @@ fn an_element_that_ended_retires_its_identity_and_a_later_one_starts_afresh() {
     );
 }
 
-#[test]
-fn the_walk_carries_and_replaces_the_latest_execution_clock() {
-    let mut execution = incarnation("E-1", 10);
-    execution.set_state(State::read("PartiallyFilled").unwrap());
-    execution.finalize();
+/// One partial fill of `order` at `ms`: an execution, whatever state it
+/// reached, because the leaf's kind says so.
+fn executed(order: &str, ms: i64) -> ExecutionEvent {
+    let mut event = ExecutionEvent::at(at(ms));
+    event.set_crosscode(order.to_owned());
+    event.set_state(State::read("PartiallyFilled").unwrap());
+    event.finalize();
+    event
+}
 
-    let mut explicit = incarnation("E-1", 20);
-    explicit.set_state(State::read("PartiallyFilled").unwrap());
+#[test]
+fn the_walk_dates_each_execution_and_keeps_an_explicit_clock() {
+    // An execution is dated by its own instant where it states no clock;
+    // carrying the latest clock onto a non-execution successor is the
+    // trait's reading, pinned over a foreign event in
+    // `rust/tests/graph/element.rs`.
+    let execution = executed("E-1", 10);
+    let mut explicit = executed("E-1", 20);
     explicit.set_execunix(Some(at(15)));
     explicit.set_recdunix(Some(at(16)));
     explicit.finalize();
+    let later_execution = executed("E-1", 30);
 
-    let mut later_execution = incarnation("E-1", 30);
-    later_execution.set_state(State::read("PartiallyFilled").unwrap());
-    later_execution.finalize();
-
-    let successor = incarnation("E-1", 40);
-
-    let walked: Vec<_> =
-        EventIterator::new([execution, explicit, later_execution, successor], true).collect();
+    let walked: Vec<_> = EventIterator::new([execution, explicit, later_execution], true).collect();
     assert_eq!(
         walked[0].get_execunix(),
         Some(at(10)),
@@ -260,27 +262,18 @@ fn the_walk_carries_and_replaces_the_latest_execution_clock() {
         None,
         "following does not inherit the predecessor's recording clock"
     );
-    assert_eq!(
-        walked[3].get_execunix(),
-        Some(at(30)),
-        "a later non-execution carries the latest execution clock"
-    );
 }
 
 #[test]
-fn replay_keeps_the_carried_execution_clock_without_redating_inherited_state() {
-    let mut execution = incarnation("E-1", 10);
-    execution.set_state(State::read("PartiallyFilled").unwrap());
-    execution.finalize();
-    let successor = incarnation("E-1", 20);
-
-    let first: Vec<_> = EventIterator::new([execution, successor], true).collect();
+fn replay_keeps_each_execution_clock_and_the_chain() {
+    let first: Vec<_> =
+        EventIterator::new([executed("E-1", 10), executed("E-1", 20)], true).collect();
     assert_eq!(first[0].get_execunix(), Some(at(10)));
     assert!(first[1].get_state().is_execution());
-    assert_eq!(first[1].get_execunix(), Some(at(10)));
+    assert_eq!(first[1].get_execunix(), Some(at(20)));
 
     let replayed: Vec<_> = EventIterator::new(first, true).collect();
-    assert_eq!(replayed[1].get_execunix(), Some(at(10)));
+    assert_eq!(replayed[1].get_execunix(), Some(at(20)));
     assert_eq!(replayed[1].get_seqnum(), 1);
     assert_eq!(replayed[1].get_prevuuid(), Some(replayed[0].get_curruuid()));
 }
@@ -289,10 +282,10 @@ fn replay_keeps_the_carried_execution_clock_without_redating_inherited_state() {
 fn an_element_with_no_cross_identity_stands_under_its_own() {
     // Two elements that are nothing elsewhere follow nothing: each is its
     // own identity, and nothing arrives under it but a restatement.
-    let mut first = OperationEventData::at(at(10));
+    let mut first = OrderEvent::at(at(10));
     first.finalize();
     assert_eq!(first.get_crossuuid(), first.get_curruuid());
-    let mut second = OperationEventData::at(at(20));
+    let mut second = OrderEvent::at(at(20));
     second.finalize();
     // A restatement of the first: the same event, said again.
     let arrived = vec![first.clone(), second, first.clone()];
@@ -509,7 +502,7 @@ fn the_walk_states_its_size_and_is_fused() {
     assert!(sorted.next().is_none());
     assert!(sorted.next().is_none());
     // A walk over an empty source is alive to nothing.
-    let mut empty = EventIterator::new(Vec::<OperationEventData>::new(), false);
+    let mut empty = EventIterator::new(Vec::<OrderEvent>::new(), false);
     assert!(empty.next().is_none());
     assert_eq!(empty.alive().count(), 0);
 }
@@ -519,10 +512,10 @@ fn a_grid_starts_no_earlier_than_the_first_fact_and_zero_preserves_source_stamps
     // The grid is aligned on the epoch. A first observation just before its
     // boundary becomes live at that observation, then is copied at zero;
     // it is never copied into the earlier step where it did not yet exist.
-    let mut before = OperationEventData::at(-1);
+    let mut before = OrderEvent::at(-1);
     before.set_crosscode("O-100".to_owned());
     before.finalize();
-    let mut after = OperationEventData::at(1);
+    let mut after = OrderEvent::at(1);
     after.set_crosscode("O-900".to_owned());
     after.finalize();
     let walked: Vec<_> = EventIterator::new(vec![before, after], true)
@@ -794,13 +787,13 @@ fn a_grid_copies_every_living_identity_at_each_crossed_tick() {
 /// records it opened.
 #[cfg(feature = "internals")]
 mod naming {
-    use yggdryl::graph::{Element, EventIterator, Operation, OperationEventData};
+    use yggdryl::graph::{Element, EventIterator, Operation, OrderEvent};
     use yggdryl::internals::graph_iterator::{
         name_records, named_identities, named_identity, named_schemes, retire, settle,
     };
 
-    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> OperationEventData {
-        let mut event = OperationEventData::at(unix);
+    fn named(cross: &str, unix: i64, scheme: &str, name: &str) -> OrderEvent {
+        let mut event = OrderEvent::at(unix);
         event.set_crosscode(cross.to_owned());
         event
             .insert_altid(scheme, name)
@@ -813,7 +806,7 @@ mod naming {
     fn retiring_the_last_name_removes_its_whole_index() {
         let event = named("A", 1, "VENUEORDERID", "A-1");
         let identity = event.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OrderEvent>::new(), true);
         settle(&mut walk, identity, &event, event.get_curruuid());
         assert_eq!(named_schemes(&walk), 1);
         assert_eq!(named_identities(&walk), 1);
@@ -829,7 +822,7 @@ mod naming {
         let second = named("B", 2, "VENUEORDERID", "SHARED");
         let first_identity = first.get_crossuuid();
         let second_identity = second.get_crossuuid();
-        let mut walk = EventIterator::new(Vec::<OperationEventData>::new(), true);
+        let mut walk = EventIterator::new(Vec::<OrderEvent>::new(), true);
 
         for turn in 0..64 {
             let (identity, event) = if turn % 2 == 0 {
@@ -858,4 +851,46 @@ mod naming {
         assert_eq!(named_schemes(&walk), 0);
         assert_eq!(named_identities(&walk), 0);
     }
+}
+
+/// The walk over the one value every boundary crosses as: an execution
+/// follows the order it fills across kinds, its twin restates it and the
+/// chain grows by nothing, and a value the walk does not chain - a book
+/// side - is yielded where it is read and changes nothing.
+#[test]
+fn a_market_data_walk_chains_across_operation_kinds_and_passes_the_rest_through() {
+    use yggdryl::Side;
+    use yggdryl::graph::{BookSide, MarketData};
+
+    let fill = executed("O-500", 20);
+    let arrived = vec![
+        MarketData::from(incarnation("O-500", 10)),
+        MarketData::from(BookSide::new(Side::Buy).unwrap()),
+        MarketData::from(fill.clone()),
+        MarketData::from(fill),
+        MarketData::from(incarnation("O-500", 30)),
+    ];
+    let mut walk = EventIterator::new(arrived, true);
+    let order = walk.next().expect("the order");
+    let side = walk.next().expect("the side, as it came");
+    assert!(side.as_book_side().is_some());
+    let second = walk.next().expect("the fill");
+    let leaf = second
+        .as_execution_event()
+        .expect("the fill keeps its kind");
+    assert_eq!(
+        (leaf.get_seqnum(), leaf.get_prevuuid()),
+        (1, Some(order.get_curruuid()))
+    );
+    let twin = walk.next().expect("the fill, logged again");
+    assert_eq!(twin, second, "the chain grows by nothing");
+    let third = walk.next().expect("the order's next statement");
+    assert_eq!(
+        (
+            third.as_order_event().unwrap().get_seqnum(),
+            third.as_order_event().unwrap().get_prevuuid()
+        ),
+        (2, Some(second.get_curruuid()))
+    );
+    assert_eq!(walk.alive().count(), 1);
 }

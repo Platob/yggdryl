@@ -37,6 +37,7 @@ export {
   Xxh128,
   Xxh32,
   Xxh64,
+  type BookRefInput,
   type BytesParameters,
   type BytesParametersInput,
   type FieldBound,
@@ -47,11 +48,11 @@ export {
   type FixCodeSetView,
   type FixDirection,
   type FixEntryView,
-  type FixEventView,
   type FixHeaderView,
-  type FixLaneView,
+  type LaneInput,
   type MetadataEntry,
   type PartitionEntry,
+  type SnapshotPartitionInput,
   type StringParameters,
   type StringParametersInput,
   type TimezoneAlias,
@@ -119,6 +120,23 @@ import {
   Snapshot,
   SnapshotRef,
   Table,
+  Lane,
+  BookRef,
+  Order,
+  Quote,
+  Execution,
+  OrderEvent,
+  QuoteEvent,
+  ExecutionEvent,
+  TradeEvent,
+  SnapshotPartition,
+  BookSide,
+  BookEvent,
+  SnapshotEvent,
+  MarketData,
+  MarketDataRowIterator,
+  BookIterator,
+  EventIterator,
 } from './index'
 import type {
   RecordBatch as ArrowRecordBatch,
@@ -223,6 +241,23 @@ export type {
   Snapshot,
   SnapshotRef,
   Table,
+  Lane,
+  BookRef,
+  Order,
+  Quote,
+  Execution,
+  OrderEvent,
+  QuoteEvent,
+  ExecutionEvent,
+  TradeEvent,
+  SnapshotPartition,
+  BookSide,
+  BookEvent,
+  SnapshotEvent,
+  MarketData,
+  MarketDataRowIterator,
+  BookIterator,
+  EventIterator,
 }
 
 /** A native MIME wrapper or canonical MIME/extension string. */
@@ -2813,6 +2848,16 @@ export declare const enums: {
     readonly default: number
     readonly best: number
   }
+  /** Every `MarketData.kind` spelling, e.g. `'order'`, `'order_event'`, `'book_event'`. */
+  readonly marketKinds: readonly string[]
+  /** Every `BookRef.action` spelling. */
+  readonly mdUpdateActions: readonly string[]
+  /** The sixteen event column names, in schema order. */
+  readonly eventColumns: readonly string[]
+  /** The nineteen market column names, in schema order. */
+  readonly marketColumns: readonly string[]
+  /** The eight operation column names, in schema order. */
+  readonly operationColumns: readonly string[]
 }
 /** Generic format-inferred byte codec. */
 export declare const codec: GenericCodec
@@ -3754,6 +3799,167 @@ export interface Fix {
 }
 
 export declare const fix: Fix
+
+/** Any value a market stream carries: a `MarketData` or one of its ten leaves. */
+export type MarketItem =
+  | MarketData
+  | Order
+  | Quote
+  | Execution
+  | BookSide
+  | OrderEvent
+  | QuoteEvent
+  | ExecutionEvent
+  | TradeEvent
+  | BookEvent
+  | SnapshotEvent
+
+/**
+ * The named facts an operation leaf is built from: the native record, or a
+ * plain object keyed by column name - the market and operation columns and
+ * `crosscode`/`srcuuids`, plus on an event every other event column but
+ * `currunix` - case-folded. A derived identity (`curruuid`, `crossuuid`,
+ * `currhashcode`, `crosshashcode`) is refused by name. A fact given as
+ * `undefined` is not given; `null` clears it; `bid`/`ask` take a `Lane` or
+ * its six slots, and any other graph value is refused naming its key.
+ */
+export type OperationFactsInput = Scalar | Record<string, unknown>
+
+/** An event's named facts: the columns, plus its `book` control. */
+export type OperationEventFactsInput =
+  | Scalar
+  | (Record<string, unknown> & { book?: BookRef | null })
+
+/**
+ * The public constructor of an undated operation leaf - `Order`, `Quote`,
+ * `Execution` - which widens the named facts through `Scalar.from` before
+ * the native constructor states each through its column.
+ */
+export interface OperationElementConstructor<T> {
+  /** Build the element from its named facts; it states nothing where `facts` is omitted. */
+  new (facts?: OperationFactsInput | null): T
+  /** Rebuild a value `toJSON` wrote. */
+  fromJSON(text: string): T
+  readonly prototype: T
+}
+
+/**
+ * The public constructor of a dated operation leaf - `OrderEvent`,
+ * `QuoteEvent`, `ExecutionEvent` - at `currunix` nanoseconds since the
+ * epoch, its named facts widened the same way and its `book` lifted out.
+ */
+export interface OperationEventConstructor<T> {
+  /** Build the event at `currunix` from its named facts. */
+  new (currunix: bigint | number, facts?: OperationEventFactsInput | null): T
+  /** Rebuild a value `toJSON` wrote. */
+  fromJSON(text: string): T
+  readonly prototype: T
+}
+
+/**
+ * The public `BookIterator` constructor: its items pulled lazily from the
+ * caller's iterable through the loader's pull adapter, the way `FixCodec`'s
+ * streams are; a failure behind the iterable is thrown as itself.
+ */
+export interface BookIteratorConstructor {
+  new (items: Iterable<MarketItem>, snapshotMillis?: number, global?: boolean): BookIterator
+  readonly prototype: BookIterator
+}
+
+/** The public `EventIterator` constructor, pulling its items lazily. */
+export interface EventIteratorConstructor {
+  new (
+    items: Iterable<MarketItem>,
+    sorted?: boolean,
+    snapshotNs?: bigint | number | null,
+  ): EventIterator
+  readonly prototype: EventIterator
+}
+
+declare module './index' {
+  namespace MarketData {
+    /**
+     * Streams items - any leaf or `MarketData`, pulled lazily from the
+     * caller's iterable - into bounded `marketdata` record batches.
+     */
+    function arrowReader(
+      items: Iterable<MarketItem>,
+      batchRowSize?: number,
+      batchByteSize?: number,
+    ): BatchReader
+  }
+  interface BookEvent {
+    /**
+     * This book with every operation of one atomic group applied, read
+     * whole from any iterable; a refused item names the index it stands at.
+     */
+    withOperations(operations: Iterable<MarketItem>): BookEvent
+  }
+  interface BookIterator extends IterableIterator<BookEvent> {
+    next(): IteratorResult<BookEvent>
+  }
+  interface EventIterator extends IterableIterator<MarketData> {
+    next(): IteratorResult<MarketData>
+  }
+  interface MarketDataRowIterator extends IterableIterator<MarketData> {
+    next(): IteratorResult<MarketData>
+  }
+}
+
+/**
+ * `yggdryl::graph`: the typed market leaves - an order, a quote or an
+ * execution, undated or dated, a trade, a book, its sides and its snapshot
+ * control - `MarketData`, the one value over them, and the two walks.
+ * Nothing here resolves, folds, merges or validates a fact; every
+ * constructor redirects to the native core door named beside it, and a
+ * value crosses the boundary through the one generic `Scalar.from` door.
+ */
+export interface Graph {
+  /** One lane of a quote: what a party is willing to pay or be paid. */
+  readonly Lane: typeof Lane
+  /** The typed book-control facts a market-data entry carries. */
+  readonly BookRef: typeof BookRef
+  /** An undated order. */
+  readonly Order: OperationElementConstructor<Order>
+  /** An undated quote. */
+  readonly Quote: OperationElementConstructor<Quote>
+  /** An undated execution. */
+  readonly Execution: OperationElementConstructor<Execution>
+  /** A dated order. */
+  readonly OrderEvent: OperationEventConstructor<OrderEvent>
+  /** A dated quote. */
+  readonly QuoteEvent: OperationEventConstructor<QuoteEvent>
+  /** A dated execution. */
+  readonly ExecutionEvent: OperationEventConstructor<ExecutionEvent>
+  /** A composite trade: one operation event whose executions are the sided fills it is made of. */
+  readonly TradeEvent: typeof TradeEvent
+  /** One scope a full snapshot replaces. */
+  readonly SnapshotPartition: typeof SnapshotPartition
+  /** One side of a book: persistent live orders and quotes, beside its pending deltas. */
+  readonly BookSide: typeof BookSide
+  /** One coherent view of a market at one exact nanosecond instant. */
+  readonly BookEvent: typeof BookEvent
+  /** A full-snapshot control: the event a full replacement is, with the scope it replaces. */
+  readonly SnapshotEvent: typeof SnapshotEvent
+  /** One value over every market leaf, with the lifted `marketdata` Arrow doors. */
+  readonly MarketData: typeof MarketData
+  /** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+  readonly MarketDataRowIterator: typeof MarketDataRowIterator
+  /** Books from a sorted stream of market items, pulling them lazily. */
+  readonly BookIterator: BookIteratorConstructor
+  /** A walk that chains each operation event to the live element it follows. */
+  readonly EventIterator: EventIteratorConstructor
+  /** The symbol of the one consolidated book a global walk emits. */
+  readonly GLOBAL_SYMBOL: string
+  /** The alternate-identifier key an entry's own `MDEntryID(278)` is held under. */
+  readonly ENTRY_ID: string
+  /** The alternate-identifier key an entry's `MDEntryRefID(280)` is held under. */
+  readonly ENTRY_REF_ID: string
+  /** The alternate-identifier keys an order's own identifiers may follow across a lifecycle. */
+  readonly FOLLOWED_ALTIDS: readonly string[]
+}
+
+export declare const graph: Graph
 
 /** What an Arrow file system reports one path to be. */
 export type ArrowFileKind = 'file' | 'directory' | 'not-found'

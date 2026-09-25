@@ -225,6 +225,395 @@ export declare class BatchReader {
 }
 export type JsBatchReader = BatchReader
 
+/**
+ * One coherent view of a market at one exact nanosecond instant: the bid
+ * and ask depth, the executions at that instant and the scopes its last
+ * snapshot replaced. Immutable: `withOperations` and every verb answer a
+ * new book.
+ */
+export declare class BookEvent {
+  /** An empty book for `symbol` at `currunix` nanoseconds since the epoch. */
+  constructor(currunix: bigint | number, symbol: string)
+  /** The bid side. */
+  get bid(): BookSide
+  /** The ask side, shaped as the bid. */
+  get ask(): BookSide
+  /** The executions at this book's instant. */
+  get executions(): Array<JsExecutionEvent>
+  /** The scopes this book's last full snapshot replaced. */
+  get snapshotPartitions(): Array<SnapshotPartition>
+  /** Whether the best bid is strictly above the best ask. */
+  get isCrossed(): boolean
+  /**
+   * The arithmetic midpoint of a coherent two-sided best bid and offer,
+   * as decimal text; `null` where there is none.
+   */
+  get bboMidpoint(): string | null
+  /**
+   * The two-value median of the best bid and ask aggregate quantities,
+   * as decimal text; `null` where there is none.
+   */
+  get medianQuantity(): string | null
+  /**
+   * This book with every operation of one atomic group applied: each an
+   * order, quote, execution or trade event, a snapshot control, or a
+   * `MarketData` holding one.
+   */
+  withOperations(operations: Array<MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent>): BookEvent
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: BookEvent): BookEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: BookEvent): BookEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: BookEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: BookEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: BookEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): BookEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): BookEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: BookEvent): BookEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsBookEvent = BookEvent
+
+/**
+ * Books from a sorted stream of operations, one per symbol and effective
+ * timestamp, or one consolidated `GLOBAL` book, pulling its items lazily
+ * from the caller's iterable. Yields `BookEvent`.
+ */
+export declare class BookIterator {
+  /** Whether this walk emits one consolidated `GLOBAL` book. */
+  get global(): boolean
+  /**
+   * Advance the walk: the next book, or `null` at its end. The loader
+   * wraps this into the iterator protocol.
+   */
+  next(): IteratorResult<BookEvent>
+}
+export type JsBookIterator = BookIterator
+
+/**
+ * The typed book-control facts a market-data entry carries: what a book
+ * reads to place the operation.
+ */
+export declare class BookRef {
+  /**
+   * Build a book-control value from its five slots, one record `Scalar`
+   * keyed by slot name: `action` read through the `MdUpdateAction`
+   * vocabulary, `position` an unsigned 32-bit integer, the two decimals
+   * through the decimal field's own scalar door.
+   */
+  constructor(input?: BookRefInput | null)
+  /** The update action, where this control states one. */
+  get action(): string | null
+  /** The book scope this control belongs to, where stated. */
+  get scope(): string | null
+  /** The entry's position in its level, where stated. */
+  get position(): number | null
+  /**
+   * The price this control states, as decimal text; `null` where it
+   * states none.
+   */
+  get entryPx(): string | null
+  /**
+   * The size this control states, as decimal text; `null` where it
+   * states none.
+   */
+  get entrySize(): string | null
+  /** Whether any control fact is stated. */
+  isStated(): boolean
+  /** Whether the stated action removes a range of positions. */
+  isRangeDelete(): boolean
+  /** Whether the stated action is a partial update of a live entry. */
+  isPartial(): boolean
+  /** Whether this control states the same fields as `other`. */
+  equals(other: BookRef): boolean
+  /**
+   * The control's own stable hash: its five slots, digested as one
+   * record; equal controls share it.
+   */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): BookRef
+  /** `BookRef(action=.., scope=.., position=.., entryPx=.., entrySize=..)`. */
+  toString(): string
+  /**
+   * The control's own five slots, so it survives `JSON.stringify` and is
+   * what `new BookRef(...)` reads back.
+   */
+  toJSON(): BookRefInput
+}
+export type JsBookRef = BookRef
+
+/**
+ * One side of a book: persistent live orders and quotes, price ordered,
+ * beside the deltas applied since the last emitted book. Immutable:
+ * `withOperation` and every verb answer a new side.
+ */
+export declare class BookSide {
+  /**
+   * An empty bid or ask side; `side` is read through the core `Side`
+   * vocabulary.
+   */
+  constructor(side: string)
+  /** The live orders and quotes, best price first, each a `MarketData`. */
+  get live(): Array<JsMarketData>
+  /** The deltas applied since the last emitted book, each a `MarketData`. */
+  get deltas(): Array<JsMarketData>
+  /** How many identities are live on this side. */
+  get length(): number
+  /** Whether the side holds no live entry. */
+  get isEmpty(): boolean
+  /**
+   * The best live price on this side, as decimal text; `null` where
+   * empty.
+   */
+  get bestPrice(): string | null
+  /** The aggregate quantity at the exact best price; `null` where empty. */
+  get bestQuantity(): string | null
+  /**
+   * This side with one order or quote event - a leaf or a `MarketData` -
+   * atomically applied.
+   */
+  withOperation(operation: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent): BookSide
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: BookSide): BookSide | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: BookSide): BookSide | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: BookSide): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: BookSide): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: BookSide): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): BookSide
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): BookSide
+  /** `<Class>(<curruuid>, crosscode=..)`. */
+  toString(): string
+}
+export type JsBookSide = BookSide
+
 /** One term resolved against one schema, ready to answer. */
 export declare class Bound {
   /** The term as it stands after substitution, folding, and ordering. */
@@ -879,6 +1268,389 @@ export declare class Digest {
   toJSON(): string
 }
 export type JsDigest = Digest
+
+/**
+ * A walk that chains each operation event to the live element it follows
+ * and yields it enriched, pulling its items lazily from the caller's
+ * iterable: any leaf or `MarketData`, the dated operations and trades
+ * walking and every other variant yielded unchanged, in place. Yields
+ * `MarketData`.
+ */
+export declare class EventIterator {
+  /** The grid step in nanoseconds the walk reads snapshots at, or `null`. */
+  get snapshotNs(): bigint | null
+  /**
+   * The elements still alive after what the walk has read so far, one
+   * per identity, in no order.
+   */
+  alive(): Array<JsMarketData>
+  /**
+   * Advance the walk: the next value, or `null` at its end. The loader
+   * wraps this into the iterator protocol.
+   *
+   * A failure behind the caller's iterable throws once, in place of the
+   * end it would otherwise answer.
+   */
+  next(): IteratorResult<MarketData>
+}
+export type JsEventIterator = EventIterator
+
+/**
+ * An undated execution: the element, market and operation facts of one
+ * execution with no instant. Immutable: every verb answers a new value.
+ */
+export declare class Execution {
+  /**
+   * Build the element from its named facts, one record `Scalar`
+   * keyed by column name - the market and operation columns and
+   * the element's own `crosscode` and `srcuuids` - each checked by
+   * its column's field and stated through its column, then
+   * finalized. A `null` fact clears; a derived identity or any
+   * other event column is refused by name.
+   */
+  constructor(facts?: JsScalar | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /**
+   * This element dated at `unix` nanoseconds since the epoch, and
+   * finalized.
+   */
+  at(unix: bigint | number): ExecutionEvent
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: Execution): Execution | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: Execution): Execution | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: Execution): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: Execution): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: Execution): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): Execution
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): Execution
+  /** `<Class>(<curruuid>, crosscode=..)`. */
+  toString(): string
+}
+export type JsExecution = Execution
+
+/**
+ * A dated execution: one execution at one instant, with the book-control
+ * facts of a market-data entry where it is one. Immutable: every verb
+ * answers a new value.
+ */
+export declare class ExecutionEvent {
+  /**
+   * Build the event at `currunix` nanoseconds since the epoch from
+   * its named facts, one record `Scalar` keyed by column name -
+   * the event, market and operation columns - each checked by its
+   * column's field and stated through its column, with `book`'s
+   * control facts, then finalized. A `null` fact clears; a
+   * derived identity, or `currunix` again, is refused by name.
+   */
+  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /** The book-control facts, where this is a market-data entry. */
+  get book(): JsBookRef | null
+  /** The update action the entry states, where it states one. */
+  get action(): string | null
+  /** The book scope the entry states, empty where none. */
+  get scope(): string
+  /** Whether this is part of a FIX full-snapshot replacement. */
+  get isFullSnapshot(): boolean
+  /** This event with `book`'s control facts, refinalized. */
+  withBook(book: JsBookRef): ExecutionEvent
+  /**
+   * This event without its clocks and book control, finalized as
+   * the undated element it then is.
+   */
+  intoElement(): Execution
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: ExecutionEvent): ExecutionEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: ExecutionEvent): ExecutionEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: ExecutionEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: ExecutionEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: ExecutionEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): ExecutionEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): ExecutionEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: ExecutionEvent): ExecutionEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsExecutionEvent = ExecutionEvent
 
 /**
  * A clause, a plan, or a sequence of plans: whatever one piece of
@@ -1864,10 +2636,12 @@ export declare class FixMsg {
    */
   get size(): number
   /**
-   * The event this message is: every fact the graph traits answer, as
-   * one plain object read once.
+   * The graph market operations this message expands to: an order, a
+   * quote, an execution or an initial trade report is one; a book `W` or
+   * `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
+   * control for an empty `W` - each a `MarketData`.
    */
-  event(): FixEventView
+  marketOperations(): Array<JsMarketData>
   /** The standard header, typed, as one plain object read once. */
   header(): FixHeaderView
   /**
@@ -1915,6 +2689,21 @@ export declare class FixMsg {
   get seqnum(): number
   /** The identity of the message this one follows, or `null`. */
   get prevuuid(): string | null
+  /** When the order this message belongs to was created, where known. */
+  get creaunix(): bigint | null
+  /** The latest execution instant the lifecycle reached, where known. */
+  get execunix(): bigint | null
+  /** When the message was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When the order expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /** When the message this one follows happened, where it follows one. */
+  get prevunix(): bigint | null
+  /**
+   * The grid step a walk read this message as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
   /**
    * The sorted unique identities of the elements this one was read from:
    * the text line it was parsed out of, and none for one parsed from bytes. Provenance,
@@ -2055,9 +2844,9 @@ export declare class FixMsg {
    * currency and unit it states - or `null` where it states no slot of
    * it. A buy order fills its own lane's size; a quote states both.
    */
-  get bid(): FixLaneView | null
+  get bid(): JsLane | null
   /** The ask lane, the same way. */
-  get ask(): FixLaneView | null
+  get ask(): JsLane | null
   /**
    * The value the root child an identifier names, or `null`.
    *
@@ -3201,6 +3990,71 @@ export declare class IOCursor {
 export type JsIOCursor = IOCursor
 
 /**
+ * One lane of a quote: what a party is willing to pay or be paid, in the
+ * currency and unit it states, with the FX parts of its price where it
+ * quotes a forward. Every slot is what the lane states; a lane states
+ * nothing of a slot it leaves `null`.
+ */
+export declare class Lane {
+  /**
+   * Build a lane from its six slots, one record `Scalar` keyed by slot
+   * name. The row crosses the boundary once, through the lane struct's
+   * own field - `lane_datatype`'s `scalar` - and is read back with
+   * `lane_of`, so every slot is validated exactly as a stored lane is.
+   */
+  constructor(input?: LaneInput | null)
+  /**
+   * The price this lane states, as decimal text; `null` where it states
+   * none.
+   */
+  get price(): string | null
+  /**
+   * The spot part of an FX forward price; `null` where the lane states
+   * none.
+   */
+  get spotrate(): string | null
+  /**
+   * The forward points of an FX forward price; `null` where the lane
+   * states none.
+   */
+  get forwardpoints(): string | null
+  /**
+   * The currency, as the `ccy` code it is; `null` where the lane states
+   * none.
+   */
+  get currency(): string | null
+  /**
+   * The quantity this lane states, as decimal text; `null` where it
+   * states none.
+   */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; `null` where the
+   * lane states none.
+   */
+  get unit(): string | null
+  /** Whether the lane states any slot. */
+  isStated(): boolean
+  /** Whether this lane states the same slots as `other`. */
+  equals(other: Lane): boolean
+  /**
+   * The lane's own stable hash: the six slots it states, digested as
+   * `lane_fact` renders them.
+   */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): Lane
+  /** `Lane(price=.., spotrate=.., forwardpoints=.., currency=.., quantity=.., unit=..)`. */
+  toString(): string
+  /**
+   * The lane's own six slots, so it survives `JSON.stringify` and is
+   * what `new Lane(...)` reads back.
+   */
+  toJSON(): LaneInput
+}
+export type JsLane = Lane
+
+/**
  * The entries of one listing, one at a time.
  *
  * Built by `iterdir`, `ls`, `glob`, `rglob`, and `childrenWhere`. It wraps
@@ -3259,6 +4113,176 @@ export declare class ManifestFile {
   clone(): ManifestFile
 }
 export type JsManifestFile = ManifestFile
+
+/**
+ * One value over every market leaf - an order, a quote or an execution,
+ * undated or dated, a book side, a trade, a book or a snapshot control -
+ * answering the element and market facts its leaf answers. Immutable:
+ * every verb answers a new value.
+ */
+export declare class MarketData {
+  /** Wrap any market leaf, through the core's own `From`. */
+  constructor(leaf: MarketData | Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent)
+  /** Every leaf kind a value may be, in declaration order. */
+  static kinds(): Array<string>
+  /** Which leaf this is, as its `MarketData.kinds()` spelling. */
+  get kind(): string
+  /** Whether the leaf is one of the six dated ones. */
+  get isEvent(): boolean
+  /**
+   * The book control of an operation event or a snapshot control, else
+   * `null`.
+   */
+  get book(): JsBookRef | null
+  /** The undated order this value is, else `null`. */
+  asOrder(): JsOrder | null
+  /** The undated quote this value is, else `null`. */
+  asQuote(): JsQuote | null
+  /** The undated execution this value is, else `null`. */
+  asExecution(): JsExecution | null
+  /** The book side this value is, else `null`. */
+  asBookSide(): BookSide | null
+  /** The dated order this value is, else `null`. */
+  asOrderEvent(): JsOrderEvent | null
+  /** The dated quote this value is, else `null`. */
+  asQuoteEvent(): JsQuoteEvent | null
+  /** The dated execution this value is, else `null`. */
+  asExecutionEvent(): JsExecutionEvent | null
+  /** The trade this value is, else `null`. */
+  asTradeEvent(): JsTradeEvent | null
+  /** The book this value is, else `null`. */
+  asBookEvent(): BookEvent | null
+  /** The snapshot control this value is, else `null`. */
+  asSnapshotEvent(): SnapshotEvent | null
+  /** The leaf this value holds, as its own class. */
+  intoLeaf(): Order | Quote | Execution | BookSide | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent
+  /** The lifted `marketdata` row field every leaf is written under. */
+  static field(): Field
+  /**
+   * Reads `MarketData` from record batches - any subset of the lifted
+   * columns, in any order, foreign columns ignored: a lazy walk, fused
+   * after an error, the error thrown at the failing item.
+   */
+  static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
+  /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
+  toString(): string
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: MarketData): MarketData | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: MarketData): MarketData | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: MarketData): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: MarketData): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: MarketData): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): MarketData
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): MarketData
+}
+export type JsMarketData = MarketData
+
+/** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+export declare class MarketDataRowIterator {
+  /**
+   * Advance the stream: the next value, or `null` at its end; a row the
+   * decoder refuses throws, once, and ends the walk. The loader wraps
+   * this into the iterator protocol.
+   */
+  next(): IteratorResult<MarketData>
+}
+export type JsMarketDataRowIterator = MarketDataRowIterator
 
 /** A base MIME type plus ordered transparent encodings. */
 export declare class MediaType {
@@ -3574,6 +4598,363 @@ export declare class Namespaces {
   openOrCreate(name: string): Namespace
 }
 export type JsNamespaces = Namespaces
+
+/**
+ * An undated order: the element, market and operation facts of one order
+ * with no instant. Immutable: every verb answers a new value.
+ */
+export declare class Order {
+  /**
+   * Build the element from its named facts, one record `Scalar`
+   * keyed by column name - the market and operation columns and
+   * the element's own `crosscode` and `srcuuids` - each checked by
+   * its column's field and stated through its column, then
+   * finalized. A `null` fact clears; a derived identity or any
+   * other event column is refused by name.
+   */
+  constructor(facts?: JsScalar | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /**
+   * This element dated at `unix` nanoseconds since the epoch, and
+   * finalized.
+   */
+  at(unix: bigint | number): OrderEvent
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: Order): Order | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: Order): Order | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: Order): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: Order): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: Order): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): Order
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): Order
+  /** `<Class>(<curruuid>, crosscode=..)`. */
+  toString(): string
+}
+export type JsOrder = Order
+
+/**
+ * A dated order: one order at one instant, with the book-control facts of
+ * a market-data entry where it is one. Immutable: every verb answers a new
+ * value.
+ */
+export declare class OrderEvent {
+  /**
+   * Build the event at `currunix` nanoseconds since the epoch from
+   * its named facts, one record `Scalar` keyed by column name -
+   * the event, market and operation columns - each checked by its
+   * column's field and stated through its column, with `book`'s
+   * control facts, then finalized. A `null` fact clears; a
+   * derived identity, or `currunix` again, is refused by name.
+   */
+  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /** The book-control facts, where this is a market-data entry. */
+  get book(): JsBookRef | null
+  /** The update action the entry states, where it states one. */
+  get action(): string | null
+  /** The book scope the entry states, empty where none. */
+  get scope(): string
+  /** Whether this is part of a FIX full-snapshot replacement. */
+  get isFullSnapshot(): boolean
+  /** This event with `book`'s control facts, refinalized. */
+  withBook(book: JsBookRef): OrderEvent
+  /**
+   * This event without its clocks and book control, finalized as
+   * the undated element it then is.
+   */
+  intoElement(): Order
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: OrderEvent): OrderEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: OrderEvent): OrderEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: OrderEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: OrderEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: OrderEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): OrderEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): OrderEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: OrderEvent): OrderEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsOrderEvent = OrderEvent
 
 /** One partition field of a spec. */
 export declare class PartitionField {
@@ -3995,6 +5376,363 @@ export declare class ProtocolField {
   toJSON(): any
 }
 export type JsProtocolField = ProtocolField
+
+/**
+ * An undated quote: the element, market and operation facts of one quote
+ * with no instant. Immutable: every verb answers a new value.
+ */
+export declare class Quote {
+  /**
+   * Build the element from its named facts, one record `Scalar`
+   * keyed by column name - the market and operation columns and
+   * the element's own `crosscode` and `srcuuids` - each checked by
+   * its column's field and stated through its column, then
+   * finalized. A `null` fact clears; a derived identity or any
+   * other event column is refused by name.
+   */
+  constructor(facts?: JsScalar | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /**
+   * This element dated at `unix` nanoseconds since the epoch, and
+   * finalized.
+   */
+  at(unix: bigint | number): QuoteEvent
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: Quote): Quote | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: Quote): Quote | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: Quote): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: Quote): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: Quote): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): Quote
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): Quote
+  /** `<Class>(<curruuid>, crosscode=..)`. */
+  toString(): string
+}
+export type JsQuote = Quote
+
+/**
+ * A dated quote: one quote at one instant, with the book-control facts of
+ * a market-data entry where it is one. Immutable: every verb answers a new
+ * value.
+ */
+export declare class QuoteEvent {
+  /**
+   * Build the event at `currunix` nanoseconds since the epoch from
+   * its named facts, one record `Scalar` keyed by column name -
+   * the event, market and operation columns - each checked by its
+   * column's field and stated through its column, with `book`'s
+   * control facts, then finalized. A `null` fact clears; a
+   * derived identity, or `currunix` again, is refused by name.
+   */
+  constructor(currunix: bigint | number, facts?: JsScalar | undefined | null, book?: JsBookRef | undefined | null)
+  /**
+   * Which operation this is: `"order"`, `"quote"` or
+   * `"execution"`.
+   */
+  get kind(): string
+  /** The book-control facts, where this is a market-data entry. */
+  get book(): JsBookRef | null
+  /** The update action the entry states, where it states one. */
+  get action(): string | null
+  /** The book scope the entry states, empty where none. */
+  get scope(): string
+  /** Whether this is part of a FIX full-snapshot replacement. */
+  get isFullSnapshot(): boolean
+  /** This event with `book`'s control facts, refinalized. */
+  withBook(book: JsBookRef): QuoteEvent
+  /**
+   * This event without its clocks and book control, finalized as
+   * the undated element it then is.
+   */
+  intoElement(): Quote
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): JsLane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): JsLane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: QuoteEvent): QuoteEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: QuoteEvent): QuoteEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: QuoteEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: QuoteEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: QuoteEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): QuoteEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): QuoteEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: QuoteEvent): QuoteEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsQuoteEvent = QuoteEvent
 
 /** A stateful random-access filesystem input file. */
 export declare class RandomAccessReader {
@@ -4655,6 +6393,198 @@ export declare class Snapshot {
   clone(): Snapshot
 }
 export type JsSnapshot = Snapshot
+
+/**
+ * The full-snapshot control an empty FIX `W` is: an event stating the scope
+ * it replaces and no entry of its own.
+ */
+export declare class SnapshotEvent {
+  /**
+   * The snapshot control over `event` - any dated leaf, whose event and
+   * market facts are copied - replacing `scope`.
+   */
+  static snapshot(event: MarketData | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent | BookEvent | SnapshotEvent, scope?: string | null): SnapshotEvent
+  /** The control's book facts: always a full snapshot, with its scope. */
+  get book(): JsBookRef
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: SnapshotEvent): SnapshotEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: SnapshotEvent): SnapshotEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: SnapshotEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: SnapshotEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: SnapshotEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): SnapshotEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): SnapshotEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: SnapshotEvent): SnapshotEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsSnapshotEvent = SnapshotEvent
+
+/**
+ * One scope a full snapshot replaces: a symbol - `null` in global mode -
+ * and the book scope the entries stated.
+ */
+export declare class SnapshotPartition {
+  /**
+   * A partition for `scope`, and `symbol` where the operations named
+   * one.
+   */
+  constructor(input: SnapshotPartitionInput)
+  /** The book scope this partition replaces. */
+  get scope(): string
+  /** The symbol this partition is for; `null` in global mode. */
+  get symbol(): string | null
+  /** Total native ordering: `-1`, `0`, or `1`. */
+  compare(other: SnapshotPartition): number
+  /** Whether this partition names the same scope and symbol as `other`. */
+  equals(other: SnapshotPartition): boolean
+  /**
+   * The partition's own stable hash: its symbol and scope, digested as
+   * one record; equal partitions share it.
+   */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): SnapshotPartition
+  /** `SnapshotPartition(scope=.., symbol=..)`. */
+  toString(): string
+  /**
+   * The partition's own two slots, so it survives `JSON.stringify` and
+   * is what `new SnapshotPartition(...)` reads back.
+   */
+  toJSON(): SnapshotPartitionInput
+}
+export type JsSnapshotPartition = SnapshotPartition
 
 /**
  * One branch or tag, as the metadata records it.
@@ -5685,6 +7615,188 @@ export declare class Timezone {
 export type JsTimezone = Timezone
 
 /**
+ * A composite trade: one market operation event whose executions are the
+ * sided fills it is made of. Immutable: every verb answers a new trade.
+ */
+export declare class TradeEvent {
+  /**
+   * A trade from its root - any dated operation, whose facts are copied -
+   * and its executions, through the core's own `from_parts`.
+   */
+  static fromParts(root: MarketData | OrderEvent | QuoteEvent | ExecutionEvent | TradeEvent, executions: Array<ExecutionEvent>): TradeEvent
+  /**
+   * The executions the trade is made of, in canonical side, cross code
+   * and identity order.
+   */
+  get executions(): Array<ExecutionEvent>
+  /** The element's own identity, as its hyphenated text. */
+  get curruuid(): string
+  /**
+   * The identity every statement of one element shares: derived
+   * from the cross code, the element's own where it names none.
+   */
+  get crossuuid(): string
+  /**
+   * The cross code: the identifier every statement of one element
+   * shares, empty where it names none.
+   */
+  get crosscode(): string
+  /** The XXH3-64 code the element's content digests to. */
+  get currhashcode(): bigint
+  /** The XXH3-64 of the cross code, `0n` where it names none. */
+  get crosshashcode(): bigint
+  /**
+   * The sorted identities of the elements this one was read from:
+   * provenance, never its chain. Empty for one built directly.
+   */
+  get srcuuids(): Array<string>
+  /** When this happened: nanoseconds since the Unix epoch, UTC. */
+  get currunix(): bigint
+  /** The lifecycle state reached, as the `state` code it is. */
+  get state(): string
+  /** How many elements came before this one in its chain. */
+  get seqnum(): number
+  /** When this was created, where known. */
+  get creaunix(): bigint | null
+  /**
+   * The latest execution instant the lifecycle reached, where
+   * known.
+   */
+  get execunix(): bigint | null
+  /** When this was recorded, where stated. */
+  get recdunix(): bigint | null
+  /** When this expires, where it has an expiry. */
+  get exprtime(): bigint | null
+  /**
+   * When the element this one follows happened, where it follows
+   * one.
+   */
+  get prevunix(): bigint | null
+  /** The identity of the element this one follows, or `null`. */
+  get prevuuid(): string | null
+  /**
+   * The grid step a walk read this as the snapshot of, where one
+   * did.
+   */
+  get snapunix(): bigint | null
+  /** Whether this observation itself reports an execution. */
+  get isExecution(): boolean
+  /** The price stated, as decimal text; `null` where none. */
+  get price(): string | null
+  /** The currency, as the `ccy` code it is; `XXX` where none. */
+  get currency(): string
+  /** The quantity stated, as decimal text; `null` where none. */
+  get quantity(): string | null
+  /**
+   * The unit the quantity is counted in, as spelled; empty where
+   * none.
+   */
+  get unit(): string
+  /** The side, as the `side` code it is; `UNKNOWN` where none. */
+  get side(): string
+  /**
+   * The instrument's identifiers, one code under each source -
+   * `ISIN`, `CUSIP`, `FIGI` - in source order.
+   */
+  get securityids(): Record<string, string>
+  /** The instrument's classification; `null` where none. */
+  get cficode(): string | null
+  /** The market, as an ISO 10383 MIC; `null` where none. */
+  get miccode(): string | null
+  /** The price last traded at; `null` where none. */
+  get lastpx(): string | null
+  /** The quantity last traded; `null` where none. */
+  get lastqty(): string | null
+  /** The price averaged; `null` where none. */
+  get avgpx(): string | null
+  /** How much is done; `null` where none. */
+  get cumqty(): string | null
+  /** How much is still open; `null` where none. */
+  get leavesqty(): string | null
+  /**
+   * The price the step before this one settled on; `null` where
+   * none.
+   */
+  get prevpx(): string | null
+  /**
+   * The quantity the step before this one settled on; `null`
+   * where none.
+   */
+  get prevqty(): string | null
+  /** The spot part of an FX price; `null` where none. */
+  get spotrate(): string | null
+  /** The forward points of an FX price; `null` where none. */
+  get forwardpoints(): string | null
+  /**
+   * The ticker a person knows the instrument by; `null` where
+   * none.
+   */
+  get ticker(): string | null
+  /**
+   * Free-form facts beside the typed ones, in key order; empty
+   * where none.
+   */
+  get metadata(): Record<string, string>
+  /** The stable integer market-operation category, or `null`. */
+  get marketoperationid(): number | null
+  /**
+   * How long this stands, as the stored code; `null` where
+   * unstated.
+   */
+  get tif(): string | null
+  /**
+   * Whether the instrument trades, or `null` where the market said
+   * nothing either way - which is not `false`.
+   */
+  get tradable(): boolean | null
+  /** The accounts the operation is for, in key order. */
+  get accountids(): Record<string, string>
+  /** The users the operation is by, in key order. */
+  get userids(): Record<string, string>
+  /** The names the operation goes by, in key order. */
+  get altids(): Record<string, string>
+  /** The bid lane a quote states; `null` where none. */
+  get bid(): Lane | null
+  /** The ask lane, shaped as the bid; `null` where none. */
+  get ask(): Lane | null
+  /**
+   * This value stated as the one after `previous`, or `null` where
+   * it cannot follow it or following changes nothing.
+   */
+  withPrevious(previous: TradeEvent): TradeEvent | null
+  /**
+   * This value with another statement of `other` folded in, or
+   * `null` for another element or a fold that changes nothing.
+   */
+  mergeWith(other: TradeEvent): TradeEvent | null
+  /** Whether this value comes after `other` in its order. */
+  isAfter(other: TradeEvent): boolean
+  /** Whether this value comes before `other` in its order. */
+  isBefore(other: TradeEvent): boolean
+  /** Whether this value states the same facts as `other`. */
+  equals(other: TradeEvent): boolean
+  /** The code the content digests to, which equal values share. */
+  stableHash(): bigint
+  /** A cheap native clone. */
+  clone(): TradeEvent
+  /**
+   * The value's one `MarketData` row, as the base64 text of its
+   * Arrow IPC stream, so it survives `JSON.stringify`.
+   */
+  toJSON(): string
+  /** Rebuild a value `toJSON` wrote. */
+  static fromJSON(text: string): TradeEvent
+  /**
+   * This event stated as another statement of `live`, taking the
+   * place `live` holds in its chain.
+   */
+  restating(live: TradeEvent): TradeEvent
+  /** `<Class>(<curruuid>, currunix=.., crosscode=..)`. */
+  toString(): string
+}
+export type JsTradeEvent = TradeEvent
+
+/**
  * One instant coupled with one digest.
  *
  * `bytes()` is the canonical layout - the instant big-endian, then the
@@ -6381,6 +8493,27 @@ export interface AvroDecodeLimitsInput {
   maxNodes?: number
 }
 
+/**
+ * The five slots a book-control object states, each `undefined` or `null`
+ * where not given; given, a slot is widened through `Scalar.from` as a
+ * fact is, so a decimal is its text, a whole number or a bigint.
+ */
+export interface BookRefInput {
+  /**
+   * The update action, read through `MdUpdateAction::read`, refusing text
+   * that names no spelling.
+   */
+  action?: string | null
+  /** The book scope this control belongs to. */
+  scope?: string | null
+  /** `MDEntryPositionNo(290)`: the entry's position in its level. */
+  position?: number | null
+  /** The price this control states, as decimal text. */
+  entryPx?: string | number | bigint | null
+  /** The size this control states, as decimal text. */
+  entrySize?: string | number | bigint | null
+}
+
 /** What a byte datatype declares: its layout and its bound. */
 export interface BytesParameters {
   /**
@@ -6727,172 +8860,6 @@ export interface FixEntryView {
 }
 
 /**
- * The event a message is: every fact the graph traits answer, as plain
- * values.
- *
- * The sixteen event facts lead, then the nineteen market facts and the
- * eight operation facts, each under the name its trait gives it. A UUID is
- * its hyphenated text, a hash and an instant a `bigint` - the instants
- * nanoseconds since the Unix epoch, UTC - a price, a quantity or an FX part
- * its decimal text, a currency, a side, a state, a unit and an instrument
- * code the text each is, a time in force the code it stores, and each
- * identifier map a plain object in the core's key order. What the event
- * does not state is `null` where the core holds nothing - a lane among it -
- * and the core's own nothing where it holds a value that means none: a
- * price or a quantity of `0`, the `XXX` currency, an empty unit or cross
- * code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`, an
- * empty map.
- */
-export interface FixEventView {
-  /**
-   * This message's own `UUIDv7` identity, ordered by millisecond and sequence
-   * with a content payload seeded by its cross hash.
-   */
-  curruuid: string
-  /**
-   * The identity of the chain the message belongs to: a version-8 UUID
-   * over the `crosshashcode`, or `curruuid` when no cross code names a
-   * chain.
-   */
-  crossuuid: string
-  /**
-   * The code the chain is named by: the first stated of `OrderID(37)`,
-   * `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
-   * and `MDReqID(262)`, or empty.
-   */
-  crosscode: string
-  /**
-   * The XXH3-64 of the event, the text, the metadata, the lifted fields
-   * and the row - every field but the standard header and trailer.
-   */
-  currhashcode: bigint
-  /** The XXH3-64 of the cross code, `0n` where there is none. */
-  crosshashcode: bigint
-  /**
-   * The sorted unique UUIDs of the elements this one was read from: the
-   * text line it was parsed out of, and none for one parsed from bytes.
-   */
-  srcuuids: Array<string>
-  /**
-   * When the event happened: the message's sending time, the one clock
-   * every message carries.
-   */
-  currunix: bigint
-  /** The order state the message reached, ranked: `20NEW`, `80FILLED`. */
-  state: string
-  /** The message's place in its chain, `0` until a lifecycle states it. */
-  seqnum: number
-  /** When the chain was created, where stated. */
-  creaunix: bigint | null
-  /**
-   * The precise execution instant: the one the message states, else its
-   * own `currunix` where the parse read it as reporting an execution, and
-   * on a chained message the latest its lifecycle reached; else `null`.
-   */
-  execunix: bigint | null
-  /**
-   * The precise recording instant, where stated or where the line the
-   * message was read out of dated itself.
-   */
-  recdunix: bigint | null
-  /** When the chain expires, where stated. */
-  exprtime: bigint | null
-  /**
-   * The instant of the message this one follows, where a lifecycle
-   * stated it.
-   */
-  prevunix: bigint | null
-  /**
-   * The identity of the message this one follows, where a lifecycle
-   * stated it.
-   */
-  prevuuid: string | null
-  /** The instant a snapshot was taken at, where one was. */
-  snapunix: bigint | null
-  /** The price stated, as decimal text, or `null` where none is. */
-  price: string | null
-  /** The currency, `XXX` where none is stated. */
-  currency: string
-  /** The quantity stated, as decimal text, or `null` where none is. */
-  quantity: string | null
-  /** The unit the quantity is counted in, empty where none is stated. */
-  unit: string
-  /**
-   * The side: the one stated, else the lane a single-sided quote states -
-   * `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
-   */
-  side: string
-  /**
-   * The security identifiers the instrument goes by, source to code -
-   * `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI` and any other source
-   * the message states - in the core's key order; empty where it states
-   * none.
-   */
-  securityids: Record<string, string>
-  /** The instrument's CFI classification, where stated. */
-  cficode: string | null
-  /** The market the message names, where stated. */
-  miccode: string | null
-  /** The last traded price, as decimal text, or `null`. */
-  lastpx: string | null
-  /** The last traded quantity, as decimal text, or `null`. */
-  lastqty: string | null
-  /** The average traded price, as decimal text, or `null`. */
-  avgpx: string | null
-  /** The cumulative traded quantity, as decimal text, or `null`. */
-  cumqty: string | null
-  /** The remaining quantity, as decimal text, or `null`. */
-  leavesqty: string | null
-  /** The preceding price, as decimal text, or `null`. */
-  prevpx: string | null
-  /** The preceding quantity, as decimal text, or `null`. */
-  prevqty: string | null
-  /** The spot part of an FX forward price, as decimal text, or `null`. */
-  spotrate: string | null
-  /**
-   * The forward points of an FX forward price, as decimal text, or
-   * `null`.
-   */
-  forwardpoints: string | null
-  /** The ticker the instrument is known by, or `null`. */
-  ticker: string | null
-  /**
-   * What a bridge stated under its own namespaces, key to value, sorted;
-   * empty where it stated none.
-   */
-  metadata: Record<string, string>
-  /** The stable integer category of the market operation, where known. */
-  marketoperationid: number | null
-  /**
-   * How long the message stands, `TimeInForce(59)`, as the code it
-   * stores - `0` for a day order - or `null`.
-   */
-  tif: string | null
-  /** Whether the instrument was tradable, or `null` where unstated. */
-  tradable: boolean | null
-  /**
-   * The accounts the message names, key to value, upper-cased and in key
-   * order: `ACCOUNT` and a `CUSTOMERACCOUNT` party; empty where none.
-   */
-  accountids: Record<string, string>
-  /**
-   * The users the message names, the same way: `SENDERSUBID`,
-   * `ONBEHALFOFSUBID`, an `ENTERINGTRADER` or `EXECUTINGTRADER` party.
-   */
-  userids: Record<string, string>
-  /**
-   * The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
-   * `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
-   * `TRADEID` and the rest the message states.
-   */
-  altids: Record<string, string>
-  /** The bid lane, or `null` where the message states no slot of it. */
-  bid: FixLaneView | null
-  /** The ask lane, or `null` where the message states no slot of it. */
-  ask: FixLaneView | null
-}
-
-/**
  * The standard header a message holds typed, as plain values.
  *
  * What FIX puts in front of every message: the version it says it speaks,
@@ -6970,34 +8937,6 @@ export interface FixIdSource {
   follow?: boolean
   /** On `PartyID(448)`, the `PartyRole(452)` code of the occurrence stating it. */
   role?: string
-}
-
-/**
- * One lane of a quote: what a party is willing to pay or be paid, each
- * slot as the lane states it and `null` where it states nothing.
- *
- * A price, a quantity and the two FX parts of a forward price are decimal
- * text, the currency and the unit the text each is. The bid and the ask of
- * a `FixEventView` or a `FixMsg` are each one of these, or `null` where the
- * message states no slot of that lane; a buy order fills its own lane's
- * size, a quote states both.
- */
-export interface FixLaneView {
-  /** The lane's price, as decimal text, or `null`. */
-  price: string | null
-  /** The spot part of an FX forward price, as decimal text, or `null`. */
-  spotrate: string | null
-  /**
-   * The forward points of an FX forward price, as decimal text, or
-   * `null`.
-   */
-  forwardpoints: string | null
-  /** The currency the lane is priced in, or `null`. */
-  currency: string | null
-  /** The lane's quantity, as decimal text, or `null`. */
-  quantity: string | null
-  /** The unit the lane's quantity is counted in, or `null`. */
-  unit: string | null
 }
 
 /**
@@ -7082,6 +9021,28 @@ export interface IcebergOptionsInput {
   dataMimeType?: MimeTypeInput
 }
 
+/**
+ * The six slots a lane object states, each `undefined` or `null` where not
+ * given: a lane has no third state to tell them apart by. Given, a slot is
+ * widened through `Scalar.from` as a fact is - a decimal its text, a whole
+ * number or a bigint; read back by `toJSON`, decimals and codes are their
+ * text, as every graph getter answers them.
+ */
+export interface LaneInput {
+  /** The lane's price, as decimal text. */
+  price?: string | number | bigint | null
+  /** The spot part of an FX forward price, as decimal text. */
+  spotrate?: string | number | bigint | null
+  /** The forward points of an FX forward price, as decimal text. */
+  forwardpoints?: string | number | bigint | null
+  /** The currency, as its code text. */
+  currency?: string | null
+  /** The lane's quantity, as decimal text. */
+  quantity?: string | number | bigint | null
+  /** The unit the quantity is counted in, as spelled. */
+  unit?: string | null
+}
+
 /** One field-metadata key/value pair. */
 export interface MetadataEntry {
   /** Metadata key. */
@@ -7128,6 +9089,14 @@ export interface ScanPlanCounts {
   manifestsSkipped: number
   /** Rows the planned files hold, as the manifests counted them. */
   recordCount: number
+}
+
+/** The two named slots a snapshot-partition object states. */
+export interface SnapshotPartitionInput {
+  /** The book scope this partition replaces. */
+  scope: string
+  /** The symbol this partition is for; `null` in global mode. */
+  symbol?: string | null
 }
 
 /**

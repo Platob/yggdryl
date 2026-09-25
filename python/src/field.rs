@@ -776,6 +776,7 @@ impl PyField {
         self.inner.display()
     }
 
+    /// The field's description, or `None` where it states none.
     #[getter]
     fn description(&self) -> Option<&str> {
         self.inner.description()

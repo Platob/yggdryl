@@ -10,8 +10,11 @@
 //! [`Operation`] is a market element that is also an operation: its
 //! category, how long it stands, whether it can trade, the account, user
 //! and alternate identifiers it is known by, and the two lanes a quote is
-//! made of. [`MarketEvent`] and [`OperationEvent`] are the blankets
-//! over an [`Event`] that is one or the other. The traits state signatures
+//! made of. What an [`Event`] that is also one of them answers -
+//! [`Market::digest_market_event`], [`Market::following_market`],
+//! [`Market::merging_market_event`] and their [`Operation`] counterparts -
+//! is provided on the trait itself, gated `where Self: Event`, rather than
+//! a separate blanket trait. The traits state signatures
 //! and the provided readings - fill, digest, follow, restate, merge - so a
 //! message, a book entry and a lifecycle incarnation can each be a market
 //! without the graph owning any of them.
@@ -306,6 +309,59 @@ pub trait Market {
         self.finalize();
         Some(self)
     }
+
+    /// [`Event::digest_event`] continued with the market's facts: what a
+    /// market event that is also an [`Event`] digests to.
+    fn digest_market_event(&self) -> Xxh3
+    where
+        Self: Event + Sized,
+    {
+        let mut state = self.digest_event();
+        feed_market(&mut state, self);
+        state
+    }
+
+    /// This event as the one after `previous` in its chain, with the market
+    /// facts the chain carries; `None` where it cannot follow it.
+    fn following_market(mut self, previous: &Self) -> Option<Self>
+    where
+        Self: Event + Sized,
+    {
+        if previous.get_curruuid() == self.get_curruuid()
+            || previous.get_currunix() > self.get_currunix()
+        {
+            return None;
+        }
+        let changed = follow_timed(&mut self, previous);
+        if !(follow_market(&mut self, previous) || changed) {
+            return None;
+        }
+        self.finalize();
+        Some(self)
+    }
+
+    /// This event merged with another statement of itself, the reference
+    /// chosen by its recording clock; `None` where they differ or nothing
+    /// moved.
+    fn merging_market_event(mut self, other: &Self) -> Option<Self>
+    where
+        Self: Event + Sized,
+    {
+        if other.get_curruuid() != self.get_curruuid() {
+            return None;
+        }
+        let other_is_reference = right_is_reference(
+            self.get_recdunix(),
+            self.get_currunix(),
+            other.get_recdunix(),
+            other.get_currunix(),
+        );
+        if !merge_market_event(&mut self, other, other_is_reference) {
+            return None;
+        }
+        self.finalize();
+        Some(self)
+    }
 }
 
 /// A market element that is also an operation on the market: what it adds
@@ -542,69 +598,13 @@ pub trait Operation: Market {
         self.finalize();
         Some(self)
     }
-}
 
-/// An event that stands in a market: a blanket over every type that is
-/// both, with nothing to implement.
-pub trait MarketEvent: Event + Market {
-    /// [`Event::digest_event`] continued with the market's facts.
-    fn digest_market_event(&self) -> Xxh3 {
-        let mut state = self.digest_event();
-        feed_market(&mut state, self);
-        state
-    }
-
-    /// This event as the one after `previous` in its chain, with the market
-    /// facts the chain carries; `None` where it cannot follow it.
-    fn following_market(mut self, previous: &Self) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if previous.get_curruuid() == self.get_curruuid()
-            || previous.get_currunix() > self.get_currunix()
-        {
-            return None;
-        }
-        let changed = follow_timed(&mut self, previous);
-        if !(follow_market(&mut self, previous) || changed) {
-            return None;
-        }
-        self.finalize();
-        Some(self)
-    }
-
-    /// This event merged with another statement of itself, the reference
-    /// chosen by its recording clock; `None` where they differ or nothing
-    /// moved.
-    fn merging_market_event(mut self, other: &Self) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if other.get_curruuid() != self.get_curruuid() {
-            return None;
-        }
-        let other_is_reference = right_is_reference(
-            self.get_recdunix(),
-            self.get_currunix(),
-            other.get_recdunix(),
-            other.get_currunix(),
-        );
-        if !merge_market_event(&mut self, other, other_is_reference) {
-            return None;
-        }
-        self.finalize();
-        Some(self)
-    }
-}
-
-impl<E: Event + Market + ?Sized> MarketEvent for E {}
-
-/// An event that is an operation on a market: a blanket over every type
-/// that is both, with nothing to implement.
-pub trait OperationEvent: Event + Operation {
     /// [`Event::digest_event`] continued with the market's and the
     /// operation's facts.
-    fn digest_operation_event(&self) -> Xxh3 {
+    fn digest_operation_event(&self) -> Xxh3
+    where
+        Self: Event + Sized,
+    {
         let mut state = self.digest_event();
         feed_market(&mut state, self);
         feed_operation(&mut state, self);
@@ -616,7 +616,7 @@ pub trait OperationEvent: Event + Operation {
     /// follow it.
     fn following_operation(mut self, previous: &Self) -> Option<Self>
     where
-        Self: Sized,
+        Self: Event + Sized,
     {
         if previous.get_curruuid() == self.get_curruuid()
             || previous.get_currunix() > self.get_currunix()
@@ -637,7 +637,7 @@ pub trait OperationEvent: Event + Operation {
     /// nothing moved.
     fn merging_operation_event(mut self, other: &Self) -> Option<Self>
     where
-        Self: Sized,
+        Self: Event + Sized,
     {
         if other.get_curruuid() != self.get_curruuid() {
             return None;
@@ -656,12 +656,9 @@ pub trait OperationEvent: Event + Operation {
     }
 }
 
-impl<E: Event + Operation + ?Sized> OperationEvent for E {}
-
-/// What restating means for a market event: the timed restatement, then
-/// the market's. Every implementor that is also a [`Market`] delegates
-/// here rather than restating the body.
-pub(crate) fn restating_market<E: MarketEvent>(mut this: E, live: &E) -> E {
+/// What restating means for a market event that states no operation of its
+/// own: the timed restatement, then the market's facts.
+pub(crate) fn restating_market<E: Event + Market>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
     this.fold_lifecycle(live);
@@ -672,7 +669,7 @@ pub(crate) fn restating_market<E: MarketEvent>(mut this: E, live: &E) -> E {
 
 /// What restating means for a market operation: [`restating_market`]
 /// continued with the operation's facts.
-pub(crate) fn restating_operation<E: OperationEvent>(mut this: E, live: &E) -> E {
+pub(crate) fn restating_operation<E: Event + Operation>(mut this: E, live: &E) -> E {
     restate_event(&mut this, live);
     fold_event_instants(&mut this, live);
     this.fold_lifecycle(live);
@@ -684,7 +681,7 @@ pub(crate) fn restating_operation<E: OperationEvent>(mut this: E, live: &E) -> E
 
 /// Merges a market event into the reference statement it supplements,
 /// finalizing where anything moved.
-pub(crate) fn merge_market_event_into_reference<E: MarketEvent>(this: &mut E, supplement: &E) {
+pub(crate) fn merge_market_event_into_reference<E: Event + Market>(this: &mut E, supplement: &E) {
     if merge_market_event(this, supplement, false) {
         this.finalize();
     }
@@ -692,7 +689,7 @@ pub(crate) fn merge_market_event_into_reference<E: MarketEvent>(this: &mut E, su
 
 /// Merges a market operation into the reference statement it supplements,
 /// finalizing where anything moved.
-pub(crate) fn merge_operation_event_into_reference<E: OperationEvent>(
+pub(crate) fn merge_operation_event_into_reference<E: Event + Operation>(
     this: &mut E,
     supplement: &E,
 ) {
@@ -701,13 +698,17 @@ pub(crate) fn merge_operation_event_into_reference<E: OperationEvent>(
     }
 }
 
-fn merge_market_event<E: MarketEvent>(this: &mut E, other: &E, other_is_reference: bool) -> bool {
+fn merge_market_event<E: Event + Market>(
+    this: &mut E,
+    other: &E,
+    other_is_reference: bool,
+) -> bool {
     let changed = merge_event_element(this, other, other_is_reference);
     let timed = merge_timed(this, other, other_is_reference);
     merge_market(this, other, other_is_reference) || timed || changed
 }
 
-fn merge_operation_event<E: OperationEvent>(
+fn merge_operation_event<E: Event + Operation>(
     this: &mut E,
     other: &E,
     other_is_reference: bool,

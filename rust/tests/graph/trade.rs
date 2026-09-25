@@ -2,22 +2,28 @@
 
 use smol_str::SmolStr;
 use yggdryl::graph::{
-    BookInput, Element, Event, Market, MarketOperation, OperationEventData, OperationKind, Trade,
+    Element, Event, ExecutionEvent, Market, MarketData, MarketKind, OperationEvent, OperationKind,
+    OrderEvent, TradeEvent,
 };
 use yggdryl::{Decimal18, Side};
 
-fn event(
+fn event<K: OperationKind>(
     unix: i64,
     crosscode: &str,
     symbol: Option<&str>,
     recdunix: Option<i64>,
-) -> OperationEventData {
-    let mut event = OperationEventData::at(unix);
+) -> OperationEvent<K> {
+    let mut event = OperationEvent::<K>::at(unix);
     event.set_crosscode(crosscode.to_owned());
     event.set_ticker(symbol.map(SmolStr::new));
     event.set_recdunix(recdunix);
     event.finalize();
     event
+}
+
+/// The trade's root: the facts it states of its own, an order's.
+fn root(unix: i64, crosscode: &str, symbol: Option<&str>, recdunix: Option<i64>) -> OrderEvent {
+    event(unix, crosscode, symbol, recdunix)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -31,45 +37,36 @@ fn execution(
     creaunix: Option<i64>,
     recdunix: Option<i64>,
     execunix: Option<i64>,
-) -> MarketOperation {
-    let mut event = event(unix, crosscode, symbol, recdunix);
+) -> ExecutionEvent {
+    let mut event: ExecutionEvent = event(unix, crosscode, symbol, recdunix);
     event.set_side(Side::read(side).unwrap());
     event.set_price(Some(Decimal18::from_int(price)));
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
     event.set_execunix(execunix);
     event.finalize();
-    MarketOperation::execution(event)
+    event
 }
 
 #[test]
 fn construction_refuses_invalid_composite_parts_at_the_child() {
-    let root = event(10, "T-1", Some("IBM"), None);
-    let error = Trade::from_parts(root.clone(), Vec::new()).unwrap_err();
+    let root = root(10, "T-1", Some("IBM"), None);
+    let error = TradeEvent::from_parts(&root, Vec::new()).unwrap_err();
     assert!(error.to_string().contains("$.executions"), "{error}");
 
     let unknown = execution(10, "E-1", Some("IBM"), "Unknown", 100, 0, None, None, None);
-    let error = Trade::from_parts(root.clone(), vec![unknown]).unwrap_err();
+    let error = TradeEvent::from_parts(&root, vec![unknown]).unwrap_err();
     assert!(error.to_string().contains("executions[0].side"), "{error}");
 
-    let order = MarketOperation::order(
-        execution(10, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None).into_data(),
-    );
-    let error = Trade::from_parts(root.clone(), vec![order]).unwrap_err();
-    assert!(
-        error.to_string().contains("executions[0].operationkind"),
-        "{error}"
-    );
-
     let late = execution(11, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None);
-    let error = Trade::from_parts(root.clone(), vec![late]).unwrap_err();
+    let error = TradeEvent::from_parts(&root, vec![late]).unwrap_err();
     assert!(
         error.to_string().contains("executions[0].currunix"),
         "{error}"
     );
 
     let other_symbol = execution(10, "E-1", Some("MSFT"), "Buy", 100, 0, None, None, None);
-    let error = Trade::from_parts(root.clone(), vec![other_symbol]).unwrap_err();
+    let error = TradeEvent::from_parts(&root, vec![other_symbol]).unwrap_err();
     assert!(
         error.to_string().contains("executions[0].ticker"),
         "{error}"
@@ -77,7 +74,7 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
 
     let first = execution(10, "E-1", Some("IBM"), "Buy", 100, 0, None, None, None);
     let second = execution(10, "E-1", Some("IBM"), "Sell", 101, 0, None, None, None);
-    let error = Trade::from_parts(root, vec![first, second]).unwrap_err();
+    let error = TradeEvent::from_parts(&root, vec![first, second]).unwrap_err();
     assert!(
         error.to_string().contains("executions[1].crosscode"),
         "{error}"
@@ -86,7 +83,7 @@ fn construction_refuses_invalid_composite_parts_at_the_child() {
 
 #[test]
 fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
-    let mut root = event(20, "T-1", Some("IBM"), Some(18));
+    let mut root = root(20, "T-1", Some("IBM"), Some(18));
     root.set_seqnum(2);
     root.set_creaunix(Some(15));
     root.set_execunix(Some(17));
@@ -125,12 +122,9 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
         Some(18),
     );
 
-    let first = Trade::from_parts(
-        root.clone(),
-        vec![sell.clone(), buy_b.clone(), buy_a.clone()],
-    )
-    .unwrap();
-    let second = Trade::from_parts(root, vec![buy_a, sell, buy_b]).unwrap();
+    let first =
+        TradeEvent::from_parts(&root, vec![sell.clone(), buy_b.clone(), buy_a.clone()]).unwrap();
+    let second = TradeEvent::from_parts(&root, vec![buy_a, sell, buy_b]).unwrap();
 
     assert_eq!(first, second);
     assert_eq!(first.get_curruuid(), second.get_curruuid());
@@ -147,7 +141,7 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
         first
             .executions()
             .iter()
-            .all(|held| held.kind() == OperationKind::Execution)
+            .all(|held| held.kind() == MarketKind::Execution)
     );
     assert_eq!(first.get_seqnum(), 7);
     assert_eq!(first.get_creaunix(), Some(12));
@@ -158,8 +152,8 @@ fn construction_orders_children_and_derives_one_content_identity_and_bounds() {
 
 #[test]
 fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
-    let left_root = event(30, "T-1", Some("IBM"), Some(10));
-    let right_root = event(30, "T-1", Some("IBM"), Some(20));
+    let left_root = root(30, "T-1", Some("IBM"), Some(10));
+    let right_root = root(30, "T-1", Some("IBM"), Some(20));
     let left_e1 = execution(
         30,
         "E-1",
@@ -193,8 +187,8 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         Some(35),
         Some(30),
     );
-    let left = Trade::from_parts(left_root, vec![left_e1]).unwrap();
-    let right = Trade::from_parts(right_root, vec![right_e2, right_e1]).unwrap();
+    let left = TradeEvent::from_parts(&left_root, vec![left_e1]).unwrap();
+    let right = TradeEvent::from_parts(&right_root, vec![right_e2, right_e1]).unwrap();
 
     let merged = left.clone().merge_with(&right).unwrap();
     assert_eq!(merged.executions().len(), 2);
@@ -227,8 +221,8 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
     // third statement they rank by it: a trade recorded at 15 whose E-1 was
     // recorded at 35 leads the merged trade and its child, although it
     // leads neither `right` (20) nor `right`'s own E-1 (40).
-    let third = Trade::from_parts(
-        event(30, "T-1", Some("IBM"), Some(15)),
+    let third = TradeEvent::from_parts(
+        &root(30, "T-1", Some("IBM"), Some(15)),
         vec![execution(
             30,
             "E-1",
@@ -242,7 +236,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
         )],
     )
     .unwrap();
-    let e1_price = |trade: &Trade| {
+    let e1_price = |trade: &TradeEvent| {
         trade
             .executions()
             .iter()
@@ -260,8 +254,8 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
 
 #[test]
 fn following_combines_distinct_executions_and_preserves_composite_identity() {
-    let previous = Trade::from_parts(
-        event(40, "T-1", Some("IBM"), Some(10)),
+    let previous = TradeEvent::from_parts(
+        &root(40, "T-1", Some("IBM"), Some(10)),
         vec![execution(
             40,
             "E-1",
@@ -275,8 +269,8 @@ fn following_combines_distinct_executions_and_preserves_composite_identity() {
         )],
     )
     .unwrap();
-    let current = Trade::from_parts(
-        event(41, "T-1", Some("IBM"), Some(12)),
+    let current = TradeEvent::from_parts(
+        &root(41, "T-1", Some("IBM"), Some(12)),
         vec![execution(
             41,
             "E-2",
@@ -318,8 +312,8 @@ fn following_combines_distinct_executions_and_preserves_composite_identity() {
 
 #[test]
 fn restating_rederives_the_composite_identity_after_holder_restatement() {
-    let live = Trade::from_parts(
-        event(45, "T-1", Some("IBM"), Some(12)),
+    let live = TradeEvent::from_parts(
+        &root(45, "T-1", Some("IBM"), Some(12)),
         vec![execution(
             45,
             "E-1",
@@ -347,8 +341,8 @@ fn restating_rederives_the_composite_identity_after_holder_restatement() {
 
 #[test]
 fn timestamp_mutation_rebases_children_and_remains_arrow_valid() {
-    let mut trade = Trade::from_parts(
-        event(50, "T-1", Some("IBM"), Some(49)),
+    let mut trade = TradeEvent::from_parts(
+        &root(50, "T-1", Some("IBM"), Some(49)),
         vec![execution(
             50,
             "E-1",
@@ -368,9 +362,9 @@ fn timestamp_mutation_rebases_children_and_remains_arrow_valid() {
     assert_eq!(trade.executions()[0].get_execunix(), Some(47));
 
     trade.set_currunix(52);
-    let input = BookInput::from(trade);
-    let BookInput::Trade(trade) = &input else {
-        panic!("the input remains a trade")
+    let input = MarketData::from(trade);
+    let MarketData::TradeEvent(trade) = &input else {
+        panic!("the value remains a trade")
     };
     assert!(
         trade
@@ -379,11 +373,11 @@ fn timestamp_mutation_rebases_children_and_remains_arrow_valid() {
             .all(|execution| execution.get_currunix() == 52)
     );
     assert_eq!(trade.executions()[0].get_execunix(), Some(47));
-    assert_eq!(input.currunix(), 52);
+    assert_eq!(trade.get_currunix(), 52);
     assert_eq!(input.book(), None, "a trade carries no book control");
 
-    let encoded = BookInput::arrow_reader([input.clone()], Some(1), None).unwrap();
-    let decoded = BookInput::from_arrow_reader(encoded)
+    let encoded = MarketData::arrow_reader([input.clone()], Some(1), None).unwrap();
+    let decoded = MarketData::from_arrow_reader(encoded)
         .unwrap()
         .next()
         .unwrap()

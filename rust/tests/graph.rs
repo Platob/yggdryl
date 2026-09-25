@@ -8,12 +8,18 @@ mod book;
 mod column;
 #[path = "graph/element.rs"]
 mod element;
-#[path = "graph/holders.rs"]
-mod holders;
+#[path = "graph/facts.rs"]
+mod facts;
 #[path = "graph/iterator.rs"]
 mod iterator;
+#[path = "graph/kind.rs"]
+mod kind;
+#[path = "graph/market.rs"]
+mod market;
 #[path = "graph/market_column.rs"]
 mod market_column;
+#[path = "graph/market_data.rs"]
+mod market_data;
 #[path = "graph/operation.rs"]
 mod operation;
 #[path = "graph/operation_column.rs"]

@@ -5,8 +5,7 @@ use std::sync::Arc;
 use super::{SoleMessage, committed_registry, fixed_codec};
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
-    Book, BookInput, Element, Event, Market, MarketOperation, MdUpdateAction, Operation,
-    OperationKind,
+    BookEvent, Element, Event, Market, MarketData, MarketKind, MdUpdateAction, Operation,
 };
 use yggdryl::{
     DataType, Decimal18, Error, Field, FixCode, FixMsg, FixRegistry, Scalar, StructType,
@@ -23,39 +22,78 @@ fn text(value: Option<Decimal18>) -> Option<String> {
     value.map(|held| held.to_string())
 }
 
-/// The operation an input is; a trade or a control is a fixture mistake.
-fn operation_of(input: &BookInput) -> &MarketOperation {
-    match input {
-        BookInput::MarketOperation(operation) => operation,
-        other => panic!("expected an operation, got {other:?}"),
+/// A dated operation, read through the traits it answers.
+trait Stated: Event + Operation {}
+
+impl<T: Event + Operation + ?Sized> Stated for T {}
+
+/// The dated order, quote or execution a value is; a trade or a control is
+/// a fixture mistake.
+fn operation_of(value: &MarketData) -> &dyn Stated {
+    match value {
+        MarketData::OrderEvent(operation) => operation,
+        MarketData::QuoteEvent(operation) => operation,
+        MarketData::ExecutionEvent(operation) => operation,
+        other => panic!("expected an operation event, got {}", other.kind().as_str()),
     }
 }
 
-/// The book scope an input states.
-fn scope_of(input: &BookInput) -> &str {
-    input
+/// The event a value is: an operation, a trade or a snapshot control.
+fn event_of(value: &MarketData) -> &dyn Event {
+    match value {
+        MarketData::OrderEvent(event) => event,
+        MarketData::QuoteEvent(event) => event,
+        MarketData::ExecutionEvent(event) => event,
+        MarketData::TradeEvent(event) => event,
+        MarketData::SnapshotEvent(event) => event,
+        other => panic!("expected an event, got {}", other.kind().as_str()),
+    }
+}
+
+/// The instant a value happened at.
+fn currunix(value: &MarketData) -> i64 {
+    event_of(value).get_currunix()
+}
+
+/// The book scope a value states.
+fn scope_of(value: &MarketData) -> &str {
+    value
         .book()
         .and_then(|book| book.scope.as_deref())
         .expect("a scoped entry")
 }
 
+/// Whether a value is part of a full-snapshot replacement.
+fn is_full_snapshot(value: &MarketData) -> bool {
+    value.book().and_then(|book| book.action) == Some(MdUpdateAction::Snapshot)
+}
+
+/// The books a lifted `marketdata` stream holds, each a `book_event` row.
+fn books_of(reader: yggdryl::arrow::BatchReader) -> Vec<BookEvent> {
+    MarketData::from_arrow_reader(reader)
+        .unwrap()
+        .map(|value| BookEvent::try_from(value?))
+        .collect::<yggdryl::Result<Vec<_>>>()
+        .unwrap()
+}
+
 #[test]
 fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip() {
-    let cases: &[(&[u8], i32, OperationKind)] = &[
+    let cases: &[(&[u8], i32, MarketKind)] = &[
         (
             b"8=FIX.4.4|35=D|11=C1|55=AAPL|54=1|44=100|38=5|10=0|",
             10,
-            OperationKind::Order,
+            MarketKind::OrderEvent,
         ),
         (
             b"8=FIX.4.4|35=S|117=Q1|55=AAPL|132=99|134=7|133=101|135=8|10=0|",
             14,
-            OperationKind::Quote,
+            MarketKind::QuoteEvent,
         ),
         (
             b"8=FIX.4.4|35=8|17=E1|37=O1|55=AAPL|31=100|32=2|150=F|10=0|",
             8,
-            OperationKind::Execution,
+            MarketKind::ExecutionEvent,
         ),
     ];
 
@@ -71,12 +109,16 @@ fn direct_market_categories_move_into_their_operation_kind_and_arrow_round_trip(
         let operations = source.into_market_operations().expect("a market category");
         assert_eq!(operations.len(), 1);
         let operation = operation_of(&operations[0]);
-        assert_eq!(operation.kind(), *kind, "{line:?}");
+        assert_eq!(operations[0].kind(), *kind, "{line:?}");
         assert_eq!(operation.get_marketoperationid(), Some(*operation_id));
-        assert_eq!(operation.book(), None, "a direct message is no book entry");
+        assert_eq!(
+            operations[0].book(),
+            None,
+            "a direct message is no book entry"
+        );
         let expected = operations[0].clone();
-        let encoded = BookInput::arrow_reader(operations, Some(1), None).unwrap();
-        let actual = BookInput::from_arrow_reader(encoded)
+        let encoded = MarketData::arrow_reader(operations, Some(1), None).unwrap();
+        let actual = MarketData::from_arrow_reader(encoded)
             .unwrap()
             .next()
             .unwrap()
@@ -93,7 +135,7 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     .into_market_operations()
     .expect("an actual trade with two sides");
 
-    let [BookInput::Trade(trade)] = operations.as_slice() else {
+    let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
         panic!("one composite trade")
     };
     assert_eq!(trade.get_marketoperationid(), Some(21));
@@ -109,7 +151,7 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     };
     assert!(buy.get_side().is_bid());
     assert!(sell.get_side().is_ask());
-    assert_eq!(buy.kind(), OperationKind::Execution);
+    assert_eq!(buy.kind(), MarketKind::Execution);
     // Each side keeps `SideLastQty(1009)` as its last executed quantity
     // only, beside the trade's last executed price: a side states no
     // price and no quantity, and nothing invents one.
@@ -135,8 +177,8 @@ fn trade_capture_is_one_trade_with_exact_sided_executions_and_arrow_round_trip()
     assert_ne!(buy.get_crosscode(), sell.get_crosscode());
 
     let expected = operations[0].clone();
-    let encoded = BookInput::arrow_reader(operations, Some(1), None).unwrap();
-    let actual = BookInput::from_arrow_reader(encoded)
+    let encoded = MarketData::arrow_reader(operations, Some(1), None).unwrap();
+    let actual = MarketData::from_arrow_reader(encoded)
         .unwrap()
         .next()
         .unwrap()
@@ -168,7 +210,7 @@ fn only_initial_trade_capture_reports_decompose_without_requiring_exec_type() {
     let operations = initial
         .into_market_operations()
         .expect("an initial AE is an actual trade without ExecType");
-    let [BookInput::Trade(trade)] = operations.as_slice() else {
+    let [MarketData::TradeEvent(trade)] = operations.as_slice() else {
         panic!("one composite trade")
     };
     assert_eq!(trade.get_execunix(), Some(expected_execunix));
@@ -203,7 +245,7 @@ fn stable_trade_side_ids_make_group_order_irrelevant_to_identity() {
     .into_market_operations()
     .unwrap();
 
-    let ([BookInput::Trade(first)], [BookInput::Trade(second)]) =
+    let ([MarketData::TradeEvent(first)], [MarketData::TradeEvent(second)]) =
         (first.as_slice(), second.as_slice())
     else {
         panic!("two composite trades")
@@ -224,7 +266,7 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
     )
     .into_market_operations()
     .unwrap();
-    let ([BookInput::Trade(first)], [BookInput::Trade(second)]) =
+    let ([MarketData::TradeEvent(first)], [MarketData::TradeEvent(second)]) =
         (first.as_slice(), second.as_slice())
     else {
         panic!("two anonymous composite trades")
@@ -237,7 +279,7 @@ fn anonymous_trade_sides_are_order_independent_and_stable_id_tags_do_not_collide
     )
     .into_market_operations()
     .expect("the identifier tag distinguishes equal values");
-    let [BookInput::Trade(tagged)] = tagged.as_slice() else {
+    let [MarketData::TradeEvent(tagged)] = tagged.as_slice() else {
         panic!("one tagged composite trade")
     };
     assert_ne!(
@@ -273,10 +315,7 @@ fn lifecycled_trade_capture_streams_its_sided_executions_into_books() {
     let reader = codec
         .book_arrow_reader(codec.lifecycle([trade]), 0, false)
         .expect("a lifecycled trade book stream");
-    let books = Book::from_arrow_reader(reader)
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let books = books_of(reader);
 
     assert_eq!(books.len(), 1);
     assert_eq!(books[0].executions().len(), 2);
@@ -305,7 +344,7 @@ fn msgtype_edits_resettle_derived_operation_ids_and_leave_stated_ids_alone() {
     assert_eq!(derived.get_marketoperationid(), Some(14));
     assert!(matches!(
         derived.market_operations().unwrap().as_slice(),
-        [BookInput::MarketOperation(operation)] if operation.kind() == OperationKind::Quote
+        [MarketData::QuoteEvent(_)]
     ));
 
     assert_eq!(derived.remove(35).unwrap(), Some(Scalar::from("S")));
@@ -441,10 +480,7 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     let reader = codec
         .book_arrow_reader([snapshot, update], 0, false)
         .expect("a centralized FIX book reader");
-    let books = Book::from_arrow_reader(reader)
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let books = books_of(reader);
 
     assert_eq!(books.len(), 2);
     assert_eq!(books[0].bid().best_price().unwrap().to_string(), "100");
@@ -455,12 +491,7 @@ fn codec_streams_fix_messages_through_books_into_arrow_with_coherent_prices() {
     assert_eq!(text(books[1].get_price()).as_deref(), Some("101.5"));
     assert_eq!(books[1].executions().len(), 1);
     assert_eq!(
-        books[1]
-            .bid()
-            .live()
-            .next()
-            .unwrap()
-            .get_marketoperationid(),
+        operation_of(books[1].bid().live().next().unwrap()).get_marketoperationid(),
         Some(3)
     );
     assert_eq!(books[1].executions()[0].get_marketoperationid(), Some(3));
@@ -494,25 +525,19 @@ fn codec_book_admission_skips_noncontributing_records_between_market_events() {
         .flat_map(|(ignored, admitted)| [ignored, admitted])
         .chain(ignored.iter().cloned())
         .collect::<Vec<_>>();
-    let expected = Book::from_arrow_reader(codec.book_arrow_reader(admitted, 0, false).unwrap())
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let expected = books_of(codec.book_arrow_reader(admitted, 0, false).unwrap());
     assert_eq!(expected.len(), 6);
-    assert_eq!(expected[0].bid().deltas()[0].kind(), OperationKind::Order);
-    assert_eq!(expected[1].ask().deltas()[0].kind(), OperationKind::Quote);
+    assert_eq!(expected[0].bid().deltas()[0].kind(), MarketKind::OrderEvent);
+    assert_eq!(expected[1].ask().deltas()[0].kind(), MarketKind::QuoteEvent);
     assert_eq!(expected[2].executions().len(), 1);
     assert_eq!(expected[5].executions().len(), 1);
-    let actual = Book::from_arrow_reader(codec.book_arrow_reader(mixed, 0, false).unwrap())
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let actual = books_of(codec.book_arrow_reader(mixed, 0, false).unwrap());
     assert_eq!(actual, expected);
 
     let mut empty = codec.book_arrow_reader(ignored.clone(), 0, false).unwrap();
     assert!(empty.next().is_none());
     for source in ignored {
-        assert!(BookInput::try_from(source.clone()).is_err());
+        assert!(MarketData::try_from(source.clone()).is_err());
         let mut strict = yggdryl::fix::FixMarketIterator::new([source].into_iter());
         assert!(strict.next().unwrap().is_err());
         assert!(strict.next().is_none());
@@ -580,10 +605,7 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
-    let books = Book::from_arrow_reader(reader)
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let books = books_of(reader);
 
     assert_eq!(books.len(), 3);
     assert_eq!(books[0].bid().len(), 1);
@@ -597,8 +619,9 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         books[1].bid().live().next().unwrap(),
         books[2].ask().live().next().unwrap(),
     ];
-    for (index, (book, operation)) in books.iter().zip(versions).enumerate() {
-        assert_eq!(operation.kind(), OperationKind::Order);
+    for (index, (book, version)) in books.iter().zip(versions).enumerate() {
+        assert_eq!(version.kind(), MarketKind::OrderEvent);
+        let operation = operation_of(version);
         assert_eq!(book.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(operation.get_altids().get(ENTRY_ID), Some("B1"));
@@ -627,16 +650,17 @@ fn partial_fix_order_versions_keep_kind_links_and_lanes_through_book_arrow() {
         }
     }
     for pair in versions.windows(2) {
-        assert_eq!(pair[1].get_prevuuid(), Some(pair[0].get_curruuid()));
-        assert_eq!(pair[1].get_prevunix(), Some(pair[0].get_currunix()));
-        assert_eq!(pair[1].get_prevpx(), pair[0].get_price());
-        assert_eq!(pair[1].get_prevqty(), pair[0].get_quantity());
+        let (before, after) = (operation_of(pair[0]), operation_of(pair[1]));
+        assert_eq!(after.get_prevuuid(), Some(before.get_curruuid()));
+        assert_eq!(after.get_prevunix(), Some(before.get_currunix()));
+        assert_eq!(after.get_prevpx(), before.get_price());
+        assert_eq!(after.get_prevqty(), before.get_quantity());
     }
-    assert_eq!(versions[0].get_prevuuid(), None);
+    assert_eq!(operation_of(versions[0]).get_prevuuid(), None);
     // The book control each entry stated rides with it, typed: what the
     // partial update said, and only that.
     assert_eq!(
-        versions[0].action(),
+        versions[0].book().and_then(|book| book.action),
         Some(MdUpdateAction::Snapshot),
         "a full refresh entry"
     );
@@ -668,24 +692,25 @@ fn fix_delete_without_order_id_keeps_terminal_order_delta_through_book_arrow() {
     ]
     .map(|line| codec.sole_line(line).unwrap());
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
-    let books = Book::from_arrow_reader(reader)
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let books = books_of(reader);
 
     assert_eq!(books.len(), 2);
-    let previous = books[0].bid().live().next().unwrap();
+    let previous = operation_of(books[0].bid().live().next().unwrap());
     assert!(books[1].bid().is_empty());
     assert!(books[1].ask().is_empty());
     let [deleted] = books[1].bid().deltas() else {
         panic!("one terminal bid delta")
     };
-    assert_eq!(deleted.kind(), OperationKind::Order);
+    assert_eq!(deleted.kind(), MarketKind::OrderEvent);
+    assert_eq!(
+        deleted.book().and_then(|book| book.action),
+        Some(MdUpdateAction::Delete)
+    );
+    let deleted = operation_of(deleted);
     assert!(!deleted.get_state().is_live());
     assert!(deleted.get_side().is_bid());
     assert_eq!(deleted.get_ticker(), Some("AAPL"));
     assert_eq!(deleted.get_altids().get(ENTRY_ID), Some("B1"));
-    assert_eq!(deleted.action(), Some(MdUpdateAction::Delete));
     assert_eq!(deleted.get_altids().get("ORDERID"), Some("O1"));
     assert_eq!(deleted.get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(deleted.get_prevunix(), Some(previous.get_currunix()));
@@ -713,17 +738,14 @@ fn lifecycled_order_versions_inherit_symbol_before_book_partitioning() {
     assert_eq!(messages[1].get_prevuuid(), Some(messages[0].get_curruuid()));
 
     let reader = codec.book_arrow_reader(messages, 0, false).unwrap();
-    let books = Book::from_arrow_reader(reader)
-        .unwrap()
-        .collect::<yggdryl::Result<Vec<_>>>()
-        .unwrap();
+    let books = books_of(reader);
     assert_eq!(books.len(), 2);
     for (index, book) in books.iter().enumerate() {
         assert_eq!(book.get_ticker(), Some("AAPL"));
         assert_eq!(book.bid().len(), 1);
         assert!(book.ask().is_empty());
         let operation = book.bid().live().next().unwrap();
-        assert_eq!(operation.kind(), OperationKind::Order);
+        assert_eq!(operation.kind(), MarketKind::OrderEvent);
         assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(
             text(operation.get_price()).as_deref(),
@@ -745,10 +767,10 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
     .expect("a full refresh");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
-    assert_eq!(operations[0].kind(), OperationKind::Quote);
-    assert_eq!(operations[1].kind(), OperationKind::Order);
-    assert_eq!(operations[2].kind(), OperationKind::Execution);
+    let operations: Vec<&dyn Stated> = inputs.iter().map(operation_of).collect();
+    assert_eq!(inputs[0].kind(), MarketKind::QuoteEvent);
+    assert_eq!(inputs[1].kind(), MarketKind::OrderEvent);
+    assert_eq!(inputs[2].kind(), MarketKind::ExecutionEvent);
     assert!(operations[0].get_side().is_bid());
     assert!(operations[1].get_side().is_ask());
     assert!(operations[0].get_crosscode().ends_with("|MDEntryID=B1"));
@@ -763,27 +785,25 @@ fn full_refresh_expands_equal_time_entries_stably_and_types_each_one() {
         Some("REQ-1"),
         "the request the message answers names every entry"
     );
-    for (index, operation) in operations.iter().enumerate() {
-        let book = operation
-            .book()
-            .expect("a full refresh entry is a book entry");
+    for (index, (input, operation)) in inputs.iter().zip(&operations).enumerate() {
+        let book = input.book().expect("a full refresh entry is a book entry");
         assert_eq!(book.action, Some(MdUpdateAction::Snapshot));
-        assert!(operation.is_full_snapshot());
+        assert!(is_full_snapshot(input));
         assert_eq!(
             book.position,
             (index < 2).then_some(1),
             "the trade states no position"
         );
-        assert!(operation.scope().contains("Symbol=AAPL"));
-        assert!(operation.scope().contains("MDReqID=REQ-1"));
+        assert!(scope_of(input).contains("Symbol=AAPL"));
+        assert!(scope_of(input).contains("MDReqID=REQ-1"));
         assert!(operation.get_state().is_live());
     }
     assert_eq!(
-        operations[0].book().and_then(|book| book.entry_px),
+        inputs[0].book().and_then(|book| book.entry_px),
         Some("100".parse().unwrap())
     );
     assert_eq!(
-        operations[0].book().and_then(|book| book.entry_size),
+        inputs[0].book().and_then(|book| book.entry_size),
         Some("10".parse().unwrap())
     );
 }
@@ -796,7 +816,7 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
     .into_market_operations()
     .unwrap();
     assert!(scope_of(&initial[0]).contains("MDReqID=REQ-1"));
-    let mut book = Book::new(initial[0].currunix(), "AAPL");
+    let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
     book.add_operations(initial).unwrap();
 
     let empty_other_request =
@@ -804,7 +824,7 @@ fn lifted_request_id_keeps_full_snapshot_partitions_distinct() {
             .into_market_operations()
             .unwrap();
     assert!(scope_of(&empty_other_request[0]).contains("MDReqID=REQ-2"));
-    assert!(empty_other_request[0].is_full_snapshot());
+    assert!(is_full_snapshot(&empty_other_request[0]));
     book.add_operations(empty_other_request).unwrap();
     assert_eq!(book.bid().len(), 1);
 }
@@ -827,21 +847,21 @@ fn an_operation_names_its_entry_beside_the_message_identifiers_and_refuses_a_key
         Some("REQ-9")
     );
 
-    let input = BookInput::try_from(source).unwrap();
+    let input = MarketData::try_from(source).unwrap();
     let operation = operation_of(&input);
     let altids = operation.get_altids();
     assert_eq!(altids.get(ENTRY_ID), Some("B1"));
     assert_eq!(altids.get(ENTRY_REF_ID), None);
     assert_eq!(altids.get("MDREQID"), Some("REQ-9"));
     assert_eq!(altids.get("foreign"), None);
-    let book = operation.book().expect("an entry states its control");
+    let book = input.book().expect("an entry states its control");
     assert_eq!(book.action, Some(MdUpdateAction::Change));
     assert_eq!(
         book.entry_size.map(|held| held.to_string()),
         Some("11".to_owned())
     );
     assert_eq!(book.entry_px, None, "the entry restated no price");
-    assert!(operation.scope().contains("MDReqID=REQ-9"));
+    assert!(scope_of(&input).contains("MDReqID=REQ-9"));
 }
 
 #[test]
@@ -853,15 +873,12 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     .expect("incremental operations");
 
     assert_eq!(inputs.len(), 3);
-    let operations: Vec<&MarketOperation> = inputs.iter().map(operation_of).collect();
-    assert_eq!(operations[0].action(), Some(MdUpdateAction::New));
-    assert_eq!(operations[1].action(), Some(MdUpdateAction::Change));
-    assert_eq!(operations[2].action(), Some(MdUpdateAction::Delete));
-    assert!(
-        operations
-            .iter()
-            .all(|operation| !operation.is_full_snapshot())
-    );
+    let operations: Vec<&dyn Stated> = inputs.iter().map(operation_of).collect();
+    let action = |input: &MarketData| input.book().and_then(|book| book.action);
+    assert_eq!(action(&inputs[0]), Some(MdUpdateAction::New));
+    assert_eq!(action(&inputs[1]), Some(MdUpdateAction::Change));
+    assert_eq!(action(&inputs[2]), Some(MdUpdateAction::Delete));
+    assert!(inputs.iter().all(|input| !is_full_snapshot(input)));
     assert!(operations[0].get_state().is_live());
     assert!(operations[1].get_state().is_live());
     assert!(!operations[2].get_state().is_live());
@@ -869,16 +886,16 @@ fn incremental_actions_keep_the_wire_action_and_terminal_delete_state() {
     assert_eq!(operations[0].get_altids().get(ENTRY_ID), Some("B1"));
     assert_eq!(operations[2].get_altids().get(ENTRY_ID), None);
     assert_eq!(operations[2].get_altids().get(ENTRY_REF_ID), Some("B1"));
-    assert_eq!(operations[1].book().and_then(|book| book.position), Some(1));
+    assert_eq!(inputs[1].book().and_then(|book| book.position), Some(1));
 }
 
 #[test]
 fn fallback_identity_is_scoped_typed_and_stable_across_price_changes() {
-    let input = BookInput::try_from(message(
+    let input = MarketData::try_from(message(
         b"8=FIX.4.4|35=X|1301=XNAS|1300=NASDAQ|268=1|279=0|269=1|55=AAPL|1023=2|290=3|270=101.25|271=4|10=0|",
     ))
     .expect("one operation");
-    let code = input.event().get_crosscode();
+    let code = input.get_crosscode();
     assert!(code.contains("Symbol=AAPL"), "{code}");
     assert!(code.contains("MarketID=XNAS"), "{code}");
     assert!(code.contains("MDEntryType=1"), "{code}");
@@ -914,7 +931,7 @@ fn unsupported_market_shapes_name_the_exact_fix_path() {
 
 #[test]
 fn singular_conversion_refuses_a_multi_entry_book_message() {
-    let error = BookInput::try_from(message(
+    let error = MarketData::try_from(message(
         b"8=FIX.4.4|35=W|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=101|271=11|10=0|",
     ))
     .expect_err("two entries are not one operation");
@@ -934,20 +951,20 @@ fn market_entry_clock_dates_each_operation_and_precisely_dates_an_execution() {
     .expect("entry clocks");
 
     assert_eq!(operations.len(), 2);
-    assert_eq!(operations[0].currunix(), 1_789_896_600_123_456_789);
-    assert_eq!(operations[1].currunix(), 1_789_896_600_223_456_789);
+    assert_eq!(currunix(&operations[0]), 1_789_896_600_123_456_789);
+    assert_eq!(currunix(&operations[1]), 1_789_896_600_223_456_789);
     assert_eq!(
-        operations[1].event().get_execunix(),
+        event_of(&operations[1]).get_execunix(),
         Some(1_789_896_600_223_456_789)
     );
 
-    let snapshot = BookInput::try_from(message(
+    let snapshot = MarketData::try_from(message(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=1|269=0|278=B1|270=100|271=10|272=20260920|273=09:30:00.123456789|10=0|",
     ))
     .expect("one full-snapshot entry");
-    assert_eq!(snapshot.currunix(), 1_789_984_800_000_000_000);
+    assert_eq!(currunix(&snapshot), 1_789_984_800_000_000_000);
     assert_eq!(
-        snapshot.event().get_creaunix(),
+        event_of(&snapshot).get_creaunix(),
         Some(1_789_896_600_123_456_789)
     );
 }
@@ -975,7 +992,7 @@ fn borrowed_and_owned_book_expansion_share_stable_effective_time_order() {
         assert!(
             operations
                 .windows(2)
-                .all(|pair| { pair[0].currunix() <= pair[1].currunix() })
+                .all(|pair| { currunix(&pair[0]) <= currunix(&pair[1]) })
         );
     }
 }
@@ -985,7 +1002,7 @@ fn incremental_changes_inherit_price_or_size_the_fix_entry_did_not_restate() {
     let snapshot = message(b"8=FIX.4.4|35=W|55=AAPL|268=1|269=0|278=B1|270=100|271=10|10=0|")
         .into_market_operations()
         .unwrap();
-    let mut book = Book::new(snapshot[0].currunix(), "AAPL");
+    let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let size_only = message(b"8=FIX.4.4|35=X|55=AAPL|268=1|279=1|269=0|278=B1|271=11|10=0|")
@@ -1012,8 +1029,8 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     )
     .into_market_operations()
     .unwrap();
-    let identity = snapshot[0].event().get_crosscode().to_owned();
-    let mut book = Book::new(snapshot[0].currunix(), "AAPL");
+    let identity = snapshot[0].get_crosscode().to_owned();
+    let mut book = BookEvent::new(currunix(&snapshot[0]), "AAPL");
     book.add_operations(snapshot).unwrap();
 
     let change = message(
@@ -1021,7 +1038,7 @@ fn anonymous_incremental_changes_use_stable_position_identity_or_refuse_ambiguit
     )
     .into_market_operations()
     .unwrap();
-    assert_eq!(change[0].event().get_crosscode(), identity);
+    assert_eq!(change[0].get_crosscode(), identity);
     book.add_operations(change).unwrap();
     assert_eq!(book.bid().len(), 1);
     assert_eq!(
@@ -1046,24 +1063,58 @@ fn an_empty_full_refresh_clears_its_scope() {
     )
     .into_market_operations()
     .unwrap();
-    let mut book = Book::new(initial[0].currunix(), "AAPL");
+    let mut book = BookEvent::new(currunix(&initial[0]), "AAPL");
     book.add_operations(initial).unwrap();
     assert_eq!(book.bid().len(), 1);
 
     let empty = message(b"8=FIX.4.4|35=W|52=20260921-10:00:01|55=AAPL|268=0|10=0|")
         .into_market_operations()
         .unwrap();
-    assert!(matches!(empty.as_slice(), [BookInput::Snapshot(_)]));
-    assert!(empty[0].is_full_snapshot());
-    assert_eq!(empty[0].event().get_ticker(), Some("AAPL"));
+    assert!(matches!(empty.as_slice(), [MarketData::SnapshotEvent(_)]));
+    assert!(is_full_snapshot(&empty[0]));
+    assert_eq!(empty[0].get_ticker(), Some("AAPL"));
     book.add_operations(empty).unwrap();
     assert!(book.bid().is_empty());
     assert!(book.ask().is_empty());
 }
 
+/// A FIX event always states an operation id (`derived_marketoperationid`),
+/// but a snapshot control states no operation of its own: it is a
+/// [`yggdryl::graph::SnapshotEvent`], which holds no operation fact, its row
+/// states none, and an Arrow round trip returns exactly what went in.
+#[test]
+fn an_empty_full_refresh_states_no_operation_and_round_trips_through_arrow() {
+    let expected = message(b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=0|10=0|")
+        .into_market_operations()
+        .unwrap();
+    assert!(matches!(
+        expected.as_slice(),
+        [MarketData::SnapshotEvent(_)]
+    ));
+
+    use arrow_array::Array as _;
+    let mut encoded = MarketData::arrow_reader(expected.clone(), Some(1), None).unwrap();
+    let batch = encoded.next().unwrap().unwrap();
+    assert!(encoded.next().is_none());
+    assert_eq!(
+        batch
+            .column_by_name("marketoperationid")
+            .unwrap()
+            .null_count(),
+        1,
+        "the row states no operation id"
+    );
+    let encoded = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+    let actual = MarketData::from_arrow_reader(encoded)
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    assert_eq!(actual, expected);
+}
+
 #[test]
 fn book_scope_escapes_external_delimiters_injectively() {
-    let input = BookInput::try_from(message(
+    let input = MarketData::try_from(message(
         b"8=FIX.4.4|35=W|55=A=B%X|268=1|269=0|278=B1|270=100|271=1|10=0|",
     ))
     .unwrap();

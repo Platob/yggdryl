@@ -128,7 +128,7 @@ The verb is `parse`, and no reader takes a flag. A parse builds the whole messag
 | `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one for a JSON document, none for a line that states no message |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
 | `parse_text_line` | one [decoded line](../media/index.md#plain-text), its body, its [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) and its clock, the [sending clock](#every-message-is-dated) of a message stating none | `FixMessages` |
-| `parse_text_lines` | any iterator of owned or borrowed lines, or `Result`s of them | a lazy iterator of `Result<FixMsg>`; lines are borrowed without cloning and a source error is moved into the stream unchanged |
+| `parse_text_lines` | any iterator of owned or borrowed lines, or `Result`s of them | a lazy iterator of `Result<FixMsg>`; an owned line is never cloned, a borrowed one only to cross to a worker thread, and a source error is moved into the stream unchanged |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
 | `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg`; a body holding [a second frame](decode.md#a-line-yields-none-one-or-many-messages) is refused |
 
@@ -681,9 +681,9 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     assert sent.header().stated_sendingtime
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
     assert sent.currunix == 1_787_308_199_900_000_000
-    assert sent.event().creaunix == sent.currunix
+    assert sent.creaunix == sent.currunix
     assert sent.by_tag(60).as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
-    assert sent.event().snapunix is None, "a read is not a snapshot"
+    assert sent.snapunix is None, "a read is not a snapshot"
     assert sent.into_text("|").startswith("8=FIX.4.2|35=D|52=20260821-10:30:00.415|")
     ```
 
@@ -735,9 +735,9 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
       .next().value
     assert.equal(sent.header().beginstring, 'FIX.4.2')
     assert.equal(sent.currunix, 1_787_308_199_900_000_000n)
-    assert.equal(sent.event().creaunix, sent.currunix)
+    assert.equal(sent.creaunix, sent.currunix)
     assert.equal(sent.byTag(60).asJs().getTime(), Date.UTC(2026, 7, 21, 10, 29, 59, 900))
-    assert.equal(sent.event().snapunix, null, 'a read is not a snapshot')
+    assert.equal(sent.snapunix, null, 'a read is not a snapshot')
     assert.ok(sent.intoText('|').startsWith('8=FIX.4.2|35=D|52=20260821-10:30:00.415|'))
     ```
 

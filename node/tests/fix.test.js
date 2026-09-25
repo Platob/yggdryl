@@ -24,9 +24,18 @@ let committedRegistry
   const path = require('node:path')
   const test = require('node:test')
 
-  const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, xxhash } = require('yggdryl')
+  const { DataType, Field, IOBase, MimeType, Scalar, TextLine, Url, fields, fix, graph, xxhash } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
+
+  // The one graph leaf a message expands to: an order, a quote, an
+  // execution or an initial trade report is exactly one `MarketData`.
+  function operationOf(message) {
+    const operations = message.marketOperations()
+    assert.equal(operations.length, 1)
+    assert.ok(operations[0] instanceof graph.MarketData)
+    return operations[0].intoLeaf()
+  }
 
 
   // A codec that reads every message type. The corpora below are captures, and
@@ -1341,7 +1350,7 @@ let committedRegistry
     assert.equal(message.side, 'BUY')
     assert.equal(message.crosscode, 'C-1')
     assert.equal(message.currunix, SENDING_NS)
-    assert.equal(message.event().creaunix, SENDING_NS)
+    assert.equal(message.creaunix, SENDING_NS)
     assert.equal(message.state, '00UNKNOWN')
     assert.equal(message.seqnum, 0)
     assert.equal(message.prevuuid, null)
@@ -1426,7 +1435,10 @@ let committedRegistry
     const message = fixedCodec(seed()).parseFixLine(Buffer.from(
       '8=FIX.4.4|35=D|49=SENDER|56=TARGET|34=7|50=TRADER|52=20240102-10:15:30|1=ACC-1|11=A1|37=O-1|55=AAPL|22=4|48=US0378331005|54=1|15=USD|38=100|996=Shares|44=10.5|31=10.25|32=40|6=10.3|14=40|151=60|140=9.75|58=note|60=20240102-10:15:31|10=0|',
     ))
-    const event = message.event()
+    // The message expands to the one order it states, a typed leaf answering
+    // every fact the graph vocabulary names.
+    const event = operationOf(message)
+    assert.ok(event instanceof graph.OrderEvent)
 
     assert.equal(event.currunix, SENDING_NS + 1_000_000_000n)
     assert.equal(event.creaunix, event.currunix)
@@ -1466,17 +1478,23 @@ let committedRegistry
     assert.deepEqual(event.accountids, { ACCOUNT: 'ACC-1' })
     assert.deepEqual(event.userids, { SENDERSUBID: 'TRADER' })
     assert.deepEqual(event.altids, { CLORDID: 'A1', ORDERID: 'O-1' })
-    assert.deepEqual(event.bid, {
-      price: '10.5', spotrate: null, forwardpoints: null, currency: 'USD', quantity: '100', unit: 'Shares',
-    })
+    // The lane crosses whole as a typed `Lane`, never a plain object.
+    assert.equal(event.bid.price, '10.5')
+    assert.equal(event.bid.spotrate, null)
+    assert.equal(event.bid.forwardpoints, null)
+    assert.equal(event.bid.currency, 'USD')
+    assert.equal(event.bid.quantity, '100')
+    assert.equal(event.bid.unit, 'Shares')
     assert.equal(event.ask, null)
     // The message answers the same facts as getters.
     for (const name of [
       'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'metadata',
-      'accountids', 'userids', 'altids', 'bid', 'ask',
+      'accountids', 'userids', 'altids',
     ]) {
       assert.deepEqual(message[name], event[name], name)
     }
+    assert.equal(message.ask, event.ask)
+    assert.ok(message.bid.equals(event.bid))
     // The retired spellings are gone rather than aliased.
     for (const gone of [
       'identifiers', 'isincode', 'cusipcode', 'sedolcode', 'bloombergcode', 'figicode', 'symbolticker',
@@ -1561,11 +1579,12 @@ let committedRegistry
     assert.notEqual(other.curruuid, message.curruuid)
     assert.equal(other.crossuuid, message.crossuuid)
     assert.equal(other.crosshashcode, message.crosshashcode)
-    // The event states the same facts the getters do.
-    const event = message.event()
-    assert.equal(event.curruuid, message.curruuid)
+    // The order the message expands to states the same facts the getters
+    // do; its own identity digests the leaf it is, the kind included.
+    const event = operationOf(message)
+    assert.ok(event instanceof graph.OrderEvent)
+    assert.notEqual(event.curruuid, message.curruuid)
     assert.equal(event.crossuuid, message.crossuuid)
-    assert.equal(event.currhashcode, message.currhashcode)
     assert.equal(event.crosshashcode, message.crosshashcode)
     assert.equal(event.crosscode, message.crosscode)
     assert.deepEqual(event.altids, message.altids)
@@ -1582,9 +1601,12 @@ let committedRegistry
     assert.equal('qty' in event, false)
     // A buy of a hundred at no price fills the bid lane's size and nothing
     // else; the other lane is the other party's.
-    assert.deepEqual(event.bid, {
-      price: null, spotrate: null, forwardpoints: null, currency: null, quantity: '100', unit: null,
-    })
+    assert.equal(event.bid.price, null)
+    assert.equal(event.bid.spotrate, null)
+    assert.equal(event.bid.forwardpoints, null)
+    assert.equal(event.bid.currency, null)
+    assert.equal(event.bid.quantity, '100')
+    assert.equal(event.bid.unit, null)
     assert.equal(event.ask, null)
     assert.deepEqual(event.securityids, {})
     for (const code of ['cficode', 'miccode']) {
@@ -1996,7 +2018,7 @@ let committedRegistry
     assert.equal(pairs.header().sendingtime, SENDING_NS)
     assert.ok(pairs.byTag(52).equals(SENDING))
     assert.equal(pairs.currunix, SENDING_NS)
-    assert.equal(pairs.event().creaunix, SENDING_NS)
+    assert.equal(pairs.creaunix, SENDING_NS)
     assert.deepEqual(flat(pairs), [[55, 'symbol', 'AAPL']])
     assert.equal(pairs.intoText('|'), '8=FIX.4.4|55=AAPL|')
     // The stated clock is the one that goes back out and the reference the
@@ -2095,7 +2117,7 @@ let committedRegistry
     // A value no standard closes answers nothing rather than a guess.
     const opaque = reader.parseLine(Buffer.from('8=FIX.4.4|35=D|11=A|48=HIGH_TOUCH|10=0|')).next().value
     assert.equal(opaque.getByTag(22), null)
-    assert.deepEqual(opaque.event().securityids, {})
+    assert.deepEqual(opaque.securityids, {})
   })
 
   test('the official time delay bounds which clock dates the message', () => {
@@ -2114,7 +2136,7 @@ let committedRegistry
       Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|'),
     )
     assert.equal(near.currunix, 1_787_308_199_900_000_000n)
-    assert.equal(near.event().creaunix, near.currunix)
+    assert.equal(near.creaunix, near.currunix)
     // Five seconds out is a different event of the session's day.
     const apart = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|'),
@@ -2164,11 +2186,14 @@ let committedRegistry
     assert.equal(bid.quantity, '200')
     assert.equal(bid.currency, 'USD')
     assert.ok(!bid.intoText('|').includes('|54='))
-    // The lane itself crosses whole, each slot as stated and null where
-    // none is, and the other lane is the other party's.
-    assert.deepEqual(bid.bid, {
-      price: '101.5', spotrate: null, forwardpoints: null, currency: 'USD', quantity: '200', unit: null,
-    })
+    // The lane itself crosses whole as a typed `Lane`, each slot as stated
+    // and null where none is, and the other lane is the other party's.
+    assert.equal(bid.bid.price, '101.5')
+    assert.equal(bid.bid.spotrate, null)
+    assert.equal(bid.bid.forwardpoints, null)
+    assert.equal(bid.bid.currency, 'USD')
+    assert.equal(bid.bid.quantity, '200')
+    assert.equal(bid.bid.unit, null)
     assert.equal(bid.ask, null)
 
     // An offer alone is a sell at the offer.
@@ -2176,10 +2201,13 @@ let committedRegistry
     assert.equal(offer.side, 'SELL')
     assert.equal(offer.price, '102')
     assert.equal(offer.quantity, '50')
-    assert.deepEqual(offer.ask, {
-      price: '102', spotrate: null, forwardpoints: null, currency: null, quantity: '50', unit: null,
-    })
-    assert.deepEqual(offer.event().ask, offer.ask)
+    assert.equal(offer.ask.price, '102')
+    assert.equal(offer.ask.spotrate, null)
+    assert.equal(offer.ask.forwardpoints, null)
+    assert.equal(offer.ask.currency, null)
+    assert.equal(offer.ask.quantity, '50')
+    assert.equal(offer.ask.unit, null)
+    assert.ok(operationOf(offer).ask.equals(offer.ask))
     assert.equal(offer.bid, null)
 
     // Both lanes name no side; a stated side stands whatever lane it quotes.
@@ -2201,25 +2229,25 @@ let committedRegistry
     // no TransactTime executed when it happened, and is a raw observation.
     const fill = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|'))
     assert.equal(fill.currunix, SENDING_NS)
-    assert.equal(fill.event().execunix, SENDING_NS)
+    assert.equal(fill.execunix, SENDING_NS)
     assert.equal(fill.prevuuid, null)
     // The row states it, and a row read back keeps it.
     const schema = fix.schema(registry)
     const row = fill.intoRow(schema)
     assert.ok(row.at(schema.indexOf('execunix')).equals(SENDING))
-    assert.equal(fix.FixMsg.fromRow(schema, row, registry).event().execunix, SENDING_NS)
+    assert.equal(fix.FixMsg.fromRow(schema, row, registry).execunix, SENDING_NS)
 
     // A trade's own TransactTime is its execution clock.
     const traded = codec.parseFixLine(
       Buffer.from('8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=2|60=20240102-10:15:30.5|10=0|'),
     )
-    assert.equal(traded.event().execunix, SENDING_NS + 500_000_000n)
+    assert.equal(traded.execunix, SENDING_NS + 500_000_000n)
 
     // An acknowledgement and an order report no execution.
     const acknowledged = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=8|37=O1|17=E0|150=0|39=0|10=0|'))
-    assert.equal(acknowledged.event().execunix, null)
+    assert.equal(acknowledged.execunix, null)
     const order = codec.parseFixLine(Buffer.from('8=FIX.4.4|35=D|11=A|10=0|'))
-    assert.equal(order.event().execunix, null)
+    assert.equal(order.execunix, null)
   })
 
   test('the lifecycle redirects categories snapshots dedup and normalized rows', () => {
@@ -2264,14 +2292,14 @@ let committedRegistry
 
     const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
     const entries = expiring.entries()
-    const deadline = expiring.event().exprtime
+    const deadline = expiring.exprtime
     const walked = [...snapshots.lifecycle([expiring])]
     assert.deepEqual(expiring.entries(), entries)
-    assert.equal(expiring.event().snapunix, null)
+    assert.equal(expiring.snapunix, null)
     assert.ok(walked.some((message) => message.currunix === deadline && message.state === '95EXPIRED'))
-    const emittedSnapshots = walked.filter((message) => message.event().snapunix !== null)
+    const emittedSnapshots = walked.filter((message) => message.snapunix !== null)
     assert.ok(emittedSnapshots.length > 0)
-    assert.ok(emittedSnapshots.every((message) => message.currunix <= message.event().snapunix && message.event().snapunix < deadline))
+    assert.ok(emittedSnapshots.every((message) => message.currunix <= message.snapunix && message.snapunix < deadline))
   })
 
   test('the fixed schema places category beside message type and normalized codes once', () => {
@@ -2310,7 +2338,7 @@ let committedRegistry
       '8=FIX.4.4|35=D|52=20240102-10:15:30|22=S|48=BBG000BLNQ16|454=1|455=BBG000BLNQ16|456=S|10=0|',
     ))
     assert.equal(figi.securityids.FIGI, 'BBG000BLNQ16')
-    assert.equal(figi.event().securityids.FIGI, 'BBG000BLNQ16')
+    assert.equal(figi.securityids.FIGI, 'BBG000BLNQ16')
     assert.equal('BLOOMBERG' in figi.securityids, false)
 
     const schema = fix.schema(registry)
@@ -2680,7 +2708,7 @@ let committedRegistry
 
   const arrow = require('apache-arrow')
 
-  const { BatchReader, DataType, Field, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
+  const { BatchReader, DataType, Field, Scalar, TextLine, TextOptions, fields, fix, graph } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
 
@@ -2905,9 +2933,8 @@ let committedRegistry
     const spoken = '|#SYMBOL=TTF|#TECH.CLIENTID=MCFP2|'
     const [stated] = codec.parseTextLine(lined('venue', null, Buffer.from(spoken)))
     // A bridge's own namespaced key is the message's metadata, folded once,
-    // and the event states the same map under the market's name for it.
+    // the map the market states under its name for it.
     assert.deepEqual(stated.metadata, { 'tech.clientid': 'MCFP2' })
-    assert.deepEqual(stated.event().metadata, { 'tech.clientid': 'MCFP2' })
     assert.equal(stated.capture().msgsessionid, null)
   })
 
@@ -2978,8 +3005,8 @@ let committedRegistry
       const [message] = codec.parseTextLine(line)
       assert.equal(message.header().sendingtime, RECORDED_NS)
       assert.equal(message.currunix, RECORDED_NS)
-      assert.equal(message.event().creaunix, RECORDED_NS)
-      assert.equal(message.event().recdunix, RECORDED_NS)
+      assert.equal(message.creaunix, RECORDED_NS)
+      assert.equal(message.recdunix, RECORDED_NS)
       // Supplied, never stated: neither the wire nor the row's own column
       // says what the frame did not.
       assert.ok(!message.intoText('|').includes('52='))
@@ -2991,13 +3018,13 @@ let committedRegistry
     const [stated] = reading(registry).parseTextLine(datedLine('8=FIX.4.4|35=8|52=20240102-10:15:30|10=0|'))
     assert.equal(stated.header().sendingtime, SENDING_NS)
     assert.equal(stated.currunix, SENDING_NS)
-    assert.equal(stated.event().recdunix, RECORDED_NS)
+    assert.equal(stated.recdunix, RECORDED_NS)
     assert.ok(stated.intoText('|').includes('|52=20240102-10:15:30|'))
 
     // An execution report on it executed at that instant.
     const [filled] = reading(registry, { defaultSendingTime: SENDING })
       .parseTextLine(datedLine('8=FIX.4.4|35=8|150=F|39=2|10=0|'))
-    assert.equal(filled.event().execunix, RECORDED_NS)
+    assert.equal(filled.execunix, RECORDED_NS)
 
     // The Arrow door reads the same clock off a row's `currunix` cell.
     const source = new arrow.Table({
@@ -3018,7 +3045,7 @@ let committedRegistry
     // A raw-byte door holds no line, so the same frame there takes the pin.
     const raw = reading(registry, { defaultSendingTime: SENDING }).parseFixLine(Buffer.from('8=FIX.4.4|35=8|10=0|'))
     assert.equal(raw.currunix, SENDING_NS)
-    assert.equal(raw.event().recdunix, null)
+    assert.equal(raw.recdunix, null)
   })
 
   test("threads preserve ordered multi-batch rows and a message carries its row's cells", () => {
@@ -3145,7 +3172,7 @@ let committedRegistry
     assert.equal(rowCounts(reading(registry, { batchByteSize: 1 }).arrowReader(schema, codec.parseLines(lines))).length, 200)
   })
 
-  test('bookArrowReader streams messages through native books into nested batches', () => {
+  test('bookArrowReader streams messages through native books into lifted marketdata rows', () => {
     const codec = reading(seed(), { batchRowSize: 1 })
     const snapshot = codec.parseFixLine(Buffer.from(
       '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
@@ -3154,15 +3181,33 @@ let committedRegistry
       '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
     ))
     const reader = codec.bookArrowReader([snapshot, update])
+    // The one lifted `marketdata` schema every leaf is written under: the
+    // kind, then every fact a column of its own, the book's sides as structs.
+    assert.ok(reader.field.equals(graph.MarketData.field()))
     const names = Array.from({ length: reader.field.fieldLen }, (_, at) => reader.field.fieldAt(at).name)
-    // The book row: the event and market columns, the two sides, the
-    // executions, and the partitions its last snapshot replaced.
-    assert.deepEqual(names.slice(-4), ['bid', 'ask', 'executions', 'snapshotpartitions'])
-    assert.ok(names.includes('price') && names.includes('quantity'))
+    assert.equal(names[0], 'kind')
+    for (const name of ['bidside', 'askside', 'executions', 'snapshotpartitions', 'price', 'quantity']) {
+      assert.ok(names.includes(name), name)
+    }
     assert.ok(!names.includes('px') && !names.includes('qty'))
     const books = reader.intoTable()
     assert.equal(books.numRows, 2)
+    assert.deepEqual([...books.getChild('kind')], ['book_event', 'book_event'])
     assert.deepEqual(exactColumn(books, 'price'), [101n * 10n ** 18n, 1015n * 10n ** 17n])
+
+    // The rows read back as the typed books they were written from.
+    const [first, second] = [
+      ...graph.MarketData.fromArrowReader(codec.bookArrowReader([snapshot, update])),
+    ].map((data) => data.asBookEvent())
+    assert.ok(first instanceof graph.BookEvent && second instanceof graph.BookEvent)
+    assert.equal(first.bid.bestPrice, '100')
+    assert.equal(second.bid.bestPrice, '101')
+    assert.deepEqual(first.snapshotPartitions.map((partition) => partition.scope), ['Symbol=AAPL'])
+    assert.deepEqual(second.snapshotPartitions, [])
+    assert.equal(second.executions.length, 1)
+    const live = second.bid.live[0].asQuoteEvent()
+    assert.deepEqual(live.altids, { MDENTRYID: 'B1' })
+    assert.equal(live.bid.quantity, '11')
   })
 
   test('a lifecycled two-sided trade streams executions without book depth', () => {
@@ -3175,13 +3220,14 @@ let committedRegistry
     ))
     const books = codec.bookArrowReader(codec.lifecycle([trade])).intoTable()
     const executions = books.getChild('executions').get(0)
-    const bid = books.getChild('bid').get(0)
-    const ask = books.getChild('ask').get(0)
+    const bid = books.getChild('bidside').get(0)
+    const ask = books.getChild('askside').get(0)
     const bySide = new Map(Array.from(executions, (execution) => [execution.side, execution]))
     const buy = bySide.get('BUY')
     const sell = bySide.get('SELL')
 
     assert.equal(books.numRows, 1)
+    assert.equal(books.getChild('kind').get(0), 'book_event')
     assert.deepEqual([...bySide.keys()].sort(), ['BUY', 'SELL'])
     assert.equal(buy.marketoperationid, 21)
     assert.equal(sell.marketoperationid, 21)
@@ -3830,7 +3876,7 @@ let committedRegistry
     const line = new TextLine(0n, lines[0])
     const [sourced] = codec.parseTextLine(line)
     assert.deepEqual(sourced.srcuuids, [line.curruuid])
-    assert.deepEqual(sourced.event().srcuuids, [line.curruuid])
+    assert.deepEqual(sourced.srcuuids, [line.curruuid])
     assert.equal(sourced.currhashcode, walkedPair[0].currhashcode)
     assert.deepEqual(walkedPair[0].srcuuids, [])
   })
@@ -3918,8 +3964,8 @@ let committedRegistry
     assert.ok(Object.keys(report.metadata).every((key) => key === key.toLowerCase()))
     // The event reads the report: the instrument, the side, the price and the
     // quantity, and the names the message goes by.
-    assert.equal(report.event().securityids.ISIN, 'CH0012214059')
-    assert.equal(report.event().miccode, 'XSWX')
+    assert.equal(report.securityids.ISIN, 'CH0012214059')
+    assert.equal(report.miccode, 'XSWX')
     assert.equal(report.side, 'BUY')
     assert.ok(Object.keys(report.altids).includes('CLORDID'))
     // The parties merge to one group with the counter synced.
@@ -3983,7 +4029,7 @@ let committedRegistry
     const [expiry] = expired
     const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
     assert.ok(predecessor)
-    assert.equal(expiry.currunix, predecessor.event().exprtime)
+    assert.equal(expiry.currunix, predecessor.exprtime)
     assert.equal(expiry.seqnum, predecessor.seqnum + 1)
     assert.deepEqual(expiry.srcuuids, predecessor.srcuuids)
 
@@ -3998,7 +4044,7 @@ let committedRegistry
     // facts and chain topology agree on both doors.
     const signature = (message) => {
       const header = message.header()
-      const event = message.event()
+      const event = message
       return {
         header: {
           beginstring: header.beginstring,

@@ -8,6 +8,7 @@ from . import (
     fix as fix,
     floating as floating,
     geospatial as geospatial,
+    graph as graph,
     gzip as gzip,
     holder as holder,
     iceberg as iceberg,

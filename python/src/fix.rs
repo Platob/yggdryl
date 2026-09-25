@@ -20,23 +20,21 @@ use std::sync::{Arc, Mutex};
 
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt, PyIterator};
+use pyo3::types::{PyBool, PyBytes, PyDateTime, PyDict, PyInt};
 
-use yggdryl::Uuid as CoreUuid;
-use yggdryl::graph::{
-    Element, Event, Lane as CoreLane, Market, Operation,
-    OperationEventData as CoreOperationEventData,
-};
+use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::{
     DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture as CoreFixCapture,
     FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec,
     FixEntry as CoreFixEntry, FixHeader as CoreFixHeader, FixId as CoreFixId, FixKey,
-    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase, IdMap as CoreIdMap,
-    MsgType as CoreMsgType, Scalar, SecurityIds as CoreSecurityIds, StructType,
-    TimeInForce as CoreTimeInForce, TimeUnit, Timezone,
+    FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, IOBase as CoreIOBase,
+    MsgType as CoreMsgType, Scalar, StructType, TimeInForce as CoreTimeInForce, TimeUnit, Timezone,
 };
 
 use crate::field::{PyField, core_field_from_value};
+use crate::graph::market_data::PyMarketData;
+use crate::graph::operation::PyLane;
+use crate::graph::{code_scalar, decimal_scalar, idmap_dict, securityids_dict, uuid_scalar};
 use crate::iceberg::folder_holder_from_value;
 use crate::iobase::{PyIOBase, located_holder};
 use crate::iomedia::{batch_reader_from_value, batch_reader_to_pyarrow};
@@ -44,7 +42,7 @@ use crate::scalar::{PyScalar, from_py};
 use crate::text::codec::{PythonWriter, with_python_bytes};
 use crate::text::line::{PyTextLine, core_path_from_value};
 use crate::uri::core_url_from_value;
-use crate::value_error;
+use crate::{Failed, Pulled, python_failure, value_error};
 
 /// Read one dictionary file through whatever Python named it with.
 ///
@@ -81,25 +79,9 @@ fn entry_tuple<'py>(py: Python<'py>, entry: &CoreFixEntry) -> PyResult<Bound<'py
         .into_any())
 }
 
-/// A native identity as the uuid `Scalar` it is: the binding has no `Uuid`
-/// class of its own, and `as_py()` answers the hyphenated text.
-pub(crate) fn uuid_scalar(uuid: CoreUuid) -> PyScalar {
-    PyScalar::from_inner(Scalar::Uuid(uuid))
-}
-
 /// An optional text as a `repr` spells it: `None`, or the quoted text.
 fn repr_text(value: Option<&str>) -> String {
     value.map_or_else(|| "None".to_owned(), |held| format!("{held:?}"))
-}
-
-/// A native code - a currency, a side, a state, an identifier - as the
-/// code `Scalar` its datatype is.
-fn code_scalar<C>(code: &C) -> PyScalar
-where
-    C: Clone,
-    Scalar: From<C>,
-{
-    PyScalar::from_inner(Scalar::from(code.clone()))
 }
 
 /// One code as the record Python reads: `{"value", "name", "description",
@@ -172,48 +154,6 @@ fn codes_from_py(codes: &Bound<'_, PyAny>) -> PyResult<Vec<CoreFixCode>> {
         held.push(code);
     }
     Ok(held)
-}
-
-/// One of the market's numbers, exact, as the decimal `Scalar` it is.
-fn decimal_scalar(held: yggdryl::Decimal18) -> PyScalar {
-    PyScalar::from_inner(Scalar::from(held))
-}
-
-/// An identifier map - the accounts, the users, the names an operation
-/// goes by - as the `dict` Python reads, each value under the key that
-/// stated it, in key order.
-fn idmap_dict(ids: &CoreIdMap) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|(key, value)| (key.to_owned(), value.to_owned()))
-        .collect()
-}
-
-/// The identifiers an instrument is stated under, one code under each
-/// source - `ISIN`, `CUSIP`, `FIGI` - in source order.
-fn securityids_dict(ids: &CoreSecurityIds) -> BTreeMap<String, String> {
-    ids.iter()
-        .map(|id| (id.sectype().as_str().to_owned(), id.code().to_owned()))
-        .collect()
-}
-
-/// One lane of a quote as the `dict` Python reads - `price`, `spotrate`,
-/// `forwardpoints`, `currency`, `quantity` and `unit`, each `None` where the
-/// lane leaves the slot out - or `None` where the holder states no lane.
-fn lane_dict<'py>(
-    py: Python<'py>,
-    lane: Option<&CoreLane>,
-) -> PyResult<Option<Bound<'py, PyDict>>> {
-    let Some(lane) = lane else {
-        return Ok(None);
-    };
-    let record = PyDict::new(py);
-    record.set_item("price", lane.price.map(decimal_scalar))?;
-    record.set_item("spotrate", lane.spotrate.map(decimal_scalar))?;
-    record.set_item("forwardpoints", lane.forwardpoints.map(decimal_scalar))?;
-    record.set_item("currency", lane.currency.as_ref().map(code_scalar))?;
-    record.set_item("quantity", lane.quantity.map(decimal_scalar))?;
-    record.set_item("unit", lane.unit.as_ref().map(yggdryl::Unit::as_str))?;
-    Ok(Some(record))
 }
 
 /// A FIX tag as Python hands one over: an `int` that fits `i32`.
@@ -1240,82 +1180,6 @@ impl PyMsgType {
     }
 }
 
-/// Where a Python source failed, held until the stream is asked again.
-///
-/// A core stage pulls its items as values, so a Python failure inside the
-/// pull - an item that is not bytes, a generator that raised - cannot travel
-/// through the stage as an item. It ends the pull instead and lands here, and
-/// the stream raises it in place of the end it would otherwise answer.
-#[derive(Clone, Default)]
-struct Failed(Arc<Mutex<Option<PyErr>>>);
-
-impl Failed {
-    fn set(&self, error: PyErr) {
-        if let Ok(mut held) = self.0.lock() {
-            *held = Some(error);
-        }
-    }
-
-    fn take(&self) -> Option<PyErr> {
-        self.0.lock().ok().and_then(|mut held| held.take())
-    }
-}
-
-/// A Python iterable pulled one item at a time into a core stage.
-///
-/// The iterator is held, never collected: each `next` takes the interpreter,
-/// pulls one item and reads it with `read` into the value the stage takes.
-/// Exhaustion ends the pull. A failure, the iterable's own or the reading's,
-/// ends it too and lands in `failed`, so the stage sees a shorter stream and
-/// the wrapper around it raises what happened.
-struct Pulled<T> {
-    items: Py<PyIterator>,
-    read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
-    failed: Failed,
-    done: bool,
-}
-
-impl<T> Pulled<T> {
-    /// Hold `items`, or report that it is not iterable.
-    fn new(items: &Bound<'_, PyAny>, read: fn(&Bound<'_, PyAny>) -> PyResult<T>) -> PyResult<Self> {
-        Ok(Self {
-            items: PyIterator::from_object(items)?.unbind(),
-            read,
-            failed: Failed::default(),
-            done: false,
-        })
-    }
-}
-
-impl<T> Iterator for Pulled<T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        if self.done {
-            return None;
-        }
-        let pulled = Python::attach(|py| {
-            let mut items = self.items.bind(py).clone();
-            items
-                .next()
-                .map(|item| item.and_then(|item| (self.read)(&item)))
-                .transpose()
-        });
-        match pulled {
-            Ok(Some(value)) => Some(value),
-            Ok(None) => {
-                self.done = true;
-                None
-            }
-            Err(error) => {
-                self.done = true;
-                self.failed.set(error);
-                None
-            }
-        }
-    }
-}
-
 /// One captured line, as the bytes it is.
 fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
     with_python_bytes(
@@ -1328,15 +1192,6 @@ fn line_bytes(item: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
 /// One message, refusing anything else where it is met.
 fn message_of(item: &Bound<'_, PyAny>) -> PyResult<CoreFixMsg> {
     Ok(item.extract::<PyRef<'_, PyFixMsg>>()?.inner.clone())
-}
-
-/// A Python failure behind a stream `pyarrow` pulls, as the core reports one.
-///
-/// The batch it would have landed in is being pulled by the Arrow reader
-/// rather than by a Python frame, so it travels as that reader's error and
-/// arrives where the batch would have.
-fn python_failure(error: PyErr) -> CoreError {
-    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(error)))
 }
 
 /// A stream of messages, one at a time.
@@ -1939,15 +1794,20 @@ impl PyFixMsg {
         PyBytes::new(py, &self.inner.digest().to_be_bytes())
     }
 
-    /// The event this message is: every fact the graph vocabulary answers,
-    /// held still.
-    ///
-    /// A copy at the moment it is asked for, so a message written afterwards
-    /// leaves it behind; the same facts are the message's own properties.
-    fn event(&self) -> PyOperationEventData {
-        PyOperationEventData {
-            inner: self.inner.event().clone(),
-        }
+    /// The graph market operations this message expands to: an order, a
+    /// quote, an execution or an initial trade report is one; a book `W` or
+    /// `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
+    /// control for an empty `W` - each a `MarketData`.
+    fn market_operations(&self) -> PyResult<Vec<PyMarketData>> {
+        self.inner
+            .market_operations()
+            .map(|operations| {
+                operations
+                    .into_iter()
+                    .map(PyMarketData::from_core)
+                    .collect()
+            })
+            .map_err(value_error)
     }
 
     /// The standard header, typed and held still.
@@ -2057,6 +1917,43 @@ impl PyFixMsg {
     #[getter]
     fn prevuuid(&self) -> Option<PyScalar> {
         self.inner.get_prevuuid().map(uuid_scalar)
+    }
+
+    /// When the order this message belongs to was created, where known.
+    #[getter]
+    fn creaunix(&self) -> Option<i64> {
+        self.inner.get_creaunix()
+    }
+
+    /// The latest execution instant the lifecycle reached, where known.
+    #[getter]
+    fn execunix(&self) -> Option<i64> {
+        self.inner.get_execunix()
+    }
+
+    /// When the message was recorded, where stated.
+    #[getter]
+    fn recdunix(&self) -> Option<i64> {
+        self.inner.get_recdunix()
+    }
+
+    /// When the order expires, where it has an expiry.
+    #[getter]
+    fn exprtime(&self) -> Option<i64> {
+        self.inner.get_exprtime()
+    }
+
+    /// When the message this one follows happened, where it follows one.
+    #[getter]
+    fn prevunix(&self) -> Option<i64> {
+        self.inner.get_prevunix()
+    }
+
+    /// The grid step a walk read this message as the snapshot of, where one
+    /// did.
+    #[getter]
+    fn snapunix(&self) -> Option<i64> {
+        self.inner.get_snapunix()
     }
 
     /// The identities of the elements this one was read from: the text line
@@ -2312,19 +2209,18 @@ impl PyFixMsg {
         idmap_dict(self.inner.get_altids())
     }
 
-    /// The bid lane a quote states - `price`, `spotrate`, `forwardpoints`,
-    /// `currency`, `quantity` and `unit`, each `None` where the lane leaves
-    /// it out - or `None` where the message states no bid.
+    /// The bid lane a quote states, typed; `None` where the message states
+    /// no bid.
     #[getter]
-    fn bid<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        lane_dict(py, self.inner.get_bid())
+    fn bid(&self) -> Option<PyLane> {
+        self.inner.get_bid().cloned().map(PyLane::from_core)
     }
 
     /// The ask lane, shaped as the bid; `None` where the message states no
     /// offer.
     #[getter]
-    fn ask<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        lane_dict(py, self.inner.get_ask())
+    fn ask(&self) -> Option<PyLane> {
+        self.inner.get_ask().cloned().map(PyLane::from_core)
     }
 
     /// What the message states, as a tree: `(tag, name, value, entries)`.
@@ -2893,7 +2789,8 @@ impl PyFixCodec {
     }
 
     /// Streams sorted FIX messages through native market operations and the
-    /// stateful book iterator into a nested `pyarrow.RecordBatchReader`.
+    /// stateful book iterator into a `pyarrow.RecordBatchReader` of lifted
+    /// `marketdata` rows, one `book_event` row per book.
     ///
     /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
     /// are ignored. Source errors and invalid admitted messages still fail,
@@ -3456,357 +3353,6 @@ impl PyFixCapture {
             "FixCapture({}, {})",
             repr_text(self.inner.msgpluginid()),
             repr_text(self.inner.msgsessionid())
-        )
-    }
-
-    fn __copy__(&self) -> Self {
-        self.clone()
-    }
-
-    fn __deepcopy__(&self, _memo: &Bound<'_, PyAny>) -> Self {
-        self.clone()
-    }
-}
-
-/// The event a message is: every fact the core's graph vocabulary answers,
-/// held still.
-///
-/// A copy of the message's event at the moment it was asked for - the facts
-/// are forty-three small values, and a view that borrowed them would pin
-/// the message - so it is immutable, compares by every fact and hashes by
-/// the code the facts digest to. Instants are nanoseconds since the Unix
-/// epoch, UTC, as `int`; identities are `uuid` `Scalar`s; prices and
-/// quantities decimal `Scalar`s; the currency, the side and the state the
-/// code `Scalar` their datatype is; the unit and the time in force their
-/// spellings; the security identifiers and the three identifier maps
-/// `dict`s in key order; a lane a `dict` of its six slots, or `None`.
-#[pyclass(
-    name = "OperationEventData",
-    module = "yggdryl._native",
-    frozen,
-    skip_from_py_object
-)]
-#[derive(Clone)]
-pub(crate) struct PyOperationEventData {
-    inner: CoreOperationEventData,
-}
-
-#[pymethods]
-impl PyOperationEventData {
-    /// The event's `UUIDv7` identity: its millisecond and sequence lead an
-    /// XXH3 payload over `currhashcode` and the whole sequence, seeded by
-    /// `crosshashcode`.
-    #[getter]
-    fn curruuid(&self) -> PyScalar {
-        uuid_scalar(self.inner.get_curruuid())
-    }
-
-    /// The identity every event of one lifecycle shares: derived from the
-    /// cross code, and the event's own where it names none.
-    #[getter]
-    fn crossuuid(&self) -> PyScalar {
-        uuid_scalar(self.inner.get_crossuuid())
-    }
-
-    /// The identifier every event of one lifecycle shares, as spelled;
-    /// empty where none is named.
-    #[getter]
-    fn crosscode(&self) -> &str {
-        self.inner.get_crosscode()
-    }
-
-    /// The code the facts digest to.
-    #[getter]
-    fn currhashcode(&self) -> u64 {
-        self.inner.get_currhashcode()
-    }
-
-    /// The XXH3-64 of the cross code, zero where none is named.
-    #[getter]
-    fn crosshashcode(&self) -> u64 {
-        self.inner.get_crosshashcode()
-    }
-
-    /// The identities of the elements this one was read from: the text line
-    /// it was parsed out of, and none for one parsed from bytes. Provenance,
-    /// never its chain: no walk moves it.
-    #[getter]
-    fn srcuuids(&self) -> Vec<PyScalar> {
-        self.inner
-            .get_srcuuids()
-            .iter()
-            .copied()
-            .map(uuid_scalar)
-            .collect()
-    }
-
-    /// When the event happened: nanoseconds since the Unix epoch, UTC.
-    #[getter]
-    fn currunix(&self) -> i64 {
-        self.inner.get_currunix()
-    }
-
-    /// The state the order is in, as the `state` code it is.
-    #[getter]
-    fn state(&self) -> PyScalar {
-        code_scalar(self.inner.get_state())
-    }
-
-    /// The event's place in its chain: how many came before it.
-    #[getter]
-    fn seqnum(&self) -> u64 {
-        self.inner.get_seqnum()
-    }
-
-    /// When the lifecycle was created, or `None`.
-    #[getter]
-    fn creaunix(&self) -> Option<i64> {
-        self.inner.get_creaunix()
-    }
-
-    /// The precise execution instant, or `None`: the one the message
-    /// states, else its own `currunix` where the parse read it as reporting
-    /// an execution, and on a chained message the latest its lifecycle
-    /// reached.
-    #[getter]
-    fn execunix(&self) -> Option<i64> {
-        self.inner.get_execunix()
-    }
-
-    /// The precise recording instant, or `None`.
-    #[getter]
-    fn recdunix(&self) -> Option<i64> {
-        self.inner.get_recdunix()
-    }
-
-    /// When the event stops being good, or `None`.
-    #[getter]
-    fn exprtime(&self) -> Option<i64> {
-        self.inner.get_exprtime()
-    }
-
-    /// When the event this one follows happened, or `None`.
-    #[getter]
-    fn prevunix(&self) -> Option<i64> {
-        self.inner.get_prevunix()
-    }
-
-    /// The identity of the event this one follows, or `None`.
-    #[getter]
-    fn prevuuid(&self) -> Option<PyScalar> {
-        self.inner.get_prevuuid().map(uuid_scalar)
-    }
-
-    /// The grid instant a walk read the event as the snapshot of, or
-    /// `None`.
-    #[getter]
-    fn snapunix(&self) -> Option<i64> {
-        self.inner.get_snapunix()
-    }
-
-    /// The price stated, as a decimal; `None` where none is. Never a last
-    /// executed price, which `lastpx` answers.
-    #[getter]
-    fn price(&self) -> Option<PyScalar> {
-        self.inner.get_price().map(decimal_scalar)
-    }
-
-    /// The currency, as the `currency` code it is; `XXX` where none is
-    /// stated.
-    #[getter]
-    fn currency(&self) -> PyScalar {
-        code_scalar(self.inner.get_currency())
-    }
-
-    /// The quantity stated, as a decimal; `None` where none is. Never a
-    /// last executed quantity, which `lastqty` answers.
-    #[getter]
-    fn quantity(&self) -> Option<PyScalar> {
-        self.inner.get_quantity().map(decimal_scalar)
-    }
-
-    /// The unit the quantity is counted in, as spelled; empty where none
-    /// is stated.
-    #[getter]
-    fn unit(&self) -> &str {
-        self.inner.get_unit().as_str()
-    }
-
-    /// The side, as the `side` code it is: the one stated, else the lane a
-    /// single-sided quote states - `BUY` on the bid, `SELL` on the offer -
-    /// else `UNKNOWN`.
-    #[getter]
-    fn side(&self) -> PyScalar {
-        PyScalar::from_inner(Scalar::from(self.inner.get_side()))
-    }
-
-    /// The identifiers the instrument is stated under, one code under each
-    /// source - `ISIN`, `CUSIP`, `FIGI` - in source order; empty where none
-    /// is stated.
-    #[getter]
-    fn securityids(&self) -> BTreeMap<String, String> {
-        securityids_dict(self.inner.get_securityids())
-    }
-
-    /// The instrument's CFI classification, or `None`.
-    #[getter]
-    fn cficode(&self) -> Option<PyScalar> {
-        self.inner.get_cficode().map(code_scalar)
-    }
-
-    /// The market the event names, as an ISO 10383 MIC, or `None`.
-    #[getter]
-    fn miccode(&self) -> Option<PyScalar> {
-        self.inner.get_miccode().map(code_scalar)
-    }
-
-    /// The last traded price, or `None`.
-    #[getter]
-    fn lastpx(&self) -> Option<PyScalar> {
-        self.inner.get_lastpx().map(decimal_scalar)
-    }
-
-    /// The last traded quantity, or `None`.
-    #[getter]
-    fn lastqty(&self) -> Option<PyScalar> {
-        self.inner.get_lastqty().map(decimal_scalar)
-    }
-
-    /// The average traded price, or `None`.
-    #[getter]
-    fn avgpx(&self) -> Option<PyScalar> {
-        self.inner.get_avgpx().map(decimal_scalar)
-    }
-
-    /// The cumulative quantity, or `None`.
-    #[getter]
-    fn cumqty(&self) -> Option<PyScalar> {
-        self.inner.get_cumqty().map(decimal_scalar)
-    }
-
-    /// The remaining quantity, or `None`.
-    #[getter]
-    fn leavesqty(&self) -> Option<PyScalar> {
-        self.inner.get_leavesqty().map(decimal_scalar)
-    }
-
-    /// The price before this event, or `None`.
-    #[getter]
-    fn prevpx(&self) -> Option<PyScalar> {
-        self.inner.get_prevpx().map(decimal_scalar)
-    }
-
-    /// The quantity before this event, or `None`.
-    #[getter]
-    fn prevqty(&self) -> Option<PyScalar> {
-        self.inner.get_prevqty().map(decimal_scalar)
-    }
-
-    /// The spot part of an FX forward price, or `None`.
-    #[getter]
-    fn spotrate(&self) -> Option<PyScalar> {
-        self.inner.get_spotrate().map(decimal_scalar)
-    }
-
-    /// The forward points of an FX forward price, or `None`.
-    #[getter]
-    fn forwardpoints(&self) -> Option<PyScalar> {
-        self.inner.get_forwardpoints().map(decimal_scalar)
-    }
-
-    /// The instrument ticker, or `None`.
-    #[getter]
-    fn ticker(&self) -> Option<&str> {
-        self.inner.get_ticker()
-    }
-
-    /// What a bridge stated under its own namespaces, each under the key as
-    /// the bridge spelled it, folded, in key order; empty where it stated
-    /// none.
-    #[getter]
-    fn metadata(&self) -> BTreeMap<String, String> {
-        self.inner
-            .get_metadata()
-            .iter()
-            .map(|(key, value)| (key.to_string(), value.to_string()))
-            .collect()
-    }
-
-    /// The stable integer category of the market operation, or `None`.
-    #[getter]
-    fn marketoperationid(&self) -> Option<i32> {
-        self.inner.get_marketoperationid()
-    }
-
-    /// The time in force, as the code it states, or `None`.
-    #[getter]
-    fn tif(&self) -> Option<&str> {
-        self.inner.get_tif().map(CoreTimeInForce::as_str)
-    }
-
-    /// Whether the instrument was tradable, or `None`.
-    #[getter]
-    fn tradable(&self) -> Option<bool> {
-        self.inner.get_tradable()
-    }
-
-    /// The accounts the event names, each under the field that stated it,
-    /// in key order; empty where it names none.
-    #[getter]
-    fn accountids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_accountids())
-    }
-
-    /// The users the event names, each under the field that stated it, in
-    /// key order; empty where it names none.
-    #[getter]
-    fn userids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_userids())
-    }
-
-    /// The names the event goes by, each under the field that stated it,
-    /// in key order; empty where it names none.
-    #[getter]
-    fn altids(&self) -> BTreeMap<String, String> {
-        idmap_dict(self.inner.get_altids())
-    }
-
-    /// The bid lane - `price`, `spotrate`, `forwardpoints`, `currency`,
-    /// `quantity` and `unit`, each `None` where the lane leaves it out - or
-    /// `None` where none is stated.
-    #[getter]
-    fn bid<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        lane_dict(py, self.inner.get_bid())
-    }
-
-    /// The ask lane, shaped as the bid, or `None`.
-    #[getter]
-    fn ask<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
-        lane_dict(py, self.inner.get_ask())
-    }
-
-    fn __eq__(&self, py: Python<'_>, other: &Bound<'_, PyAny>) -> Py<PyAny> {
-        let Ok(other) = other.extract::<PyRef<'_, Self>>() else {
-            return py.NotImplemented();
-        };
-        PyBool::new(py, self.inner == other.inner)
-            .to_owned()
-            .into_any()
-            .unbind()
-    }
-
-    /// Hashes by the code the facts digest to, which equal facts share.
-    fn __hash__(&self) -> isize {
-        crate::python_hash(self.inner.get_currhashcode())
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "OperationEventData({}, currunix={}, state={:?}, crosscode={:?})",
-            self.inner.get_curruuid(),
-            self.inner.get_currunix(),
-            self.inner.get_state().as_str(),
-            self.inner.get_crosscode()
         )
     }
 

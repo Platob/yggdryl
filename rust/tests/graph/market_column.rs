@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
-use yggdryl::graph::{Element, Market, MarketColumn, MarketData, MarketEventData};
+use yggdryl::graph::{Element, Market, MarketColumn, OrderEvent};
 use yggdryl::securityid::{SecType, SecurityId, SecurityIds};
 use yggdryl::{Ccy, CfiCode, DataType, Decimal18, MicCode, Scalar, Side, Unit};
 
@@ -18,7 +18,7 @@ fn securityid(key: &str, code: &str) -> SecurityId {
 
 #[test]
 fn market_columns_round_trip_every_optional_band() {
-    let mut source = MarketEventData::at(10);
+    let mut source = OrderEvent::at(10);
     source.set_price(Some(decimal("101.25")));
     source.set_currency(Ccy::new("USD").unwrap());
     source.set_quantity(Some(Decimal18::from_int(7)));
@@ -59,7 +59,7 @@ fn market_columns_round_trip_every_optional_band() {
             .scalar(value.clone())
             .expect("the fact fits the column");
     }
-    let mut restored = MarketEventData::default();
+    let mut restored = OrderEvent::default();
     for (column, value) in MarketColumn::ALL.into_iter().zip(&row) {
         column.record(&mut restored, value);
     }
@@ -97,7 +97,7 @@ fn market_columns_round_trip_every_optional_band() {
 
 #[test]
 fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
-    let mut element = MarketData::default();
+    let mut element = OrderEvent::default();
     element.set_price(Some(decimal("1")));
     element.set_currency(Ccy::new("EUR").unwrap());
     element.set_quantity(Some(Decimal18::from_int(2)));
@@ -135,7 +135,7 @@ fn a_null_clears_an_optional_fact_and_leaves_a_required_one_stated() {
     // And an element stating nothing states its three required facts as
     // nothing - an empty code, an unknown side - and no price or quantity
     // at all: those two columns are nullable and answer `None`.
-    let bare = MarketData::default();
+    let bare = OrderEvent::default();
     assert!(MarketColumn::Price.nullable() && MarketColumn::Quantity.nullable());
     assert_eq!(MarketColumn::Price.fact(&bare), None);
     assert_eq!(MarketColumn::Quantity.fact(&bare), None);
