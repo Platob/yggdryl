@@ -22,7 +22,7 @@ use super::Event;
 /// place, what it was read from - and last the state it reached.
 ///
 /// ```
-/// use yggdryl::graph::{EventColumn, MarketEventData, Element, Event};
+/// use yggdryl::graph::{EventColumn, OrderEvent, Element, Event};
 /// use yggdryl::{Scalar, Uuid};
 ///
 /// # fn main() -> yggdryl::Result<()> {
@@ -32,10 +32,10 @@ use super::Event;
 /// assert_eq!(fields[7].name(), "curruuid");
 /// assert_eq!(fields[15].name(), "state");
 /// // What an event states under a column, and the same fact stated back.
-/// let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+/// let mut event = OrderEvent::at(1_700_000_000_000_000_000);
 /// event.set_srcuuids(vec![Uuid::from_v8(7)]);
 /// let sources = EventColumn::SrcUuids.fact(&event).expect("a source");
-/// let mut again = MarketEventData::default();
+/// let mut again = OrderEvent::default();
 /// EventColumn::SrcUuids.record(&mut again, &sources);
 /// assert_eq!(again.get_srcuuids(), [Uuid::from_v8(7)]);
 /// // Nothing stated is a null: an empty list, an empty code, no instant.

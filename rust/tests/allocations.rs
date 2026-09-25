@@ -30,8 +30,8 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 use yggdryl::SerieValue as _;
 use yggdryl::graph::{
-    Book, BookInput, BookIterator, Element, Event, EventColumn, Market, MarketEventData,
-    MarketOperation, OperationEventData, Trade,
+    BookEvent, BookIterator, BookRef, Element, Event, EventColumn, ExecutionEvent, Market,
+    MarketData, MdUpdateAction, Operation, OrderEvent, QuoteEvent, TradeEvent,
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
@@ -376,14 +376,14 @@ fn txhash_uuid_projection_allocates_nothing_at_any_corpus_size() {
 
 #[test]
 fn market_following_allocates_nothing_for_an_inherited_ticker() {
-    let mut previous = MarketEventData::at(1);
+    let mut previous = OrderEvent::at(1);
     previous.finalize();
-    let next = MarketEventData::at(2);
+    let next = OrderEvent::at(2);
     let (baseline, _) = counted(|| next.with_previous(&previous).unwrap());
 
     previous.set_ticker(Some(SmolStr::new("AAPL")));
     previous.finalize();
-    let next = MarketEventData::at(2);
+    let next = OrderEvent::at(2);
     let (inherited, next) = counted(|| next.with_previous(&previous).unwrap());
     assert_eq!(next.get_ticker(), Some("AAPL"));
     // A ticker is a `SmolStr`: one of a symbol's length lives inline, so
@@ -391,7 +391,7 @@ fn market_following_allocates_nothing_for_an_inherited_ticker() {
     // it replaced cost one allocation.
     assert_eq!(inherited, baseline, "an inherited inline ticker is a copy");
 
-    let mut next = MarketEventData::at(2);
+    let mut next = OrderEvent::at(2);
     next.set_ticker(Some(SmolStr::new("MSFT")));
     let (stated, next) = counted(|| next.with_previous(&previous).unwrap());
     assert_eq!(next.get_ticker(), Some("MSFT"));
@@ -400,7 +400,7 @@ fn market_following_allocates_nothing_for_an_inherited_ticker() {
 
 #[test]
 fn market_event_identity_refresh_and_finalization_allocate_nothing() {
-    let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+    let mut event = OrderEvent::at(1_700_000_000_000_000_000);
     event.set_currhashcode(1);
     let mut generation = 1_u64;
     free("refreshing and finalizing a market event identity", || {
@@ -792,10 +792,10 @@ fn the_typed_facts_of_a_message_are_borrowed_at_every_row_width() {
         free("the settled identity", || {
             let held = black_box(&message);
             black_box((
-                held.event().get_currunix(),
-                held.event().get_currhashcode(),
-                held.event().get_curruuid(),
-                held.event().get_crosscode(),
+                held.get_currunix(),
+                held.get_currhashcode(),
+                held.get_curruuid(),
+                held.get_crosscode(),
             ));
         });
     }
@@ -806,8 +806,8 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
     let codec = FixCodec::new(Arc::new(fix_registry(0)));
     for wire in [b"35=D|55=AAPL|".as_slice(), b"35=S|55=AAPL|"] {
         let message = codec.parse_line(wire).unwrap().next().unwrap().unwrap();
-        let (allocations, operation) = counted(|| BookInput::try_from(message).unwrap());
-        assert_eq!(operation.event().get_ticker(), Some("AAPL"));
+        let (allocations, operation) = counted(|| MarketData::try_from(message).unwrap());
+        assert_eq!(operation.get_ticker(), Some("AAPL"));
         assert_eq!(
             allocations, 0,
             "a direct operation moves its existing holder"
@@ -816,22 +816,35 @@ fn direct_fix_operation_conversion_needs_no_intermediate_allocation() {
 }
 
 #[test]
-fn typed_market_operation_and_entry_conversions_move_without_allocating() {
-    let mut event = OperationEventData::at(1);
+fn a_leaf_moves_into_and_out_of_market_data_without_allocating() {
+    let mut event = OrderEvent::at(1);
     event.set_crosscode("ORDER-1".to_owned());
     event.finalize();
-    let mut operation = Some(MarketOperation::order(event));
-    let (into_entry, entry) = counted(|| operation.take().expect("one operation").entry());
-    assert_eq!(into_entry, 0, "operation to entry allocated");
+    let mut operation = Some(event);
+    let (into_value, value) =
+        counted(|| MarketData::from(operation.take().expect("one operation")));
+    assert_eq!(into_value, 0, "leaf to value allocated");
 
-    let mut entry = Some(entry);
-    let (at, operation) = counted(|| entry.take().expect("one entry").at(2));
-    assert_eq!(at, 0, "entry to operation allocated");
+    let mut value = Some(value);
+    let (into_leaf, operation) =
+        counted(|| OrderEvent::try_from(value.take().expect("one value")).unwrap());
+    assert_eq!(into_leaf, 0, "value to leaf allocated");
+
+    // An event drops its clocks into the element it states, and an element
+    // dated again is an event: both moves keep the one holder.
+    let mut operation = Some(operation);
+    let (into_element, element) =
+        counted(|| operation.take().expect("one operation").into_element());
+    assert_eq!(into_element, 0, "event to element allocated");
+
+    let mut element = Some(element);
+    let (at, operation) = counted(|| element.take().expect("one element").at(2));
+    assert_eq!(at, 0, "element to event allocated");
     black_box(operation);
 }
 
-fn allocation_trade_parts(executions: usize) -> (OperationEventData, Vec<MarketOperation>) {
-    let mut root = OperationEventData::at(1);
+fn allocation_trade_parts(executions: usize) -> (OrderEvent, Vec<ExecutionEvent>) {
+    let mut root = OrderEvent::at(1);
     root.set_crosscode("ALLOC-TRADE".to_owned());
     root.set_ticker(Some(SmolStr::new("ALLOC")));
     root.set_state(State::read("Filled").expect("the shipped filled state"));
@@ -839,13 +852,13 @@ fn allocation_trade_parts(executions: usize) -> (OperationEventData, Vec<MarketO
     let executions = (0..executions)
         .rev()
         .map(|index| {
-            let mut event = OperationEventData::at(1);
+            let mut event = ExecutionEvent::at(1);
             event.set_crosscode(format!("ALLOC-EXEC-{index:04}"));
             event.set_ticker(Some(SmolStr::new("ALLOC")));
             event.set_side(Side::read(if index % 2 == 0 { "Buy" } else { "Sell" }).unwrap());
             event.set_state(State::read("Filled").expect("the shipped filled state"));
             event.finalize();
-            MarketOperation::execution(event)
+            event
         })
         .collect();
     (root, executions)
@@ -854,11 +867,11 @@ fn allocation_trade_parts(executions: usize) -> (OperationEventData, Vec<MarketO
 #[test]
 fn trade_construction_does_not_allocate_per_execution() {
     let (root, executions) = allocation_trade_parts(1);
-    let (shallow_allocations, shallow) = counted(|| Trade::from_parts(root, executions));
+    let (shallow_allocations, shallow) = counted(|| TradeEvent::from_parts(&root, executions));
     let shallow = shallow.expect("the shallow trade");
 
     let (root, executions) = allocation_trade_parts(128);
-    let (deep_allocations, deep) = counted(|| Trade::from_parts(root, executions));
+    let (deep_allocations, deep) = counted(|| TradeEvent::from_parts(&root, executions));
     let deep = deep.expect("the deep trade");
     assert_eq!(shallow.executions().len(), 1);
     assert_eq!(deep.executions().len(), 128);
@@ -874,8 +887,8 @@ fn allocation_book_operation(
     unix: i64,
     quantity: i64,
     state: &str,
-) -> BookInput {
-    let mut event = OperationEventData::at(unix);
+) -> MarketData {
+    let mut event = QuoteEvent::at(unix);
     event.set_crosscode(code.into());
     event.set_ticker(Some(SmolStr::new("ALLOC")));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
@@ -883,13 +896,11 @@ fn allocation_book_operation(
     event.set_quantity(Some(Decimal18::from_int(quantity)));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
-    let mut quote = MarketOperation::quote(event);
-    quote.finalize();
-    quote.into()
+    event.into()
 }
 
-fn allocation_book(entries: usize) -> Book {
-    let mut book = Book::new(1, "ALLOC");
+fn allocation_book(entries: usize) -> BookEvent {
+    let mut book = BookEvent::new(1, "ALLOC");
     book.add_operations(
         (0..entries).map(|index| allocation_book_operation(format!("ALLOC-{index}"), 1, 1, "New")),
     )
@@ -916,7 +927,7 @@ fn one_book_iterator_update_clones_depth_only_for_its_output() {
     let shallow = overhead(1);
     let deep = overhead(128);
     // Output owns its depth. Transactional work has the same small fixed
-    // allowance as direct Book::add_operations, regardless of resting entries.
+    // allowance as direct BookEvent::add_operations, regardless of resting entries.
     assert!(
         deep <= shallow + 4,
         "iterator overhead allocated {deep} times at depth 128 but {shallow} times at depth 1"
@@ -943,6 +954,120 @@ fn one_book_update_does_not_allocate_per_live_entry() {
         "one update allocated {deep_allocations} times at depth 128 but {shallow_allocations} times at depth 1"
     );
     black_box((shallow, deep));
+}
+
+/// One order the market-data read pin reads back: every fact a row hands
+/// back owning heap - the cross code, the sources, three identifiers (past
+/// the map's inline two), an account, the metadata and a book control - each
+/// at an inline width, so a clone owns exactly what the row does.
+fn allocation_market_order(index: usize) -> MarketData {
+    let unix = 1_700_000_000_000_000_000 + i64::try_from(index).expect("a small corpus");
+    let mut order = OrderEvent::at(unix);
+    order.set_crosscode(format!("ALLOC-ORDER-{index:06}"));
+    order.set_seqnum(1 + u64::try_from(index).expect("a small corpus"));
+    order.set_price(Some(Decimal18::from_int(100)));
+    order.set_quantity(Some(Decimal18::from_int(10)));
+    order.set_side(Side::read("Buy").expect("the shipped buy side"));
+    order.set_ticker(Some(SmolStr::new("ALLOC")));
+    order.set_state(State::read("New").expect("the shipped new state"));
+    order.set_srcuuids(vec![Uuid::from_v8(7)]);
+    order
+        .insert_altid("ORDERID", &format!("ORDER-{index:06}"))
+        .expect("an identifier");
+    order
+        .insert_altid("MDENTRYID", &format!("ENTRY-{index:06}"))
+        .expect("an identifier");
+    order
+        .insert_altid("CLORDID", &format!("CL-{index:06}"))
+        .expect("an identifier");
+    order
+        .insert_accountid("ACCOUNT", "ACC-1")
+        .expect("an account");
+    order.set_metadata(Some(
+        [(SmolStr::new("venue"), SmolStr::new("XNAS"))]
+            .into_iter()
+            .collect(),
+    ));
+    order.set_book(Some(BookRef {
+        action: Some(MdUpdateAction::New),
+        scope: Some(SmolStr::new("Symbol=ALLOC")),
+        position: Some(1),
+        entry_px: None,
+        entry_size: None,
+    }));
+    order.finalize();
+    MarketData::from(order)
+}
+
+/// A `marketdata` row read back costs the value it answers and nothing
+/// else: the plan, the landing and the narrowed leaves are the stream's and
+/// the batch's, paid before its first row, and every later row reads its
+/// cells off the leaves, validates its identities and facts against the
+/// rebuilt leaf without rebuilding what it compares, and allocates exactly
+/// what a clone of the answer does - at two corpus sizes.
+#[test]
+fn a_market_data_row_read_allocates_only_what_it_hands_back() {
+    for rows in [64, 512] {
+        let values: Vec<MarketData> = (0..rows).map(allocation_market_order).collect();
+        let (handed, ()) = counted(|| {
+            for value in &values {
+                black_box(value.clone());
+            }
+        });
+        assert_eq!(handed % rows, 0, "every order owns the same heap");
+        let batch = MarketData::arrow_reader(values, Some(rows), None)
+            .expect("a reader")
+            .next()
+            .expect("one batch")
+            .expect("the batch");
+        let source = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
+        let mut read = MarketData::from_arrow_reader(source).expect("the canonical schema");
+        black_box(read.next().expect("a first row").expect("the first order"));
+        let (allocations, count) = counted(|| {
+            read.by_ref().fold(0, |count, value| {
+                black_box(value.expect("an order"));
+                count + 1
+            })
+        });
+        assert_eq!(count, rows - 1);
+        assert_eq!(
+            allocations,
+            handed / rows * (rows - 1),
+            "reading {count} rows allocated {allocations} times, but the orders they answer own {} allocations each",
+            handed / rows
+        );
+    }
+}
+
+/// A `marketdata` batch is laid out column by column from the typed
+/// leaves: per row it costs the canonical clone its write check compares
+/// against and nothing else - no cell is built as a value - so what the
+/// columns cost beyond those clones grows with the buffers' doublings and
+/// not with the rows, at two corpus sizes.
+#[test]
+fn a_market_data_batch_write_allocates_per_row_only_its_canonical_check() {
+    let overhead = |rows: usize| {
+        let values: Vec<MarketData> = (0..rows).map(allocation_market_order).collect();
+        let (cloned, ()) = counted(|| {
+            for value in &values {
+                black_box(value.clone());
+            }
+        });
+        let mut reader = MarketData::arrow_reader(values, Some(rows), None).expect("a reader");
+        let (written, batch) = counted(|| reader.next().expect("one batch").expect("the batch"));
+        assert_eq!(batch.num_rows(), rows);
+        black_box(batch);
+        written
+            .checked_sub(cloned)
+            .expect("a write costs at least its checks")
+    };
+    let (small, large) = (overhead(64), overhead(512));
+    // 448 more rows add under one allocation per four of them: the
+    // buffers' doublings, where a cell built per row would add hundreds.
+    assert!(
+        large < small + (512 - 64) / 4,
+        "512 rows cost {large} allocations beyond their checks, against {small} for 64"
+    );
 }
 
 #[test]

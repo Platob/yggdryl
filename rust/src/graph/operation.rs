@@ -1,56 +1,67 @@
-//! The one operation type: an order, a quote or an execution as a market
-//! operation event, with the book-control facts a market-data entry carries.
+//! The operation leaves: an order, a quote or an execution, undated or
+//! dated, with the book-control facts a market-data entry carries.
 //!
-//! [`MarketOperation`] is what every market message expands to and what a book
-//! holds: its [`OperationKind`] says which, its [`OperationEventData`]
-//! holds every fact, and a boxed [`BookRef`] - absent on every operation that
-//! is not a market-data entry, so one pointer - holds the typed facts a book
-//! reads to place it: the update action, the scope, the position, and the
-//! price and size the entry stated for itself. [`MarketOperationEntry`] is the same
-//! operation undated. A composite trade is [`Trade`](super::Trade), whose
-//! executions are operations of kind [`OperationKind::Execution`].
+//! [`OperationElement<K>`] is one operation with no instant - an order, a
+//! quote or an execution entry - and [`OperationEvent<K>`] the same dated,
+//! which is what every market message expands to and what a book holds: `K`
+//! says which kind, a crate-private holder keeps every fact, and a boxed
+//! [`BookRef`] - absent on every operation
+//! that is not a market-data entry, so one pointer - holds the typed facts a
+//! book reads to place it: the update action, the scope, the position, and
+//! the price and size the entry stated for itself. The aliases
+//! [`Order`], [`Quote`], [`Execution`], [`OrderEvent`], [`QuoteEvent`] and
+//! [`ExecutionEvent`] are the six leaves this crate ships; `K` is sealed, so
+//! no other kind can be named. A composite trade is
+//! [`TradeEvent`](super::TradeEvent), whose executions are
+//! [`ExecutionEvent`].
+
+use std::marker::PhantomData;
 
 use smol_str::SmolStr;
 
 use super::element::Staged;
-use super::event::{OperationData, OperationEventData};
-use super::{Element, Event, Market, Operation, OperationEvent};
-use crate::{Decimal18, Error, Result, Uuid};
+use super::facts::{OperationEventFacts, OperationFacts};
+use super::kind::MarketKind;
+use super::{Element, Event, Market, Operation};
+use crate::{Decimal18, Uuid};
 
-/// Which operation a value is: the stored `operationkind` of a row.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub enum OperationKind {
-    /// An order: a party's intent to trade at a price.
-    Order = 1,
-    /// A quote: one or two lanes a party is willing to trade at.
-    Quote = 2,
-    /// An execution: a trade that happened.
-    Execution = 3,
-    /// A composite trade root: [`Trade`](super::Trade), on a row.
-    Trade = 4,
+mod sealed {
+    pub trait Sealed {}
 }
 
-impl OperationKind {
-    /// The stored spelling: `order`, `quote`, `execution` or `trade`.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Order => "order",
-            Self::Quote => "quote",
-            Self::Execution => "execution",
-            Self::Trade => "trade",
-        }
-    }
+/// Which operation leaf a generic [`OperationElement`]/[`OperationEvent`] is:
+/// sealed, so [`OrderKind`], [`QuoteKind`] and [`ExecutionKind`] are the only
+/// three kinds that can ever instantiate them.
+pub trait OperationKind:
+    sealed::Sealed + Copy + Clone + std::fmt::Debug + Eq + PartialEq + Send + Sync + 'static
+{
+    /// The word this kind digests and stores under: `order`, `quote` or
+    /// `execution`, whichever leaf's own row this is - dated or not.
+    const KIND: MarketKind;
+}
 
-    /// The kind a stored spelling names, ignoring ASCII case; `None` for
-    /// any other text.
-    #[must_use]
-    pub fn read(text: &str) -> Option<Self> {
-        [Self::Order, Self::Quote, Self::Execution, Self::Trade]
-            .into_iter()
-            .find(|kind| kind.as_str().eq_ignore_ascii_case(text))
-    }
+/// The [`Order`]/[`OrderEvent`] marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OrderKind;
+impl sealed::Sealed for OrderKind {}
+impl OperationKind for OrderKind {
+    const KIND: MarketKind = MarketKind::Order;
+}
+
+/// The [`Quote`]/[`QuoteEvent`] marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct QuoteKind;
+impl sealed::Sealed for QuoteKind {}
+impl OperationKind for QuoteKind {
+    const KIND: MarketKind = MarketKind::Quote;
+}
+
+/// The [`Execution`]/[`ExecutionEvent`] marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExecutionKind;
+impl sealed::Sealed for ExecutionKind {}
+impl OperationKind for ExecutionKind {
+    const KIND: MarketKind = MarketKind::Execution;
 }
 
 /// FIX's `MDUpdateAction(279)` over a market-data entry, plus the full
@@ -75,7 +86,8 @@ pub enum MdUpdateAction {
 }
 
 impl MdUpdateAction {
-    const ALL: [Self; 7] = [
+    /// Every action, in declaration order.
+    pub const ALL: [Self; 7] = [
         Self::New,
         Self::Change,
         Self::Delete,
@@ -187,82 +199,412 @@ impl BookRef {
     }
 }
 
-/// One market operation: an order, a quote or an execution, dated.
+/// One operation with no instant: an order, a quote or an execution entry,
+/// as a book level holds or a walk states at an instant. `K` is
+/// [`OrderKind`], [`QuoteKind`] or [`ExecutionKind`]; the aliases
+/// [`Order`], [`Quote`] and [`Execution`] name the three.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MarketOperation {
-    kind: OperationKind,
-    data: OperationEventData,
-    book: Option<Box<BookRef>>,
+pub struct OperationElement<K: OperationKind> {
+    data: OperationFacts,
+    _kind: PhantomData<K>,
 }
 
-impl MarketOperation {
-    /// An operation of `kind` over `data`, not yet finalized; a
-    /// [`OperationKind::Trade`] is refused, because a trade root is a
-    /// [`Trade`](super::Trade).
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidRecord`] for the trade kind.
-    pub fn new(kind: OperationKind, data: OperationEventData) -> Result<Self> {
-        if kind == OperationKind::Trade {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.operationkind"),
-                reason: SmolStr::new_static("a trade root is a Trade, not an MarketOperation"),
-            });
-        }
-        Ok(Self {
-            kind,
-            data,
-            book: None,
-        })
-    }
-
-    /// An order over `data`.
-    #[must_use]
-    pub fn order(data: OperationEventData) -> Self {
+impl<K: OperationKind> Default for OperationElement<K> {
+    fn default() -> Self {
         Self {
-            kind: OperationKind::Order,
-            data,
-            book: None,
+            data: OperationFacts::default(),
+            _kind: PhantomData,
         }
     }
+}
 
-    /// A quote over `data`.
+impl<K: OperationKind> OperationElement<K> {
+    /// An entry stating nothing, not yet finalized.
     #[must_use]
-    pub fn quote(data: OperationEventData) -> Self {
-        Self {
-            kind: OperationKind::Quote,
-            data,
-            book: None,
-        }
-    }
-
-    /// An execution over `data`.
-    #[must_use]
-    pub fn execution(data: OperationEventData) -> Self {
-        Self {
-            kind: OperationKind::Execution,
-            data,
-            book: None,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Which operation this is.
     #[must_use]
-    pub const fn kind(&self) -> OperationKind {
-        self.kind
+    pub const fn kind(&self) -> MarketKind {
+        K::KIND
+    }
+
+    /// This entry dated at `unix`, nanoseconds since the Unix epoch, and
+    /// finalized: a move.
+    #[must_use]
+    pub fn at(self, unix: i64) -> OperationEvent<K> {
+        let mut operation = OperationEvent {
+            data: self.data.at(unix),
+            book: None,
+            _kind: PhantomData,
+        };
+        operation.finalize();
+        operation
+    }
+}
+
+impl<K: OperationKind> Element for OperationElement<K> {
+    fn get_curruuid(&self) -> Uuid {
+        self.data.get_curruuid()
+    }
+
+    fn set_curruuid(&mut self, curruuid: Uuid) {
+        self.data.set_curruuid(curruuid);
+    }
+
+    fn get_crossuuid(&self) -> Uuid {
+        self.data.get_crossuuid()
+    }
+
+    fn set_crossuuid(&mut self, crossuuid: Uuid) {
+        self.data.set_crossuuid(crossuuid);
+    }
+
+    fn get_crosscode(&self) -> &str {
+        self.data.get_crosscode()
+    }
+
+    fn set_crosscode(&mut self, crosscode: String) {
+        self.data.set_crosscode(crosscode);
+    }
+
+    fn get_currhashcode(&self) -> u64 {
+        self.data.get_currhashcode()
+    }
+
+    fn set_currhashcode(&mut self, hashcode: u64) {
+        self.data.set_currhashcode(hashcode);
+    }
+
+    fn get_crosshashcode(&self) -> u64 {
+        self.data.get_crosshashcode()
+    }
+
+    fn set_crosshashcode(&mut self, crosshashcode: u64) {
+        self.data.set_crosshashcode(crosshashcode);
+    }
+
+    fn get_srcuuids(&self) -> &[Uuid] {
+        self.data.get_srcuuids()
+    }
+
+    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
+        self.data.set_srcuuids(sources);
+    }
+
+    fn is_after(&self, other: &Self) -> bool {
+        self.data.is_after(&other.data)
+    }
+
+    /// The entry's facts and its kind digest to the code: the same facts as
+    /// an order and as a quote are two entries.
+    fn finalize(&mut self) {
+        self.data.fill_market();
+        self.data.fill_operation();
+        self.data.sync_cross();
+        let mut digest = self.data.digest_operation();
+        {
+            let mut staged = Staged::new(&mut digest);
+            staged.feed("operationkind", K::KIND.as_str().as_bytes());
+        }
+        let hashcode = digest.as_u64();
+        self.data.set_currhashcode(hashcode);
+        self.data.set_curruuid(Uuid::from_v8(u128::from(hashcode)));
+        let crossuuid = self.data.cross_uuid();
+        self.data.set_crossuuid(crossuuid);
+    }
+
+    fn with_previous(mut self, previous: &Self) -> Option<Self> {
+        let data = std::mem::take(&mut self.data).with_previous(&previous.data)?;
+        self.data = data;
+        self.finalize();
+        Some(self)
+    }
+
+    fn merge_with(mut self, other: &Self) -> Option<Self> {
+        let data = std::mem::take(&mut self.data).merge_with(&other.data)?;
+        self.data = data;
+        self.finalize();
+        Some(self)
+    }
+}
+
+impl<K: OperationKind> Market for OperationElement<K> {
+    fn get_price(&self) -> Option<Decimal18> {
+        self.data.get_price()
+    }
+    fn set_price(&mut self, price: Option<Decimal18>) {
+        self.data.set_price(price);
+    }
+    fn get_currency(&self) -> &crate::Ccy {
+        self.data.get_currency()
+    }
+    fn set_currency(&mut self, currency: crate::Ccy) {
+        self.data.set_currency(currency);
+    }
+    fn get_quantity(&self) -> Option<Decimal18> {
+        self.data.get_quantity()
+    }
+    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
+        self.data.set_quantity(quantity);
+    }
+    fn get_unit(&self) -> &crate::Unit {
+        self.data.get_unit()
+    }
+    fn set_unit(&mut self, unit: crate::Unit) {
+        self.data.set_unit(unit);
+    }
+    fn get_side(&self) -> crate::Side {
+        self.data.get_side()
+    }
+    fn set_side(&mut self, side: crate::Side) {
+        self.data.set_side(side);
+    }
+    fn get_securityids(&self) -> &crate::securityid::SecurityIds {
+        self.data.get_securityids()
+    }
+    fn set_securityids(&mut self, ids: crate::securityid::SecurityIds) -> crate::Result<()> {
+        self.data.set_securityids(ids)
+    }
+    fn insert_securityid(&mut self, id: crate::securityid::SecurityId) -> crate::Result<bool> {
+        self.data.insert_securityid(id)
+    }
+    fn remove_securityid(&mut self, key: &crate::securityid::SecType) -> crate::Result<bool> {
+        self.data.remove_securityid(key)
+    }
+    fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
+        self.data.derive_securityid(id)
+    }
+    fn get_cficode(&self) -> Option<&crate::CfiCode> {
+        self.data.get_cficode()
+    }
+    fn set_cficode(&mut self, code: Option<crate::CfiCode>) {
+        self.data.set_cficode(code);
+    }
+    fn get_miccode(&self) -> Option<&crate::MicCode> {
+        self.data.get_miccode()
+    }
+    fn set_miccode(&mut self, code: Option<crate::MicCode>) {
+        self.data.set_miccode(code);
+    }
+    fn get_lastpx(&self) -> Option<Decimal18> {
+        self.data.get_lastpx()
+    }
+    fn set_lastpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_lastpx(px);
+    }
+    fn get_lastqty(&self) -> Option<Decimal18> {
+        self.data.get_lastqty()
+    }
+    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_lastqty(qty);
+    }
+    fn get_avgpx(&self) -> Option<Decimal18> {
+        self.data.get_avgpx()
+    }
+    fn set_avgpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_avgpx(px);
+    }
+    fn get_cumqty(&self) -> Option<Decimal18> {
+        self.data.get_cumqty()
+    }
+    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_cumqty(qty);
+    }
+    fn get_leavesqty(&self) -> Option<Decimal18> {
+        self.data.get_leavesqty()
+    }
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_leavesqty(qty);
+    }
+    fn get_prevpx(&self) -> Option<Decimal18> {
+        self.data.get_prevpx()
+    }
+    fn set_prevpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_prevpx(px);
+    }
+    fn get_prevqty(&self) -> Option<Decimal18> {
+        self.data.get_prevqty()
+    }
+    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_prevqty(qty);
+    }
+    fn get_spotrate(&self) -> Option<Decimal18> {
+        self.data.get_spotrate()
+    }
+    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+        self.data.set_spotrate(rate);
+    }
+    fn get_forwardpoints(&self) -> Option<Decimal18> {
+        self.data.get_forwardpoints()
+    }
+    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+        self.data.set_forwardpoints(points);
+    }
+    fn get_ticker(&self) -> Option<&str> {
+        self.data.get_ticker()
+    }
+    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
+        self.data.set_ticker(ticker);
+    }
+    fn get_metadata(&self) -> &super::market::Metadata {
+        self.data.get_metadata()
+    }
+    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
+        self.data.set_metadata(metadata);
+    }
+}
+
+impl<K: OperationKind> Operation for OperationElement<K> {
+    fn get_marketoperationid(&self) -> Option<i32> {
+        self.data.get_marketoperationid()
+    }
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+        self.data.set_marketoperationid(marketoperationid);
+    }
+    fn get_tif(&self) -> Option<&crate::TimeInForce> {
+        self.data.get_tif()
+    }
+    fn set_tif(&mut self, tif: Option<crate::TimeInForce>) {
+        self.data.set_tif(tif);
+    }
+    fn get_tradable(&self) -> Option<bool> {
+        self.data.get_tradable()
+    }
+    fn set_tradable(&mut self, tradable: Option<bool>) {
+        self.data.set_tradable(tradable);
+    }
+    fn get_accountids(&self) -> &crate::idmap::IdMap {
+        self.data.get_accountids()
+    }
+    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_accountids(ids)
+    }
+    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_accountid(key, value)
+    }
+    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_accountid(key)
+    }
+    fn get_userids(&self) -> &crate::idmap::IdMap {
+        self.data.get_userids()
+    }
+    fn set_userids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_userids(ids)
+    }
+    fn insert_userid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_userid(key, value)
+    }
+    fn remove_userid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_userid(key)
+    }
+    fn get_altids(&self) -> &crate::idmap::IdMap {
+        self.data.get_altids()
+    }
+    fn set_altids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_altids(ids)
+    }
+    fn insert_altid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_altid(key, value)
+    }
+    fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_altid(key)
+    }
+    fn get_bid(&self) -> Option<&super::market::Lane> {
+        self.data.get_bid()
+    }
+    fn set_bid(&mut self, lane: Option<super::market::Lane>) {
+        self.data.set_bid(lane);
+    }
+    fn get_ask(&self) -> Option<&super::market::Lane> {
+        self.data.get_ask()
+    }
+    fn set_ask(&mut self, lane: Option<super::market::Lane>) {
+        self.data.set_ask(lane);
+    }
+}
+
+/// One dated operation: an order, a quote or an execution. `K` is
+/// [`OrderKind`], [`QuoteKind`] or [`ExecutionKind`]; the aliases
+/// [`OrderEvent`], [`QuoteEvent`] and [`ExecutionEvent`] name the three.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OperationEvent<K: OperationKind> {
+    data: OperationEventFacts,
+    book: Option<Box<BookRef>>,
+    _kind: PhantomData<K>,
+}
+
+impl<K: OperationKind> Default for OperationEvent<K> {
+    fn default() -> Self {
+        Self {
+            data: OperationEventFacts::default(),
+            book: None,
+            _kind: PhantomData,
+        }
+    }
+}
+
+impl<K: OperationKind> OperationEvent<K> {
+    /// An operation that happened at `unix`, nanoseconds since the Unix
+    /// epoch, stating nothing else yet.
+    #[must_use]
+    pub fn at(unix: i64) -> Self {
+        Self {
+            data: OperationEventFacts::at(unix),
+            book: None,
+            _kind: PhantomData,
+        }
+    }
+
+    /// An operation over facts already held, not yet finalized: the move a
+    /// FIX message and a decoded row make into their leaf.
+    pub(crate) fn from_facts(data: OperationEventFacts) -> Self {
+        Self {
+            data,
+            book: None,
+            _kind: PhantomData,
+        }
     }
 
     /// The facts this operation holds.
-    #[must_use]
-    pub fn data(&self) -> &OperationEventData {
+    pub(crate) fn facts(&self) -> &OperationEventFacts {
         &self.data
     }
 
-    /// The facts, moved out.
+    /// This event as the one after an operation event of any kind, through
+    /// the facts both hold: an execution follows the order it fills, keeping
+    /// its own kind and control. `None` where it cannot follow it.
+    pub(crate) fn following_facts(mut self, previous: &OperationEventFacts) -> Option<Self> {
+        let data = std::mem::take(&mut self.data).following_operation(previous)?;
+        self.data = data;
+        self.finalize();
+        Some(self)
+    }
+
+    /// This event as another statement of an operation event of any kind,
+    /// through the facts both hold; its own kind and control stay.
+    pub(crate) fn restating_facts(mut self, live: &OperationEventFacts) -> Self {
+        let data = std::mem::take(&mut self.data).restating(live);
+        self.data = data;
+        self.finalize();
+        self
+    }
+
+    /// Which operation this is.
     #[must_use]
-    pub fn into_data(self) -> OperationEventData {
-        self.data
+    pub const fn kind(&self) -> MarketKind {
+        K::KIND
+    }
+
+    /// This operation without its clocks: a move.
+    #[must_use]
+    pub fn into_element(self) -> OperationElement<K> {
+        OperationElement {
+            data: self.data.into_entry(),
+            _kind: PhantomData,
+        }
     }
 
     /// The book-control facts, where the operation is a market-data entry.
@@ -306,36 +648,23 @@ impl MarketOperation {
             .unwrap_or("")
     }
 
-    /// This operation without its clocks and book control: a move.
-    #[must_use]
-    pub fn entry(self) -> MarketOperationEntry {
-        MarketOperationEntry {
-            kind: self.kind,
-            data: self.data.into_entry(),
+    /// This operation's facts and book control, reinterpreted as a
+    /// different kind - the book's own quote-to-order continuation, which
+    /// takes fresh facts for the promoted operation and keeps this
+    /// operation's book control unchanged.
+    pub(crate) fn with_kind<K2: OperationKind>(
+        self,
+        data: OperationEventFacts,
+    ) -> OperationEvent<K2> {
+        OperationEvent {
+            data,
+            book: self.book,
+            _kind: PhantomData,
         }
     }
 }
 
-impl Default for MarketOperation {
-    /// An order stating nothing, at the epoch.
-    fn default() -> Self {
-        Self::order(OperationEventData::default())
-    }
-}
-
-impl AsRef<OperationEventData> for MarketOperation {
-    fn as_ref(&self) -> &OperationEventData {
-        &self.data
-    }
-}
-
-impl AsMut<OperationEventData> for MarketOperation {
-    fn as_mut(&mut self) -> &mut OperationEventData {
-        &mut self.data
-    }
-}
-
-impl Element for MarketOperation {
+impl<K: OperationKind> Element for OperationEvent<K> {
     fn get_curruuid(&self) -> Uuid {
         self.data.get_curruuid()
     }
@@ -397,7 +726,7 @@ impl Element for MarketOperation {
         let mut digest = self.data.digest_operation_event();
         {
             let mut staged = Staged::new(&mut digest);
-            staged.feed("operationkind", self.kind.as_str().as_bytes());
+            staged.feed("operationkind", K::KIND.as_str().as_bytes());
             if let Some(book) = &self.book {
                 book.feed(&mut staged);
             }
@@ -414,9 +743,6 @@ impl Element for MarketOperation {
     }
 
     fn merge_with(mut self, other: &Self) -> Option<Self> {
-        if self.kind != other.kind {
-            return None;
-        }
         let data = std::mem::take(&mut self.data).merging_operation_event(&other.data)?;
         self.data = data;
         if self.book.is_none() && other.book.is_some() {
@@ -427,185 +753,337 @@ impl Element for MarketOperation {
     }
 }
 
-delegate_event!(
-    MarketOperation,
-    data,
-    restating = |mut this: MarketOperation, live: &MarketOperation| {
-        let data = std::mem::take(&mut this.data).restating(&live.data);
-        this.data = data;
-        this.finalize();
-        this
-    },
-    is_execution = |this: &MarketOperation| this.kind == OperationKind::Execution,
-    set_currunix = |this: &mut MarketOperation, unix: i64| this.data.set_currunix(unix)
-);
-delegate_market!(MarketOperation, data);
-delegate_operation!(MarketOperation, data);
-
-/// One market operation undated: an order, a quote or an execution as an
-/// entry a book level holds or a walk states at an instant.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MarketOperationEntry {
-    kind: OperationKind,
-    data: OperationData,
-}
-
-impl MarketOperationEntry {
-    /// An entry of `kind` over `data`, not yet finalized.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`Error::InvalidRecord`] for the trade kind.
-    pub fn new(kind: OperationKind, data: OperationData) -> Result<Self> {
-        if kind == OperationKind::Trade {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.operationkind"),
-                reason: SmolStr::new_static("a trade root is a Trade, not an MarketOperationEntry"),
-            });
-        }
-        Ok(Self { kind, data })
+impl<K: OperationKind> Event for OperationEvent<K> {
+    fn get_currunix(&self) -> i64 {
+        self.data.get_currunix()
     }
-
-    /// Which operation this is.
-    #[must_use]
-    pub const fn kind(&self) -> OperationKind {
-        self.kind
+    fn set_currunix(&mut self, unix: i64) {
+        self.data.set_currunix(unix);
     }
-
-    /// The facts this entry holds.
-    #[must_use]
-    pub fn data(&self) -> &OperationData {
-        &self.data
+    fn get_state(&self) -> &crate::State {
+        self.data.get_state()
     }
-
-    /// The facts, moved out.
-    #[must_use]
-    pub fn into_data(self) -> OperationData {
-        self.data
+    fn set_state(&mut self, state: crate::State) {
+        self.data.set_state(state);
     }
-
-    /// This entry dated at `unix`, nanoseconds since the Unix epoch, and
-    /// finalized: a move.
-    #[must_use]
-    pub fn at(self, unix: i64) -> MarketOperation {
-        let mut operation = MarketOperation {
-            kind: self.kind,
-            data: self.data.at(unix),
-            book: None,
-        };
-        operation.finalize();
-        operation
+    fn is_execution(&self) -> bool {
+        matches!(K::KIND, MarketKind::Execution)
     }
-}
-
-impl Default for MarketOperationEntry {
-    /// An order entry stating nothing.
-    fn default() -> Self {
-        Self {
-            kind: OperationKind::Order,
-            data: OperationData::default(),
-        }
+    fn get_seqnum(&self) -> u64 {
+        self.data.get_seqnum()
     }
-}
-
-impl AsRef<OperationData> for MarketOperationEntry {
-    fn as_ref(&self) -> &OperationData {
-        &self.data
+    fn set_seqnum(&mut self, seqnum: u64) {
+        self.data.set_seqnum(seqnum);
     }
-}
-
-impl AsMut<OperationData> for MarketOperationEntry {
-    fn as_mut(&mut self) -> &mut OperationData {
-        &mut self.data
+    fn get_creaunix(&self) -> Option<i64> {
+        self.data.get_creaunix()
     }
-}
-
-impl Element for MarketOperationEntry {
-    fn get_curruuid(&self) -> Uuid {
-        self.data.get_curruuid()
+    fn set_creaunix(&mut self, unix: Option<i64>) {
+        self.data.set_creaunix(unix);
     }
-
-    fn set_curruuid(&mut self, curruuid: Uuid) {
-        self.data.set_curruuid(curruuid);
+    fn get_execunix(&self) -> Option<i64> {
+        self.data.get_execunix()
     }
-
-    fn get_crossuuid(&self) -> Uuid {
-        self.data.get_crossuuid()
+    fn set_execunix(&mut self, unix: Option<i64>) {
+        self.data.set_execunix(unix);
     }
-
-    fn set_crossuuid(&mut self, crossuuid: Uuid) {
-        self.data.set_crossuuid(crossuuid);
+    fn get_recdunix(&self) -> Option<i64> {
+        self.data.get_recdunix()
     }
-
-    fn get_crosscode(&self) -> &str {
-        self.data.get_crosscode()
+    fn set_recdunix(&mut self, unix: Option<i64>) {
+        self.data.set_recdunix(unix);
     }
-
-    fn set_crosscode(&mut self, crosscode: String) {
-        self.data.set_crosscode(crosscode);
+    fn get_exprtime(&self) -> Option<i64> {
+        self.data.get_exprtime()
     }
-
-    fn get_currhashcode(&self) -> u64 {
-        self.data.get_currhashcode()
+    fn set_exprtime(&mut self, unix: Option<i64>) {
+        self.data.set_exprtime(unix);
     }
-
-    fn set_currhashcode(&mut self, hashcode: u64) {
-        self.data.set_currhashcode(hashcode);
+    fn get_prevunix(&self) -> Option<i64> {
+        self.data.get_prevunix()
     }
-
-    fn get_crosshashcode(&self) -> u64 {
-        self.data.get_crosshashcode()
+    fn set_prevunix(&mut self, unix: Option<i64>) {
+        self.data.set_prevunix(unix);
     }
-
-    fn set_crosshashcode(&mut self, crosshashcode: u64) {
-        self.data.set_crosshashcode(crosshashcode);
+    fn get_prevuuid(&self) -> Option<Uuid> {
+        self.data.get_prevuuid()
     }
-
-    fn get_srcuuids(&self) -> &[Uuid] {
-        self.data.get_srcuuids()
+    fn set_prevuuid(&mut self, uuid: Option<Uuid>) {
+        self.data.set_prevuuid(uuid);
     }
-
-    fn set_srcuuids(&mut self, sources: Vec<Uuid>) {
-        self.data.set_srcuuids(sources);
+    fn get_snapunix(&self) -> Option<i64> {
+        self.data.get_snapunix()
     }
-
-    fn is_after(&self, other: &Self) -> bool {
-        self.data.is_after(&other.data)
+    fn set_snapunix(&mut self, unix: Option<i64>) {
+        self.data.set_snapunix(unix);
     }
-
-    fn finalize(&mut self) {
-        self.data.fill_market();
-        self.data.fill_operation();
-        self.data.sync_cross();
-        let mut digest = self.data.digest_operation();
-        {
-            let mut staged = Staged::new(&mut digest);
-            staged.feed("operationkind", self.kind.as_str().as_bytes());
-        }
-        let hashcode = digest.as_u64();
-        self.data.set_currhashcode(hashcode);
-        self.data.set_curruuid(Uuid::from_v8(u128::from(hashcode)));
-        let crossuuid = self.data.cross_uuid();
-        self.data.set_crossuuid(crossuuid);
-    }
-
-    fn with_previous(mut self, previous: &Self) -> Option<Self> {
-        let data = std::mem::take(&mut self.data).with_previous(&previous.data)?;
+    fn restating(mut self, live: &Self) -> Self {
+        let data = std::mem::take(&mut self.data).restating(&live.data);
         self.data = data;
         self.finalize();
-        Some(self)
+        self
     }
-
-    fn merge_with(mut self, other: &Self) -> Option<Self> {
-        if self.kind != other.kind {
-            return None;
-        }
-        let data = std::mem::take(&mut self.data).merge_with(&other.data)?;
-        self.data = data;
-        self.finalize();
-        Some(self)
+    fn finalized(&mut self, hashcode: u64) {
+        self.data.finalized(hashcode);
     }
 }
 
-delegate_market!(MarketOperationEntry, data);
-delegate_operation!(MarketOperationEntry, data);
+impl<K: OperationKind> Market for OperationEvent<K> {
+    fn get_price(&self) -> Option<Decimal18> {
+        self.data.get_price()
+    }
+    fn set_price(&mut self, price: Option<Decimal18>) {
+        self.data.set_price(price);
+    }
+    fn get_currency(&self) -> &crate::Ccy {
+        self.data.get_currency()
+    }
+    fn set_currency(&mut self, currency: crate::Ccy) {
+        self.data.set_currency(currency);
+    }
+    fn get_quantity(&self) -> Option<Decimal18> {
+        self.data.get_quantity()
+    }
+    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
+        self.data.set_quantity(quantity);
+    }
+    fn get_unit(&self) -> &crate::Unit {
+        self.data.get_unit()
+    }
+    fn set_unit(&mut self, unit: crate::Unit) {
+        self.data.set_unit(unit);
+    }
+    fn get_side(&self) -> crate::Side {
+        self.data.get_side()
+    }
+    fn set_side(&mut self, side: crate::Side) {
+        self.data.set_side(side);
+    }
+    fn get_securityids(&self) -> &crate::securityid::SecurityIds {
+        self.data.get_securityids()
+    }
+    fn set_securityids(&mut self, ids: crate::securityid::SecurityIds) -> crate::Result<()> {
+        self.data.set_securityids(ids)
+    }
+    fn insert_securityid(&mut self, id: crate::securityid::SecurityId) -> crate::Result<bool> {
+        self.data.insert_securityid(id)
+    }
+    fn remove_securityid(&mut self, key: &crate::securityid::SecType) -> crate::Result<bool> {
+        self.data.remove_securityid(key)
+    }
+    fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
+        self.data.derive_securityid(id)
+    }
+    fn get_cficode(&self) -> Option<&crate::CfiCode> {
+        self.data.get_cficode()
+    }
+    fn set_cficode(&mut self, code: Option<crate::CfiCode>) {
+        self.data.set_cficode(code);
+    }
+    fn get_miccode(&self) -> Option<&crate::MicCode> {
+        self.data.get_miccode()
+    }
+    fn set_miccode(&mut self, code: Option<crate::MicCode>) {
+        self.data.set_miccode(code);
+    }
+    fn get_lastpx(&self) -> Option<Decimal18> {
+        self.data.get_lastpx()
+    }
+    fn set_lastpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_lastpx(px);
+    }
+    fn get_lastqty(&self) -> Option<Decimal18> {
+        self.data.get_lastqty()
+    }
+    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_lastqty(qty);
+    }
+    fn get_avgpx(&self) -> Option<Decimal18> {
+        self.data.get_avgpx()
+    }
+    fn set_avgpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_avgpx(px);
+    }
+    fn get_cumqty(&self) -> Option<Decimal18> {
+        self.data.get_cumqty()
+    }
+    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_cumqty(qty);
+    }
+    fn get_leavesqty(&self) -> Option<Decimal18> {
+        self.data.get_leavesqty()
+    }
+    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_leavesqty(qty);
+    }
+    fn get_prevpx(&self) -> Option<Decimal18> {
+        self.data.get_prevpx()
+    }
+    fn set_prevpx(&mut self, px: Option<Decimal18>) {
+        self.data.set_prevpx(px);
+    }
+    fn get_prevqty(&self) -> Option<Decimal18> {
+        self.data.get_prevqty()
+    }
+    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
+        self.data.set_prevqty(qty);
+    }
+    fn get_spotrate(&self) -> Option<Decimal18> {
+        self.data.get_spotrate()
+    }
+    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+        self.data.set_spotrate(rate);
+    }
+    fn get_forwardpoints(&self) -> Option<Decimal18> {
+        self.data.get_forwardpoints()
+    }
+    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+        self.data.set_forwardpoints(points);
+    }
+    fn get_ticker(&self) -> Option<&str> {
+        self.data.get_ticker()
+    }
+    fn set_ticker(&mut self, ticker: Option<smol_str::SmolStr>) {
+        self.data.set_ticker(ticker);
+    }
+    fn get_metadata(&self) -> &super::market::Metadata {
+        self.data.get_metadata()
+    }
+    fn set_metadata(&mut self, metadata: Option<super::market::Metadata>) {
+        self.data.set_metadata(metadata);
+    }
+}
+
+impl<K: OperationKind> Operation for OperationEvent<K> {
+    fn get_marketoperationid(&self) -> Option<i32> {
+        self.data.get_marketoperationid()
+    }
+    fn set_marketoperationid(&mut self, marketoperationid: Option<i32>) {
+        self.data.set_marketoperationid(marketoperationid);
+    }
+    fn get_tif(&self) -> Option<&crate::TimeInForce> {
+        self.data.get_tif()
+    }
+    fn set_tif(&mut self, tif: Option<crate::TimeInForce>) {
+        self.data.set_tif(tif);
+    }
+    fn get_tradable(&self) -> Option<bool> {
+        self.data.get_tradable()
+    }
+    fn set_tradable(&mut self, tradable: Option<bool>) {
+        self.data.set_tradable(tradable);
+    }
+    fn get_accountids(&self) -> &crate::idmap::IdMap {
+        self.data.get_accountids()
+    }
+    fn set_accountids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_accountids(ids)
+    }
+    fn insert_accountid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_accountid(key, value)
+    }
+    fn remove_accountid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_accountid(key)
+    }
+    fn get_userids(&self) -> &crate::idmap::IdMap {
+        self.data.get_userids()
+    }
+    fn set_userids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_userids(ids)
+    }
+    fn insert_userid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_userid(key, value)
+    }
+    fn remove_userid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_userid(key)
+    }
+    fn get_altids(&self) -> &crate::idmap::IdMap {
+        self.data.get_altids()
+    }
+    fn set_altids(&mut self, ids: crate::idmap::IdMap) -> crate::Result<()> {
+        self.data.set_altids(ids)
+    }
+    fn insert_altid(&mut self, key: &str, value: &str) -> crate::Result<bool> {
+        self.data.insert_altid(key, value)
+    }
+    fn remove_altid(&mut self, key: &str) -> crate::Result<bool> {
+        self.data.remove_altid(key)
+    }
+    fn get_bid(&self) -> Option<&super::market::Lane> {
+        self.data.get_bid()
+    }
+    fn set_bid(&mut self, lane: Option<super::market::Lane>) {
+        self.data.set_bid(lane);
+    }
+    fn get_ask(&self) -> Option<&super::market::Lane> {
+        self.data.get_ask()
+    }
+    fn set_ask(&mut self, lane: Option<super::market::Lane>) {
+        self.data.set_ask(lane);
+    }
+}
+
+impl<K: OperationKind, E: Event + Operation + ?Sized> From<&E> for OperationEvent<K> {
+    /// Copies every fact `event` states - the identities as stated - onto an
+    /// operation of this kind with no book control, not refinalized.
+    fn from(event: &E) -> Self {
+        Self::from_facts(OperationEventFacts::from(event))
+    }
+}
+
+/// What every dated order or quote answers about itself and its book
+/// control, whichever kind it is: the seam
+/// [`MarketData`](super::MarketData)'s book-side internals read through
+/// instead of matching [`OrderEvent`]/[`QuoteEvent`] by hand. Never
+/// implemented for anything a book side does not hold.
+pub(crate) trait BookOperation: Event + Operation {
+    /// [`OperationEvent::book`].
+    fn control(&self) -> Option<&BookRef>;
+    /// [`OperationEvent::set_book`].
+    fn set_control(&mut self, book: Option<BookRef>);
+    /// [`OperationEvent::action`].
+    fn control_action(&self) -> Option<MdUpdateAction>;
+    /// The word this operation's kind digests under: `order`, `quote` or
+    /// `execution` - never the finer `MarketData` spelling.
+    fn operation_word(&self) -> &'static str;
+    /// The facts this operation holds, kind-agnostic: the book's own
+    /// quote-to-order promotion reads and merges through this, since the
+    /// facts type answers `Event`/`Operation` on its own regardless of the
+    /// kind that will end up wrapping the merged result.
+    fn facts(&self) -> &OperationEventFacts;
+}
+
+impl<K: OperationKind> BookOperation for OperationEvent<K> {
+    fn control(&self) -> Option<&BookRef> {
+        self.book()
+    }
+
+    fn set_control(&mut self, book: Option<BookRef>) {
+        self.set_book(book);
+    }
+
+    fn control_action(&self) -> Option<MdUpdateAction> {
+        self.action()
+    }
+
+    fn operation_word(&self) -> &'static str {
+        K::KIND.as_str()
+    }
+
+    fn facts(&self) -> &OperationEventFacts {
+        &self.data
+    }
+}
+
+/// An undated order.
+pub type Order = OperationElement<OrderKind>;
+/// An undated quote.
+pub type Quote = OperationElement<QuoteKind>;
+/// An undated execution.
+pub type Execution = OperationElement<ExecutionKind>;
+/// A dated order.
+pub type OrderEvent = OperationEvent<OrderKind>;
+/// A dated quote.
+pub type QuoteEvent = OperationEvent<QuoteKind>;
+/// A dated execution.
+pub type ExecutionEvent = OperationEvent<ExecutionKind>;

@@ -6,8 +6,189 @@ use std::collections::{BTreeSet, HashMap};
 use std::iter::FusedIterator;
 use std::vec;
 
-use super::{Element, Event, OperationEvent};
+use super::Element;
+use crate::idmap::IdMap;
 use crate::{State, Uuid};
+
+mod sealed {
+    use super::super::{Element, Event, MarketData, Operation};
+    use crate::State;
+    use crate::idmap::IdMap;
+
+    /// What a walk needs of an element beyond [`Element`]: sealed, so only
+    /// `E: Event + Operation + Clone` and [`MarketData`] can name it. Every
+    /// `E: Event + Operation + Clone` answers through its own traits; a
+    /// `MarketData` answers through its four operation-event variants and
+    /// is not walked otherwise, so any other variant is yielded as it came
+    /// and never enters the live map.
+    pub trait Walked: Element + Clone {
+        /// [`Event::get_currunix`]; `None` for an element that states no
+        /// instant, which the walk yields where it reads it.
+        fn walked_currunix(&self) -> Option<i64>;
+        /// The order a walk opened over unsorted elements sorts them by.
+        fn walked_order(&self, other: &Self) -> std::cmp::Ordering;
+        /// [`Event::set_currunix`].
+        fn walked_set_currunix(&mut self, unix: i64);
+        /// [`Event::get_state`].
+        fn walked_state(&self) -> Option<&State>;
+        /// [`Event::set_state`].
+        fn walked_set_state(&mut self, state: State);
+        /// [`Event::get_exprtime`].
+        fn walked_exprtime(&self) -> Option<i64>;
+        /// [`Event::set_execunix`].
+        fn walked_set_execunix(&mut self, unix: Option<i64>);
+        /// [`Event::set_recdunix`].
+        fn walked_set_recdunix(&mut self, unix: Option<i64>);
+        /// [`Event::set_snapunix`].
+        fn walked_set_snapunix(&mut self, unix: Option<i64>);
+        /// [`Operation::get_altids`]; `None` for an element the walk does
+        /// not chain.
+        fn walked_altids(&self) -> Option<&IdMap>;
+        /// [`Event::restating`].
+        fn walked_restating(self, live: &Self) -> Self;
+        /// [`super::super::element::fill_execution`].
+        fn walked_fill_execution(&mut self);
+        /// Whether the walk chains this element at all.
+        fn is_walked(&self) -> bool;
+    }
+
+    impl<E: Event + Operation + Clone> Walked for E {
+        fn walked_currunix(&self) -> Option<i64> {
+            Some(self.get_currunix())
+        }
+        fn walked_order(&self, other: &Self) -> std::cmp::Ordering {
+            super::order(self, other)
+        }
+        fn walked_set_currunix(&mut self, unix: i64) {
+            self.set_currunix(unix);
+        }
+        fn walked_state(&self) -> Option<&State> {
+            Some(self.get_state())
+        }
+        fn walked_set_state(&mut self, state: State) {
+            self.set_state(state);
+        }
+        fn walked_exprtime(&self) -> Option<i64> {
+            self.get_exprtime()
+        }
+        fn walked_set_execunix(&mut self, unix: Option<i64>) {
+            self.set_execunix(unix);
+        }
+        fn walked_set_recdunix(&mut self, unix: Option<i64>) {
+            self.set_recdunix(unix);
+        }
+        fn walked_set_snapunix(&mut self, unix: Option<i64>) {
+            self.set_snapunix(unix);
+        }
+        fn walked_altids(&self) -> Option<&IdMap> {
+            Some(self.get_altids())
+        }
+        fn walked_restating(self, live: &Self) -> Self {
+            self.restating(live)
+        }
+        fn walked_fill_execution(&mut self) {
+            let _ = super::super::element::fill_execution(self);
+        }
+        fn is_walked(&self) -> bool {
+            true
+        }
+    }
+
+    impl Walked for MarketData {
+        fn walked_currunix(&self) -> Option<i64> {
+            self.as_event().map(|event| event.get_currunix())
+        }
+        /// By instant, an undated value first: a total order, where
+        /// [`Element::is_after`] states none between an undated value and
+        /// any other.
+        fn walked_order(&self, other: &Self) -> std::cmp::Ordering {
+            self.walked_currunix().cmp(&other.walked_currunix())
+        }
+        fn walked_set_currunix(&mut self, unix: i64) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_currunix(unix);
+            }
+        }
+        fn walked_state(&self) -> Option<&State> {
+            match self.as_event_operation() {
+                Some(operation) => Some(operation.get_state()),
+                None => None,
+            }
+        }
+        fn walked_set_state(&mut self, state: State) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_state(state);
+            }
+        }
+        fn walked_exprtime(&self) -> Option<i64> {
+            self.as_event_operation().and_then(Event::get_exprtime)
+        }
+        fn walked_set_execunix(&mut self, unix: Option<i64>) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_execunix(unix);
+            }
+        }
+        fn walked_set_recdunix(&mut self, unix: Option<i64>) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_recdunix(unix);
+            }
+        }
+        fn walked_set_snapunix(&mut self, unix: Option<i64>) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                operation.set_snapunix(unix);
+            }
+        }
+        fn walked_altids(&self) -> Option<&IdMap> {
+            match self.as_event_operation() {
+                Some(operation) => Some(operation.get_altids()),
+                None => None,
+            }
+        }
+        /// Restates through the leaf's own [`Event::restating`] where both
+        /// are the same walked variant, and through the facts both hold
+        /// where two operation events differ in kind - a fill logged twice
+        /// under the order's identity keeps its own kind; else this
+        /// statement stands as it is.
+        fn walked_restating(self, live: &Self) -> Self {
+            if std::mem::discriminant(&self) != std::mem::discriminant(live) {
+                let Some(facts) = live.operation_event_facts() else {
+                    return self;
+                };
+                return match self {
+                    Self::OrderEvent(this) => Self::OrderEvent(this.restating_facts(facts)),
+                    Self::QuoteEvent(this) => Self::QuoteEvent(this.restating_facts(facts)),
+                    Self::ExecutionEvent(this) => Self::ExecutionEvent(this.restating_facts(facts)),
+                    this => this,
+                };
+            }
+            match (self, live) {
+                (Self::OrderEvent(this), Self::OrderEvent(live)) => {
+                    Self::OrderEvent(this.restating(live))
+                }
+                (Self::QuoteEvent(this), Self::QuoteEvent(live)) => {
+                    Self::QuoteEvent(this.restating(live))
+                }
+                (Self::ExecutionEvent(this), Self::ExecutionEvent(live)) => {
+                    Self::ExecutionEvent(this.restating(live))
+                }
+                (Self::TradeEvent(this), Self::TradeEvent(live)) => {
+                    Self::TradeEvent(this.restating(live))
+                }
+                (this, _) => this,
+            }
+        }
+        fn walked_fill_execution(&mut self) {
+            if let Some(operation) = self.as_event_operation_mut() {
+                let _ = super::super::element::fill_execution(operation);
+            }
+        }
+        fn is_walked(&self) -> bool {
+            self.as_event_operation().is_some()
+        }
+    }
+}
+
+use sealed::Walked;
 
 /// The elements a walk reads, in the order it reads them.
 #[derive(Debug)]
@@ -50,7 +231,7 @@ enum Source<E, I> {
 /// An element arriving under the identity the live element *arrived*
 /// under - the same instant, the same content: one message a capture
 /// logged at every hop it passed - is another statement of the live
-/// element and not the one after it. It is yielded [restating](Event::restating)
+/// element and not the one after it. It is yielded [restating](super::Event::restating)
 /// the live one, so it takes the place the live one holds in its chain and
 /// finalizes to the same identity, and the chain grows by nothing.
 ///
@@ -71,7 +252,7 @@ enum Source<E, I> {
 /// Given a grid - [`Self::with_snapshot_ns`], a step in nanoseconds aligned
 /// on the epoch - the walk also yields an owned view of every living identity
 /// at each crossed grid instant. A view carries that instant in
-/// [`Event::get_snapunix`] and otherwise keeps the live event's identity and
+/// [`Event::get_snapunix`](super::Event::get_snapunix) and otherwise keeps the live event's identity and
 /// content; it does not advance the chain. All source events at an exact
 /// boundary are read before its views, while expirations at that boundary are
 /// read before either. Source events keep the snapshot fact they stated.
@@ -80,15 +261,22 @@ enum Source<E, I> {
 /// identity never makes a finite source infinite. Without a grid the walk
 /// leaves snapshot instants as they came.
 ///
+/// The walk reads any `E: Event + Operation + Clone` - a typed event, a
+/// FIX lifecycle message - and [`MarketData`](super::MarketData): of a
+/// `MarketData`, the operation events (`OrderEvent`, `QuoteEvent`,
+/// `ExecutionEvent`, `TradeEvent`) chain, and every other variant is yielded
+/// unchanged where it stands - a dated one at its instant, an undated one
+/// where it is read - and never stands live.
+///
 /// ```
-/// use yggdryl::graph::{Element, EventIterator, Event, OperationEventData};
+/// use yggdryl::graph::{Element, EventIterator, Event, OrderEvent};
 /// use yggdryl::State;
 ///
 /// // One order's life as three events sharing its cross code, plus one
 /// // event of another order: a market event orders by instant and follows
 /// // by the timed reading.
 /// let event = |order: &str, unix: i64, state: &str| {
-///     let mut event = OperationEventData::at(unix);
+///     let mut event = OrderEvent::at(unix);
 ///     event.set_crosscode(order.to_owned());
 ///     event.set_state(State::from_spelling(state).expect("a shipped state"));
 ///     event.finalize();
@@ -179,7 +367,7 @@ struct Live<E> {
 
 impl<E, I> EventIterator<E, I>
 where
-    E: OperationEvent + Clone,
+    E: Walked,
     I: Iterator<Item = E>,
 {
     /// Opens a walk over `elements`.
@@ -194,7 +382,7 @@ where
             Source::Streamed(elements.into_iter())
         } else {
             let mut collected: Vec<E> = elements.into_iter().collect();
-            collected.sort_by(order);
+            collected.sort_by(E::walked_order);
             Source::Sorted(collected.into_iter())
         };
         Self {
@@ -242,12 +430,12 @@ where
         if let Some(deadline) = self
             .alive
             .get(&identity)
-            .and_then(|live| live.element.get_exprtime())
+            .and_then(|live| live.element.walked_exprtime())
         {
             self.expirations.remove(&(deadline, identity));
         }
         if is_alive(element) {
-            for (scheme, name) in element.get_altids().iter() {
+            for (scheme, name) in element.walked_altids().into_iter().flat_map(IdMap::iter) {
                 let held = self
                     .named
                     .entry(scheme.to_owned())
@@ -273,7 +461,7 @@ where
                     arrived,
                 },
             );
-            if let Some(deadline) = element.get_exprtime() {
+            if let Some(deadline) = element.walked_exprtime() {
                 self.expirations.insert((deadline, identity));
             }
         } else {
@@ -284,7 +472,7 @@ where
     /// Retires the live identity and every index and deadline it owns.
     fn retire(&mut self, identity: Uuid) -> Option<Live<E>> {
         let live = self.alive.remove(&identity)?;
-        if let Some(deadline) = live.element.get_exprtime() {
+        if let Some(deadline) = live.element.walked_exprtime() {
             self.expirations.remove(&(deadline, identity));
         }
         for (scheme, name) in self.names_of.remove(&identity).unwrap_or_default() {
@@ -313,7 +501,9 @@ where
             Source::Sorted(source) => source.next(),
         };
         if let (Some(element), Some(step)) = (&self.lookahead, self.snapshot_ns()) {
-            self.next_snapshot = grid_at_or_after(element.get_currunix(), step);
+            self.next_snapshot = element
+                .walked_currunix()
+                .and_then(|unix| grid_at_or_after(unix, step));
         }
     }
 
@@ -343,7 +533,7 @@ where
             self.snapshot_index += 1;
             if let Some(live) = self.alive.get(&identity) {
                 let mut snapshot = live.element.clone();
-                snapshot.set_snapunix(Some(unix));
+                snapshot.walked_set_snapunix(Some(unix));
                 return Some(snapshot);
             }
         }
@@ -358,7 +548,7 @@ where
         if self
             .alive
             .get(&identity)
-            .and_then(|live| live.element.get_exprtime())
+            .and_then(|live| live.element.walked_exprtime())
             != Some(deadline)
         {
             return None;
@@ -366,11 +556,11 @@ where
         let previous = self.retire(identity)?.element;
         self.watermark = Some(self.watermark.map_or(deadline, |held| held.max(deadline)));
         let mut expired = previous.clone();
-        expired.set_currunix(deadline);
-        expired.set_state(State::read("expired").expect("the shipped expired state"));
-        expired.set_execunix(None);
-        expired.set_recdunix(None);
-        expired.set_snapunix(None);
+        expired.walked_set_currunix(deadline);
+        expired.walked_set_state(State::read("expired").expect("the shipped expired state"));
+        expired.walked_set_execunix(None);
+        expired.walked_set_recdunix(None);
+        expired.walked_set_snapunix(None);
         expired.finalize();
         let fallback = expired.clone();
         Some(expired.with_previous(&previous).unwrap_or(fallback))
@@ -378,12 +568,15 @@ where
 
     /// States one source element against the live generation it reaches.
     fn walk_source(&mut self, mut element: E) -> E {
+        if !element.is_walked() {
+            return element;
+        }
         let identity = self.identity_of(&element);
         let arrived = element.get_curruuid();
         let element = match self.alive.get(&identity) {
-            Some(live) if live.arrived == arrived => element.restating(&live.element),
+            Some(live) if live.arrived == arrived => element.walked_restating(&live.element),
             Some(live) if element.is_before(&live.element) => {
-                super::element::fill_execution(&mut element);
+                element.walked_fill_execution();
                 return element;
             }
             Some(live) => element
@@ -391,7 +584,7 @@ where
                 .with_previous(&live.element)
                 .unwrap_or(element),
             None => {
-                super::element::fill_execution(&mut element);
+                element.walked_fill_execution();
                 element
             }
         };
@@ -415,8 +608,9 @@ where
             return own;
         }
         element
-            .get_altids()
-            .iter()
+            .walked_altids()
+            .into_iter()
+            .flat_map(IdMap::iter)
             .find_map(|(scheme, name)| {
                 self.named
                     .get(scheme)
@@ -430,7 +624,7 @@ where
 
 impl<E, I> Iterator for EventIterator<E, I>
 where
-    E: OperationEvent + Clone,
+    E: Walked,
     I: Iterator<Item = E>,
 {
     type Item = E;
@@ -450,7 +644,17 @@ where
                 }
             }
 
-            let source_at = self.lookahead.as_ref().map(Event::get_currunix);
+            // An element stating no instant is read where it stands.
+            if self
+                .lookahead
+                .as_ref()
+                .is_some_and(|element| element.walked_currunix().is_none())
+            {
+                let element = self.lookahead.take();
+                self.advance_source();
+                return element;
+            }
+            let source_at = self.lookahead.as_ref().and_then(Walked::walked_currunix);
             if self.alive.is_empty() {
                 self.next_snapshot = source_at.and_then(|unix| {
                     self.snapshot_ns()
@@ -491,10 +695,12 @@ where
             }
 
             let element = self.lookahead.take()?;
-            let unix = element.get_currunix();
-            self.watermark = Some(self.watermark.map_or(unix, |held| held.max(unix)));
             self.advance_source();
-            if self.lookahead.as_ref().map(Event::get_currunix) != Some(unix) {
+            let Some(unix) = element.walked_currunix() else {
+                return Some(element);
+            };
+            self.watermark = Some(self.watermark.map_or(unix, |held| held.max(unix)));
+            if self.lookahead.as_ref().and_then(Walked::walked_currunix) != Some(unix) {
                 self.after_group = Some(unix);
             }
             return Some(self.walk_source(element));
@@ -512,18 +718,20 @@ where
 
 impl<E, I> FusedIterator for EventIterator<E, I>
 where
-    E: OperationEvent + Clone,
+    E: Walked,
     I: FusedIterator<Item = E>,
 {
 }
 
 /// Whether an element can still be followed: its state can still change,
 /// and it is not past its expiration.
-fn is_alive<E: Event>(element: &E) -> bool {
-    element.get_state().is_live()
-        && element
-            .get_exprtime()
-            .is_none_or(|expiration| expiration > element.get_currunix())
+fn is_alive<E: Walked>(element: &E) -> bool {
+    element.walked_state().is_some_and(State::is_live)
+        && element.walked_exprtime().is_none_or(|expiration| {
+            element
+                .walked_currunix()
+                .is_none_or(|unix| expiration > unix)
+        })
 }
 
 /// The first epoch-aligned grid instant at or after `unix`, without an
@@ -559,15 +767,14 @@ pub mod internals {
     //! the result of: the walk hands out events, never the two maps it kept
     //! them by. Settling and retiring an identity directly is what pins that
     //! retiring a name forgets exactly the records it opened.
-    use super::EventIterator;
+    use super::{EventIterator, Walked};
     use crate::Uuid;
-    use crate::graph::OperationEvent;
 
     /// Settle `element` as the element alive under `identity`, arriving as
     /// `arrived`.
     pub fn settle<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid, element: &E, arrived: Uuid)
     where
-        E: OperationEvent + Clone,
+        E: Walked,
         I: Iterator<Item = E>,
     {
         walk.settle(identity, element, arrived);
@@ -576,7 +783,7 @@ pub mod internals {
     /// Retire the element alive under `identity`, answering whether one was.
     pub fn retire<E, I>(walk: &mut EventIterator<E, I>, identity: Uuid) -> bool
     where
-        E: OperationEvent + Clone,
+        E: Walked,
         I: Iterator<Item = E>,
     {
         walk.retire(identity).is_some()

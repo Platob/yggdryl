@@ -14,10 +14,8 @@ use super::entry::{FixEntry, emit_bytes, emit_text, wire_text, wire_text_under};
 use super::identity::{self, FixCapture, FixHeader, FixLifted, Typed};
 use super::registry::FixMap;
 use super::{FixId, FixIdMapKind, FixKey, FixRegistry};
-use crate::graph::{
-    Element, Event, Lane, Market, MarketEventData, Metadata, Operation, OperationEvent,
-    OperationEventData,
-};
+use crate::graph::facts::OperationEventFacts;
+use crate::graph::{Element, Event, Lane, Market, Metadata, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::xxhash;
@@ -89,7 +87,7 @@ fn derived_marketoperationid(registry: &FixRegistry, msgtype: &str) -> i32 {
 
 /// A FIX message: a market event with a FIX body around it.
 ///
-/// Three typed holders and one row. The [`MarketEventData`] is the event
+/// Three typed holders and one row. The event holder is the event
 /// the message is - its identity, when it happened, where it stands and the
 /// market's facts - and the message answers [`Element`], [`Event`] and
 /// [`Market`] through it, so a walk over messages reads them as it
@@ -179,7 +177,7 @@ pub struct FixMsg {
     ///
     /// Boxed, because the event is forty facts and a message is moved
     /// through every stream by value.
-    event: Box<OperationEventData>,
+    event: Box<OperationEventFacts>,
     /// The standard header, typed.
     header: Box<FixHeader>,
     /// What the line said about the capture it was written for, typed: a
@@ -672,7 +670,7 @@ impl FixMsg {
         let held = value.as_sequence().ok_or_else(|| {
             identity::refused(field.name(), "a canonical Struct row", value.kind())
         })?;
-        let mut event = Box::new(OperationEventData::default());
+        let mut event = Box::new(OperationEventFacts::default());
         if let Some(source) = source {
             event.set_srcuuids(vec![source]);
         }
@@ -1967,7 +1965,7 @@ impl FixMsg {
     /// The event this message is: every fact the three graph traits answer,
     /// held as fields.
     #[must_use]
-    pub const fn event(&self) -> &OperationEventData {
+    pub(crate) const fn event(&self) -> &OperationEventFacts {
         &self.event
     }
 
@@ -3305,18 +3303,11 @@ impl From<FixMsg> for Result<FixMsg> {
     }
 }
 
-impl From<FixMsg> for OperationEventData {
+impl From<FixMsg> for OperationEventFacts {
     /// Moves the message's market operation out without re-reading or
     /// cloning any FIX content.
     fn from(message: FixMsg) -> Self {
         *message.event
-    }
-}
-
-impl From<FixMsg> for MarketEventData {
-    /// Moves the message's market event out, its operation facts dropped.
-    fn from(message: FixMsg) -> Self {
-        message.event.into_event()
     }
 }
 

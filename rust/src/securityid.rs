@@ -519,7 +519,7 @@ impl SecurityId {
     }
 
     /// The key, borrowed from the table or the buffer; nothing allocates.
-    fn key_str(&self) -> &str {
+    pub(crate) fn key_str(&self) -> &str {
         match self.split() {
             (Some(index), _) => SecType::KNOWN[index].0,
             (None, head) => &self.0[2..head],

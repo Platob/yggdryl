@@ -11,15 +11,16 @@ import {
   type FixCaptureView,
   type FixDirection,
   type FixEntryView,
-  type FixEventView,
   type FixHeaderView,
-  type FixLaneView,
   type FixRegistry,
   type FixMessages,
   type MsgType,
   type FixValueInput,
   type LocationInput,
   type TextLine,
+  type Lane,
+  type MarketData,
+  type OrderEvent,
 } from '..'
 
 declare const field: Field
@@ -152,8 +153,11 @@ const entryTag: number = entries[0].tag
 const entryName: string = entries[0].name
 const entryValue: string | null = entries[0].value
 const walked: FixEntryView[] = [...message]
-// The typed holders answer one plain object each.
-const event: FixEventView = message.event()
+// The typed holders answer one plain object each, and the message expands
+// to the typed leaves it is, each a `MarketData`.
+const operations: MarketData[] = message.marketOperations()
+const firstOperation: OrderEvent | null = operations[0].asOrderEvent()
+declare const event: OrderEvent
 const header: FixHeaderView = message.header()
 const capture: FixCaptureView = message.capture()
 const text: string | null = message.text
@@ -181,11 +185,18 @@ const currency: string = message.currency
 const ticker: string | null = message.ticker
 const spotrate: string | null = message.spotrate
 const forwardpoints: string | null = message.forwardpoints
-const bid: FixLaneView | null = message.bid
-const ask: FixLaneView | null = message.ask
+const bid: Lane | null = message.bid
+const ask: Lane | null = message.ask
 const messageCategory: number | null = message.msgcat
 const marketOperationId: number | null = message.marketoperationid
-// And the same facts on the event, with the instants and the lanes.
+// The instants the message states, as the leaf does.
+const messageCreated: bigint | null = message.creaunix
+const messageExecuted: bigint | null = message.execunix
+const messageRecorded: bigint | null = message.recdunix
+const messagePrevUnix: bigint | null = message.prevunix
+const messageSnap: bigint | null = message.snapunix
+const messageExpiry: bigint | null = message.exprtime
+// And the same facts on an operation leaf, with the instants and the lanes.
 const eventCurrunix: bigint = event.currunix
 const eventCreated: bigint | null = event.creaunix
 const eventExecuted: bigint | null = event.execunix
@@ -214,8 +225,8 @@ const eventMetadata: Record<string, string> = event.metadata
 const eventAccountIds: Record<string, string> = event.accountids
 const eventUserIds: Record<string, string> = event.userids
 const eventAltIds: Record<string, string> = event.altids
-const eventBid: FixLaneView | null = event.bid
-const eventAsk: FixLaneView | null = event.ask
+const eventBid: Lane | null = event.bid
+const eventAsk: Lane | null = event.ask
 const eventBidPrice: string | null = eventBid === null ? null : eventBid.price
 const eventAskCurrency: string | null = eventAsk === null ? null : eventAsk.currency
 const eventSources: string[] = event.srcuuids
@@ -274,6 +285,13 @@ void eventPrevUnix
 void eventSnap
 void eventExpiry
 void eventMarketOperationId
+void firstOperation
+void messageCreated
+void messageExecuted
+void messageRecorded
+void messagePrevUnix
+void messageSnap
+void messageExpiry
 void eventPrice
 void eventQuantity
 void eventLastPx

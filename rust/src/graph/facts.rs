@@ -1,51 +1,25 @@
-//! The holders: the graph vocabulary as plain fields, for the holder that
-//! wants nothing more.
+//! The crate-private holders: the graph vocabulary as plain fields, for the
+//! leaf that wants nothing more.
 //!
-//! [`MarketData`] holds every fact [`Element`] and [`Market`] name and no
+//! [`MarketFacts`] holds every fact [`Element`] and [`Market`] name and no
 //! instant: a book level, a side's summary, an undated entry.
-//! [`MarketEventData`] adds the clocks and the state an [`Event`] answers, so
-//! it is a [`MarketEvent`]: a book, a level dated at an instant.
-//! [`OperationData`] and [`OperationEventData`] add the eight
-//! facts a [`Operation`] states - its category, how long it stands,
+//! [`MarketEventFacts`] adds the clocks and the state an [`Event`] answers, so
+//! it is a market event: a book, a level dated at an instant.
+//! [`OperationFacts`] and [`OperationEventFacts`] add the eight
+//! facts an [`Operation`] states - its category, how long it stands,
 //! whether it can trade, its account, user and own identifiers, and its two
-//! lanes - to each, so an operation entry and an operation event embed the
+//! lanes - to each, so an undated operation and a dated one embed the
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
 //! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `00UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
-//!
-//! ```
-//! use yggdryl::graph::{Element, Event, Market, MarketEvent, MarketEventData};
-//! use yggdryl::{Ccy, Decimal18, Side};
-//!
-//! let mut event = MarketEventData::at(1_700_000_000_000_000_000);
-//! event.set_crosscode("O-1".to_owned());
-//! event.set_side(Side::Buy);
-//! event.set_price(Some(Decimal18::from_int(101)));
-//! event.set_quantity(Some(Decimal18::from_int(5)));
-//! event.set_currency(Ccy::new("USD")?);
-//! event.finalize();
-//! assert_ne!(event.get_currhashcode(), 0);
-//! assert_eq!(event.get_crossuuid(), event.cross_uuid());
-//! // The same facts stated again digest to the same code, whatever holds them.
-//! let mut again = MarketEventData::at(1_700_000_000_000_000_000);
-//! again.set_crosscode("O-1".to_owned());
-//! again.set_side(Side::Buy);
-//! again.set_price(Some(Decimal18::from_int(101)));
-//! again.set_quantity(Some(Decimal18::from_int(5)));
-//! again.set_currency(Ccy::new("USD")?);
-//! again.finalize();
-//! assert_eq!(again.get_curruuid(), event.get_curruuid());
-//! assert_eq!(event.digest_market_event().as_u64(), event.get_currhashcode());
-//! # Ok::<(), yggdryl::Error>(())
-//! ```
 
 use smol_str::SmolStr;
 
-use super::market::{Lane, Metadata, empty_metadata, restating_market, restating_operation};
-use super::{Element, Event, Market, MarketEvent, Operation, OperationEvent};
+use super::market::{Lane, Metadata, empty_metadata, restating_operation};
+use super::{Element, Event, Market, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::{Ccy, CfiCode, Decimal18, MicCode, Result, Side, State, TimeInForce, Unit, Uuid};
@@ -53,7 +27,7 @@ use crate::{Ccy, CfiCode, Decimal18, MicCode, Result, Side, State, TimeInForce, 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
 /// instant: what a book level, a side's summary or an undated entry is.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MarketData {
+pub(crate) struct MarketFacts {
     curruuid: Uuid,
     crossuuid: Uuid,
     crosscode: String,
@@ -81,7 +55,7 @@ pub struct MarketData {
     metadata: Option<Box<Metadata>>,
 }
 
-impl Default for MarketData {
+impl Default for MarketFacts {
     /// An element stating nothing.
     fn default() -> Self {
         Self {
@@ -114,7 +88,7 @@ impl Default for MarketData {
     }
 }
 
-impl Element for MarketData {
+impl Element for MarketFacts {
     fn get_curruuid(&self) -> Uuid {
         self.curruuid
     }
@@ -195,7 +169,7 @@ impl Element for MarketData {
     }
 }
 
-impl Market for MarketData {
+impl Market for MarketFacts {
     fn get_price(&self) -> Option<Decimal18> {
         self.price
     }
@@ -367,11 +341,11 @@ impl Market for MarketData {
     }
 }
 
-/// [`MarketData`] with the clocks and the state an event answers: a
-/// [`MarketEvent`] as plain fields.
+/// [`MarketFacts`] with the clocks and the state an event answers: a market
+/// event as plain fields.
 #[derive(Clone, Debug, PartialEq)]
-pub struct MarketEventData {
-    market: MarketData,
+pub(crate) struct MarketEventFacts {
+    market: MarketFacts,
     currunix: i64,
     state: State,
     seqnum: u64,
@@ -384,14 +358,14 @@ pub struct MarketEventData {
     snapunix: Option<i64>,
 }
 
-impl MarketEventData {
+impl MarketEventFacts {
     /// An event that happened at `unix`, nanoseconds since the Unix epoch,
     /// stating nothing else yet: the identity is what [`Element::finalize`]
     /// derives once the facts are in.
     #[must_use]
-    pub fn at(unix: i64) -> Self {
+    pub(crate) fn at(unix: i64) -> Self {
         Self {
-            market: MarketData::default(),
+            market: MarketFacts::default(),
             currunix: unix,
             state: State::unknown(),
             seqnum: 0,
@@ -403,18 +377,6 @@ impl MarketEventData {
             prevuuid: None,
             snapunix: None,
         }
-    }
-
-    /// The undated market facts this event holds.
-    #[must_use]
-    pub fn market(&self) -> &MarketData {
-        &self.market
-    }
-
-    /// This event's market facts alone, the clocks dropped: a move.
-    #[must_use]
-    pub fn into_market(self) -> MarketData {
-        self.market
     }
 
     /// Reprojects the generic event identities after one of their inputs
@@ -429,16 +391,16 @@ impl MarketEventData {
     }
 }
 
-impl Default for MarketEventData {
+impl Default for MarketEventFacts {
     /// An event at the epoch, stating nothing.
     fn default() -> Self {
         Self::at(0)
     }
 }
 
-impl From<MarketData> for MarketEventData {
+impl From<MarketFacts> for MarketEventFacts {
     /// The market facts dated at the epoch.
-    fn from(market: MarketData) -> Self {
+    fn from(market: MarketFacts) -> Self {
         Self {
             market,
             ..Self::default()
@@ -446,7 +408,7 @@ impl From<MarketData> for MarketEventData {
     }
 }
 
-impl Element for MarketEventData {
+impl Element for MarketEventFacts {
     fn get_curruuid(&self) -> Uuid {
         self.market.curruuid
     }
@@ -524,7 +486,7 @@ impl Element for MarketEventData {
     }
 }
 
-impl Event for MarketEventData {
+impl Event for MarketEventFacts {
     fn get_currunix(&self) -> i64 {
         self.currunix
     }
@@ -608,7 +570,7 @@ impl Event for MarketEventData {
     }
 
     fn restating(self, live: &Self) -> Self {
-        restating_market(self, live)
+        super::market::restating_market(self, live)
     }
 
     fn finalized(&mut self, hashcode: u64) {
@@ -617,11 +579,11 @@ impl Event for MarketEventData {
     }
 }
 
-delegate_market!(MarketEventData, market);
+delegate_market!(MarketEventFacts, market);
 
 /// The eight facts an operation adds to the market's, as plain fields.
 #[derive(Clone, Debug, Default, PartialEq)]
-struct OperationFacts {
+struct OperationExtras {
     marketoperationid: Option<i32>,
     tif: Option<TimeInForce>,
     tradable: Option<bool>,
@@ -632,8 +594,8 @@ struct OperationFacts {
     ask: Option<Box<Lane>>,
 }
 
-/// `impl Operation` over an [`OperationFacts`] field.
-macro_rules! operation_facts {
+/// `impl Operation` over an [`OperationExtras`] field.
+macro_rules! operation_extras {
     ($type:ty, $($field:ident).+) => {
         impl Operation for $type {
             fn get_marketoperationid(&self) -> Option<i32> {
@@ -709,51 +671,39 @@ macro_rules! operation_facts {
     };
 }
 
-/// [`MarketData`] with the operation's facts and no instant: an undated
+/// [`MarketFacts`] with the operation's facts and no instant: an undated
 /// operation entry as plain fields.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct OperationData {
-    market: MarketData,
-    operation: OperationFacts,
+pub(crate) struct OperationFacts {
+    market: MarketFacts,
+    operation: OperationExtras,
 }
 
-impl OperationData {
-    /// The slim market facts this entry holds.
-    #[must_use]
-    pub fn market(&self) -> &MarketData {
-        &self.market
-    }
-
-    /// This entry's market facts alone: a move.
-    #[must_use]
-    pub fn into_market(self) -> MarketData {
-        self.market
-    }
-
+impl OperationFacts {
     /// This entry dated at `unix`, nanoseconds since the Unix epoch: a
     /// move, finalized by the caller once the clocks are in.
     #[must_use]
-    pub fn at(self, unix: i64) -> OperationEventData {
-        let mut event = MarketEventData::from(self.market);
+    pub(crate) fn at(self, unix: i64) -> OperationEventFacts {
+        let mut event = MarketEventFacts::from(self.market);
         event.currunix = unix;
-        OperationEventData {
+        OperationEventFacts {
             event,
             operation: self.operation,
         }
     }
 }
 
-impl From<MarketData> for OperationData {
+impl From<MarketFacts> for OperationFacts {
     /// The market facts with no operation fact stated.
-    fn from(market: MarketData) -> Self {
+    fn from(market: MarketFacts) -> Self {
         Self {
             market,
-            operation: OperationFacts::default(),
+            operation: OperationExtras::default(),
         }
     }
 }
 
-impl Element for OperationData {
+impl Element for OperationFacts {
     fn get_curruuid(&self) -> Uuid {
         self.market.curruuid
     }
@@ -835,69 +785,56 @@ impl Element for OperationData {
     }
 }
 
-delegate_market!(OperationData, market);
-operation_facts!(OperationData, operation);
+delegate_market!(OperationFacts, market);
+operation_extras!(OperationFacts, operation);
 
-/// [`MarketEventData`] with the operation's facts: a
-/// [`OperationEvent`] as plain fields, what an order, a quote, an
-/// execution and a message hold.
+/// [`MarketEventFacts`] with the operation's facts: a dated operation as
+/// plain fields, what an order, a quote, an execution and a message hold.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct OperationEventData {
-    event: MarketEventData,
-    operation: OperationFacts,
+pub(crate) struct OperationEventFacts {
+    event: MarketEventFacts,
+    operation: OperationExtras,
 }
 
-impl OperationEventData {
+impl OperationEventFacts {
     /// An operation that happened at `unix`, nanoseconds since the Unix
     /// epoch, stating nothing else yet.
     #[must_use]
-    pub fn at(unix: i64) -> Self {
+    pub(crate) fn at(unix: i64) -> Self {
         Self {
-            event: MarketEventData::at(unix),
-            operation: OperationFacts::default(),
+            event: MarketEventFacts::at(unix),
+            operation: OperationExtras::default(),
         }
-    }
-
-    /// The event this operation is, without its operation facts.
-    #[must_use]
-    pub fn event(&self) -> &MarketEventData {
-        &self.event
-    }
-
-    /// The slim market facts this operation holds.
-    #[must_use]
-    pub fn market(&self) -> &MarketData {
-        &self.event.market
     }
 
     /// This operation as the event alone, the operation facts dropped: a
     /// move.
     #[must_use]
-    pub fn into_event(self) -> MarketEventData {
+    pub(crate) fn into_event(self) -> MarketEventFacts {
         self.event
     }
 
     /// This operation without its clocks: a move.
     #[must_use]
-    pub fn into_entry(self) -> OperationData {
-        OperationData {
+    pub(crate) fn into_entry(self) -> OperationFacts {
+        OperationFacts {
             market: self.event.market,
             operation: self.operation,
         }
     }
 }
 
-impl From<MarketEventData> for OperationEventData {
+impl From<MarketEventFacts> for OperationEventFacts {
     /// The event with no operation fact stated.
-    fn from(event: MarketEventData) -> Self {
+    fn from(event: MarketEventFacts) -> Self {
         Self {
             event,
-            operation: OperationFacts::default(),
+            operation: OperationExtras::default(),
         }
     }
 }
 
-impl Element for OperationEventData {
+impl Element for OperationEventFacts {
     fn get_curruuid(&self) -> Uuid {
         self.event.get_curruuid()
     }
@@ -968,13 +905,13 @@ impl Element for OperationEventData {
 }
 
 delegate_event!(
-    OperationEventData,
+    OperationEventFacts,
     event,
     restating =
-        |this: OperationEventData, live: &OperationEventData| { restating_operation(this, live) }
+        |this: OperationEventFacts, live: &OperationEventFacts| { restating_operation(this, live) }
 );
-delegate_market!(OperationEventData, event.market);
-operation_facts!(OperationEventData, operation);
+delegate_market!(OperationEventFacts, event.market);
+operation_extras!(OperationEventFacts, operation);
 
 fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &E) {
     this.set_curruuid(other.get_curruuid());
@@ -1033,7 +970,7 @@ fn copy_operation<T: Operation + ?Sized, E: Operation + ?Sized>(this: &mut T, ot
     this.set_ask(other.get_ask().cloned());
 }
 
-impl<E: Element + Market + ?Sized> From<&E> for MarketData {
+impl<E: Element + Market + ?Sized> From<&E> for MarketFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1042,7 +979,7 @@ impl<E: Element + Market + ?Sized> From<&E> for MarketData {
     }
 }
 
-impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
+impl<E: Event + Market + ?Sized> From<&E> for MarketEventFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1057,7 +994,7 @@ impl<E: MarketEvent + ?Sized> From<&E> for MarketEventData {
     }
 }
 
-impl<E: Element + Operation + ?Sized> From<&E> for OperationData {
+impl<E: Element + Operation + ?Sized> From<&E> for OperationFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1067,7 +1004,7 @@ impl<E: Element + Operation + ?Sized> From<&E> for OperationData {
     }
 }
 
-impl<E: OperationEvent + ?Sized> From<&E> for OperationEventData {
+impl<E: Event + Operation + ?Sized> From<&E> for OperationEventFacts {
     fn from(other: &E) -> Self {
         let mut this = Self::default();
         copy_element(&mut this, other);
@@ -1077,5 +1014,116 @@ impl<E: OperationEvent + ?Sized> From<&E> for OperationEventData {
         this.event.market.curruuid = other.get_curruuid();
         this.event.market.crossuuid = other.get_crossuuid();
         this
+    }
+}
+
+#[cfg(feature = "internals")]
+#[doc(hidden)]
+pub mod internals {
+    //! What `rust/tests/graph/facts.rs` pins and a caller cannot reach.
+    //!
+    //! The four holders are crate-private: a caller reaches their facts
+    //! through a leaf that holds one. What each holder answers on its own -
+    //! its size, the identity its finalize derives, the order it stands in
+    //! and how it merges - is observed here, each answer in role order:
+    //! market, market event, operation, operation event.
+    use super::{MarketEventFacts, MarketFacts, OperationEventFacts, OperationFacts};
+    use crate::Uuid;
+    use crate::graph::Element;
+
+    /// Each holder stating `crosscode` - the dated two at `unix` - and
+    /// nothing else.
+    fn stated(
+        crosscode: &str,
+        unix: i64,
+    ) -> (
+        MarketFacts,
+        MarketEventFacts,
+        OperationFacts,
+        OperationEventFacts,
+    ) {
+        let mut market = MarketFacts::default();
+        market.set_crosscode(crosscode.to_owned());
+        let mut event = MarketEventFacts::at(unix);
+        event.set_crosscode(crosscode.to_owned());
+        let mut operation = OperationFacts::default();
+        operation.set_crosscode(crosscode.to_owned());
+        let mut operation_event = OperationEventFacts::at(unix);
+        operation_event.set_crosscode(crosscode.to_owned());
+        (market, event, operation, operation_event)
+    }
+
+    /// The four holders' sizes.
+    #[must_use]
+    pub fn sizes() -> [usize; 4] {
+        use std::mem::size_of;
+        [
+            size_of::<MarketFacts>(),
+            size_of::<MarketEventFacts>(),
+            size_of::<OperationFacts>(),
+            size_of::<OperationEventFacts>(),
+        ]
+    }
+
+    /// Each holder stating `crosscode` - the dated two at `unix` -
+    /// finalized: the identity it derives and the code it digests to.
+    #[must_use]
+    pub fn finalized(crosscode: &str, unix: i64) -> [(Uuid, u64); 4] {
+        fn settle<E: Element>(mut element: E) -> (Uuid, u64) {
+            element.finalize();
+            (element.get_curruuid(), element.get_currhashcode())
+        }
+        let (market, event, operation, operation_event) = stated(crosscode, unix);
+        [
+            settle(market),
+            settle(event),
+            settle(operation),
+            settle(operation_event),
+        ]
+    }
+
+    /// Whether each holder stated at `later` is after the same holder
+    /// stated at `earlier`, both under one cross code.
+    #[must_use]
+    pub fn is_after(earlier: i64, later: i64) -> [bool; 4] {
+        fn after<E: Element>(mut this: E, mut other: E) -> bool {
+            this.finalize();
+            other.finalize();
+            this.is_after(&other)
+        }
+        let (a, b, c, d) = stated("ORDER", later);
+        let (e, f, g, h) = stated("ORDER", earlier);
+        [after(a, e), after(b, f), after(c, g), after(d, h)]
+    }
+
+    /// Each holder merged with another statement of itself that adds
+    /// `source`: the sources the merge answers, or `None` where it
+    /// answers nothing; and whether it merges with a stranger under
+    /// another cross code.
+    #[must_use]
+    pub fn merged(source: Uuid) -> [(Option<Vec<Uuid>>, bool); 4] {
+        fn merge<E: Element + Clone>(
+            mut this: E,
+            mut stranger: E,
+            source: Uuid,
+        ) -> (Option<Vec<Uuid>>, bool) {
+            this.finalize();
+            stranger.finalize();
+            let mut restated = this.clone();
+            restated.set_srcuuids(vec![source]);
+            let merged = this
+                .clone()
+                .merge_with(&restated)
+                .map(|merged| merged.get_srcuuids().to_vec());
+            (merged, this.merge_with(&stranger).is_some())
+        }
+        let (a, b, c, d) = stated("ORDER", 1);
+        let (e, f, g, h) = stated("OTHER", 1);
+        [
+            merge(a, e, source),
+            merge(b, f, source),
+            merge(c, g, source),
+            merge(d, h, source),
+        ]
     }
 }

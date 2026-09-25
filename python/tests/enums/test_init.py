@@ -60,6 +60,39 @@ def test_the_level_scale_names_its_points() -> None:
     assert enums.LEVELS["best"] == 9
 
 
+def test_the_graph_enum_listings_mirror_the_native_vocabulary() -> None:
+    assert enums.MARKET_KINDS == (
+        "order",
+        "quote",
+        "execution",
+        "book_side",
+        "order_event",
+        "quote_event",
+        "execution_event",
+        "trade_event",
+        "book_event",
+        "snapshot_event",
+    )
+    assert not hasattr(enums, "OPERATION_KINDS")
+    assert enums.MD_UPDATE_ACTIONS == ("0", "1", "2", "3", "4", "5", "snapshot")
+    assert len(enums.EVENT_COLUMNS) == 16
+    assert enums.EVENT_COLUMNS[0] == "currunix"
+    assert enums.EVENT_COLUMNS[-1] == "state"
+    assert len(enums.MARKET_COLUMNS) == 19
+    assert enums.MARKET_COLUMNS[0] == "price"
+    assert len(enums.OPERATION_COLUMNS) == 8
+    assert enums.OPERATION_COLUMNS[-2:] == ("bid", "ask")
+    for listing in (
+        enums.MARKET_KINDS,
+        enums.MD_UPDATE_ACTIONS,
+        enums.EVENT_COLUMNS,
+        enums.MARKET_COLUMNS,
+        enums.OPERATION_COLUMNS,
+    ):
+        assert isinstance(listing, tuple)
+        assert all(isinstance(value, str) and value for value in listing)
+
+
 class _Currency(fixed_ascii(4)):
     """A declared vocabulary: a member is the integer its value packs into."""
 

@@ -39,6 +39,7 @@
   "scripts": {
     "bench:coding": "node benchmarks/coding.js",
     "bench:fix": "node benchmarks/fix.js",
+    "bench:graph": "node benchmarks/graph.js",
     "bench:hashing:txhash": "node benchmarks/hashing/txhash.js",
     "bench:hashing:xxhash": "node benchmarks/hashing/xxhash.js",
     "bench:holder": "node benchmarks/holder.js",

@@ -461,6 +461,7 @@ pub mod internals {
     //! one by its message. The forwarder changes no visibility: everything
     //! else the file pins is reached through `yggdryl::` like any other test.
 
+    #[cfg(feature = "iceberg")]
     use super::Error;
 
     /// Wrap an official Iceberg failure, built from `message`, as a core

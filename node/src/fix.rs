@@ -35,31 +35,34 @@ mod catalog;
 pub use catalog::JsMsgType;
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, Mutex};
-use std::thread::ThreadId;
+use std::sync::Arc;
 
 use napi::JsDate;
 use napi::JsValue as _;
 use napi::bindgen_prelude::{
-    BigInt, Buffer, ClassInstance, Either, Either3, Env, FromNapiValue, Function, FunctionRef,
-    Generator, JsObjectValue as _, Null, Object, Result, Status, Unknown, ValueType,
+    BigInt, Buffer, ClassInstance, Either, Either3, Env, Function, Generator, JsObjectValue as _,
+    Null, Object, Result, Unknown, ValueType,
 };
 use napi_derive::napi;
-use yggdryl::graph::{Element, Event, Lane, Market, Metadata, Operation, OperationEvent};
-use yggdryl::{CfiCode, Decimal18, IdMap, MicCode, SecurityIds};
+use yggdryl::graph::{Element, Event, Market, Metadata, Operation};
 use yggdryl::{
-    DataType as CoreDataType, Error as CoreError, Field as CoreField, FixCapture,
-    FixCode as CoreFixCode, FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry,
-    FixHeader, FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry,
-    Scalar, TimeUnit, Timezone,
+    DataType as CoreDataType, Field as CoreField, FixCapture, FixCode as CoreFixCode,
+    FixCodeSet as CoreFixCodeSet, FixCodec as CoreFixCodec, FixEntry, FixHeader,
+    FixId as CoreFixId, FixKey, FixMsg as CoreFixMsg, FixRegistry as CoreFixRegistry, Scalar,
+    TimeUnit, Timezone,
 };
+use yggdryl::{IdMap, SecurityIds};
 
 use crate::field::JsField;
+use crate::graph::{JsLane, JsMarketData};
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
 use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
-use crate::{exact_f64, exact_i32, exact_i64, napi_error, napi_type_error};
+use crate::{
+    Failed, Pulled, exact_f64, exact_i32, exact_i64, javascript_failure, napi_error,
+    napi_type_error,
+};
 
 /// The root a batch of FIX rows is named by, the core's own spelling.
 const ROOT_NAME: &str = "fix";
@@ -1006,205 +1009,6 @@ pub struct FixEntryView {
     pub entries: Vec<FixEntryView>,
 }
 
-/// One core entry and everything under it, as the object JavaScript reads.
-fn entry_view(entry: &FixEntry) -> FixEntryView {
-    FixEntryView {
-        tag: entry.tag(),
-        name: entry.name().to_owned(),
-        value: or_null(entry.value().map(ToOwned::to_owned)),
-        entries: entry.entries().iter().map(entry_view).collect(),
-    }
-}
-
-/// The event a message is: every fact the graph traits answer, as plain
-/// values.
-///
-/// The sixteen event facts lead, then the nineteen market facts and the
-/// eight operation facts, each under the name its trait gives it. A UUID is
-/// its hyphenated text, a hash and an instant a `bigint` - the instants
-/// nanoseconds since the Unix epoch, UTC - a price, a quantity or an FX part
-/// its decimal text, a currency, a side, a state, a unit and an instrument
-/// code the text each is, a time in force the code it stores, and each
-/// identifier map a plain object in the core's key order. What the event
-/// does not state is `null` where the core holds nothing - a lane among it -
-/// and the core's own nothing where it holds a value that means none: a
-/// price or a quantity of `0`, the `XXX` currency, an empty unit or cross
-/// code, the `UNKNOWN` side, the `00UNKNOWN` state, a sequence of `0`, an
-/// empty map.
-#[napi(object, object_from_js = false)]
-pub struct FixEventView {
-    /// This message's own `UUIDv7` identity, ordered by millisecond and sequence
-    /// with a content payload seeded by its cross hash.
-    pub curruuid: String,
-    /// The identity of the chain the message belongs to: a version-8 UUID
-    /// over the `crosshashcode`, or `curruuid` when no cross code names a
-    /// chain.
-    pub crossuuid: String,
-    /// The code the chain is named by: the first stated of `OrderID(37)`,
-    /// `ClOrdID(11)`, `OrigClOrdID(41)`, `QuoteID(117)`, `QuoteReqID(131)`
-    /// and `MDReqID(262)`, or empty.
-    pub crosscode: String,
-    /// The XXH3-64 of the event, the text, the metadata, the lifted fields
-    /// and the row - every field but the standard header and trailer.
-    pub currhashcode: BigInt,
-    /// The XXH3-64 of the cross code, `0n` where there is none.
-    pub crosshashcode: BigInt,
-    /// The sorted unique UUIDs of the elements this one was read from: the
-    /// text line it was parsed out of, and none for one parsed from bytes.
-    pub srcuuids: Vec<String>,
-    /// When the event happened: the message's sending time, the one clock
-    /// every message carries.
-    pub currunix: BigInt,
-    /// The order state the message reached, ranked: `20NEW`, `80FILLED`.
-    pub state: String,
-    /// The message's place in its chain, `0` until a lifecycle states it.
-    pub seqnum: f64,
-    /// When the chain was created, where stated.
-    #[napi(ts_type = "bigint | null")]
-    pub creaunix: Either<BigInt, Null>,
-    /// The precise execution instant: the one the message states, else its
-    /// own `currunix` where the parse read it as reporting an execution, and
-    /// on a chained message the latest its lifecycle reached; else `null`.
-    #[napi(ts_type = "bigint | null")]
-    pub execunix: Either<BigInt, Null>,
-    /// The precise recording instant, where stated or where the line the
-    /// message was read out of dated itself.
-    #[napi(ts_type = "bigint | null")]
-    pub recdunix: Either<BigInt, Null>,
-    /// When the chain expires, where stated.
-    #[napi(ts_type = "bigint | null")]
-    pub exprtime: Either<BigInt, Null>,
-    /// The instant of the message this one follows, where a lifecycle
-    /// stated it.
-    #[napi(ts_type = "bigint | null")]
-    pub prevunix: Either<BigInt, Null>,
-    /// The identity of the message this one follows, where a lifecycle
-    /// stated it.
-    #[napi(ts_type = "string | null")]
-    pub prevuuid: Either<String, Null>,
-    /// The instant a snapshot was taken at, where one was.
-    #[napi(ts_type = "bigint | null")]
-    pub snapunix: Either<BigInt, Null>,
-    /// The price stated, as decimal text, or `null` where none is.
-    pub price: Either<String, Null>,
-    /// The currency, `XXX` where none is stated.
-    pub currency: String,
-    /// The quantity stated, as decimal text, or `null` where none is.
-    pub quantity: Either<String, Null>,
-    /// The unit the quantity is counted in, empty where none is stated.
-    pub unit: String,
-    /// The side: the one stated, else the lane a single-sided quote states -
-    /// `BUY` on the bid, `SELL` on the offer - else `UNKNOWN`.
-    pub side: String,
-    /// The security identifiers the instrument goes by, source to code -
-    /// `ISIN`, `CUSIP`, `SEDOL`, `BLOOMBERG`, `FIGI` and any other source
-    /// the message states - in the core's key order; empty where it states
-    /// none.
-    #[napi(ts_type = "Record<string, string>")]
-    pub securityids: BTreeMap<String, String>,
-    /// The instrument's CFI classification, where stated.
-    #[napi(ts_type = "string | null")]
-    pub cficode: Either<String, Null>,
-    /// The market the message names, where stated.
-    #[napi(ts_type = "string | null")]
-    pub miccode: Either<String, Null>,
-    /// The last traded price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub lastpx: Either<String, Null>,
-    /// The last traded quantity, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub lastqty: Either<String, Null>,
-    /// The average traded price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub avgpx: Either<String, Null>,
-    /// The cumulative traded quantity, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub cumqty: Either<String, Null>,
-    /// The remaining quantity, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub leavesqty: Either<String, Null>,
-    /// The preceding price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub prevpx: Either<String, Null>,
-    /// The preceding quantity, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub prevqty: Either<String, Null>,
-    /// The spot part of an FX forward price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub spotrate: Either<String, Null>,
-    /// The forward points of an FX forward price, as decimal text, or
-    /// `null`.
-    #[napi(ts_type = "string | null")]
-    pub forwardpoints: Either<String, Null>,
-    /// The ticker the instrument is known by, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub ticker: Either<String, Null>,
-    /// What a bridge stated under its own namespaces, key to value, sorted;
-    /// empty where it stated none.
-    #[napi(ts_type = "Record<string, string>")]
-    pub metadata: BTreeMap<String, String>,
-    /// The stable integer category of the market operation, where known.
-    #[napi(ts_type = "number | null")]
-    pub marketoperationid: Either<i32, Null>,
-    /// How long the message stands, `TimeInForce(59)`, as the code it
-    /// stores - `0` for a day order - or `null`.
-    #[napi(ts_type = "string | null")]
-    pub tif: Either<String, Null>,
-    /// Whether the instrument was tradable, or `null` where unstated.
-    #[napi(ts_type = "boolean | null")]
-    pub tradable: Either<bool, Null>,
-    /// The accounts the message names, key to value, upper-cased and in key
-    /// order: `ACCOUNT` and a `CUSTOMERACCOUNT` party; empty where none.
-    #[napi(ts_type = "Record<string, string>")]
-    pub accountids: BTreeMap<String, String>,
-    /// The users the message names, the same way: `SENDERSUBID`,
-    /// `ONBEHALFOFSUBID`, an `ENTERINGTRADER` or `EXECUTINGTRADER` party.
-    #[napi(ts_type = "Record<string, string>")]
-    pub userids: BTreeMap<String, String>,
-    /// The names the operation goes by, the same way: `ORDERID`, `CLORDID`,
-    /// `ORIGCLORDID`, `EXECID`, `QUOTEID`, `QUOTEREQID`, `MDREQID`,
-    /// `TRADEID` and the rest the message states.
-    #[napi(ts_type = "Record<string, string>")]
-    pub altids: BTreeMap<String, String>,
-    /// The bid lane, or `null` where the message states no slot of it.
-    #[napi(ts_type = "FixLaneView | null")]
-    pub bid: Either<FixLaneView, Null>,
-    /// The ask lane, or `null` where the message states no slot of it.
-    #[napi(ts_type = "FixLaneView | null")]
-    pub ask: Either<FixLaneView, Null>,
-}
-
-/// One lane of a quote: what a party is willing to pay or be paid, each
-/// slot as the lane states it and `null` where it states nothing.
-///
-/// A price, a quantity and the two FX parts of a forward price are decimal
-/// text, the currency and the unit the text each is. The bid and the ask of
-/// a `FixEventView` or a `FixMsg` are each one of these, or `null` where the
-/// message states no slot of that lane; a buy order fills its own lane's
-/// size, a quote states both.
-#[napi(object, object_from_js = false)]
-pub struct FixLaneView {
-    /// The lane's price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub price: Either<String, Null>,
-    /// The spot part of an FX forward price, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub spotrate: Either<String, Null>,
-    /// The forward points of an FX forward price, as decimal text, or
-    /// `null`.
-    #[napi(ts_type = "string | null")]
-    pub forwardpoints: Either<String, Null>,
-    /// The currency the lane is priced in, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub currency: Either<String, Null>,
-    /// The lane's quantity, as decimal text, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub quantity: Either<String, Null>,
-    /// The unit the lane's quantity is counted in, or `null`.
-    #[napi(ts_type = "string | null")]
-    pub unit: Either<String, Null>,
-}
-
 /// One instant as JavaScript reads it: nanoseconds since the epoch.
 fn instant(unix: i64) -> BigInt {
     BigInt::from(unix)
@@ -1218,72 +1022,13 @@ fn or_null<T>(value: Option<T>) -> Either<T, Null> {
     value.map_or(Either::B(Null), Either::A)
 }
 
-/// One decimal fact as its text, or `null` where the core holds nothing.
-fn decimal_text(held: Option<Decimal18>) -> Either<String, Null> {
-    or_null(held.map(|value| value.to_string()))
-}
-
-/// The event's facts, read through the graph traits the holder answers -
-/// a message's own, so what it alone states, its metadata among it, is
-/// what crosses.
-fn event_view<E: OperationEvent + ?Sized>(event: &E) -> Result<FixEventView> {
-    let text = |held: Option<&str>| or_null(held.map(ToOwned::to_owned));
-    Ok(FixEventView {
-        curruuid: event.get_curruuid().to_string(),
-        crossuuid: event.get_crossuuid().to_string(),
-        crosscode: event.get_crosscode().to_owned(),
-        currhashcode: BigInt::from(event.get_currhashcode()),
-        crosshashcode: BigInt::from(event.get_crosshashcode()),
-        srcuuids: sources_view(event),
-        currunix: instant(event.get_currunix()),
-        state: event.get_state().as_str().to_owned(),
-        seqnum: exact_f64(event.get_seqnum(), "seqnum")?,
-        creaunix: or_null(event.get_creaunix().map(instant)),
-        execunix: or_null(event.get_execunix().map(instant)),
-        recdunix: or_null(event.get_recdunix().map(instant)),
-        exprtime: or_null(event.get_exprtime().map(instant)),
-        prevunix: or_null(event.get_prevunix().map(instant)),
-        prevuuid: or_null(event.get_prevuuid().map(|uuid| uuid.to_string())),
-        snapunix: or_null(event.get_snapunix().map(instant)),
-        price: decimal_text(event.get_price()),
-        currency: event.get_currency().as_str().to_owned(),
-        quantity: decimal_text(event.get_quantity()),
-        unit: event.get_unit().as_str().to_owned(),
-        side: event.get_side().as_str().to_owned(),
-        securityids: securityids_view(event.get_securityids()),
-        cficode: text(event.get_cficode().map(CfiCode::as_str)),
-        miccode: text(event.get_miccode().map(MicCode::as_str)),
-        lastpx: decimal_text(event.get_lastpx()),
-        lastqty: decimal_text(event.get_lastqty()),
-        avgpx: decimal_text(event.get_avgpx()),
-        cumqty: decimal_text(event.get_cumqty()),
-        leavesqty: decimal_text(event.get_leavesqty()),
-        prevpx: decimal_text(event.get_prevpx()),
-        prevqty: decimal_text(event.get_prevqty()),
-        spotrate: decimal_text(event.get_spotrate()),
-        forwardpoints: decimal_text(event.get_forwardpoints()),
-        ticker: text(event.get_ticker()),
-        metadata: metadata_view(event.get_metadata()),
-        marketoperationid: or_null(event.get_marketoperationid()),
-        tif: text(event.get_tif().map(yggdryl::TimeInForce::as_str)),
-        tradable: or_null(event.get_tradable()),
-        accountids: idmap_view(event.get_accountids()),
-        userids: idmap_view(event.get_userids()),
-        altids: idmap_view(event.get_altids()),
-        bid: or_null(event.get_bid().map(lane_view)),
-        ask: or_null(event.get_ask().map(lane_view)),
-    })
-}
-
-/// One lane's slots, each as the text it crosses as.
-fn lane_view(lane: &Lane) -> FixLaneView {
-    FixLaneView {
-        price: decimal_text(lane.price),
-        spotrate: decimal_text(lane.spotrate),
-        forwardpoints: decimal_text(lane.forwardpoints),
-        currency: or_null(lane.currency.as_ref().map(|held| held.as_str().to_owned())),
-        quantity: decimal_text(lane.quantity),
-        unit: or_null(lane.unit.as_ref().map(|held| held.as_str().to_owned())),
+/// One core entry and everything under it, as the object JavaScript reads.
+fn entry_view(entry: &FixEntry) -> FixEntryView {
+    FixEntryView {
+        tag: entry.tag(),
+        name: entry.name().to_owned(),
+        value: or_null(entry.value().map(ToOwned::to_owned)),
+        entries: entry.entries().iter().map(entry_view).collect(),
     }
 }
 
@@ -1571,11 +1316,21 @@ impl JsFixMsg {
         self.inner.as_field().fields().len() as f64
     }
 
-    /// The event this message is: every fact the graph traits answer, as
-    /// one plain object read once.
+    /// The graph market operations this message expands to: an order, a
+    /// quote, an execution or an initial trade report is one; a book `W` or
+    /// `X` one per `NoMDEntries(268)` occurrence, or one scoped snapshot
+    /// control for an empty `W` - each a `MarketData`.
     #[napi]
-    pub fn event(&self) -> Result<FixEventView> {
-        event_view(&self.inner)
+    pub fn market_operations(&self) -> Result<Vec<JsMarketData>> {
+        self.inner
+            .market_operations()
+            .map(|operations| {
+                operations
+                    .into_iter()
+                    .map(JsMarketData::from_core)
+                    .collect()
+            })
+            .map_err(napi_error)
     }
 
     /// The standard header, typed, as one plain object read once.
@@ -1671,12 +1426,49 @@ impl JsFixMsg {
         self.inner.get_prevuuid().map(|uuid| uuid.to_string())
     }
 
+    /// When the order this message belongs to was created, where known.
+    #[napi(getter)]
+    pub fn creaunix(&self) -> Option<BigInt> {
+        self.inner.get_creaunix().map(instant)
+    }
+
+    /// The latest execution instant the lifecycle reached, where known.
+    #[napi(getter)]
+    pub fn execunix(&self) -> Option<BigInt> {
+        self.inner.get_execunix().map(instant)
+    }
+
+    /// When the message was recorded, where stated.
+    #[napi(getter)]
+    pub fn recdunix(&self) -> Option<BigInt> {
+        self.inner.get_recdunix().map(instant)
+    }
+
+    /// When the order expires, where it has an expiry.
+    #[napi(getter)]
+    pub fn exprtime(&self) -> Option<BigInt> {
+        self.inner.get_exprtime().map(instant)
+    }
+
+    /// When the message this one follows happened, where it follows one.
+    #[napi(getter)]
+    pub fn prevunix(&self) -> Option<BigInt> {
+        self.inner.get_prevunix().map(instant)
+    }
+
+    /// The grid step a walk read this message as the snapshot of, where one
+    /// did.
+    #[napi(getter)]
+    pub fn snapunix(&self) -> Option<BigInt> {
+        self.inner.get_snapunix().map(instant)
+    }
+
     /// The sorted unique identities of the elements this one was read from:
     /// the text line it was parsed out of, and none for one parsed from bytes. Provenance,
     /// never its chain: no walk moves it.
     #[napi(getter)]
     pub fn srcuuids(&self) -> Vec<String> {
-        sources_view(self.inner.event())
+        sources_view(&self.inner)
     }
 
     /// The capture's own cells the message carries, each under the column
@@ -1937,14 +1729,14 @@ impl JsFixMsg {
     /// currency and unit it states - or `null` where it states no slot of
     /// it. A buy order fills its own lane's size; a quote states both.
     #[napi(getter)]
-    pub fn bid(&self) -> Option<FixLaneView> {
-        self.inner.get_bid().map(lane_view)
+    pub fn bid(&self) -> Option<JsLane> {
+        self.inner.get_bid().cloned().map(JsLane::from_core)
     }
 
     /// The ask lane, the same way.
     #[napi(getter)]
-    pub fn ask(&self) -> Option<FixLaneView> {
-        self.inner.get_ask().map(lane_view)
+    pub fn ask(&self) -> Option<JsLane> {
+        self.inner.get_ask().cloned().map(JsLane::from_core)
     }
 
     /// The value the root child an identifier names, or `null`.
@@ -2236,106 +2028,6 @@ fn separator_char(separator: Option<String>) -> Result<char> {
 
 /// The separator FIX itself uses.
 const SOH: u8 = 0x01;
-
-/// Where a JavaScript source behind a stream failed, kept for the stream.
-///
-/// A core stage pulls its items as values, so a failure inside the pull - an
-/// item the loader could not read, an iterator that threw - cannot travel
-/// through the stage as an item. It ends the pull instead and lands here, as
-/// the status and reason a new error is raised with, because the error
-/// itself holds handles that do not cross threads.
-#[derive(Clone, Default)]
-struct Failed(Arc<Mutex<Option<(Status, String)>>>);
-
-impl Failed {
-    fn set(&self, error: &napi::Error) {
-        if let Ok(mut held) = self.0.lock() {
-            *held = Some((error.status, error.reason.clone()));
-        }
-    }
-
-    fn take(&self) -> Option<napi::Error> {
-        self.0
-            .lock()
-            .ok()
-            .and_then(|mut held| held.take())
-            .map(|(status, reason)| napi::Error::new(status, reason))
-    }
-}
-
-/// A JavaScript iterable pulled one item at a time into a core stage.
-///
-/// The loader hands over a bound pull function, `() => item | null`, so the
-/// iterable's own protocol runs in JavaScript and each item arrives here
-/// already read into the value the stage takes. Like the record bridge in
-/// `iomedia`, it is called only on the isolate thread that supplied it and
-/// only within the native call advancing the stream, which is what makes the
-/// environment it is borrowed back with valid. Exhaustion ends the pull; a
-/// failure ends it too and lands in `failed`, so the stage sees a shorter
-/// stream and the wrapper around it throws what happened.
-struct Pulled<T: FromNapiValue> {
-    pull: FunctionRef<(), Option<T>>,
-    environment: usize,
-    thread: ThreadId,
-    failed: Failed,
-    done: bool,
-}
-
-impl<T: FromNapiValue> Pulled<T> {
-    fn new(env: Env, pull: Function<'_, (), Option<T>>) -> Result<Self> {
-        Ok(Self {
-            pull: pull.create_ref()?,
-            environment: env.raw().expose_provenance(),
-            thread: std::thread::current().id(),
-            failed: Failed::default(),
-            done: false,
-        })
-    }
-
-    fn pull(&self) -> Result<Option<T>> {
-        if std::thread::current().id() != self.thread {
-            return Err(napi_error(
-                "a JavaScript message iterable can only be pulled on the isolate thread that supplied it",
-            ));
-        }
-        let env = Env::from_raw(std::ptr::with_exposed_provenance_mut(self.environment));
-        self.pull.borrow_back(&env)?.call(())
-    }
-}
-
-impl<T: FromNapiValue> Iterator for Pulled<T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        if self.done {
-            return None;
-        }
-        match self.pull() {
-            Ok(Some(value)) => Some(value),
-            Ok(None) => {
-                self.done = true;
-                None
-            }
-            Err(error) => {
-                self.done = true;
-                self.failed.set(&error);
-                None
-            }
-        }
-    }
-}
-
-/// A JavaScript failure behind a stream a batch reader pulls, as the core
-/// reports one.
-///
-/// The batch it would have landed in is being pulled by the reader rather
-/// than by a JavaScript frame, so it travels as that reader's error and
-/// arrives where the batch would have.
-fn javascript_failure(error: napi::Error) -> CoreError {
-    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(
-        std::io::Error::other(error.reason.clone()),
-    )))
-}
 
 /// A stream of messages, one at a time.
 ///
@@ -2909,7 +2601,8 @@ impl JsFixCodec {
     }
 
     /// Streams sorted FIX messages through native market operations and the
-    /// stateful book iterator into nested Arrow batches.
+    /// stateful book iterator into Arrow batches of lifted `marketdata` rows,
+    /// one `book_event` row per book.
     ///
     /// Admits ORDR/QUOT, actual EXEC, BOOK W/X and TRAD AE; other records
     /// are ignored. Source errors and invalid admitted messages still fail,
@@ -2940,7 +2633,7 @@ impl JsFixCodec {
             .inner
             .book_arrow_reader(messages, snapshot_millis, global)
             .map_err(napi_error)?;
-        Ok(JsBatchReader::from_core(reader, "book"))
+        Ok(JsBatchReader::from_core(reader, "marketdata"))
     }
 
     /// A stream of messages as the rows one message field holds them.

@@ -38,7 +38,7 @@ mod categories {
         let codec = super::fixed_codec(std::sync::Arc::clone(&registry));
         let schema = yggdryl::fix_schema(&registry, "fix").expect("a fixed schema");
         // CFI keeps standard tag 461. The normalized identifiers this message
-        // lifts are derived once by MarketEvent, then the row and tag lookup
+        // lifts are derived once as the message settles, then the row and tag lookup
         // borrow that same typed fact. CUSIP and SEDOL deliberately stay in
         // FIX's contextual identifier fields and `secaltids`.
         let cases = [

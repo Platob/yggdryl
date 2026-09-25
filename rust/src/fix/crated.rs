@@ -1,7 +1,8 @@
 //! The definitions this crate invents, above every published tag.
 //!
-//! A message is a market event - a [`MarketEvent`](crate::graph::MarketEvent)
-//! with a FIX body around it - and what this crate owns is only the facts
+//! A message is a market event - an [`Event`](crate::graph::Event) that is
+//! also a [`Market`](crate::graph::Market) - with a FIX body around it, and
+//! what this crate owns is only the facts
 //! the event states that *no dictionary publishes*: its identity and the one
 //! it has across its lifecycle and the code that names it there, the names
 //! it goes by, its parents, the lines it was read from, the code its content
