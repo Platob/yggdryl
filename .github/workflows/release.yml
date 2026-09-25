@@ -313,6 +313,13 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          # An exact version is downloaded as it is named. A range - what the
+          # action reads from pyproject.toml when none is given - is resolved
+          # through the GitHub API first, and that lookup is what left the
+          # macOS x86_64 row of the 0.1.12 release without a wheel
+          # (`getaddrinfo ENOTFOUND api.github.com`). It stays inside the
+          # `requires` range pyproject.toml declares.
+          maturin-version: v1.15.0
           sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
@@ -367,6 +374,7 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.15.0
           command: sdist
           args: --manifest-path python/Cargo.toml --out dist
       - uses: actions/upload-artifact@v4
@@ -435,6 +443,26 @@ jobs:
         run: npm run build --prefix node
       - name: Smoke tests against the release binary
         run: npm test --prefix node
+      # The runner reads each file in a child process, and a child that dies
+      # on a signal takes its unflushed report with it - on macOS a pipe is
+      # written asynchronously - so a crash names its file and never its test.
+      # Read in-process into a file, which is written synchronously, a file
+      # that fails shows every test it finished before it stopped.
+      - name: Name the test a failing file stopped in
+        if: failure()
+        shell: bash
+        working-directory: node
+        run: |
+          for file in tests/*.test.js tests/*/*.test.js; do
+            [ -f "$file" ] || continue
+            status=0
+            node --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::$file (exit $status)"
+              tail -n 60 "$file.log"
+              echo "::endgroup::"
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: node-${{ matrix.label }}
