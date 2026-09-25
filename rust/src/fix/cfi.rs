@@ -130,7 +130,14 @@ impl super::FixMsg {
                 .filter(|held| !held.is_empty())
         };
         let text = |tag: i32| clean(self.get_by_tag(tag));
-        let named = |name: &str| clean(self.get_by_name(name));
+        // A detailed code a bridge states is a field no dictionary maps, so
+        // it is found among the row's own children by its spelling alone -
+        // exactly, else by the one child the fold reaches - and never asks
+        // the dictionary for a name it does not hold.
+        let named = |name: &str| {
+            let at = self.index_of_name(name)?;
+            clean(self.as_value().as_sequence()?.get(at).cloned())
+        };
         let number = |tag: i32| {
             self.get_by_tag(tag)
                 .filter(|held| !held.is_null())

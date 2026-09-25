@@ -6,6 +6,7 @@ use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, OnceLock};
 
+use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
 
 use super::build::stated;
@@ -1641,20 +1642,27 @@ impl FixMsg {
         // after the wire's own: trimmed, validated, never a grouped member,
         // and left on the wire as it arrived. An empty or null-like value
         // states nothing.
-        // The name is asked first: it names no source for almost every child,
-        // and only a child whose name does is looked for in the tag index,
-        // so the scan allocates nothing to know which children a tag maps.
+        // Which children a tag maps is marked once, in a word per 64
+        // children held inline, so neither a set nor a scan of the tag index
+        // is paid per child, and a name is folded only for a child that
+        // states a value no tag maps.
         if let Some(cells) = self.value.as_sequence() {
+            let mut mapped: SmallVec<[u64; 4]> = SmallVec::from_elem(0, cells.len().div_ceil(64));
+            for (_, at) in &self.tags {
+                if let Some(word) = mapped.get_mut(at / 64) {
+                    *word |= 1 << (at % 64);
+                }
+            }
             for (at, (child, cell)) in self.field.fields().iter().zip(cells).enumerate() {
-                if child.name().contains('.') {
+                if mapped[at / 64] & (1 << (at % 64)) != 0
+                    || cell.is_null()
+                    || child.name().contains('.')
+                {
                     continue;
                 }
                 let Some(key) = SecType::from_field_name(child.name()) else {
                     continue;
                 };
-                if self.tags.iter().any(|(_, mapped)| *mapped == at) {
-                    continue;
-                }
                 let Some(text) = scalar_text(cell)
                     .map(|held| held.trim().to_owned())
                     .filter(|held| !held.is_empty() && !is_null_like(held))

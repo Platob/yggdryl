@@ -178,17 +178,29 @@ impl SecType {
 
     /// The known source `alias` names: a key in any case, or a folded name.
     fn from_alias(alias: &str) -> Option<Self> {
-        if let Some(index) = Self::KNOWN
-            .iter()
-            .position(|(known, _)| known.eq_ignore_ascii_case(alias))
-        {
+        if let Some(index) = Self::known_index_ignoring_case(alias) {
             return Some(Self::known(index));
         }
-        let folded = folded_spelling(alias);
+        Self::from_folded(&folded_spelling(alias))
+    }
+
+    /// The known source a spelling already folded names: a key, which folds
+    /// to itself in lower case, or a code-set name.
+    fn from_folded(folded: &str) -> Option<Self> {
+        if let Some(index) = Self::known_index_ignoring_case(folded) {
+            return Some(Self::known(index));
+        }
         NAMES
-            .binary_search_by(|(name, _)| name.cmp(&folded.as_str()))
+            .binary_search_by(|(name, _)| name.cmp(&folded))
             .ok()
             .map(|position| Self(SmolStr::new_static(NAMES[position].1)))
+    }
+
+    /// Where a key in any case stands in [`Self::KNOWN`].
+    fn known_index_ignoring_case(key: &str) -> Option<usize> {
+        Self::KNOWN
+            .iter()
+            .position(|(known, _)| known.eq_ignore_ascii_case(key))
     }
 
     /// The source one spelling names: a one-character code as FIX writes it
@@ -253,7 +265,8 @@ impl SecType {
     pub fn from_field_name(name: &str) -> Option<Self> {
         let folded = folded_spelling(name.strip_prefix('#').unwrap_or(name));
         let folded = folded.as_str();
-        if let Some(known) = Self::from_alias(folded) {
+        // Folded once: every spelling tried below is a part of this one.
+        if let Some(known) = Self::from_folded(folded) {
             return Some(known);
         }
         if REFUSED_FIELD_NAMES.contains(&folded)
@@ -268,7 +281,7 @@ impl SecType {
             return None;
         }
         if alias != folded {
-            if let Some(known) = Self::from_alias(alias) {
+            if let Some(known) = Self::from_folded(alias) {
                 return Some(known);
             }
         }
@@ -276,7 +289,7 @@ impl SecType {
             .iter()
             .find_map(|suffix| alias.strip_suffix(suffix))
             .filter(|stem| !stem.is_empty())
-            .and_then(Self::from_alias)
+            .and_then(Self::from_folded)
     }
 
     /// The FIX `SecurityIDSource(22)` code of a known source.
