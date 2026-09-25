@@ -451,6 +451,14 @@ jobs:
         run: npm ci --prefix node
       - name: Build the release native module
         run: npm run build --prefix node
+        env:
+          # A rehearsal publishes nothing, so it keeps the symbols and line
+          # tables the shipped module strips: a crash its smoke tests find is
+          # then named by function and line in the stack the failure step
+          # prints, rather than by an offset into a stripped binary. Neither
+          # setting changes the code the compiler emits.
+          CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
+          CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
       - name: Smoke tests against the release binary
         run: npm test --prefix node
       # A crash names its file and never its test: the runner reads each file
