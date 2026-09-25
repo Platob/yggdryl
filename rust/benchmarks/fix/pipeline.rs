@@ -214,6 +214,28 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 .expect("a walked message")
         });
     });
+    // The walk alone over the decoded stream's messages: the row header's
+    // captures state each hop's session event and recording clock, so this
+    // is the walk a bridge capture pays - its observations folded, its
+    // frames dated by their transactions - without the parse in front.
+    let decoded: Vec<FixMsg> = composed
+        .parse_text_lines(read_text_lines(&source, &options).expect("a decoded line stream"))
+        .collect::<yggdryl::Result<_>>()
+        .expect("the decoded messages");
+    group.bench_function("decoded_lifecycle", |bencher| {
+        bencher.iter_batched(
+            || decoded.clone(),
+            |held| {
+                composed
+                    .lifecycle(held)
+                    .try_fold(0_usize, |read, message: yggdryl::Result<FixMsg>| {
+                        message.map(|_| read + 1)
+                    })
+                    .expect("a walked message")
+            },
+            BatchSize::LargeInput,
+        );
+    });
 
     // The codec alone, over the framed bodies: what a message costs to
     // build, without the frame it was cut from or the batch it lands in. A

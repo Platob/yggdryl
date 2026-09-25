@@ -105,7 +105,7 @@ pub const ULBRIDGE_ROWHEADER: &str = r"^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d
 /// of its payload names it, the first of three sentences that reads:
 ///
 /// - `Message received: Message type [..] from (OMS_X1_OrderOut as
-///   OD9EOEDJ400) ...` - the plugin inside the parentheses;
+///   XM8NNITE382) ...` - the plugin inside the parentheses;
 /// - `Execution report from OMS_X1_OrderOut type trade for ...` - the
 ///   plugin the report came from;
 /// - `Receiving : 8=FIX...` - `msgpluginid`, the plugin that logged the
@@ -129,7 +129,7 @@ pub(super) fn originator<'a>(prose: &'a [u8], msgpluginid: Option<&'a str>) -> O
 }
 
 /// The conversation the prose in front of a payload files the message under:
-/// the text of its `{conversationId: 7702fe4b-...}`, trimmed, and nothing
+/// the text of its `{conversationId: 80d1f8e9-...}`, trimmed, and nothing
 /// where it states none or spells an absence.
 pub(super) fn conversation(prose: &[u8]) -> Option<&str> {
     let rest = after(prose, b"{conversationId:")?;

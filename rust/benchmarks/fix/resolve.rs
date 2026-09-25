@@ -76,9 +76,6 @@ pub fn benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
     });
     // Counters are scalar fields; logical groups have their own name index.
-    group.bench_function("scalar_tag_hit", |bencher| {
-        bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(55)));
-    });
     group.bench_function("counter_tag_hit", |bencher| {
         bencher.iter(|| black_box(&registry).get_field_by_tag(black_box(453)));
     });

@@ -1023,7 +1023,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
     );
 
     let message = reader
-        .sole_line(b"8=FIX.4.4|35=8|17=E1|1907=1|1903=035B40DQK6702PNV|1906=5|10=0|")
+        .sole_line(b"8=FIX.4.4|35=8|17=E1|1907=1|1903=042K38MWK5817YZZ|1906=5|10=0|")
         .unwrap();
     assert!(message.get_by_name("regulatorytradeidgrp").is_none());
     assert!(message.get_by_name("regulatorytradeids").is_some());
@@ -1034,7 +1034,7 @@ fn regulatory_trade_ids_are_lifted_whole_into_the_fixed_schema() {
         .expect("the regulatory trade identifier occurrences");
     assert_eq!(occurrences.len(), 1);
     let members = occurrences[0].as_sequence().expect("one occurrence");
-    assert_eq!(members[0].as_str(), Some("035B40DQK6702PNV"));
+    assert_eq!(members[0].as_str(), Some("042K38MWK5817YZZ"));
     assert!(members[1].is_null());
     assert!(members[2].is_null());
     assert_eq!(members[3].as_i128(), Some(5));

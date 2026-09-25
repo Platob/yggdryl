@@ -1629,8 +1629,12 @@ mod market_ladder {
             ("30=XLON|100=XPAR|207=XSWX|", Some("XLON")),
             ("100=XPAR|207=XSWX|", Some("XPAR")),
             ("207=XSWX|", Some("XSWX")),
-            // A venue's own short code names no market: the next step answers.
-            ("30=S|100=TW|207=XSWX|", Some("XSWX")),
+            // A Reuters mnemonic, FIX 4.2's spelling, names its market.
+            ("30=L|100=XPAR|207=XSWX|", Some("XLON")),
+            ("100=TW|207=XTAI|", Some("XTAI")),
+            ("207=S|", Some("XSWX")),
+            // A code neither reading resolves names none: the next step answers.
+            ("30=ZZ|100=TH|207=XSWX|", Some("XSWX")),
             ("30=xlon|", None),
             // The instrument key's market ranks before SecurityExchange.
             (
@@ -1776,13 +1780,13 @@ mod identifier_maps {
     #[test]
     fn a_bridges_own_fields_name_the_message_and_stay_content() {
         let held = parsed(
-            "8=FIX.4.4|35=8|17=E1|37=O1|1=ACC|OMSDEALERACCOUNT=PBRK6|OMSUSERID=trader1|\
+            "8=FIX.4.4|35=8|17=E1|37=O1|1=ACC|OMSDEALERACCOUNT=YNHD5|OMSUSERID=trader1|\
              PARENTORDERID=P1|PARENTCLORDID=PC1|OMSDEALERPARENTORDERID=OP1|\
              EXCHANGECLIENTORDERID=X1|TRANSVERSAL_KEY=T1|ULTRADER_CLORDID=U1|10=0|",
         );
         assert_eq!(
             pairs(held.get_accountids()),
-            [("ACCOUNT", "ACC"), ("OMSDEALERACCOUNT", "PBRK6")].map(|(k, v)| (k.into(), v.into()))
+            [("ACCOUNT", "ACC"), ("OMSDEALERACCOUNT", "YNHD5")].map(|(k, v)| (k.into(), v.into()))
         );
         assert_eq!(
             pairs(held.get_userids()),

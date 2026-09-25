@@ -1679,8 +1679,7 @@ fn case_only_replacements_keep_canonical_spelling_and_refresh_every_category() {
 
 #[test]
 fn folded_field_updates_keep_canonical_names_and_refresh_references() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let mut registry = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
+    let mut registry = super::committed_registry().as_ref().clone();
     let mut incoming = tagged("Symbol", 55, DataType::utf8());
     incoming.as_fix_mut().set_tags(&[9001]).unwrap();
     incoming.as_fix_mut().set_names(["Sym"]).unwrap();
@@ -2213,11 +2212,11 @@ fn the_names_and_tags_cross_a_store_as_the_arrays_they_are() {
 #[test]
 fn every_committed_field_document_round_trips_through_the_store_shape() {
     // The whole shipped dictionary, both directions: what the store writes
-    // reads back as the same field, byte for byte in its metadata.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-    let registry = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
+    // reads back as the same field, byte for byte in its metadata. The walk
+    // is every scalar field and then every component and group.
+    let registry = super::committed_registry();
     let mut carried = 0_usize;
-    for field in &registry {
+    for field in registry.iter() {
         let document = yggdryl::into_fix_document(field.clone()).unwrap();
         if document
             .get_key_str("metadata")
@@ -2228,12 +2227,6 @@ fn every_committed_field_document_round_trips_through_the_store_shape() {
         assert_eq!(&yggdryl::from_fix_document(document).unwrap(), field);
     }
     assert!(carried > 400, "only {carried} fields carry a code set");
-    for category in [FixCategory::Components, FixCategory::Groups] {
-        for field in super::definitions(&registry, category) {
-            let document = yggdryl::into_fix_document(field.clone()).unwrap();
-            assert_eq!(&yggdryl::from_fix_document(document).unwrap(), field);
-        }
-    }
 }
 
 #[test]
@@ -3048,10 +3041,13 @@ mod committed {
     /// (65066) and `conversationid` (65067), two typed members of the fixed
     /// row read off a bridge's line, and the eight bridge identifiers 65068
     /// to 65075, content the row keeps, each stating its own `FIX:idmap`.
+    /// It last moved when `miccode`'s ladder read FIX 4.2's Reuters exchange
+    /// mnemonics beside ISO 10383 MICs: that one description says so, and no
+    /// other document, tag or count moved.
     #[test]
     fn the_committed_dictionary_hashes_to_one_pinned_value() {
         let registry = seed();
-        assert_eq!(registry.stable_hash(), 1_297_145_350_983_584_410);
+        assert_eq!(registry.stable_hash(), 1_645_965_135_168_375_719);
         let messages = definitions(&registry, FixCategory::Components)
             .filter(|component| component.as_fix().msgtype().is_some())
             .count();

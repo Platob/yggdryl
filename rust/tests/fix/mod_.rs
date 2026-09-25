@@ -4685,7 +4685,7 @@ mod internal {
 
         // One voice or silence: two namespaces naming one absent field, and
         // disagreeing, fill nothing. Nine lines of the corpus do exactly this.
-        let split = one("MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|");
+        let split = one("MSGTYPE=8|FIRM.ORIG.CLIENTID=2540498.003|ULLINK.CLIENTID=trader1|");
         assert_eq!(split.get_by_name("ClientID"), None);
         // Agreeing, they fill.
         let agreed = one("MSGTYPE=8|FIRM.ORIG.CLIENTID=trader1|ULLINK.CLIENTID=trader1|");

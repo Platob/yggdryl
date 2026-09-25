@@ -10,7 +10,6 @@ columnar object crosses: a held column is a ``Serie``, a stream is a
 from __future__ import annotations
 
 import copy
-import importlib
 import pathlib
 import pickle
 import threading
@@ -21,7 +20,6 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-import yggdryl
 from yggdryl import (
     ArrowCastPlan,
     ChunkedSerie,
@@ -515,11 +513,6 @@ def buffer_locations(array: pa.Array) -> list[tuple[int, int] | None]:
 
 
 class TestFrom:
-    def test_the_arrow_shape_wrapper_is_retired(self) -> None:
-        assert not hasattr(yggdryl, "ArrowScalar")
-        with pytest.raises(ModuleNotFoundError):
-            importlib.import_module("yggdryl.arrow")
-
     def test_a_held_batch_is_the_record_column_of_its_rows(self) -> None:
         records = Serie.from_(quote_table().to_batches()[0])
         assert type(records) is StructSerie

@@ -786,9 +786,23 @@ fn merge_session_events(messages: Vec<FixMsg>, failures: &mut VecDeque<Error>) -
             // each fold keeps the earliest recording, so deciding again at
             // every pair would rank the rest against that instead.
             let mut reference = observations.next().expect("one session-event observation");
+            // The distinct contents already merged: a capture logs one event
+            // at every hop, mostly as the same row, and merging a content
+            // again fills nothing - so a repeat folds its facts alone.
+            let mut merged: Vec<FixMsg> = Vec::new();
             for other in observations {
+                if merged
+                    .iter()
+                    .any(|held| super::latest::same_content(held, &other))
+                {
+                    reference.fold_session_event_facts(&other);
+                    continue;
+                }
                 match reference.clone().fold_session_event(&other) {
-                    Ok(merged) => reference = merged,
+                    Ok(folded) => {
+                        reference = folded;
+                        merged.push(other);
+                    }
                     Err(error) => {
                         failures.push_back(error);
                     }

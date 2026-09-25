@@ -54,8 +54,6 @@ from yggdryl.fix import (
 )
 from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
-REPO_batch = pathlib.Path(__file__).resolve().parent.parent.parent
-SEED_batch = REPO_batch / "config" / "fix"
 
 # The one intake clock undated test bytes take, so a parse repeats.
 CLOCK_batch = DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000)
@@ -74,14 +72,9 @@ def _fixed_batch(registry: FixRegistry, **pins: Any) -> FixCodec:
     return FixCodec(registry, default_sending_time=CLOCK_batch, **pins)
 
 
-@pytest.fixture(scope="module")
-def _seed_catalog_batch() -> FixRegistry:
-    return FixRegistry.from_handle(SEED_batch)
-
-
 @pytest.fixture
-def seed_batch(_seed_catalog_batch: FixRegistry) -> FixRegistry:
-    return copy.copy(_seed_catalog_batch)
+def seed_batch(_seed_catalog: FixRegistry) -> FixRegistry:
+    return copy.copy(_seed_catalog)
 
 
 # A JSON document a bridge logs, which the codec does not read: one row, one
@@ -1827,10 +1820,15 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
         ), name
 
 
-def test_registry_takes_every_storage_location(seed: FixRegistry, tmp_path: pathlib.Path) -> None:
-    absolute = SEED.resolve()
+def test_registry_takes_every_storage_location(tmp_path: pathlib.Path) -> None:
+    # Every spelling of one folder reads the one dictionary it holds: a small
+    # one written for the purpose, since the spelling is the claim.
+    written = FixRegistry()
+    written.insert(_field("Venue", "utf8", 39999))
+    absolute = (tmp_path / "dictionary").resolve()
+    written.write_into(absolute)
     for location in (absolute, str(absolute), absolute.as_uri(), Url(absolute), IOBase(absolute)):
-        assert FixRegistry.from_handle(location) == seed
+        assert FixRegistry.from_handle(location) == written
 
     # A folder that is not there loads as a new registry and is not created.
     missing = tmp_path / "missing"

@@ -2086,6 +2086,18 @@ pub(super) fn merge_content(reference: &mut FixMsg, other: &FixMsg) -> Result<()
     Ok(())
 }
 
+/// Whether [`merge_content`] reads the same content from `left` as from
+/// `right`: the row, and the lifted facts and text it fills from - so a
+/// reference that already merged one of them takes nothing from the other.
+pub(super) fn same_content(left: &FixMsg, right: &FixMsg) -> bool {
+    left.as_value() == right.as_value()
+        && left.as_field() == right.as_field()
+        && super::identity::LIFTED_TAGS
+            .into_iter()
+            .chain(std::iter::once(super::identity::TEXT_TAG))
+            .all(|tag| left.get_by_tag(tag) == right.get_by_tag(tag))
+}
+
 /// Carries order-link spellings from the exact lifecycle predecessor without
 /// overwriting anything the current message stated.
 pub(super) fn inherit_order_links(current: &mut FixMsg, previous: &FixMsg) -> Result<bool> {

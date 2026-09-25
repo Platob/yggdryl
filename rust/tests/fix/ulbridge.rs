@@ -16,7 +16,7 @@ mod dataset {
     use std::sync::Arc;
 
     use arrow_array::RecordBatch;
-    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::graph::{Element, Event, Market, OrderEvent};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -252,7 +252,7 @@ mod dataset {
         );
         assert_eq!(
             received.capture().conversationid(),
-            Some("7702fe4b-5884-417f-b7ea-1f8aa7b3ef20")
+            Some("80d1f8e9-b1ba-4318-b1d6-26e6327dd70e")
         );
     }
 
@@ -321,6 +321,42 @@ mod dataset {
                 "row {index}"
             );
         }
+    }
+
+    /// Every walked message, stated whole: its row, its event, its digest and
+    /// its anomalies.
+    fn walked(codec: &FixCodec, messages: Vec<FixMsg>) -> Vec<String> {
+        let schema = super::format_target(&registry());
+        codec
+            .lifecycle(messages)
+            .map(|message| {
+                let message = message.expect("the capture walks");
+                format!(
+                    "{:?} {:?} {} {:?}",
+                    message.into_row(&schema).expect("a row"),
+                    OrderEvent::from(&message),
+                    message.digest(),
+                    message.anomalies(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_content_merged_once_folds_nothing_more_when_delivered_again() {
+        // The capture delivered twice folds every session event's content
+        // into its reference; a third delivery repeats a content the fold
+        // already holds, so the walk states exactly what two deliveries do -
+        // which is what lets a repeat skip the content merge.
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let messages = line_messages(&codec);
+        let delivered = |times: usize| {
+            std::iter::repeat_n(&messages, times)
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(walked(&codec, delivered(3)), walked(&codec, delivered(2)));
     }
 
     /// The batch door's answer for the whole capture: a capture row in, one FIX
@@ -671,7 +707,7 @@ mod dataset {
             .collect();
         assert_eq!(
             subs,
-            [1, 2, 0, 1, 0, 1, 0],
+            [2, 1, 0, 1, 0, 1, 0],
             "the sub-identifiers each party packs"
         );
         // A key the venue spelled under a namespace of its own is the bridge's
@@ -1967,7 +2003,7 @@ mod provenance {
         for (prose, originator) in [
             (
                 "Message received: Message type [execution report <trade>] from \
-                 (OMS_X1_OrderOut as OD9EOEDJ400) forwarded to (B as OD9EOEDJ400) ",
+                 (OMS_X1_OrderOut as XM8NNITE382) forwarded to (B as XM8NNITE382) ",
                 Some("OMS_X1_OrderOut"),
             ),
             (

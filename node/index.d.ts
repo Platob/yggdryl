@@ -8680,7 +8680,7 @@ export interface FixCaptureView {
   /**
    * The plugin the message came into a bridge through, as the bridge's
    * log line names it - `OMS_X1_OrderOut` in `Message received: ... from
-   * (OMS_X1_OrderOut as OD9EOEDJ400)`; also `byTag(65066)`.
+   * (OMS_X1_OrderOut as XM8NNITE382)`; also `byTag(65066)`.
    */
   msgoriginator: string | null
   /**

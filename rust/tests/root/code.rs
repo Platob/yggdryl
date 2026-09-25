@@ -91,6 +91,49 @@ mod datatypes {
     }
 
     #[test]
+    fn reuters_exchange_mnemonics_resolve_to_the_mic_that_carries_the_market() {
+        for (mnemonic, mic) in [
+            ("L", "XLON"),
+            ("S", "XSWX"),
+            ("TW", "XTAI"),
+            ("TWO", "ROCO"),
+            ("N", "XNYS"),
+            ("O", "XNAS"),
+            ("PA", "XPAR"),
+            ("MC", "XMCE"),
+            ("PNK", "PINX"),
+            ("RTS", "RTSX"),
+            ("P", "ARCX"),
+            ("8", "ARCO"),
+            ("1", "XASE"),
+            ("12", "XNYM"),
+            // Case is part of the mnemonic.
+            ("B", "XBOS"),
+            ("b", "XBRD"),
+            ("D", "XDUS"),
+            ("d", "XEUR"),
+            ("p", "XMON"),
+        ] {
+            let held = MicCode::from_reuters_exchange_code(mnemonic).unwrap();
+            assert_eq!(held.as_str(), mic, "{mnemonic}");
+            assert!(MicCode::is_iso(held.as_str()), "{mnemonic}");
+        }
+        for mnemonic in ["0", "11", "TH", "TP", "Z"] {
+            let error = MicCode::from_reuters_exchange_code(mnemonic)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains(mnemonic), "{error}");
+            assert!(error.contains("no single current MIC"), "{error}");
+        }
+        for unknown in ["XLON", "l", "ZZ", ""] {
+            let error = MicCode::from_reuters_exchange_code(unknown)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("expected a Reuters"), "{error}");
+        }
+    }
+
+    #[test]
     fn each_coded_datatype_answers_every_invariant_a_wildcard_would_get_wrong() {
         for (name, dtype, width, sample) in &CODED {
             // Naming: one canonical spelling, and the grammar round-trips it.

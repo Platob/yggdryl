@@ -121,15 +121,21 @@ jobs:
     # at, by pushing `v<version>` there - which pins the tree the wheels are
     # built from - or it is abandoned and `main` bumps. Neither is a push to
     # `main`, and this is where that is refused rather than discovered.
+    #
+    # A rehearsal runs it too, because every build job needs it and a job
+    # whose need was skipped is skipped with it: a hand-run that skipped this
+    # built nothing at all. A rehearsal publishes nothing, so there a half-out
+    # version is reported and not refused.
     name: No version is half out
     needs: preflight
-    if: needs.preflight.outputs.publish == 'true'
+    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: All three registries, or none
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
           REF_TYPE: ${{ github.ref_type }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -uo pipefail
           crate=no
@@ -146,6 +152,10 @@ jobs:
           fi
           if [ "$REF_TYPE" = "tag" ]; then
             echo "::warning title=Finishing a half-published version::$VERSION is on some registries and not others; the tag pins the tree, so this run finishes it"
+            exit 0
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "::warning title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm; a rehearsal publishes nothing"
             exit 0
           fi
           echo "::error title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm"
@@ -313,6 +323,13 @@ jobs:
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
+          # An exact version is downloaded as it is named. A range - what the
+          # action reads from pyproject.toml when none is given - is resolved
+          # through the GitHub API first, and that lookup is what left the
+          # macOS x86_64 row of the 0.1.12 release without a wheel
+          # (`getaddrinfo ENOTFOUND api.github.com`). It stays inside the
+          # `requires` range pyproject.toml declares.
+          maturin-version: v1.15.0
           sccache: true
           target: ${{ matrix.target }}
           manylinux: ${{ matrix.manylinux }}
@@ -367,6 +384,7 @@ jobs:
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
+          maturin-version: v1.15.0
           command: sdist
           args: --manifest-path python/Cargo.toml --out dist
       - uses: actions/upload-artifact@v4
@@ -433,8 +451,41 @@ jobs:
         run: npm ci --prefix node
       - name: Build the release native module
         run: npm run build --prefix node
+        env:
+          # A rehearsal publishes nothing, so it keeps the symbols and line
+          # tables the shipped module strips: a crash its smoke tests find is
+          # then named by function and line in the stack the failure step
+          # prints, rather than by an offset into a stripped binary. Neither
+          # setting changes the code the compiler emits.
+          CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
+          CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
       - name: Smoke tests against the release binary
         run: npm test --prefix node
+      # A crash names its file and never its test: the runner reads each file
+      # in a child whose report dies with it, and a reporter writes on a later
+      # turn of the event loop than the test it reports. Each failing file is
+      # read again with `scripts/trace-tests.js` preloaded, which names every
+      # test synchronously as it starts, and where lldb is at hand, under it,
+      # for every thread's native stack at the fault.
+      - name: Name the test a failing file stopped in
+        if: failure()
+        shell: bash
+        working-directory: node
+        run: |
+          for file in tests/*.test.js tests/*/*.test.js; do
+            [ -f "$file" ] || continue
+            status=0
+            node --require ./scripts/trace-tests.js --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
+            if [ "$status" -ne 0 ]; then
+              echo "::group::$file (exit $status)"
+              tail -n 80 "$file.log"
+              if [ "$status" -gt 128 ] && command -v lldb > /dev/null; then
+                lldb --batch -o run -k "thread backtrace all -c 60" -k "quit 1" -- \
+                  "$(command -v node)" --require ./scripts/trace-tests.js "$file" 2>&1 | tail -n 400 || true
+              fi
+              echo "::endgroup::"
+            fi
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: node-${{ matrix.label }}

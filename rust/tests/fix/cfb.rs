@@ -3,10 +3,7 @@
 
 use super::path;
 
-use std::path::PathBuf;
-
 use std::sync::Arc;
-use yggdryl::local::LocalFolder;
 
 use yggdryl::fs::{FileSystem, FsFile, MemoryFileSystem};
 use yggdryl::holder::Buffer;
@@ -587,11 +584,7 @@ fn the_root_element_is_read_past_and_the_dialect_is_a_membership() {
 
 #[test]
 fn replacing_a_referenced_cblock_field_is_atomic_and_unreferenced_fields_replace() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).unwrap()).unwrap();
+    let mut seeded = super::committed_registry().as_ref().clone();
     let (vocabulary, _) = FixRegistry::from_cfb_file(&handle(CBLOCK), None).unwrap();
     let avgpx = vocabulary.field_by_tag(6).unwrap().clone();
     let before = seeded.clone();
@@ -1690,12 +1683,7 @@ fn a_cblock_vocabulary_folds_into_a_dictionary_that_already_exists() {
 
 #[test]
 fn folding_a_cblock_into_the_committed_dictionary_refuses_what_it_would_lose() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
-        .expect("the seed");
+    let mut seeded = super::committed_registry().as_ref().clone();
     let before = seeded.clone();
 
     // The imported AvgPx datatype disagrees with its committed physical width.
@@ -2035,12 +2023,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
     // stamps that name on every field, group, component and message it
     // produced, and a standard field the file speaks gains the membership
     // without losing what the specification said about it.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
-        .expect("the seed");
+    let mut seeded = super::committed_registry().as_ref().clone();
     assert!(seeded.dialects().is_empty());
     let symbol = seeded.field_by_tag(55).unwrap().clone();
     assert!(symbol.description().is_some());
@@ -2148,12 +2131,7 @@ fn a_cblock_merged_under_a_dialect_stamps_what_it_touched_and_unions_onto_the_st
 #[test]
 fn reading_a_cblock_in_whole_is_one_mutation() {
     // A changed scalar width refuses the whole imported document.
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let mut seeded = FixRegistry::from_handle(&LocalFolder::new(root).expect("the seed folder"))
-        .expect("the seed");
+    let mut seeded = super::committed_registry().as_ref().clone();
     let before = seeded.clone();
 
     let error = seeded

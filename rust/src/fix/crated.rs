@@ -778,7 +778,8 @@ const CRATED: [Crated; 40] = [
         "MicCode",
         "The normalized market MIC the message identifies: LastMkt, else \
          ExDestination, the market a bridge's instrument key names or \
-         SecurityExchange, the first an ISO 10383 MIC; a bridge's \
+         SecurityExchange, the first an ISO 10383 MIC or a Reuters \
+         mnemonic resolving to one; a bridge's \
          INSTRUMENT[EXCHANGE] states it.",
     )
     .also_called(&["instrument[exchange]"]),

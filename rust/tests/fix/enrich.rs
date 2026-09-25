@@ -7,7 +7,6 @@
 
 use super::SoleMessage;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use yggdryl::expression::Term;
@@ -22,14 +21,7 @@ use yggdryl::{
 use yggdryl::{IsinCode, State};
 
 fn reader() -> FixCodec {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = LocalFolder::new(root).expect("the seed folder is a local path");
-    super::fixed_codec(Arc::new(
-        FixRegistry::from_handle(&folder).expect("the committed dictionary loads"),
-    ))
+    super::fixed_codec(super::committed_registry())
 }
 
 /// One line read, then read again to prove the fill is the read's: a parse
@@ -692,12 +684,7 @@ fn the_shipped_native_plan_fills_quotes_pegs_contract_amounts_and_currency_sourc
 
 /// The committed dictionary, owned, for the cases that edit a field.
 fn committed() -> FixRegistry {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("config")
-        .join("fix");
-    let folder = LocalFolder::new(root).expect("the seed folder is a local path");
-    FixRegistry::from_handle(&folder).expect("the committed dictionary loads")
+    super::committed_registry().as_ref().clone()
 }
 
 /// The shipped rules through the generic evaluator, selected by one inert

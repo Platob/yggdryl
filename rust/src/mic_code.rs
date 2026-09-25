@@ -70,8 +70,8 @@ impl MicCode {
     }
 
     /// Whether `text` is shaped as an ISO 10383 code: exactly four of
-    /// `[A-Z0-9]`. A venue's own short code - `S`, `TW` - is not, and a
-    /// reading that takes the first market a message names skips it.
+    /// `[A-Z0-9]`. A Reuters mnemonic - `S`, `TW` - is not;
+    /// [`MicCode::from_reuters_exchange_code`] resolves one.
     /// [`MicCode::new`] stays permissive, because a stored column may hold
     /// a short code a venue wrote.
     ///
@@ -205,6 +205,189 @@ impl MicCode {
             }
         };
         Self::new(mic)
+    }
+
+    /// Resolves one Reuters exchange mnemonic - the suffix of a RIC, and the
+    /// value FIX 4.2's Appendix C gives `LastMkt(30)`, `ExDestination(100)`
+    /// and `SecurityExchange(207)` - into its ISO 10383 MIC.
+    ///
+    /// Mnemonics are case-sensitive: `B` is Boston and `b` Belfox, `D`
+    /// Dusseldorf and `d` Eurex Germany, `P` Pacific and `p` MONEP. A market
+    /// that closed resolves to the MIC that carries it on: Pacific to
+    /// `ARCX`, its options to `ARCO`. A row naming a segment, a scheme or no
+    /// market - `TH` Third Market, `0` None, `11` OTC - and a closed market
+    /// ISO 10383 never carried on are refused.
+    ///
+    /// ```
+    /// use yggdryl::MicCode;
+    ///
+    /// assert_eq!(MicCode::from_reuters_exchange_code("L")?.as_str(), "XLON");
+    /// assert_eq!(MicCode::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
+    /// assert_eq!(MicCode::from_reuters_exchange_code("d")?.as_str(), "XEUR");
+    /// assert!(MicCode::from_reuters_exchange_code("TH").is_err());
+    /// # Ok::<(), yggdryl::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the mnemonic when Appendix C has no such
+    /// mnemonic or its row names no single current MIC.
+    pub fn from_reuters_exchange_code(code: impl AsRef<str>) -> Result<Self> {
+        let code = code.as_ref();
+        let mic = match code {
+            "A" | "1" => "XASE",
+            "AM" => "XAMM",
+            "AS" => "XAMS",
+            "AX" => "XASX",
+            "B" => "XBOS",
+            "BC" => "XBAR",
+            "BE" => "XBER",
+            "BH" => "XBAH",
+            "BI" => "XBIL",
+            "BIV" => "BIVA",
+            "BK" => "XBKK",
+            "BM" => "XBRE",
+            "BN" => "XBRN",
+            "BO" => "XBOM",
+            "BR" => "XBRU",
+            "BT" => "XBOT",
+            "BY" => "XBEY",
+            "C" => "XCIS",
+            "CE" => "XBCL",
+            "CH" => "XCIE",
+            "CI" => "XBRV",
+            "CL" => "XCAL",
+            "CM" => "XCOL",
+            "CO" => "XCSE",
+            "D" => "XDUS",
+            "DL" => "XDES",
+            "DU" => "XDFM",
+            "E" => "XEUE",
+            "F" => "XFRA",
+            "FU" => "XFKA",
+            "GH" => "XGHA",
+            "H" => "XHAM",
+            "HA" => "XHAN",
+            "HE" => "XHEL",
+            "HK" => "XHKG",
+            "I" => "XDUB",
+            "IC" => "XICE",
+            "IS" => "XIST",
+            "J" => "XJSE",
+            "JK" => "XIDX",
+            "KA" => "XKAR",
+            "KL" => "XKLS",
+            "KQ" => "XKOS",
+            "KS" => "XKRX",
+            "KW" => "XKUW",
+            "KY" => "XKYO",
+            "KZ" => "XKAZ",
+            "L" => "XLON",
+            "LA" => "XLAT",
+            "LG" => "XNSA",
+            "LM" => "XLIM",
+            "LS" => "XLIS",
+            "LU" => "XLUX",
+            "LZ" => "XLUS",
+            "M" => "XMOD",
+            "MA" => "XMAD",
+            "MC" => "XMCE",
+            "MD" => "XMDS",
+            "MI" => "XMIL",
+            "MM" => "MISX",
+            "MO" => "XMOS",
+            "MT" => "XMAL",
+            "MU" => "XMUN",
+            "MW" => "XCHI",
+            "MX" => "XMEX",
+            "MZ" => "XMAU",
+            "N" => "XNYS",
+            "NG" => "XNGO",
+            "NM" => "XNAM",
+            "NR" => "XNAI",
+            "NS" => "XNSE",
+            "NZ" => "XNZE",
+            "O" => "XNAS",
+            "OL" => "XOSL",
+            "OM" => "XMUS",
+            "OS" => "XOSE",
+            "P" => "ARCX",
+            "PA" => "XPAR",
+            "PE" => "XPET",
+            "PFT" => "PFTS",
+            "PH" => "XPHL",
+            "PNK" => "PINX",
+            "PR" => "XPRA",
+            "PS" => "XPHS",
+            "Q" => "XJAS",
+            "QA" => "DSMD",
+            "RI" => "XRIS",
+            "RQ" => "XRAS",
+            "RTS" => "RTSX",
+            "S" => "XSWX",
+            "SA" => "BVMF",
+            "SE" => "XSAU",
+            "SG" => "XSTU",
+            "SI" => "XSES",
+            "SN" => "XSGO",
+            "SP" => "XSAP",
+            "SS" => "XSHG",
+            "ST" => "XSTO",
+            "SZ" => "XSHE",
+            "T" => "XTKS",
+            "TA" => "XTAE",
+            "TL" => "XTAL",
+            "TN" => "XTUN",
+            "TO" => "XTSE",
+            "TW" => "XTAI",
+            "TWO" => "ROCO",
+            "V" => "XTSX",
+            "VA" => "XVAL",
+            "VI" => "XWBO",
+            "VL" => "XLIT",
+            "VX" => "XVTX",
+            "W" => "XCBO",
+            "X" => "XPHO",
+            "ZI" => "XZIM",
+            "b" => "XBRD",
+            "d" => "XEUR",
+            "p" => "XMON",
+            "2" => "XCME",
+            "3" => "XLIF",
+            "4" => "XPOS",
+            "8" => "ARCO",
+            "12" => "XNYM",
+            "16" => "XMRV",
+            "0" | "5" | "9" | "10" | "11" | "13" | "14" | "15" | "17" | "EB" | "IN" | "K"
+            | "LN" | "ML" | "NW" | "OB" | "OD" | "OJ" | "SBI" | "SO" | "SU" | "TH" | "TP" | "Z" => {
+                return Err(crate::Error::InvalidDataType {
+                    kind: "mic",
+                    reason: smol_str::format_smolstr!(
+                        "Reuters exchange mnemonic {code:?} names no single current MIC"
+                    ),
+                });
+            }
+            _ => {
+                return Err(crate::Error::InvalidDataType {
+                    kind: "mic",
+                    reason: smol_str::format_smolstr!(
+                        "expected a Reuters exchange mnemonic, got {code:?}"
+                    ),
+                });
+            }
+        };
+        Self::new(mic)
+    }
+
+    /// The market `text` names: an ISO 10383 MIC as it is, else the one a
+    /// Reuters exchange mnemonic resolves to - the two readings FIX gives
+    /// its market fields, which no spelling satisfies both of.
+    pub(crate) fn from_market(text: &str) -> Option<Self> {
+        if Self::is_iso(text) {
+            Self::new(text).ok()
+        } else {
+            Self::from_reuters_exchange_code(text).ok()
+        }
     }
 
     /// The better of two markets: this one, unless it is `XXXX`.
