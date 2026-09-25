@@ -1026,7 +1026,7 @@ pub mod internals {
                 by_isin: HashMap::new(),
                 reserved_bytes: 0,
                 byte_budget,
-                listings: SmallVec::new(),
+                listings: Default::default(),
             })
         }
 
@@ -1037,7 +1037,7 @@ pub mod internals {
                 by_isin: HashMap::new(),
                 reserved_bytes: usize::MAX,
                 byte_budget: usize::MAX,
-                listings: SmallVec::new(),
+                listings: Default::default(),
             })
         }
 
