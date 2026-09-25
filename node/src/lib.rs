@@ -25,6 +25,10 @@ mod enums;
 mod expression;
 mod field;
 mod fix;
+// Discovered through NAPI's generated registration inventory rather than
+// ordinary Rust call sites, like `uri` below.
+#[allow(dead_code)]
+mod graph;
 // Discovered through NAPI's generated registration inventory, like `enums`.
 #[allow(dead_code)]
 mod hashing;
@@ -44,10 +48,12 @@ mod value;
 mod version;
 
 use std::cmp::Ordering;
+use std::sync::{Arc, Mutex};
+use std::thread::ThreadId;
 
-use napi::bindgen_prelude::{Env, Error, Generator};
+use napi::bindgen_prelude::{Env, Error, FromNapiValue, Function, FunctionRef, Generator, Status};
 use napi_derive::napi;
-use yggdryl::OwnedDifferences;
+use yggdryl::{Error as CoreError, OwnedDifferences};
 
 pub use avro::{
     AvroDecodeLimitsInput, JsAvroBlock, JsAvroBlocks, JsAvroSchema, avro_blocks_native,
@@ -64,10 +70,17 @@ pub use expression::{
 };
 pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
-    FixCaptureView, FixCodecOptions, FixEntryView, FixEventView, FixHeaderView, JsFixCodec,
-    JsFixFieldIterator, JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields,
-    fix_global_registry, fix_install_global_registry, fix_schema, fix_schema_carrying,
-    fix_schema_tags, fix_ulbridge_rowheader_native,
+    FixCaptureView, FixCodecOptions, FixEntryView, FixHeaderView, JsFixCodec, JsFixFieldIterator,
+    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_global_registry,
+    fix_install_global_registry, fix_schema, fix_schema_carrying, fix_schema_tags,
+    fix_ulbridge_rowheader_native,
+};
+pub use graph::{
+    BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsBookSide, JsEventIterator, JsExecution,
+    JsExecutionEvent, JsLane, JsMarketData, JsMarketDataRowIterator, JsOrder, JsOrderEvent,
+    JsQuote, JsQuoteEvent, JsSnapshotEvent, JsSnapshotPartition, JsTradeEvent, LaneInput,
+    SnapshotPartitionInput, graph_entry_id_native, graph_entry_ref_id_native,
+    graph_followed_altids_native, graph_global_symbol_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
 pub use iceberg::{
@@ -251,6 +264,124 @@ pub(crate) fn exact_u8(value: f64, name: &str) -> napi::Result<u8> {
     }
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     Ok(value as u8)
+}
+
+/// Where a JavaScript source behind a stream failed, kept for the stream.
+///
+/// A core stage pulls its items as values, so a failure inside the pull - an
+/// item the loader could not read, an iterator that threw - cannot travel
+/// through the stage as an item. It ends the pull instead and lands here, as
+/// the status and reason a new error is raised with, because the error
+/// itself holds handles that do not cross threads.
+#[derive(Clone, Default)]
+pub(crate) struct Failed(Arc<Mutex<Option<(Status, String)>>>);
+
+impl Failed {
+    /// Record `error`'s status and reason, overwriting whatever was held.
+    pub(crate) fn set(&self, error: &napi::Error) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = Some((error.status, error.reason.clone()));
+        }
+    }
+
+    /// Take the held failure, once, where the pull suffered one.
+    pub(crate) fn take(&self) -> Option<napi::Error> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|mut held| held.take())
+            .map(|(status, reason)| napi::Error::new(status, reason))
+    }
+
+    /// Clone the held failure without consuming it, for a stage that can
+    /// only carry a typed error onward - a sentinel it wraps, travels
+    /// through the stage as one, and unwraps back at the surface - while
+    /// `take` still answers the original failure itself once that surface
+    /// asks for it.
+    pub(crate) fn peek(&self) -> Option<napi::Error> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|held| held.clone())
+            .map(|(status, reason)| napi::Error::new(status, reason))
+    }
+}
+
+/// A JavaScript iterable pulled one item at a time into a core stage.
+///
+/// The loader hands over a bound pull function, `() => item | null`, so the
+/// iterable's own protocol runs in JavaScript and each item arrives here
+/// already read into the value the stage takes. Like the record bridge in
+/// `iomedia`, it is called only on the isolate thread that supplied it and
+/// only within the native call advancing the stream, which is what makes the
+/// environment it is borrowed back with valid. Exhaustion ends the pull; a
+/// failure ends it too and lands in `failed`, so the stage sees a shorter
+/// stream and the wrapper around it throws what happened.
+pub(crate) struct Pulled<T: FromNapiValue> {
+    pull: FunctionRef<(), Option<T>>,
+    environment: usize,
+    thread: ThreadId,
+    /// Where the source failed, cloned out before the pull is chained past
+    /// its exhaustion.
+    pub(crate) failed: Failed,
+    done: bool,
+}
+
+impl<T: FromNapiValue> Pulled<T> {
+    /// Hold `pull`, bound to the isolate `env` supplied it.
+    pub(crate) fn new(env: Env, pull: Function<'_, (), Option<T>>) -> napi::Result<Self> {
+        Ok(Self {
+            pull: pull.create_ref()?,
+            environment: env.raw().expose_provenance(),
+            thread: std::thread::current().id(),
+            failed: Failed::default(),
+            done: false,
+        })
+    }
+
+    fn pull(&self) -> napi::Result<Option<T>> {
+        if std::thread::current().id() != self.thread {
+            return Err(napi_error(
+                "a JavaScript iterable can only be pulled on the isolate thread that supplied it",
+            ));
+        }
+        let env = Env::from_raw(std::ptr::with_exposed_provenance_mut(self.environment));
+        self.pull.borrow_back(&env)?.call(())
+    }
+}
+
+impl<T: FromNapiValue> Iterator for Pulled<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.done {
+            return None;
+        }
+        match self.pull() {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                self.done = true;
+                None
+            }
+            Err(error) => {
+                self.done = true;
+                self.failed.set(&error);
+                None
+            }
+        }
+    }
+}
+
+/// A JavaScript failure behind a stream a batch reader pulls, as the core
+/// reports one.
+///
+/// The batch it would have landed in is being pulled by the reader rather
+/// than by a JavaScript frame, so it travels as that reader's error and
+/// arrives where the batch would have.
+pub(crate) fn javascript_failure(error: napi::Error) -> CoreError {
+    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(
+        std::io::Error::other(error.reason.clone()),
+    )))
 }
 
 /// Snapshot iterator over stable native schema-difference lines.

@@ -35,8 +35,8 @@ already exists, adding what is absent, merging what is stored, and writing
 nothing at all when it refuses.
 
 :class:`FixMsg` is a typed market event with a content row. The typed facts
-live in three holders and two extras - :meth:`FixMsg.event`, the facts the
-core's graph vocabulary answers (``curruuid``, ``crossuuid``, ``crosscode``,
+live in three holders and two extras - the facts the core's graph
+vocabulary answers, each the message's own property (``curruuid``, ``crossuuid``, ``crosscode``,
 ``currhashcode``, ``crosshashcode``, ``currunix``, ``state``, ``seqnum``,
 the lifecycle's ``creaunix``, ``exprtime``, ``execunix``, ``recdunix``,
 ``prevunix``, ``prevuuid`` and ``snapunix``; the market's ``price``,
@@ -61,8 +61,11 @@ about the line, which is held nowhere on a message; the free
 :attr:`FixMsg.text` of tag 58; and a bridge's own :attr:`FixMsg.metadata`,
 the ``TECH.`` and ``firm.`` keys under the spelling it gave them - and the
 row holds everything else the message states: the dictionary's fields,
-groups as series beside their counter, components as structs. The graph
-facts a consumer reads most are the message's own properties too. A lookup
+groups as series beside their counter, components as structs.
+:meth:`FixMsg.market_operations` answers the typed graph leaves the message
+expands to - an order, a quote, an execution, a trade or, for a book ``W`` or
+``X``, one per entry or one snapshot control - each a
+:class:`yggdryl.graph.MarketData`. A lookup
 by a typed tag - a header tag, a crate column, the event's own ``15``,
 ``54``, ``461`` and the four lane tags, ``58`` - answers the holder, typed as
 its column is; any other key reaches the row. :meth:`FixMsg.set` and
@@ -121,7 +124,9 @@ converters every stage composes over batches: :meth:`FixCodec.messages`
 reads a batch back as the messages that made it and
 :meth:`FixCodec.arrow_reader` writes messages as batches under a schema.
 :meth:`FixCodec.book_arrow_reader` streams sorted messages through native
-market operations and books into nested Arrow batches; ``snapshot_millis``
+market operations and books into lifted ``marketdata`` batches, one
+``book_event`` row per book, read back by
+:meth:`yggdryl.graph.MarketData.from_arrow_reader`; ``snapshot_millis``
 selects an epoch-aligned snapshot grid and ``global_`` consolidates symbols
 under ``GLOBAL``. Lifecycle enrichment remains an explicit composition.
 :meth:`FixCodec.write_arrow_reader` is the encode direction, re-emitting
@@ -227,7 +232,6 @@ from ._native import (
     FixHeader,
     FixRegistry,
     FixMessages,
-    OperationEventData,
     MsgType,
     fix_crate_fields,
     fix_schema,
@@ -245,7 +249,6 @@ __all__ = [
     "FixHeader",
     "FixRegistry",
     "FixMessages",
-    "OperationEventData",
     "MsgType",
     "fix_crate_fields",
     "fix_schema",

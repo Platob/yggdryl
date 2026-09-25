@@ -525,7 +525,7 @@ fn embedded_names_the_national_number_a_canonical_isin_carries() {
 mod internal {
     //! The registry, reached through `yggdryl::internals::securityid`.
 
-    use yggdryl::graph::{Element, Market, MarketData, MarketEventData};
+    use yggdryl::graph::{Element, Market, OrderEvent};
     use yggdryl::internals::securityid::{
         ENTRY_CHARGE, MAX_KEYS_PER_INSTRUMENT, SecurityIdRegistry,
     };
@@ -533,8 +533,8 @@ mod internal {
 
     use super::id;
 
-    fn apple() -> MarketEventData {
-        let mut event = MarketEventData::at(1);
+    fn apple() -> OrderEvent {
+        let mut event = OrderEvent::at(1);
         event
             .insert_securityid(id("isin", "US0378331005"))
             .expect("a plain holder takes every identifier");
@@ -542,10 +542,10 @@ mod internal {
         event
     }
 
-    fn numbered(number: usize) -> MarketEventData {
+    fn numbered(number: usize) -> OrderEvent {
         let body = format!("FR{number:09}");
         let digit = IsinCode::closing_digit(&body).unwrap();
-        let mut event = MarketEventData::at(number as i64);
+        let mut event = OrderEvent::at(number as i64);
         event
             .insert_securityid(id("isin", &format!("{body}{digit}")))
             .expect("a plain holder takes every identifier");
@@ -553,13 +553,13 @@ mod internal {
         event
     }
 
-    fn stated(event: &mut MarketEventData, key: &str, code: &str) {
+    fn stated(event: &mut OrderEvent, key: &str, code: &str) {
         event
             .insert_securityid(id(key, code))
             .expect("a plain holder takes every identifier");
     }
 
-    fn code<'event>(event: &'event MarketEventData, key: &str) -> Option<&'event str> {
+    fn code<'event>(event: &'event OrderEvent, key: &str) -> Option<&'event str> {
         event.get_securityids().get(key)
     }
 
@@ -618,11 +618,11 @@ mod internal {
         // or unchecked code reaches a holder: what is left to refuse is an
         // element naming no ISIN, and a coarse classification.
         let mut codes = SecurityIdRegistry::default();
-        let mut empty = MarketData::default();
+        let mut empty = OrderEvent::default();
         codes.enrich(&mut empty);
         assert_eq!(codes.instruments(), 0);
         assert_eq!(codes.reserved_bytes(), 0);
-        let mut unnamed = MarketEventData::at(1);
+        let mut unnamed = OrderEvent::at(1);
         stated(&mut unnamed, "cusip", "037833100");
         codes.enrich(&mut unnamed);
         assert_eq!(codes.instruments(), 0, "nothing is learned without an ISIN");

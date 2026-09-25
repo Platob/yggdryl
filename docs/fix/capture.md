@@ -681,9 +681,9 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
     assert sent.header().stated_sendingtime
     assert sent.by_tag(52).as_py() == datetime(2026, 8, 21, 10, 30, 0, 415000, tzinfo=timezone.utc)
     assert sent.currunix == 1_787_308_199_900_000_000
-    assert sent.event().creaunix == sent.currunix
+    assert sent.creaunix == sent.currunix
     assert sent.by_tag(60).as_py() == datetime(2026, 8, 21, 10, 29, 59, 900000, tzinfo=timezone.utc)
-    assert sent.event().snapunix is None, "a read is not a snapshot"
+    assert sent.snapunix is None, "a read is not a snapshot"
     assert sent.into_text("|").startswith("8=FIX.4.2|35=D|52=20260821-10:30:00.415|")
     ```
 
@@ -735,9 +735,9 @@ Six values close every message and are never null: `currunix`, `creaunix`, `curr
       .next().value
     assert.equal(sent.header().beginstring, 'FIX.4.2')
     assert.equal(sent.currunix, 1_787_308_199_900_000_000n)
-    assert.equal(sent.event().creaunix, sent.currunix)
+    assert.equal(sent.creaunix, sent.currunix)
     assert.equal(sent.byTag(60).asJs().getTime(), Date.UTC(2026, 7, 21, 10, 29, 59, 900))
-    assert.equal(sent.event().snapunix, null, 'a read is not a snapshot')
+    assert.equal(sent.snapunix, null, 'a read is not a snapshot')
     assert.ok(sent.intoText('|').startsWith('8=FIX.4.2|35=D|52=20260821-10:30:00.415|'))
     ```
 

@@ -16,7 +16,7 @@ mod dataset {
     use std::sync::Arc;
 
     use arrow_array::RecordBatch;
-    use yggdryl::graph::{Element, Event, Market};
+    use yggdryl::graph::{Element, Event, Market, OrderEvent};
     use yggdryl::holder::Buffer;
     use yggdryl::media::RecordOptions;
     use yggdryl::text::{TextLine, TextOptions, read_text_lines};
@@ -334,7 +334,7 @@ mod dataset {
                 format!(
                     "{:?} {:?} {} {:?}",
                     message.into_row(&schema).expect("a row"),
-                    message.event(),
+                    OrderEvent::from(&message),
                     message.digest(),
                     message.anomalies(),
                 )

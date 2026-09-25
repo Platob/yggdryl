@@ -16,7 +16,7 @@ use yggdryl::graph::{Element as _, Event as _};
 use yggdryl::text::{TextBytes, TextEntries, TextEntry, TextLine, TextLines, TextOptions};
 use yggdryl::{FieldPath, FieldSegment};
 
-use crate::fix::uuid_scalar;
+use crate::graph::uuid_scalar;
 use crate::iomedia::PyTextOptions;
 use crate::scalar::PyScalar;
 use crate::value_error;

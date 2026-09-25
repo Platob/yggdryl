@@ -1,12 +1,13 @@
 //! Thin native Python views over Yggdryl core values.
 
 use std::cmp::Ordering;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use yggdryl::OwnedDifferences;
+use pyo3::types::PyIterator;
+use yggdryl::{Error as CoreError, OwnedDifferences};
 
 use crate::datatype::{PyDataType, PyDataTypeIterator, PyStringEnum};
 use crate::enums::{PyMediaType, PyMediaTypeIterator, PyMimeType};
@@ -35,6 +36,7 @@ mod enums;
 mod expression;
 mod field;
 mod fix;
+mod graph;
 mod hashing;
 mod holder;
 mod iceberg;
@@ -101,6 +103,109 @@ pub(crate) const fn python_hash(stable: u64) -> isize {
     #[cfg(target_pointer_width = "32")]
     let value = ((stable ^ (stable >> 32)) as u32 as i32) as isize;
     if value == -1 { -2 } else { value }
+}
+
+/// Where a Python source failed, held until the stream is asked again.
+///
+/// A core stage pulls its items as values, so a Python failure inside the
+/// pull - an item that is not bytes, a generator that raised - cannot travel
+/// through the stage as an item. It ends the pull instead and lands here, and
+/// the stream raises it in place of the end it would otherwise answer.
+#[derive(Clone, Default)]
+pub(crate) struct Failed(Arc<Mutex<Option<PyErr>>>);
+
+impl Failed {
+    fn set(&self, error: PyErr) {
+        if let Ok(mut held) = self.0.lock() {
+            *held = Some(error);
+        }
+    }
+
+    /// Take the held failure, once, where the pull suffered one.
+    pub(crate) fn take(&self) -> Option<PyErr> {
+        self.0.lock().ok().and_then(|mut held| held.take())
+    }
+
+    /// Clone the held failure without consuming it, for a stage that can
+    /// only carry a typed error onward - a sentinel it wraps, travels
+    /// through the stage as one, and unwraps back at the surface - while
+    /// `take` still answers the original failure itself once that surface
+    /// asks for it.
+    pub(crate) fn peek(&self, py: Python<'_>) -> Option<PyErr> {
+        self.0
+            .lock()
+            .ok()
+            .and_then(|held| held.as_ref().map(|error| error.clone_ref(py)))
+    }
+}
+
+/// A Python iterable pulled one item at a time into a core stage.
+///
+/// The iterator is held, never collected: each `next` takes the interpreter,
+/// pulls one item and reads it with `read` into the value the stage takes.
+/// Exhaustion ends the pull. A failure, the iterable's own or the reading's,
+/// ends it too and lands in `failed`, so the stage sees a shorter stream and
+/// the wrapper around it raises what happened.
+pub(crate) struct Pulled<T> {
+    items: Py<PyIterator>,
+    read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
+    /// Where the source failed, cloned out before the pull is chained past
+    /// its exhaustion.
+    pub(crate) failed: Failed,
+    done: bool,
+}
+
+impl<T> Pulled<T> {
+    /// Hold `items`, or report that it is not iterable.
+    pub(crate) fn new(
+        items: &Bound<'_, PyAny>,
+        read: fn(&Bound<'_, PyAny>) -> PyResult<T>,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            items: PyIterator::from_object(items)?.unbind(),
+            read,
+            failed: Failed::default(),
+            done: false,
+        })
+    }
+}
+
+impl<T> Iterator for Pulled<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.done {
+            return None;
+        }
+        let pulled = Python::attach(|py| {
+            let mut items = self.items.bind(py).clone();
+            items
+                .next()
+                .map(|item| item.and_then(|item| (self.read)(&item)))
+                .transpose()
+        });
+        match pulled {
+            Ok(Some(value)) => Some(value),
+            Ok(None) => {
+                self.done = true;
+                None
+            }
+            Err(error) => {
+                self.done = true;
+                self.failed.set(error);
+                None
+            }
+        }
+    }
+}
+
+/// A Python failure behind a stream `pyarrow` pulls, as the core reports one.
+///
+/// The batch it would have landed in is being pulled by the Arrow reader
+/// rather than by a Python frame, so it travels as that reader's error and
+/// arrives where the batch would have.
+pub(crate) fn python_failure(error: PyErr) -> CoreError {
+    CoreError::Arrow(arrow_schema::ArrowError::ExternalError(Box::new(error)))
 }
 
 fn normalize_index(index: isize, length: usize) -> Option<usize> {
@@ -346,7 +451,37 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
         .into_iter()
         .collect::<std::collections::HashMap<_, _>>(),
     )?;
+    graph_enum_listings(&listing)?;
     Ok(listing.into())
+}
+
+/// The graph vocabulary's pure enums, folded into [`enum_values`]'s
+/// listing: kept out of that function's own body so it stays under the
+/// crate's line-count lint.
+fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()> {
+    use yggdryl::graph::{EventColumn, MarketColumn, MarketKind, MdUpdateAction, OperationColumn};
+
+    listing.set_item(
+        "market_kinds",
+        MarketKind::ALL.map(MarketKind::as_str).to_vec(),
+    )?;
+    listing.set_item(
+        "md_update_actions",
+        MdUpdateAction::ALL.map(MdUpdateAction::as_str).to_vec(),
+    )?;
+    listing.set_item(
+        "event_columns",
+        EventColumn::ALL.map(EventColumn::name).to_vec(),
+    )?;
+    listing.set_item(
+        "market_columns",
+        MarketColumn::ALL.map(MarketColumn::name).to_vec(),
+    )?;
+    listing.set_item(
+        "operation_columns",
+        OperationColumn::ALL.map(OperationColumn::name).to_vec(),
+    )?;
+    Ok(())
 }
 
 /// The bridge that carries the core's `log` records into Python `logging`.
@@ -486,7 +621,6 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<fix::PyMsgType>()?;
     module.add_class::<fix::PyFixHeader>()?;
     module.add_class::<fix::PyFixCapture>()?;
-    module.add_class::<fix::PyOperationEventData>()?;
     module.add_class::<PyDifferenceIterator>()?;
     module.add_class::<PyCodecScalarIterator>()?;
     module.add_class::<PyMimeType>()?;
@@ -531,6 +665,7 @@ fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<iceberg::PyDataFile>()?;
     media::partition::register(module)?;
     hashing::register(module)?;
+    graph::register(module)?;
     Ok(())
 }
 

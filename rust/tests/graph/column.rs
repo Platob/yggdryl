@@ -1,12 +1,12 @@
 //! `rust/src/graph/column.rs`: the sixteen columns every event schema opens
 //! with, each stating back exactly the fact it read.
 
-use yggdryl::graph::{Element, Event, EventColumn, MarketEventData};
+use yggdryl::graph::{Element, Event, EventColumn, OrderEvent};
 use yggdryl::{Scalar, State, Uuid};
 
 #[test]
 fn every_column_states_back_what_it_read() {
-    let mut event = MarketEventData::at(1_700_000_000_000_000_000);
+    let mut event = OrderEvent::at(1_700_000_000_000_000_000);
     event.set_creaunix(Some(1_600_000_000_000_000_000));
     event.set_execunix(Some(1_650_000_000_000_000_000));
     event.set_recdunix(Some(1_675_000_000_000_000_000));
@@ -22,7 +22,7 @@ fn every_column_states_back_what_it_read() {
     event.set_seqnum(6);
     event.set_srcuuids(vec![Uuid::from_v8(9)]);
     event.set_state(State::read("Filled").expect("a state"));
-    let mut again = MarketEventData::default();
+    let mut again = OrderEvent::default();
     for column in EventColumn::ALL {
         let fact = column.fact(&event).expect("every fact is stated");
         let dtype = column.datatype().expect("a datatype");
@@ -52,7 +52,7 @@ fn every_column_states_back_what_it_read() {
 
 #[test]
 fn a_null_clears_and_nothing_stated_is_none() {
-    let mut event = MarketEventData::at(7);
+    let mut event = OrderEvent::at(7);
     event.set_seqnum(3);
     event.set_crosscode("X".to_owned());
     event.set_execunix(Some(4));
@@ -120,7 +120,7 @@ fn a_column_of_identities_records_like_the_run_of_them() -> yggdryl::Result<()> 
         ],
     )?);
     assert_eq!(column.as_sequence(), None, "the fixture holds a column");
-    let mut event = MarketEventData::default();
+    let mut event = OrderEvent::default();
     EventColumn::SrcUuids.record(&mut event, &column);
     assert_eq!(event.get_srcuuids(), [Uuid::from_v8(7), Uuid::from_v8(8)]);
     Ok(())

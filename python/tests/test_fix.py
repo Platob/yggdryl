@@ -44,7 +44,6 @@ from yggdryl.fix import (
     FixMessages,
     FixMsg,
     FixRegistry,
-    OperationEventData,
     MsgType,
     fix_crate_fields,
     fix_schema,
@@ -53,6 +52,7 @@ from yggdryl.fix import (
     global_registry,
     install_global_registry,
 )
+from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
 
 # The one intake clock undated test bytes take, so a parse repeats.
@@ -379,7 +379,7 @@ def test_messages_and_arrow_reader_invert_each_other(seed_batch: FixRegistry) ->
     assert first.equals(second)
 
 
-def test_book_arrow_reader_streams_native_nested_books(seed_batch: FixRegistry) -> None:
+def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegistry) -> None:
     codec = _fixed_batch(seed_batch, batch_row_size=1)
     snapshot = codec.parse_fix_line(
         b"8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|"
@@ -393,27 +393,50 @@ def test_book_arrow_reader_streams_native_nested_books(seed_batch: FixRegistry) 
 
     reader = codec.book_arrow_reader([snapshot, update], snapshot_millis=0, global_=False)
     assert isinstance(reader, pa.RecordBatchReader)
-    assert reader.schema.names[-4:] == ["bid", "ask", "executions", "snapshotpartitions"]
-    assert "price" in reader.schema.names and "quantity" in reader.schema.names
-    assert "px" not in reader.schema.names and "qty" not in reader.schema.names
+    # The one lifted `marketdata` schema every leaf is written under: the
+    # kind, then every fact a column of its own, the book's sides as structs.
+    assert reader.schema == MarketData.field().into_arrow_schema()
+    names = reader.schema.names
+    assert names[0] == "kind"
+    assert {"bidside", "askside", "executions", "snapshotpartitions"} <= set(names)
+    assert "price" in names and "quantity" in names
+    assert "px" not in names and "qty" not in names
 
-    rows = reader.read_all().to_pylist()
+    table = reader.read_all()
+    rows = table.to_pylist()
     assert len(rows) == 2
+    assert [row["kind"] for row in rows] == ["book_event", "book_event"]
     assert [row["ticker"] for row in rows] == ["AAPL", "AAPL"]
     assert [row["price"] for row in rows] == [decimal.Decimal("101"), decimal.Decimal("101.5")]
-    assert rows[0]["bid"]["live"][0]["price"] == decimal.Decimal("100")
-    assert rows[1]["bid"]["live"][0]["price"] == decimal.Decimal("101")
-    assert rows[1]["bid"]["live"][0]["marketoperationid"] == 3
+    assert rows[0]["bidside"]["live"][0]["price"] == decimal.Decimal("100")
+    assert rows[1]["bidside"]["live"][0]["price"] == decimal.Decimal("101")
+    assert rows[1]["bidside"]["live"][0]["marketoperationid"] == 3
     assert len(rows[1]["executions"]) == 1
     assert rows[1]["executions"][0]["marketoperationid"] == 3
     # An operation row names its entry under `MDENTRYID` and states its own
     # lane; the book states the scopes its snapshot replaced, and none for
     # an update.
-    assert dict(rows[1]["bid"]["live"][0]["altids"]) == {"MDENTRYID": "B1"}
-    assert rows[1]["bid"]["live"][0]["bid"]["quantity"] == decimal.Decimal("11")
-    assert rows[1]["bid"]["live"][0]["ask"] is None
+    assert dict(rows[1]["bidside"]["live"][0]["altids"]) == {"MDENTRYID": "B1"}
+    assert rows[1]["bidside"]["live"][0]["bid"]["quantity"] == decimal.Decimal("11")
+    assert rows[1]["bidside"]["live"][0]["ask"] is None
     assert rows[0]["snapshotpartitions"] == [{"symbol": "AAPL", "scope": "Symbol=AAPL"}]
     assert rows[1]["snapshotpartitions"] is None
+
+    # The rows read back as the typed books they were written from.
+    books = [data.as_book_event() for data in MarketData.from_arrow_reader(table)]
+    assert all(isinstance(book, BookEvent) for book in books)
+    first, second = (book for book in books if book is not None)
+    assert first.bid.best_price is not None
+    assert first.bid.best_price.as_py() == decimal.Decimal("100")
+    assert second.bid.best_price is not None
+    assert second.bid.best_price.as_py() == decimal.Decimal("101")
+    assert [partition.scope for partition in first.snapshot_partitions] == ["Symbol=AAPL"]
+    assert second.snapshot_partitions == []
+    assert len(second.executions) == 1
+    live = second.bid.live[0].as_quote_event()
+    assert live is not None and live.altids == {"MDENTRYID": "B1"}
+    assert live.bid is not None and live.bid.quantity is not None
+    assert live.bid.quantity.as_py() == decimal.Decimal("11")
 
 
 def test_lifecycled_two_sided_trade_streams_executions_without_depth(
@@ -465,8 +488,9 @@ def test_lifecycled_two_sided_trade_streams_executions_without_depth(
     assert buy["curruuid"] != sell["curruuid"]
     assert buy["crossuuid"] != sell["crossuuid"]
     assert buy["crosscode"] != sell["crosscode"]
-    assert book["bid"]["live"] == book["ask"]["live"] == []
-    assert book["bid"]["deltas"] == book["ask"]["deltas"] == []
+    assert book["kind"] == "book_event"
+    assert book["bidside"]["live"] == book["askside"]["live"] == []
+    assert book["bidside"]["deltas"] == book["askside"]["deltas"] == []
 
 
 @pytest.mark.parametrize(
@@ -2309,8 +2333,14 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     assert capture.msgsessionid is None
     assert capture.msgsesseventid is None
 
-    event = message.event()
-    assert isinstance(event, OperationEventData)
+    # The message answers every fact the graph vocabulary states as its own
+    # property, and expands to the one typed leaf it is.
+    event = message
+    [operation] = message.market_operations()
+    assert isinstance(operation, MarketData)
+    assert operation.kind == "order_event"
+    leaf = operation.as_order_event()
+    assert isinstance(leaf, OrderEvent)
     # The transaction stands one second from the sending clock, which is
     # exactly the codec's default delay, so the two are the one event said
     # twice and the more exact saying of it dates the message.
@@ -2351,22 +2381,21 @@ def test_a_message_holds_its_typed_facts_beside_its_row(seed: FixRegistry) -> No
     # A buy order's own lane is its bid; it offers nothing.
     bid = event.bid
     assert bid is not None and event.ask is None
-    assert sorted(bid) == ["currency", "forwardpoints", "price", "quantity", "spotrate", "unit"]
-    assert bid["price"] == event.price and bid["quantity"] == event.quantity
-    assert bid["currency"] == event.currency
-    assert bid["unit"] is None and bid["spotrate"] is None and bid["forwardpoints"] is None
+    assert bid.price == event.price and bid.quantity == event.quantity
+    assert bid.currency == event.currency
+    assert bid.unit is None and bid.spotrate is None and bid.forwardpoints is None
     assert event.seqnum == 0
     assert event.prevuuid is None and event.prevunix is None and event.snapunix is None
     assert event.state.as_py() == "00UNKNOWN"
     assert not hasattr(message, "isincode")
-    assert event == message.event()
-    assert hash(event) == hash(message.event())
+    assert message.market_operations() == [operation]
 
-    # The facts a consumer reads most are the message's own properties, and
-    # they answer what the event answers.
-    assert message.currunix == event.currunix
-    assert message.curruuid == event.curruuid
-    assert message.crossuuid == event.crossuuid
+    # The leaf the message expands to states the facts the message states.
+    assert leaf.currunix == message.currunix
+    assert leaf.crossuuid == message.crossuuid
+    assert leaf.crosscode == message.crosscode
+    assert (leaf.price, leaf.quantity, leaf.side) == (message.price, message.quantity, message.side)
+    assert leaf.bid == message.bid and leaf.altids == message.altids
     assert message.crosscode == event.crosscode
     assert message.currhashcode == event.currhashcode
     assert message.crosshashcode == event.crosshashcode
@@ -2714,7 +2743,12 @@ def test_message_is_hashable_copyable_and_picklable(seed: FixRegistry) -> None:
     assert restored == message
     assert restored.registry == seed
     assert restored.header() == message.header()
-    assert restored.event() == message.event()
+    assert (restored.currunix, restored.creaunix, restored.recdunix, restored.bid) == (
+        message.currunix,
+        message.creaunix,
+        message.recdunix,
+        message.bid,
+    )
     assert restored.by_path("parties[0].partyid").as_py() == "BROKER"
 
     assert repr(message) == 'FixMsg("NewOrderSingle", 4 values)'
@@ -2848,7 +2882,7 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert first.header().sendingtime == CLOCK_NS
     assert not first.header().stated_sendingtime
     assert first.currunix == CLOCK_NS
-    assert first.event().creaunix == CLOCK_NS
+    assert first.creaunix == CLOCK_NS
     # A settled clock is not the message's own, so the wire does not state it.
     assert first.into_bytes(ord("|")) == wire
 
@@ -2865,14 +2899,14 @@ def test_the_default_sending_time_is_the_clock_undated_intake_takes(seed: FixReg
     assert stated.header().sendingtime == 2_123_456_789
     assert stated.header().stated_sendingtime
     assert stated.currunix == 2_123_456_789
-    assert stated.event().creaunix == 2_123_456_789
+    assert stated.creaunix == 2_123_456_789
     assert stated.by_tag(60) == DataType('datetime64(ns,"UTC")').scalar(3_987_654_321)
     # `OrigSendingTime(122)` dates nothing at the parse, and a `TransactTime`
     # stating only a day dates nothing at all: the sending clock stands for
     # a resent message and a day-only transaction alike.
     dictionary = _fixed(seed, exclude_msgtypes=[])
     resent = next(dictionary.parse_line(b"8=FIX.4.4|35=0|122=19700101-00:00:01|10=0|"))
-    assert resent.event().creaunix == CLOCK_NS
+    assert resent.creaunix == CLOCK_NS
     assert resent.by_tag(122) == DataType('datetime64(ns,"UTC")').scalar(1_000_000_000)
     day = next(dictionary.parse_line(b"8=FIX.4.4|35=D|11=A|60=20260814|10=0|"))
     assert day.currunix == CLOCK_NS
@@ -2910,8 +2944,8 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
         (message,) = list(codec.parse_text_line(line))
         assert message.header().sendingtime == RECORDED_NS
         assert message.currunix == RECORDED_NS
-        assert message.event().creaunix == RECORDED_NS
-        assert message.event().recdunix == RECORDED_NS
+        assert message.creaunix == RECORDED_NS
+        assert message.recdunix == RECORDED_NS
         # Supplied, never stated: neither the wire nor the row's own column
         # says what the frame did not.
         assert not message.header().stated_sendingtime
@@ -2925,7 +2959,7 @@ def test_a_lines_own_clock_dates_a_message_stating_no_sending_time(seed: FixRegi
     assert message.header().sendingtime == CLOCK_NS
     assert message.header().stated_sendingtime
     assert message.currunix == CLOCK_NS
-    assert message.event().recdunix == RECORDED_NS
+    assert message.recdunix == RECORDED_NS
 
     # The Arrow door reads the same clock off a row's `currunix` cell.
     source = pa.table(
@@ -2979,28 +3013,28 @@ def test_an_execution_report_stating_no_execution_clock_executed_at_its_instant(
     # no TransactTime executed when it happened.
     fill = codec.parse_fix_line(b"8=FIX.4.4|35=8|37=O1|17=E1|150=F|39=2|10=0|")
     assert fill.currunix == CLOCK_NS
-    assert fill.event().execunix == CLOCK_NS
-    assert fill.event().prevuuid is None
+    assert fill.execunix == CLOCK_NS
+    assert fill.prevuuid is None
     # The row states it, and a row read back keeps it.
     schema = fix_schema(seed)
     row = fill.into_row(schema)
     assert row.as_py()[schema.index_of("execunix")] == CLOCK_INSTANT
-    assert FixMsg.from_row(schema, row, seed).event().execunix == CLOCK_NS
+    assert FixMsg.from_row(schema, row, seed).execunix == CLOCK_NS
     # On a dated line, that instant is the line's clock.
     (dated,) = list(codec.parse_text_line(_dated_line(b"8=FIX.4.4|35=8|150=F|39=2|10=0|")))
-    assert dated.event().execunix == RECORDED_NS
+    assert dated.execunix == RECORDED_NS
 
     # A trade's own TransactTime is its execution clock.
     traded = codec.parse_fix_line(
         b"8=FIX.4.4|35=8|37=O1|17=E2|150=F|39=2|60=20240102-10:15:30.5|10=0|"
     )
-    assert traded.event().execunix == CLOCK_NS + 500_000_000
+    assert traded.execunix == CLOCK_NS + 500_000_000
 
     # An acknowledgement and an order report no execution.
     acknowledged = codec.parse_fix_line(b"8=FIX.4.4|35=8|37=O1|17=E0|150=0|39=0|10=0|")
-    assert acknowledged.event().execunix is None
+    assert acknowledged.execunix is None
     order = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=A|10=0|")
-    assert order.event().execunix is None
+    assert order.execunix is None
 
 
 def test_a_parse_fills_what_the_line_implied_and_leaves_the_wire_alone(seed: FixRegistry) -> None:
@@ -3088,7 +3122,7 @@ def test_a_message_read_from_a_line_states_the_line_as_its_one_source(seed: FixR
     # A line is an event of its own, and the message read from it names it.
     [message] = list(codec.parse_text_line(lines[0]))
     assert message.srcuuids == [lines[0].curruuid]
-    assert message.event().srcuuids == [lines[0].curruuid]
+    assert message.srcuuids == [lines[0].curruuid]
     # The source is no part of the code: the same bytes are the same message.
     [raw] = list(codec.parse_lines(LIFE[:1]))
     assert raw.srcuuids == []
@@ -3119,9 +3153,9 @@ def test_the_lifecycle_states_each_message_as_the_one_it_follows(seed: FixRegist
     assert walked[0].prevuuid is None
     for earlier, later in zip(walked, walked[1:]):
         assert later.prevuuid == earlier.curruuid
-        assert later.event().prevunix == earlier.currunix
+        assert later.prevunix == earlier.currunix
     # The lifecycle's own creation instant is carried forward.
-    assert {held.event().creaunix for held in walked} == {walked[0].event().creaunix}
+    assert {held.creaunix for held in walked} == {walked[0].creaunix}
     # The state moves with the messages.
     assert [held.state.as_py() for held in walked] == ["00UNKNOWN", "20NEW", "40PARTFILL"]
 
@@ -3176,7 +3210,7 @@ def test_figi_redirects_through_datatype_sources_and_the_fixed_row(seed: FixRegi
     ):
         message = codec.parse_fix_line(line)
         assert message.securityids == {"FIGI": "BBG000BLNQ16"}
-        assert message.event().securityids == message.securityids
+        assert message.securityids == message.securityids
         assert FixMsg.from_row(schema, message.into_row(schema), seed).into_row(schema) == message.into_row(schema)
     bloomberg = codec.parse_fix_line(b"8=FIX.4.4|35=D|11=B|22=A|48=AAPL US Equity|10=0|")
     assert bloomberg.securityids == {"BLOOMBERG": "AAPL US Equity"}
@@ -3200,7 +3234,7 @@ def test_official_time_delay_bounds_which_clock_dates_the_message(seed: FixRegis
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:59.900|11=A|10=0|"
     )
     assert near.currunix == 1_787_308_199_900_000_000
-    assert near.event().creaunix == near.currunix
+    assert near.creaunix == near.currunix
     # Five seconds out is a different event of the session's day.
     apart = codec.parse_fix_line(
         b"8=FIX.4.4|35=D|52=20260821-10:30:00.415|60=20260821-10:29:55|11=A|10=0|"
@@ -3307,22 +3341,22 @@ def test_lifecycle_redirects_categories_snapshots_expiry_dedup_and_learning(seed
         b"8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|"
     )
     entries = expiring.entries()
-    deadline = expiring.event().exprtime
+    deadline = expiring.exprtime
     assert deadline is not None
     walked = list(snapshot_codec.lifecycle([expiring]))
     assert expiring.entries() == entries
-    assert expiring.event().snapunix is None
+    assert expiring.snapunix is None
     expired = next(
         held
         for held in walked
-        if held.event().snapunix is None and held.currunix == deadline
+        if held.snapunix is None and held.currunix == deadline
     )
     assert expired.entries() == entries
-    snapshots = [held for held in walked if held.event().snapunix is not None]
+    snapshots = [held for held in walked if held.snapunix is not None]
     assert snapshots
     assert expired.state.as_py() == "95EXPIRED"
     for held in snapshots:
-        snapunix = held.event().snapunix
+        snapunix = held.snapunix
         assert snapunix is not None
         assert held.currunix <= snapunix < deadline
 

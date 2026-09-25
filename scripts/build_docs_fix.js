@@ -32,7 +32,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { MimeType, fix } = require('../node/binding.js')
+const { MimeType, enums, fix } = require('../node/binding.js')
 
 const ROOT = path.join(__dirname, '..')
 const CONFIG = path.join(ROOT, 'config', 'fix')
@@ -438,10 +438,11 @@ function frameCase(registry, reader, schema, key, label, line) {
     direction: held.getByTag(385)?.asJs() ?? null,
     size: held.size,
     columns,
-    // The typed facts the message holds beside its row: the event the
-    // graph traits answer, the standard header, what the capture said, the
-    // free text and the bridge's own metadata.
-    event: plain(held.event()),
+    // The typed facts the message holds beside its row: the event, market
+    // and operation facts the graph traits answer - each the message's own
+    // getter - the standard header, what the capture said, the free text and
+    // the bridge's own metadata.
+    event: plain(Object.fromEntries(EVENT_FACTS.map((name) => [name, held[name]]))),
     header: plain(held.header()),
     capture: plain(held.capture()),
     text: held.text,
@@ -461,6 +462,11 @@ function frameCase(registry, reader, schema, key, label, line) {
     call: `[...new fix.FixCodec(registry, { defaultSendingTime: new Date('${SENDING}'), excludeMsgtypes: [] }).parseLine(Buffer.from(${JSON.stringify(line)}, 'binary'))]`,
   }
 }
+
+// The graph facts a message answers, in the order the trait columns state
+// them - the event columns, then the market's, then the operation's - read
+// off the addon's own listings rather than spelled again here.
+const EVENT_FACTS = [...enums.eventColumns, ...enums.marketColumns, ...enums.operationColumns]
 
 /** Build the native catalog and recorded result manifest. */
 function manifest() {

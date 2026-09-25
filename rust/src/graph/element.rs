@@ -312,7 +312,7 @@ pub trait Element {
     /// Provided, and what an implementor's [`Self::finalize`] starts from:
     /// an event continues with [`Event::digest_event`], a market element
     /// with [`Market::digest_market`](super::Market::digest_market), a market
-    /// event with [`MarketEvent::digest_market_event`](super::MarketEvent::digest_market_event),
+    /// event with [`Market::digest_market_event`](super::Market::digest_market_event),
     /// and each feeds its own content
     /// behind them and reads `as_u64` for the code. The facts are fed
     /// through their typed accessors, so two elements stating the same

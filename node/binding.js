@@ -4386,6 +4386,326 @@ for (const name of [
   delete binding[name]
 }
 
+// `yggdryl::graph` is a module in the core, so it is one here too: the typed
+// market leaves - an order, a quote or an execution, undated or dated, a
+// trade, a book, its sides and its snapshot control - `MarketData`, the one
+// value over them, and the two walks share one namespace rather than a
+// dozen top-level classes. Nothing here resolves, folds, merges or validates
+// a fact: a named fact is resolved, checked and stated natively by its
+// column, and every other door redirects to the native one named beside it.
+const NativeLane = binding.Lane
+const NativeBookRef = binding.BookRef
+const NativeOrder = binding.Order
+const NativeQuote = binding.Quote
+const NativeExecution = binding.Execution
+const NativeOrderEvent = binding.OrderEvent
+const NativeQuoteEvent = binding.QuoteEvent
+const NativeExecutionEvent = binding.ExecutionEvent
+const NativeTradeEvent = binding.TradeEvent
+const NativeSnapshotPartition = binding.SnapshotPartition
+const NativeBookSide = binding.BookSide
+const NativeBookEvent = binding.BookEvent
+const NativeSnapshotEvent = binding.SnapshotEvent
+const NativeMarketData = binding.MarketData
+const NativeMarketDataRowIterator = binding.MarketDataRowIterator
+const NativeBookIterator = binding.BookIterator
+const NativeEventIterator = binding.EventIterator
+
+// Every class a market stream item may be: `MarketData` or one of its ten
+// leaves, the union the native doors read.
+const MARKET_ITEMS = [
+  NativeMarketData,
+  NativeOrder,
+  NativeQuote,
+  NativeExecution,
+  NativeBookSide,
+  NativeOrderEvent,
+  NativeQuoteEvent,
+  NativeExecutionEvent,
+  NativeTradeEvent,
+  NativeBookEvent,
+  NativeSnapshotEvent,
+]
+
+// Every graph class whose value is no column's: a fact given one is refused
+// by name rather than widened.
+const GRAPH_VALUES = [
+  ...MARKET_ITEMS,
+  NativeBookRef,
+  NativeSnapshotPartition,
+  NativeMarketDataRowIterator,
+  NativeBookIterator,
+  NativeEventIterator,
+]
+
+// A stream item checked before it crosses, named the way the native
+// single-item door names a refusal.
+function asMarketItem(value) {
+  if (MARKET_ITEMS.some((owner) => value instanceof owner)) return value
+  const kind = value === null ? 'null' : typeof value
+  throw new TypeError(`expected MarketData or a market leaf, got ${kind}`)
+}
+
+// The named facts an operation leaf is built from, widened once for the
+// native constructor: a fact given as `undefined` is not given and is
+// dropped, so the leaf states nothing of it, while `null` crosses and
+// clears; a `Lane` under `bid`/`ask` crosses as its own six slots - the
+// generic `Scalar.from` walk reads only own enumerable properties, which a
+// native class has none of; and `book` is not a column but the leaf's book
+// control, so it is lifted out into its own argument. A `Scalar` record
+// crosses untouched.
+function operationFacts(owner, facts, dated) {
+  if (facts === undefined || facts === null) return [undefined, undefined]
+  if (facts instanceof Scalar) return [facts, undefined]
+  if (typeof facts !== 'object' || Array.isArray(facts)) {
+    throw new TypeError(`${owner} facts must be an object keyed by column name`)
+  }
+  const stated = {}
+  let book
+  for (const key of Object.keys(facts)) {
+    const value = facts[key]
+    if (value === undefined) continue
+    if (dated && key === 'book') {
+      if (value !== null && !(value instanceof NativeBookRef)) {
+        throw new TypeError(`expected a BookRef for ${owner}.book`)
+      }
+      book = value ?? undefined
+      continue
+    }
+    if (value instanceof NativeLane) {
+      stated[key] = value.toJSON()
+      continue
+    }
+    // Any other graph value is no column's value: refused naming the key,
+    // as the native door names an unknown fact, rather than walked as a
+    // plain object by `Scalar.from`.
+    if (key === 'book') {
+      throw new TypeError(`${owner} states no fact "book": an undated element has no book control`)
+    }
+    if (GRAPH_VALUES.some((graphClass) => value instanceof graphClass)) {
+      throw new TypeError(`${owner} states no fact "${key}" as a ${value.constructor.name}`)
+    }
+    stated[key] = value
+  }
+  return [asScalar(stated), book]
+}
+
+// The named slots a `Lane` or a `BookRef` is built from, widened once for
+// the native constructor through the same door the facts take: a slot
+// given as `undefined` is not given and is dropped, `null` crosses, and a
+// `Scalar` record crosses untouched.
+function namedSlots(owner, input) {
+  if (input === undefined || input === null) return undefined
+  if (input instanceof Scalar) return input
+  if (typeof input !== 'object' || Array.isArray(input)) {
+    throw new TypeError(`${owner} takes an object keyed by slot name`)
+  }
+  const stated = {}
+  for (const key of Object.keys(input)) {
+    if (input[key] !== undefined) stated[key] = input[key]
+  }
+  return asScalar(stated)
+}
+
+// A public constructor over a native class: `build` answers the native
+// value, the prototype is the native one - so `instanceof` holds either way
+// round - and every public static the native class carries is reached
+// through the public one too.
+function publicClass(Native, name, build) {
+  const Public = {
+    [name]: function (...args) {
+      if (new.target === undefined) {
+        throw new TypeError(`Class constructor ${name} cannot be invoked without 'new'`)
+      }
+      return build(...args)
+    },
+  }[name]
+  for (const key of Object.getOwnPropertyNames(Native)) {
+    if (key.startsWith('_') || Object.hasOwn(Public, key)) continue
+    const { value } = Object.getOwnPropertyDescriptor(Native, key)
+    if (typeof value === 'function') Public[key] = value.bind(Native)
+  }
+  Public.prototype = Native.prototype
+  Object.defineProperty(Public.prototype, 'constructor', {
+    configurable: true,
+    value: Public,
+    writable: true,
+  })
+  return Public
+}
+
+const Lane = publicClass(NativeLane, 'Lane', (input) =>
+  new NativeLane(namedSlots('Lane', input)),
+)
+const BookRef = publicClass(NativeBookRef, 'BookRef', (input) =>
+  new NativeBookRef(namedSlots('BookRef', input)),
+)
+const Order = publicClass(NativeOrder, 'Order', (facts) =>
+  new NativeOrder(operationFacts('Order', facts, false)[0]),
+)
+const Quote = publicClass(NativeQuote, 'Quote', (facts) =>
+  new NativeQuote(operationFacts('Quote', facts, false)[0]),
+)
+const Execution = publicClass(NativeExecution, 'Execution', (facts) =>
+  new NativeExecution(operationFacts('Execution', facts, false)[0]),
+)
+function operationEvent(Native, name) {
+  return publicClass(Native, name, (currunix, facts) => {
+    const [stated, book] = operationFacts(name, facts, true)
+    return new Native(currunix, stated, book)
+  })
+}
+const OrderEvent = operationEvent(NativeOrderEvent, 'OrderEvent')
+const QuoteEvent = operationEvent(NativeQuoteEvent, 'QuoteEvent')
+const ExecutionEvent = operationEvent(NativeExecutionEvent, 'ExecutionEvent')
+
+// `withOperations` applies one atomic group, read whole so a refusal names
+// the index its item stands at; any iterable is read into the array the
+// native door takes.
+const nativeWithOperations = NativeBookEvent.prototype.withOperations
+NativeBookEvent.prototype.withOperations = function withOperations(operations) {
+  if (operations == null || typeof operations[Symbol.iterator] !== 'function') {
+    throw new TypeError('operations must be an iterable')
+  }
+  return nativeWithOperations.call(this, Array.from(operations))
+}
+
+// `MarketData.arrowReader`'s native half is a hidden module function, taken
+// and deleted here, which takes a pull function rather than an iterable.
+const nativeMarketDataArrowReader = binding._marketDataArrowReaderNative
+delete binding._marketDataArrowReaderNative
+NativeMarketData.arrowReader = function arrowReader(items, batchRowSize, batchByteSize) {
+  return nativeMarketDataArrowReader(
+    pullOf(items, asMarketItem, 'items'),
+    batchRowSize,
+    batchByteSize,
+  )
+}
+
+// `BookIterator` and `EventIterator` are built only through their hidden
+// factories, which take a pull function rather than a JavaScript iterable
+// directly - the same reason `FixCodec`'s streams do.
+// A failure behind the caller's iterable is kept, as itself, for the walk
+// to throw in place of its end, as `FixCodec`'s streams do; an unsorted
+// event walk reads its whole source when it opens, so it throws there.
+const nativeBookIterator = NativeBookIterator._bookIteratorNative
+const BookIterator = publicClass(
+  NativeBookIterator,
+  'BookIterator',
+  (items, snapshotMillis = 0, global = false) => {
+    const failed = {}
+    const walk = nativeBookIterator.call(
+      NativeBookIterator,
+      pullOf(items, asMarketItem, 'items', failed),
+      snapshotMillis,
+      global,
+    )
+    walk[FAILED] = failed
+    return walk
+  },
+)
+const nativeEventIterator = NativeEventIterator._eventIteratorNative
+const EventIterator = publicClass(
+  NativeEventIterator,
+  'EventIterator',
+  (items, sorted = true, snapshotNs) => {
+    const failed = {}
+    const walk = nativeEventIterator.call(
+      NativeEventIterator,
+      pullOf(items, asMarketItem, 'items', failed),
+      sorted,
+      snapshotNs ?? undefined,
+    )
+    if (!sorted && failed.error !== undefined) throw failed.error
+    walk[FAILED] = failed
+    return walk
+  },
+)
+
+// Every walk over a native `Result<Option<T>>` answers `T | null`, not the
+// `{value, done}` shape `for...of` needs - the same reason `FixMessages`
+// wraps its own `next`, with the same failure kept for its end - and each
+// walk is its own iterator.
+for (const [prototype, name] of [
+  [NativeBookIterator.prototype, 'books'],
+  [NativeEventIterator.prototype, 'events'],
+  [NativeMarketDataRowIterator.prototype, 'rows'],
+]) {
+  const nativeNext = prototype.next
+  prototype.next = function next() {
+    const value = nativeNext.call(this)
+    if (value !== null) return { value, done: false }
+    const failed = this[FAILED]
+    if (failed !== undefined && failed.error !== undefined) {
+      const { error } = failed
+      failed.error = undefined
+      throw error
+    }
+    return { value: undefined, done: true }
+  }
+  Object.defineProperty(prototype, Symbol.iterator, {
+    configurable: true,
+    value: { [name]() { return this } }[name],
+  })
+}
+
+const graphGlobalSymbol = binding._graphGlobalSymbolNative()
+const graphEntryId = binding._graphEntryIdNative()
+const graphEntryRefId = binding._graphEntryRefIdNative()
+const graphFollowedAltids = Object.freeze(binding._graphFollowedAltidsNative())
+delete binding._graphGlobalSymbolNative
+delete binding._graphEntryIdNative
+delete binding._graphEntryRefIdNative
+delete binding._graphFollowedAltidsNative
+
+const graph = Object.freeze({
+  Lane,
+  BookRef,
+  Order,
+  Quote,
+  Execution,
+  OrderEvent,
+  QuoteEvent,
+  ExecutionEvent,
+  TradeEvent: NativeTradeEvent,
+  SnapshotPartition: NativeSnapshotPartition,
+  BookSide: NativeBookSide,
+  BookEvent: NativeBookEvent,
+  SnapshotEvent: NativeSnapshotEvent,
+  MarketData: NativeMarketData,
+  MarketDataRowIterator: NativeMarketDataRowIterator,
+  BookIterator,
+  EventIterator,
+  GLOBAL_SYMBOL: graphGlobalSymbol,
+  ENTRY_ID: graphEntryId,
+  ENTRY_REF_ID: graphEntryRefId,
+  FOLLOWED_ALTIDS: graphFollowedAltids,
+})
+
+// The graph values are reached through the namespace and nowhere else.
+for (const name of [
+  'Lane',
+  'BookRef',
+  'Order',
+  'Quote',
+  'Execution',
+  'OrderEvent',
+  'QuoteEvent',
+  'ExecutionEvent',
+  'TradeEvent',
+  'SnapshotPartition',
+  'BookSide',
+  'BookEvent',
+  'SnapshotEvent',
+  'MarketData',
+  'MarketDataRowIterator',
+  'BookIterator',
+  'EventIterator',
+]) {
+  delete binding[name]
+  delete binding[`Js${name}`]
+}
+
 // The three byte codings, grouped the way the documentation names them. The
 // native halves carry a leading underscore so only these namespaces are the
 // public spelling.
@@ -4725,6 +5045,7 @@ binding.codec = codec
 binding.avro = avro
 binding.fields = fields
 binding.fix = fix
+binding.graph = graph
 binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
@@ -4751,6 +5072,11 @@ binding.yaml = yaml
     pythonKinds: Object.freeze(listing.pythonKinds),
     compatibilitySchemes: Object.freeze(listing.compatibilitySchemes),
     levels: Object.freeze(levels),
+    marketKinds: Object.freeze(listing.marketKinds),
+    mdUpdateActions: Object.freeze(listing.mdUpdateActions),
+    eventColumns: Object.freeze(listing.eventColumns),
+    marketColumns: Object.freeze(listing.marketColumns),
+    operationColumns: Object.freeze(listing.operationColumns),
   })
 }
 

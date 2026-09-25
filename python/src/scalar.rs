@@ -2427,6 +2427,14 @@ fn native_wrapper_to_value(value: &Bound<'_, PyAny>) -> Option<Scalar> {
     if let Ok(value) = value.extract::<PyRef<'_, PyField>>() {
         return Some(Scalar::from(&value.inner));
     }
+    // A `Lane` is not a scalar type `DataType::scalar` recognizes on its
+    // own, so it crosses through the core's own `lane_fact` here - the one
+    // ladder every door (`Scalar.from_`, a record's folded column keys, a
+    // nested row) reads a Lane through, rather than a key-name special case
+    // at one door alone.
+    if let Ok(value) = value.extract::<PyRef<'_, crate::graph::operation::PyLane>>() {
+        return Some(yggdryl::graph::operation_column::lane_fact(&value.inner));
+    }
     // Every identifier - a `Uri` and the `Url`, `Urn`, and `Arn` that narrow
     // it - crosses as the canonical text it spells.
     if let Ok(value) = value.extract::<PyRef<'_, PyUri>>() {

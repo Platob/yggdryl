@@ -8,9 +8,11 @@ use smol_str::{SmolStr, format_smolstr};
 use super::{FixCodec, FixEntry, FixMsg};
 use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
+use crate::graph::facts::OperationEventFacts;
 use crate::graph::{
-    Book, BookControl, BookInput, BookIterator, BookRef, Element, Event, Market, MarketOperation,
-    MdUpdateAction, Operation, OperationEventData, OperationKind, Trade,
+    BookIterator, BookRef, Element, Event, ExecutionEvent, ExecutionKind, Market, MarketData,
+    MdUpdateAction, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
+    TradeEvent,
 };
 use crate::{Ccy, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
 
@@ -183,22 +185,22 @@ impl FixMsg {
     /// missing, repeated or count-mismatched `NoSides(552)` group; a missing
     /// or non-bid/ask `Side(54)`; an invalid side decimal or currency; or a
     /// sided execution that violates the composite trade invariants.
-    pub fn market_operations(&self) -> Result<Vec<BookInput>> {
+    pub fn market_operations(&self) -> Result<Vec<MarketData>> {
         operations(self, self.event().clone())
     }
 
     /// Moves this message into graph market operations.
     ///
-    /// A direct order, quote, execution or trade moves its
-    /// [`OperationEventData`] without cloning it, then finalizes the generic
-    /// operation identity from those projected facts. Book messages
+    /// A direct order, quote, execution or trade moves the facts the
+    /// message holds without cloning them, then finalizes the leaf's
+    /// identity from those projected facts. Book messages
     /// necessarily make one owned event per `NoMDEntries(268)` occurrence, or
     /// one scoped snapshot control for an empty `W`.
     ///
     /// # Errors
     ///
     /// Returns the same typed refusals as [`Self::market_operations`].
-    pub fn into_market_operations(self) -> Result<Vec<BookInput>> {
+    pub fn into_market_operations(self) -> Result<Vec<MarketData>> {
         Ok(expand_message(self)?.into_vec())
     }
 }
@@ -240,7 +242,7 @@ where
     I: Iterator,
     I::Item: Into<Result<FixMsg>>,
 {
-    type Item = Result<BookInput>;
+    type Item = Result<MarketData>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -310,7 +312,8 @@ fn contributes_to_book(message: &FixMsg) -> bool {
 
 impl FixCodec {
     /// Streams sorted FIX messages through their graph market operations and
-    /// the stateful book iterator into bounded nested Arrow batches.
+    /// the stateful book iterator into bounded Arrow batches of
+    /// [`MarketData::field`] rows, each a `book_event`.
     ///
     /// Records outside order/quote categories, actual executions, `W`/`X`
     /// book messages and `AE` trade reports are ignored. Every `AE` reaches
@@ -342,8 +345,8 @@ impl FixCodec {
             });
         let operations = FixMarketIterator::new(admitted);
         let books = BookIterator::new(operations, snapshot_millis, global)?;
-        Book::arrow_reader(
-            books,
+        MarketData::arrow_reader(
+            books.map(|book| book.map(MarketData::from)),
             Some(self.batch_row_size()),
             Some(self.batch_byte_size()),
         )
@@ -354,14 +357,14 @@ impl FixCodec {
 // trade does not pay a heap allocation merely to satisfy the iterator shape.
 #[allow(clippy::large_enum_variant)]
 enum MessageOperations {
-    One(Option<BookInput>),
-    Many(std::vec::IntoIter<BookInput>),
+    One(Option<MarketData>),
+    Many(std::vec::IntoIter<MarketData>),
 }
 
 impl MessageOperations {
     /// Recovers the expanded allocation instead of collecting it through the
     /// type-erased iterator path.
-    fn into_vec(self) -> Vec<BookInput> {
+    fn into_vec(self) -> Vec<MarketData> {
         match self {
             Self::One(operation) => operation.into_iter().collect(),
             Self::Many(operations) => operations.collect(),
@@ -370,7 +373,7 @@ impl MessageOperations {
 }
 
 impl Iterator for MessageOperations {
-    type Item = BookInput;
+    type Item = MarketData;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -397,13 +400,15 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     let category = category(&message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(&message, message.event())?;
-        let trade = Trade::from_parts(OperationEventData::from(message), executions)?;
+        let trade = TradeEvent::from_facts(OperationEventFacts::from(message), executions)?;
         return Ok(MessageOperations::One(Some(trade.into())));
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
-        return Ok(MessageOperations::One(Some(
-            operation(kind, OperationEventData::from(message)).into(),
-        )));
+        return Ok(MessageOperations::One(Some(operation(
+            kind,
+            OperationEventFacts::from(message),
+            None,
+        ))));
     }
     let msgtype = message.header().msgtype();
     if category != "BOOK" || !matches!(msgtype, "W" | "X") {
@@ -411,18 +416,17 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     }
     let msgtype = SmolStr::new(msgtype);
     let entries = book_entries(&message)?;
-    let operations = build_book_operations(OperationEventData::from(message), &msgtype, &entries)?;
+    let operations = build_book_operations(OperationEventFacts::from(message), &msgtype, &entries)?;
     Ok(MessageOperations::Many(operations.into_iter()))
 }
 
-fn effective_unix(input: &BookInput) -> i64 {
-    input
-        .event()
-        .get_snapunix()
-        .unwrap_or_else(|| input.currunix())
+fn effective_unix(input: &MarketData) -> i64 {
+    input.as_event().map_or(0, |event| {
+        event.get_snapunix().unwrap_or_else(|| event.get_currunix())
+    })
 }
 
-impl TryFrom<FixMsg> for BookInput {
+impl TryFrom<FixMsg> for MarketData {
     type Error = Error;
 
     fn try_from(message: FixMsg) -> Result<Self> {
@@ -440,14 +444,14 @@ impl TryFrom<FixMsg> for BookInput {
     }
 }
 
-fn operations(message: &FixMsg, base: OperationEventData) -> Result<Vec<BookInput>> {
+fn operations(message: &FixMsg, base: OperationEventFacts) -> Result<Vec<MarketData>> {
     let category = category(message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
         let executions = trade_executions(message, &base)?;
-        return Trade::from_parts(base, executions).map(|trade| vec![trade.into()]);
+        return TradeEvent::from_facts(base, executions).map(|trade| vec![trade.into()]);
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
-        return Ok(vec![operation(kind, base).into()]);
+        return Ok(vec![operation(kind, base, None)]);
     }
     let msgtype = message.header().msgtype();
     if category != "BOOK" || !matches!(msgtype, "W" | "X") {
@@ -472,11 +476,19 @@ fn category(message: &FixMsg) -> Result<&str> {
         })
 }
 
-fn direct_kind(category: &str, is_execution: bool) -> Option<OperationKind> {
+/// Which operation leaf a message or a market-data entry becomes.
+#[derive(Clone, Copy)]
+enum Direct {
+    Order,
+    Quote,
+    Execution,
+}
+
+fn direct_kind(category: &str, is_execution: bool) -> Option<Direct> {
     match category {
-        "ORDR" => Some(OperationKind::Order),
-        "QUOT" => Some(OperationKind::Quote),
-        "EXEC" if is_execution => Some(OperationKind::Execution),
+        "ORDR" => Some(Direct::Order),
+        "QUOT" => Some(Direct::Quote),
+        "EXEC" if is_execution => Some(Direct::Execution),
         _ => None,
     }
 }
@@ -495,14 +507,26 @@ fn unsupported_message(message: &FixMsg) -> Error {
     )
 }
 
-fn operation(kind: OperationKind, data: OperationEventData) -> MarketOperation {
-    let mut operation =
-        MarketOperation::new(kind, data).expect("an order, a quote or an execution");
-    operation.finalize();
-    operation
+/// The finalized leaf of `kind` over `data`, with the book control a
+/// market-data entry states.
+fn operation(kind: Direct, data: OperationEventFacts, book: Option<BookRef>) -> MarketData {
+    fn leaf<K: OperationKind>(
+        data: OperationEventFacts,
+        book: Option<BookRef>,
+    ) -> OperationEvent<K> {
+        let mut operation = OperationEvent::<K>::from_facts(data);
+        operation.set_book(book);
+        operation.finalize();
+        operation
+    }
+    match kind {
+        Direct::Order => MarketData::from(leaf::<OrderKind>(data, book)),
+        Direct::Quote => MarketData::from(leaf::<QuoteKind>(data, book)),
+        Direct::Execution => MarketData::from(leaf::<ExecutionKind>(data, book)),
+    }
 }
 
-fn trade_executions(message: &FixMsg, base: &OperationEventData) -> Result<Vec<MarketOperation>> {
+fn trade_executions(message: &FixMsg, base: &OperationEventFacts) -> Result<Vec<ExecutionEvent>> {
     let mut groups = message
         .entries()
         .iter()
@@ -548,10 +572,10 @@ fn trade_executions(message: &FixMsg, base: &OperationEventData) -> Result<Vec<M
 }
 
 fn trade_execution(
-    base: &OperationEventData,
+    base: &OperationEventFacts,
     occurrence: &FixEntry,
     index: usize,
-) -> Result<MarketOperation> {
+) -> Result<ExecutionEvent> {
     let path = |tag: i32, name: &str| format_smolstr!("$.NoSides(552)[{index}].{name}({tag})");
     let raw_side = entry_value(occurrence, 54)
         .ok_or_else(|| invalid(path(54, "Side"), "expected a bid or ask side, got no value"))?;
@@ -622,7 +646,7 @@ fn trade_execution(
         chain.len(),
         side.as_str(),
     ));
-    Ok(MarketOperation::execution(event))
+    Ok(ExecutionEvent::from_facts(event))
 }
 
 fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
@@ -871,10 +895,10 @@ fn gather(entry: &FixEntry, facts: &mut Facts) {
 }
 
 fn build_book_operations(
-    base: OperationEventData,
+    base: OperationEventFacts,
     msgtype: &str,
     entries: &[BookEntry],
-) -> Result<Vec<BookInput>> {
+) -> Result<Vec<MarketData>> {
     let mut answer = Vec::with_capacity(entries.len());
     let mut base = Some(base);
     for (index, entry) in entries.iter().enumerate() {
@@ -890,10 +914,10 @@ fn build_book_operations(
 }
 
 fn build_book_operation(
-    mut event: OperationEventData,
+    mut event: OperationEventFacts,
     msgtype: &str,
     entry: &BookEntry,
-) -> Result<BookInput> {
+) -> Result<MarketData> {
     let path = |tag: i32, name: &str| {
         format_smolstr!("$.NoMDEntries(268)[{}].{name}({tag})", entry.position)
     };
@@ -910,10 +934,10 @@ fn build_book_operation(
         push_scope(&mut crosscode, "BookSnapshot", "empty");
         event.set_crosscode(crosscode);
         event.set_state(State::read("New").expect("the shipped new state"));
-        let mut control = event.into_event();
-        control.finalize();
-        return Ok(BookInput::Snapshot(BookControl::snapshot(
-            control,
+        // A snapshot control states no operation of its own: the facts a
+        // FIX event always states (`marketoperationid` among them) drop.
+        return Ok(MarketData::from(SnapshotEvent::from_facts(
+            event.into_event(),
             Some(SmolStr::new(scope)),
         )));
     }
@@ -924,9 +948,9 @@ fn build_book_operation(
         )
     })?;
     let kind = match entry_type {
-        "0" | "1" if entry.facts.order_id.is_some() => OperationKind::Order,
-        "0" | "1" => OperationKind::Quote,
-        "2" => OperationKind::Execution,
+        "0" | "1" if entry.facts.order_id.is_some() => Direct::Order,
+        "0" | "1" => Direct::Quote,
+        "2" => Direct::Execution,
         other => {
             return Err(invalid(
                 path(269, "MDEntryType"),
@@ -978,7 +1002,7 @@ fn build_book_operation(
     };
     if let Some(unix) = entry_unix(entry, event.get_currunix(), &path)? {
         if msgtype == "W" {
-            if matches!(kind, OperationKind::Execution) {
+            if matches!(kind, Direct::Execution) {
                 event.set_execunix(Some(unix));
             } else {
                 event.set_creaunix(Some(unix));
@@ -986,7 +1010,7 @@ fn build_book_operation(
         } else {
             event.set_currunix(unix);
         }
-        if msgtype != "W" && matches!(kind, OperationKind::Execution) {
+        if msgtype != "W" && matches!(kind, Direct::Execution) {
             event.set_execunix(Some(unix));
         }
     }
@@ -1043,11 +1067,7 @@ fn build_book_operation(
         entry_px: entry.facts.price.as_ref().and(entry.price),
         entry_size: entry.facts.size.as_ref().and(entry.size),
     };
-    let mut operation =
-        MarketOperation::new(kind, event).expect("an order, a quote or an execution");
-    operation.set_book(Some(book));
-    operation.finalize();
-    Ok(BookInput::MarketOperation(operation))
+    Ok(operation(kind, event, Some(book)))
 }
 
 fn decimal(

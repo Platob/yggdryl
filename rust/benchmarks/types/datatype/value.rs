@@ -8,7 +8,7 @@ use yggdryl::{
 
 pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
-        use yggdryl::graph::{Market, MarketData};
+        use yggdryl::graph::{BookSide, Market};
         use yggdryl::securityid::{SecType, SecurityId};
         use yggdryl::{CfiCode, FIGICode, IsinCode};
         let mut codes = criterion.benchmark_group("instrument_codes");
@@ -27,7 +27,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
         let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {
             bench.iter(|| {
-                let mut element = MarketData::default();
+                let mut element = BookSide::default();
                 let _ = element.insert_securityid(black_box(&isin).clone());
                 black_box(element)
             });

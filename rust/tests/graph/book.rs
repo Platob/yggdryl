@@ -5,10 +5,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use smol_str::SmolStr;
 use yggdryl::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use yggdryl::graph::{
-    Book, BookControl, BookInput, BookIterator, BookRef, BookSide, Element, Event, GLOBAL_SYMBOL,
-    Market, MarketEventData, MarketOperation, MdUpdateAction, Operation, OperationEventData,
-    OperationKind, Trade,
+    BookEvent, BookIterator, BookRef, BookSide, Element, Event, ExecutionEvent, GLOBAL_SYMBOL,
+    Market, MarketData, MarketKind, MdUpdateAction, Operation, OrderEvent, QuoteEvent,
+    SnapshotEvent, TradeEvent,
 };
+use yggdryl::idmap::IdMap;
 use yggdryl::{Ccy, Decimal18, Side, State, Unit};
 
 /// The alternate-identifier key an order's `OrderID(37)` is held under.
@@ -26,8 +27,8 @@ fn operation(
     price: &str,
     quantity: i64,
     state: &str,
-) -> MarketOperation {
-    let mut data = OperationEventData::at(unix);
+) -> MarketData {
+    let mut data = OrderEvent::at(unix);
     data.set_crosscode(identity.to_owned());
     data.set_ticker(Some(SmolStr::new(symbol)));
     data.set_side(Side::read(side).unwrap());
@@ -37,37 +38,87 @@ fn operation(
     data.set_unit(Unit::new("share").unwrap());
     data.set_state(State::read(state).unwrap());
     data.insert_altid(ENTRY_ID, identity).unwrap();
-    let kind = OperationKind::read(kind).expect("an operation kind");
-    let mut operation =
-        MarketOperation::new(kind, data).expect("an order, a quote or an execution");
+    let mut operation = match kind {
+        "order" => MarketData::from(data),
+        "quote" => MarketData::from(QuoteEvent::from(&data)),
+        "execution" => MarketData::from(ExecutionEvent::from(&data)),
+        other => panic!("{other} is not an operation kind"),
+    };
     operation.finalize();
     operation
 }
 
+/// What a dated operation answers, whichever kind it is: the view the
+/// fixtures read a book's entries through.
+trait EventOperation: Event + Operation {}
+impl<T: Event + Operation + ?Sized> EventOperation for T {}
+
+/// Binds `$operation` to the dated order, quote or execution `$value` holds.
+macro_rules! on_operation {
+    ($value:expr, $operation:ident => $body:expr) => {
+        match $value {
+            MarketData::OrderEvent($operation) => $body,
+            MarketData::QuoteEvent($operation) => $body,
+            MarketData::ExecutionEvent($operation) => $body,
+            other => panic!("{} is not a dated operation", other.kind().as_str()),
+        }
+    };
+}
+
+/// The dated operation `value` holds.
+fn op(value: &MarketData) -> &dyn EventOperation {
+    on_operation!(value, operation => operation)
+}
+
+/// The dated operation `value` holds, mutably.
+fn op_mut(value: &mut MarketData) -> &mut dyn EventOperation {
+    on_operation!(value, operation => operation)
+}
+
+/// `value`'s operation edited by `edit`, finalized again around it.
+fn edited(mut value: MarketData, edit: impl FnOnce(&mut dyn EventOperation)) -> MarketData {
+    on_operation!(&mut value, operation => edit(operation));
+    value.finalize();
+    value
+}
+
+/// The executions `values` hold, each refused unless it is one.
+fn executions<const N: usize>(values: [MarketData; N]) -> Vec<ExecutionEvent> {
+    values
+        .into_iter()
+        .map(|value| ExecutionEvent::try_from(value).expect("an execution"))
+        .collect()
+}
+
+/// The alternate identifiers the dated operation `value` holds goes by.
+fn altids(value: &MarketData) -> &IdMap {
+    op(value).get_altids()
+}
+
 /// `operation` carrying the book-control facts `book` states, finalized
 /// again around them.
-fn with_book(mut operation: MarketOperation, book: BookRef) -> MarketOperation {
-    operation.set_book(Some(book));
+fn with_book(mut operation: MarketData, book: BookRef) -> MarketData {
+    on_operation!(&mut operation, held => held.set_book(Some(book)));
     operation.finalize();
     operation
 }
 
 /// `operation` going by `altids` too, each replacing the key where it held
 /// one already, finalized again around them.
-fn with_altids(mut operation: MarketOperation, altids: &[(&str, &str)]) -> MarketOperation {
-    for (key, value) in altids {
-        operation.remove_altid(key).unwrap();
-        operation.insert_altid(key, value).unwrap();
-    }
-    operation.finalize();
-    operation
+fn with_altids(operation: MarketData, altids: &[(&str, &str)]) -> MarketData {
+    edited(operation, |held| {
+        for (key, value) in altids {
+            held.remove_altid(key).unwrap();
+            held.insert_altid(key, value).unwrap();
+        }
+    })
 }
 
 /// `operation` without its `MDENTRYID`: an anonymous entry.
-fn anonymous(mut operation: MarketOperation) -> MarketOperation {
-    operation.remove_altid(ENTRY_ID).unwrap();
-    operation.finalize();
-    operation
+fn anonymous(operation: MarketData) -> MarketData {
+    edited(operation, |held| {
+        held.remove_altid(ENTRY_ID).unwrap();
+    })
 }
 
 /// A book control naming only `scope`.
@@ -99,15 +150,10 @@ fn decimal(text: &str) -> Decimal18 {
     text.parse().unwrap()
 }
 
-/// The operations as the inputs a book takes.
-fn inputs<const N: usize>(operations: [MarketOperation; N]) -> [BookInput; N] {
-    operations.map(BookInput::from)
-}
-
 /// The event of a full-snapshot control at `unix`, named `identity`, on
 /// IBM.
-fn reset_event(unix: i64, identity: &str) -> MarketEventData {
-    let mut reset = MarketEventData::at(unix);
+fn reset_event(unix: i64, identity: &str) -> OrderEvent {
+    let mut reset = OrderEvent::at(unix);
     reset.set_crosscode(identity.to_owned());
     reset.set_ticker(Some(SmolStr::new("IBM")));
     reset.set_state(State::read("New").unwrap());
@@ -120,20 +166,21 @@ fn reset_event(unix: i64, identity: &str) -> MarketEventData {
 type Facts = (Option<Decimal18>, Option<Decimal18>, Vec<(String, String)>);
 
 /// [`Facts`] for each operation, in the order given.
-fn facts<'a>(operations: impl Iterator<Item = &'a MarketOperation>) -> Vec<Facts> {
-    operations
-        .map(|operation| {
-            (
-                operation.get_price(),
-                operation.get_quantity(),
-                operation
-                    .get_altids()
-                    .iter()
-                    .map(|(key, value)| (key.to_owned(), value.to_owned()))
-                    .collect(),
-            )
-        })
-        .collect()
+fn facts<'a>(operations: impl Iterator<Item = &'a MarketData>) -> Vec<Facts> {
+    operations.map(|operation| fact(op(operation))).collect()
+}
+
+/// [`Facts`] for one operation.
+fn fact(operation: &(impl Operation + ?Sized)) -> Facts {
+    (
+        operation.get_price(),
+        operation.get_quantity(),
+        operation
+            .get_altids()
+            .iter()
+            .map(|(key, value)| (key.to_owned(), value.to_owned()))
+            .collect(),
+    )
 }
 
 #[test]
@@ -175,11 +222,11 @@ fn a_side_refuses_an_operation_stating_no_price() {
     // The lane the fixture already filled would state the price back;
     // cleared, finalizing fills it from the facts left, and a price is not
     // among them.
-    unpriced.set_bid(None);
+    op_mut(&mut unpriced).set_bid(None);
     unpriced.set_lastpx(Some(decimal("100")));
     unpriced.finalize();
     assert_eq!(unpriced.get_price(), None);
-    assert_eq!(unpriced.get_bid().and_then(|lane| lane.price), None);
+    assert_eq!(op(&unpriced).get_bid().and_then(|lane| lane.price), None);
 
     let mut side = BookSide::new(Side::read("Buy").unwrap()).unwrap();
     let error = side
@@ -193,22 +240,19 @@ fn a_side_refuses_an_operation_stating_no_price() {
         "a refused operation leaves the side as it was"
     );
 
-    let mut book = Book::new(1, "IBM");
-    let error = book
-        .add_operations(inputs([unpriced]))
-        .unwrap_err()
-        .to_string();
+    let mut book = BookEvent::new(1, "IBM");
+    let error = book.add_operations([unpriced]).unwrap_err().to_string();
     assert!(error.contains("expected a price on a book side"), "{error}");
     assert!(book.bid().is_empty() && book.ask().is_empty());
 }
 
 #[test]
 fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
-    let mut book = Book::new(10, "IBM");
-    book.add_operations(inputs([
+    let mut book = BookEvent::new(10, "IBM");
+    book.add_operations([
         operation("quote", "IBM", "B-1", 10, "Buy", "100", 8, "New"),
         operation("quote", "IBM", "A-1", 10, "Sell", "102", 4, "New"),
-    ]))
+    ])
     .unwrap();
 
     assert_eq!(book.bbo_midpoint(), Some(decimal("101")));
@@ -218,10 +262,8 @@ fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
     assert_eq!(book.bid().best_quantity(), Some(Decimal18::from_int(8)));
     assert_eq!(book.ask().best_quantity(), Some(Decimal18::from_int(4)));
 
-    book.add_operations(inputs([operation(
-        "quote", "IBM", "B-2", 11, "Buy", "103", 1, "New",
-    )]))
-    .unwrap();
+    book.add_operations([operation("quote", "IBM", "B-2", 11, "Buy", "103", 1, "New")])
+        .unwrap();
     assert!(book.is_crossed());
     assert_eq!(book.bbo_midpoint(), None);
     assert_eq!(
@@ -233,7 +275,7 @@ fn book_exposes_bbo_midpoint_and_two_value_quantity_median() {
 
 #[test]
 fn full_snapshot_replaces_only_its_scope_atomically() {
-    let mut book = Book::new(1, "IBM");
+    let mut book = BookEvent::new(1, "IBM");
     let first = with_book(
         operation("quote", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
         scoped("PRIMARY"),
@@ -242,14 +284,14 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
         operation("quote", "IBM", "B-X", 1, "Buy", "99", 9, "New"),
         scoped("OTHER"),
     );
-    book.add_operations(inputs([first, other])).unwrap();
+    book.add_operations([first, other]).unwrap();
     let previous = book.clone();
 
     let replacement = with_book(
         operation("quote", "IBM", "B-2", 2, "Buy", "101", 3, "New"),
         acting_in(MdUpdateAction::Snapshot, "PRIMARY"),
     );
-    book.add_operations(inputs([replacement.clone()])).unwrap();
+    book.add_operations([replacement.clone()]).unwrap();
 
     let identities: Vec<_> = book
         .bid()
@@ -258,8 +300,8 @@ fn full_snapshot_replaces_only_its_scope_atomically() {
         .collect();
     assert_eq!(identities, ["B-2", "B-X"]);
 
-    let mut update = Book::new(2, "IBM");
-    update.add_operations(inputs([replacement])).unwrap();
+    let mut update = BookEvent::new(2, "IBM");
+    update.add_operations([replacement]).unwrap();
     let continued = update.with_previous(&previous).unwrap();
     assert_eq!(
         continued
@@ -306,12 +348,12 @@ fn iterator_emits_one_book_per_symbol_and_timestamp_or_one_global_book() {
 #[test]
 fn iterator_emits_a_completed_timestamp_before_a_source_error_then_fuses() {
     struct Counted {
-        source: std::vec::IntoIter<yggdryl::Result<BookInput>>,
+        source: std::vec::IntoIter<yggdryl::Result<MarketData>>,
         pulled: Arc<AtomicUsize>,
     }
 
     impl Iterator for Counted {
-        type Item = yggdryl::Result<BookInput>;
+        type Item = yggdryl::Result<MarketData>;
 
         fn next(&mut self) -> Option<Self::Item> {
             let item = self.source.next()?;
@@ -322,16 +364,19 @@ fn iterator_emits_a_completed_timestamp_before_a_source_error_then_fuses() {
 
     let pulled = Arc::new(AtomicUsize::new(0));
     let source = vec![
-        Ok(operation("quote", "IBM", "IBM-B", 1_000_000, "Buy", "100", 2, "New").into()),
-        Ok(operation("quote", "IBM", "IBM-A", 1_000_000, "Sell", "102", 4, "New").into()),
+        Ok(operation(
+            "quote", "IBM", "IBM-B", 1_000_000, "Buy", "100", 2, "New",
+        )),
+        Ok(operation(
+            "quote", "IBM", "IBM-A", 1_000_000, "Sell", "102", 4, "New",
+        )),
         Err(yggdryl::Error::InvalidRecord {
             path: "$[2]".into(),
             reason: "broken operation source".into(),
         }),
         Ok(operation(
             "quote", "IBM", "IBM-LATE", 2_000_000, "Buy", "101", 1, "New",
-        )
-        .into()),
+        )),
     ];
     let mut books = BookIterator::new(
         Counted {
@@ -489,11 +534,11 @@ fn an_exact_grid_tick_emits_every_symbol_after_the_equal_time_source() {
 
 #[test]
 fn exact_nanoseconds_participate_in_book_identity_within_one_millisecond() {
-    let mut first = Book::new(1_000_001, "IBM");
+    let mut first = BookEvent::new(1_000_001, "IBM");
     first
-        .add_operations(inputs([operation(
+        .add_operations([operation(
             "quote", "IBM", "B", 1_000_001, "Buy", "100", 1, "New",
-        )]))
+        )])
         .unwrap();
     let mut second = first.clone();
     second.set_currunix(1_000_002);
@@ -503,30 +548,28 @@ fn exact_nanoseconds_participate_in_book_identity_within_one_millisecond() {
 
 #[test]
 fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([operation(
-        "order", "IBM", "O-1", 1, "Buy", "100", 2, "New",
-    )]))
-    .unwrap();
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New")])
+        .unwrap();
     let first = book.bid().live().next().unwrap().clone();
 
-    book.add_operations(inputs([operation(
+    book.add_operations([operation(
         "order", "IBM", "O-1", 2, "Buy", "101", 3, "Replaced",
-    )]))
+    )])
     .unwrap();
     let replacement = book.bid().live().next().unwrap();
-    assert_eq!(replacement.get_seqnum(), 1);
-    assert_eq!(replacement.get_prevuuid(), Some(first.get_curruuid()));
+    assert_eq!(op(replacement).get_seqnum(), 1);
+    assert_eq!(op(replacement).get_prevuuid(), Some(first.get_curruuid()));
     assert_eq!(replacement.get_prevpx(), first.get_price());
     assert_eq!(replacement.get_prevqty(), first.get_quantity());
     assert_eq!(book.get_seqnum(), 1);
 
     let before = book.clone();
     let error = book
-        .add_operations(inputs([
+        .add_operations([
             operation("quote", "IBM", "B-2", 3, "Buy", "99", 1, "New"),
             operation("quote", "IBM", "B-3", 4, "Buy", "98", 1, "New"),
-        ]))
+        ])
         .expect_err("one atomic group has one timestamp");
     assert!(error.to_string().contains("same currunix"));
     assert_eq!(book, before);
@@ -534,22 +577,22 @@ fn updates_follow_the_live_entry_and_atomic_failures_leave_the_book_unchanged() 
 
 #[test]
 fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_destination() {
-    let mut book = Book::new(1, "IBM");
+    let mut book = BookEvent::new(1, "IBM");
     let partial = with_book(
         operation("order", "IBM", "MISSING", 1, "Buy", "101", 3, "Replaced"),
         acting(MdUpdateAction::Change),
     );
-    let error = book.add_operations(inputs([partial])).unwrap_err();
+    let error = book.add_operations([partial]).unwrap_err();
     assert!(
         matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.book.mdentrypx"),
         "{error}"
     );
     assert!(book.bid().is_empty());
 
-    book.add_operations(inputs([
+    book.add_operations([
         operation("order", "IBM", "X", 1, "Buy", "100", 1, "New"),
         operation("order", "IBM", "Y", 1, "Buy", "99", 2, "New"),
-    ]))
+    ])
     .unwrap();
     let before = book.clone();
     let collision = with_book(
@@ -564,10 +607,7 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
             ..BookRef::default()
         },
     );
-    let error = book
-        .add_operations(inputs([collision]))
-        .unwrap_err()
-        .to_string();
+    let error = book.add_operations([collision]).unwrap_err().to_string();
     assert!(error.contains("MDENTRYID"), "{error}");
     assert_eq!(book, before);
 
@@ -583,46 +623,43 @@ fn partial_updates_require_a_predecessor_or_complete_values_and_refs_precede_des
             ..BookRef::default()
         },
     );
-    let error = book
-        .add_operations(inputs([unresolved]))
-        .unwrap_err()
-        .to_string();
+    let error = book.add_operations([unresolved]).unwrap_err().to_string();
     assert!(error.contains("MDENTRYREFID"), "{error}");
     assert_eq!(book, before);
 }
 
 #[test]
 fn partial_market_updates_continue_orders_without_restating_order_id() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([with_book(
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([with_book(
         with_altids(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
         acting(MdUpdateAction::New),
-    )]))
+    )])
     .unwrap();
     let previous = book.bid().live().next().unwrap().clone();
 
-    book.add_operations(inputs([with_book(
+    book.add_operations([with_book(
         operation("quote", "IBM", "O-1", 2, "Buy", "0", 3, "Replaced"),
         BookRef {
             action: Some(MdUpdateAction::Change),
             entry_size: Some(decimal("3")),
             ..BookRef::default()
         },
-    )]))
+    )])
     .unwrap();
 
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.kind(), OperationKind::Order);
-    assert_eq!(live.get_altids().get(ORDER_ID), Some("ORDER-1"));
+    assert_eq!(live.kind(), MarketKind::OrderEvent);
+    assert_eq!(altids(live).get(ORDER_ID), Some("ORDER-1"));
     assert_eq!(live.get_price(), previous.get_price());
     assert_eq!(live.get_quantity(), Some(Decimal18::from_int(3)));
-    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(live.get_prevpx(), previous.get_price());
     assert_eq!(live.get_prevqty(), previous.get_quantity());
-    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
     let mut finalized = live.clone();
     finalized.finalize();
     assert_eq!(*live, finalized);
@@ -630,15 +667,15 @@ fn partial_market_updates_continue_orders_without_restating_order_id() {
 
 #[test]
 fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([
         operation("quote", "IBM", "X", 1, "Buy", "100", 2, "New"),
         operation("quote", "IBM", "Y", 1, "Sell", "101", 3, "New"),
-    ]))
+    ])
     .unwrap();
     let before = book.clone();
     let error = book
-        .add_operations(inputs([with_book(
+        .add_operations([with_book(
             with_altids(
                 operation("quote", "IBM", "Y", 2, "Buy", "99", 4, "Replaced"),
                 &[(ENTRY_REF_ID, "X")],
@@ -649,7 +686,7 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
                 entry_size: Some(decimal("4")),
                 ..BookRef::default()
             },
-        )]))
+        )])
         .expect_err("a reference cannot replace a different live destination on either side");
     assert!(
         matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.altids.MDENTRYID"),
@@ -660,18 +697,18 @@ fn referenced_market_update_refuses_an_occupied_destination_on_the_other_side() 
 
 #[test]
 fn partial_market_updates_move_between_sides_with_their_predecessor() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([with_book(
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([with_book(
         with_altids(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
         acting(MdUpdateAction::New),
-    )]))
+    )])
     .unwrap();
     let previous = book.bid().live().next().unwrap().clone();
 
-    book.add_operations(inputs([with_book(
+    book.add_operations([with_book(
         with_altids(
             operation("quote", "IBM", "O-2", 2, "Sell", "0", 3, "Replaced"),
             &[(ENTRY_REF_ID, "O-1")],
@@ -681,36 +718,36 @@ fn partial_market_updates_move_between_sides_with_their_predecessor() {
             entry_size: Some(decimal("3")),
             ..BookRef::default()
         },
-    )]))
+    )])
     .unwrap();
     assert!(book.bid().is_empty());
     let live = book.ask().live().next().unwrap();
-    assert_eq!(live.kind(), OperationKind::Order);
+    assert_eq!(live.kind(), MarketKind::OrderEvent);
     assert_eq!(live.get_price(), previous.get_price());
     assert_eq!(live.get_quantity(), Some(Decimal18::from_int(3)));
-    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
     assert_eq!(live.get_prevpx(), previous.get_price());
     assert_eq!(live.get_prevqty(), previous.get_quantity());
-    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
-    assert_eq!(live.get_altids().get(ENTRY_ID), Some("O-2"));
+    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
+    assert_eq!(altids(live).get(ENTRY_ID), Some("O-2"));
     let previous = live.clone();
 
-    book.add_operations(inputs([with_book(
+    book.add_operations([with_book(
         operation("quote", "IBM", "O-2", 3, "Buy", "101", 0, "Replaced"),
         BookRef {
             action: Some(MdUpdateAction::Overlay),
             entry_px: Some(decimal("101")),
             ..BookRef::default()
         },
-    )]))
+    )])
     .unwrap();
     assert!(book.ask().is_empty());
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.kind(), OperationKind::Order);
+    assert_eq!(live.kind(), MarketKind::OrderEvent);
     assert_eq!(live.get_price(), Some(Decimal18::from_int(101)));
     assert_eq!(live.get_quantity(), previous.get_quantity());
-    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+    assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
 }
 
 #[test]
@@ -722,7 +759,7 @@ fn renamed_market_entry_expires_using_its_current_identity() {
         ),
         acting(MdUpdateAction::New),
     );
-    initial.set_exprtime(Some(4));
+    op_mut(&mut initial).set_exprtime(Some(4));
     initial.finalize();
     let renamed = with_book(
         with_altids(
@@ -742,27 +779,27 @@ fn renamed_market_entry_expires_using_its_current_identity() {
         .expect("expiry deletes the current entry after its reference has been resolved");
     assert_eq!(books.len(), 3);
     let previous = books[1].ask().live().next().unwrap();
-    assert_eq!(previous.get_altids().get(ENTRY_ID), Some("Y"));
+    assert_eq!(altids(previous).get(ENTRY_ID), Some("Y"));
     assert!(books[2].bid().is_empty());
     assert!(books[2].ask().is_empty());
     assert_eq!(books[2].get_currunix(), 4);
     let expired = &books[2].ask().deltas()[0];
-    assert_eq!(expired.kind(), OperationKind::Order);
-    assert_eq!(expired.get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(expired.get_altids().get(ENTRY_ID), Some("Y"));
-    assert!(!expired.get_state().is_live());
+    assert_eq!(expired.kind(), MarketKind::OrderEvent);
+    assert_eq!(op(expired).get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(altids(expired).get(ENTRY_ID), Some("Y"));
+    assert!(!op(expired).get_state().is_live());
 }
 
 #[test]
 fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([with_book(
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([with_book(
         operation("quote", "IBM", "Q-1", 1, "Buy", "100", 2, "New"),
         acting(MdUpdateAction::New),
-    )]))
+    )])
     .unwrap();
     let previous = book.bid().live().next().unwrap().clone();
-    book.add_operations(inputs([with_book(
+    book.add_operations([with_book(
         with_altids(
             operation("order", "IBM", "Q-1", 2, "Buy", "0", 3, "Replaced"),
             &[(ORDER_ID, "ORDER-1")],
@@ -772,30 +809,30 @@ fn partial_market_updates_promote_quotes_when_the_order_id_becomes_known() {
             entry_size: Some(decimal("3")),
             ..BookRef::default()
         },
-    )]))
+    )])
     .unwrap();
     let live = book.bid().live().next().unwrap();
-    assert_eq!(live.kind(), OperationKind::Order);
+    assert_eq!(live.kind(), MarketKind::OrderEvent);
     assert_eq!(live.get_price(), previous.get_price());
-    assert_eq!(live.get_altids().get(ORDER_ID), Some("ORDER-1"));
-    assert_eq!(live.get_prevuuid(), Some(previous.get_curruuid()));
-    assert_eq!(live.get_seqnum(), previous.get_seqnum() + 1);
+    assert_eq!(altids(live).get(ORDER_ID), Some("ORDER-1"));
+    assert_eq!(op(live).get_prevuuid(), Some(previous.get_curruuid()));
+    assert_eq!(op(live).get_seqnum(), op(&previous).get_seqnum() + 1);
 }
 
 #[test]
 fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([with_book(
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([with_book(
         with_altids(
             operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New"),
             &[(ORDER_ID, "ORDER-1")],
         ),
         acting(MdUpdateAction::New),
-    )]))
+    )])
     .unwrap();
     let before = book.clone();
     let error = book
-        .add_operations(inputs([with_book(
+        .add_operations([with_book(
             with_altids(
                 operation("order", "IBM", "O-1", 2, "Sell", "101", 3, "Replaced"),
                 &[(ORDER_ID, "ORDER-2")],
@@ -806,7 +843,7 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
                 entry_size: Some(decimal("3")),
                 ..BookRef::default()
             },
-        )]))
+        )])
         .expect_err("a continuation cannot replace a known order identity");
     assert!(
         matches!(&error, yggdryl::Error::InvalidRecord { path, .. } if path == "$.operation.altids.ORDERID"),
@@ -817,7 +854,7 @@ fn contradictory_market_update_order_ids_refuse_without_removing_the_predecessor
 
 #[test]
 fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock() {
-    let mut first = OperationEventData::at(10);
+    let mut first = ExecutionEvent::at(10);
     first.set_crosscode("E-1".to_owned());
     first.set_ticker(Some(SmolStr::new("IBM")));
     first.set_price(Some(decimal("100")));
@@ -830,12 +867,9 @@ fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock
     second.set_execunix(Some(9));
     second.finalize();
 
-    let mut book = Book::new(10, "IBM");
-    book.add_operations([
-        MarketOperation::execution(first).into(),
-        MarketOperation::execution(second).into(),
-    ])
-    .unwrap();
+    let mut book = BookEvent::new(10, "IBM");
+    book.add_operations([MarketData::from(first), MarketData::from(second)])
+        .unwrap();
     assert_eq!(book.executions().len(), 2);
     assert!(book.bid().is_empty());
     assert!(book.ask().is_empty());
@@ -846,12 +880,12 @@ fn executions_are_reported_beside_depth_and_propagate_the_latest_execution_clock
 fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
     let buy = operation("execution", "IBM", "E-BUY", 10, "Buy", "100", 2, "Filled");
     let sell = operation("execution", "IBM", "E-SELL", 10, "Sell", "101", 3, "Filled");
-    let mut event = OperationEventData::at(10);
+    let mut event = ExecutionEvent::at(10);
     event.set_crosscode("T-1".to_owned());
     event.set_ticker(Some(SmolStr::new("IBM")));
     event.set_state(State::read("Filled").unwrap());
     event.finalize();
-    let trade = Trade::from_parts(event, vec![sell, buy]).unwrap();
+    let trade = TradeEvent::from_parts(&event, executions([sell, buy])).unwrap();
     assert_eq!(
         trade
             .executions()
@@ -863,8 +897,8 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
     let mut expected = trade.executions().to_vec();
     expected.sort_by_key(Element::get_curruuid);
 
-    let mut book = Book::new(10, "IBM");
-    book.add_operations([trade.into()]).unwrap();
+    let mut book = BookEvent::new(10, "IBM");
+    book.add_operations([MarketData::from(trade)]).unwrap();
 
     assert!(book.bid().is_empty());
     assert!(book.ask().is_empty());
@@ -879,9 +913,9 @@ fn a_trade_flattens_its_sorted_executions_without_entering_depth() {
 #[test]
 fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
-    live.set_exprtime(Some(3));
+    op_mut(&mut live).set_exprtime(Some(3));
     live.finalize();
-    let mut execution = OperationEventData::at(1);
+    let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")));
     execution.set_state(State::read("Filled").unwrap());
@@ -891,7 +925,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     let books = BookIterator::new(
         [
             live,
-            MarketOperation::execution(execution),
+            MarketData::from(execution),
             operation("order", "IBM", "O-1", 3, "Buy", "101", 3, "New"),
         ]
         .into_iter(),
@@ -911,7 +945,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
     let replacement = books[1].bid().live().next().unwrap();
     assert_eq!(replacement.get_price(), Some(decimal("101")));
     assert_eq!(
-        (replacement.get_seqnum(), replacement.get_prevuuid()),
+        (op(replacement).get_seqnum(), op(replacement).get_prevuuid()),
         (0, None)
     );
 }
@@ -919,7 +953,7 @@ fn expiry_precedes_an_equal_time_source_and_executions_do_not_enter_live_expiry(
 #[test]
 fn a_failed_equal_time_source_does_not_consume_the_pending_expiration() {
     let mut live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
-    live.set_exprtime(Some(3));
+    op_mut(&mut live).set_exprtime(Some(3));
     live.finalize();
     let invalid = operation("quote", "IBM", "INVALID", 3, "Unknown", "101", 1, "New");
     let mut books = BookIterator::new([live, invalid].into_iter(), 0, false).unwrap();
@@ -938,7 +972,7 @@ fn expiring_one_snapshot_entry_keeps_the_rest_of_its_partition() {
         operation("quote", "IBM", "EXPIRING", 1, "Buy", "101", 1, "New"),
         acting_in(MdUpdateAction::Snapshot, "PRIMARY"),
     );
-    expiring.set_exprtime(Some(2));
+    op_mut(&mut expiring).set_exprtime(Some(2));
     expiring.finalize();
     let standing = with_book(
         operation("quote", "IBM", "STANDING", 1, "Buy", "100", 1, "New"),
@@ -963,7 +997,7 @@ fn a_failed_mixed_snapshot_group_commits_none_of_its_raw_updates() {
     let initial = operation("quote", "IBM", "INITIAL", 1, "Buy", "100", 1, "New");
     let raw = operation("quote", "IBM", "RAW", 2, "Buy", "99", 1, "New");
     let mut duplicate = operation("quote", "IBM", "DUPLICATE", 2, "Buy", "101", 1, "New");
-    duplicate.set_snapunix(Some(2));
+    op_mut(&mut duplicate).set_snapunix(Some(2));
     duplicate.finalize();
     let later = operation("execution", "IBM", "LATER", 3, "Unknown", "100", 1, "Trade");
 
@@ -997,7 +1031,7 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
     snapshot.set_price(Some(decimal("101")));
     snapshot.set_quantity(Some(Decimal18::from_int(5)));
     snapshot.finalize();
-    snapshot.set_snapunix(Some(2));
+    op_mut(&mut snapshot).set_snapunix(Some(2));
     let snapshot_only = snapshot.clone();
 
     let books = BookIterator::new([first, second, other_scope, snapshot].into_iter(), 0, false)
@@ -1032,8 +1066,8 @@ fn a_snapshot_view_purges_live_entries_absent_from_that_view() {
 fn snapshotted_execution_is_reported_without_replacing_live_depth() {
     let live = operation("order", "IBM", "O-1", 1, "Buy", "100", 2, "New");
     let mut execution = operation("execution", "IBM", "E-1", 2, "Unknown", "101", 1, "Trade");
-    execution.set_execunix(Some(2));
-    execution.set_snapunix(Some(3));
+    op_mut(&mut execution).set_execunix(Some(2));
+    op_mut(&mut execution).set_snapunix(Some(3));
     execution.finalize();
 
     let books = BookIterator::new([live, execution].into_iter(), 0, false)
@@ -1052,20 +1086,20 @@ fn snapshotted_execution_is_reported_without_replacing_live_depth() {
 #[test]
 fn snapshotted_trade_rebases_every_child_and_preserves_execution_time() {
     let mut buy = operation("execution", "IBM", "E-BUY", 2, "Buy", "101", 4, "Trade");
-    buy.set_execunix(Some(1));
+    op_mut(&mut buy).set_execunix(Some(1));
     buy.finalize();
     let mut sell = operation("execution", "IBM", "E-SELL", 2, "Sell", "101", 4, "Trade");
-    sell.set_execunix(Some(2));
+    op_mut(&mut sell).set_execunix(Some(2));
     sell.finalize();
-    let mut root = OperationEventData::at(2);
+    let mut root = ExecutionEvent::at(2);
     root.set_crosscode("T-1".to_owned());
     root.set_ticker(Some(SmolStr::new("IBM")));
     root.set_snapunix(Some(3));
     root.set_state(State::read("Trade").unwrap());
     root.finalize();
-    let trade = Trade::from_parts(root, vec![sell, buy]).unwrap();
+    let trade = TradeEvent::from_parts(&root, executions([sell, buy])).unwrap();
 
-    let book = BookIterator::new([BookInput::Trade(trade)].into_iter(), 0, false)
+    let book = BookIterator::new([MarketData::from(trade)].into_iter(), 0, false)
         .unwrap()
         .next()
         .unwrap()
@@ -1100,7 +1134,7 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
         1,
         "Trade",
     );
-    execution.set_snapunix(Some(2));
+    op_mut(&mut execution).set_snapunix(Some(2));
     execution.finalize();
     let error = BookIterator::new([execution.clone()].into_iter(), 0, false)
         .unwrap()
@@ -1110,22 +1144,19 @@ fn future_snapshot_components_are_refused_instead_of_backdated() {
         .to_string();
     assert!(error.contains("snapshot.executions[0].currunix"), "{error}");
 
-    execution.set_snapunix(Some(4));
+    op_mut(&mut execution).set_snapunix(Some(4));
     execution.finalize();
-    let mut direct = Book::new(3, "IBM");
-    let error = direct
-        .add_operations(inputs([execution]))
-        .unwrap_err()
-        .to_string();
+    let mut direct = BookEvent::new(3, "IBM");
+    let error = direct.add_operations([execution]).unwrap_err().to_string();
     assert!(error.contains("operation[0].snapunix"), "{error}");
 
-    let mut reset = MarketEventData::at(3);
+    let mut reset = ExecutionEvent::at(3);
     reset.set_crosscode("RESET-FUTURE".to_owned());
     reset.set_ticker(Some(SmolStr::new("IBM")));
     reset.set_snapunix(Some(2));
     reset.finalize();
-    let control = BookControl::snapshot(reset, Some(SmolStr::new("PRIMARY")));
-    let error = BookIterator::new([BookInput::Snapshot(control)].into_iter(), 0, false)
+    let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("PRIMARY")));
+    let error = BookIterator::new([MarketData::from(control)].into_iter(), 0, false)
         .unwrap()
         .next()
         .unwrap()
@@ -1148,10 +1179,10 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
     reset.set_seqnum(9);
     reset.set_snapunix(Some(2));
     reset.finalize();
-    let control = BookControl::snapshot(reset, Some(SmolStr::new("OTHER")));
+    let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("OTHER")));
 
     let books = BookIterator::new(
-        [primary.into(), other.into(), BookInput::Snapshot(control)].into_iter(),
+        [primary, other, MarketData::from(control)].into_iter(),
         0,
         false,
     )
@@ -1171,10 +1202,10 @@ fn an_explicit_empty_snapshot_replaces_only_its_partition() {
 #[test]
 fn merging_books_uses_the_latest_recording_as_reference_and_keeps_earliest_clocks() {
     let book = |identity: &str, side: &str, price: &str, recdunix: i64, feed: &str| {
-        let mut book = Book::new(100, "IBM");
-        book.add_operations(inputs([operation(
+        let mut book = BookEvent::new(100, "IBM");
+        book.add_operations([operation(
             "quote", "IBM", identity, 100, side, price, 2, "New",
-        )]))
+        )])
         .unwrap();
         book.set_recdunix(Some(recdunix));
         book.set_metadata(Some(BTreeMap::from([(
@@ -1220,17 +1251,13 @@ fn merging_books_uses_the_latest_recording_as_reference_and_keeps_earliest_clock
 
 #[test]
 fn operation_kind_participates_in_book_identity() {
-    let mut order_book = Book::new(1, "IBM");
+    let mut order_book = BookEvent::new(1, "IBM");
     order_book
-        .add_operations(inputs([operation(
-            "order", "IBM", "B-1", 1, "Buy", "100", 1, "New",
-        )]))
+        .add_operations([operation("order", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
-    let mut quote_book = Book::new(1, "IBM");
+    let mut quote_book = BookEvent::new(1, "IBM");
     quote_book
-        .add_operations(inputs([operation(
-            "quote", "IBM", "B-1", 1, "Buy", "100", 1, "New",
-        )]))
+        .add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
         .unwrap();
     assert_ne!(order_book.get_curruuid(), quote_book.get_curruuid());
 }
@@ -1254,10 +1281,10 @@ fn composite_identity_consumes_nested_uuid_without_rehashing_nested_content() {
         right_operation.get_currhashcode()
     );
 
-    let mut left = Book::new(1, "IBM");
-    left.add_operations(inputs([left_operation])).unwrap();
-    let mut right = Book::new(1, "IBM");
-    right.add_operations(inputs([right_operation])).unwrap();
+    let mut left = BookEvent::new(1, "IBM");
+    left.add_operations([left_operation]).unwrap();
+    let mut right = BookEvent::new(1, "IBM");
+    right.add_operations([right_operation]).unwrap();
 
     assert_eq!(left.bid().get_curruuid(), right.bid().get_curruuid());
     assert_eq!(
@@ -1270,11 +1297,11 @@ fn composite_identity_consumes_nested_uuid_without_rehashing_nested_content() {
 
 #[test]
 fn restating_rederives_the_book_identity_after_holder_restatement() {
-    let mut live = Book::new(1, "IBM");
-    live.add_operations(inputs([
+    let mut live = BookEvent::new(1, "IBM");
+    live.add_operations([
         operation("quote", "IBM", "B-1", 1, "Buy", "100", 2, "New"),
         operation("quote", "IBM", "A-1", 1, "Sell", "102", 4, "New"),
-    ]))
+    ])
     .unwrap();
     live.set_recdunix(Some(12));
     live.finalize();
@@ -1293,8 +1320,8 @@ fn restating_rederives_the_book_identity_after_holder_restatement() {
 
 #[test]
 fn global_depth_keys_include_symbol_scope_and_identity() {
-    let mut book = Book::new(1, GLOBAL_SYMBOL);
-    book.add_operations(inputs([
+    let mut book = BookEvent::new(1, GLOBAL_SYMBOL);
+    book.add_operations([
         with_book(
             operation("quote", "IBM", "SAME", 1, "Buy", "100", 1, "New"),
             scoped("PRIMARY"),
@@ -1307,15 +1334,15 @@ fn global_depth_keys_include_symbol_scope_and_identity() {
             operation("quote", "IBM", "SAME", 1, "Buy", "99", 3, "New"),
             scoped("OTHER"),
         ),
-    ]))
+    ])
     .unwrap();
     assert_eq!(book.bid().len(), 3);
 }
 
 #[test]
 fn a_global_snapshot_replaces_only_its_source_symbol_and_scope() {
-    let mut book = Book::new(1, GLOBAL_SYMBOL);
-    book.add_operations(inputs([
+    let mut book = BookEvent::new(1, GLOBAL_SYMBOL);
+    book.add_operations([
         with_book(
             operation("quote", "IBM", "IBM-OLD", 1, "Buy", "100", 1, "New"),
             scoped("PRIMARY"),
@@ -1324,12 +1351,12 @@ fn a_global_snapshot_replaces_only_its_source_symbol_and_scope() {
             operation("quote", "MSFT", "MS-LIVE", 1, "Buy", "200", 2, "New"),
             scoped("PRIMARY"),
         ),
-    ]))
+    ])
     .unwrap();
-    book.add_operations(inputs([with_book(
+    book.add_operations([with_book(
         operation("quote", "IBM", "IBM-NEW", 2, "Buy", "101", 3, "New"),
         acting_in(MdUpdateAction::Snapshot, "PRIMARY"),
-    )]))
+    )])
     .unwrap();
 
     assert_eq!(
@@ -1343,8 +1370,8 @@ fn a_global_snapshot_replaces_only_its_source_symbol_and_scope() {
 
 #[test]
 fn range_deletes_are_positive_in_range_and_scope_local() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([
         with_book(
             operation("quote", "IBM", "P-1", 1, "Buy", "101", 1, "New"),
             scoped("PRIMARY"),
@@ -1357,7 +1384,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
             operation("quote", "IBM", "P-2", 1, "Buy", "99", 3, "New"),
             scoped("PRIMARY"),
         ),
-    ]))
+    ])
     .unwrap();
 
     let deletion = with_book(
@@ -1369,7 +1396,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
             ..BookRef::default()
         },
     );
-    book.add_operations(inputs([deletion])).unwrap();
+    book.add_operations([deletion]).unwrap();
     let remaining = book
         .bid()
         .live()
@@ -1387,7 +1414,7 @@ fn range_deletes_are_positive_in_range_and_scope_local() {
             ..BookRef::default()
         },
     );
-    assert!(book.add_operations(inputs([invalid])).is_err());
+    assert!(book.add_operations([invalid]).is_err());
     assert_eq!(book, before);
 }
 
@@ -1398,38 +1425,35 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
         position: Some(1),
         ..BookRef::default()
     };
-    let mut book = Book::new(1, "IBM");
+    let mut book = BookEvent::new(1, "IBM");
     let first = anonymous(with_book(
         operation("quote", "IBM", "POSITION-1", 1, "Buy", "100", 1, "New"),
         positioned(),
     ));
-    book.add_operations(inputs([first])).unwrap();
+    book.add_operations([first]).unwrap();
 
     let collision = anonymous(with_book(
         operation("quote", "IBM", "POSITION-1", 2, "Buy", "101", 2, "New"),
         positioned(),
     ));
     let before = book.clone();
-    let error = book
-        .add_operations(inputs([collision]))
-        .unwrap_err()
-        .to_string();
+    let error = book.add_operations([collision]).unwrap_err().to_string();
     assert!(error.contains("existing position"), "{error}");
     assert_eq!(book, before);
 
-    let mut book = Book::new(1, "IBM");
+    let mut book = BookEvent::new(1, "IBM");
     let explicit = with_book(
         operation("quote", "IBM", "EXPLICIT", 1, "Buy", "100", 1, "New"),
         positioned(),
     );
-    book.add_operations(inputs([explicit])).unwrap();
+    book.add_operations([explicit]).unwrap();
     let anonymous_entry = anonymous(with_book(
         operation("quote", "IBM", "ANONYMOUS", 2, "Buy", "101", 1, "New"),
         positioned(),
     ));
     let before = book.clone();
     let error = book
-        .add_operations(inputs([anonymous_entry]))
+        .add_operations([anonymous_entry])
         .unwrap_err()
         .to_string();
     assert!(error.contains("existing position"), "{error}");
@@ -1438,25 +1462,23 @@ fn an_anonymous_new_entry_refuses_to_replace_an_occupied_position() {
 
 #[test]
 fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression() {
-    let mut execution = OperationEventData::at(1);
+    let mut execution = ExecutionEvent::at(1);
     execution.set_crosscode("E-1".to_owned());
     execution.set_ticker(Some(SmolStr::new("IBM")));
     execution.set_state(State::read("Filled").unwrap());
     execution.finalize();
-    let mut book = Book::new(1, "IBM");
+    let mut book = BookEvent::new(1, "IBM");
     book.add_operations([
-        operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New").into(),
-        MarketOperation::execution(execution).into(),
+        operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New"),
+        MarketData::from(execution),
     ])
     .unwrap();
     assert_eq!(book.executions().len(), 1);
     book.set_snapunix(Some(1));
     book.finalize();
 
-    book.add_operations(inputs([operation(
-        "quote", "IBM", "A-1", 2, "Sell", "102", 2, "New",
-    )]))
-    .unwrap();
+    book.add_operations([operation("quote", "IBM", "A-1", 2, "Sell", "102", 2, "New")])
+        .unwrap();
     assert_eq!(book.get_snapunix(), None);
     assert!(book.executions().is_empty());
     assert!(book.bid().deltas().is_empty());
@@ -1465,7 +1487,7 @@ fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression()
     canonical_bid.finalize();
     assert_eq!(book.bid(), &canonical_bid);
 
-    book.add_operations(inputs([operation(
+    book.add_operations([operation(
         "execution",
         "IBM",
         "E-2",
@@ -1474,7 +1496,7 @@ fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression()
         "101",
         1,
         "Filled",
-    )]))
+    )])
     .unwrap();
     assert!(book.bid().deltas().is_empty());
     assert!(book.ask().deltas().is_empty());
@@ -1489,23 +1511,19 @@ fn advancing_time_clears_previous_deltas_and_executions_and_rejects_regression()
     assert_eq!(book.get_curruuid(), canonical_book.get_curruuid());
     assert_eq!(book.get_currhashcode(), canonical_book.get_currhashcode());
     assert!(
-        book.add_operations(inputs([operation(
-            "quote", "IBM", "OLD", 1, "Buy", "99", 1, "New"
-        )]))
-        .is_err()
+        book.add_operations([operation("quote", "IBM", "OLD", 1, "Buy", "99", 1, "New")])
+            .is_err()
     );
 }
 
 #[test]
 fn moving_one_identity_between_sides_retires_the_old_side() {
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([operation(
-        "order", "IBM", "O-1", 1, "Buy", "100", 1, "New",
-    )]))
-    .unwrap();
-    book.add_operations(inputs([operation(
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([operation("order", "IBM", "O-1", 1, "Buy", "100", 1, "New")])
+        .unwrap();
+    book.add_operations([operation(
         "order", "IBM", "O-1", 2, "Sell", "101", 1, "Replaced",
-    )]))
+    )])
     .unwrap();
     assert!(book.bid().is_empty());
     assert_eq!(book.ask().len(), 1);
@@ -1522,23 +1540,21 @@ fn side_identity_includes_deeper_levels_and_book_merge_is_idempotent() {
         .unwrap();
     assert_ne!(shallow.get_curruuid(), deep.get_curruuid());
 
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([operation(
-        "quote", "IBM", "B-1", 1, "Buy", "100", 1, "New",
-    )]))
-    .unwrap();
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([operation("quote", "IBM", "B-1", 1, "Buy", "100", 1, "New")])
+        .unwrap();
     assert!(book.clone().merge_with(&book).is_none());
 
     let final_live = operation("quote", "IBM", "B", 2, "Buy", "100", 1, "New");
-    let mut direct = Book::new(2, "IBM");
-    direct.add_operations(inputs([final_live.clone()])).unwrap();
-    let mut with_history = Book::new(2, "IBM");
+    let mut direct = BookEvent::new(2, "IBM");
+    direct.add_operations([final_live.clone()]).unwrap();
+    let mut with_history = BookEvent::new(2, "IBM");
     with_history
-        .add_operations(inputs([
+        .add_operations([
             operation("quote", "IBM", "TRANSIENT", 2, "Buy", "99", 1, "New"),
             operation("quote", "IBM", "TRANSIENT", 2, "Buy", "99", 0, "Canceled"),
             final_live,
-        ]))
+        ])
         .unwrap();
     assert_eq!(
         direct.bid().live().collect::<Vec<_>>(),
@@ -1576,11 +1592,11 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
     reference.set_recdunix(Some(20));
     reference.finalize();
 
-    let mut supplement = Book::new(2_000_000, "IBM");
+    let mut supplement = BookEvent::new(2_000_000, "IBM");
     supplement
-        .add_operations(inputs([operation(
+        .add_operations([operation(
             "quote", "IBM", "A-X", 2_000_000, "Sell", "103", 1, "New",
-        )]))
+        )])
         .unwrap();
     supplement.set_recdunix(Some(10));
     supplement.finalize();
@@ -1592,9 +1608,9 @@ fn merging_treats_a_grid_snapshot_as_authoritative() {
 
 #[test]
 fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
-    let mut older = Book::new(2, "IBM");
+    let mut older = BookEvent::new(2, "IBM");
     older
-        .add_operations(inputs([
+        .add_operations([
             with_book(
                 operation("quote", "IBM", "B-1", 2, "Buy", "100", 1, "New"),
                 scoped("PRIMARY"),
@@ -1603,17 +1619,15 @@ fn an_empty_snapshot_reference_does_not_refill_replaced_scope_on_merge() {
                 operation("quote", "IBM", "B-X", 2, "Buy", "99", 2, "New"),
                 scoped("OTHER"),
             ),
-        ]))
+        ])
         .unwrap();
     older.set_recdunix(Some(10));
     older.finalize();
 
     let reset = reset_event(2, "RESET");
-    let control = BookControl::snapshot(reset, Some(SmolStr::new("PRIMARY")));
-    let mut latest = Book::new(2, "IBM");
-    latest
-        .add_operations([BookInput::Snapshot(control)])
-        .unwrap();
+    let control = SnapshotEvent::snapshot(&reset, Some(SmolStr::new("PRIMARY")));
+    let mut latest = BookEvent::new(2, "IBM");
+    latest.add_operations([MarketData::from(control)]).unwrap();
     latest.set_recdunix(Some(20));
     latest.finalize();
 
@@ -1642,9 +1656,8 @@ fn decimal_means_do_not_overflow_representable_results() {
     ask_operation.set_price(Some(ask));
     ask_operation.set_quantity(Some(Decimal18::MAX));
     ask_operation.finalize();
-    let mut book = Book::new(1, "IBM");
-    book.add_operations(inputs([bid_operation, ask_operation]))
-        .unwrap();
+    let mut book = BookEvent::new(1, "IBM");
+    book.add_operations([bid_operation, ask_operation]).unwrap();
     assert_eq!(
         book.bbo_midpoint(),
         Decimal18::from_units(Decimal18::MAX.units() - 1)
@@ -1658,7 +1671,7 @@ fn a_failed_iterator_group_emits_only_the_error() {
     invalid.set_side(Side::Unknown);
     // The bid lane its buy filled would name that side again: an operation
     // with no side is one quoting no single lane either.
-    invalid.set_bid(None);
+    op_mut(&mut invalid).set_bid(None);
     invalid.finalize();
     let results = BookIterator::new(
         [
@@ -1680,7 +1693,7 @@ fn a_failed_iterator_group_emits_only_the_error() {
 }
 
 /// One book from the synthetic operations, however they arrive: each as a
-/// `BookInput::MarketOperation` in a group of its own, or all in one
+/// operation in a group of its own, or all in one
 /// `add_operations` group, the depth, the deltas and the executions state
 /// the same prices, quantities and names - never compared by identity, which
 /// the grouping is allowed to move.
@@ -1707,14 +1720,12 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
         ]
     };
 
-    let mut one_by_one = Book::new(5, "IBM");
+    let mut one_by_one = BookEvent::new(5, "IBM");
     for operation in operations() {
-        one_by_one
-            .add_operations([BookInput::MarketOperation(operation)])
-            .unwrap();
+        one_by_one.add_operations([operation]).unwrap();
     }
-    let mut grouped = Book::new(5, "IBM");
-    grouped.add_operations(inputs(operations())).unwrap();
+    let mut grouped = BookEvent::new(5, "IBM");
+    grouped.add_operations(operations()).unwrap();
 
     assert_eq!(one_by_one.bid().len(), 1);
     assert_eq!(one_by_one.ask().len(), 2);
@@ -1733,8 +1744,8 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
             facts(grouped.ask().deltas().iter()),
         ),
         (
-            facts(one_by_one.executions().iter()),
-            facts(grouped.executions().iter()),
+            one_by_one.executions().iter().map(fact).collect::<Vec<_>>(),
+            grouped.executions().iter().map(fact).collect::<Vec<_>>(),
         ),
     ] {
         assert_eq!(arrived, in_group);
@@ -1742,4 +1753,19 @@ fn one_by_one_and_grouped_operations_build_the_same_depth_deltas_and_executions(
     assert_eq!(one_by_one.bid().best_price(), grouped.bid().best_price());
     assert_eq!(one_by_one.ask().best_price(), grouped.ask().best_price());
     assert_eq!(one_by_one.bbo_midpoint(), grouped.bbo_midpoint());
+}
+
+#[test]
+fn book_side_is_after_is_always_false() {
+    // A side has no instant and no predecessor: it states no order, so it
+    // is never after - or before - another statement of itself, whichever
+    // one leads.
+    let mut bid = BookSide::new(Side::Buy).expect("a bid side");
+    bid.finalize();
+    let mut ask = BookSide::new(Side::Sell).expect("an ask side");
+    ask.finalize();
+    assert!(!bid.is_after(&bid));
+    assert!(!bid.is_before(&bid));
+    assert!(!bid.is_after(&ask));
+    assert!(!ask.is_after(&bid));
 }

@@ -328,8 +328,8 @@ def _altids_map() -> object:
     return PARSED.altids
 
 
-def _event_facts() -> object:
-    return PARSED.event()
+def _market_operations() -> object:
+    return PARSED.market_operations()
 
 
 def _header_facts() -> object:
@@ -488,7 +488,7 @@ def main() -> None:
         _measure("FixCodec.snapshot_ns", _codec_snapshot_ns, args.iterations)
         _measure("MsgType.identifier_values", _identifier_values, args.iterations)
         _measure("altids native map crossing", _altids_map, args.iterations)
-        _measure("message event holder", _event_facts, args.iterations)
+        _measure("message market operations", _market_operations, args.iterations)
         _measure("message header holder", _header_facts, args.iterations)
         _measure("message entries", _message_entries, args.iterations)
         streams = max(1, args.iterations // 50)

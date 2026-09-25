@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 import io
 import os
 from collections.abc import Iterator, Mapping
@@ -63,6 +64,7 @@ from yggdryl import (
     VersionField,
     avro,
     fix,
+    graph,
     gzip,
     iceberg,
     json,
@@ -85,6 +87,7 @@ from yggdryl._native import (
     IOCursor,
     IcebergNames,
     Listing,
+    MarketLeaf,
     ScalarEntryIterator,
     ScalarIterator,
     StringEnum,
@@ -1458,7 +1461,8 @@ fix_message_pairs: list[tuple[str, Scalar]] = list(fix_message)
 fix_message_len: int = len(fix_message)
 fix_message_hash: int = fix_message.stable_hash()
 fix_message_digest: bytes = fix_message.digest()
-fix_message_event: fix.OperationEventData = fix_message.event()
+fix_message_operations: list[graph.MarketData] = fix_message.market_operations()
+fix_message_event: fix.FixMsg = fix_message
 fix_message_header: fix.FixHeader = fix_message.header()
 fix_message_capture: fix.FixCapture = fix_message.capture()
 fix_message_text: str | None = fix_message.text
@@ -1498,8 +1502,8 @@ fix_message_tradable: bool | None = fix_message.tradable
 fix_message_accountids: dict[str, str] = fix_message.accountids
 fix_message_userids: dict[str, str] = fix_message.userids
 fix_message_altids: dict[str, str] = fix_message.altids
-fix_message_bid: dict[str, Scalar | str | None] | None = fix_message.bid
-fix_message_ask: dict[str, Scalar | str | None] | None = fix_message.ask
+fix_message_bid: graph.Lane | None = fix_message.bid
+fix_message_ask: graph.Lane | None = fix_message.ask
 fix_message_entries: list[FixEntryTuple] = fix_message.entries()
 fix_message_wire: bytes = fix_message.into_bytes(124)
 fix_message_wire_text: str = fix_message.into_text("|")
@@ -1567,8 +1571,8 @@ fix_event_metadata: dict[str, str] = fix_message_event.metadata
 fix_event_accountids: dict[str, str] = fix_message_event.accountids
 fix_event_userids: dict[str, str] = fix_message_event.userids
 fix_event_altids: dict[str, str] = fix_message_event.altids
-fix_event_bid: dict[str, Scalar | str | None] | None = fix_message_event.bid
-fix_event_ask: dict[str, Scalar | str | None] | None = fix_message_event.ask
+fix_event_bid: graph.Lane | None = fix_message_event.bid
+fix_event_ask: graph.Lane | None = fix_message_event.ask
 
 fix_reader: fix.FixCodec = fix.FixCodec(fix_registry_from_fields)
 fix_reader_pinned: fix.FixCodec = fix.FixCodec(
@@ -1795,7 +1799,7 @@ assert fix_item and fix_default is None or fix_default
 assert fix_replaced is None or fix_replaced
 assert len(fix_message_digest) == 16 and isinstance(fix_message_wire, bytes)
 assert isinstance(fix_message_wire_text, str)
-assert isinstance(fix_message_event, fix.OperationEventData)
+assert fix_message_operations and isinstance(fix_message_operations[0], graph.MarketData)
 assert isinstance(fix_message_header, fix.FixHeader)
 assert isinstance(fix_message_capture, fix.FixCapture)
 assert fix_message_text is None or fix_message_text
@@ -1818,8 +1822,8 @@ assert fix_message_forwardpoints is None or isinstance(fix_message_forwardpoints
 assert fix_message_ticker is None or isinstance(fix_message_ticker, str)
 assert fix_message_tif is None or isinstance(fix_message_tif, str)
 assert fix_message_tradable is None or isinstance(fix_message_tradable, bool)
-assert fix_message_bid is None or isinstance(fix_message_bid, dict)
-assert fix_message_ask is None or isinstance(fix_message_ask, dict)
+assert fix_message_bid is None or isinstance(fix_message_bid, graph.Lane)
+assert fix_message_ask is None or isinstance(fix_message_ask, graph.Lane)
 assert isinstance(fix_message_curruuid, Scalar) and isinstance(fix_message_crossuuid, Scalar)
 assert isinstance(fix_message_currhashcode, int) and isinstance(fix_message_crosshashcode, int)
 assert isinstance(fix_message_currunix, int) and isinstance(fix_message_seqnum, int)
@@ -1866,8 +1870,8 @@ assert fix_event_cficode is None or fix_event_cficode
 assert fix_event_miccode is None or fix_event_miccode
 assert fix_event_spotrate is None or isinstance(fix_event_spotrate, Scalar)
 assert fix_event_forwardpoints is None or isinstance(fix_event_forwardpoints, Scalar)
-assert fix_event_bid is None or isinstance(fix_event_bid, dict)
-assert fix_event_ask is None or isinstance(fix_event_ask, dict)
+assert fix_event_bid is None or isinstance(fix_event_bid, graph.Lane)
+assert fix_event_ask is None or isinstance(fix_event_ask, graph.Lane)
 assert isinstance(fix_event_securityids, dict) and isinstance(fix_event_metadata, dict)
 assert isinstance(fix_event_accountids, dict) and isinstance(fix_event_userids, dict)
 assert isinstance(fix_event_altids, dict)
@@ -1902,6 +1906,265 @@ assert role_cached is not None
 assert coding_roles and encoding_roles and storage_roles
 assert role_fs_path is not None and role_fs_file is not None
 assert role_fs_folder is not None and role_created is not None
+
+# The graph vocabulary: the typed market leaves and `MarketData` over them,
+# reached as an attribute of the root package as well as by import.
+graph_root_order: yggdryl.graph.Order = yggdryl.graph.Order(crosscode="G-0")
+graph_order_event: graph.OrderEvent = graph.OrderEvent(
+    1_700_000_000_000_000_000,
+    crosscode="G-1",
+    side="BUY",
+    price=decimal.Decimal("10.5"),
+    quantity=100,
+    currency="USD",
+    ticker="IBM",
+    bid=graph.Lane(price=decimal.Decimal("10.5"), quantity=100),
+)
+graph_order_event_skipped: graph.OrderEvent = graph.OrderEvent(
+    graph_order_event.currunix, book=..., crosscode="G-1", side=...
+)
+graph_order_event_curruuid: Scalar = graph_order_event.curruuid
+graph_order_event_crossuuid: Scalar = graph_order_event.crossuuid
+graph_order_event_crosscode: str = graph_order_event.crosscode
+graph_order_event_currhashcode: int = graph_order_event.currhashcode
+graph_order_event_crosshashcode: int = graph_order_event.crosshashcode
+graph_order_event_srcuuids: list[Scalar] = graph_order_event.srcuuids
+graph_order_event_currunix: int = graph_order_event.currunix
+graph_order_event_state: Scalar = graph_order_event.state
+graph_order_event_seqnum: int = graph_order_event.seqnum
+graph_order_event_creaunix: int | None = graph_order_event.creaunix
+graph_order_event_execunix: int | None = graph_order_event.execunix
+graph_order_event_recdunix: int | None = graph_order_event.recdunix
+graph_order_event_exprtime: int | None = graph_order_event.exprtime
+graph_order_event_prevunix: int | None = graph_order_event.prevunix
+graph_order_event_prevuuid: Scalar | None = graph_order_event.prevuuid
+graph_order_event_snapunix: int | None = graph_order_event.snapunix
+graph_order_event_is_execution: bool = graph_order_event.is_execution
+graph_order_event_price: Scalar | None = graph_order_event.price
+graph_order_event_currency: Scalar = graph_order_event.currency
+graph_order_event_quantity: Scalar | None = graph_order_event.quantity
+graph_order_event_unit: str = graph_order_event.unit
+graph_order_event_side: Scalar = graph_order_event.side
+graph_order_event_securityids: dict[str, str] = graph_order_event.securityids
+graph_order_event_cficode: Scalar | None = graph_order_event.cficode
+graph_order_event_miccode: Scalar | None = graph_order_event.miccode
+graph_order_event_lastpx: Scalar | None = graph_order_event.lastpx
+graph_order_event_lastqty: Scalar | None = graph_order_event.lastqty
+graph_order_event_avgpx: Scalar | None = graph_order_event.avgpx
+graph_order_event_cumqty: Scalar | None = graph_order_event.cumqty
+graph_order_event_leavesqty: Scalar | None = graph_order_event.leavesqty
+graph_order_event_prevpx: Scalar | None = graph_order_event.prevpx
+graph_order_event_prevqty: Scalar | None = graph_order_event.prevqty
+graph_order_event_spotrate: Scalar | None = graph_order_event.spotrate
+graph_order_event_forwardpoints: Scalar | None = graph_order_event.forwardpoints
+graph_order_event_ticker: str | None = graph_order_event.ticker
+graph_order_event_metadata: dict[str, str] = graph_order_event.metadata
+graph_order_event_marketoperationid: int | None = graph_order_event.marketoperationid
+graph_order_event_tif: str | None = graph_order_event.tif
+graph_order_event_tradable: bool | None = graph_order_event.tradable
+graph_order_event_accountids: dict[str, str] = graph_order_event.accountids
+graph_order_event_userids: dict[str, str] = graph_order_event.userids
+graph_order_event_altids: dict[str, str] = graph_order_event.altids
+graph_order_event_bid: graph.Lane | None = graph_order_event.bid
+graph_order_event_ask: graph.Lane | None = graph_order_event.ask
+graph_order_event_kind: Literal["order"] = graph_order_event.kind
+graph_order_event_book: graph.BookRef | None = graph_order_event.book
+graph_order_event_action: str | None = graph_order_event.action
+graph_order_event_scope: str = graph_order_event.scope
+graph_order_event_is_full_snapshot: bool = graph_order_event.is_full_snapshot
+graph_order_event_with_previous: graph.OrderEvent | None = graph_order_event.with_previous(
+    graph_order_event
+)
+graph_order_event_merged: graph.OrderEvent | None = graph_order_event.merge_with(graph_order_event)
+graph_order_event_restated: graph.OrderEvent = graph_order_event.restating(graph_order_event)
+graph_order_event_after: bool = graph_order_event.is_after(graph_order_event)
+graph_order_event_before: bool = graph_order_event.is_before(graph_order_event)
+graph_order_event_pickle: tuple[object, tuple[bytes]] = graph_order_event.__reduce__()
+graph_order: graph.Order = graph_order_event.into_element()
+graph_order_built: graph.Order = graph.Order(crosscode="G-1", price=1)
+graph_order_kind: Literal["order"] = graph_order.kind
+graph_order_at: graph.OrderEvent = graph_order.at(graph_order_event.currunix)
+graph_order_with_previous: graph.Order | None = graph_order.with_previous(graph_order)
+graph_quote: graph.Quote = graph.Quote(crosscode="Q-1")
+graph_quote_event: graph.QuoteEvent = graph.QuoteEvent(
+    graph_order_event.currunix, crosscode="Q-1", side="SELL", price=11, quantity=50, ticker="IBM"
+)
+graph_quote_event_element: graph.Quote = graph_quote_event.into_element()
+graph_execution: graph.Execution = graph.Execution()
+graph_execution_event: graph.ExecutionEvent = graph_execution.at(graph_order_event.currunix)
+graph_execution_kind: Literal["execution"] = graph_execution_event.kind
+
+graph_lane: graph.Lane = graph.Lane(
+    price=decimal.Decimal("10.5"), currency="USD", quantity=100, spotrate=...
+)
+graph_lane_price: Scalar | None = graph_lane.price
+graph_lane_spotrate: Scalar | None = graph_lane.spotrate
+graph_lane_forwardpoints: Scalar | None = graph_lane.forwardpoints
+graph_lane_currency: Scalar | None = graph_lane.currency
+graph_lane_quantity: Scalar | None = graph_lane.quantity
+graph_lane_unit: str | None = graph_lane.unit
+graph_lane_stated: bool = graph_lane.is_stated()
+
+graph_book_ref: graph.BookRef = graph.BookRef(action="0", scope="GLOBAL", position=1)
+graph_book_ref_skipped: graph.BookRef = graph.BookRef(action=...)
+graph_book_ref_action: str | None = graph_book_ref.action
+graph_book_ref_scope: str | None = graph_book_ref.scope
+graph_book_ref_position: int | None = graph_book_ref.position
+graph_book_ref_entry_px: Scalar | None = graph_book_ref.entry_px
+graph_book_ref_entry_size: Scalar | None = graph_book_ref.entry_size
+graph_book_ref_stated: bool = graph_book_ref.is_stated()
+graph_book_ref_range_delete: bool = graph_book_ref.is_range_delete()
+graph_book_ref_partial: bool = graph_book_ref.is_partial()
+graph_quote_event_booked: graph.QuoteEvent = graph_quote_event.with_book(graph_book_ref)
+
+graph_fill: graph.ExecutionEvent = graph.ExecutionEvent(
+    graph_order_event.currunix, crosscode="F-1", side="BUY", lastpx=10, lastqty=5
+)
+graph_trade: graph.TradeEvent = graph.TradeEvent.from_parts(graph_execution_event, [graph_fill])
+graph_trade_executions: list[graph.ExecutionEvent] = graph_trade.executions
+graph_trade_lastpx: Scalar | None = graph_trade.lastpx
+graph_trade_restated: graph.TradeEvent = graph_trade.restating(graph_trade)
+
+graph_partition: graph.SnapshotPartition = graph.SnapshotPartition("GLOBAL", "IBM")
+graph_partition_scope: str = graph_partition.scope
+graph_partition_symbol: str | None = graph_partition.symbol
+
+graph_side: graph.BookSide = graph.BookSide("BUY")
+graph_side_with_operation: graph.BookSide = graph_side.with_operation(graph_order_event)
+graph_side_live: list[graph.MarketData] = graph_side_with_operation.live
+graph_side_deltas: list[graph.MarketData] = graph_side_with_operation.deltas
+graph_side_len: int = len(graph_side)
+graph_side_is_empty: bool = graph_side.is_empty
+graph_side_best_price: Scalar | None = graph_side_with_operation.best_price
+graph_side_best_quantity: Scalar | None = graph_side_with_operation.best_quantity
+graph_side_side: Scalar = graph_side.side
+graph_side_with_previous: graph.BookSide | None = graph_side.with_previous(graph_side)
+
+graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
+graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
+    [graph_order_event, graph.MarketData(graph_quote_event)]
+)
+graph_book_bid: graph.BookSide = graph_book_with_operations.bid
+graph_book_ask: graph.BookSide = graph_book_with_operations.ask
+graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
+graph_book_snapshot_partitions: list[graph.SnapshotPartition] = graph_book.snapshot_partitions
+graph_book_crossed: bool = graph_book_with_operations.is_crossed
+graph_book_midpoint: Scalar | None = graph_book_with_operations.bbo_midpoint
+graph_book_median_quantity: Scalar | None = graph_book_with_operations.median_quantity
+graph_book_restated: graph.BookEvent = graph_book.restating(graph_book)
+
+graph_control: graph.SnapshotEvent = graph.SnapshotEvent.snapshot(graph_order_event, "GLOBAL")
+graph_control_book: graph.BookRef = graph_control.book
+
+graph_data: graph.MarketData = graph.MarketData(graph_order_event)
+graph_data_kind: str = graph_data.kind
+graph_data_kinds: tuple[str, ...] = graph.MarketData.kinds
+graph_data_is_event: bool = graph_data.is_event
+graph_data_book: graph.BookRef | None = graph_data.book
+graph_data_order_event: graph.OrderEvent | None = graph_data.as_order_event()
+graph_data_book_event: graph.BookEvent | None = graph_data.as_book_event()
+graph_data_leaf: MarketLeaf = graph_data.into_leaf()
+graph_data_curruuid: Scalar = graph_data.curruuid
+graph_data_price: Scalar | None = graph_data.price
+graph_data_with_previous: graph.MarketData | None = graph_data.with_previous(graph_data)
+graph_data_field: Field = graph.MarketData.field()
+graph_data_arrow_reader: pa.RecordBatchReader = graph.MarketData.arrow_reader(
+    [graph_order, graph_data, graph_book_with_operations], batch_row_size=2
+)
+graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reader(
+    graph_data_arrow_reader
+)
+graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
+
+graph_book_iterator: graph.BookIterator = graph.BookIterator(
+    [graph_order_event, graph_data], snapshot_millis=0, global_=False
+)
+graph_book_iterator_global: bool = graph_book_iterator.global_
+graph_book_iterator_books: list[graph.BookEvent] = list(graph_book_iterator)
+
+graph_event_iterator: graph.EventIterator = graph.EventIterator(
+    [graph_order_event, graph_side], sorted=True, snapshot_ns=None
+)
+graph_event_iterator_snapshot_ns: int | None = graph_event_iterator.snapshot_ns
+graph_event_iterator_items: list[graph.MarketData] = list(graph_event_iterator)
+graph_event_iterator_alive: list[graph.MarketData] = graph_event_iterator.alive()
+
+graph_global_symbol: str = graph.GLOBAL_SYMBOL
+graph_entry_id: str = graph.ENTRY_ID
+graph_entry_ref_id: str = graph.ENTRY_REF_ID
+graph_followed_altids: tuple[str, ...] = graph.FOLLOWED_ALTIDS
+
+assert graph_order_event_skipped == graph.OrderEvent(graph_order_event.currunix, crosscode="G-1")
+assert graph_order_event_curruuid and graph_order_event_crossuuid and graph_order_event_state
+assert graph_order_event_currhashcode and graph_order_event_crosshashcode
+assert graph_order_event_srcuuids == [] and graph_order_event_seqnum == 0
+assert graph_order_event_creaunix is None and graph_order_event_prevuuid is None
+assert graph_order_event_execunix is None and graph_order_event_recdunix is None
+assert graph_order_event_exprtime is None and graph_order_event_prevunix is None
+assert graph_order_event_snapunix is None and not graph_order_event_is_execution
+assert graph_order_event_price is not None and graph_order_event_quantity is not None
+assert graph_order_event_currency and graph_order_event_side and graph_order_event_unit == ""
+assert graph_order_event_securityids == {} and graph_order_event_ticker == "IBM"
+assert graph_order_event_cficode is None and graph_order_event_miccode is None
+assert graph_order_event_lastpx is None and graph_order_event_lastqty is None
+assert graph_order_event_avgpx is None and graph_order_event_cumqty is None
+assert graph_order_event_leavesqty is None and graph_order_event_prevpx is None
+assert graph_order_event_prevqty is None and graph_order_event_spotrate is None
+assert graph_order_event_forwardpoints is None and graph_order_event_metadata == {}
+assert graph_order_event_marketoperationid is None and graph_order_event_tif is None
+assert graph_order_event_tradable is None and graph_order_event_accountids == {}
+assert graph_order_event_userids == {} and graph_order_event_altids == {}
+assert graph_order_event_bid is not None and graph_order_event_ask is None
+assert graph_order_event_book is None and graph_order_event_action is None
+assert graph_order_event_scope == "" and not graph_order_event_is_full_snapshot
+assert graph_order_event_with_previous is None and graph_order_event_merged is None
+assert graph_order_event_restated == graph_order_event
+assert not graph_order_event_after and not graph_order_event_before
+assert graph_order_event_pickle[0] == graph.OrderEvent._from_pickle
+assert graph_order.at(graph_order_event.currunix) == graph_order_at
+assert graph_order_built.crosscode == "G-1" and graph_order_with_previous is None
+assert graph_quote.kind == "quote" and graph_quote_event_element.kind == "quote"
+assert graph_execution.kind == "execution"
+assert graph_lane_price is not None and graph_lane_currency is not None
+assert graph_lane_quantity is not None and graph_lane_stated
+assert graph_lane_spotrate is None and graph_lane_forwardpoints is None and graph_lane_unit is None
+assert graph_book_ref_skipped.action is None
+assert graph_book_ref_action == "0" and graph_book_ref_scope == "GLOBAL"
+assert graph_book_ref_position == 1 and graph_book_ref_entry_px is None
+assert graph_book_ref_entry_size is None and graph_book_ref_stated
+assert not graph_book_ref_range_delete and not graph_book_ref_partial
+assert graph_quote_event_booked.book == graph_book_ref
+assert graph_trade_executions == [graph_fill]
+assert graph_trade_restated == graph_trade
+assert graph_partition_scope == "GLOBAL" and graph_partition_symbol == "IBM"
+assert graph_side_live == [graph.MarketData(graph_order_event)] and len(graph_side_deltas) == 1
+assert graph_side_len == 0 and graph_side_is_empty
+assert graph_side_best_price is not None and graph_side_best_quantity is not None
+assert graph_side_side.as_py() == "BUY" and graph_side_with_previous is None
+assert graph_book_bid.live == [graph.MarketData(graph_order_event)]
+assert isinstance(graph_book_ask, graph.BookSide) and graph_book_executions == []
+assert graph_book_snapshot_partitions == [] and not graph_book_crossed
+assert graph_book_midpoint is not None and graph_book_median_quantity is not None
+assert graph_book_restated == graph_book
+assert graph_control_book.action == "snapshot" and graph_control_book.scope == "GLOBAL"
+assert graph_data_kind == "order_event" and graph_data_kinds[4] == "order_event"
+assert graph_data_is_event and graph_data_book is None
+assert graph_data_order_event == graph_order_event and graph_data_book_event is None
+assert graph_data_leaf == graph_order_event and graph_data_curruuid == graph_order_event_curruuid
+assert graph_data_price == graph_order_event_price and graph_data_with_previous is None
+assert graph_data_field.name == "marketdata"
+assert graph_data_rows_list == [
+    graph.MarketData(graph_order),
+    graph_data,
+    graph.MarketData(graph_book_with_operations),
+]
+assert graph_book_iterator_global is False
+assert len(graph_book_iterator_books) == 1
+assert graph_event_iterator_snapshot_ns is None
+assert [item.kind for item in graph_event_iterator_items] == ["order_event", "book_side"]
+assert graph_event_iterator_alive == [graph_data]
+assert graph_global_symbol == "GLOBAL" and graph_entry_id and graph_entry_ref_id
+assert graph_followed_altids
 
 # The typed door for a value. A typed field alias already names the width,
 # unit, scale and zone, so `.scalar(value)` is how a caller reaches an exact
