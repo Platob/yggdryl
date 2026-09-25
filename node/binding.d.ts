@@ -867,6 +867,14 @@ declare module './index' {
   interface SerieReader extends Iterable<Serie> {
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
+    /**
+     * Every record this reader yields cast into `field` by one plan: a
+     * record root, or a column - a DataType as its required `value` field -
+     * as the one child of a record named `row`. This reader's own root
+     * answers it as it stands; held records are cast here, once each, and a
+     * stream's batches as they are pulled. The reader is consumed.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
   }
 
   namespace ChunkedSerie {

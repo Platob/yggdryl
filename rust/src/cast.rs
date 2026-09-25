@@ -502,7 +502,7 @@ mod plan {
     use crate::arrow::{Error, Result, arrow_schema_from_field};
     use crate::budget::MaterializationBudget;
     use crate::media::DEFAULT_ROOT_NAME;
-    use crate::serie::{Proof, land};
+    use crate::serie::{Proof, Resolved, land_planned};
     use crate::{ChunkedSerie, Field, Serie};
 
     use super::{ArrayCastPlan, ArrowCastOptions, Deferred, PlanRules, downcast};
@@ -548,6 +548,9 @@ mod plan {
         source: FieldRef,
         source_schema: Option<SchemaRef>,
         target: Arc<Field>,
+        /// The boxes every level of `target` lands under, resolved once
+        /// with the plan rather than once per batch.
+        resolved: Resolved,
         schema: Option<SchemaRef>,
         options: ArrowCastOptions,
         root: ArrayCastPlan,
@@ -619,15 +622,18 @@ mod plan {
             let identity = !options.nullability().is_strict()
                 && projection.data_type() == source.data_type()
                 && same_extension(projection, source);
+            let target = Arc::new(target.clone());
+            let schema = if record {
+                Some(arrow_schema_from_field(&target)?)
+            } else {
+                None
+            };
             Ok(Self {
                 source: Arc::clone(source),
                 source_schema: None,
-                target: Arc::new(target.clone()),
-                schema: if record {
-                    Some(arrow_schema_from_field(target)?)
-                } else {
-                    None
-                },
+                resolved: Resolved::of(Arc::clone(&target)),
+                target,
+                schema,
                 options,
                 foreign: plan.proof(false),
                 serie: plan.proof(true),
@@ -645,7 +651,6 @@ mod plan {
             options: ArrowCastOptions,
             deferred: Deferred,
         ) -> Result<Self> {
-            target.validate_bounded()?;
             if target.is_nullable() {
                 return Err(Error::IncompatibleSchema(
                     "record-batch cast target Struct Field must be non-nullable".to_owned(),
@@ -677,6 +682,12 @@ mod plan {
         /// extension identity.
         pub const fn as_source(&self) -> &FieldRef {
             &self.source
+        }
+
+        /// The batch schema this plan was compiled from, where it was
+        /// compiled from one.
+        pub(crate) const fn source_schema(&self) -> Option<&SchemaRef> {
+            self.source_schema.as_ref()
         }
 
         /// The field every cast lands under.
@@ -736,7 +747,7 @@ mod plan {
             let array = serie.require_arrow_array()?;
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, &mut budget)?;
-            land(Arc::clone(&self.target), cast, &self.serie)
+            land_planned(&self.resolved, cast, &self.serie)
         }
 
         /// Casts every chunk of a chunked column whose field lays out as
@@ -793,13 +804,14 @@ mod plan {
         pub(crate) fn cast_array(&self, array: ArrayRef) -> Result<Serie> {
             let mut budget = MaterializationBudget::default();
             let cast = self.root.cast(array, &mut budget)?;
-            land(Arc::clone(&self.target), cast, &self.foreign)
+            land_planned(&self.resolved, cast, &self.foreign)
         }
 
         /// Casts one foreign batch of the source layout and lands it as the
-        /// target record column.
-        pub(crate) fn cast_batch(&self, batch: &RecordBatch) -> Result<Serie> {
-            self.cast_array(super::struct_array_from_batch(batch.clone()))
+        /// target record column. The batch is taken, because a reader pulls
+        /// it owned and its columns are what the struct array holds.
+        pub(crate) fn cast_batch(&self, batch: RecordBatch) -> Result<Serie> {
+            self.cast_array(super::struct_array_from_batch(batch))
         }
 
         /// The schema a record plan's batches carry after the cast.
@@ -1748,9 +1760,12 @@ impl ArrayCastPlan {
             source_type: source_type.clone(),
             expected,
             options,
-            path: SmolStr::from(path.render()),
+            path: smol_str::format_smolstr!("{path}"),
             null_policy,
-            null_default: matches!(field.dtype().is_default_value(&Scalar::Null), Ok(true)),
+            // Read only under a required field, so a nullable one plans no
+            // default for the question nobody asks of it.
+            null_default: !field.is_nullable()
+                && matches!(field.dtype().is_default_value(&Scalar::Null), Ok(true)),
             kind,
             blanks_text,
         })

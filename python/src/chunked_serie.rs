@@ -15,20 +15,22 @@
 use pyo3::IntoPyObjectExt;
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyTypeError, PyValueError};
+use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBool, PyList, PySlice};
-use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath};
+use yggdryl::{ArrowCastOptions, ChunkedSerie, Field as CoreField, FieldPath, SerieReader};
 
 use crate::datatype::{
-    PyDataType, arrow_array_from_pyarrow, arrow_array_to_pyarrow_with_type, core_field_to_pyarrow,
+    ArrayIntake, PyDataType, arrow_array_to_pyarrow, core_field_to_pyarrow, pyarrow,
 };
 use crate::field::{PyField, core_field_from_value};
 use crate::iomedia::{
-    Frames, batch_reader_to_pyarrow, core_root_field_from_value, frame_from_reader, type_name,
+    Frames, core_root_field_from_value, frame_from_reader, rooted_reader_to_pyarrow, type_name,
 };
 use crate::scalar::{PyScalar, PyScalarIterator, as_py_with_field, from_py};
 use crate::serie::{
-    PySerie, columnar, described, field_of, serie_from_value, stream_of, target_of,
+    PySerie, columnar, described, field_of, reader_capsule, requested_field, serie_from_value,
+    stream_of, target_of,
 };
 use crate::{cast_options, compare, normalize_index, value_error};
 
@@ -68,16 +70,16 @@ pub(crate) fn chunked_from_arrays(
     field: Option<&CoreField>,
     options: ArrowCastOptions,
 ) -> PyResult<ChunkedSerie> {
-    let pyarrow = value.py().import("pyarrow")?;
-    let chunked = value.is_instance(&pyarrow.getattr("ChunkedArray")?)?;
+    let py = value.py();
+    let chunked = value.is_instance(pyarrow::chunked_array(py)?)?;
     let arrays = if chunked {
-        let chunks = value.getattr("chunks")?;
+        let chunks = value.getattr(intern!(py, "chunks"))?;
         chunks
             .try_iter()?
-            .map(|chunk| arrow_array_from_pyarrow(&chunk?))
+            .map(|chunk| ArrayIntake::from_value(&chunk?))
             .collect::<PyResult<Vec<_>>>()?
-    } else if value.hasattr("__arrow_c_array__")? {
-        vec![arrow_array_from_pyarrow(value)?]
+    } else if value.hasattr(intern!(py, "__arrow_c_array__"))? {
+        vec![ArrayIntake::from_value(value)?]
     } else {
         let items = value.try_iter().map_err(|_| {
             PyTypeError::new_err(format!(
@@ -87,16 +89,28 @@ pub(crate) fn chunked_from_arrays(
             ))
         })?;
         items
-            .map(|item| arrow_array_from_pyarrow(&item?))
+            .map(|item| ArrayIntake::from_value(&item?))
             .collect::<PyResult<Vec<_>>>()?
     };
     if chunked && arrays.is_empty() && field.is_none() {
-        let empty = arrow_array_from_pyarrow(&value.call_method0("combine_chunks")?)?;
-        let stated =
-            ChunkedSerie::from_arrow_arrays(None, [empty], options).map_err(value_error)?;
-        return ChunkedSerie::empty(stated.field().clone()).map_err(value_error);
+        let empty = ArrayIntake::from_value(&value.call_method0("combine_chunks")?)?;
+        return py
+            .detach(move || {
+                let stated = ChunkedSerie::from_arrow_arrays(None, [empty.validated()?], options)?;
+                Ok::<_, yggdryl::arrow::Error>(ChunkedSerie::empty(stated.field().clone())?)
+            })
+            .map_err(value_error);
     }
-    ChunkedSerie::from_arrow_arrays(field, arrays, options).map_err(value_error)
+    // Every chunk is proven and landed in one detached section: a detach per
+    // chunk would wait on the GIL once per chunk under contention.
+    py.detach(move || {
+        let arrays = arrays
+            .into_iter()
+            .map(ArrayIntake::validated)
+            .collect::<Result<Vec<_>, _>>()?;
+        ChunkedSerie::from_arrow_arrays(field, arrays, options)
+    })
+    .map_err(value_error)
 }
 
 /// Read any Python value as chunks under one field, cast into `field` when
@@ -115,7 +129,7 @@ fn chunked_from_py(
         let root = field
             .map(|field| core_root_field_from_value(field, columnar.name()))
             .transpose()?;
-        return columnar.into_chunked(root.as_ref(), options);
+        return columnar.into_chunked(value.py(), root.as_ref(), options);
     }
     ChunkedSerie::from_serie(serie_from_value(value, field, options)?).map_err(value_error)
 }
@@ -125,15 +139,15 @@ fn chunked_from_py(
 /// each landed with no field exactly as `ChunkedSerie.from_` lands it - or
 /// answer `None` for any other value.
 pub(crate) fn chunked_of(value: &Bound<'_, PyAny>) -> PyResult<Option<ChunkedSerie>> {
-    let pyarrow = value.py().import("pyarrow")?;
+    let py = value.py();
     let chunked = value.extract::<PyRef<'_, PyChunkedSerie>>().is_ok()
-        || value.is_instance(&pyarrow.getattr("ChunkedArray")?)?
-        || value.is_instance(&pyarrow.getattr("Table")?)?;
+        || value.is_instance(pyarrow::chunked_array(py)?)?
+        || value.is_instance(pyarrow::table(py)?)?;
     if !chunked {
         return Ok(None);
     }
     columnar(value)?
-        .map(|columnar| columnar.into_chunked(None, ArrowCastOptions::new()))
+        .map(|columnar| columnar.into_chunked(py, None, ArrowCastOptions::new()))
         .transpose()
 }
 
@@ -235,7 +249,10 @@ impl PyChunkedSerie {
     ) -> PyResult<Self> {
         let options = cast_options(safe, nullability, representation)?;
         let root = field_of(root)?;
-        ChunkedSerie::from_arrow_reader(root.as_ref(), stream_of(reader)?, options)
+        let stream = stream_of(reader)?;
+        reader
+            .py()
+            .detach(move || ChunkedSerie::from_arrow_reader(root.as_ref(), stream, options))
             .map(Self::from_inner)
             .map_err(value_error)
     }
@@ -399,16 +416,24 @@ impl PyChunkedSerie {
             .map_err(value_error)
     }
 
-    /// Every row as one column: the one join, handed out as its leaf class.
-    fn into_serie(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        described(py, self.inner.into_serie().map_err(value_error)?)
+    /// Every row as one column: the one join, off the GIL over a clone of
+    /// the chunks taken and released before it starts, handed out as its
+    /// leaf class.
+    fn into_serie(slf: &Bound<'_, Self>) -> PyResult<Py<PyAny>> {
+        let py = slf.py();
+        let chunked = slf.borrow().inner.clone();
+        let serie = py
+            .detach(move || chunked.into_serie())
+            .map_err(value_error)?;
+        described(py, serie)
     }
 
     /// Every chunk under `field`, one plan compiled and applied to each; a
-    /// `DataType` is the required column named `value` it declares.
+    /// `DataType` is the required column named `value` it declares. The
+    /// cast runs off the GIL, as `into_serie` does.
     #[pyo3(signature = (field, *, safe = true, nullability = "default", representation = "value"))]
     fn cast(
-        &self,
+        slf: &Bound<'_, Self>,
         field: &Bound<'_, PyAny>,
         safe: bool,
         nullability: &str,
@@ -416,23 +441,25 @@ impl PyChunkedSerie {
     ) -> PyResult<Self> {
         let options = cast_options(safe, nullability, representation)?;
         let target = target_of(field)?;
-        self.inner
-            .cast(&target, options)
+        let chunked = slf.borrow().inner.clone();
+        slf.py()
+            .detach(move || chunked.cast(&target, options))
             .map(Self::from_inner)
             .map_err(value_error)
     }
 
     /// Every chunk's buffers as one `pyarrow.ChunkedArray`, shared: one
-    /// array per chunk, typed by the field even with no chunk.
+    /// array per chunk, each crossing under the field's exact C schema, and
+    /// typed by the field even with no chunk.
     fn into_arrow_chunked_array<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        // The type is resolved once, and every chunk crosses under it.
-        let dtype = core_field_to_pyarrow(py, self.inner.field())?.getattr("type")?;
+        let field = self.inner.field();
         let chunks = self
             .inner
             .into_arrow_arrays()
             .iter()
-            .map(|array| arrow_array_to_pyarrow_with_type(py, array, &dtype))
+            .map(|array| arrow_array_to_pyarrow(py, array, Some(field)))
             .collect::<PyResult<Vec<_>>>()?;
+        let dtype = core_field_to_pyarrow(py, field)?.getattr(intern!(py, "type"))?;
         py.import("pyarrow")?.call_method(
             "chunked_array",
             (PyList::new(py, chunks)?,),
@@ -443,7 +470,40 @@ impl PyChunkedSerie {
     /// Every chunk as one batch of a `pyarrow.RecordBatchReader`: a record's
     /// chunks as their children, any other's each the one column of a `row`.
     fn into_arrow_reader<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        batch_reader_to_pyarrow(py, self.inner.into_arrow_reader().map_err(value_error)?)
+        let root = SerieReader::root_of(self.inner.field()).map_err(value_error)?;
+        let reader = self.inner.into_arrow_reader().map_err(value_error)?;
+        rooted_reader_to_pyarrow(py, &root, reader)
+    }
+
+    /// These chunks as the Arrow `PyCapsule` Interface's stream capsule, one
+    /// array per chunk, cast into `requested_schema` by the one cast when a
+    /// consumer asks.
+    ///
+    /// A record's chunks stream as the batches `SerieReader.from_chunked`
+    /// reads; any other field's chunks as the column `pyarrow.ChunkedArray`
+    /// streams, which is how a stream carries a column that is no record.
+    #[pyo3(signature = (requested_schema = None))]
+    fn __arrow_c_stream__<'py>(
+        slf: &Bound<'py, Self>,
+        requested_schema: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = slf.py();
+        let chunked = slf.borrow().inner.clone();
+        if chunked.field().dtype().as_fields().is_some() {
+            let reader = SerieReader::from_chunked(chunked).map_err(value_error)?;
+            return reader_capsule(py, reader, requested_schema);
+        }
+        let chunked = match requested_schema {
+            Some(requested) => {
+                let target = requested_field(requested, chunked.field().name())?;
+                py.detach(move || chunked.cast(&target, ArrowCastOptions::new()))
+                    .map_err(value_error)?
+            }
+            None => chunked,
+        };
+        Self::from_inner(chunked)
+            .into_arrow_chunked_array(py)?
+            .call_method0(intern!(py, "__arrow_c_stream__"))
     }
 
     /// Every chunk as one batch of a `pyarrow.Table`.

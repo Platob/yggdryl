@@ -357,6 +357,95 @@ mod arrow {
         assert!(!restored.has_metadata(IPC_DICTIONARY_IDS_KEY));
     }
 
+    #[test]
+    fn a_root_crosses_the_c_data_interface_with_its_exchange_metadata() {
+        // One C schema carries what the exchange schema states - the root's
+        // own metadata and the dictionary-ID sidecar - so the far side
+        // learns the identities without a schema built for it.
+        let mut catalog = Field::new(
+            "catalog",
+            DataType::dictionary(DataType::Int32, DataType::utf8()).unwrap(),
+            false,
+        );
+        catalog.set_dictionary_options(42, false).unwrap();
+        let root = Field::from_parts(
+            "row",
+            DataType::from(StructType::from_fields([catalog]).unwrap()),
+            false,
+            [("owner", "core")],
+        )
+        .unwrap();
+        let ffi = root.clone().into_arrow_exchange_ffi().unwrap();
+        let crossed = Schema::try_from(&ffi).unwrap();
+        assert_eq!(
+            crossed.metadata().get("owner").map(String::as_str),
+            Some("core")
+        );
+        assert_eq!(
+            crossed
+                .metadata()
+                .get(IPC_DICTIONARY_IDS_KEY)
+                .map(String::as_str),
+            Some("v1;0=42")
+        );
+        assert_eq!(crossed.field(0).name(), "catalog");
+        let restored = Field::from_arrow_schema("row", &crossed).unwrap();
+        assert_eq!(restored, root);
+
+        // A nullable root is not a table, and says so.
+        let nullable = Field::new("row", root.dtype().clone(), true);
+        assert!(nullable.into_arrow_exchange_ffi().is_err());
+    }
+
+    #[test]
+    fn projecting_a_root_projects_every_level_below_it_into_its_own_cache() {
+        // A child's projection is built once, into the child's own cache,
+        // when its parent is projected - and the children are one shared
+        // storage, so a clone of the root finds them projected too. Nothing
+        // below a projected root is ever projected again.
+        let root = Field::new(
+            "row",
+            DataType::from(
+                StructType::from_fields([
+                    Field::new("id", DataType::Int64, false),
+                    Field::new(
+                        "tags",
+                        DataType::serie(Field::new("item", DataType::utf8(), true)),
+                        true,
+                    ),
+                ])
+                .unwrap(),
+            ),
+            false,
+        );
+        let projection = root.as_arrow_field_ref().unwrap();
+        let arrow_schema::DataType::Struct(children) = projection.data_type() else {
+            panic!("a record projects to a struct");
+        };
+        let fields = root.fields();
+        assert!(Arc::ptr_eq(
+            &children[0],
+            fields[0].as_arrow_field_ref().unwrap()
+        ));
+        assert!(Arc::ptr_eq(
+            &children[1],
+            fields[1].as_arrow_field_ref().unwrap()
+        ));
+        let arrow_schema::DataType::List(item) = children[1].data_type() else {
+            panic!("a serie projects to a list");
+        };
+        let serie = fields[1].dtype().as_serie_type().unwrap();
+        assert!(Arc::ptr_eq(
+            item,
+            serie.item_ref().as_arrow_field_ref().unwrap()
+        ));
+        let cloned = root.clone();
+        assert!(Arc::ptr_eq(
+            &children[0],
+            cloned.fields()[0].as_arrow_field_ref().unwrap()
+        ));
+    }
+
     fn assert_dictionary_sidecar_error(schema: &Schema) {
         match Field::from_arrow_schema("row", schema).unwrap_err() {
             yggdryl::arrow::Error::Core(yggdryl::Error::InvalidMetadataValue { key, .. }) => {

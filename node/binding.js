@@ -1778,8 +1778,10 @@ const nativeSerieReader = Object.freeze({
   fromSerie: NativeSerieReader._fromSerieNative.bind(NativeSerieReader),
   fromChunked: NativeSerieReader._fromChunkedNative.bind(NativeSerieReader),
   next: NativeSerieReader.prototype._nextNative,
+  cast: NativeSerieReader.prototype._castNative,
 })
 delete NativeSerieReader.prototype._nextNative
+delete NativeSerieReader.prototype._castNative
 const SerieReader = publicNativeClass(
   NativeSerieReader,
   'SerieReader',
@@ -1805,12 +1807,24 @@ Object.defineProperty(SerieReader, 'fromSerie', {
     return nativeSerieReader.fromSerie(serie)
   },
 })
-Object.defineProperty(SerieReader.prototype, Symbol.iterator, {
-  configurable: true,
-  value: function* series() {
-    for (let serie; (serie = Reflect.apply(nativeSerieReader.next, this, [])) !== null; ) {
-      yield describedSerie(serie)
-    }
+Object.defineProperties(SerieReader.prototype, {
+  [Symbol.iterator]: {
+    configurable: true,
+    value: function* series() {
+      for (let serie; (serie = Reflect.apply(nativeSerieReader.next, this, [])) !== null; ) {
+        yield describedSerie(serie)
+      }
+    },
+  },
+  // Every record cast into another root by one plan; the reader is consumed.
+  cast: {
+    configurable: true,
+    value(field, options) {
+      return Reflect.apply(nativeSerieReader.cast, this, [
+        field instanceof NativeField || field instanceof NativeDataType ? field : Field.from(field),
+        ...castOptionArgs(options),
+      ])
+    },
   },
 })
 

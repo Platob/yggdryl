@@ -661,9 +661,14 @@ parallel scan; only the masks, offsets, and dictionary reachability a column act
 
 `Serie::cast` and the `Serie` Arrow doors compile one plan for their one input, so a loop that
 calls them compiles per iteration. A loop holds the plan instead - and `SerieReader` already
-does, so a stream never plans twice. `as_source` answers the Arrow field an input must lay out as,
-`as_target` the field every cast lands under, `as_options` the three answers, and `is_identity`
-whether the plan hands every input of its source layout straight back.
+does, so a stream never plans twice, and `SerieReader::cast` re-roots a stream under one more.
+A plan also resolves the target's tree once - every level's field and projection - and lands
+each column under that tree, so what a landing proves per batch is the buffers alone: the
+validity words, and each row of a leaf whose layout is not its datatype's whole contract. A
+`Serie` Arrow door handed a record root that is exactly the batch's schema lands the same way,
+resolving the tree for that one call. `as_source` answers the Arrow field an input must lay out
+as, `as_target` the field every cast lands under, `as_options` the three answers, and
+`is_identity` whether the plan hands every input of its source layout straight back.
 
 === "Rust"
 

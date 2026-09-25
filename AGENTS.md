@@ -1605,7 +1605,7 @@ python scripts/check_charset_interop.py             # every code page against Py
 ```
 
 ```bash
-cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
+cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix|fix_allocations>
 npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>
 python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
 YGGDRYL_S3TABLES_ARN=<table bucket ARN> python python/benchmarks/media/s3tables.py  # a real table bucket and pyiceberg; SKIPPED otherwise

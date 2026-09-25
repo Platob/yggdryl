@@ -630,12 +630,57 @@ A carried column returns to its place because the message carries it: a message 
 
 ## Performance
 
-The staged Rust integration profile above counts allocations over `ulbridge.log`
-for text framing, codec parsing, fixed-row materialization, typed row holders,
-and Arrow output. It reports first and second passes separately; requested bytes
-are cumulative allocation requests, not peak memory. Row and arrival-entry
-materialization write into their final shared storage without temporary
-vectors. Timing benchmarks remain separate from these allocation counts.
+Two measurements, kept apart: what a stage allocates, which is exact and pinned,
+and how long it takes, which is a release run on a named machine.
+
+### Allocations per stage
+
+`a_real_line_costs_the_same_at_every_stage_every_time` in `rust/tests/allocations.rs`
+pins what three real lines of `rust/tests/fix/ulbridge.log` cost at each stage of
+the pipeline on the committed dictionary, once and sixty-four times over, so a
+stage that grows with a cache or leaks a plan fails its linearity before its
+number: a bridge row of named keys (`bridge_pipe`, line 1), a frame spelled with
+`|` (`frame_pipe`, line 72) and the `35=UL` frame packing a group inside a group
+(`frame_packed`, line 111). Every stage runs over what the one before it made,
+set up outside the count - the clone a stage takes by value is the caller's -
+and the landing is on a root whose projection is warm, because a root is a fact
+of the schema and the first landing under it fills every level's cache. Debug
+build, `--all-targets`, one thread; the numbers are the pins, and they move only
+with the sentence in the pin that says why.
+
+| stage, per message | `bridge_pipe` | `frame_pipe` | `frame_packed` |
+| --- | ---: | ---: | ---: |
+| `parse`, the codec over the body | 718 | 254 | 1,471 |
+| `into_row`, a fresh clone against the fixed schema | 83 | 55 | 174 |
+| `landing`, the row as a one-row `Serie` under the warm root | 1,454 | 1,432 | 1,483 |
+| `batch`, the `Serie` built into a `RecordBatch` | 202 | 202 | 202 |
+| `digest`, the arrival record's hash | 24 | 24 | 16 |
+| `lifecycle`, the walk over one message | 38 | 7 | 7 |
+
+The `fix_allocations` target reports the same dimension over the whole capture,
+one copy on one thread, per message: `fix/allocations` counts requests and
+`fix/allocated_bytes` the bytes they asked for, each over the stages
+`fix/ulbridge` times - `text`, `parse`, `parse_lifecycle`, `into_row`,
+`from_row`, `into_bytes`, `batch`, `digest` and the `step/*` cases - through
+the counting allocator the test binaries share. A count is exact, so Criterion
+prints one number under its `time` label and `p = 0.00` where a count moved;
+`--quick` is the smoke, and the release configuration adds nothing a count needs.
+
+```bash
+cargo test -p yggdryl --test allocations a_real_line
+cargo bench -p yggdryl --bench fix_allocations -- --quick
+```
+
+`ulbridge_dataset_allocation_profile_is_sequential_and_staged` in
+`rust/tests/fix/ulbridge.rs` is the staged profile over the whole capture: it
+prints first and second passes for text framing, codec parsing, fixed-row
+materialization, typed row holders and Arrow output - requested bytes are
+cumulative requests, never peak memory - and asserts that a second pass of the
+codec, the row and the batch door retains nothing: what a stage keeps after its
+first pass is a cache filling, and what it keeps after the second would be a
+plan table growing per message.
+
+### Timings
 
 `fix/pipeline`, the whole path a desk takes over a bridge's own log: `rust/tests/fix/ulbridge.log`, a second of a ULBridge's capture beside every shape a bridge writes - a Jolokia exchange whose answer is a JSON document the codec does not read, FIXML behind a verb, frames spelled with `^A` and `<SOH>`, a `35=UL` frame packing a group inside a group, bridge rows of a hundred named keys, a statistics line, an empty body, the bridge's sixteen handed-over lines and the fifteen of a cancel/reject flow - repeated 64 times: 9,216 lines, 6,080 messages, 13.9 MB. Every stage runs over the same corpus on its own, so a figure is per line of a real capture rather than of one shape, and a row is one per message rather than one per line ([decode](decode.md)). The current smoke covers six pool cases: one, two and four workers for each of `parse_text_arrow_reader` and `parse_arrow_messages`; it claims no current speed or throughput. The historical release run used thin LTO, one codegen unit, one Linux x86_64 container, Intel Xeon @ 2.10 GHz, 4 cores, 15 GiB, no other build running, load average 1.1 when the run ended; rustc 1.94.1; the shipped dictionary alone; `cargo bench -p yggdryl --bench fix -j 2 -- 'fix/pipeline/(text_read|parse_text_arrow_reader|parse_lines|parse_text_lines_msgpluginid|into_row|arrow_reader|lifecycle|digest)$' --sample-size 10`, ten samples a case. That release run predates the message becoming a typed market event over a content row, which moved the fill into the parse and the chain onto the graph's one walk, so every figure below is historical and due regeneration.
 
@@ -646,16 +691,7 @@ vectors. Timing benchmarks remain separate from these allocation counts.
 | `parse_lines`, the codec alone over the framed bodies | 1.19 s | 11.7 MB/s | 129.0 us |
 | `parse_text_lines_msgpluginid`, the line reader with each row naming its plugin | 1.18 s | 11.8 MB/s | 128.4 us |
 
-The release estimates above are historical. A current debug counting-allocator
-profile over the ULBridge fixture measures requests and requested bytes, not
-CPU time or throughput:
-
-| Warm stage | Original baseline | Current |
-| --- | ---: | ---: |
-| `FieldRecord::into_arrow_batch` requests / bytes | 805,081 / 127,257,638 | 528,256 / 81,233,104 |
-| `FixMsg::into_row` requests / bytes | 10,470 / 3,732,676 | 8,239 / 2,462,660 |
-
-In that historical release run, the text stage was a small fraction of the whole and the codec about half; the rest was the row landing in Arrow.
+The release estimates above are historical. In that run, the text stage was a small fraction of the whole and the codec about half; the rest was the row landing in Arrow.
 
 What remains is attributed rather than argued, by the `text_scan` group of the text benchmark and the `fix/line` group of this one, which measure the scan and the codec shape by shape. On the codec path the builder is 60-90% of every shape; in front of it, a bridge row of a hundred pairs is read into a tree of counted ranges of its page, and each pair then crosses one more stage on its way to the builder. That is the cost of ranges: every key and value a message records is a range of the line it came from, so a data field re-slices to its stated length and a frame re-emits byte for byte without a copy, and it is paid on every pair whether or not a reader ever asks for the range. It goes only with a reader that builds the codec's pairs from the scanner's spans without the tree between them, which is a change to what an entry is and not to how fast it is read.
 

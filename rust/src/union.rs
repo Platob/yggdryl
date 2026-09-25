@@ -301,7 +301,7 @@ mod arrow {
             let mut fields = Vec::with_capacity(self.len());
             for (type_id, field) in self.iter() {
                 type_ids.push(type_id);
-                fields.push(field.clone().into_arrow_field_ref()?);
+                fields.push(Arc::clone(field.as_arrow_field_ref()?));
             }
             Ok(ArrowDataType::Union(
                 ArrowUnionFields::try_new(type_ids, fields)?,

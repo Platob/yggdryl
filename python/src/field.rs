@@ -3,19 +3,19 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use arrow_array::RecordBatch as ArrowRecordBatch;
 use arrow_pyarrow::FromPyArrow;
 use arrow_schema::{Field as ArrowField, Schema as ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
+use pyo3::types::{PyAny, PyBool, PyCapsule, PyDict, PyString};
 use yggdryl::expression::Function as CoreFunction;
 use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_scalar_to_pyarrow_type, core_arrow_scalar,
-    core_dtype_from_value, core_field_to_pyarrow,
+    core_dtype_from_value, core_field_to_pyarrow, import_ffi_schema, pyarrow,
+    record_batch_from_pyarrow, schema_capsule,
 };
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -34,6 +34,12 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
     if let Ok(value) = value.extract::<&str>() {
         return CoreField::from_str(value).map_err(value_error);
     }
+    // A native datatype or column exports a capsule for Arrow consumers; it
+    // is not a spelling of a field - a datatype names no field, a column's
+    // is `serie.field` - which neither ever was here.
+    if value.is_instance_of::<PyDataType>() || crate::serie::is_native_columnar(value) {
+        return Err(field_type_error());
+    }
 
     if value
         .py()
@@ -51,13 +57,16 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         .and_then(|field| CoreField::try_from(field).map_err(value_error));
     imported.map_err(|error| {
         if error.is_instance_of::<PyTypeError>(value.py()) {
-            PyTypeError::new_err(
-                "expected a yggdryl.Field, dataclass, field string, or PyArrow Field",
-            )
+            field_type_error()
         } else {
             error
         }
     })
+}
+
+/// The refusal of a value that spells no field.
+fn field_type_error() -> PyErr {
+    PyTypeError::new_err("expected a yggdryl.Field, dataclass, field string, or PyArrow Field")
 }
 
 /// Return the exact native `Field` object cached for a dataclass class or instance.
@@ -73,30 +82,19 @@ fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     Ok(field)
 }
 
-/// Export a complete `PyArrow` Schema from exact standalone native Fields.
-/// The aggregate Arrow C Schema path drops nested datatype flags, so it is
-/// used only to calculate transport metadata (including reserved sidecars).
+/// Import a complete `pyarrow.Schema` from a non-null Struct root through
+/// the core's one exchange projection: the exact nested flags - which the
+/// aggregate Arrow C Schema exporter drops - and the root's metadata beside
+/// the transport-only dictionary-ID sidecar, in one C schema.
 pub(crate) fn core_schema_to_pyarrow<'py>(
     py: Python<'py>,
     root: &CoreField,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let transported = root
+    let schema = root
         .clone()
-        .into_arrow_exchange_schema()
+        .into_arrow_exchange_ffi()
         .map_err(value_error)?;
-    let fields = PyList::empty(py);
-    for field in root.fields() {
-        fields.append(core_field_to_pyarrow(py, field)?)?;
-    }
-    let metadata = PyDict::new(py);
-    for (key, value) in transported.metadata() {
-        metadata.set_item(key, value)?;
-    }
-    let kwargs = PyDict::new(py);
-    kwargs.set_item("metadata", metadata)?;
-    py.import("pyarrow")?
-        .getattr("schema")?
-        .call((fields,), Some(&kwargs))
+    import_ffi_schema(pyarrow::schema(py)?, schema)
 }
 
 /// Resolve an Arrow root once and use the same exact native schema exporter.
@@ -482,7 +480,7 @@ impl PyField {
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
         let options = cast_options(safe, nullability, representation)?;
-        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        let batch = record_batch_from_pyarrow(value)?;
         let applied = self
             .inner
             .apply_arrow_batch(&batch, digest, transform, cast, options)
@@ -550,6 +548,17 @@ impl PyField {
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         core_field_to_pyarrow(py, &self.inner)
+    }
+
+    /// This field as the Arrow `PyCapsule` Interface's `arrow_schema`
+    /// capsule, projected by the core's exporter with every nested flag.
+    fn __arrow_c_schema__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyCapsule>> {
+        let schema = self
+            .inner
+            .clone()
+            .into_arrow_field_ffi()
+            .map_err(value_error)?;
+        schema_capsule(py, schema)
     }
 
     /// Serialize as deterministic structural JSON.
@@ -3119,7 +3128,7 @@ impl PyProtocolField {
         py: Python<'py>,
         batch: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let batch = record_batch_from_pyarrow(batch)?;
         let field = self.borrow_field(py)?;
         let applied = if self.scheme == CoreScheme::PARTITION
             || self.scheme == CoreScheme::TRANSFORM

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gc
 import pathlib
+import struct
 import sys
 import unittest.mock
 import weakref
@@ -15,7 +16,7 @@ import pyarrow as pa
 import pyarrow.dataset as pads
 import pytest
 
-from yggdryl import DataType, Field, IOBase, scalar
+from yggdryl import ChunkedSerie, DataType, Field, IOBase, Serie, SerieReader, scalar
 
 SCHEMA = pa.schema(
     [
@@ -812,3 +813,45 @@ class TestAsciiRecords:
             handle.overwrite_arrow_table(
                 pa.table({"id": [3], "ccy": ["EURO!"]}), options=options
             )
+
+
+class ChunkedStream:
+    """A foreign exporter whose C stream is a column, not a record."""
+
+    def __init__(self, chunked: pa.ChunkedArray) -> None:
+        self.chunked = chunked
+
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        return self.chunked.__arrow_c_stream__(requested_schema)
+
+
+class TestCStreamIntake:
+    @pytest.mark.parametrize("door", [Serie.from_, ChunkedSerie.from_, SerieReader.from_])
+    def test_a_non_record_stream_is_refused_naming_the_door_that_reads_it(
+        self, door: Any
+    ) -> None:
+        with pytest.raises(ValueError, match=r"non-record column.*pyarrow\.chunked_array"):
+            door(ChunkedStream(pa.chunked_array([[1], [2]])))
+        # The door the refusal names reads it.
+        chunked = pa.chunked_array(ChunkedStream(pa.chunked_array([[1], [2]])))
+        assert ChunkedSerie.from_(chunked).as_py() == [1, 2]
+
+    def test_a_stream_batch_is_proven_before_a_row_is_read(self, tmp_path: pathlib.Path) -> None:
+        offsets = pa.py_buffer(struct.pack("<4i", 0, 4, 1, 4))
+        array = pa.Array.from_buffers(pa.binary(), 3, [None, offsets, pa.py_buffer(b"abcd")])
+        source = pa.table({"payload": array})
+        with pytest.raises(ValueError, match="non-monotonic offset"):
+            Serie.from_arrow_reader(source)
+        with pytest.raises(ValueError, match="non-monotonic offset"):
+            IOBase(tmp_path / "payload.arrows").write_arrow(source)
+
+    def test_a_native_reader_writes_as_the_stream_it_is(self, tmp_path: pathlib.Path) -> None:
+        mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+        source = pa.table({"lookup": pa.array([[("a", 1)], None], mapping)})
+        handle = IOBase(tmp_path / "sorted.arrows")
+        # Taken as the stream it is, never through its own C capsule, so the
+        # sorted keys the capsule's arrow-rs exporter would drop are kept.
+        handle.overwrite_arrow_reader(SerieReader.from_(source))
+        written = handle.read_arrow_reader().read_all()
+        assert written.schema.field("lookup").type.keys_sorted
+        assert written.equals(source)

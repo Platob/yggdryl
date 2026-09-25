@@ -4604,8 +4604,9 @@ export type JsSerieIterator = SerieIterator
  * one plan the core compiled from the stream's schema, or the one record
  * serie a held column is.
  *
- * The reader is a stream, read once: iterating it and `intoArrowReader`
- * both consume it, and a batch's failure surfaces at the pull that read it.
+ * The reader is a stream, read once: iterating it, `cast` and
+ * `intoArrowReader` each consume it, and a batch's failure surfaces at the
+ * pull that read it.
  */
 export declare class SerieReader {
   /** The record every yielded serie is typed by. */

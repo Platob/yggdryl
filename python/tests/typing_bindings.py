@@ -262,6 +262,14 @@ cast_plan_source: pa.Field = cast_plan.source
 cast_plan_target: Field = cast_plan.target
 cast_plan_identity: bool = cast_plan.is_identity
 cast_plan_serie: Serie = cast_plan.apply(source_batch)
+capsule_schema: object = landed_array.__arrow_c_schema__()
+capsule_array: tuple[object, object] = landed_array.__arrow_c_array__()
+capsule_requested: tuple[object, object] = landed_array.__arrow_c_array__(
+    pa.int64().__arrow_c_schema__()
+)
+field_capsule: object = Field("value", "int64").__arrow_c_schema__()
+dtype_capsule: object = DataType("int64").__arrow_c_schema__()
+reader_capsule: object = SerieReader.from_(source_batch).__arrow_c_stream__()
 cast_plan_column: Serie = ArrowCastPlan(Field("value", "int32"), Field("value", "int64")).apply(
     landed_array
 )
@@ -1935,6 +1943,7 @@ serie_books = yggdryl.Serie.from_arrow_array(
 assert isinstance(serie_books, yggdryl.MapSerie)
 serie_entries: yggdryl.StructSerie = serie_books.entries
 serie_names: list[str] = serie_entries.names
+serie_entries_capsule: object = serie_entries.__arrow_c_stream__()
 serie_scalar_serie: yggdryl.Serie | None = Scalar.from_([1]).as_serie()
 assert len(serie_run) == 3 and serie_row is not None and serie_window is not None
 assert serie_arrow is not None and serie_rows and serie_field is not None
@@ -1955,6 +1964,7 @@ chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
 )
 chunked_empty: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.empty(Field("price", "int64"))
 chunked_one: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(serie_column)
+chunked_capsule: object = chunked_one.__arrow_c_stream__()
 chunked_chunks: list[yggdryl.Serie] = chunked_prices.chunks
 chunked_chunk: yggdryl.Serie | None = chunked_prices.chunk(0)
 chunked_count: int = chunked_prices.num_chunks

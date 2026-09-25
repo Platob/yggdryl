@@ -360,6 +360,7 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     if !matches!(array.data_type(), ArrowDataType::Dictionary(..)) {
         return Ok(None);
@@ -402,19 +403,28 @@ pub(crate) fn column_of(
         DataType::UInt64 => parts!(UInt64Type),
         _ => return Err(internal()),
     };
+    let origin = std::ptr::from_ref(dictionary) as usize;
+    let (keys_field, keys_below) = super::arrow::resolved_or(resolved, 1, origin, || {
+        Field::new(field.name(), dictionary.key().clone(), true)
+    });
     let keys = super::arrow::child_of(
-        Arc::new(Field::new(field.name(), dictionary.key().clone(), true)),
+        keys_field,
         keys,
         None,
         &super::arrow::Proof::Proven,
         budget,
+        keys_below,
     )?;
+    let (values_field, values_below) = super::arrow::resolved_or(resolved, 0, origin, || {
+        Field::new(field.name(), dictionary.value().clone(), true)
+    });
     let values = super::arrow::child_of(
-        Arc::new(Field::new(field.name(), dictionary.value().clone(), true)),
+        values_field,
         values,
         hidden.as_ref(),
         proof.child(0),
         budget,
+        values_below,
     )?;
     Ok(Some(DictionarySerie::new(field, keys, values).into_serie()))
 }

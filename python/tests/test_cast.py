@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import struct
 from typing import Any
 
 import pyarrow as pa
@@ -526,3 +527,15 @@ def test_asking_for_bits_never_reinterprets_a_different_width() -> None:
             safe=False,
             **bits,
         ).into_arrow_array()
+
+
+def test_apply_proves_foreign_data_before_a_row_is_read() -> None:
+    # Offsets that step backwards pass pyarrow's cheap check; landed
+    # unproven, reading the rows would read past the value buffer.
+    offsets = pa.py_buffer(struct.pack("<4i", 0, 4, 1, 4))
+    array = pa.Array.from_buffers(pa.binary(), 3, [None, offsets, pa.py_buffer(b"abcd")])
+    array.validate()
+    plan = ArrowCastPlan(Field("item", "binary"), Field("item", "large_binary"))
+    for value in (array, pa.chunked_array([array])):
+        with pytest.raises(ValueError, match="non-monotonic offset"):
+            plan.apply(value)

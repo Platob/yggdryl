@@ -14,16 +14,16 @@ use pyo3::types::PyAny;
 use yggdryl::{ArrowCastPlan, Field as CoreField, Serie};
 
 use crate::chunked_serie::{PyChunkedSerie, chunked_of};
-use crate::datatype::{arrow_array_from_pyarrow, core_field_to_pyarrow};
+use crate::datatype::{ArrayIntake, core_field_to_pyarrow, pyarrow};
 use crate::field::{PyField, core_field_from_value};
-use crate::iomedia::record_batch_from_value;
+use crate::iomedia::record_batch_intake;
 use crate::serie::{PySerie, described};
 use crate::{cast_options, value_error};
 
 /// Resolve a plan's source once: a `pyarrow.Schema` is the record root
 /// `row` its columns are children of, and anything else is a field.
 fn source_of(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
-    if value.is_instance(&value.py().import("pyarrow")?.getattr("Schema")?)? {
+    if value.is_instance(pyarrow::schema(value.py())?)? {
         let schema = ArrowSchema::from_pyarrow_bound(value)?;
         return CoreField::from_arrow_schema("row", &schema).map_err(value_error);
     }
@@ -126,22 +126,33 @@ impl PyArrowCastPlan {
     /// a `pyarrow.ChunkedArray` and a `pyarrow.Table` are their chunks, as
     /// `ChunkedSerie.from_` reads them with no field: the plan is applied to
     /// every chunk, and the answer is a `ChunkedSerie` of as many chunks.
+    ///
+    /// The landing and the cast run off the GIL; a `Serie` is cloned out of
+    /// its borrow before, so another thread writing it waits for the GIL
+    /// rather than finding it borrowed.
     fn apply(&self, py: Python<'_>, serie: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let plan = &self.inner;
         if let Some(chunked) = chunked_of(serie)? {
-            let cast = self.inner.apply_chunked(&chunked).map_err(value_error)?;
+            let cast = py
+                .detach(|| plan.apply_chunked(&chunked))
+                .map_err(value_error)?;
             return Ok(Py::new(py, PyChunkedSerie::from_inner(cast))?.into_any());
         }
-        let cast = if let Ok(serie) = serie.extract::<PyRef<'_, PySerie>>() {
-            self.inner.apply(&serie.inner)
+        let options = *plan.as_options();
+        let held = serie
+            .extract::<PyRef<'_, PySerie>>()
+            .map(|serie| serie.inner.clone());
+        let cast = if let Ok(held) = held {
+            py.detach(|| plan.apply(&held))
+        } else if serie.is_instance(pyarrow::record_batch(py)?)? {
+            let batch = record_batch_intake(serie)?;
+            py.detach(|| {
+                let batch = batch.validated()?;
+                plan.apply(&Serie::from_arrow_batch(None, &batch, options)?)
+            })
         } else {
-            let options = *self.inner.as_options();
-            let pyarrow = py.import("pyarrow")?;
-            let landed = if serie.is_instance(&pyarrow.getattr("RecordBatch")?)? {
-                Serie::from_arrow_batch(None, &record_batch_from_value(serie)?, options)
-            } else {
-                Serie::from_arrow_array(None, arrow_array_from_pyarrow(serie)?, options)
-            };
-            landed.and_then(|landed| self.inner.apply(&landed))
+            let array = ArrayIntake::from_value(serie)?;
+            py.detach(|| plan.apply(&Serie::from_arrow_array(None, array.validated()?, options)?))
         };
         described(py, cast.map_err(value_error)?)
     }

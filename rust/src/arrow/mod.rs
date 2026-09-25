@@ -301,18 +301,20 @@ pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
             "tabular root Struct Field must be non-nullable".to_owned(),
         ));
     }
-    let Some(fields) = field.dtype().as_fields() else {
+    if field.dtype().as_fields().is_none() {
         return Err(Error::IncompatibleSchema(format!(
             "tabular field {:?} must have a Struct datatype",
             field.name()
         )));
+    }
+    // The root's own projection, built once into its cache, already lists
+    // every column: the schema shares that list rather than projecting each
+    // child again.
+    let arrow_schema::DataType::Struct(fields) = field.as_arrow_field_ref()?.data_type() else {
+        return Err(Error::internal("arrow::arrow_schema_from_field"));
     };
     Ok(Arc::new(Schema::new_with_metadata(
-        fields
-            .iter()
-            .cloned()
-            .map(Field::into_arrow_field_ref)
-            .collect::<crate::Result<Vec<_>>>()?,
+        fields.clone(),
         field.as_metadata().clone().into_arrow_metadata(),
     )))
 }

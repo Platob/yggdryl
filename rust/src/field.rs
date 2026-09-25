@@ -2074,6 +2074,46 @@ mod arrow {
         pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema> {
             crate::arrow::arrow_exchange_schema_from_field(&self)
         }
+        /// Projects this non-null Struct root as the one C schema an Arrow
+        /// runtime exchange crosses: the root's own C projection carrying
+        /// [`Self::into_arrow_exchange_schema`]'s metadata - the root's own
+        /// entries and the transport-only dictionary-ID sidecar - so a batch
+        /// or a stream handed over the C Data Interface reads back under the
+        /// identities its logical schema states, with no schema built on
+        /// the other side to learn them.
+        ///
+        /// ```
+        /// use arrow_schema::Schema;
+        /// use arrow_schema::ffi::FFI_ArrowSchema;
+        /// use yggdryl::{DataType, Field, StructType};
+        ///
+        /// # fn main() -> yggdryl::Result<()> {
+        /// let root = Field::from_parts(
+        ///     "row",
+        ///     DataType::from(StructType::from_fields([Field::new("id", DataType::Int64, false)])?),
+        ///     false,
+        ///     [("owner", "core")],
+        /// )?;
+        /// let crossed: FFI_ArrowSchema = root.into_arrow_exchange_ffi()?;
+        /// let schema = Schema::try_from(&crossed)?;
+        /// assert_eq!(schema.metadata().get("owner").map(String::as_str), Some("core"));
+        /// assert_eq!(schema.field(0).name(), "id");
+        /// # Ok(())
+        /// # }
+        /// ```
+        ///
+        /// # Errors
+        ///
+        /// [`Self::into_arrow_exchange_schema`]'s refusals: a root that is not
+        /// a bounded, non-null Struct, or one whose metadata uses the
+        /// transport-reserved sidecar key.
+        pub fn into_arrow_exchange_ffi(
+            self,
+        ) -> crate::arrow::Result<arrow_schema::ffi::FFI_ArrowSchema> {
+            let exchange = crate::arrow::arrow_exchange_schema_from_field(&self)?;
+            let schema = self.into_arrow_field_ffi()?;
+            Ok(schema.with_metadata(exchange.metadata())?)
+        }
         /// Consumes this Field and projects it as an Arrow schema.
         ///
         /// # Errors
@@ -2938,7 +2978,9 @@ mod arrow {
     pub(crate) fn arrow_field_ref_from_shared(field: Arc<Field>) -> Result<FieldRef> {
         match Arc::try_unwrap(field) {
             Ok(field) => field.into_arrow_field_ref(),
-            Err(field) => field.as_ref().clone().into_arrow_field_ref(),
+            // Shared, so the box outlives this call: build into its cache,
+            // where every other holder finds the projection.
+            Err(field) => field.as_arrow_field_ref().map(Arc::clone),
         }
     }
 }

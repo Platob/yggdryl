@@ -25,6 +25,12 @@ const trades = () =>
     nullable: false,
   })
 
+// The trades root with its `id` declared as `dtype`.
+const tradesWith = (dtype) =>
+  fields.struct('row', [Field.from(`id: ${dtype}`), Field.from('symbol: utf8')], {
+    nullable: false,
+  })
+
 function narrow(ids, symbols) {
   return new arrow.Table({
     id: arrow.vectorFromArray(ids, new arrow.Int32()),
@@ -48,6 +54,7 @@ test('the private Arrow bridges stay outside the public surface', () => {
   assert.equal(Object.hasOwn(SerieReader, '_fromSerieNative'), false)
   assert.equal(Object.hasOwn(SerieReader, '_fromChunkedNative'), false)
   assert.equal('_nextNative' in SerieReader.prototype, false)
+  assert.equal('_castNative' in SerieReader.prototype, false)
   // The retired Field and DataType casts have no alias.
   for (const name of [
     'cast',
@@ -470,6 +477,129 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
     () => SerieReader.fromChunked(chunked.intoSerie()),
     /SerieReader\.fromChunked takes a ChunkedSerie/,
   )
+})
+
+test('a SerieReader cast under its own root yields the same records', () => {
+  const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
+  const held = SerieReader.fromSerie(records)
+  const same = held.cast(trades())
+  assert.ok(same instanceof SerieReader)
+  assert.ok(same.field.equals(trades()))
+  const series = [...same]
+  assert.equal(series.length, 1)
+  assert.ok(series[0] instanceof StructSerie)
+  assert.ok(series[0].equals(records))
+  // The cast took the reader it was asked of; a stream is read once.
+  assert.throws(() => [...held], /already been consumed/)
+  assert.throws(() => held.cast(trades()), /already been consumed/)
+  assert.throws(() => held.intoArrowReader(), /already been consumed/)
+
+  // A stream under its own root yields every batch as it would have.
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  const stream = SerieReader.fromArrowReader(BatchReader.from(source), trades()).cast(trades())
+  assert.deepEqual(
+    [...stream].map((serie) => serie.child('id').asJs()),
+    [[1, 2], [3]],
+  )
+
+  // An option the cast refuses leaves the reader as it was.
+  const kept = SerieReader.fromSerie(records)
+  assert.throws(() => kept.cast(trades(), { bogus: true }), /got "bogus"/)
+  assert.throws(() => kept.cast(trades(), { nullability: 'lenient' }), /nullability/)
+  assert.equal([...kept].length, 1)
+})
+
+test('a SerieReader cast into a wider root casts every record, held or streamed', () => {
+  const wide = tradesWith('float64')
+  const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
+  const held = SerieReader.fromSerie(records).cast(wide)
+  assert.ok(held.field.equals(wide))
+  const [cast, ...rest] = [...held]
+  assert.deepEqual(rest, [])
+  assert.equal(cast.child('id').field.dtype.toString(), 'float64')
+  assert.deepEqual(cast.asJs(), [
+    { id: 1, symbol: 'AAPL' },
+    { id: 2, symbol: 'MSFT' },
+  ])
+
+  // A stream opened under its own schema, and one opened under a cast of
+  // its own: every batch lands under the wider root as it is pulled.
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  for (const reader of [
+    SerieReader.fromArrowReader(BatchReader.from(source)),
+    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
+  ]) {
+    const streamed = reader.cast(wide)
+    assert.ok(streamed.field.equals(wide))
+    const series = [...streamed]
+    assert.deepEqual(
+      series.map((serie) => serie.child('id').field.dtype.toString()),
+      ['float64', 'float64'],
+    )
+    assert.deepEqual(
+      series.map((serie) => serie.child('id').asJs()),
+      [[1, 2], [3]],
+    )
+  }
+
+  // A DataType is the required `value` field, a record root of that name.
+  const typed = SerieReader.fromSerie(records).cast(
+    DataType.from('struct<id: float64, symbol: utf8>'),
+  )
+  assert.equal(typed.field.name, 'value')
+  assert.deepEqual(
+    [...typed].map((serie) => serie.child('id').field.dtype.toString()),
+    ['float64'],
+  )
+})
+
+test('a SerieReader cast into a narrower root refuses naming the column', () => {
+  const tight = tradesWith('int8')
+  const records = Serie.fromArrowBatch(narrow([1, 300], ['AAPL', 'MSFT']), trades())
+  // The refusal names the column and the value it could not hold.
+  const refusal = /\$\.id\b.*\b300\b/
+  // Held records are cast where the cast is asked for.
+  assert.throws(() => SerieReader.fromSerie(records).cast(tight, { safe: false }), refusal)
+  // A stream's batches are cast as they are pulled, landed or handed on.
+  const stream = () =>
+    SerieReader.fromArrowReader(BatchReader.from(narrow([1, 300], ['AAPL', 'MSFT'])), trades())
+  const pulled = stream().cast(tight, { safe: false })
+  assert.throws(() => [...pulled], refusal)
+  const moved = stream().cast(tight, { safe: false }).intoArrowReader()
+  assert.throws(() => moved.intoTable(), refusal)
+  // Under the safe default the value that does not fit is null.
+  assert.deepEqual(
+    [...SerieReader.fromSerie(records).cast(tight)].map((serie) => serie.child('id').asJs()),
+    [[1, null]],
+  )
+})
+
+test('a cast SerieReader hands its stream back under the cast schema', () => {
+  const wide = tradesWith('float64')
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  for (const reader of [
+    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
+    SerieReader.fromSerie(Serie.fromArrowBatch(source, trades())),
+  ]) {
+    const batches = reader.cast(wide).intoArrowReader()
+    assert.ok(batches instanceof BatchReader)
+    assert.ok(batches.field.equals(wide))
+    const table = batches.intoTable()
+    assert.deepEqual(
+      table.schema.fields.map((field) => `${field.name}: ${field.type}`),
+      ['id: Float64', 'symbol: Utf8'],
+    )
+    assert.deepEqual([...table.getChild('id')], [1, 2, 3])
+  }
 })
 
 test('a column casts once under another field, and a run is refused', () => {

@@ -219,13 +219,13 @@ impl SerieValue for MapSerie {
             return Ok(Scalar::Null);
         };
         let (keys, values) = (self.keys(), self.values());
-        let pairs = range
-            .map(|entry| Ok((keys.scalar(entry)?, values.scalar(entry)?)))
-            .collect::<Result<Vec<(Scalar, Scalar)>>>()?;
-        Ok(self
-            .field
-            .dtype()
-            .declared_layout(Scalar::from_mapping(pairs)?))
+        // The entries are written straight into the mapping's own storage,
+        // the span's length being what the cell holds.
+        let mapping = Scalar::try_mapping(range.len(), |offset| {
+            let entry = range.start + offset;
+            Ok((keys.scalar(entry)?, values.scalar(entry)?))
+        })?;
+        Ok(self.field.dtype().declared_layout(mapping))
     }
 
     fn slice(&self, offset: usize, length: usize) -> Result<Self> {
@@ -314,6 +314,7 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
@@ -347,12 +348,14 @@ pub(crate) fn column_of(
         budget,
     )?;
     let hidden = super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
+    let (entries_field, below) = super::arrow::resolved_child(resolved, 0, entries_field);
     let entries = super::arrow::child_of(
-        Arc::new(entries_field.clone()),
+        entries_field,
         values,
         hidden.as_ref(),
         proof.child(0),
         budget,
+        below,
     )?;
     Ok(Some(
         MapSerie::new(field, offsets, entries, maps.nulls().cloned()).into_serie(),

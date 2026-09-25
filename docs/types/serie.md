@@ -127,7 +127,7 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `len`, `is_null`, `is_empty`, `null_count` | constant for a column, off its buffers; `null_count` walks a run |
 | `values`, `offsets`, `payload`, `views`, `nulls`, `array` | constant, and nothing is copied: these are the buffers themselves |
 | `value(i)` on a leaf | a bounds check and a buffer read; no value is built |
-| `scalar(i)`, `get(i)` | one value built, through the crate's one schema-directed decode |
+| `scalar(i)`, `get(i)` | one value built, through the crate's one schema-directed decode: a leaf value allocates nothing, a record row its one run, a map cell its one entries slice - each written where it is stored |
 | `rows`, `into_run`, and walking a column as a value | one row built per row, every time; nothing is cached, so hold the answer rather than asking twice |
 | `push`, `extend`, `push_value`, `extend_values` on a primitive, boolean, byte or fixed leaf | in place, amortized, once the leaf owns its buffer; the first edit on a foreign buffer - a kernel's, an IPC reader's, a shared or sliced one - copies it once |
 | `set`, `set_value` on a primitive or boolean leaf | one buffer write, one bit write; a row that gains or loses its absence rebuilds the validity bitmap |
@@ -149,7 +149,9 @@ Construction is `new(values)` for a run; `empty(field)`, `with_capacity(field, r
 | `into_arrow_batch`, `into_arrow_reader` | one batch of the children's own arrays, or of the one column a non-record column is, no row decoded |
 | `from_arrow_array`, `from_arrow_batch` | no field, or an exact layout: the projection compared, the validity words counted, and - only where the datatype is narrower than its layout - each row read once; any other layout: one [`ArrowCastPlan`](cast.md#compiled-plans) compiled and applied once |
 | `from_arrow_reader` | one plan for the stream, and the whole stream held: a column is one contiguous set of buffers, so the bound is the stream itself |
-| `SerieReader` | one plan for the stream, at most one source batch held |
+| `SerieReader` | one plan for the stream, at most one source batch held; each batch lands under the tree the plan resolved once, so the projection is proven per plan and never per batch |
+| `SerieReader::from_serie`, `SerieReader::from_chunked` | no plan compiled: the held column's root is the stream's, its chunks the batches |
+| `SerieReader::cast` | one more plan over the stream, compiled at the call; the reader's own root hands the reader back |
 | `cast` | one plan compiled per call; a column already under the target is a clone |
 | `from_default` | one row laid out through the field's default, then repeated by index |
 
@@ -924,7 +926,7 @@ A column of a leaf field is an array; a column of a non-null Struct field is a t
 
 `into_arrow_scalar` is one row as Arrow's scalar datum, sharing its buffers; any other length is refused naming it. `from_default(field, rows)` is `rows` copies of the field's canonical default - [`Field::default_value`](field.md) laid out once and repeated by index - and a required `null` field, which has no default, is refused. `from_arrow_reader` drains a stream into one column; [`ChunkedSerie::from_arrow_reader`](chunked-serie.md#arrow-a-chunked-array-and-a-table) holds it as one chunk per batch; [`SerieReader`](cast.md#eager-and-lazy) keeps it a stream, one record `Serie` per batch under one plan, and `into_arrow_reader` hands the batches on without landing them.
 
-A held column - one row, a column, a table - is a `Serie`, a held chunked column or table is a [`ChunkedSerie`](chunked-serie.md), which keeps the arrays of a chunked array and the batches of a table apart, and a stream is a `SerieReader`. `Scalar::from(serie)` holds a column as one serie value that `Scalar::as_serie` borrows back, neither reading a row. A stream is never a `Scalar`: `SerieReader::from_serie` reads one held column as the stream of the one batch it is, and [`SerieReader::from_chunked`](chunked-serie.md#streams) a held chunked column as the stream of its chunks, which is what a write taking a stream is handed either as.
+A held column - one row, a column, a table - is a `Serie`, a held chunked column or table is a [`ChunkedSerie`](chunked-serie.md), which keeps the arrays of a chunked array and the batches of a table apart, and a stream is a `SerieReader`. `Scalar::from(serie)` holds a column as one serie value that `Scalar::as_serie` borrows back, neither reading a row. A stream is never a `Scalar`: `SerieReader::from_serie` reads one held column as the stream of the one batch it is, and [`SerieReader::from_chunked`](chunked-serie.md#streams) a held chunked column as the stream of its chunks, which is what a write taking a stream is handed either as; neither compiles a plan. `SerieReader::cast` re-roots a stream under another field through one plan: a held reader casts its records at the call and refuses there, a stream casts each batch as it is pulled, and `into_arrow_reader` afterwards hands batches on under the cast schema. The reader's own root hands the reader back untouched.
 
 === "Rust"
 
@@ -988,7 +990,21 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
     // One held column is the stream of the one batch it is.
     let held = SerieReader::from_serie(rows.clone())?;
     assert_eq!(held.field(), &root);
-    assert_eq!(held.collect::<Result<Vec<_>, _>>()?, vec![rows]);
+    assert_eq!(held.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+
+    // A stream under a wider root: one plan, each batch cast as it is pulled.
+    let wide = Field::new(
+        "row",
+        DataType::from(StructType::from_fields([
+            Field::new("id", DataType::Float64, false),
+            Field::new("symbol", DataType::utf8(), false),
+        ])?),
+        false,
+    );
+    let cast = SerieReader::from_serie(rows.clone())?.cast(&wide, options)?;
+    assert_eq!(cast.field(), &wide);
+    let records = cast.collect::<Result<Vec<_>, _>>()?;
+    assert_eq!(records[0].scalar(0)?, Scalar::from_sequence([Scalar::from(1.0_f64), Scalar::from("AAPL")]));
     ```
 
 === "Python"
@@ -1032,6 +1048,12 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
     # A held column is one value, and one held column is a stream of one batch.
     assert serie.into_scalar().as_serie() == serie
     assert list(SerieReader.from_serie(rows)) == [rows]
+
+    # A stream under a wider root: one plan, each batch cast as it is pulled.
+    wide = Field("row", "struct<id: float64 not null, symbol: utf8 not null>", nullable=False)
+    cast = SerieReader.from_serie(rows).cast(wide)
+    assert cast.field == wide
+    assert [record.as_py() for record in cast] == [[{"id": 1.0, "symbol": "AAPL"}]]
     ```
 
 === "JavaScript"
@@ -1078,6 +1100,13 @@ A held column - one row, a column, a table - is a `Serie`, a held chunked column
     const held = [...SerieReader.fromSerie(rows)]
     assert.equal(held.length, 1)
     assert.ok(held[0].equals(rows))
+
+    // A stream under a wider root: one plan, each batch cast as it is pulled.
+    const wide = Field.from('row: struct<id: float64 not null, symbol: utf8 not null> not null')
+    const cast = SerieReader.fromSerie(rows).cast(wide)
+    assert.ok(cast.field.equals(wide))
+    const records = [...cast]
+    assert.ok(records[0].equals(rows.cast(wide)))
     ```
 
 ## Arrow: one row
@@ -1220,7 +1249,7 @@ Laying rows out charges 1,000,000 expanded slots and 64 MiB of fixed bytes, summ
 
 ## Arrow: every columnar runtime in
 
-Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array or a [`ChunkedSerie`](chunked-serie.md) the one column its chunks join into - `ChunkedSerie.from_` keeps them apart - a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` shares that columnar recognition. A held column, scalar or concrete container read through the same scalar boundary as `Serie.from_` becomes the one item of its stream; a non-record column is wrapped as the one child of a record before `root` is applied. A Python sequence recognized as mapping records or columnar batches remains an incremental record stream, reusing the first batch import, and a Python iterator or generic reusable iterable remains an incremental record-row stream; resolving either stream's schema may pull its first item. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared - chunks joined into one new column first, as `into_serie` joins them: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
+Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exporter through one call per side, and the declared `Field` casts the result in Rust. `Serie.from_(value, field=None)` answers the column the value holds: a `pyarrow` scalar is a one-row column named `value`, an array or a series a column, a chunked array or a [`ChunkedSerie`](chunked-serie.md) the one column its chunks join into - `ChunkedSerie.from_` keeps them apart - a batch or a NumPy record array the record column of its rows, and a table, a reader, a frame, a dataset or a scanner a stream drained into one column. Any other value is read as a `Scalar`: a sequence is its rows, anything else one row. `SerieReader.from_(value, root=None)` shares that columnar recognition. A held column, scalar or concrete container read through the same scalar boundary as `Serie.from_` becomes the one item of its stream; a non-record column is wrapped as the one child of a record before `root` is applied. A Python sequence recognized as mapping records or columnar batches remains an incremental record stream, reusing the first batch import, and a Python iterator or generic reusable iterable remains an incremental record-row stream; resolving either stream's schema may pull its first item. `Scalar.from_` of a columnar value is the serie `Scalar` of the column it holds, its buffers shared - chunks joined into one new column first, as `into_serie` joins them: one `pyarrow` scalar is its row, and a stream is drained, because a stream is never a `Scalar`. Going out, a `Serie`, a [`ChunkedSerie`](chunked-serie.md) and a `SerieReader` answer the Arrow PyCapsule Interface - `__arrow_c_schema__` and `__arrow_c_array__` on every column, `__arrow_c_stream__` on a record column, on held chunks and on a reader - so `pa.array`, `pa.record_batch`, `pa.table`, `pa.RecordBatchReader.from_stream` and polars read them directly, buffers shared, and a `requested_schema` capsule is applied by the one cast. Nothing crosses as a raw address in either direction: every foreign array, batch or stream is validated before a row is read, so a malformed one is a `ValueError` rather than a fault, and a landing, a drain, a join or a cast runs off the GIL. JavaScript has no C Data consumer, so its doors are the Apache Arrow JS ones [above](#arrow-an-array-a-batch-a-reader).
 
 === "Rust"
 
@@ -1283,6 +1312,14 @@ Python reads `PyArrow`, pandas, polars, NumPy and any Arrow C data or stream exp
     assert Scalar.from_(pa.array([1, 2])).as_py() == [1, 2]
     assert Scalar.from_(table).as_py()[0] == {"symbol": "AAPL", "size": 100}
     assert Scalar.from_(pa.scalar(7, pa.int64())).as_py() == 7
+
+    # Out through the Arrow PyCapsule Interface, buffers shared: a record
+    # column is a batch, a table or a stream, and any column an array.
+    record = Serie.from_(table)
+    assert pa.table(record).equals(table)
+    assert pa.record_batch(record).num_rows == 2
+    assert pa.array(record.child("size")).equals(table.column("size").combine_chunks())
+    assert pa.RecordBatchReader.from_stream(SerieReader.from_serie(record)).read_all().equals(table)
     ```
 
 === "JavaScript"
@@ -1531,9 +1568,11 @@ A dictionary, run-end or union column holds its encoding as columns - the keys a
 - A dictionary write interns into its vocabulary and moves keys in place, so a vocabulary that outgrows its key width is refused by name before anything moves; a run-end write folds equal neighbours into one run, so a column built by writes alone never holds two equal runs side by side, while an Arrow array that does crosses in as it is; a dense union write other than an append is a rebuild, so write such a column in bulk.
 - `from_arrow_reader` drains: a column is one contiguous set of buffers, so the bound is the stream itself. Keep rows a stream with `SerieReader`, or [`IOMedia::read_arrow_reader`](../holder/index.md), when they should stay one, and hold them as one chunk per batch with [`ChunkedSerie::from_arrow_reader`](chunked-serie.md), which keeps the batches rather than joining them.
 - `from_arrow_batch`, `from_arrow_reader` and `SerieReader` take a bounded non-null Struct root, and refuse any other by name; with no root they read the input's schema as the record `row`, because Arrow names columns and never the record. `into_arrow_batch` and `into_arrow_reader` answer a record column's children, refusing one holding an absent row because a batch states no row validity; any other column is the one column of a `row` root, named as it is.
+- In Python every array, batch or stream from outside is validated to its buffers' invariants off the GIL before a row is read, so invalid offsets are a `ValueError` naming the slot and never a fault; a stream whose schema is no record is refused by `Serie.from_` and `SerieReader.from_`, naming `ChunkedSerie.from_(pyarrow.chunked_array(obj))`, and a requested schema a capsule consumer asks for is applied by `Serie.cast`'s default safe cast, so a value the target cannot hold is null.
 - `into_arrow_scalar` takes exactly one row and refuses any other count by name. `from_default` refuses a field with no default: a required `null` field has none.
 - Laying rows out past 1,000,000 expanded slots or 64 MiB of fixed bytes, summed across siblings -> `Error::PhysicalLimit` before anything is allocated; an allocator refusal or an overflowing `rows * width` -> `Error::Allocation`; a dense union's inactive branch past the budget is never visited. A field datatype deeper than the bound is a schema error before Arrow's recursive projection, never a stack exhaustion.
-- `SerieReader::from_serie` refuses a run, which names no layout, and a record column holding an absent row, which a batch cannot state; any other column is the one child of a `row` root. It reads nothing and casts nothing.
+- `SerieReader::from_serie` refuses a run, which names no layout, and a record column holding an absent row, which a batch cannot state; any other column is the one child of a `row` root. It reads nothing, casts nothing and compiles no plan.
+- `SerieReader::cast` takes the reader: a refused option or target leaves it usable, a cast one is consumed, and the old reader is refused after. Under the default `safe`, a value the target cannot hold is null; under `safe = false` a held reader refuses at the call and a stream at the pull, each naming the column and the value.
 - A structured text document is one frame around its rows, so `IOMedia::write_arrow` takes only `IOMode::Overwrite` for one; append and merge go through `write_arrow_reader`. A media type that names neither a record encoding this build implements nor a structured text format -> `Error::InvalidRecord` naming it.
 - Python: a `SerieReader` crosses once - after `into_arrow_reader`, or after `Serie.from_` or `SerieReader.from_` took it, it is refused with `ValueError`. A NumPy array of more than one dimension -> `TypeError`. `into_numpy` copies, because NumPy has no null mask and no nested layout: a null becomes `nan`, and a record row a mapping in an object array.
 - JavaScript has no C Data consumer, so there is no `from_` ladder there and nothing crosses zero copy: every door is copied IPC.

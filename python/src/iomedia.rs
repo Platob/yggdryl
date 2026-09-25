@@ -34,14 +34,15 @@
 //! proceed without it - reading rows *into* a frame - and its absence is
 //! reported as the missing dependency it is.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use arrow_array::ffi_stream::ArrowArrayStreamReader;
+use arrow_array::ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream};
 use arrow_array::{ArrayRef, RecordBatch, StructArray};
 use arrow_pyarrow::FromPyArrow;
 use arrow_schema::{ArrowError, Schema as ArrowSchema, SchemaRef};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyImportError, PyStopIteration, PyTypeError, PyValueError};
+use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{
     PyBool, PyByteArray, PyBytes, PyDict, PyList, PyMapping, PyMemoryView, PyString, PyTuple,
@@ -53,10 +54,15 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::text::{LeadingFragment, TextOptions as CoreTextOptions};
 use yggdryl::{Field as CoreField, Level, SerieReader};
 
-use crate::datatype::{arrow_array_to_pyarrow_with_type, core_field_to_pyarrow};
+use crate::chunked_serie::PyChunkedSerie;
+use crate::datatype::{
+    BatchIntake, array_capsule, pyarrow, record_batch_from_pyarrow, schema_capsule, stream_capsule,
+    validate_batch,
+};
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
+use crate::serie::{PySerie, PySerieReader};
 use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
 use yggdryl::ArrowCastOptions;
@@ -87,11 +93,8 @@ pub(crate) fn core_root_field_from_value(
 /// that way arrives as an unnamed struct Field, so the two have to be told
 /// apart before the import rather than after it.
 fn is_pyarrow_schema(value: &Bound<'_, PyAny>) -> bool {
-    value
-        .py()
-        .import("pyarrow")
-        .and_then(|module| module.getattr("Schema"))
-        .and_then(|class| value.is_instance(&class))
+    pyarrow::schema(value.py())
+        .and_then(|class| value.is_instance(class))
         .unwrap_or(false)
 }
 
@@ -107,14 +110,18 @@ fn is_pyarrow_schema(value: &Bound<'_, PyAny>) -> bool {
 /// Returns a `TypeError` when the value exports no batches, or a `ValueError`
 /// when a sequence is empty and therefore names no schema.
 pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
-    if value.hasattr("__arrow_c_stream__")? {
-        let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)?;
-        return Ok(Box::new(reader));
+    if let Some(reader) = native_reader(value)? {
+        return Ok(reader);
+    }
+    if value.hasattr(intern!(value.py(), "__arrow_c_stream__"))? {
+        let reader = ArrowArrayStreamReader::from_pyarrow_bound(value)
+            .map_err(|error| non_record_stream(value, error))?;
+        return Ok(Box::new(Validated(reader)));
     }
     if let Ok(batches) = value.try_iter() {
         let mut collected: Vec<RecordBatch> = Vec::new();
         for batch in batches {
-            collected.push(RecordBatch::from_pyarrow_bound(&batch?)?);
+            collected.push(record_batch_from_pyarrow(&batch?)?);
         }
         let schema = collected.first().map(RecordBatch::schema).ok_or_else(|| {
             PyValueError::new_err(
@@ -127,6 +134,81 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
         "expected a pyarrow.RecordBatchReader, Table, RecordBatch, Arrow C stream exporter, or \
          iterable of RecordBatch",
     ))
+}
+
+/// A native value's own record batches, or `None` for any other value.
+///
+/// A `Serie`, a `ChunkedSerie` and a `SerieReader` export the Arrow
+/// `PyCapsule` Interface for foreign consumers; inside the binding they never
+/// cross it, so nothing they state is re-read through a C schema: a held
+/// column is the one batch of its stream, held chunks one batch each, and a
+/// reader is taken as the stream it is.
+///
+/// # Errors
+///
+/// Returns the core's refusal of a run or of a record holding an absent row,
+/// and a `ValueError` for a `SerieReader` already handed over.
+pub(crate) fn native_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
+    let reader = if let Ok(serie) = value.extract::<PyRef<'_, PySerie>>() {
+        SerieReader::from_serie(serie.inner.clone())
+    } else if let Ok(chunked) = value.extract::<PyRef<'_, PyChunkedSerie>>() {
+        SerieReader::from_chunked(chunked.inner.clone())
+    } else if let Ok(mut reader) = value.extract::<PyRefMut<'_, PySerieReader>>() {
+        Ok(reader.take()?)
+    } else {
+        return Ok(None);
+    };
+    reader
+        .map(|reader| Some(reader.into_arrow_reader()))
+        .map_err(value_error)
+}
+
+/// Name the refusal of a C stream whose schema is no record.
+///
+/// Under the `PyCapsule` Interface a stream may carry any type - a chunked
+/// column - while every door here reads record batches. The stream is spent
+/// by the attempt, so the refusal says which door reads it instead.
+fn non_record_stream(value: &Bound<'_, PyAny>, error: PyErr) -> PyErr {
+    let py = value.py();
+    let refused = error.is_instance_of::<PyValueError>(py)
+        && error
+            .value(py)
+            .to_string()
+            .contains("Unable to interpret C data struct as a Schema");
+    if !refused {
+        return error;
+    }
+    PyValueError::new_err(format!(
+        "expected a record Arrow C stream - batches of a struct of columns - got {}, whose \
+         stream is a non-record column; read it as chunks with \
+         ChunkedSerie.from_(pyarrow.chunked_array(obj)), or pass pyarrow.chunked_array(obj)",
+        type_name(value)
+    ))
+}
+
+/// A foreign C stream whose every batch is proven before it is handed on.
+///
+/// arrow-rs imports a C stream's arrays as their producer describes them and
+/// validates nothing, so each column is checked against its buffers here -
+/// where the pull already runs off the GIL - before any row of it is read.
+struct Validated(ArrowArrayStreamReader);
+
+impl Iterator for Validated {
+    type Item = Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(
+            self.0
+                .next()?
+                .and_then(|batch| validate_batch(&batch).map(|()| batch)),
+        )
+    }
+}
+
+impl arrow_array::RecordBatchReader for Validated {
+    fn schema(&self) -> SchemaRef {
+        self.0.schema()
+    }
 }
 
 /// Read a batch stream out of a value that is already a source of rows.
@@ -142,13 +224,18 @@ pub(crate) fn batch_reader_from_value(value: &Bound<'_, PyAny>) -> PyResult<Batc
 ///
 /// Returns whatever an attribute lookup or a library conversion raised.
 pub(crate) fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<BatchReader>> {
+    // A native value is read as what it holds before the stream protocol it
+    // offers foreign consumers.
+    if let Some(reader) = native_reader(value)? {
+        return Ok(Some(reader));
+    }
     // A frame is recognized before the stream protocol so that the conversion
     // is the library's own on every release of it, rather than the C stream on
     // the releases that grew one.
     if Frames::Pandas.holds(value) || Frames::Polars.holds(value) {
         return batch_reader_from_value(&frame_to_arrow(value)?).map(Some);
     }
-    if value.hasattr("__arrow_c_stream__")? {
+    if value.hasattr(intern!(value.py(), "__arrow_c_stream__"))? {
         return batch_reader_from_value(value).map(Some);
     }
     // A `Scanner` already describes one pass over rows, and a `Dataset` makes
@@ -170,11 +257,13 @@ pub(crate) fn columnar_reader(value: &Bound<'_, PyAny>) -> PyResult<Option<Batch
 /// though Arrow can export them as streams: their dedicated methods redirect
 /// through the core's held-table or held-batch path instead.
 pub(crate) fn batch_reader_from_arrow_reader(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
-    let pyarrow = value.py().import("pyarrow")?;
-    let table = pyarrow.getattr("Table")?;
-    let batch = pyarrow.getattr("RecordBatch")?;
-    if value.is_instance(&table)?
-        || value.is_instance(&batch)?
+    let py = value.py();
+    // A held native column or chunked column is a batch or a table, which
+    // its own capsule does not make a reader.
+    if value.is_instance(pyarrow::table(py)?)?
+        || value.is_instance(pyarrow::record_batch(py)?)?
+        || value.extract::<PyRef<'_, PySerie>>().is_ok()
+        || value.extract::<PyRef<'_, PyChunkedSerie>>().is_ok()
         || Frames::Pandas.holds(value)
         || Frames::Polars.holds(value)
     {
@@ -183,8 +272,9 @@ pub(crate) fn batch_reader_from_arrow_reader(value: &Bound<'_, PyAny>) -> PyResu
             type_name(value)
         )));
     }
-    let reader = pyarrow.getattr("RecordBatchReader")?;
-    if value.is_instance(&reader)? || value.hasattr("__arrow_c_stream__")? {
+    if value.is_instance(pyarrow::record_batch_reader(py)?)?
+        || value.hasattr(intern!(py, "__arrow_c_stream__"))?
+    {
         return batch_reader_from_value(value);
     }
     Err(PyTypeError::new_err(format!(
@@ -195,8 +285,7 @@ pub(crate) fn batch_reader_from_arrow_reader(value: &Bound<'_, PyAny>) -> PyResu
 
 /// Read exactly one `pyarrow.Table` as a zero-copy Arrow stream.
 pub(crate) fn batch_reader_from_arrow_table(value: &Bound<'_, PyAny>) -> PyResult<BatchReader> {
-    let table = value.py().import("pyarrow")?.getattr("Table")?;
-    if !value.is_instance(&table)? {
+    if !value.is_instance(pyarrow::table(value.py())?)? {
         return Err(PyTypeError::new_err(format!(
             "expected a pyarrow.Table, got {}",
             type_name(value)
@@ -205,16 +294,22 @@ pub(crate) fn batch_reader_from_arrow_table(value: &Bound<'_, PyAny>) -> PyResul
     batch_reader_from_value(value)
 }
 
-/// Import exactly one `pyarrow.RecordBatch` for the core's held-batch path.
+/// Import exactly one `pyarrow.RecordBatch` for the core's held-batch path,
+/// every column proven before it is handed out.
 pub(crate) fn record_batch_from_value(value: &Bound<'_, PyAny>) -> PyResult<RecordBatch> {
-    let batch = value.py().import("pyarrow")?.getattr("RecordBatch")?;
-    if !value.is_instance(&batch)? {
+    record_batch_intake(value)?.into_batch(value.py())
+}
+
+/// Import exactly one `pyarrow.RecordBatch`, its columns not yet proven, for
+/// a caller that proves them in the same detached section as its landing.
+pub(crate) fn record_batch_intake(value: &Bound<'_, PyAny>) -> PyResult<BatchIntake> {
+    if !value.is_instance(pyarrow::record_batch(value.py())?)? {
         return Err(PyTypeError::new_err(format!(
             "expected a pyarrow.RecordBatch, got {}",
             type_name(value)
         )));
     }
-    RecordBatch::from_pyarrow_bound(value)
+    BatchIntake::from_value(value)
 }
 
 /// The rows one batch holds when a caller streaming plain rows sets no bound.
@@ -273,16 +368,17 @@ fn inside_package(module: &str, package: &str) -> bool {
 /// caller who never installed that package from paying an import for it - and
 /// from being handed an `ImportError` about a library they are not using.
 pub(crate) fn declared_by(value: &Bound<'_, PyAny>, package: &str, qualname: &str) -> bool {
+    // Both names are compared where they lie, so a probe allocates nothing.
     let class = value.get_type();
     let named = class
         .qualname()
-        .and_then(|name| name.extract::<String>())
-        .is_ok_and(|name| name == qualname);
+        .is_ok_and(|name| name.to_str().is_ok_and(|name| name == qualname));
     named
-        && class
-            .module()
-            .and_then(|module| module.extract::<String>())
-            .is_ok_and(|module| inside_package(&module, package))
+        && class.module().is_ok_and(|module| {
+            module
+                .to_str()
+                .is_ok_and(|module| inside_package(module, package))
+        })
 }
 
 /// Import a frame library, naming it when it is not installed.
@@ -323,11 +419,7 @@ pub(crate) fn frame_to_arrow<'py>(frame: &Bound<'py, PyAny>) -> PyResult<Bound<'
     if declared_by(frame, "polars", "DataFrame") {
         return polars_to_arrow(frame);
     }
-    frame
-        .py()
-        .import("pyarrow")?
-        .getattr("Table")?
-        .call_method1("from_pandas", (frame,))
+    pyarrow::table(frame.py())?.call_method1(intern!(frame.py(), "from_pandas"), (frame,))
 }
 
 /// Hand a polars frame over as Arrow at the newest compat level.
@@ -576,6 +668,12 @@ impl Chained {
     /// an item already of the root's shape is handed back untouched. A schema
     /// the root cannot hold is the core's error, with the columns it names.
     fn conform(&self, item: BatchReader) -> PyResult<BatchReader> {
+        // An item of the first one's schema is of the root's shape already:
+        // it is handed back as the first was, with no plan compiled for it.
+        let schema = item.schema();
+        if Arc::ptr_eq(&schema, &self.schema) || schema == self.schema {
+            return Ok(item);
+        }
         SerieReader::from_arrow_reader(Some(&self.root), item, self.options)
             .map(SerieReader::into_arrow_reader)
             .map_err(value_error)
@@ -659,10 +757,8 @@ fn row_reader(
     };
     let mut rows = Rows {
         items: items.clone().unbind(),
-        from_pylist: py
-            .import("pyarrow")?
-            .getattr("RecordBatch")?
-            .getattr("from_pylist")?
+        from_pylist: pyarrow::record_batch(py)?
+            .getattr(intern!(py, "from_pylist"))?
             .unbind(),
         columns: declared.map(Bound::unbind),
         names: None,
@@ -796,6 +892,7 @@ impl Rows {
                 None => from_pylist.call1((chunk,))?,
             };
             let batch = RecordBatch::from_pyarrow_bound(&built)?;
+            validate_batch(&batch).map_err(value_error)?;
             // The first batch is what names the columns; every later one is
             // built against it, so an inference that saw only nulls in one
             // chunk cannot disagree with the chunk before it.
@@ -1005,104 +1102,131 @@ pub(crate) fn frame_from_reader(
     }
 }
 
-/// Hand a core batch reader to Python as a `pyarrow.RecordBatchReader`.
-///
-/// The root and transport metadata resolve once. A private iterator exports
-/// shared buffers under that exact datatype when `PyArrow` requests a batch,
-/// preserving nested flags the aggregate Arrow C Schema exporter drops.
+/// Hand a core batch reader to Python as a `pyarrow.RecordBatchReader`,
+/// its root resolved once from the reader's own schema.
 pub(crate) fn batch_reader_to_pyarrow(
     py: Python<'_>,
     reader: BatchReader,
 ) -> PyResult<Bound<'_, PyAny>> {
-    let field =
+    let root =
         CoreField::from_arrow_schema("row", reader.schema().as_ref()).map_err(value_error)?;
-    let schema = core_schema_to_pyarrow(py, &field)?;
-    let dtype = core_field_to_pyarrow(py, &field)?.getattr("type")?.unbind();
-    let pyarrow = py.import("pyarrow")?;
-    let batches = Py::new(
-        py,
-        PyArrowBatchIterator {
-            reader: Mutex::new(Some(reader)),
-            dtype,
-            metadata: schema.getattr("metadata")?.unbind(),
-            from_struct_array: pyarrow
-                .getattr("RecordBatch")?
-                .getattr("from_struct_array")?
-                .unbind(),
-        },
+    rooted_reader_to_pyarrow(py, &root, reader)
+}
+
+/// Hand a core batch reader to Python as a `pyarrow.RecordBatchReader` whose
+/// schema is `root`'s exchange projection.
+///
+/// The stream crosses as one C stream capsule, so a consumer pulls batches
+/// C to C - off the GIL, from any thread - with no Python frame per batch.
+/// arrow-rs's stream exporter writes a nested field's flags over its
+/// datatype's, dropping a map's sorted keys; where the stream's schema
+/// therefore differs from the exact one, `pyarrow` casts the reader to it
+/// once, which relabels the type and keeps every buffer.
+pub(crate) fn rooted_reader_to_pyarrow<'py>(
+    py: Python<'py>,
+    root: &CoreField,
+    reader: BatchReader,
+) -> PyResult<Bound<'py, PyAny>> {
+    let exact = core_schema_to_pyarrow(py, root)?;
+    let schema = reader.schema();
+    let stream = FFI_ArrowArrayStream::new(Box::new(Exported {
+        inner: Some(reader),
+        schema,
+    }));
+    let imported = pyarrow::record_batch_reader(py)?.call_method1(
+        intern!(py, "_import_from_c_capsule"),
+        (stream_capsule(py, stream)?,),
     )?;
-    pyarrow
-        .getattr("RecordBatchReader")?
-        .call_method1("from_batches", (schema, batches))
+    let same = imported
+        .getattr(intern!(py, "schema"))?
+        .call_method1(intern!(py, "equals"), (&exact, true))?
+        .is_truthy()?;
+    if same {
+        Ok(imported)
+    } else {
+        imported.call_method1(intern!(py, "cast"), (exact,))
+    }
 }
 
-/// Export one standalone batch through the same exact, buffer-sharing boundary.
-pub(crate) fn batch_to_pyarrow(py: Python<'_>, batch: RecordBatch) -> PyResult<Bound<'_, PyAny>> {
-    let reader = yggdryl::arrow::batch_reader(batch.schema(), [batch]);
-    batch_reader_to_pyarrow(py, reader)?.call_method0("read_next_batch")
+/// A core reader as a C stream hands it out: every failure restated as the
+/// core's message in Arrow's category for it, and nothing pulled after it.
+///
+/// arrow-rs writes a failure's text into a C string inside its `extern "C"`
+/// callback and aborts the process on an interior NUL, which a Python
+/// exception's message may hold, so the message is made NUL-free here.
+struct Exported {
+    inner: Option<BatchReader>,
+    schema: SchemaRef,
 }
 
-/// Preserve the exception categories of Arrow's C Stream error boundary.
-fn arrow_stream_error(py: Python<'_>, error: ArrowError) -> PyErr {
-    let class = match &error {
-        ArrowError::NotYetImplemented(_) => "ArrowNotImplementedError",
-        ArrowError::MemoryError(_) => "ArrowMemoryError",
-        ArrowError::IoError(_, _) => "ArrowIOError",
-        _ => "ArrowInvalid",
+impl Iterator for Exported {
+    type Item = Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner.as_mut()?.next() {
+            Some(Ok(batch)) => Some(Ok(batch)),
+            Some(Err(error)) => {
+                // The source is released at the first failure, as a reader
+                // closed early would release it, and the stream ends there.
+                self.inner = None;
+                Some(Err(exported_error(error)))
+            }
+            None => {
+                self.inner = None;
+                None
+            }
+        }
+    }
+}
+
+impl arrow_array::RecordBatchReader for Exported {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+}
+
+/// One failure as the C stream reports it: the core's message, NUL-free, in
+/// the category that picks the exception `pyarrow` raises for it.
+fn exported_error(error: ArrowError) -> ArrowError {
+    let restated: fn(String) -> ArrowError = match &error {
+        ArrowError::NotYetImplemented(_) => ArrowError::NotYetImplemented,
+        ArrowError::MemoryError(_) => ArrowError::MemoryError,
+        ArrowError::IoError(_, _) => {
+            |message| ArrowError::IoError(message.clone(), std::io::Error::other(message))
+        }
+        _ => ArrowError::InvalidArgumentError,
     };
     let message = yggdryl::arrow::from_reader_error(error).to_string();
-    py.import("pyarrow")
-        .and_then(|module| module.getattr(class))
-        .and_then(|class| class.call1((message,)))
-        .map_or_else(std::convert::identity, PyErr::from_value)
+    restated(message.replace('\0', "\u{FFFD}"))
 }
 
-/// One native batch per pull; no public iterator vocabulary or retained batches.
-#[pyclass(name = "_ArrowBatchIterator", module = "yggdryl._native")]
-struct PyArrowBatchIterator {
-    // BatchReader is Send, not Sync; PyArrow may pull from a worker thread.
-    reader: Mutex<Option<BatchReader>>,
-    dtype: Py<PyAny>,
-    metadata: Py<PyAny>,
-    from_struct_array: Py<PyAny>,
+/// Export one standalone batch as the record batch `root` states, sharing its
+/// buffers: one schema capsule of the root's exchange projection and one
+/// array capsule of the batch's columns.
+///
+/// `root` is the field the batch was laid out under, so its projection is the
+/// batch's own layout; the struct array carries a zero-column batch's row
+/// count.
+pub(crate) fn rooted_batch_to_pyarrow<'py>(
+    py: Python<'py>,
+    root: &CoreField,
+    batch: RecordBatch,
+) -> PyResult<Bound<'py, PyAny>> {
+    let schema = root
+        .clone()
+        .into_arrow_exchange_ffi()
+        .map_err(value_error)?;
+    let array: ArrayRef = Arc::new(StructArray::from(batch));
+    pyarrow::record_batch(py)?.call_method1(
+        intern!(py, "_import_from_c_capsule"),
+        (schema_capsule(py, schema)?, array_capsule(py, &array)?),
+    )
 }
 
-#[pymethods]
-impl PyArrowBatchIterator {
-    #[classattr]
-    const __hash__: Option<Py<PyAny>> = None;
-
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
-        let reader = self
-            .reader
-            .get_mut()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let next = py.detach(|| reader.as_mut().and_then(Iterator::next));
-        let Some(batch) = next else {
-            *reader = None;
-            return Ok(None);
-        };
-        let result = batch
-            .map_err(|error| arrow_stream_error(py, error))
-            .and_then(|batch| {
-                // From<RecordBatch> keeps its explicit length even with zero columns.
-                let array: ArrayRef = Arc::new(StructArray::from(batch));
-                let array = arrow_array_to_pyarrow_with_type(py, &array, self.dtype.bind(py))?;
-                let batch = self.from_struct_array.call1(py, (array,))?;
-                batch
-                    .bind(py)
-                    .call_method1("replace_schema_metadata", (self.metadata.bind(py),))
-                    .map(Bound::unbind)
-            });
-        if result.is_err() {
-            *reader = None;
-        }
-        result.map(Some)
-    }
+/// Export one standalone batch, its root resolved from its own schema.
+pub(crate) fn batch_to_pyarrow(py: Python<'_>, batch: RecordBatch) -> PyResult<Bound<'_, PyAny>> {
+    let root = CoreField::from_arrow_schema("row", batch.schema().as_ref()).map_err(value_error)?;
+    rooted_batch_to_pyarrow(py, &root, batch)
 }
 
 /// Chain two readers onto the root their two schemas merge into.
@@ -1791,7 +1915,7 @@ impl PyRecordOptions {
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let existing = existing.map(core_field_from_value).transpose()?;
-        let batch = RecordBatch::from_pyarrow_bound(batch)?;
+        let batch = record_batch_from_pyarrow(batch)?;
         let cast = self
             .inner
             .apply_arrow_batch(batch, existing.as_ref())
@@ -2327,7 +2451,7 @@ impl PyTextOptions {
         existing: Option<&Bound<'py, PyAny>>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let existing = existing.map(core_field_from_value).transpose()?;
-        let batch = RecordBatch::from_pyarrow_bound(batch)?;
+        let batch = record_batch_from_pyarrow(batch)?;
         let cast = self
             .inner
             .apply_arrow_batch(batch, existing.as_ref())

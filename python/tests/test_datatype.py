@@ -10,8 +10,11 @@ import inspect
 import json
 import operator
 import pickle
+import struct
+import subprocess
+import sys
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Optional
 
 import pyarrow as pa
@@ -20,6 +23,7 @@ import pytest
 import yggdryl
 from yggdryl import (
     BytesParameters,
+    ChunkedSerie,
     DataType,
     Field,
     Serie,
@@ -1758,3 +1762,105 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     assert mapping.dtype.id == "map"
     entries = mapping.dtype[0].dtype
     assert [field.dtype.id for field in entries] == ["utf8", "int16"]
+
+
+# Every Arrow export the binding makes, run with pyarrow's raw-address import
+# replaced by a refusal: the capsule import is the only one allowed.
+CAPSULE_ONLY = """
+import pyarrow as pa
+
+def guarded(real):
+    class Guarded:
+        @staticmethod
+        def _import_from_c(*arguments):
+            raise AssertionError(f"{real.__name__} crossed as a raw address")
+
+        _import_from_c_capsule = staticmethod(real._import_from_c_capsule)
+
+    return Guarded
+
+for name in ("Array", "RecordBatch", "RecordBatchReader", "Schema", "Field", "DataType"):
+    setattr(pa, name, guarded(getattr(pa.lib, name)))
+
+from yggdryl import ChunkedSerie, DataType, Field, Serie, SerieReader
+
+root = Field("row", "struct<id: int64, lookup: map<utf8, int64>>", nullable=False)
+records = Serie.from_scalars(root, [(1, {"a": 1})])
+column = Serie.from_scalars(Field("id", "int64"), [1, 2])
+exports = [
+    DataType("int64").into_arrow(),
+    DataType("struct<id: int64>").into_arrow_schema(),
+    root.into_arrow(),
+    root.into_arrow_schema(),
+    column.into_arrow_array(),
+    column.slice(0, 1).into_arrow_scalar(),
+    records.into_arrow_batch(),
+    records.into_arrow_reader().read_all(),
+    SerieReader.from_serie(records).into_arrow_reader().read_all(),
+    ChunkedSerie.from_series([column, column]).into_arrow_chunked_array(),
+    ChunkedSerie.from_series([records]).into_arrow_table(),
+]
+assert all(type(export).__module__.startswith("pyarrow") for export in exports), exports
+print("capsules only")
+"""
+
+
+def test_every_export_crosses_as_a_capsule_never_a_raw_address() -> None:
+    finished = subprocess.run(
+        [sys.executable, "-c", CAPSULE_ONLY],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert finished.returncode == 0, finished.stderr
+    assert finished.stdout.strip() == "capsules only"
+
+
+def test_a_datatype_exports_its_arrow_c_schema() -> None:
+    mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+    dtype = DataType.from_arrow(mapping)
+    exported = pa.DataType._import_from_c_capsule(dtype.__arrow_c_schema__())
+    assert exported == mapping
+    assert exported.keys_sorted
+    # A native column names two datatypes - the serie it is and the rows it
+    # holds - so its own capsule is no spelling of either.
+    with pytest.raises(TypeError, match="type hint"):
+        DataType(Serie.from_(pa.array([1, 2])))
+
+
+def invalid_offsets() -> pa.Array:
+    """Binary offsets that step backwards, which pyarrow's cheap check passes."""
+    offsets = pa.py_buffer(struct.pack("<4i", 0, 4, 1, 4))
+    array = pa.Array.from_buffers(pa.binary(), 3, [None, offsets, pa.py_buffer(b"abcd")])
+    array.validate()
+    return array
+
+
+@pytest.mark.parametrize(
+    "door",
+    [
+        Serie.from_,
+        Serie.from_arrow_array,
+        lambda array: Serie.from_arrow_array(array, Field("payload", "large_binary")),
+        lambda array: Serie.from_(pa.record_batch({"payload": array})),
+        lambda array: Serie.from_arrow_batch(pa.record_batch({"payload": array})),
+        lambda array: ChunkedSerie.from_(pa.chunked_array([array])),
+        lambda array: ChunkedSerie.from_arrow_chunked_array([array]),
+    ],
+    ids=[
+        "Serie.from_",
+        "from_arrow_array",
+        "from_arrow_array-declared",
+        "batch-from_",
+        "from_arrow_batch",
+        "ChunkedSerie.from_",
+        "from_arrow_chunked_array",
+    ],
+)
+def test_foreign_array_data_is_proven_before_a_row_is_read(
+    door: Callable[[pa.Array], object],
+) -> None:
+    # Landed unproven, reading these rows would read past the value buffer.
+    with pytest.raises(ValueError, match="non-monotonic offset"):
+        door(invalid_offsets())

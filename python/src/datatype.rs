@@ -3,14 +3,18 @@
 use std::collections::BTreeMap;
 use std::num::IntErrorKind;
 
-use arrow_array::{ArrayRef, ffi::FFI_ArrowArray, make_array};
+use arrow_array::ffi_stream::FFI_ArrowArrayStream;
+use arrow_array::{Array, ArrayRef, RecordBatch, ffi::FFI_ArrowArray, make_array};
 use arrow_data::ArrayData;
 use arrow_pyarrow::{FromPyArrow, PyArrowType};
-use arrow_schema::{DataType as ArrowDataType, ffi::FFI_ArrowSchema};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, ffi::FFI_ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyIndexError, PyKeyError, PyOverflowError, PyTypeError, PyValueError};
+use pyo3::intern;
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyByteArray, PyBytes, PyDict, PyList, PyString, PyTuple, PyType};
+use pyo3::types::{
+    PyAny, PyBool, PyByteArray, PyBytes, PyCapsule, PyDict, PyList, PyString, PyTuple, PyType,
+};
 use yggdryl::{
     DataType as CoreDataType, DataTypeId, EdgeAlgorithm as CoreEdgeAlgorithm, Scheme as CoreScheme,
     StringEnum as CoreStringEnum, StructType, TimeUnit as CoreTimeUnit, UnionMode as CoreUnionMode,
@@ -27,14 +31,77 @@ use crate::{
 };
 use yggdryl::ArrowCastOptions;
 
-fn import_ffi_schema<'py>(
+/// The `pyarrow` classes the Arrow crossings name, each imported once.
+///
+/// Nine fixed class handles, filled on first use and never keyed by an
+/// input: not a binding-side data cache, only the lookup a
+/// `py.import("pyarrow")` and a `getattr` would otherwise repeat per call -
+/// the shape `arrow-pyarrow` keeps for its own crossings.
+pub(crate) mod pyarrow {
+    use pyo3::prelude::*;
+    use pyo3::sync::PyOnceLock;
+    use pyo3::types::PyType;
+
+    macro_rules! classes {
+        ($($name:ident = $class:literal;)*) => {$(
+            #[doc = concat!("`pyarrow.", $class, "`.")]
+            pub(crate) fn $name(py: Python<'_>) -> PyResult<&Bound<'_, PyType>> {
+                static CLASS: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+                CLASS.import(py, "pyarrow", $class)
+            }
+        )*};
+    }
+
+    classes! {
+        array = "Array";
+        record_batch = "RecordBatch";
+        record_batch_reader = "RecordBatchReader";
+        table = "Table";
+        chunked_array = "ChunkedArray";
+        scalar = "Scalar";
+        schema = "Schema";
+        field = "Field";
+        data_type = "DataType";
+    }
+}
+
+/// Hand one C schema over as the `arrow_schema` capsule the Arrow `PyCapsule`
+/// Interface names: the consumer moves the struct out, and a capsule nothing
+/// consumed releases it when it is collected.
+pub(crate) fn schema_capsule(
+    py: Python<'_>,
+    schema: FFI_ArrowSchema,
+) -> PyResult<Bound<'_, PyCapsule>> {
+    PyCapsule::new_with_value(py, schema, c"arrow_schema")
+}
+
+/// Hand one array's buffers over as an `arrow_array` capsule, shared rather
+/// than copied.
+pub(crate) fn array_capsule<'py>(
     py: Python<'py>,
-    class_name: &str,
-    schema: &FFI_ArrowSchema,
+    array: &ArrayRef,
+) -> PyResult<Bound<'py, PyCapsule>> {
+    PyCapsule::new_with_value(py, FFI_ArrowArray::new(&array.to_data()), c"arrow_array")
+}
+
+/// Hand one C stream over as an `arrow_array_stream` capsule.
+pub(crate) fn stream_capsule(
+    py: Python<'_>,
+    stream: FFI_ArrowArrayStream,
+) -> PyResult<Bound<'_, PyCapsule>> {
+    PyCapsule::new_with_value(py, stream, c"arrow_array_stream")
+}
+
+/// Import one core-exported C schema as an instance of `class`.
+pub(crate) fn import_ffi_schema<'py>(
+    class: &Bound<'py, PyType>,
+    schema: FFI_ArrowSchema,
 ) -> PyResult<Bound<'py, PyAny>> {
-    py.import("pyarrow")?
-        .getattr(class_name)?
-        .call_method1("_import_from_c", (std::ptr::from_ref(schema) as usize,))
+    let py = class.py();
+    class.call_method1(
+        intern!(py, "_import_from_c_capsule"),
+        (schema_capsule(py, schema)?,),
+    )
 }
 
 pub(crate) fn core_dtype_to_pyarrow<'py>(
@@ -45,7 +112,7 @@ pub(crate) fn core_dtype_to_pyarrow<'py>(
         .clone()
         .into_arrow_datatype_ffi()
         .map_err(value_error)?;
-    import_ffi_schema(py, "DataType", &schema)
+    import_ffi_schema(pyarrow::data_type(py)?, schema)
 }
 
 pub(crate) fn core_field_to_pyarrow<'py>(
@@ -53,15 +120,150 @@ pub(crate) fn core_field_to_pyarrow<'py>(
     field: &yggdryl::Field,
 ) -> PyResult<Bound<'py, PyAny>> {
     let schema = field.clone().into_arrow_field_ffi().map_err(value_error)?;
-    import_ffi_schema(py, "Field", &schema)
+    import_ffi_schema(pyarrow::field(py)?, schema)
 }
 
-/// Imports one `PyArrow` Array through the Arrow C Data Interface.
+/// One array that crossed into the binding, and whether it still owes a
+/// proof.
+pub(crate) enum ArrayIntake {
+    /// A native column's own buffers, proven where they landed.
+    Native(ArrayRef),
+    /// Buffers a foreign producer described, proven by nothing yet.
+    Foreign(ArrayData),
+}
+
+impl ArrayIntake {
+    /// Read one array: a native column as the buffers it holds, never
+    /// through its own capsule, and anything else across the C Data
+    /// Interface, whose producer is trusted for nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever the import raised, and a run's refusal.
+    pub(crate) fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(serie) = value.extract::<PyRef<'_, crate::serie::PySerie>>() {
+            return serie
+                .inner
+                .require_arrow_array()
+                .map(Self::Native)
+                .map_err(value_error);
+        }
+        ArrayData::from_pyarrow_bound(value).map(Self::Foreign)
+    }
+
+    /// The array, once a foreign producer's buffers are proven: every
+    /// offset, index, code and UTF-8 run the layout promises is checked
+    /// against the buffers before anything reads them. Pure work over
+    /// owned buffers, so a caller runs it off the GIL.
+    ///
+    /// # Errors
+    ///
+    /// Returns Arrow's refusal naming what the data does not satisfy.
+    pub(crate) fn validated(self) -> Result<ArrayRef, ArrowError> {
+        match self {
+            Self::Native(array) => Ok(array),
+            Self::Foreign(data) => {
+                data.validate_full()?;
+                Ok(make_array(data))
+            }
+        }
+    }
+}
+
+/// One record batch that crossed into the binding, and whether it still owes
+/// a proof.
+pub(crate) enum BatchIntake {
+    /// A native record column as the batch it is, proven where it landed.
+    Native(RecordBatch),
+    /// Columns a foreign producer described, proven by nothing yet.
+    Foreign(RecordBatch),
+}
+
+impl BatchIntake {
+    /// Read one batch: a native record column as the batch it is, and
+    /// anything else across the C Data Interface.
+    ///
+    /// # Errors
+    ///
+    /// Returns whatever the import raised, and the core's refusal of a
+    /// native column no batch states.
+    pub(crate) fn from_value(value: &Bound<'_, PyAny>) -> PyResult<Self> {
+        if let Ok(serie) = value.extract::<PyRef<'_, crate::serie::PySerie>>() {
+            return serie
+                .inner
+                .into_arrow_batch()
+                .map(Self::Native)
+                .map_err(value_error);
+        }
+        RecordBatch::from_pyarrow_bound(value).map(Self::Foreign)
+    }
+
+    /// [`Self::validated`] off the GIL, for a caller with nothing else to
+    /// run beside it.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ValueError` naming what a column does not satisfy.
+    pub(crate) fn into_batch(self, py: Python<'_>) -> PyResult<RecordBatch> {
+        py.detach(move || self.validated()).map_err(value_error)
+    }
+
+    /// The batch, once every column a foreign producer described is proven
+    /// as [`ArrayIntake::validated`] proves one array.
+    ///
+    /// # Errors
+    ///
+    /// Returns Arrow's refusal naming what a column does not satisfy.
+    pub(crate) fn validated(self) -> Result<RecordBatch, ArrowError> {
+        match self {
+            Self::Native(batch) => Ok(batch),
+            Self::Foreign(batch) => {
+                validate_batch(&batch)?;
+                Ok(batch)
+            }
+        }
+    }
+}
+
+/// Prove every column of a batch a foreign producer described.
+///
+/// # Errors
+///
+/// Returns Arrow's refusal naming what a column does not satisfy.
+pub(crate) fn validate_batch(batch: &RecordBatch) -> Result<(), ArrowError> {
+    batch
+        .columns()
+        .iter()
+        .try_for_each(|column| column.to_data().validate_full())
+}
+
+/// Import one Arrow array, proven off the GIL before it is handed out.
+///
+/// # Errors
+///
+/// Returns whatever the import raised, and a `ValueError` naming what the
+/// data does not satisfy.
 pub(crate) fn arrow_array_from_pyarrow(value: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
-    ArrayData::from_pyarrow_bound(value).map(make_array)
+    let intake = ArrayIntake::from_value(value)?;
+    value
+        .py()
+        .detach(move || intake.validated())
+        .map_err(value_error)
 }
 
-/// Exports one Arrow array, optionally rehydrating an exact owning Field.
+/// Import one record batch, every column proven off the GIL before it is
+/// handed out.
+///
+/// # Errors
+///
+/// Returns whatever the import raised, and a `ValueError` naming what a
+/// column does not satisfy.
+pub(crate) fn record_batch_from_pyarrow(value: &Bound<'_, PyAny>) -> PyResult<RecordBatch> {
+    BatchIntake::from_value(value)?.into_batch(value.py())
+}
+
+/// Export one Arrow array under an exact owning Field, or - with none - under
+/// the core's projection of its own datatype, buffers shared.
 pub(crate) fn arrow_array_to_pyarrow<'py>(
     py: Python<'py>,
     array: &ArrayRef,
@@ -73,22 +275,9 @@ pub(crate) fn arrow_array_to_pyarrow<'py>(
             .and_then(CoreDataType::into_arrow_datatype_ffi)
             .map_err(value_error)?,
     };
-    let schema_address = (std::ptr::from_ref(&schema) as usize).into_pyobject(py)?;
-    arrow_array_to_pyarrow_with_type(py, array, schema_address.as_any())
-}
-
-/// Imports shared buffers under a resolved `PyArrow` datatype or an owned C
-/// schema address. The foreign importer owns both forms; streamed batches
-/// reuse the datatype without reconstructing its schema on every pull.
-pub(crate) fn arrow_array_to_pyarrow_with_type<'py>(
-    py: Python<'py>,
-    array: &ArrayRef,
-    dtype: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyAny>> {
-    let array = FFI_ArrowArray::new(&array.to_data());
-    py.import("pyarrow")?.getattr("Array")?.call_method1(
-        "_import_from_c",
-        (std::ptr::from_ref(&array) as usize, dtype),
+    pyarrow::array(py)?.call_method1(
+        intern!(py, "_import_from_c_capsule"),
+        (schema_capsule(py, schema)?, array_capsule(py, array)?),
     )
 }
 
@@ -157,7 +346,7 @@ pub(crate) fn core_arrow_scalar<'py>(
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
     let field = yggdryl::Field::new("value", dtype.clone(), true);
-    let array = if value.is_instance(&py.import("pyarrow")?.getattr("Scalar")?)? {
+    let array = if value.is_instance(pyarrow::scalar(py)?)? {
         yggdryl::Serie::from_arrow_array(
             Some(&field),
             pyarrow_scalar_into_array(value)?,
@@ -180,10 +369,7 @@ pub(crate) fn arrow_scalar_to_pyarrow_type<'py>(
     target: Bound<'py, PyAny>,
     safe: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let pyarrow = py.import("pyarrow")?;
-    let scalar_class = pyarrow.getattr("Scalar")?;
-
-    if value.is_instance(&scalar_class)? {
+    if value.is_instance(pyarrow::scalar(py)?)? {
         if value.getattr("type")?.eq(&target)? {
             return Ok(value.clone());
         }
@@ -192,6 +378,7 @@ pub(crate) fn arrow_scalar_to_pyarrow_type<'py>(
         return value.call_method("cast", (target,), Some(&kwargs));
     }
 
+    let pyarrow = py.import("pyarrow")?;
     if safe {
         return typed_arrow_scalar(py, &pyarrow, value, target, true);
     }
@@ -246,6 +433,12 @@ pub(crate) fn core_dtype_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreDa
     }
     if let Ok(value) = value.extract::<&str>() {
         return CoreDataType::from_str(value).map_err(value_error);
+    }
+    // A native column names two datatypes - the `serie<...>` it is as a
+    // value and the one its rows hold - so the capsule it exports is not
+    // read as either; it stays the hint it always was.
+    if crate::serie::is_native_columnar(value) {
+        return core_dtype_from_pyhint(value);
     }
 
     match ArrowDataType::from_pyarrow_bound(value) {
@@ -1022,6 +1215,17 @@ impl PyDataType {
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         core_dtype_to_pyarrow(py, &self.inner)
+    }
+
+    /// This datatype as the Arrow `PyCapsule` Interface's `arrow_schema`
+    /// capsule, projected by the core's exporter.
+    fn __arrow_c_schema__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyCapsule>> {
+        let schema = self
+            .inner
+            .clone()
+            .into_arrow_datatype_ffi()
+            .map_err(value_error)?;
+        schema_capsule(py, schema)
     }
 
     /// Rebuild this nested datatype with replacement children.

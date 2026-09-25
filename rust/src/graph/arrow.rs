@@ -24,7 +24,7 @@ use super::{
     OperationEventData, OperationKind, Trade,
 };
 use crate::arrow::BatchReader;
-use crate::serie::{Proof, land_batch};
+use crate::serie::{Proof, Resolved, land_batch};
 use crate::{DataType, Decimal18, Error, Field, Result, Scalar, Serie, StructType, Uuid};
 
 const KIND: &str = "operationkind";
@@ -119,7 +119,7 @@ impl BookInput {
     ) -> Result<impl FusedIterator<Item = Result<BookInput>> + Send + 'static> {
         let schema = batches.schema();
         let intake = Intake::resolve(&schema)?;
-        let root = Arc::clone(&intake.root);
+        let root = Resolved::of(Arc::clone(&intake.root));
         Ok(landed_rows(
             batches,
             schema,
@@ -176,7 +176,7 @@ impl Book {
     ) -> Result<impl FusedIterator<Item = Result<Book>> + Send + 'static> {
         let schema = batches.schema();
         let intake = BookIntake::resolve(&schema)?;
-        let root = Arc::clone(&intake.root);
+        let root = Resolved::of(Arc::clone(&intake.root));
         Ok(landed_rows(
             batches,
             schema,
@@ -193,7 +193,7 @@ fn landed_rows<T, F>(
     mut batches: BatchReader,
     schema: SchemaRef,
     read: F,
-    root: Arc<Field>,
+    root: Resolved,
 ) -> impl FusedIterator<Item = Result<T>> + Send + 'static
 where
     T: Send + 'static,
@@ -241,7 +241,7 @@ where
             // The batch lands once, proving what its layout does not; a
             // row it refuses is named by the batch's first ordinal and
             // its own row.
-            match land_batch(&root, &batch, &Proof::Unproven) {
+            match land_batch(&root, batch, &Proof::Unproven) {
                 Ok(records) => pending = Some((records, 0)),
                 Err(error) => {
                     done = true;

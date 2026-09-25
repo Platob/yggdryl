@@ -27,7 +27,7 @@ use yggdryl::iceberg::{
 use yggdryl::media::{DEFAULT_ROOT_NAME, IORecordOptions as _};
 use yggdryl::{DataType as CoreDataType, Field as CoreField, Scalar, StructType};
 
-use crate::datatype::core_dtype_from_value;
+use crate::datatype::{PyDataType, core_dtype_from_value};
 use crate::enums::{PyMimeType, core_mime_type_from_value};
 use crate::field::{PyField, core_field_from_value};
 use crate::iobase::PyIOBase;
@@ -179,9 +179,11 @@ fn bounds_by_id<'py>(py: Python<'py>, bounds: &[(i32, Vec<u8>)]) -> PyResult<Bou
 /// root besides, because a caller building columns one by one holds exactly
 /// that.
 fn catalog_schema_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreField> {
+    // A native `DataType` exports a capsule for Arrow consumers too, but it
+    // is read as the fields it iterates, exactly as it always was.
     if value.extract::<PyRef<'_, PyField>>().is_ok()
         || value.extract::<&str>().is_ok()
-        || value.hasattr("__arrow_c_schema__")?
+        || (!value.is_instance_of::<PyDataType>() && value.hasattr("__arrow_c_schema__")?)
     {
         return core_root_field_from_value(value, DEFAULT_ROOT_NAME);
     }

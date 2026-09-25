@@ -9,11 +9,15 @@ columnar object crosses: a held column is a ``Serie``, a stream is a
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import gc
 import pathlib
 import pickle
+import sys
 import threading
-from collections.abc import Iterator
+import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -1208,3 +1212,283 @@ def test_exact_map_batch_casts_share_the_callers_buffers(keys_sorted: bool) -> N
         assert shared.equals(source)
         for column, original in zip(shared.columns, source.columns):
             assert buffer_locations(column) == buffer_locations(original)
+
+
+class TestPyCapsule:
+    """Every class exports the Arrow PyCapsule Interface, buffers shared."""
+
+    def test_a_column_crosses_to_any_consumer_sharing_its_buffers(self) -> None:
+        source = pa.array([1, None, 3], pa.int64())
+        column = Serie.from_(source)
+        exported = pa.array(column)
+        assert exported.equals(source)
+        assert buffer_locations(exported) == buffer_locations(source)
+        field = pa.Field._import_from_c_capsule(column.__arrow_c_schema__())
+        assert field.equals(pa.field("item", pa.int64()), check_metadata=True)
+        # A column is one array, as a `pyarrow.Array` is: only a record
+        # column is also a stream.
+        assert not hasattr(column, "__arrow_c_stream__")
+
+    @pytest.mark.parametrize("route", ["batch", "table", "stream"])
+    def test_a_record_column_crosses_under_its_exact_exchange_schema(self, route: str) -> None:
+        _, source = declared_batch(True)
+        held = Serie.from_(source)
+        assert isinstance(held, StructSerie)
+        if route == "batch":
+            exported = pa.record_batch(held)
+        elif route == "table":
+            (exported,) = pa.table(held).to_batches()
+        else:
+            exported = pa.RecordBatchReader.from_stream(held).read_next_batch()
+        assert exported.schema.equals(source.schema, check_metadata=True)
+        assert exported.equals(source, check_metadata=True)
+        restored = Field.from_arrow_schema(exported.schema, name="row")
+        assert restored.dtype["category"].dictionary_id == 29
+        assert exported.schema.field("lookup").type.keys_sorted
+        for original, column in zip(source.columns, exported.columns):
+            assert buffer_locations(column) == buffer_locations(original)
+
+    def test_a_stream_crosses_to_pyarrow_and_polars_sharing_its_buffers(self) -> None:
+        column = pa.array(range(1_024), pa.int64())
+        table = pa.table({"value": column})
+        exported = pa.RecordBatchReader.from_stream(SerieReader.from_(table)).read_all()
+        assert exported.equals(table)
+        assert buffer_locations(exported.column(0).chunk(0)) == buffer_locations(column)
+        frame = polars.DataFrame(SerieReader.from_(table))
+        assert frame["value"].to_list() == column.to_pylist()
+        address, offset, length = frame["value"]._get_buffer_info()
+        assert (address, offset, length) == (column.buffers()[1].address, 0, 1_024)
+
+    def test_a_requested_schema_is_applied_by_the_one_cast(self) -> None:
+        column = Serie.from_(pa.array([1, 2, 300], pa.int64()))
+        assert pa.array(column, type=pa.int16()).equals(pa.array([1, 2, 300], pa.int16()))
+        # Best effort, as `Serie.cast` is: a value the target cannot hold is
+        # null under the default safe cast rather than a refusal.
+        assert pa.array(column, type=pa.int8()).to_pylist() == [1, 2, None]
+        wide = pa.schema([pa.field("id", pa.float64(), nullable=False), ("symbol", pa.utf8())])
+        records = Serie.from_(quotes())
+        assert pa.record_batch(records, schema=wide).schema.field("id").type == pa.float64()
+        streamed = pa.RecordBatchReader.from_stream(SerieReader.from_(quotes()), schema=wide)
+        assert streamed.read_all().column("id").to_pylist() == [1.0, 2.0]
+
+    def test_a_run_has_no_layout_to_hand_over(self) -> None:
+        run = Serie([1, 2])
+        for export in (run.__arrow_c_array__, run.__arrow_c_schema__, run.into_arrow_array):
+            with pytest.raises(ValueError, match="run declares no field"):
+                export()
+
+    def test_an_unconsumed_capsule_is_released(self) -> None:
+        column = Serie.from_(pa.array(range(4_096), pa.int64()))
+        records = Serie.from_(quotes())
+        gc.collect()
+        allocated = pa.total_allocated_bytes()
+        for _ in range(64):
+            column.__arrow_c_array__()
+            column.__arrow_c_schema__()
+            records.__arrow_c_stream__()
+            # The capsule is all that holds this table's buffers.
+            SerieReader.from_(pa.table({"value": list(range(4_096))})).__arrow_c_stream__()
+        gc.collect()
+        assert pa.total_allocated_bytes() == allocated
+
+    def test_a_stream_capsule_is_consumed_by_a_worker_thread(self) -> None:
+        table = pa.table({"value": list(range(16))})
+        reader = pa.RecordBatchReader.from_stream(SerieReader.from_(table))
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(reader.read_all).result(timeout=10).equals(table)
+
+    @pytest.mark.parametrize("native", ["reader", "serie", "chunked"])
+    def test_a_native_value_lands_as_what_it_holds_without_crossing_c(self, native: str) -> None:
+        _, source = declared_batch(True)
+        held = Serie.from_(source)
+        value: object = {
+            "reader": SerieReader.from_serie(held),
+            "serie": held,
+            "chunked": ChunkedSerie.from_serie(held),
+        }[native]
+        landed = Serie.from_arrow_reader(value)
+        assert landed == held
+        assert landed.field == held.field
+        lookup = landed.child("lookup")
+        assert isinstance(lookup, MapSerie) and lookup.keys_sorted
+        assert landed.field.dtype["category"].dictionary_id == 29
+
+
+class TestReaderRoot:
+    def test_a_held_columns_own_root_hands_back_the_same_records(self) -> None:
+        held = Serie.from_(quotes())
+        (record,) = list(SerieReader.from_(held, held.field))
+        assert record == held
+        assert record.field == held.field
+        for name in ("id", "symbol"):
+            original = held.child(name)
+            shared = record.child(name)
+            assert original is not None and shared is not None
+            assert buffer_locations(shared.into_arrow_array()) == buffer_locations(
+                original.into_arrow_array()
+            )
+
+    def test_a_narrowing_root_refuses_naming_the_column(self) -> None:
+        held = Serie.from_(pa.record_batch({"quantity": pa.array([1, 300], pa.int64())}))
+        root = Field("row", "struct<quantity: int8>", nullable=False)
+        with pytest.raises(ValueError, match="quantity"):
+            list(SerieReader.from_(held, root, safe=False))
+        (safe,) = list(SerieReader.from_(held, root))
+        assert safe.as_py() == [{"quantity": 1}, {"quantity": None}]
+
+
+class TestReaderCast:
+    def test_a_held_reader_is_cast_at_the_call_and_spent(self) -> None:
+        held = Serie.from_(quotes())
+        wide = Field(
+            "row",
+            "struct<id: float64 not null, symbol: utf8 not null, price: float64>",
+            nullable=False,
+        )
+        reader = SerieReader.from_serie(held)
+        cast = reader.cast(wide)
+        assert cast.field == wide
+        (record,) = list(cast)
+        assert record.field == wide
+        assert record.child("id").as_py() == [float(value) for value in held.child("id").as_py()]
+        # Spent: a second hand-over is refused, as after into_arrow_reader.
+        with pytest.raises(ValueError, match="already"):
+            reader.into_arrow_reader()
+
+    def test_a_refused_option_or_target_leaves_the_reader_usable(self) -> None:
+        held = Serie.from_(quotes())
+        reader = SerieReader.from_serie(held)
+        with pytest.raises(ValueError):
+            reader.cast(held.field, nullability="whenever")
+        with pytest.raises(TypeError):
+            reader.cast(object())
+        (record,) = list(reader.cast(held.field))
+        assert record == held
+
+    def test_a_stream_is_cast_as_it_is_pulled(self) -> None:
+        batches = [
+            pa.record_batch({"quantity": pa.array([1, 2], pa.int64())}),
+            pa.record_batch({"quantity": pa.array([3, 300], pa.int64())}),
+        ]
+        source = pa.RecordBatchReader.from_batches(batches[0].schema, batches)
+        narrow = Field("row", "struct<quantity: int8>", nullable=False)
+        cast = SerieReader.from_arrow_reader(source).cast(narrow, safe=False)
+        assert next(cast).as_py() == [{"quantity": 1}, {"quantity": 2}]
+        with pytest.raises(ValueError, match="quantity"):
+            next(cast)
+        wide = Field("row", "struct<quantity: float64>", nullable=False)
+        source = pa.RecordBatchReader.from_batches(batches[0].schema, batches)
+        table = SerieReader.from_arrow_reader(source).cast(wide).into_arrow_reader().read_all()
+        assert table.schema.field("quantity").type == pa.float64()
+        assert table.column("quantity").to_pylist() == [1.0, 2.0, 3.0, 300.0]
+
+
+def test_a_source_error_holding_a_nul_surfaces_as_arrow_invalid() -> None:
+    def tables() -> Iterator[pa.Table]:
+        yield pa.table({"value": [1]})
+        raise ValueError("refused \x00 here")
+
+    reader = SerieReader.from_(tables()).into_arrow_reader()
+    assert reader.read_next_batch().num_rows == 1
+    # The C stream's error text is a C string: the NUL is restated, so the
+    # message crosses whole instead of aborting the process.
+    with pytest.raises(pa.ArrowInvalid, match="refused \ufffd here"):
+        reader.read_next_batch()
+    with pytest.raises(StopIteration):
+        reader.read_next_batch()
+
+
+@contextlib.contextmanager
+def no_forced_switch() -> Iterator[None]:
+    """Hand the GIL over only when its holder lets go.
+
+    A thread waiting on the GIL forces a switch after `sys.getswitchinterval`,
+    whether or not the holder released it; raised far beyond any call here,
+    a second thread runs during a call exactly when the call releases the
+    GIL - never during one that holds it - and each loop below yields it
+    back with `time.sleep(0)`.
+    """
+    interval = sys.getswitchinterval()
+    sys.setswitchinterval(60)
+    try:
+        yield
+    finally:
+        sys.setswitchinterval(interval)
+
+
+def spun_during(operation: Callable[[], object]) -> int:
+    """How far a second Python thread counts while `operation` runs."""
+    count = 0
+    started = threading.Event()
+    stop = threading.Event()
+
+    def spin() -> None:
+        nonlocal count
+        started.set()
+        while not stop.is_set():
+            count += 1
+            if count % 1_000 == 0:
+                time.sleep(0)
+
+    with no_forced_switch():
+        spinner = threading.Thread(target=spin)
+        spinner.start()
+        started.wait()
+        before = count
+        try:
+            operation()
+        finally:
+            after = count
+            stop.set()
+            spinner.join()
+    return after - before
+
+
+def test_a_whole_drain_releases_the_gil() -> None:
+    batch = pa.RecordBatch.from_arrays(
+        [pa.array(range(1_024), pa.int64()) for _ in range(64)],
+        names=[f"c{index}" for index in range(64)],
+    )
+    table = pa.Table.from_batches([batch] * 64)
+    # Held throughout, the GIL would leave the spinner not one turn during
+    # the call; released, it counts for the whole drain.
+    assert spun_during(lambda: Serie.from_arrow_reader(table)) > 1_000
+    held = Serie.from_(table).child("c0")
+    assert held is not None
+    assert spun_during(held.as_py) == 0
+
+
+def test_a_long_cast_leaves_the_serie_writable_from_another_thread() -> None:
+    column = Serie.from_(pa.array(range(200_000), pa.int64()))
+    target = Field("item", "float64")
+    casting = threading.Event()
+    done = threading.Event()
+    errors: list[BaseException] = []
+    writes = 0
+
+    def write() -> None:
+        nonlocal writes
+        casting.wait()
+        while not done.is_set():
+            try:
+                column.set(0, writes)
+            except BaseException as error:  # noqa: BLE001 - the pin is that none is raised
+                errors.append(error)
+                return
+            writes += 1
+            time.sleep(0)
+
+    with no_forced_switch():
+        writer = threading.Thread(target=write)
+        writer.start()
+        casting.set()
+        try:
+            # The writer runs only while a cast has released the GIL, and a
+            # cast holding its borrow over that would make each write raise.
+            for _ in range(8):
+                assert len(column.cast(target)) == 200_000
+        finally:
+            done.set()
+            writer.join()
+    assert errors == []
+    assert writes > 0

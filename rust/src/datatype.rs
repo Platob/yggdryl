@@ -981,6 +981,37 @@ impl DataType {
     /// Whether every value this datatype's Arrow layout can hold is one the
     /// datatype accepts, so a column of it is proven by its layout alone.
     ///
+    /// Whether this datatype is a leaf that carries no parameter and whose
+    /// layout is its whole contract, so a value of exactly this datatype is
+    /// already canonical: there is no spelling to read, no bound or
+    /// repertoire to check and no representation to restate. The value door
+    /// answers such a value untouched without walking it.
+    pub(crate) const fn is_bare_contract_leaf(&self) -> bool {
+        matches!(
+            self,
+            Self::Boolean
+                | Self::Int8
+                | Self::Int16
+                | Self::Int32
+                | Self::Int64
+                | Self::UInt8
+                | Self::UInt16
+                | Self::UInt32
+                | Self::UInt64
+                | Self::Float16
+                | Self::Float32
+                | Self::Float64
+                | Self::Date32
+                | Self::Uuid
+                | Self::Utf8String
+                | Self::LargeUtf8String
+                | Self::Utf8StringView
+                | Self::Binary
+                | Self::LargeBinary
+                | Self::BinaryView
+        )
+    }
+
     /// True for the layouts whose storage is the whole domain - null,
     /// boolean, every integer and float width, `Date32`, every datetime,
     /// duration and interval, the plain unbounded UTF-8 leaves (Arrow's own

@@ -6,7 +6,7 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 
 | Key | Value |
 | --- | --- |
-| Owns | `Field::into_arrow_schema`, `Field::into_arrow_exchange_schema`, `Field::from_arrow_schema` |
+| Owns | `Field::into_arrow_schema`, `Field::into_arrow_exchange_schema`, `Field::into_arrow_exchange_ffi`, `Field::from_arrow_schema` |
 | Validates | Bounded, non-nullable Struct root; refused, never coerced |
 | Metadata | Root metadata becomes schema metadata and comes back |
 | Sidecar | `YGGDRYL:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
@@ -22,7 +22,7 @@ Rust only.
 === "Rust"
 
     ```rust
-    use arrow_schema::{Schema, ffi::FFI_ArrowSchema};
+    use arrow_schema::Schema;
     use yggdryl::{DataType, Field, StructType};
 
     let mut symbol = DataType::dictionary(DataType::Int16, DataType::utf8())?
@@ -54,8 +54,12 @@ Rust only.
             .map(String::as_str),
         Some("v1;1=-7"),
     );
-    let ffi = FFI_ArrowSchema::try_from(&projected)?;
+    // The C schema itself, in one call: the root's cached projection with
+    // the exchange metadata on it, which is what a batch or a stream crossing
+    // the C Data Interface hands over.
+    let ffi = schema.clone().into_arrow_exchange_ffi()?;
     let crossed = Schema::try_from(&ffi)?;
+    assert_eq!(crossed.metadata().get("owner").map(String::as_str), Some("trading"));
     #[allow(deprecated)]
     {
         assert_eq!(crossed.field(1).dict_id(), Some(0));
@@ -85,6 +89,7 @@ Rust only.
 | --- | --- | --- | --- |
 | `Field::into_arrow_schema` | `SchemaRef` | Kept on Arrow's `Field` | None |
 | `Field::into_arrow_exchange_schema` | Owned `Schema` | Zeroed across the C interface | Added per non-zero ID |
+| `Field::into_arrow_exchange_ffi` | `FFI_ArrowSchema` | Zeroed across the C interface | Added per non-zero ID, on the cached projection rather than a rebuilt one |
 | `Field::from_arrow_schema` | `Field` | Restored from the sidecar | Validated, then stripped |
 
 ## Strings and bytes

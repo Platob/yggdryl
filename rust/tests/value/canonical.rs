@@ -467,3 +467,40 @@ mod value {
         );
     }
 }
+
+#[test]
+fn a_value_of_a_bare_contract_leaf_is_answered_untouched() {
+    // A value of the very leaf the datatype is, where the leaf carries no
+    // parameter and its layout is its whole contract, is already canonical:
+    // the door hands it back unread, sharing its handle. Every other value
+    // still walks the door.
+    let text =
+        yggdryl::Scalar::from("a symbol long enough to live off the stack, shared by handle");
+    let held = text.as_str().unwrap().as_ptr();
+    let answered = yggdryl::DataType::utf8().scalar(text).unwrap();
+    assert_eq!(
+        answered.as_str().unwrap().as_ptr(),
+        held,
+        "the text was copied"
+    );
+    assert!(
+        yggdryl::DataType::Int8
+            .scalar(yggdryl::Scalar::from(300_i64))
+            .is_err()
+    );
+    assert_eq!(
+        yggdryl::DataType::Int8
+            .scalar(yggdryl::Scalar::from(3_i64))
+            .unwrap(),
+        yggdryl::Scalar::from(3_i8)
+    );
+    let bounded = yggdryl::DataType::sized_utf8(4).unwrap();
+    assert!(bounded.scalar(yggdryl::Scalar::from("too long")).is_err());
+    assert_eq!(
+        bounded
+            .scalar(yggdryl::Scalar::from("ok"))
+            .unwrap()
+            .as_str(),
+        Some("ok")
+    );
+}

@@ -63,8 +63,12 @@ use arrow_schema::{DataType as ArrowDataType, Field as ArrowField};
 use crate::arrow::{BatchReader, batch_reader};
 use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred};
 use crate::diff::one_datatype;
-use crate::serie::arrow::{batch_schema, batch_under, item_field, storage_holds};
-use crate::serie::{Proof, Rows, compare_rows, hash_rows, land, proven_row, require_window};
+use crate::serie::arrow::{
+    batch_schema, batch_under, item_field, land_planned, lands_exactly, storage_holds,
+};
+use crate::serie::{
+    Proof, Resolved, Rows, compare_rows, hash_rows, land, proven_row, require_window,
+};
 use crate::value::Children;
 use crate::{DataType, Field, FieldPath, Scalar, Serie, SerieReader};
 
@@ -247,8 +251,25 @@ impl ChunkedSerie {
         };
         let field = Arc::new(field);
         let mut plan: Option<(Arc<ArrowField>, ArrowCastPlan)> = None;
+        // An exact chunk lands as it stands under boxes resolved once for
+        // every chunk, and no plan compiles for it; one the landing refuses
+        // takes the plan, which repairs or refuses it under `options`.
+        let mut resolved: Option<Resolved> = None;
         let mut chunks = Vec::with_capacity(arrays.len());
         for (index, array) in arrays.into_iter().enumerate() {
+            if lands_exactly(&field, array.data_type())? {
+                let resolved = match &resolved {
+                    Some(resolved) => resolved,
+                    None => {
+                        field.validate_bounded()?;
+                        resolved.insert(Resolved::of(Arc::clone(&field)))
+                    }
+                };
+                if let Ok(chunk) = land_planned(resolved, Arc::clone(&array), &Proof::Unproven) {
+                    chunks.push(chunk);
+                    continue;
+                }
+            }
             let current = match plan.take() {
                 Some((source, current)) if source.data_type() == array.data_type() => {
                     (source, current)

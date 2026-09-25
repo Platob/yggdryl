@@ -278,6 +278,7 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     _budget: &mut crate::budget::MaterializationBudget,
+    _resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     let _ = (parent, proof);
     if !matches!(field.dtype(), DataType::Variant)

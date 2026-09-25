@@ -353,6 +353,14 @@ pub(crate) fn dtype_canonical(dtype: &DataType, value: Scalar) -> Result<Scalar>
     if spells_bare_null(dtype, &value) {
         return Ok(value);
     }
+    // A value of the very leaf the datatype is, where that leaf carries no
+    // parameter and its layout is its whole contract, is already canonical:
+    // the check and the rewrite below would hand it back untouched, so it
+    // is handed back here, unread. A row read back out of the column that
+    // typed it is every cell this branch answers.
+    if dtype.is_bare_contract_leaf() && value.id() == dtype.id() {
+        return Ok(value);
+    }
     // A spelling is read once, here: the check and the rewrite below each
     // begin by reading one, so both are handed what this read answered, and
     // a refused spelling is refused as the check refuses it.

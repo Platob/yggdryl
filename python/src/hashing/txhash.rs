@@ -8,8 +8,6 @@
 //! the core's one instant intake, so a caller hands over whatever names the
 //! instant and the resolution is the only thing settled here.
 
-use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::FromPyArrow;
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDate, PyDateTime, PyTuple, PyType};
@@ -429,7 +427,7 @@ impl PyTxHasher {
         force: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let root = core_field_from_value(root)?;
-        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
         let applied = self
             .inner
             .apply_arrow_batch(&root, batch, force)
@@ -444,7 +442,7 @@ impl PyTxHasher {
         batch: &Bound<'py, PyAny>,
         times: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
         let times = arrow_array_from_pyarrow(times)?;
         let coupled = self
             .inner
@@ -610,7 +608,7 @@ pub(crate) fn txhash_row_txhashes<'py>(
     unit: &str,
     algorithm: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+    let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
     let times = arrow_array_from_pyarrow(times)?;
     let coupled = txhash::arrow::row_txhashes(
         &batch,

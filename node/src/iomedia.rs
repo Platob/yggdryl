@@ -101,7 +101,7 @@ impl Iterator for IpcPullReader {
                     return Some(Err(error));
                 }
             };
-            let next = match JsBatchReader::decoded(&bytes, DEFAULT_ROOT_NAME) {
+            let next = match JsBatchReader::decoded(bytes, DEFAULT_ROOT_NAME) {
                 Ok(mut reader) => match reader.take() {
                     Ok(reader) => reader,
                     Err(error) => {
@@ -176,14 +176,17 @@ impl JsBatchReader {
     }
 
     /// Build a reader over the batches an Arrow IPC stream carries.
-    pub(crate) fn decoded(bytes: &[u8], root_name: &str) -> Result<Self> {
+    ///
+    /// The reader decodes one batch per pull, after the call that handed the
+    /// bytes over has returned, so it owns them: a JavaScript buffer is
+    /// copied once by its caller, and a chunk already copied out is moved in.
+    pub(crate) fn decoded(bytes: Vec<u8>, root_name: &str) -> Result<Self> {
         if bytes.is_empty() {
             let schema = Arc::new(arrow_schema::Schema::empty());
             let empty: BatchReader = Box::new(RecordBatchIterator::new(std::iter::empty(), schema));
             return Ok(Self::from_core(empty, root_name));
         }
-        let reader =
-            StreamReader::try_new(Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+        let reader = StreamReader::try_new(Cursor::new(bytes), None).map_err(napi_error)?;
         Ok(Self::from_core(Box::new(reader), root_name))
     }
 }
@@ -193,7 +196,10 @@ impl JsBatchReader {
     /// Read the batches an Arrow IPC stream holds.
     #[napi(factory)]
     pub fn from_ipc(bytes: Uint8Array, root_name: Option<String>) -> Result<Self> {
-        Self::decoded(&bytes, root_name.as_deref().unwrap_or(DEFAULT_ROOT_NAME))
+        Self::decoded(
+            bytes.to_vec(),
+            root_name.as_deref().unwrap_or(DEFAULT_ROOT_NAME),
+        )
     }
 
     /// Continue this first IPC chunk from a bounded JavaScript pull function.

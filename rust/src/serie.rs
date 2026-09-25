@@ -202,8 +202,8 @@ macro_rules! serie_leaf {
 pub(crate) mod arrow;
 pub use arrow::SerieReader;
 pub(crate) use arrow::{
-    Proof, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
-    land_batch, land_resolved, land_under, proven_cell,
+    Proof, Resolved, canonical_rows, default_array, default_dtype_array, from_canonical_rows, land,
+    land_batch, land_planned, land_resolved, land_under, proven_cell,
 };
 mod boolean;
 mod bytes;

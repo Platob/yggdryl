@@ -82,79 +82,76 @@ impl<'a> Path<'a> {
     /// Render the canonical text under an explicit root token.
     pub fn render_from(&self, root: &str) -> String {
         let mut rendered = String::from(root);
-        self.push_into(&mut rendered);
+        let result = self.write_into(&mut rendered);
+        debug_assert!(result.is_ok(), "writing into a String is infallible");
         rendered
     }
 
-    fn push_into(&self, target: &mut String) {
-        // Walk to the root first so segments render outermost-first without
-        // allocating an intermediate vector for shallow paths.
+    /// Stream the steps below the root, outermost first, into `target`.
+    ///
+    /// The walk climbs to the root before it writes, so a shallow path
+    /// renders with no intermediate vector, and a writer that keeps short
+    /// text inline - a `SmolStr` builder - takes it with no heap at all.
+    fn write_into<W: fmt::Write>(&self, target: &mut W) -> fmt::Result {
         match self {
-            Self::Root => {}
+            Self::Root => Ok(()),
             Self::Child { parent, segment } => {
-                parent.push_into(target);
-                push_segment(target, *segment);
+                parent.write_into(target)?;
+                write_segment(target, *segment)
             }
         }
     }
 }
 
 impl fmt::Display for Path<'_> {
+    /// The text [`Self::render`] answers, streamed rather than built.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.render())
+        formatter.write_str("$")?;
+        self.write_into(formatter)
     }
 }
 
 /// Append one rendered step to an owned path string.
 pub(crate) fn push_segment(path: &mut String, segment: Segment<'_>) {
-    match segment {
-        Segment::Field(name) => push_field_name(path, name),
-        Segment::Index(index) => {
-            path.push('[');
-            push_usize(path, index);
-            path.push(']');
-        }
-        Segment::Item => path.push_str("[]"),
-        Segment::MapEntries => path.push_str(".entries"),
-        Segment::UnionType(type_id) => {
-            path.push_str("<union:");
-            push_i8(path, type_id);
-            path.push('>');
-        }
-        Segment::DictionaryValue => path.push_str(".dictionary_value"),
-        Segment::RunEnds => path.push_str(".run_ends"),
-        Segment::RunEndValues => path.push_str(".run_end_values"),
-    }
+    let result = write_segment(path, segment);
+    debug_assert!(result.is_ok(), "writing into a String is infallible");
 }
 
 /// Append a struct child name, bracketing and quoting it when it is not a
 /// bare identifier.
 pub(crate) fn push_field_name(path: &mut String, name: &str) {
+    let result = write_field_name(path, name);
+    debug_assert!(result.is_ok(), "writing into a String is infallible");
+}
+
+/// Write one rendered step.
+fn write_segment<W: fmt::Write>(path: &mut W, segment: Segment<'_>) -> fmt::Result {
+    match segment {
+        Segment::Field(name) => write_field_name(path, name),
+        Segment::Index(index) => write!(path, "[{index}]"),
+        Segment::Item => path.write_str("[]"),
+        Segment::MapEntries => path.write_str(".entries"),
+        Segment::UnionType(type_id) => write!(path, "<union:{type_id}>"),
+        Segment::DictionaryValue => path.write_str(".dictionary_value"),
+        Segment::RunEnds => path.write_str(".run_ends"),
+        Segment::RunEndValues => path.write_str(".run_end_values"),
+    }
+}
+
+/// Write a struct child name, bracketing and quoting it when it is not a
+/// bare identifier.
+fn write_field_name<W: fmt::Write>(path: &mut W, name: &str) -> fmt::Result {
     let mut characters = name.chars();
     let is_identifier = characters
         .next()
         .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
         && characters.all(|character| character == '_' || character.is_ascii_alphanumeric());
     if is_identifier && name.len() <= PATH_NAME_LIMIT {
-        path.push('.');
-        path.push_str(name);
+        path.write_char('.')?;
+        path.write_str(name)
     } else {
-        path.push('[');
-        path.push_str(&format!("{:?}", elide_to(name, PATH_NAME_LIMIT)));
-        path.push(']');
+        write!(path, "[{:?}]", elide_to(name, PATH_NAME_LIMIT))
     }
-}
-
-fn push_usize(path: &mut String, value: usize) {
-    use fmt::Write as _;
-    let result = write!(path, "{value}");
-    debug_assert!(result.is_ok(), "writing into a String is infallible");
-}
-
-fn push_i8(path: &mut String, value: i8) {
-    use fmt::Write as _;
-    let result = write!(path, "{value}");
-    debug_assert!(result.is_ok(), "writing into a String is infallible");
 }
 
 #[cfg(feature = "internals")]
