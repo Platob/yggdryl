@@ -1,5 +1,9 @@
 'use strict'
 
+// The committed dictionary, read once for the whole file: every block below
+// clones it rather than reading the files of `config/fix` again.
+let committedRegistry
+
 // The `fix` suite, in its own block: it brings its own
 // fixtures, and `const` is block-scoped.
 {
@@ -82,10 +86,9 @@
     return fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-fix-'))
   }
 
-  let seedRegistry
   function seed() {
-    seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
-    return seedRegistry.clone()
+    committedRegistry ??= fix.FixRegistry.fromHandle(SEED)
+    return committedRegistry.clone()
   }
 
   function fixField(name, dtype, tag, { branches, tags, names, description } = {}) {
@@ -250,7 +253,7 @@
     assert.equal(field.fix.derivation, 'orderqty - cumqty')
 
     // An edited derivation is what the reader fills by.
-    const registry = fix.FixRegistry.fromHandle(SEED)
+    const registry = seed()
     const leaves = registry.getFieldByTag(151)
     leaves.fix.derivation = "case when msgtype in ('8', '9') then orderqty * 2 end"
     registry.update(leaves)
@@ -1020,17 +1023,21 @@
   })
 
   test('the registry takes every storage location', () => {
-    const reference = seed()
-    const url = Url.fromPath(SEED)
-
-    for (const location of [SEED, path.resolve(SEED), url.toString(), url, new IOBase(SEED)]) {
-      assert.ok(fix.FixRegistry.fromHandle(location).equals(reference))
-    }
-
-    // A folder that is not there loads as a new registry - the crate's own
-    // fields and the two seeded clocks, nothing else - and is not created.
     const root = scratch()
     try {
+      // Every spelling of one folder reads the one dictionary it holds: a
+      // small one written for the purpose, since the spelling is the claim.
+      const folder = path.join(root, 'dictionary')
+      const reference = new fix.FixRegistry()
+      reference.insert(fixField('Venue', 'utf8', 39999))
+      reference.writeInto(folder)
+      const url = Url.fromPath(folder)
+      for (const location of [folder, path.resolve(folder), url.toString(), url, new IOBase(folder)]) {
+        assert.ok(fix.FixRegistry.fromHandle(location).equals(reference))
+      }
+
+      // A folder that is not there loads as a new registry - the crate's own
+      // fields and the two seeded clocks, nothing else - and is not created.
       const missing = path.join(root, 'missing')
       assert.ok(fix.FixRegistry.fromHandle(missing).equals(new fix.FixRegistry()))
       assert.equal(fix.FixRegistry.fromHandle(missing).size, SEEDED)
@@ -2686,10 +2693,9 @@
     return new fix.FixCodec(registry, { excludeMsgtypes: [], ...(options ?? {}) })
   }
 
-  let seedRegistry
   function seed() {
-    seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
-    return seedRegistry.clone()
+    committedRegistry ??= fix.FixRegistry.fromHandle(SEED)
+    return committedRegistry.clone()
   }
 
   const encoder = new TextEncoder()
@@ -3762,10 +3768,9 @@
   const ROWHEADER = fix.ULBRIDGE_ROWHEADER
   const SENDING = new DataType('datetime64(ns,"UTC")').scalar(1_704_190_530_000_000_000n)
 
-  let seedRegistry
   function seed() {
-    seedRegistry ??= fix.FixRegistry.fromHandle(SEED)
-    return seedRegistry.clone()
+    committedRegistry ??= fix.FixRegistry.fromHandle(SEED)
+    return committedRegistry.clone()
   }
 
   /** The bridge capture as the messages a text read answers. */
