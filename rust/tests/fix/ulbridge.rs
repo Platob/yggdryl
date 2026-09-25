@@ -323,6 +323,42 @@ mod dataset {
         }
     }
 
+    /// Every walked message, stated whole: its row, its event, its digest and
+    /// its anomalies.
+    fn walked(codec: &FixCodec, messages: Vec<FixMsg>) -> Vec<String> {
+        let schema = super::format_target(&registry());
+        codec
+            .lifecycle(messages)
+            .map(|message| {
+                let message = message.expect("the capture walks");
+                format!(
+                    "{:?} {:?} {} {:?}",
+                    message.into_row(&schema).expect("a row"),
+                    message.event(),
+                    message.digest(),
+                    message.anomalies(),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_content_merged_once_folds_nothing_more_when_delivered_again() {
+        // The capture delivered twice folds every session event's content
+        // into its reference; a third delivery repeats a content the fold
+        // already holds, so the walk states exactly what two deliveries do -
+        // which is what lets a repeat skip the content merge.
+        let codec = codec().with_exclude_msgtypes::<[&str; 0], &str>([]);
+        let messages = line_messages(&codec);
+        let delivered = |times: usize| {
+            std::iter::repeat_n(&messages, times)
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(walked(&codec, delivered(3)), walked(&codec, delivered(2)));
+    }
+
     /// The batch door's answer for the whole capture: a capture row in, one FIX
     /// row per message out.
     fn batches(codec: &FixCodec) -> Vec<RecordBatch> {
