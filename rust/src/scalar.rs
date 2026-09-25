@@ -1577,14 +1577,33 @@ impl Scalar {
         len: usize,
         mut at: impl FnMut(usize) -> Result<Self>,
     ) -> Result<Self> {
+        Self::try_fill_sequence(len, |index, slot| {
+            *slot = at(index)?;
+            Ok(())
+        })
+    }
+
+    /// Build a known-width sequence by writing each slot where it is stored.
+    ///
+    /// `fill` is called once per index, in ascending order, with that index's
+    /// slot - still `Null` - and the first refusal stops the build. A caller
+    /// that picks each value from one of several sources writes the one it
+    /// picked straight into the slot rather than returning it. Merged into
+    /// one returned value first, the pick is split by LLVM's SROA - under
+    /// rustc 1.94 and 1.98 alike - into a stack slot aligned to 8 that is then
+    /// written with a 16-byte aligned move, which faults on x86_64 macOS.
+    pub(crate) fn try_fill_sequence(
+        len: usize,
+        mut fill: impl FnMut(usize, &mut Self) -> Result<()>,
+    ) -> Result<Self> {
         if len == 0 {
             return Ok(Self::empty_sequence());
         }
         let mut values = (0..len).map(|_| Self::Null).collect::<Arc<[_]>>();
         let unique =
             Arc::get_mut(&mut values).expect("newly collected sequence storage has one owner");
-        for (index, value) in unique.iter_mut().enumerate() {
-            *value = at(index)?;
+        for (index, slot) in unique.iter_mut().enumerate() {
+            fill(index, slot)?;
         }
         Ok(Self::Serie(Serie::Run(Run::new(values))))
     }

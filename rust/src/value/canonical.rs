@@ -2,6 +2,7 @@
 //! the module doc of [`super`] describes.
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 
 use smol_str::{SmolStr, format_smolstr};
@@ -1467,14 +1468,15 @@ fn canonicalize_slice(
         let (canonical_value, changed) = canonicalize(index, value)?;
         if changed {
             let mut changed_value = canonical_value;
-            return Scalar::try_sequence(values.len(), |output_index| {
-                if output_index < index {
-                    Ok(values[output_index].clone())
-                } else if output_index == index {
-                    Ok(std::mem::replace(&mut changed_value, Scalar::Null))
-                } else {
-                    canonicalize(output_index, &values[output_index]).map(|(value, _)| value)
+            return Scalar::try_fill_sequence(values.len(), |output_index, slot| {
+                match output_index.cmp(&index) {
+                    Ordering::Less => *slot = values[output_index].clone(),
+                    Ordering::Equal => std::mem::swap(slot, &mut changed_value),
+                    Ordering::Greater => {
+                        *slot = canonicalize(output_index, &values[output_index])?.0
+                    }
                 }
+                Ok(())
             })
             .map(Some);
         }
