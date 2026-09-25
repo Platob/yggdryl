@@ -1419,17 +1419,14 @@ impl FixMsg {
             currency.or_else(|| named.as_ref().and_then(|named| Ccy::new(&named.ccy).ok()));
         // The market it last traded on, was routed to, the one the
         // instrument key names, else the one it is listed on - each an ISO
-        // 10383 MIC, a venue's own short code naming none.
-        let iso = |held: String| {
-            MicCode::is_iso(&held)
-                .then(|| MicCode::new(&held).ok())
-                .flatten()
-        };
+        // 10383 MIC or the Reuters mnemonic FIX 4.2 spelled it in, a code
+        // neither reading resolves naming none.
+        let market = |held: String| MicCode::from_market(&held);
         let miccode = word(30)
-            .and_then(iso)
-            .or_else(|| word(100).and_then(iso))
-            .or_else(|| named.map(|named| named.mic).and_then(iso))
-            .or_else(|| word(207).and_then(iso));
+            .and_then(market)
+            .or_else(|| word(100).and_then(market))
+            .or_else(|| named.map(|named| named.mic).and_then(market))
+            .or_else(|| word(207).and_then(market));
         // Whether it could trade, from whichever status says so, in the
         // codes FIX's own enumerations state. A status that is about
         // something else - a code neither list names - says nothing either

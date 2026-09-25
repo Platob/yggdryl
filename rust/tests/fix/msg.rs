@@ -1629,8 +1629,12 @@ mod market_ladder {
             ("30=XLON|100=XPAR|207=XSWX|", Some("XLON")),
             ("100=XPAR|207=XSWX|", Some("XPAR")),
             ("207=XSWX|", Some("XSWX")),
-            // A venue's own short code names no market: the next step answers.
-            ("30=S|100=TW|207=XSWX|", Some("XSWX")),
+            // A Reuters mnemonic, FIX 4.2's spelling, names its market.
+            ("30=L|100=XPAR|207=XSWX|", Some("XLON")),
+            ("100=TW|207=XTAI|", Some("XTAI")),
+            ("207=S|", Some("XSWX")),
+            // A code neither reading resolves names none: the next step answers.
+            ("30=ZZ|100=TH|207=XSWX|", Some("XSWX")),
             ("30=xlon|", None),
             // The instrument key's market ranks before SecurityExchange.
             (
