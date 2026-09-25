@@ -453,11 +453,12 @@ jobs:
         run: npm run build --prefix node
       - name: Smoke tests against the release binary
         run: npm test --prefix node
-      # The runner reads each file in a child process, and a child that dies
-      # on a signal takes its unflushed report with it - on macOS a pipe is
-      # written asynchronously - so a crash names its file and never its test.
-      # Read in-process into a file, which is written synchronously, a file
-      # that fails shows every test it finished before it stopped.
+      # A crash names its file and never its test: the runner reads each file
+      # in a child whose report dies with it, and a reporter writes on a later
+      # turn of the event loop than the test it reports. Each failing file is
+      # read again with `scripts/trace-tests.js` preloaded, which names every
+      # test synchronously as it starts, and where lldb is at hand, under it,
+      # for every thread's native stack at the fault.
       - name: Name the test a failing file stopped in
         if: failure()
         shell: bash
@@ -466,10 +467,14 @@ jobs:
           for file in tests/*.test.js tests/*/*.test.js; do
             [ -f "$file" ] || continue
             status=0
-            node --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
+            node --require ./scripts/trace-tests.js --test-reporter=spec "$file" > "$file.log" 2>&1 || status=$?
             if [ "$status" -ne 0 ]; then
               echo "::group::$file (exit $status)"
-              tail -n 60 "$file.log"
+              tail -n 80 "$file.log"
+              if [ "$status" -gt 128 ] && command -v lldb > /dev/null; then
+                lldb --batch -o run -k "thread backtrace all -c 60" -k "quit 1" -- \
+                  "$(command -v node)" --require ./scripts/trace-tests.js "$file" 2>&1 | tail -n 400 || true
+              fi
               echo "::endgroup::"
             fi
           done
