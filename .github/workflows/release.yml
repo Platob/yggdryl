@@ -121,15 +121,21 @@ jobs:
     # at, by pushing `v<version>` there - which pins the tree the wheels are
     # built from - or it is abandoned and `main` bumps. Neither is a push to
     # `main`, and this is where that is refused rather than discovered.
+    #
+    # A rehearsal runs it too, because every build job needs it and a job
+    # whose need was skipped is skipped with it: a hand-run that skipped this
+    # built nothing at all. A rehearsal publishes nothing, so there a half-out
+    # version is reported and not refused.
     name: No version is half out
     needs: preflight
-    if: needs.preflight.outputs.publish == 'true'
+    if: needs.preflight.outputs.publish == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: All three registries, or none
         env:
           VERSION: ${{ needs.preflight.outputs.version }}
           REF_TYPE: ${{ github.ref_type }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -uo pipefail
           crate=no
@@ -146,6 +152,10 @@ jobs:
           fi
           if [ "$REF_TYPE" = "tag" ]; then
             echo "::warning title=Finishing a half-published version::$VERSION is on some registries and not others; the tag pins the tree, so this run finishes it"
+            exit 0
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "::warning title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm; a rehearsal publishes nothing"
             exit 0
           fi
           echo "::error title=$VERSION is half published::crates.io=$crate pypi=$pypi npm=$npm"
