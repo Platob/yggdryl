@@ -8,6 +8,7 @@ use std::fmt;
 use std::hash::Hasher;
 use std::mem::{align_of, size_of};
 use std::ops::Deref;
+use std::sync::LazyLock;
 
 use smallvec::SmallVec;
 use smol_str::{SmolStr, format_smolstr};
@@ -93,6 +94,25 @@ static NAMES: &[(&str, &str)] = &[
     ("valoren", "VALOR"),
     ("wertpapier", "WKN"),
 ];
+
+/// Every folded spelling that names a known source - each key of
+/// [`SecType::KNOWN`] in lower case, and every name in [`NAMES`] - sorted,
+/// beside the key it names. Built once from those two, so a field name is
+/// resolved by one binary search per spelling it tries.
+static FOLDED_ALIASES: LazyLock<Vec<(SmolStr, &'static str)>> = LazyLock::new(|| {
+    let mut aliases: Vec<(SmolStr, &'static str)> = SecType::KNOWN
+        .iter()
+        .map(|(key, _)| (SmolStr::new(key.to_ascii_lowercase()), *key))
+        .chain(
+            NAMES
+                .iter()
+                .map(|(name, key)| (SmolStr::new_static(name), *key)),
+        )
+        .collect();
+    aliases.sort_unstable();
+    aliases.dedup_by(|later, earlier| later.0 == earlier.0);
+    aliases
+});
 
 /// The field-name prefixes that name another instrument's identifier or a
 /// name a person uses, never this instrument's source.
@@ -185,15 +205,13 @@ impl SecType {
     }
 
     /// The known source a spelling already folded names: a key, which folds
-    /// to itself in lower case, or a code-set name.
+    /// to itself in lower case, or a code-set name - one search of the one
+    /// table both fold into.
     fn from_folded(folded: &str) -> Option<Self> {
-        if let Some(index) = Self::known_index_ignoring_case(folded) {
-            return Some(Self::known(index));
-        }
-        NAMES
-            .binary_search_by(|(name, _)| name.cmp(&folded))
+        FOLDED_ALIASES
+            .binary_search_by(|(alias, _)| alias.as_str().cmp(folded))
             .ok()
-            .map(|position| Self(SmolStr::new_static(NAMES[position].1)))
+            .map(|position| Self(SmolStr::new_static(FOLDED_ALIASES[position].1)))
     }
 
     /// Where a key in any case stands in [`Self::KNOWN`].
@@ -263,8 +281,25 @@ impl SecType {
     /// `underlying*`, `contra*`, `related*`, `benchmark*`.
     #[must_use]
     pub fn from_field_name(name: &str) -> Option<Self> {
-        let folded = folded_spelling(name.strip_prefix('#').unwrap_or(name));
-        let folded = folded.as_str();
+        let name = name.strip_prefix('#').unwrap_or(name);
+        // An ASCII name folds into a buffer on the stack; any other takes
+        // the one fold every name here takes.
+        let mut buffer = [0_u8; 64];
+        let spilled;
+        let folded = if name.is_ascii() && name.len() <= buffer.len() {
+            let mut length = 0;
+            for byte in name
+                .bytes()
+                .filter(|byte| !matches!(byte, b'_' | b'-' | b' '))
+            {
+                buffer[length] = byte.to_ascii_lowercase();
+                length += 1;
+            }
+            std::str::from_utf8(&buffer[..length]).expect("folded ASCII")
+        } else {
+            spilled = folded_spelling(name);
+            spilled.as_str()
+        };
         // Folded once: every spelling tried below is a part of this one.
         if let Some(known) = Self::from_folded(folded) {
             return Some(known);

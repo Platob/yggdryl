@@ -3253,12 +3253,25 @@ fn absent(what: impl fmt::Display) -> Error {
 /// else the one child the fold reaches - two children one fold reaches name
 /// neither.
 fn named_index(parent: &Field, name: &str) -> Option<usize> {
+    // A fold drops bytes and never adds one, so an ASCII child shorter than
+    // the fold of an ASCII name cannot fold to it, and is passed over with
+    // one comparison rather than a walk of both spellings.
+    let floor = if name.is_ascii() {
+        name.bytes()
+            .filter(|byte| !matches!(byte, b'_' | b'-' | b' '))
+            .count()
+    } else {
+        0
+    };
     let mut folded = None;
     let mut ambiguous = false;
     for (index, field) in parent.fields().iter().enumerate() {
         let held = field.name();
         if held == name {
             return Some(index);
+        }
+        if held.len() < floor && held.is_ascii() {
+            continue;
         }
         if crate::folds_equal(held, name) {
             ambiguous |= folded.is_some();
