@@ -1188,10 +1188,20 @@ impl FixMsg {
     pub(super) fn fold_session_event(mut self, other: &Self) -> Result<Self> {
         debug_assert!(self.is_same_session_event(other));
         super::latest::merge_content(&mut self, other)?;
-        crate::graph::market::merge_operation_event_into_reference(&mut self, other);
+        self.fold_session_event_facts(other);
+        Ok(self)
+    }
+
+    /// [`Self::fold_session_event`] for an observation whose content an
+    /// earlier fold already merged: the content merge fills only what the
+    /// reference leaves missing, so a second merge of the same content moves
+    /// nothing, and what is left to fold is the event, the anomalies and the
+    /// provenance - in place, and infallibly.
+    pub(super) fn fold_session_event_facts(&mut self, other: &Self) {
+        debug_assert!(self.is_same_session_event(other));
+        crate::graph::market::merge_operation_event_into_reference(self, other);
         self.fold_anomalies(other);
         self.fold_provenance(other);
-        Ok(self)
     }
 
     /// Keeps the provenance the earlier observation of this session event
