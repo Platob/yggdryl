@@ -275,7 +275,7 @@ impl FixCapture {
 
     /// The plugin the message came into a bridge through, as the bridge's
     /// own log line names it - `OMS_X1_OrderOut` in `Message received: ...
-    /// from (OMS_X1_OrderOut as OD9EOEDJ400)` - where the line names one.
+    /// from (OMS_X1_OrderOut as XM8NNITE382)` - where the line names one.
     #[must_use]
     pub fn msgoriginator(&self) -> Option<&str> {
         self.msgoriginator.as_deref()

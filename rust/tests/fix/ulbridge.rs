@@ -252,7 +252,7 @@ mod dataset {
         );
         assert_eq!(
             received.capture().conversationid(),
-            Some("7702fe4b-5884-417f-b7ea-1f8aa7b3ef20")
+            Some("80d1f8e9-b1ba-4318-b1d6-26e6327dd70e")
         );
     }
 
@@ -671,7 +671,7 @@ mod dataset {
             .collect();
         assert_eq!(
             subs,
-            [1, 2, 0, 1, 0, 1, 0],
+            [2, 1, 0, 1, 0, 1, 0],
             "the sub-identifiers each party packs"
         );
         // A key the venue spelled under a namespace of its own is the bridge's
@@ -1967,7 +1967,7 @@ mod provenance {
         for (prose, originator) in [
             (
                 "Message received: Message type [execution report <trade>] from \
-                 (OMS_X1_OrderOut as OD9EOEDJ400) forwarded to (B as OD9EOEDJ400) ",
+                 (OMS_X1_OrderOut as XM8NNITE382) forwarded to (B as XM8NNITE382) ",
                 Some("OMS_X1_OrderOut"),
             ),
             (

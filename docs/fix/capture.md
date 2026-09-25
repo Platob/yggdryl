@@ -1089,9 +1089,9 @@ A bridge writes a field under its own namespace, so one row carries `TECH.CLIENT
 
 The key itself is the bridge's own statement and not a FIX field, so it lands in the [`metadata`](#the-crates-own-columns) Map - tag 65049, one sorted `map<utf8, utf8>` under the key as the bridge spelled it, folded - rather than as a child of the content row: `metadata()` answers them, `by_tag(METADATA_TAG_NAME.0)` is the map, and one column of the fixed row carries it. A key whose last segment names no field of this dictionary is in the map and nowhere else.
 
-One voice or silence. Where a row names one absent field under several composed keys and they do not agree, none of them fills it. That is not a precaution: on nine lines of the committed corpus `FIRM.ORIG.CLIENTID` is `3000090.006` and `ULLINK.CLIENTID` is `trader1` with `CLIENTID` absent - a firm account number and a trader login, and nothing in the row says which one the field means. Filling from either would invent a fact; filling from neither states what the row actually settled, which is nothing.
+One voice or silence. Where a row names one absent field under several composed keys and they do not agree, none of them fills it. That is not a precaution: on nine lines of the committed corpus `FIRM.ORIG.CLIENTID` is `2540498.003` and `ULLINK.CLIENTID` is `trader1` with `CLIENTID` absent - a firm account number and a trader login, and nothing in the row says which one the field means. Filling from either would invent a fact; filling from neither states what the row actually settled, which is nothing.
 
-Never overwriting is load-bearing here too, and the same corpus proves it: `CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and `OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is `2003103.001`. A namespace's spelling of a fact is not the fact.
+Never overwriting is load-bearing here too, and the same corpus proves it: `CLIENT.SYMBOL` is `XAU` where `SYMBOL` is `XAU/USD`, and `OMSVENDOR.CALC.EXECBROKER` is `SWXCCP` where `EXECBROKER` is `1743045.007`. A namespace's spelling of a fact is not the fact.
 
 The cancel reject the corpus ends on shows the fill and its bound side by side: `OMSVENDOR.ORDERQTY=10000` fills the `OrderQty` the row never states and `OMSVENDOR.TIMEINFORCE=day` its `TimeInForce`, while `FIRM.ACRONYM`, `ULLINK.INSTRUMENTID` and `ULLINK.BYPASSRISK` name no field of the dictionary; every one of the seven keys is in the message's metadata under its own dotted spelling, read back as `metadata()["firm.acronym"]` and never as `acronym`.
 
@@ -1118,7 +1118,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     // Two namespaces naming one absent field, disagreeing: nothing fills it,
     // and both statements are still in the metadata.
-    let split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")?;
+    let split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=2540498.003|ULLINK.CLIENTID=trader1|")?;
     assert_eq!(split.get_by_name("ClientID"), None);
     assert_eq!(split.metadata().len(), 2);
 
@@ -1152,7 +1152,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     # Two namespaces naming one absent field, disagreeing: nothing fills it, and
     # both statements are still in the metadata.
-    split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|")
+    split = read(b"MSGTYPE=8|FIRM.ORIG.CLIENTID=2540498.003|ULLINK.CLIENTID=trader1|")
     assert split.get_by_name("ClientID") is None
     assert len(split.metadata) == 2
 
@@ -1183,7 +1183,7 @@ The cancel reject the corpus ends on shows the fill and its bound side by side: 
 
     // Two namespaces naming one absent field, disagreeing: nothing fills it, and
     // both statements are still in the metadata.
-    const split = read('MSGTYPE=8|FIRM.ORIG.CLIENTID=3000090.006|ULLINK.CLIENTID=trader1|')
+    const split = read('MSGTYPE=8|FIRM.ORIG.CLIENTID=2540498.003|ULLINK.CLIENTID=trader1|')
     assert.equal(split.getByName('ClientID'), null)
     assert.equal(Object.keys(split.metadata).length, 2)
 
