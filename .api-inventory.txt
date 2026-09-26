@@ -3445,7 +3445,7 @@ pub struct HttpError
   pub fn reason(&self) -> &str
 pub enum Version
 pub struct Request
-  pub fn read<R: BufRead>(reader: &mut R, max_body: usize) -> Result<Option<Self>, HttpError>
+  pub fn read<R: BufRead, W: Write>( reader: &mut R, writer: &mut W, max_body: usize, ) -> Result<Option<Self>, HttpError>  (`writer` takes the interim `100 Continue`)
   pub fn method(&self) -> &str
   pub fn target(&self) -> &str
   pub const fn version(&self) -> Version
@@ -3455,8 +3455,8 @@ pub struct Request
   pub fn content_type(&self) -> Option<&str>
   pub fn soap_action(&self) -> Option<&str>
   pub fn keep_alive(&self) -> bool
-pub fn write_response<W: Write>( writer: &mut W, status: Status, content_type: &str, keep_alive: bool, body: &[u8], ) -> io::Result<()>
-pub fn begin_chunked<W: Write>( mut writer: W, status: Status, content_type: &str, keep_alive: bool, ) -> io::Result<ChunkedWriter<W>>
+pub fn write_response<W: Write>( writer: &mut W, status: Status, content_type: &str, keep_alive: bool, headers: &[(&str, &str)], body: &[u8], ) -> io::Result<()>
+pub fn begin_chunked<W: Write>( mut writer: W, status: Status, content_type: &str, keep_alive: bool, headers: &[(&str, &str)], ) -> io::Result<ChunkedWriter<W>>
 pub struct ChunkedWriter<W: Write>
   pub fn finish(mut self) -> io::Result<W>
 
@@ -3507,7 +3507,9 @@ pub enum DbType
 ### yggdryl::xmla::definitions  [rust/src/xmla/definitions.rs]
 pub struct Definition
   pub const fn request_type(&self) -> &RequestType
+  pub const fn guid(&self) -> &Scalar
   pub const fn description(&self) -> &'static str
+  pub fn restrictions_mask(&self) -> u64
   pub const fn rowset(&self) -> &Rowset
   pub fn field(&self) -> &Field
   pub fn restrictions(&self) -> Vec<&Field>
@@ -3608,7 +3610,7 @@ pub struct Response
 pub fn write_rowset<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<W>
 pub fn write_rowset_reporting<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<(W, Option<XmlaError>)>  (a batch failing mid-stream is reported inside the root as `Messages/Error`)
 pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W>
-pub fn write_fault<W: Write>(writer: W, fault: &Fault) -> Result<W>
+pub fn write_fault<W: Write>(writer: W, header: &[Fragment], fault: &Fault) -> Result<W>
 
 ### yggdryl::xmla::rowset  [rust/src/xmla/rowset.rs]
 pub const ROW_ELEMENT: &str = "row"
@@ -3642,6 +3644,7 @@ pub struct ServerOptions
   pub fn new() -> Self
   pub fn with_path(mut self, path: impl Into<String>) -> Self
   pub const fn with_max_body(mut self, max_body: usize) -> Self
+  pub fn with_trace(mut self, folder: Holder) -> Self
 pub struct Server
   pub fn bind(service: Service, address: impl ToSocketAddrs) -> io::Result<Self>
   pub fn with_options(mut self, options: ServerOptions) -> Self
@@ -3728,7 +3731,10 @@ pub mod property  (the XMLA property names, spelled as the specification does)
   pub const MDX_SUPPORT: &str = "MDXSupport"
   pub const PASSWORD: &str = "Password"
   pub const PROVIDER_NAME: &str = "ProviderName"
+  pub const PROVIDER_TYPE: &str = "ProviderType"
   pub const PROVIDER_VERSION: &str = "ProviderVersion"
+  pub const SERVER_NAME: &str = "ServerName"
+  pub const SQL_SUPPORT: &str = "SQLSupport"
   pub const STATE_SUPPORT: &str = "StateSupport"
   pub const TIMEOUT: &str = "Timeout"
   pub const USER_NAME: &str = "UserName"

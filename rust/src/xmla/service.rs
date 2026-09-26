@@ -32,8 +32,8 @@ use super::request::{Command, Discover, Execute, Request, RequestMethod, Session
 use super::response::{ACTOR, XmlaError, fault};
 use super::rowset::{Rowset, XsdType};
 use super::vocabulary::{
-    Access, AuthenticationMode, AxisFormat, Content, Format, Method, PropertyList, ProviderType,
-    RequestType, StateSupport, property,
+    Access, AuthenticationMode, AxisFormat, Content, Format, MdxSupport, Method, PropertyList,
+    ProviderType, RequestType, StateSupport, property,
 };
 
 /// The error codes this provider's faults carry.
@@ -69,8 +69,16 @@ pub mod code {
 pub struct ServiceOptions {
     /// The `ProviderName` property and `DISCOVER_DATASOURCES`'s.
     pub provider_name: String,
-    /// The `ProviderVersion` and `DBMSVersion` properties.
+    /// The `ProviderVersion` property: this provider's own version.
     pub provider_version: String,
+    /// The `DBMSVersion` property: the SQL Server Analysis Services release
+    /// whose XML for Analysis this provider speaks, spelled as that engine
+    /// spells its version. ADOMD.NET - Power Query - reads it before anything
+    /// else and refuses a server below SQL Server 2008 R2 RTM by name, so the
+    /// default is that release's own build, `10.50.1600.1`: the sessions,
+    /// the tabular format and the schema rowsets answered here are the ones
+    /// it defined, and nothing later is claimed.
+    pub dbms_version: String,
     /// The one data source's `DataSourceName`.
     pub data_source_name: String,
     /// The data source's description.
@@ -90,6 +98,7 @@ impl ServiceOptions {
         Self {
             provider_name: "yggdryl".to_owned(),
             provider_version: env!("CARGO_PKG_VERSION").to_owned(),
+            dbms_version: "10.50.1600.1".to_owned(),
             data_source_name: "yggdryl".to_owned(),
             data_source_description: "Catalogs of record media, served over XML for Analysis"
                 .to_owned(),
@@ -191,6 +200,7 @@ impl Service {
             Ok(request) => self.answer(&request, writer),
             Err(error) => super::response::write_fault(
                 writer,
+                &[],
                 &client_fault(code::BAD_REQUEST, format!("{error}")),
             ),
         }
@@ -204,11 +214,11 @@ impl Service {
     /// Returns only a failure writing to `writer`.
     pub fn answer<W: Write>(&self, request: &Request, writer: W) -> Result<W> {
         if let Some(fault) = not_understood(request) {
-            return super::response::write_fault(writer, &fault);
+            return super::response::write_fault(writer, &[], &fault);
         }
         let header = match self.session_header(request) {
             Ok(header) => header,
-            Err(fault) => return super::response::write_fault(writer, &fault),
+            Err(fault) => return super::response::write_fault(writer, &[], &fault),
         };
         match request.method() {
             RequestMethod::Discover(discover) => match self.discover(discover) {
@@ -220,7 +230,7 @@ impl Service {
                     std::iter::once(Ok(rows)),
                     content_of(discover.properties()).unwrap_or(Content::DEFAULT),
                 ),
-                Err(fault) => super::response::write_fault(writer, &fault),
+                Err(fault) => super::response::write_fault(writer, &header, &fault),
             },
             RequestMethod::Execute(execute) => match self.execute(execute) {
                 // Streamed as the rows arrive: a batch failing once the answer
@@ -238,7 +248,7 @@ impl Service {
                 Ok(Execution::Empty) => {
                     super::response::write_empty(writer, &header, Method::Execute)
                 }
-                Err(fault) => super::response::write_fault(writer, &fault),
+                Err(fault) => super::response::write_fault(writer, &header, &fault),
             },
         }
     }
@@ -385,7 +395,7 @@ impl Service {
                 .map(|definition| {
                     record([
                         ("SchemaName", text(definition.request_type().as_str())),
-                        ("SchemaGuid", Scalar::Null),
+                        ("SchemaGuid", definition.guid().clone()),
                         (
                             "Restrictions",
                             Scalar::from_sequence(
@@ -409,6 +419,10 @@ impl Service {
                             ),
                         ),
                         ("Description", text(definition.description())),
+                        (
+                            "RestrictionsMask",
+                            Scalar::from(definition.restrictions_mask()),
+                        ),
                     ])
                 })
                 .collect(),
@@ -492,6 +506,41 @@ impl Service {
                 Ok(rows)
             }
             RequestType::DbschemaProviderTypes => provider_type_rows(),
+            RequestType::MdschemaCubes => self
+                .catalogs_named(properties.catalog())
+                .map(|catalog| {
+                    // A catalog is its one cube, named as it is: what a client
+                    // picks here is what it names its tables under. Reading
+                    // rows is what this provider does, so drillthrough and SQL
+                    // are on; a cube is never linked, and it is writable
+                    // exactly where the service is.
+                    let modified = instant(catalog.modified())?;
+                    record([
+                        ("CATALOG_NAME", text(catalog.name())),
+                        ("SCHEMA_NAME", Scalar::Null),
+                        ("CUBE_NAME", text(catalog.name())),
+                        ("CUBE_TYPE", text("CUBE")),
+                        ("CUBE_GUID", Scalar::Null),
+                        ("CREATED_ON", Scalar::Null),
+                        ("LAST_SCHEMA_UPDATE", modified.clone()),
+                        ("SCHEMA_UPDATED_BY", Scalar::Null),
+                        ("LAST_DATA_UPDATE", modified),
+                        ("DATA_UPDATED_BY", Scalar::Null),
+                        (
+                            "DESCRIPTION",
+                            catalog.description().map_or(Scalar::Null, text),
+                        ),
+                        ("IS_DRILLTHROUGH_ENABLED", Scalar::from(true)),
+                        ("IS_LINKABLE", Scalar::from(false)),
+                        ("IS_WRITE_ENABLED", Scalar::from(self.options.writable)),
+                        ("IS_SQL_ENABLED", Scalar::from(true)),
+                        ("CUBE_CAPTION", text(catalog.name())),
+                        ("BASE_CUBE_NAME", Scalar::Null),
+                        ("CUBE_SOURCE", Scalar::from(1_u16)),
+                        ("PREFERRED_QUERY_PATTERNS", Scalar::from(0_u16)),
+                    ])
+                })
+                .collect(),
             other => Err(Error::unsupported(
                 "answering this request type",
                 other.as_str(),
@@ -509,18 +558,38 @@ impl Service {
 
     /// `DISCOVER_PROPERTIES`: every property, with the value the request
     /// itself sets where it sets one.
+    ///
+    /// The XML for Analysis 1.1 properties come first. After them come the
+    /// names the reference clients - MSOLAP and ADOMD.NET - read by name
+    /// before they will drive a provider, each answered with what is true of
+    /// this one: a tabular data provider (`ProviderType` 1) that speaks the
+    /// core of no MDX, so every MDX capability mask is zero, and whose SQL is
+    /// the expression grammar's `select` (`SQLSupport` 512, the subminimum
+    /// OLE DB names). A name answered by no row would read as a property the
+    /// provider has never heard of, which is a different fact.
     fn property_rows(&self, current: &PropertyList) -> Result<Vec<Scalar>> {
-        let value = |name: &str, default: &str| -> Scalar {
-            current.get(name).map_or_else(|| text(default), text)
+        // The request's own value where it set one, else the default - and
+        // no default is an absent cell, never an empty one: a client reads
+        // the cell under the property's type, and `""` is no `int`.
+        let value = |name: &str, default: Option<&str>| -> Scalar {
+            current
+                .get(name)
+                .map_or_else(|| default.map_or(Scalar::Null, text), text)
         };
-        let rows: Vec<(&str, &str, XsdType, Access, bool, Scalar)> = vec![
+        // The catalog a request that names none is read against: the first
+        // one served, which is what a client with no `Initial Catalog` gets.
+        let first_catalog = self.catalogs.first().map_or("", Catalog::name);
+        let mut rows: Vec<(&str, &str, XsdType, Access, bool, Scalar)> = vec![
             (
                 property::AXIS_FORMAT,
                 "How an MDDataSet spells its axes; a tabular provider answers rowsets.",
                 XsdType::String,
                 Access::Write,
                 false,
-                value(property::AXIS_FORMAT, AxisFormat::TupleFormat.as_str()),
+                value(
+                    property::AXIS_FORMAT,
+                    Some(AxisFormat::TupleFormat.as_str()),
+                ),
             ),
             (
                 property::BEGIN_RANGE,
@@ -528,7 +597,7 @@ impl Service {
                 XsdType::Int,
                 Access::Write,
                 false,
-                value(property::BEGIN_RANGE, "-1"),
+                value(property::BEGIN_RANGE, Some("-1")),
             ),
             (
                 property::CATALOG,
@@ -536,7 +605,7 @@ impl Service {
                 XsdType::String,
                 Access::ReadWrite,
                 false,
-                value(property::CATALOG, ""),
+                value(property::CATALOG, Some(first_catalog)),
             ),
             (
                 property::CONTENT,
@@ -544,7 +613,7 @@ impl Service {
                 XsdType::String,
                 Access::Write,
                 false,
-                value(property::CONTENT, Content::DEFAULT.as_str()),
+                value(property::CONTENT, Some(Content::DEFAULT.as_str())),
             ),
             (
                 property::CUBE,
@@ -552,7 +621,7 @@ impl Service {
                 XsdType::String,
                 Access::ReadWrite,
                 false,
-                value(property::CUBE, ""),
+                value(property::CUBE, Some("")),
             ),
             (
                 property::DATA_SOURCE_INFO,
@@ -562,19 +631,19 @@ impl Service {
                 false,
                 value(
                     property::DATA_SOURCE_INFO,
-                    &format!(
+                    Some(&format!(
                         "Provider={};Data Source={}",
                         self.options.provider_name, self.options.data_source_name
-                    ),
+                    )),
                 ),
             ),
             (
                 property::DBMS_VERSION,
-                "The version of the engine behind the provider.",
+                "The Analysis Services release whose XML for Analysis this provider speaks.",
                 XsdType::String,
                 Access::Read,
                 false,
-                text(&self.options.provider_version),
+                text(&self.options.dbms_version),
             ),
             (
                 property::END_RANGE,
@@ -582,7 +651,7 @@ impl Service {
                 XsdType::Int,
                 Access::Write,
                 false,
-                value(property::END_RANGE, "-1"),
+                value(property::END_RANGE, Some("-1")),
             ),
             (
                 property::FORMAT,
@@ -590,7 +659,7 @@ impl Service {
                 XsdType::String,
                 Access::Write,
                 false,
-                value(property::FORMAT, Format::Tabular.as_str()),
+                value(property::FORMAT, Some(Format::Tabular.as_str())),
             ),
             (
                 property::LOCALE_IDENTIFIER,
@@ -598,7 +667,15 @@ impl Service {
                 XsdType::UnsignedInt,
                 Access::ReadWrite,
                 false,
-                value(property::LOCALE_IDENTIFIER, ""),
+                value(property::LOCALE_IDENTIFIER, None),
+            ),
+            (
+                property::MDX_SUPPORT,
+                "The one level the specification defines; the statement language here is the expression grammar.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(MdxSupport::Core.as_str()),
             ),
             (
                 property::PASSWORD,
@@ -617,12 +694,44 @@ impl Service {
                 text(&self.options.provider_name),
             ),
             (
+                property::PROVIDER_TYPE,
+                "OLE DB's DBPROP_DATASOURCE_TYPE: 1, a tabular data provider.",
+                XsdType::Int,
+                Access::Read,
+                false,
+                text("1"),
+            ),
+            (
                 property::PROVIDER_VERSION,
                 "The provider's version.",
                 XsdType::String,
                 Access::Read,
                 false,
                 text(&self.options.provider_version),
+            ),
+            (
+                property::SERVER_NAME,
+                "The data source's name, as DISCOVER_DATASOURCES states it.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(&self.options.data_source_name),
+            ),
+            (
+                property::SQL_SUPPORT,
+                "OLE DB's DBPROP_SQLSUPPORT: 512, the subminimum, a `select` over one table.",
+                XsdType::Int,
+                Access::Read,
+                false,
+                text("512"),
+            ),
+            (
+                "MdpropMdxQueryByProperty",
+                "Whether MDX queries by member property: no MDX runs here.",
+                XsdType::Boolean,
+                Access::Read,
+                false,
+                text("false"),
             ),
             (
                 property::STATE_SUPPORT,
@@ -638,7 +747,7 @@ impl Service {
                 XsdType::UnsignedInt,
                 Access::ReadWrite,
                 false,
-                value(property::TIMEOUT, ""),
+                value(property::TIMEOUT, None),
             ),
             (
                 property::USER_NAME,
@@ -654,9 +763,33 @@ impl Service {
                 XsdType::Int,
                 Access::Write,
                 false,
-                value(property::VISUAL_MODE, "0"),
+                value(property::VISUAL_MODE, Some("0")),
             ),
         ];
+        rows.extend(
+            CLIENT_PROPERTIES
+                .iter()
+                .map(|(name, description, xsd, access, default)| {
+                    (
+                        *name,
+                        *description,
+                        *xsd,
+                        *access,
+                        false,
+                        value(name, *default),
+                    )
+                }),
+        );
+        rows.extend(MDX_CAPABILITIES.iter().map(|(name, description)| {
+            (
+                *name,
+                *description,
+                XsdType::Int,
+                Access::Read,
+                false,
+                text("0"),
+            )
+        }));
         rows.into_iter()
             .map(|(name, description, xsd, access, required, value)| {
                 record([
@@ -697,6 +830,14 @@ impl Service {
             .map_err(|error| client_fault_or_server(code::BAD_PROPERTY, error))?;
         let statement = match execute.command() {
             Command::Statement(statement) => statement,
+            // ADOMD.NET sends `<Cancel/>` on a pooled connection before it
+            // reuses it. Every Execute here is answered before the next
+            // request on its connection is read, so there is never a command
+            // running to cancel: nothing happens, and nothing is what SSAS
+            // answers a cancel of nothing with.
+            Command::Other(fragment) if fragment.element().local_name() == "Cancel" => {
+                return Ok(Execution::Empty);
+            }
             Command::Other(fragment) => {
                 return Err(client_fault(
                     code::UNSUPPORTED_COMMAND,
@@ -707,6 +848,13 @@ impl Service {
                 ));
             }
         };
+        // A session opens with an Execute carrying `BeginSession` and an
+        // empty `<Statement/>`, the first message every MSOLAP and ADOMD.NET
+        // client sends: nothing to run, answered empty under the session
+        // block - and never a statement the grammar is asked to read.
+        if statement.trim().is_empty() {
+            return Ok(Execution::Empty);
+        }
         let plan: Plan = statement
             .as_str()
             .parse::<crate::Expression>()
@@ -905,14 +1053,174 @@ pub const KEYWORDS: &[&str] = &[
     "with",
 ];
 
+/// The properties a client states about itself or its request, echoed as it
+/// set them: the reference clients set these from their connection strings
+/// and read them back by name, and none of them changes what this provider
+/// does. Name, description, type, access, and the value a request that sets
+/// none reads - a number's own default, or no cell at all.
+const CLIENT_PROPERTIES: &[(&str, &str, XsdType, Access, Option<&str>)] = &[
+    (
+        "ClientProcessID",
+        "The process identifier the client states; echoed.",
+        XsdType::Int,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "SspropInitAppName",
+        "The application name the client states; echoed.",
+        XsdType::String,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "ApplicationContext",
+        "The context the client states for its requests; echoed.",
+        XsdType::String,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "DbpropMsmdActivityID",
+        "The activity a client groups its requests under; echoed, never minted.",
+        XsdType::String,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "DbpropMsmdCurrentActivityID",
+        "The activity a client's current request belongs to; echoed, never minted.",
+        XsdType::String,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "SafetyOptions",
+        "How user-defined functions are trusted; there are none here.",
+        XsdType::Int,
+        Access::ReadWrite,
+        None,
+    ),
+    (
+        "MdxMissingMemberMode",
+        "How MDX treats a missing member; no MDX runs here.",
+        XsdType::String,
+        Access::Write,
+        Some("Default"),
+    ),
+    (
+        "DbpropMsmdMDXCompatibility",
+        "The MDX compatibility level a client asks for; no MDX runs here.",
+        XsdType::Int,
+        Access::ReadWrite,
+        Some("0"),
+    ),
+    (
+        "DbpropMsmdMDXUniqueNameStyle",
+        "How MDX unique names are spelled; no MDX runs here.",
+        XsdType::Int,
+        Access::ReadWrite,
+        Some("0"),
+    ),
+    (
+        "DbpropMsmdSubqueries",
+        "Which MDX subqueries are allowed; no MDX runs here.",
+        XsdType::Int,
+        Access::ReadWrite,
+        Some("0"),
+    ),
+    (
+        "DbpropMsmdOptimizeResponse",
+        "Response optimisations a client asks for; none apply.",
+        XsdType::Int,
+        Access::ReadWrite,
+        Some("0"),
+    ),
+];
+
+/// The OLE DB for OLAP capability masks a client reads to learn what MDX a
+/// provider speaks, every one of them zero here: the statement language is
+/// the expression grammar, and an MDX statement is refused by name.
+const MDX_CAPABILITIES: &[(&str, &str)] = &[
+    (
+        "MdpropMdxSubqueries",
+        "The MDX subquery forms supported: none.",
+    ),
+    (
+        "MdpropMdxDrillFunctions",
+        "The MDX drill functions supported: none.",
+    ),
+    ("MdpropMdxNamedSets", "The MDX named-set support: none."),
+    (
+        "MdpropMdxDdlExtensions",
+        "The MDX DDL extensions supported: none.",
+    ),
+    (
+        "MdpropMdxCaseSupport",
+        "The MDX CASE forms supported: none.",
+    ),
+    (
+        "MdpropMdxDescFlags",
+        "The MDX DESCENDANTS flags supported: none.",
+    ),
+    (
+        "MdpropMdxFormulas",
+        "The MDX formula forms supported: none.",
+    ),
+    ("MdpropMdxJoinCubes", "Whether MDX joins cubes: no."),
+    (
+        "MdpropMdxMemberFunctions",
+        "The MDX member functions supported: none.",
+    ),
+    (
+        "MdpropMdxNonMeasureExpressions",
+        "Where MDX allows non-measure expressions: nowhere.",
+    ),
+    (
+        "MdpropMdxNumericFunctions",
+        "The MDX numeric functions supported: none.",
+    ),
+    (
+        "MdpropMdxObjQualification",
+        "How MDX qualifies object names: not at all.",
+    ),
+    (
+        "MdpropMdxOuterReference",
+        "Where MDX allows outer references: nowhere.",
+    ),
+    (
+        "MdpropMdxRangeRowset",
+        "The MDX range rowset forms supported: none.",
+    ),
+    (
+        "MdpropMdxSetFunctions",
+        "The MDX set functions supported: none.",
+    ),
+    ("MdpropMdxSlicer", "The MDX slicer forms supported: none."),
+    (
+        "MdpropMdxStringCompop",
+        "The MDX string comparison operators supported: none.",
+    ),
+    ("MdpropAxes", "The number of MDX axes: none."),
+    ("MdpropNamedLevels", "The MDX named-level support: none."),
+    (
+        "MdpropFlatteningSupport",
+        "How an MDDataSet is flattened: it is never built.",
+    ),
+];
+
 /// Whether `row` passes every restriction: each restricted column's value -
 /// any item of a sequence column - spelled as text, is one the restriction
-/// admits.
+/// admits. A restriction sent with no value restricts nothing, as the
+/// reference providers read one.
 fn admits(row: &Scalar, restrictions: &super::vocabulary::Restrictions) -> bool {
     let Some(entries) = row.as_struct() else {
         return false;
     };
     restrictions.entries().iter().all(|(column, admitted)| {
+        if admitted.iter().all(String::is_empty) {
+            return true;
+        }
         let value = entries
             .iter()
             .find(|(name, _)| name.eq_ignore_ascii_case(column))
@@ -1264,6 +1572,14 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
         | DataType::Decimal256 { precision, scale } => (
             Scalar::from(u16::from(*precision)),
             Scalar::from(i16::from(*scale)),
+        ),
+        DataType::Decimal => (
+            Scalar::from(u16::from(crate::Decimal::PRECISION)),
+            Scalar::from(i16::from(crate::Decimal::SCALE)),
+        ),
+        DataType::BigDecimal => (
+            Scalar::from(u16::from(crate::BigDecimal::PRECISION)),
+            Scalar::from(i16::from(crate::BigDecimal::SCALE)),
         ),
         _ if indicator.is_unsigned().is_some() => (
             indicator

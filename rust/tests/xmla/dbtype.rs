@@ -168,6 +168,8 @@ fn every_datatype() -> Vec<DataType> {
         DataType::decimal64(18, 4).expect("decimal64"),
         DataType::decimal128(38, 10).expect("decimal128"),
         DataType::decimal256(76, 0).expect("decimal256"),
+        DataType::Decimal,
+        DataType::BigDecimal,
         DataType::datetime64(TimeUnit::Millisecond, Timezone::UTC).expect("datetime64"),
         DataType::Date32,
         DataType::Date64,
@@ -1397,4 +1399,10 @@ fn every_fixed_precision_indicator_is_a_number_with_a_stated_size() {
         assert!(indicator.is_unsigned().is_some(), "{indicator}");
         assert!(indicator.column_size().is_some(), "{indicator}");
     }
+}
+
+#[test]
+fn the_fixed_decimals_are_numeric() {
+    assert_eq!(DbType::of(&DataType::Decimal), DbType::Numeric);
+    assert_eq!(DbType::of(&DataType::BigDecimal), DbType::Numeric);
 }

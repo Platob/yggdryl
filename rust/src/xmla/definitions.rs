@@ -10,7 +10,7 @@
 
 use std::sync::OnceLock;
 
-use crate::{DataType, Field, StructType, TimeUnit, Timezone};
+use crate::{DataType, Field, Scalar, StructType, TimeUnit, Timezone};
 
 use super::rowset::Rowset;
 use super::vocabulary::RequestType;
@@ -19,6 +19,7 @@ use super::vocabulary::RequestType;
 #[derive(Debug)]
 pub struct Definition {
     request_type: RequestType,
+    guid: Scalar,
     description: &'static str,
     rowset: Rowset,
     restrictions: Vec<usize>,
@@ -31,10 +32,25 @@ impl Definition {
         &self.request_type
     }
 
+    /// The `SchemaGuid` `DISCOVER_SCHEMA_ROWSETS` states: OLE DB's identifier
+    /// for its schema rowsets, Analysis Services' for the `DISCOVER_*` ones,
+    /// which a client such as MSOLAP asks a rowset by.
+    #[must_use]
+    pub const fn guid(&self) -> &Scalar {
+        &self.guid
+    }
+
     /// What `DISCOVER_SCHEMA_ROWSETS` says of it.
     #[must_use]
     pub const fn description(&self) -> &'static str {
         self.description
+    }
+
+    /// The `RestrictionsMask` `DISCOVER_SCHEMA_ROWSETS` states: one bit per
+    /// restriction, in restriction order, all set.
+    #[must_use]
+    pub fn restrictions_mask(&self) -> u64 {
+        (1_u64 << self.restrictions.len()) - 1
     }
 
     /// The rowset: the field its rows are and the elements they are spelled
@@ -104,9 +120,13 @@ fn texts() -> DataType {
 
 fn definition(
     request_type: RequestType,
+    guid: &str,
     description: &'static str,
     columns: Vec<Column>,
 ) -> Definition {
+    let guid = DataType::Uuid
+        .scalar(Scalar::from(guid))
+        .expect("every schema GUID here is one");
     let restrictions = columns
         .iter()
         .enumerate()
@@ -123,6 +143,7 @@ fn definition(
     );
     Definition {
         request_type,
+        guid,
         description,
         rowset: Rowset::new(field).expect("every column here has a rowset spelling"),
         restrictions,
@@ -137,6 +158,7 @@ pub fn definitions() -> &'static [Definition] {
         let mut definitions = vec![
             definition(
                 RequestType::DiscoverDatasources,
+                "06c03d41-f66d-49f3-b1b8-987f7af4cf18",
                 "The one data source this provider is; DBSCHEMA_CATALOGS lists its catalogs, one per root folder.",
                 vec![
                     restricting(required("DataSourceName", text())),
@@ -150,6 +172,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DiscoverProperties,
+                "4b40adfb-8b09-4758-97bb-636e8ae97bcf",
                 "The properties this provider reads and answers, with their current values.",
                 vec![
                     restricting(required("PropertyName", text())),
@@ -162,6 +185,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DiscoverSchemaRowsets,
+                "eea0302b-7922-4992-8991-0e605d0e5593",
                 "The request types this provider answers, each with the columns it may be restricted by.",
                 vec![
                     restricting(required("SchemaName", text())),
@@ -181,10 +205,12 @@ pub fn definitions() -> &'static [Definition] {
                         )),
                     ),
                     required("Description", text()),
+                    nullable("RestrictionsMask", DataType::UInt64),
                 ],
             ),
             definition(
                 RequestType::DiscoverEnumerators,
+                "55a9e78b-accb-45b4-95a6-94c5065617a7",
                 "The enumerations this provider's properties and columns draw their values from.",
                 vec![
                     restricting(required("EnumName", text())),
@@ -197,11 +223,13 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DiscoverKeywords,
+                "1426c443-4cdd-4a40-8f45-572fab9bbaa1",
                 "The words the statement grammar reserves.",
                 vec![restricting(required("Keyword", text()))],
             ),
             definition(
                 RequestType::DiscoverLiterals,
+                "c3ef5ecb-0a07-4665-a140-b075722dbdc2",
                 "The literals the statement grammar spells identifiers and commands with.",
                 vec![
                     restricting(required("LiteralName", text())),
@@ -214,6 +242,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DbschemaCatalogs,
+                "c8b52211-5cf3-11ce-ade5-00aa0044773d",
                 "The catalogs this provider serves: one per root folder.",
                 vec![
                     restricting(required("CATALOG_NAME", text())),
@@ -224,6 +253,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DbschemaSchemata,
+                "c8b52225-5cf3-11ce-ade5-00aa0044773d",
                 "The schemas of a catalog: one per folder of tables under its root.",
                 vec![
                     restricting(required("CATALOG_NAME", text())),
@@ -233,6 +263,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DbschemaTables,
+                "c8b52229-5cf3-11ce-ade5-00aa0044773d",
                 "The tables of a catalog: every leaf a record medium reads, and every folder that reads as one table.",
                 vec![
                     restricting(required("TABLE_CATALOG", text())),
@@ -248,6 +279,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DbschemaColumns,
+                "c8b52214-5cf3-11ce-ade5-00aa0044773d",
                 "The columns of the tables of a catalog, typed as OLE DB types them.",
                 vec![
                     restricting(required("TABLE_CATALOG", text())),
@@ -268,6 +300,7 @@ pub fn definitions() -> &'static [Definition] {
             ),
             definition(
                 RequestType::DbschemaProviderTypes,
+                "c8b5222c-5cf3-11ce-ade5-00aa0044773d",
                 "The datatypes this provider's columns take, as OLE DB types them.",
                 vec![
                     required("TYPE_NAME", text()),
@@ -288,6 +321,35 @@ pub fn definitions() -> &'static [Definition] {
                     nullable("IS_LONG", DataType::Boolean),
                     restricting(nullable("BEST_MATCH", DataType::Boolean)),
                     nullable("IS_FIXEDLENGTH", DataType::Boolean),
+                ],
+            ),
+            // The one multidimensional rowset a tabular provider answers: the
+            // reference clients ask for the cubes between the catalog list
+            // and the tables, and a catalog is the one cube it has.
+            definition(
+                RequestType::MdschemaCubes,
+                "c8b522d8-5cf3-11ce-ade5-00aa0044773d",
+                "The cubes of a catalog: each catalog is its one cube, its tables read as they are.",
+                vec![
+                    restricting(required("CATALOG_NAME", text())),
+                    restricting(nullable("SCHEMA_NAME", text())),
+                    restricting(required("CUBE_NAME", text())),
+                    required("CUBE_TYPE", text()),
+                    nullable("CUBE_GUID", DataType::Uuid),
+                    nullable("CREATED_ON", instant()),
+                    nullable("LAST_SCHEMA_UPDATE", instant()),
+                    nullable("SCHEMA_UPDATED_BY", text()),
+                    nullable("LAST_DATA_UPDATE", instant()),
+                    nullable("DATA_UPDATED_BY", text()),
+                    nullable("DESCRIPTION", text()),
+                    required("IS_DRILLTHROUGH_ENABLED", DataType::Boolean),
+                    required("IS_LINKABLE", DataType::Boolean),
+                    required("IS_WRITE_ENABLED", DataType::Boolean),
+                    required("IS_SQL_ENABLED", DataType::Boolean),
+                    required("CUBE_CAPTION", text()),
+                    restricting(nullable("BASE_CUBE_NAME", text())),
+                    restricting(required("CUBE_SOURCE", DataType::UInt16)),
+                    required("PREFERRED_QUERY_PATTERNS", DataType::UInt16),
                 ],
             ),
         ];

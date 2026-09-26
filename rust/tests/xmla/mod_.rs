@@ -272,11 +272,13 @@ fn a_failure_is_a_soap_fault_whose_detail_carries_the_xmla_error() {
 }
 
 #[test]
-fn every_multidimensional_rowset_is_read_and_refused_by_name() {
+fn every_multidimensional_rowset_but_the_cubes_is_read_and_refused_by_name() {
     let service = empty_service();
     let mdschema: Vec<&RequestType> = RequestType::ALL
         .iter()
-        .filter(|request_type| request_type.is_mdschema())
+        .filter(|request_type| {
+            request_type.is_mdschema() && **request_type != RequestType::MdschemaCubes
+        })
         .collect();
     assert!(!mdschema.is_empty());
     for request_type in mdschema {
@@ -454,7 +456,7 @@ fn an_xmla_error_is_written_in_the_exception_namespace() {
     let element = fragment.element();
     assert!(element.is_in(EXCEPTION_NAMESPACE, "Error"));
     let fault = yggdryl::xmla::fault(FaultCode::Server, error.clone()).expect("the fault is built");
-    let bytes = yggdryl::xmla::write_fault(Vec::new(), &fault).expect("the fault is written");
+    let bytes = yggdryl::xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
     let read = fault_of(&bytes);
     let [detail] = read.detail() else {
         panic!("one detail element in {read}");
@@ -659,10 +661,11 @@ fn the_response_names_resolve_at_the_module_root() {
         fault,
         response::fault(FaultCode::Client, error.clone()).expect("built")
     );
-    let faulted = yggdryl::xmla::write_fault(Vec::new(), &fault).expect("the fault is written");
+    let faulted =
+        yggdryl::xmla::write_fault(Vec::new(), &[], &fault).expect("the fault is written");
     assert_eq!(
         faulted,
-        response::write_fault(Vec::new(), &fault).expect("the fault is written")
+        response::write_fault(Vec::new(), &[], &fault).expect("the fault is written")
     );
     assert_eq!(XmlaError::from_fault(&fault_of(&faulted)), vec![error]);
 
@@ -1462,8 +1465,11 @@ fn the_request_types_the_provider_lists_are_exactly_the_ones_it_answers() {
         "{names:?}"
     );
     assert!(
-        names.iter().all(|name| !name.starts_with("MDSCHEMA_")),
-        "a tabular provider lists no multidimensional rowset: {names:?}"
+        names
+            .iter()
+            .filter(|name| name.starts_with("MDSCHEMA_"))
+            .eq(["MDSCHEMA_CUBES"]),
+        "a tabular provider lists one multidimensional rowset, the cubes: {names:?}"
     );
     for name in &names {
         assert!(

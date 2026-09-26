@@ -1745,7 +1745,7 @@ fn write_fault_reads_back_as_the_same_fault() {
     let error = XmlaError::new(3_238_658_057, "Le « cube » n'existe pas & <rien> – 東京")
         .with_source("catalog");
     let built = fault(FaultCode::Client, error.clone()).expect("a fault");
-    let bytes = write_fault(Vec::new(), &built).expect("the fault is written");
+    let bytes = write_fault(Vec::new(), &[], &built).expect("the fault is written");
     let written = text(&bytes);
     assert!(!written.contains("SOAP-ENV:Header"), "{written}");
 
@@ -1781,7 +1781,7 @@ fn write_fault_keeps_a_subcode_and_several_errors_in_order() {
         .with_actor(ACTOR)
         .with_detail(first.into_fragment().expect("an Error element"))
         .with_detail(second.into_fragment().expect("an Error element"));
-    let bytes = write_fault(Vec::new(), &built).expect("the fault is written");
+    let bytes = write_fault(Vec::new(), &[], &built).expect("the fault is written");
     let read_back = read_fault(&bytes);
     assert_eq!(read_back.code(), &FaultCode::Server);
     assert_eq!(read_back.subcode(), Some("Engine"));
@@ -1799,7 +1799,7 @@ fn write_fault_keeps_a_subcode_and_several_errors_in_order() {
 #[test]
 fn write_fault_refuses_a_failing_sink() {
     let built = fault(FaultCode::Server, XmlaError::new(1, "x")).expect("a fault");
-    let result = write_fault(FullSink, &built);
+    let result = write_fault(FullSink, &[], &built);
     assert_eq!(sink_failure(result.map(|_| ())), "the sink is full");
 }
 
@@ -1839,7 +1839,7 @@ fn write_empty_refuses_a_header_block_xml_cannot_carry() {
 #[test]
 fn write_fault_spells_the_fault_in_the_envelope_schema_s_order() {
     let built = fault(FaultCode::Client, XmlaError::new(3, "desc & <x>")).expect("a fault");
-    let bytes = write_fault(Vec::new(), &built).expect("the fault is written");
+    let bytes = write_fault(Vec::new(), &[], &built).expect("the fault is written");
     let written = text(&bytes);
     assert!(
         written.starts_with(&format!(
@@ -1865,8 +1865,9 @@ fn write_fault_refuses_a_description_xml_cannot_carry() {
     // `fault` builds a fault of any text; the text XML 1.0 cannot spell is
     // refused where it is written, naming the code point.
     let built = fault(FaultCode::Client, XmlaError::new(3, "bell \u{7}")).expect("a fault");
-    let (format, reason) =
-        codec(write_fault(Vec::new(), &built).expect_err("the fault string has no XML spelling"));
+    let (format, reason) = codec(
+        write_fault(Vec::new(), &[], &built).expect_err("the fault string has no XML spelling"),
+    );
     assert_eq!(format, "xml");
     assert_eq!(reason, "text carries U+0007, which XML 1.0 cannot spell");
 }

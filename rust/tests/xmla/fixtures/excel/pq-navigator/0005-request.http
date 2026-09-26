@@ -1,0 +1,44 @@
+POST /xmla HTTP/1.1
+User-Agent: ADOMD.NET
+X-AS-AcquireTokenStats: AppName=Microsoft.Mashup.Container.Loader.exe,AppVer=2.155.385.0,AppBinaryType=6,HostRuntime='.NET Framework 4.8.1',ManagedVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,ClientLibVer=Microsoft.PowerBI.AdomdClient:17.0.87.18,CacheUsed=1,ConStrId=1
+Content-Type: text/xml
+SOAPAction: "urn:schemas-microsoft-com:xml-analysis:Discover"
+X-Transport-Caps-Negotiation-Flags: 1,0,0,0,0
+X-AS-SessionID: 01a0de80-a447-7bdb-877b-3abb6f87acd9
+X-AS-ActivityID: 310203ea-59fb-40ef-97a0-70768d486d12
+X-AS-RequestID: 68bf5a0b-ec7a-43dc-b03c-a55a6008f6b9
+Host: 127.0.0.1:8080
+Transfer-Encoding: chunked
+Expect: 100-continue
+
+511
+﻿<Envelope xmlns="http://schemas.xmlsoap.org/soap/envelope/">
+  <Header>
+    <XA:Session soap:mustUnderstand="1" SessionId="01a0de80-a447-7bdb-877b-3abb6f87acd9" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:XA="urn:schemas-microsoft-com:xml-analysis" />
+  </Header>
+  <Body>
+    <Discover xmlns="urn:schemas-microsoft-com:xml-analysis">
+      <RequestType>DISCOVER_PROPERTIES</RequestType>
+      <Restrictions>
+        <RestrictionList>
+          <PropertyName>ProviderVersion</PropertyName>
+        </RestrictionList>
+      </Restrictions>
+      <Properties>
+        <PropertyList>
+          <Catalog>market</Catalog>
+          <DbpropMsmdSubqueries>2</DbpropMsmdSubqueries>
+          <LocaleIdentifier>1036</LocaleIdentifier>
+          <DataSourceInfo>Provider=yggdryl;Data Source=yggdryl</DataSourceInfo>
+          <Content>SchemaData</Content>
+          <Format>Tabular</Format>
+          <DbpropMsmdActivityID>310203ea-59fb-40ef-97a0-70768d486d12</DbpropMsmdActivityID>
+          <DbpropMsmdRequestID>68bf5a0b-ec7a-43dc-b03c-a55a6008f6b9</DbpropMsmdRequestID>
+          <DbpropMsmdCurrentActivityID>310203ea-59fb-40ef-97a0-70768d486d12</DbpropMsmdCurrentActivityID>
+        </PropertyList>
+      </Properties>
+    </Discover>
+  </Body>
+</Envelope>
+0
+

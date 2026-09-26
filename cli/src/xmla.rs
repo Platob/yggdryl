@@ -20,7 +20,7 @@ use crate::style;
 /// What the provider was asked to do.
 #[derive(Subcommand)]
 #[command(
-    after_help = "Examples:\n  ygg xmla serve market=/data/market reference=/data/reference\n  ygg xmla serve /data/market --bind 0.0.0.0:8080 --path /xmla\n  ygg xmla serve market=s3://bucket/market --writable\n\nA catalog is `name=location`, or a location alone, named after its last segment. A location is a folder path, or a URL a holder resolves.\nEvery record file the folder holds is a table; a folder inside it is a schema whose files are its tables.\nThe first line printed is the endpoint, so a script that started the process knows where to connect."
+    after_help = "Examples:\n  ygg xmla serve market=/data/market reference=/data/reference\n  ygg xmla serve /data/market --bind 0.0.0.0:8080 --path /xmla\n  ygg xmla serve market=s3://bucket/market --writable\n  ygg xmla serve market=C:\\data\\market --trace C:\\data\\trace\n\nA catalog is `name=location`, or a location alone, named after its last segment. A location is a folder path, or a URL a holder resolves.\nEvery record file the folder holds is a table; a folder inside it is a schema whose files are its tables; a folder laid out as an Iceberg table is a table wherever it sits (the `iceberg` feature reads it).\nThe first line printed is the endpoint, so a script that started the process knows where to connect.\n--trace writes each exchange as it went over the wire, a request file and a response file per exchange, so what a client asked can be read and replayed."
 )]
 pub enum Command {
     /// Serve catalogs over HTTP, one request per POST, until stopped.
@@ -49,6 +49,11 @@ pub struct Serve {
     /// The largest request body accepted, in bytes.
     #[arg(long, default_value_t = 16 * 1024 * 1024)]
     max_body: usize,
+
+    /// Write every exchange under this folder: `NNNN-request.http` as read,
+    /// `NNNN-response.http` as sent, numbered from 0000 in request order.
+    #[arg(long, value_name = "FOLDER")]
+    trace: Option<String>,
 }
 
 /// Run one `xmla` verb.
@@ -68,13 +73,15 @@ impl Serve {
         for spelled in &self.catalogs {
             service = service.with_catalog(catalog(spelled)?);
         }
+        let mut options = ServerOptions::new()
+            .with_path(self.path.clone())
+            .with_max_body(self.max_body);
+        if let Some(trace) = &self.trace {
+            options = options.with_trace(holder(trace)?);
+        }
         let server = Server::bind(service, self.bind.as_str())
             .map_err(Error::from)?
-            .with_options(
-                ServerOptions::new()
-                    .with_path(self.path.clone())
-                    .with_max_body(self.max_body),
-            );
+            .with_options(options);
         // The endpoint first and on its own line, so whatever started the
         // process reads where to connect before anything else is printed.
         println!("{}", server.endpoint());

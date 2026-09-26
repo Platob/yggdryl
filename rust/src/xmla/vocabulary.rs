@@ -463,8 +463,14 @@ pub mod property {
     pub const PASSWORD: &str = "Password";
     /// The provider's name.
     pub const PROVIDER_NAME: &str = "ProviderName";
+    /// OLE DB's `DBPROP_DATASOURCE_TYPE`: what kind of provider this is.
+    pub const PROVIDER_TYPE: &str = "ProviderType";
     /// The provider's version.
     pub const PROVIDER_VERSION: &str = "ProviderVersion";
+    /// The name of the server, as the reference providers state it.
+    pub const SERVER_NAME: &str = "ServerName";
+    /// OLE DB's `DBPROP_SQLSUPPORT`: how much SQL the provider speaks.
+    pub const SQL_SUPPORT: &str = "SQLSupport";
     /// Whether sessions are kept.
     pub const STATE_SUPPORT: &str = "StateSupport";
     /// Seconds to wait for a request to succeed.

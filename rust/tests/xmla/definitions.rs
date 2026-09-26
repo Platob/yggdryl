@@ -161,6 +161,7 @@ fn covered() -> Vec<RequestType> {
         RequestType::DbschemaProviderTypes,
         RequestType::DbschemaSchemata,
         RequestType::DbschemaTables,
+        RequestType::MdschemaCubes,
     ]
 }
 
@@ -174,7 +175,7 @@ fn a_request_type_the_provider_does_not_answer_has_no_definition() {
         .filter(|request_type| !covered.contains(request_type))
         .collect();
     assert!(uncovered.contains(&&RequestType::DbschemaTablesInfo));
-    assert!(uncovered.contains(&&RequestType::MdschemaCubes));
+    assert!(uncovered.contains(&&RequestType::MdschemaDimensions));
     for request_type in uncovered {
         assert!(
             definition_of(request_type).is_none(),
@@ -307,23 +308,26 @@ fn definitions_follow_the_specifications_order() {
 }
 
 #[test]
-fn definitions_open_with_the_discover_rowsets_then_the_ole_db_ones() {
+fn definitions_open_with_the_discover_rowsets_then_the_ole_db_ones_then_the_cubes() {
     let all = definitions();
     let discover = all
         .iter()
         .take_while(|definition| definition.request_type().is_discover())
         .count();
     assert_eq!(discover, 6, "the six DISCOVER_* rowsets come first");
-    assert!(
-        all[discover..]
-            .iter()
-            .all(|definition| definition.request_type().is_dbschema()),
-        "every rowset past them is an OLE DB schema rowset"
-    );
-    assert!(
-        all.iter()
-            .all(|definition| !definition.request_type().is_mdschema()),
-        "a tabular provider answers no MDSCHEMA_* rowset"
+    let dbschema = all[discover..]
+        .iter()
+        .take_while(|definition| definition.request_type().is_dbschema())
+        .count();
+    assert_eq!(dbschema, 5, "the five OLE DB schema rowsets follow them");
+    let mdschema: Vec<&RequestType> = all[discover + dbschema..]
+        .iter()
+        .map(Definition::request_type)
+        .collect();
+    assert_eq!(
+        mdschema,
+        [&RequestType::MdschemaCubes],
+        "a tabular provider answers one MDSCHEMA_* rowset, the cubes, and it comes last"
     );
 }
 
@@ -479,6 +483,7 @@ fn discover_schema_rowsets_declares_its_columns() {
                 DataType::serie(Field::new("item", restriction, false)),
             ),
             required("Description", text()),
+            nullable("RestrictionsMask", DataType::UInt64),
         ],
     );
 }
@@ -581,6 +586,40 @@ fn dbschema_tables_declares_its_columns() {
             nullable("DATE_CREATED", instant()),
             nullable("DATE_MODIFIED", instant()),
         ],
+    );
+}
+
+#[test]
+fn mdschema_cubes_declares_its_columns() {
+    pin(
+        &RequestType::MdschemaCubes,
+        &[
+            restricting(required("CATALOG_NAME", text())),
+            restricting(nullable("SCHEMA_NAME", text())),
+            restricting(required("CUBE_NAME", text())),
+            required("CUBE_TYPE", text()),
+            nullable("CUBE_GUID", DataType::Uuid),
+            nullable("CREATED_ON", instant()),
+            nullable("LAST_SCHEMA_UPDATE", instant()),
+            nullable("SCHEMA_UPDATED_BY", text()),
+            nullable("LAST_DATA_UPDATE", instant()),
+            nullable("DATA_UPDATED_BY", text()),
+            nullable("DESCRIPTION", text()),
+            required("IS_DRILLTHROUGH_ENABLED", DataType::Boolean),
+            required("IS_LINKABLE", DataType::Boolean),
+            required("IS_WRITE_ENABLED", DataType::Boolean),
+            required("IS_SQL_ENABLED", DataType::Boolean),
+            required("CUBE_CAPTION", text()),
+            restricting(nullable("BASE_CUBE_NAME", text())),
+            restricting(required("CUBE_SOURCE", DataType::UInt16)),
+            required("PREFERRED_QUERY_PATTERNS", DataType::UInt16),
+        ],
+    );
+    let cubes = answered(&RequestType::MdschemaCubes);
+    assert_eq!(
+        cubes.restrictions_mask(),
+        31,
+        "five restrictions, the mask the reference provider states"
     );
 }
 
@@ -1240,7 +1279,7 @@ fn a_literal_discover_schema_rowsets_rowset_reads_its_restrictions_as_a_sequence
         "<row><SchemaName>DBSCHEMA_SCHEMATA</SchemaName><SchemaGuid>{ID_TEXT}</SchemaGuid>\
          <Restrictions><Name>CATALOG_NAME</Name><Type>xsd:string</Type></Restrictions>\
          <Restrictions><Name>SCHEMA_NAME</Name><Type>xsd:string</Type></Restrictions>\
-         <Description>Schemas</Description></row>\
+         <Description>Schemas</Description><RestrictionsMask>3</RestrictionsMask></row>\
          <row><SchemaName>DISCOVER_KEYWORDS</SchemaName>\
          <Restrictions><Name>Keyword</Name><Type>xsd:string</Type></Restrictions>\
          <Description>Keywords</Description></row>\
@@ -1267,6 +1306,7 @@ fn a_literal_discover_schema_rowsets_rowset_reads_its_restrictions_as_a_sequence
                     ]),
                 ),
                 ("Description", Scalar::from("Schemas")),
+                ("RestrictionsMask", Scalar::from(3_u64)),
             ]),
             row([
                 ("SchemaName", Scalar::from("DISCOVER_KEYWORDS")),
@@ -1276,12 +1316,14 @@ fn a_literal_discover_schema_rowsets_rowset_reads_its_restrictions_as_a_sequence
                     Scalar::from_sequence([restriction("Keyword")]),
                 ),
                 ("Description", Scalar::from("Keywords")),
+                ("RestrictionsMask", Scalar::Null),
             ]),
             row([
                 ("SchemaName", Scalar::from("DISCOVER_NOTHING")),
                 ("SchemaGuid", Scalar::Null),
                 ("Restrictions", Scalar::from_sequence([])),
                 ("Description", Scalar::from("")),
+                ("RestrictionsMask", Scalar::Null),
             ]),
         ],
     );
@@ -1461,7 +1503,7 @@ fn the_schema_rowsets_rowset_carries_every_definition_in_order_and_reads_back() 
                     "SchemaName",
                     Scalar::from(definition.request_type().as_str()),
                 ),
-                ("SchemaGuid", Scalar::Null),
+                ("SchemaGuid", definition.guid().clone()),
                 (
                     "Restrictions",
                     Scalar::from_sequence(definition.restrictions().into_iter().map(|field| {
@@ -1479,6 +1521,10 @@ fn the_schema_rowsets_rowset_carries_every_definition_in_order_and_reads_back() 
                     })),
                 ),
                 ("Description", Scalar::from(definition.description())),
+                (
+                    "RestrictionsMask",
+                    Scalar::from(definition.restrictions_mask()),
+                ),
             ])
         }),
     );
@@ -1487,10 +1533,11 @@ fn the_schema_rowsets_rowset_carries_every_definition_in_order_and_reads_back() 
     assert!(
         document.contains(
             "<row><SchemaName>DBSCHEMA_PROVIDER_TYPES</SchemaName>\
+             <SchemaGuid>c8b5222c-5cf3-11ce-ade5-00aa0044773d</SchemaGuid>\
              <Restrictions><Name>DATA_TYPE</Name><Type>xsd:unsignedShort</Type></Restrictions>\
              <Restrictions><Name>BEST_MATCH</Name><Type>xsd:boolean</Type></Restrictions>\
              <Description>The datatypes this provider's columns take, as OLE DB types them.\
-             </Description></row>"
+             </Description><RestrictionsMask>3</RestrictionsMask></row>"
         ),
         "{document}"
     );
@@ -1720,7 +1767,10 @@ fn every_rowset_declares_its_columns_under_the_specifications_xml_schema_types()
                      </xsd:sequence></xsd:complexType></xsd:element>",
                     declarations(&[("Name", S, false), ("Type", S, false)])
                 ),
-                declarations(&[("Description", S, false)]),
+                declarations(&[
+                    ("Description", S, false),
+                    ("RestrictionsMask", "xsd:unsignedLong", true),
+                ]),
             ]
             .concat(),
         ),
@@ -1821,6 +1871,30 @@ fn every_rowset_declares_its_columns_under_the_specifications_xml_schema_types()
                 ("TABLE_PROPID", UI, true),
                 ("DATE_CREATED", DT, true),
                 ("DATE_MODIFIED", DT, true),
+            ]),
+        ),
+        (
+            RequestType::MdschemaCubes,
+            declarations(&[
+                ("CATALOG_NAME", S, false),
+                ("SCHEMA_NAME", S, true),
+                ("CUBE_NAME", S, false),
+                ("CUBE_TYPE", S, false),
+                ("CUBE_GUID", "uuid", true),
+                ("CREATED_ON", DT, true),
+                ("LAST_SCHEMA_UPDATE", DT, true),
+                ("SCHEMA_UPDATED_BY", S, true),
+                ("LAST_DATA_UPDATE", DT, true),
+                ("DATA_UPDATED_BY", S, true),
+                ("DESCRIPTION", S, true),
+                ("IS_DRILLTHROUGH_ENABLED", B, false),
+                ("IS_LINKABLE", B, false),
+                ("IS_WRITE_ENABLED", B, false),
+                ("IS_SQL_ENABLED", B, false),
+                ("CUBE_CAPTION", S, false),
+                ("BASE_CUBE_NAME", S, true),
+                ("CUBE_SOURCE", US, false),
+                ("PREFERRED_QUERY_PATTERNS", US, false),
             ]),
         ),
     ];

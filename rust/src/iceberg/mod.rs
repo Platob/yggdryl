@@ -143,6 +143,12 @@ impl Located {
         self.table.schema().cloned()
     }
 
+    /// The table's schema under the options' root name, as the table
+    /// answers it: from its metadata, with no scan planned.
+    pub(crate) fn read_arrow_field(&self, options: &RecordOptions) -> Result<crate::Field> {
+        crate::IOMedia::read_arrow_field(&self.table, options)
+    }
+
     /// Publish one already-shaped overwrite cadence.
     ///
     /// The rows were cast when they were shaped, so nothing here is safe or

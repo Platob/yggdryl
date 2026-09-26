@@ -1,0 +1,12 @@
+HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Content-Type: text/xml; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0
+
+272
+<?xml version="1.0" encoding="utf-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header><Session SessionId="01a0de7f-3fcc-75af-877b-3abb6f87acd9" xmlns="urn:schemas-microsoft-com:xml-analysis"/></SOAP-ENV:Header><SOAP-ENV:Body><ExecuteResponse xmlns="urn:schemas-microsoft-com:xml-analysis"><return><root xmlns="urn:schemas-microsoft-com:xml-analysis:empty" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:EX="urn:schemas-microsoft-com:xml-analysis:exception"/></return></ExecuteResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+0
+

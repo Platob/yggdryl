@@ -1,7 +1,7 @@
 //! `rust/src/xmla/server.rs`: the provider reached over a loopback socket
 //! with the SOAP 1.1 HTTP binding, one request per POST.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Cursor, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -71,7 +71,12 @@ fn exchange(address: &str, request: &[u8]) -> (u16, Vec<(String, String)>, Vec<u
     let mut stream = TcpStream::connect(address).expect("the server accepts");
     stream.write_all(request).expect("the request is sent");
     stream.flush().expect("flushed");
-    let mut reader = BufReader::new(stream);
+    receive(&mut BufReader::new(stream))
+}
+
+/// One response off `reader`: the status, the headers and the whole body, a
+/// chunked body reassembled.
+fn receive<R: BufRead>(reader: &mut R) -> (u16, Vec<(String, String)>, Vec<u8>) {
     let mut line = String::new();
     reader.read_line(&mut line).expect("a status line");
     let status: u16 = line
@@ -300,4 +305,181 @@ fn a_connection_carries_several_requests_and_a_chunked_body() {
         assert!(reader.buffer().is_empty());
     }
     server.stop();
+}
+
+#[test]
+fn a_client_expecting_a_continue_gets_it_before_it_sends_the_body() {
+    let server = running("continue");
+    let address = server.local_addr().expect("an address").to_string();
+    let body = Request::from(Discover::new(RequestType::DbschemaCatalogs))
+        .into_bytes()
+        .expect("a request");
+    let mut stream = TcpStream::connect(&address).expect("the server accepts");
+    let head = format!(
+        "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
+         SOAPAction: \"urn:schemas-microsoft-com:xml-analysis:Discover\"\r\n\
+         Expect: 100-continue\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(head.as_bytes()).expect("the head is sent");
+    stream.flush().expect("flushed");
+    let mut reader = BufReader::new(stream.try_clone().expect("a read half"));
+    // The interim status arrives while the body is still held back.
+    let mut interim = String::new();
+    reader.read_line(&mut interim).expect("the interim status");
+    assert_eq!(interim, "HTTP/1.1 100 Continue\r\n");
+    interim.clear();
+    reader.read_line(&mut interim).expect("the blank line");
+    assert_eq!(interim, "\r\n");
+    stream.write_all(&body).expect("the body is sent");
+    stream.flush().expect("flushed");
+    let (status, headers, body) = receive(&mut reader);
+    assert_eq!(status, 200);
+    assert!(
+        headers.contains(&(
+            "x-transport-caps-negotiation-flags".to_owned(),
+            "0,0,0,0,0".to_owned()
+        )),
+        "{headers:?}"
+    );
+    let response = Response::from_bytes(&body, None).expect("a response");
+    assert_eq!(response.rows().map(yggdryl::Serie::len), Some(1));
+    server.stop();
+}
+
+#[test]
+fn every_soap_answer_carries_the_negotiation_flags_and_a_text_answer_none() {
+    let server = running("negotiation");
+    let address = server.local_addr().expect("an address").to_string();
+    let flags = (
+        "x-transport-caps-negotiation-flags".to_owned(),
+        "0,0,0,0,0".to_owned(),
+    );
+    // A refused message is a SOAP fault, and carries them.
+    let (status, headers, _) = exchange(
+        &address,
+        format!(
+            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/plain\r\n\
+             Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        )
+        .as_bytes(),
+    );
+    assert_eq!(status, 200);
+    assert!(headers.contains(&flags), "{headers:?}");
+    // A message that is XML but no XMLA is answered by the service, as a
+    // fault in the chunked answer, under the same flags.
+    let (status, headers, body) = exchange(
+        &address,
+        format!(
+            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
+             Content-Length: 7\r\nConnection: close\r\n\r\n<a/>   "
+        )
+        .as_bytes(),
+    );
+    assert_eq!(status, 200);
+    assert!(headers.contains(&flags), "{headers:?}");
+    assert!(
+        yggdryl::soap::Envelope::from_bytes(&body)
+            .expect("an envelope")
+            .fault()
+            .is_some()
+    );
+    // The endpoint's description is text, not SOAP.
+    let (status, headers, _) = exchange(
+        &address,
+        format!("GET /xmla HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
+    );
+    assert_eq!(status, 200);
+    assert!(!headers.iter().any(|(name, _)| name == &flags.0));
+    server.stop();
+}
+
+#[test]
+fn a_trace_writes_each_exchange_as_it_went_over_the_wire_and_the_request_replays() {
+    let root = catalog_root("traced");
+    let trace = root.parent().expect("a parent").join(format!(
+        "yggdryl-xmla-server-trace-log-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&trace);
+    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        "market",
+        Holder::folder(&root).expect("holds"),
+    ));
+    let server = Server::bind(service, "127.0.0.1:0")
+        .expect("a loopback port")
+        .with_options(
+            ServerOptions::new()
+                .with_path("/xmla")
+                .with_trace(Holder::folder(&trace).expect("a trace folder")),
+        )
+        .spawn();
+    let service = Arc::clone(server.service());
+    let address = server.local_addr().expect("an address").to_string();
+    let discover = Request::from(
+        Discover::new(RequestType::DbschemaTables)
+            .with_properties(PropertyList::new().with("Catalog", "market")),
+    )
+    .into_bytes()
+    .expect("a request");
+    let (status, live) = post(
+        &address,
+        "/xmla",
+        &discover,
+        "urn:schemas-microsoft-com:xml-analysis:Discover",
+    );
+    assert_eq!(status, 200);
+    // A request refused on its head is traced too, with the refusal.
+    let (status, _, _) = exchange(
+        &address,
+        format!(
+            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
+             Connection: close\r\n\r\n"
+        )
+        .as_bytes(),
+    );
+    assert_eq!(status, 411);
+    server.stop();
+    // Each pair is completed as its exchange ends, on the connection's own
+    // thread: a moment after the client read the last byte.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline
+        && !std::fs::read(trace.join("0001-response.http"))
+            .is_ok_and(|bytes| bytes.starts_with(b"HTTP/1.1 411"))
+    {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let read = |name: &str| {
+        std::fs::read(trace.join(name)).unwrap_or_else(|error| panic!("{name}: {error}"))
+    };
+    let request = read("0000-request.http");
+    assert!(
+        request.starts_with(b"POST /xmla HTTP/1.1\r\n"),
+        "{}",
+        String::from_utf8_lossy(&request)
+    );
+    assert!(request.ends_with(&discover));
+    let response = read("0000-response.http");
+    assert!(
+        response.starts_with(b"HTTP/1.1 200 OK\r\n"),
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    assert!(response.ends_with(b"0\r\n\r\n"));
+    assert!(read("0001-request.http").starts_with(b"POST /xmla HTTP/1.1\r\n"));
+    assert!(read("0001-response.http").starts_with(b"HTTP/1.1 411 Length Required\r\n"));
+    assert!(!trace.join("0002-request.http").exists());
+    // The traced request replays through the service and answers the same rows.
+    let mut interim = Vec::new();
+    let replayed =
+        yggdryl::soap::http::Request::read(&mut Cursor::new(&request[..]), &mut interim, 1 << 20)
+            .expect("the traced request reads")
+            .expect("a request");
+    let again = service
+        .handle(replayed.body(), Vec::new())
+        .expect("answered");
+    let live = Response::from_bytes(&live, None).expect("a response");
+    let again = Response::from_bytes(&again, None).expect("a response");
+    assert_eq!(live.rows(), again.rows());
+    let _ = std::fs::remove_dir_all(&trace);
 }

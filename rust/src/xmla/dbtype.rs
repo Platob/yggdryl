@@ -169,7 +169,9 @@ impl DbType {
             DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
-            | DataType::Decimal256 { .. } => Self::Numeric,
+            | DataType::Decimal256 { .. }
+            | DataType::Decimal
+            | DataType::BigDecimal => Self::Numeric,
             DataType::Date32 | DataType::Date64 => Self::DbDate,
             DataType::Time32(_) | DataType::Time64(_) => Self::DbTime,
             DataType::DateTime64 { .. } => Self::DbTimestamp,

@@ -118,4 +118,118 @@ pub(crate) fn xmla_benchmarks(criterion: &mut Criterion) {
         bencher.iter(|| Request::from_bytes(black_box(&envelope)).expect("decodes"));
     });
     group.finish();
+
+    service_benchmarks(criterion, &field);
+}
+
+/// The provider end to end: `Service::handle` over a folder catalog, the
+/// request's bytes in and the response's bytes out, which is what the server
+/// puts on the socket minus the socket. The metadata burst a client opens
+/// with - the properties, the catalogs, the tables, the columns - and an
+/// Execute over the whole table at the three sizes an Excel import is timed
+/// at, so the cost is measured where it is paid: the catalog's listing, the
+/// table's read, the rowset's write.
+fn service_benchmarks(criterion: &mut Criterion, field: &Field) {
+    use yggdryl::holder::Holder;
+    use yggdryl::media::RecordOptions;
+    use yggdryl::xmla::{Catalog, Execute, Service, ServiceOptions};
+    use yggdryl::{IOBase, IOMedia, MimeType};
+
+    let root = std::env::temp_dir().join(format!("yggdryl-bench-xmla-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("the scratch catalog");
+    let sizes = [
+        ("trades_10k", corpus(10_000, 64)),
+        ("trades_100k", corpus(100_000, 128)),
+        ("trades_1m", corpus(1_000_000, 256)),
+    ];
+    for (name, rows) in sizes {
+        let mut leaf = Holder::folder(&root)
+            .expect("the root holds")
+            .child_by_path(&format!("{name}.arrows"))
+            .expect("the table resolves");
+        let batch = batch(field, rows).into_arrow_batch().expect("a batch");
+        leaf.overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+            &RecordOptions::for_mime_type(&MimeType::ARROW_STREAM).expect("IPC options"),
+        )
+        .expect("the table is written");
+    }
+    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        "market",
+        Holder::folder(&root).expect("holds"),
+    ));
+    let request = |request: Request| request.into_bytes().expect("the request encodes");
+    let catalog = PropertyList::new().with("Catalog", "market");
+    let burst = [
+        (
+            "discover_properties",
+            request(Request::from(Discover::new(
+                RequestType::DiscoverProperties,
+            ))),
+        ),
+        (
+            "dbschema_catalogs",
+            request(Request::from(Discover::new(RequestType::DbschemaCatalogs))),
+        ),
+        (
+            "dbschema_tables",
+            request(Request::from(
+                Discover::new(RequestType::DbschemaTables).with_properties(catalog.clone()),
+            )),
+        ),
+        (
+            "dbschema_columns",
+            request(Request::from(
+                Discover::new(RequestType::DbschemaColumns).with_properties(catalog.clone()),
+            )),
+        ),
+    ];
+    // Proven once outside the timers: the burst answers rowsets, not faults.
+    for (name, message) in &burst {
+        let answer = service.handle(message, Vec::new()).expect("answered");
+        let response =
+            Response::from_bytes(&answer, None).unwrap_or_else(|error| panic!("{name}: {error}"));
+        assert!(
+            response.rows().is_some_and(|rows| !rows.is_empty()),
+            "{name}"
+        );
+    }
+
+    let mut group = criterion.benchmark_group("media/xmla/service");
+    for (name, message) in &burst {
+        group.bench_function(*name, |bencher| {
+            bencher.iter(|| {
+                service
+                    .handle(black_box(message), Vec::with_capacity(1 << 16))
+                    .expect("answered")
+            });
+        });
+    }
+    group.finish();
+
+    let mut group = criterion.benchmark_group("media/xmla/service/execute");
+    group.sample_size(10);
+    for (name, rows) in sizes {
+        let message = request(Request::from(
+            Execute::statement(format!("select * from market.{name}"))
+                .with_properties(catalog.clone()),
+        ));
+        let answer = service.handle(&message, Vec::new()).expect("answered");
+        // Proven once outside the timer by the row elements the answer
+        // carries: a million rows is a document past the XML codec's input
+        // bound, and reading one back is `media/xmla/read_rowset`'s measure.
+        let carried = answer.windows(5).filter(|bytes| *bytes == b"<row>").count();
+        assert_eq!(carried, rows, "{name}");
+        group.throughput(Throughput::Elements(rows as u64));
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                service
+                    .handle(black_box(&message), Vec::with_capacity(answer.len()))
+                    .expect("answered")
+            });
+        });
+    }
+    group.finish();
+    let _ = std::fs::remove_dir_all(&root);
 }

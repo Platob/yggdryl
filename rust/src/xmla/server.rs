@@ -22,20 +22,22 @@
 //! # }
 //! ```
 
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::IOBase;
+use crate::holder::Holder;
 use crate::soap::http::{Request, Status, begin_chunked, write_response};
 use crate::soap::{self, Fault, FaultCode};
 
 use super::service::Service;
 
 /// How a server accepts requests.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct ServerOptions {
     /// The most bytes one request body may carry; a larger one is refused
     /// with `413`.
@@ -45,17 +47,28 @@ pub struct ServerOptions {
     pub path: Option<String>,
     /// How long an idle connection is kept open for its next request.
     pub idle_timeout: Duration,
+    /// The folder each exchange is written to, as it went over the wire:
+    /// `NNNN-request.http` holds the request's bytes exactly as they were
+    /// consumed, `NNNN-response.http` the response's exactly as they were
+    /// sent, the interim `100 Continue` and the chunked framing included,
+    /// `NNNN` counting from `0000` across every connection in the order the
+    /// requests were read. A request file replays through
+    /// [`Service::handle`] with its body. `None` traces nothing, and a trace
+    /// holds at most one chunk of a response at a time: the rest is appended
+    /// as it is sent.
+    pub trace: Option<Holder>,
 }
 
 impl ServerOptions {
     /// The defaults: sixteen mebibytes per request, every path, thirty
-    /// seconds idle.
+    /// seconds idle, no trace.
     #[must_use]
     pub fn new() -> Self {
         Self {
             max_body: 16 << 20,
             path: None,
             idle_timeout: Duration::from_secs(30),
+            trace: None,
         }
     }
 
@@ -72,6 +85,13 @@ impl ServerOptions {
         self.max_body = max_body;
         self
     }
+
+    /// Return these options writing every exchange under `folder`.
+    #[must_use]
+    pub fn with_trace(mut self, folder: Holder) -> Self {
+        self.trace = Some(folder);
+        self
+    }
 }
 
 impl Default for ServerOptions {
@@ -85,7 +105,9 @@ impl Default for ServerOptions {
 pub struct Server {
     listener: TcpListener,
     service: Arc<Service>,
-    options: ServerOptions,
+    options: Arc<ServerOptions>,
+    /// The number the next traced exchange takes, shared by every connection.
+    sequence: Arc<AtomicU64>,
 }
 
 impl Server {
@@ -100,14 +122,15 @@ impl Server {
         Ok(Self {
             listener,
             service: Arc::new(service),
-            options: ServerOptions::new(),
+            options: Arc::new(ServerOptions::new()),
+            sequence: Arc::new(AtomicU64::new(0)),
         })
     }
 
     /// Return this server accepting requests under `options`.
     #[must_use]
     pub fn with_options(mut self, options: ServerOptions) -> Self {
-        self.options = options;
+        self.options = Arc::new(options);
         self
     }
 
@@ -175,8 +198,9 @@ impl Server {
             }
             let stream = connection?;
             let service = Arc::clone(&self.service);
-            let options = self.options.clone();
-            std::thread::spawn(move || serve_connection(&service, stream, &options));
+            let options = Arc::clone(&self.options);
+            let sequence = Arc::clone(&self.sequence);
+            std::thread::spawn(move || serve_connection(&service, stream, &options, &sequence));
         }
         Ok(())
     }
@@ -237,6 +261,18 @@ impl Drop for Running {
     }
 }
 
+/// The content-negotiation flags every SOAP answer carries: MS-SSAS 2.1.2's
+/// `NEGO,REQ_SX,REQ_XPRESS,RESP_SX,RESP_XPRESS`, all zero - plain text XML
+/// both ways, which a client that offered the binary or the compressed
+/// encodings reads as the server declining them.
+const NEGOTIATION: [(&str, &str); 1] = [("X-Transport-Caps-Negotiation-Flags", "0,0,0,0,0")];
+
+/// The media type of the text answers: the endpoint's description, a refusal.
+const TEXT: &str = "text/plain; charset=utf-8";
+
+/// How much of a response a trace gathers before appending it to its file.
+const TRACE_CHUNK: usize = 64 * 1024;
+
 /// Answer a message that is no XMLA request with a `Client` fault carrying
 /// the XMLA `Error`, at `200` like every fault.
 fn refuse<W: Write>(writer: &mut W, keep_alive: bool, description: String) -> io::Result<()> {
@@ -246,46 +282,93 @@ fn refuse<W: Write>(writer: &mut W, keep_alive: bool, description: String) -> io
     )
     .unwrap_or_else(|_| Fault::client(description).with_actor(super::response::ACTOR));
     let mut body = Vec::new();
-    super::response::write_fault(&mut body, &fault).map_err(io::Error::other)?;
-    write_response(writer, Status::Ok, soap::CONTENT_TYPE, keep_alive, &body)
+    super::response::write_fault(&mut body, &[], &fault).map_err(io::Error::other)?;
+    write_response(
+        writer,
+        Status::Ok,
+        soap::CONTENT_TYPE,
+        keep_alive,
+        &NEGOTIATION,
+        &body,
+    )
 }
 
 /// Answer every request one connection carries, until it closes or asks to.
-fn serve_connection(service: &Service, stream: TcpStream, options: &ServerOptions) {
+///
+/// Under a trace, a request is numbered once it has been read - a
+/// connection that opens and closes without one takes no number - its bytes
+/// are written, and the response leaf takes what the tee sends from then
+/// on, the interim status it may already hold included. A trace that cannot
+/// be written closes the connection: a trace is asked for to be read, and a
+/// gap in it would be read as an exchange that never happened.
+fn serve_connection(
+    service: &Service,
+    stream: TcpStream,
+    options: &ServerOptions,
+    sequence: &AtomicU64,
+) {
     let _ = stream.set_read_timeout(Some(options.idle_timeout));
     let Ok(read_half) = stream.try_clone() else {
         return;
     };
-    let mut reader = BufReader::new(read_half);
-    let mut writer = stream;
+    let tracing = options.trace.is_some();
+    let mut reader = Recording::new(BufReader::new(read_half), tracing);
+    let mut writer = Tee::new(stream, tracing);
     loop {
-        let request = match Request::read(&mut reader, options.max_body) {
-            Ok(Some(request)) => request,
-            Ok(None) => return,
-            Err(error) => {
-                let _ = write_response(
-                    &mut writer,
-                    error.status(),
-                    "text/plain; charset=utf-8",
-                    false,
-                    error.reason().as_bytes(),
-                );
+        let read = Request::read(&mut reader, &mut writer, options.max_body);
+        if matches!(read, Ok(None)) {
+            return;
+        }
+        if let Some(folder) = &options.trace {
+            let number = sequence.fetch_add(1, Ordering::Relaxed);
+            let opened = trace_request(folder, number, &reader.recorded())
+                .and_then(|response| writer.attach(response));
+            if opened.is_err() {
+                let _ = writer.inner.shutdown(Shutdown::Both);
                 return;
             }
+        }
+        let keep_alive = match read {
+            Ok(Some(request)) => {
+                let keep_alive = request.keep_alive();
+                answer(service, &request, &mut writer, options).map(|()| keep_alive)
+            }
+            Ok(None) => unreachable!("answered above"),
+            Err(error) => write_response(
+                &mut writer,
+                error.status(),
+                TEXT,
+                false,
+                &[],
+                error.reason().as_bytes(),
+            )
+            .map(|()| false),
         };
-        let keep_alive = request.keep_alive();
-        if answer(service, &request, &mut writer, options).is_err() || !keep_alive {
-            let _ = writer.shutdown(Shutdown::Both);
+        let traced = writer.detach();
+        if !matches!((keep_alive, traced), (Ok(true), Ok(()))) {
+            let _ = writer.inner.shutdown(Shutdown::Both);
             return;
         }
     }
 }
 
+/// Write exchange `number`'s request under `folder` and hand back the leaf
+/// its response is appended to, created empty so a failed answer still
+/// leaves the pair.
+fn trace_request(folder: &Holder, number: u64, request: &[u8]) -> crate::Result<Holder> {
+    folder
+        .child_by_path(&format!("{number:04}-request.http"))?
+        .write_all_bytes(request)?;
+    let mut response = folder.child_by_path(&format!("{number:04}-response.http"))?;
+    response.write_all_bytes(&[])?;
+    Ok(response)
+}
+
 /// Answer one request on `writer`.
-fn answer(
+fn answer<W: Write>(
     service: &Service,
     request: &Request,
-    writer: &mut TcpStream,
+    writer: &mut W,
     options: &ServerOptions,
 ) -> io::Result<()> {
     let keep_alive = request.keep_alive();
@@ -295,8 +378,9 @@ fn answer(
             return write_response(
                 writer,
                 Status::NotFound,
-                "text/plain; charset=utf-8",
+                TEXT,
                 keep_alive,
+                &[],
                 format!("the XML for Analysis endpoint is {expected}\n").as_bytes(),
             );
         }
@@ -312,8 +396,9 @@ fn answer(
             return write_response(
                 writer,
                 Status::Ok,
-                "text/plain; charset=utf-8",
+                TEXT,
                 keep_alive,
+                &[],
                 if request.method() == "HEAD" {
                     b""
                 } else {
@@ -325,8 +410,9 @@ fn answer(
             return write_response(
                 writer,
                 Status::MethodNotAllowed,
-                "text/plain; charset=utf-8",
+                TEXT,
                 keep_alive,
+                &[],
                 format!("{other} is not how XML for Analysis is invoked; POST a SOAP message\n")
                     .as_bytes(),
             );
@@ -346,14 +432,145 @@ fn answer(
             );
         }
     }
-    let request = match super::request::Request::from_bytes(request.body()) {
-        Ok(request) => request,
-        Err(error) => return refuse(writer, keep_alive, error.to_string()),
-    };
-    let chunked = begin_chunked(&mut *writer, Status::Ok, soap::CONTENT_TYPE, keep_alive)?;
+    // The service is the one door the body goes through: it parses the
+    // message and answers it, or writes the fault the parse earns.
+    let chunked = begin_chunked(
+        &mut *writer,
+        Status::Ok,
+        soap::CONTENT_TYPE,
+        keep_alive,
+        &NEGOTIATION,
+    )?;
     let chunked = service
-        .answer(&request, chunked)
+        .handle(request.body(), chunked)
         .map_err(io::Error::other)?;
     chunked.finish()?;
     writer.flush()
+}
+
+/// A reader that keeps the bytes it hands out, so a request is traced
+/// exactly as it was consumed: the read-ahead the buffer beneath holds for
+/// the next request is not part of this one. Holding nothing when no trace
+/// is asked for, it reads straight through.
+struct Recording<R: BufRead> {
+    inner: R,
+    kept: Option<Vec<u8>>,
+}
+
+impl<R: BufRead> Recording<R> {
+    fn new(inner: R, keep: bool) -> Self {
+        Self {
+            inner,
+            kept: keep.then(Vec::new),
+        }
+    }
+
+    /// The bytes consumed since they were last taken.
+    fn recorded(&mut self) -> Vec<u8> {
+        self.kept.as_mut().map(std::mem::take).unwrap_or_default()
+    }
+}
+
+impl<R: BufRead> Read for Recording<R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.kept.is_none() {
+            return self.inner.read(buffer);
+        }
+        let available = self.inner.fill_buf()?;
+        let taken = available.len().min(buffer.len());
+        buffer[..taken].copy_from_slice(&available[..taken]);
+        self.consume(taken);
+        Ok(taken)
+    }
+}
+
+impl<R: BufRead> BufRead for Recording<R> {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        self.inner.fill_buf()
+    }
+
+    fn consume(&mut self, amount: usize) {
+        if let Some(kept) = &mut self.kept {
+            // What is consumed is the front of the buffer `fill_buf` last
+            // handed out, which asking again returns without a read.
+            if let Ok(available) = self.inner.fill_buf() {
+                kept.extend_from_slice(&available[..amount.min(available.len())]);
+            }
+        }
+        self.inner.consume(amount);
+    }
+}
+
+/// A writer that copies what it sends into the exchange's trace leaf, one
+/// chunk at a time: the copy gathers up to [`TRACE_CHUNK`] bytes, is
+/// appended to the leaf once it holds that much, and is emptied into it
+/// when the exchange ends. What is sent before a leaf is attached - the
+/// interim status - waits in the copy for it.
+struct Tee<W: Write> {
+    inner: W,
+    copy: Option<TraceCopy>,
+}
+
+struct TraceCopy {
+    pending: Vec<u8>,
+    leaf: Option<Holder>,
+}
+
+impl TraceCopy {
+    fn spill(&mut self) -> crate::Result<()> {
+        if let Some(leaf) = &mut self.leaf {
+            if !self.pending.is_empty() {
+                leaf.append_bytes(&self.pending)?;
+                self.pending.clear();
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<W: Write> Tee<W> {
+    fn new(inner: W, keep: bool) -> Self {
+        Self {
+            inner,
+            copy: keep.then(|| TraceCopy {
+                pending: Vec::new(),
+                leaf: None,
+            }),
+        }
+    }
+
+    /// Send the copy to `leaf` from here on, what is already gathered first.
+    fn attach(&mut self, leaf: Holder) -> crate::Result<()> {
+        if let Some(copy) = &mut self.copy {
+            copy.leaf = Some(leaf);
+            copy.spill()?;
+        }
+        Ok(())
+    }
+
+    /// Append what is gathered and let the leaf go: the exchange is over.
+    fn detach(&mut self) -> crate::Result<()> {
+        if let Some(copy) = &mut self.copy {
+            copy.spill()?;
+            copy.leaf = None;
+        }
+        Ok(())
+    }
+}
+
+impl<W: Write> Write for Tee<W> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let sent = self.inner.write(bytes)?;
+        if let Some(copy) = &mut self.copy {
+            copy.pending.extend_from_slice(&bytes[..sent]);
+            if copy.pending.len() >= TRACE_CHUNK {
+                copy.spill().map_err(io::Error::other)?;
+            }
+        }
+        Ok(sent)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
 }

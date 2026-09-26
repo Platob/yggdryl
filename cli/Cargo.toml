@@ -32,6 +32,12 @@ clap = { version = "4.5", features = ["derive", "wrap_help"] }
 crossterm = { version = "0.29", default-features = false, features = ["events", "windows"] }
 shlex = "2.0"
 
+[features]
+# `ygg xmla serve` over an Iceberg folder needs the core's table reader; without
+# it an Iceberg table is listed and refused on read, by name. The staged binary
+# (`scripts/stage_cli.py`) enables it; the default build stays the schema-only core.
+iceberg = ["yggdryl/iceberg"]
+
 [[bench]]
 name = "fix"
 path = "benchmarks/fix.rs"

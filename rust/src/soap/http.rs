@@ -16,13 +16,17 @@
 //! let wire = b"POST /xmla HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/xml\r\n\
 //!              SOAPAction: \"urn:schemas-microsoft-com:xml-analysis:Discover\"\r\n\
 //!              Content-Length: 5\r\n\r\nhello";
-//! let request = Request::read(&mut Cursor::new(&wire[..]), 1 << 20)?
+//! // The writer takes the interim `100 Continue` a client may wait for
+//! // before it sends the body; this one asked for none.
+//! let mut interim = Vec::new();
+//! let request = Request::read(&mut Cursor::new(&wire[..]), &mut interim, 1 << 20)?
 //!     .expect("a request, not a closed connection");
 //! assert_eq!(request.method(), "POST");
 //! assert_eq!(request.target(), "/xmla");
 //! assert_eq!(request.soap_action(), Some("urn:schemas-microsoft-com:xml-analysis:Discover"));
 //! assert_eq!(request.body(), b"hello");
 //! assert!(request.keep_alive());
+//! assert!(interim.is_empty());
 //! assert_eq!(Status::Ok.code(), 200);
 //! # Ok::<(), yggdryl::soap::http::HttpError>(())
 //! ```
@@ -40,6 +44,10 @@ pub const MAX_HEADERS: usize = 128;
 /// The status a response answers with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
+    /// The interim answer to `Expect: 100-continue`: the head is acceptable
+    /// and the body may follow. It carries no headers and no body, and the
+    /// final status follows it.
+    Continue,
     /// The request was served.
     Ok,
     /// The request could not be read as HTTP, or its body as the message it
@@ -55,6 +63,9 @@ pub enum Status {
     PayloadTooLarge,
     /// The body is not an XML media type.
     UnsupportedMediaType,
+    /// The request carries an `Expect` other than `100-continue`, the one
+    /// expectation HTTP/1.1 defines.
+    ExpectationFailed,
     /// The server itself failed before it could answer: what SOAP 1.1's HTTP
     /// binding names for a fault, though the XML for Analysis providers and
     /// clients answer and read every fault at `200`, so the XMLA server here
@@ -67,6 +78,7 @@ impl Status {
     #[must_use]
     pub const fn code(self) -> u16 {
         match self {
+            Self::Continue => 100,
             Self::Ok => 200,
             Self::BadRequest => 400,
             Self::NotFound => 404,
@@ -74,6 +86,7 @@ impl Status {
             Self::LengthRequired => 411,
             Self::PayloadTooLarge => 413,
             Self::UnsupportedMediaType => 415,
+            Self::ExpectationFailed => 417,
             Self::InternalServerError => 500,
         }
     }
@@ -82,6 +95,7 @@ impl Status {
     #[must_use]
     pub const fn reason(self) -> &'static str {
         match self {
+            Self::Continue => "Continue",
             Self::Ok => "OK",
             Self::BadRequest => "Bad Request",
             Self::NotFound => "Not Found",
@@ -89,6 +103,7 @@ impl Status {
             Self::LengthRequired => "Length Required",
             Self::PayloadTooLarge => "Payload Too Large",
             Self::UnsupportedMediaType => "Unsupported Media Type",
+            Self::ExpectationFailed => "Expectation Failed",
             Self::InternalServerError => "Internal Server Error",
         }
     }
@@ -173,12 +188,36 @@ impl Request {
     /// `max_body` bounds the body; a `Content-Length` past it, or a chunked
     /// body growing past it, is refused with `413`.
     ///
+    /// A client that sent `Expect: 100-continue` holds its body back until
+    /// the server accepts the head - WinHTTP for up to a second, .NET for
+    /// 350 ms - so `HTTP/1.1 100 Continue` is written to `writer` and
+    /// flushed once the head has passed every check a body is refused on,
+    /// and never for a request refused on its head, which gets its final
+    /// status instead (RFC 7231 section 5.1.1). An HTTP/1.0 client is never
+    /// sent one, a body of no bytes earns none, and an expectation other
+    /// than `100-continue` is refused with `417`.
+    ///
     /// # Errors
     ///
     /// Returns the status that answers a request that cannot be read: `400`
     /// for a malformed line, header or chunk, `411` for a body with no
-    /// delimiter, `413` for one past `max_body`.
-    pub fn read<R: BufRead>(reader: &mut R, max_body: usize) -> Result<Option<Self>, HttpError> {
+    /// delimiter, `413` for one past `max_body`, `417` for an expectation
+    /// this server does not meet, `500` when the interim status cannot be
+    /// written.
+    pub fn read<R: BufRead, W: Write>(
+        reader: &mut R,
+        writer: &mut W,
+        max_body: usize,
+    ) -> Result<Option<Self>, HttpError> {
+        // A connection that goes away before a request line - closed, reset,
+        // or idle until its timeout - asked nothing, so nothing is answered:
+        // MSOLAP opens connections it never writes to, and each would
+        // otherwise be an exchange refused with `400`.
+        match reader.fill_buf() {
+            Ok([]) => return Ok(None),
+            Ok(_) => {}
+            Err(_) => return Ok(None),
+        }
         let Some(line) = read_line(reader)? else {
             return Ok(None);
         };
@@ -272,11 +311,31 @@ impl Request {
             headers,
             body: Vec::new(),
         };
-        request.body = request.read_body(reader, max_body)?;
+        request.body = request.read_body(reader, writer, max_body)?;
         Ok(Some(request))
     }
 
-    fn read_body<R: BufRead>(&self, reader: &mut R, max_body: usize) -> Result<Vec<u8>, HttpError> {
+    fn read_body<R: BufRead, W: Write>(
+        &self,
+        reader: &mut R,
+        writer: &mut W,
+        max_body: usize,
+    ) -> Result<Vec<u8>, HttpError> {
+        // The one expectation there is, honoured for the version that
+        // defines it: an HTTP/1.0 client's is ignored (RFC 7231 section
+        // 5.1.1), and any other is refused before the body is framed.
+        let expects_continue = match self.header("expect") {
+            None => false,
+            Some(expectation) if expectation.eq_ignore_ascii_case("100-continue") => {
+                self.version == Version::Http11
+            }
+            Some(expectation) => {
+                return Err(HttpError::new(
+                    Status::ExpectationFailed,
+                    format!("expected `100-continue` as the expectation, got {expectation:?}"),
+                ));
+            }
+        };
         // Every Transfer-Encoding line is one list (RFC 7230 section 3.2.2),
         // and only a body whose one coding is chunked can be framed here.
         let mut chunked = false;
@@ -297,6 +356,9 @@ impl Request {
             chunked = true;
         }
         if chunked {
+            if expects_continue {
+                write_continue(writer)?;
+            }
             return read_chunked(reader, max_body);
         }
         let Some(length) = self.header("content-length") else {
@@ -346,6 +408,9 @@ impl Request {
                 Status::PayloadTooLarge,
                 format!("the body is {length} bytes; at most {max_body} are accepted"),
             ));
+        }
+        if expects_continue && length > 0 {
+            write_continue(writer)?;
         }
         let mut body = vec![0_u8; length];
         reader.read_exact(&mut body).map_err(|error| {
@@ -559,7 +624,29 @@ fn read_chunked<R: BufRead>(reader: &mut R, max_body: usize) -> Result<Vec<u8>, 
     }
 }
 
+/// Write the interim `100 Continue` and flush it: the client is holding its
+/// body back until it arrives. It carries no headers and no body, so the two
+/// response writers below, which frame one, do not write it.
+fn write_continue<W: Write>(writer: &mut W) -> Result<(), HttpError> {
+    write!(
+        writer,
+        "HTTP/1.1 {} {}\r\n\r\n",
+        Status::Continue.code(),
+        Status::Continue.reason()
+    )
+    .and_then(|()| writer.flush())
+    .map_err(|error| {
+        HttpError::new(
+            Status::InternalServerError,
+            format!("writing the interim status failed: {error}"),
+        )
+    })
+}
+
 /// Write a response with a body of known length.
+///
+/// `headers` follow the framing headers, each as `Name: value`; none of them
+/// is a framing header, which this writes itself.
 ///
 /// # Errors
 ///
@@ -569,22 +656,27 @@ pub fn write_response<W: Write>(
     status: Status,
     content_type: &str,
     keep_alive: bool,
+    headers: &[(&str, &str)],
     body: &[u8],
 ) -> io::Result<()> {
     write!(
         writer,
-        "HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: {}\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: {}\r\n",
         status.code(),
         status.reason(),
         body.len(),
         if keep_alive { "keep-alive" } else { "close" },
     )?;
+    write_headers(writer, headers)?;
     writer.write_all(body)?;
     writer.flush()
 }
 
 /// Write the head of a response whose body follows as chunks, and hand back
 /// the writer the chunks go through.
+///
+/// `headers` follow the framing headers, each as `Name: value`; none of them
+/// is a framing header, which this writes itself.
 ///
 /// # Errors
 ///
@@ -594,18 +686,28 @@ pub fn begin_chunked<W: Write>(
     status: Status,
     content_type: &str,
     keep_alive: bool,
+    headers: &[(&str, &str)],
 ) -> io::Result<ChunkedWriter<W>> {
     write!(
         writer,
-        "HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nTransfer-Encoding: chunked\r\nConnection: {}\r\n\r\n",
+        "HTTP/1.1 {} {}\r\nContent-Type: {content_type}\r\nTransfer-Encoding: chunked\r\nConnection: {}\r\n",
         status.code(),
         status.reason(),
         if keep_alive { "keep-alive" } else { "close" },
     )?;
+    write_headers(&mut writer, headers)?;
     Ok(ChunkedWriter {
         writer,
         buffer: Vec::with_capacity(CHUNK),
     })
+}
+
+/// Write `headers` and the blank line that ends a head.
+fn write_headers<W: Write>(writer: &mut W, headers: &[(&str, &str)]) -> io::Result<()> {
+    for (name, value) in headers {
+        write!(writer, "{name}: {value}\r\n")?;
+    }
+    writer.write_all(b"\r\n")
 }
 
 /// The chunk size a streamed body is cut into: what one write hands the

@@ -9,6 +9,31 @@ use crate::IOBase;
 use crate::Result;
 use crate::media::RecordOptions;
 
+/// What a handle opens as under `options`: a located table format, or the
+/// reader over a folder of leaves or over one leaf. Whether the handle is a
+/// container is asked exactly once here, because on the `fs` backend that
+/// question is a store round trip, and both the reader and the schema
+/// defaults read the answer.
+enum Opened {
+    // Boxed: a located table carries its whole metadata, a reader a pointer.
+    #[cfg(feature = "iceberg")]
+    Table(Box<crate::iceberg::Located>),
+    Reader(crate::arrow::BatchReader),
+}
+
+fn open(handle: &dyn IOBase, options: &RecordOptions) -> Result<Opened> {
+    if handle.is_container() {
+        #[cfg(feature = "iceberg")]
+        if let Some(table) = crate::iceberg::located(handle)? {
+            return Ok(Opened::Table(Box::new(table)));
+        }
+        return Ok(Opened::Reader(crate::media::partition::folder_reader(
+            handle, options,
+        )?));
+    }
+    Ok(Opened::Reader(crate::iobase::leaf_reader(handle, options)?))
+}
+
 /// Record-oriented operations every [`IOBase`] handle exposes.
 ///
 /// The trait deliberately has no storage primitives of its own. Implementors
@@ -189,7 +214,16 @@ pub trait IOMedia: Send {
         if let Some(field) = options.field() {
             return Ok(field.clone());
         }
-        let schema = self.read_arrow_reader(options)?.schema();
+        let schema = match open(self.as_io_base(), options)? {
+            // A table format states its schema in its metadata: the table
+            // answers it as the table it is, and no scan is planned to
+            // learn it.
+            #[cfg(feature = "iceberg")]
+            Opened::Table(table) => return table.read_arrow_field(options),
+            Opened::Reader(reader) => options
+                .limit_arrow_reader(options.apply_arrow_expressions(reader)?)?
+                .schema(),
+        };
         Ok(crate::arrow::field_from_arrow_schema(
             options.name(),
             schema.as_ref(),
@@ -242,19 +276,15 @@ pub trait IOMedia: Send {
     fn read_arrow_reader(&self, options: &RecordOptions) -> Result<crate::arrow::BatchReader> {
         use crate::media::IORecordOptions;
 
-        let handle = self.as_io_base();
-        let reader = if handle.is_container() {
+        match open(self.as_io_base(), options)? {
+            // The table pushes the clauses into its scan plan and wraps the
+            // selector and the limit itself: the reader is complete.
             #[cfg(feature = "iceberg")]
-            if let Some(table) = crate::iceberg::located(handle)? {
-                // The table pushes the clauses into its scan plan and wraps
-                // the selector and the limit itself: the reader is complete.
-                return table.read(options);
+            Opened::Table(table) => table.read(options),
+            Opened::Reader(reader) => {
+                options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
             }
-            crate::media::partition::folder_reader(handle, options)?
-        } else {
-            crate::iobase::leaf_reader(handle, options)?
-        };
-        options.limit_arrow_reader(options.apply_arrow_expressions(reader)?)
+        }
     }
 
     /// Read this resource's rows as a [`SerieReader`](crate::SerieReader):

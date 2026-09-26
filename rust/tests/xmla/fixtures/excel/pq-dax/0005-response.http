@@ -1,0 +1,12 @@
+HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Content-Type: text/xml; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0
+
+386
+<?xml version="1.0" encoding="utf-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header><Session SessionId="01a0de82-4a49-76b4-afbc-593564db792e" xmlns="urn:schemas-microsoft-com:xml-analysis"/></SOAP-ENV:Header><SOAP-ENV:Body><SOAP-ENV:Fault><faultcode>SOAP-ENV:Client</faultcode><faultstring>invalid expression expression at byte 0: expected `select`, `where`, `create`, `insert`, `upsert`, `delete` or `from` to open an expression, got EVALUATE 'trades'</faultstring><faultactor>yggdryl</faultactor><detail><Error Description="invalid expression expression at byte 0: expected `select`, `where`, `create`, `insert`, `upsert`, `delete` or `from` to open an expression, got EVALUATE 'trades'" ErrorCode="6" HelpFile="" Source="yggdryl" xmlns="urn:schemas-microsoft-com:xml-analysis:exception"/></detail></SOAP-ENV:Fault></SOAP-ENV:Body></SOAP-ENV:Envelope>
+0
+

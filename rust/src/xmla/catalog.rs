@@ -93,7 +93,7 @@ impl Catalog {
         for child in self.holder.ls(false, false) {
             let child = child?;
             match Entry::under_root(&child) {
-                Entry::Table => tables.push(Table::new(&self.name, None, child)),
+                Entry::Table(layout) => tables.push(Table::new(&self.name, None, child, layout)),
                 Entry::Schema => schemas.push(child),
                 Entry::Other => {}
             }
@@ -104,8 +104,13 @@ impl Catalog {
             };
             for child in schema.ls(false, false) {
                 let child = child?;
-                if Entry::under_schema(&child) == Entry::Table {
-                    tables.push(Table::new(&self.name, Some(schema_name.clone()), child));
+                if let Entry::Table(layout) = Entry::under_schema(&child) {
+                    tables.push(Table::new(
+                        &self.name,
+                        Some(schema_name.clone()),
+                        child,
+                        layout,
+                    ));
                 }
             }
         }
@@ -167,11 +172,25 @@ impl Catalog {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Entry {
     /// A leaf a record medium reads, or a folder read as the table beneath it.
-    Table,
+    Table(Layout),
     /// A folder directly under the root, holding tables.
     Schema,
     /// A leaf no record medium reads.
     Other,
+}
+
+/// How a table holds its rows, decided once when the catalog is listed and
+/// kept on the table: what the store was asked then is never asked again to
+/// describe or read it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Layout {
+    /// A leaf a record medium reads.
+    Leaf,
+    /// A folder read as the table beneath it, leaf by leaf.
+    Folder,
+    /// A folder laid out as a table format - Iceberg - whether the store says
+    /// [`IOKind::Table`] or its `metadata/` does.
+    Format,
 }
 
 impl Entry {
@@ -180,8 +199,8 @@ impl Entry {
     /// reads.
     fn under_root(child: &Holder) -> Self {
         if child.is_container() {
-            return if child.kind() == IOKind::Table || is_table_format(child) {
-                Self::Table
+            return if is_format(child) {
+                Self::Table(Layout::Format)
             } else {
                 Self::Schema
             };
@@ -194,7 +213,11 @@ impl Entry {
     /// reads.
     fn under_schema(child: &Holder) -> Self {
         if child.is_container() {
-            return Self::Table;
+            return Self::Table(if is_format(child) {
+                Layout::Format
+            } else {
+                Layout::Folder
+            });
         }
         Self::leaf(child)
     }
@@ -203,10 +226,16 @@ impl Entry {
     /// implements: what the name declares, with no read.
     fn leaf(child: &Holder) -> Self {
         match RecordOptions::for_media_type(child.media_type()) {
-            Ok(_) => Self::Table,
+            Ok(_) => Self::Table(Layout::Leaf),
             Err(_) => Self::Other,
         }
     }
+}
+
+/// Whether a folder is a table format's: the store says so, or its layout
+/// does.
+fn is_format(folder: &Holder) -> bool {
+    folder.kind() == IOKind::Table || is_table_format(folder)
 }
 
 /// One table of a catalog: where it is, and what it is called.
@@ -216,10 +245,11 @@ pub struct Table {
     schema: Option<SmolStr>,
     name: SmolStr,
     holder: Holder,
+    layout: Layout,
 }
 
 impl Table {
-    fn new(catalog: &SmolStr, schema: Option<SmolStr>, holder: Holder) -> Self {
+    fn new(catalog: &SmolStr, schema: Option<SmolStr>, holder: Holder, layout: Layout) -> Self {
         let name = entry_name(&holder).map_or_else(
             || SmolStr::new_static("table"),
             |file| table_name(&file, &holder),
@@ -229,6 +259,7 @@ impl Table {
             schema,
             name,
             holder,
+            layout,
         }
     }
 
@@ -278,16 +309,13 @@ impl Table {
 
     /// What holds the rows, as `DBSCHEMA_TABLES` describes it: a leaf's media
     /// type, a folder's kind - `table` for a table format's folder, whether
-    /// the store says so or the layout does.
+    /// the store says so or the layout does - as the listing decided it.
     #[must_use]
     pub fn description(&self) -> String {
-        if self.holder.is_container() {
-            if self.holder.kind() == IOKind::Table || is_table_format(&self.holder) {
-                return IOKind::Table.as_str().to_owned();
-            }
-            self.holder.kind().as_str().to_owned()
-        } else {
-            self.holder.media_type().to_string()
+        match self.layout {
+            Layout::Format => IOKind::Table.as_str().to_owned(),
+            Layout::Folder => self.holder.kind().as_str().to_owned(),
+            Layout::Leaf => self.holder.media_type().to_string(),
         }
     }
 
@@ -299,11 +327,7 @@ impl Table {
     /// folder laid out as an Iceberg table is refused by name in a build
     /// without the `iceberg` feature, never read as the leaves it holds.
     pub fn record_options(&self) -> Result<RecordOptions> {
-        if !reads_table_format()
-            && self.holder.is_container()
-            && self.holder.kind() != IOKind::Table
-            && is_table_format(&self.holder)
-        {
+        if !reads_table_format() && self.layout == Layout::Format {
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$.encoding"),
                 reason: format_smolstr!(

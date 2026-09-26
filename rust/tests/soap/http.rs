@@ -22,7 +22,7 @@ const CHUNKED_HEAD: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/xml; charset=u
                             Transfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
 
 fn read_within(wire: &[u8], max_body: usize) -> Request {
-    Request::read(&mut Cursor::new(wire), max_body)
+    Request::read(&mut Cursor::new(wire), &mut io::sink(), max_body)
         .unwrap_or_else(|error| panic!("{}: {error}", String::from_utf8_lossy(wire)))
         .expect("a request, not a closed connection")
 }
@@ -32,7 +32,7 @@ fn read(wire: &[u8]) -> Request {
 }
 
 fn refused_within(wire: &[u8], max_body: usize) -> HttpError {
-    Request::read(&mut Cursor::new(wire), max_body).expect_err("a refusal")
+    Request::read(&mut Cursor::new(wire), &mut io::sink(), max_body).expect_err("a refusal")
 }
 
 fn refused(wire: &[u8]) -> HttpError {
@@ -252,6 +252,7 @@ const FULL_CHUNK: usize = 64 * 1024;
 #[test]
 fn every_status_answers_its_code_and_the_reason_phrase_http_gives_it() {
     let table = [
+        (Status::Continue, 100, "Continue"),
         (Status::Ok, 200, "OK"),
         (Status::BadRequest, 400, "Bad Request"),
         (Status::NotFound, 404, "Not Found"),
@@ -259,6 +260,7 @@ fn every_status_answers_its_code_and_the_reason_phrase_http_gives_it() {
         (Status::LengthRequired, 411, "Length Required"),
         (Status::PayloadTooLarge, 413, "Payload Too Large"),
         (Status::UnsupportedMediaType, 415, "Unsupported Media Type"),
+        (Status::ExpectationFailed, 417, "Expectation Failed"),
         (Status::InternalServerError, 500, "Internal Server Error"),
     ];
     for (status, code, reason) in table {
@@ -323,8 +325,11 @@ fn an_io_failure_becomes_a_400_naming_the_failure() {
 // --- Request refusals -------------------------------------------------------
 
 #[test]
-fn a_connection_that_fails_to_read_is_refused_with_400_naming_the_failure() {
-    let error = Request::read(&mut Reset, LIMIT).expect_err("a refusal");
+fn a_connection_that_fails_to_read_once_a_request_has_begun_is_refused_with_400() {
+    // Before a byte, the failure is the connection going away and nothing was
+    // asked; after the request line, it is a request that cannot be read.
+    let mut connection = Cursor::new(&b"POST /xmla HTTP/1.1\r\n"[..]).chain(Reset);
+    let error = Request::read(&mut connection, &mut io::sink(), LIMIT).expect_err("a refusal");
     assert_eq!(error.status(), Status::BadRequest);
     assert_eq!(
         error.reason(),
@@ -347,7 +352,7 @@ fn a_connection_that_fails_after_its_first_bytes_is_refused_with_400_naming_the_
         format!("{chunked}0\r\nX-Trailer: t\r\n"),
     ] {
         let mut connection = Cursor::new(head.as_bytes()).chain(Reset);
-        let error = Request::read(&mut connection, LIMIT).expect_err("a refusal");
+        let error = Request::read(&mut connection, &mut io::sink(), LIMIT).expect_err("a refusal");
         assert_eq!(
             (error.status(), error.reason()),
             (
@@ -431,8 +436,12 @@ fn a_line_longer_than_max_line_is_refused_with_400() {
 #[test]
 fn an_endless_line_is_refused_without_reading_the_whole_stream() {
     let reason = format!("a line longer than {MAX_LINE} bytes");
-    let error = Request::read(&mut BufReader::new(io::repeat(b'a')), LIMIT)
-        .expect_err("an endless request line is refused");
+    let error = Request::read(
+        &mut BufReader::new(io::repeat(b'a')),
+        &mut io::sink(),
+        LIMIT,
+    )
+    .expect_err("an endless request line is refused");
     assert_eq!(
         (error.status(), error.reason()),
         (Status::BadRequest, reason.as_str())
@@ -440,7 +449,8 @@ fn an_endless_line_is_refused_without_reading_the_whole_stream() {
 
     let mut header = Cursor::new(&b"GET /xmla HTTP/1.1\r\nX-Endless: "[..])
         .chain(BufReader::new(io::repeat(b'a')));
-    let error = Request::read(&mut header, LIMIT).expect_err("an endless header is refused");
+    let error = Request::read(&mut header, &mut io::sink(), LIMIT)
+        .expect_err("an endless header is refused");
     assert_eq!(
         (error.status(), error.reason()),
         (Status::BadRequest, reason.as_str())
@@ -464,8 +474,12 @@ fn a_line_one_byte_past_max_line_is_refused_however_the_reads_split_it() {
             MAX_LINE + 2,
             3 * MAX_LINE,
         ] {
-            let error = Request::read(&mut Trickle::new(wire.as_bytes(), step), LIMIT)
-                .expect_err("a refusal");
+            let error = Request::read(
+                &mut Trickle::new(wire.as_bytes(), step),
+                &mut io::sink(),
+                LIMIT,
+            )
+            .expect_err("a refusal");
             assert_eq!(
                 (error.status(), error.reason()),
                 (Status::BadRequest, reason.as_str()),
@@ -480,7 +494,7 @@ fn an_endless_line_is_refused_at_most_one_read_past_the_bound() {
     let wire = vec![b'a'; 4 * MAX_LINE];
     for step in [1, 7, 4096] {
         let mut trickle = Trickle::new(&wire, step);
-        let error = Request::read(&mut trickle, LIMIT).expect_err("a refusal");
+        let error = Request::read(&mut trickle, &mut io::sink(), LIMIT).expect_err("a refusal");
         assert_eq!(
             error.reason(),
             format!("a line longer than {MAX_LINE} bytes")
@@ -648,7 +662,7 @@ fn a_body_shorter_than_its_content_length_is_refused_with_400() {
 fn a_failure_inside_the_body_is_refused_with_400_naming_the_failure() {
     let head = post("Content-Length: 5\r\n", b"");
     let mut connection = Cursor::new(head).chain(Reset);
-    let error = Request::read(&mut connection, LIMIT).expect_err("a refusal");
+    let error = Request::read(&mut connection, &mut io::sink(), LIMIT).expect_err("a refusal");
     assert_eq!(error.status(), Status::BadRequest);
     assert_eq!(
         error.reason(),
@@ -659,7 +673,7 @@ fn a_failure_inside_the_body_is_refused_with_400_naming_the_failure() {
 #[test]
 fn a_failure_inside_a_chunk_is_refused_with_400_naming_the_failure() {
     let mut connection = Cursor::new(chunked_post("5\r\nhe")).chain(Reset);
-    let error = Request::read(&mut connection, LIMIT).expect_err("a refusal");
+    let error = Request::read(&mut connection, &mut io::sink(), LIMIT).expect_err("a refusal");
     assert_eq!(
         (error.status(), error.reason()),
         (
@@ -849,7 +863,7 @@ fn a_crlf_line_of_exactly_max_line_bytes_is_accepted() {
     // not the line's.
     let value = "a".repeat(MAX_LINE - "X-Long: ".len());
     let wire = format!("GET /xmla HTTP/1.1\r\nX-Long: {value}\r\n\r\n");
-    let request = Request::read(&mut Cursor::new(wire.as_bytes()), LIMIT)
+    let request = Request::read(&mut Cursor::new(wire.as_bytes()), &mut io::sink(), LIMIT)
         .unwrap_or_else(|error| panic!("{error}"))
         .expect("a request");
     assert_eq!(request.header("x-long"), Some(value.as_str()));
@@ -884,9 +898,13 @@ fn a_crlf_line_of_exactly_max_line_bytes_is_accepted_however_the_reads_split_it(
         MAX_LINE + 2,
         3 * MAX_LINE,
     ] {
-        let request = Request::read(&mut Trickle::new(wire.as_bytes(), step), LIMIT)
-            .unwrap_or_else(|error| panic!("step {step}: {error}"))
-            .expect("a request");
+        let request = Request::read(
+            &mut Trickle::new(wire.as_bytes(), step),
+            &mut io::sink(),
+            LIMIT,
+        )
+        .unwrap_or_else(|error| panic!("step {step}: {error}"))
+        .expect("a request");
         assert_eq!(
             request.header("x-long"),
             Some(value.as_str()),
@@ -1125,7 +1143,8 @@ fn headers_are_lowercased_trimmed_and_kept_in_wire_order() {
 #[test]
 fn an_empty_connection_reads_as_no_request() {
     for wire in [&b""[..], b"\r\n", b"\n"] {
-        let answer = Request::read(&mut Cursor::new(wire), LIMIT).expect("no refusal");
+        let answer =
+            Request::read(&mut Cursor::new(wire), &mut io::sink(), LIMIT).expect("no refusal");
         assert_eq!(answer, None, "{wire:?}");
     }
 }
@@ -1164,15 +1183,18 @@ fn the_body_is_exactly_content_length_bytes_and_the_next_request_follows_it() {
         &b"POST /first HTTP/1.1\r\nContent-Length: 5\r\n\r\nhello\
            POST /second HTTP/1.1\r\nContent-Length: 3\r\n\r\nbye"[..],
     );
-    let first = Request::read(&mut connection, LIMIT)
+    let first = Request::read(&mut connection, &mut io::sink(), LIMIT)
         .expect("read")
         .expect("a request");
     assert_eq!((first.target(), first.body()), ("/first", &b"hello"[..]));
-    let second = Request::read(&mut connection, LIMIT)
+    let second = Request::read(&mut connection, &mut io::sink(), LIMIT)
         .expect("read")
         .expect("a request");
     assert_eq!((second.target(), second.body()), ("/second", &b"bye"[..]));
-    assert_eq!(Request::read(&mut connection, LIMIT).expect("read"), None);
+    assert_eq!(
+        Request::read(&mut connection, &mut io::sink(), LIMIT).expect("read"),
+        None
+    );
 }
 
 #[test]
@@ -1238,7 +1260,7 @@ fn the_chunked_trailer_is_read_to_its_blank_line_and_discarded() {
     let mut wire = chunked_post("2\r\nhi\r\n0\r\nX-Checksum: abc\r\nX-Other: d\r\n\r\n");
     wire.extend_from_slice(b"GET /next HTTP/1.1\r\n\r\n");
     let mut connection = Cursor::new(&wire[..]);
-    let first = Request::read(&mut connection, LIMIT)
+    let first = Request::read(&mut connection, &mut io::sink(), LIMIT)
         .expect("read")
         .expect("a request");
     assert_eq!(first.body(), b"hi");
@@ -1247,7 +1269,7 @@ fn the_chunked_trailer_is_read_to_its_blank_line_and_discarded() {
         None,
         "a trailer is not a header"
     );
-    let next = Request::read(&mut connection, LIMIT)
+    let next = Request::read(&mut connection, &mut io::sink(), LIMIT)
         .expect("read")
         .expect("a request");
     assert_eq!(next.target(), "/next");
@@ -1292,7 +1314,7 @@ fn a_request_framed_across_many_small_reads_reads_as_one_read_does() {
         let whole = read(wire);
         for step in [1, 2, 3, 7] {
             let mut trickle = Trickle::new(wire, step);
-            let framed = Request::read(&mut trickle, LIMIT)
+            let framed = Request::read(&mut trickle, &mut io::sink(), LIMIT)
                 .expect("read")
                 .expect("a request");
             assert_eq!(framed, whole, "step {step}");
@@ -1311,7 +1333,7 @@ fn a_request_framed_across_many_small_reads_reads_as_one_read_does() {
 fn drain<R: BufRead>(connection: &mut R) -> Vec<(String, String, Vec<u8>)> {
     let mut requests = Vec::new();
     while let Some(request) =
-        Request::read(connection, LIMIT).unwrap_or_else(|error| panic!("{error}"))
+        Request::read(connection, &mut io::sink(), LIMIT).unwrap_or_else(|error| panic!("{error}"))
     {
         requests.push((
             request.method().to_owned(),
@@ -1439,7 +1461,7 @@ fn http_1_0_closes_the_connection_unless_it_asks_to_keep_it_alive() {
 #[test]
 fn a_response_writes_its_status_line_headers_blank_line_and_body() {
     let mut out = Vec::new();
-    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, b"hello").expect("written");
+    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, &[], b"hello").expect("written");
     assert_eq!(
         out,
         b"HTTP/1.1 200 OK\r\nContent-Type: text/xml; charset=utf-8\r\nContent-Length: 5\r\n\
@@ -1450,7 +1472,15 @@ fn a_response_writes_its_status_line_headers_blank_line_and_body() {
 #[test]
 fn a_response_that_closes_the_connection_says_so() {
     let mut out = Vec::new();
-    write_response(&mut out, Status::NotFound, "text/plain", false, b"none").expect("written");
+    write_response(
+        &mut out,
+        Status::NotFound,
+        "text/plain",
+        false,
+        &[],
+        b"none",
+    )
+    .expect("written");
     let (head, body) = split_head(&out);
     assert_eq!(
         head,
@@ -1467,7 +1497,7 @@ fn a_response_that_closes_the_connection_says_so() {
 #[test]
 fn a_zero_length_response_states_a_zero_length_and_writes_nothing_after_the_head() {
     let mut out = Vec::new();
-    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, b"").expect("written");
+    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, &[], b"").expect("written");
     let (head, body) = split_head(&out);
     assert!(head.contains(&"Content-Length: 0"), "{head:?}");
     assert_eq!(body, b"");
@@ -1478,7 +1508,7 @@ fn a_zero_length_response_states_a_zero_length_and_writes_nothing_after_the_head
 fn a_response_states_the_byte_length_of_its_body_not_its_character_count() {
     let body = "caf\u{e9} \u{2713}".as_bytes();
     let mut out = Vec::new();
-    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, body).expect("written");
+    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, &[], body).expect("written");
     let (head, written) = split_head(&out);
     assert!(head.contains(&"Content-Length: 9"), "{head:?}");
     assert_eq!(written, body);
@@ -1487,6 +1517,7 @@ fn a_response_states_the_byte_length_of_its_body_not_its_character_count() {
 #[test]
 fn every_status_writes_its_code_and_reason_on_the_status_line() {
     for status in [
+        Status::Continue,
         Status::Ok,
         Status::BadRequest,
         Status::NotFound,
@@ -1494,10 +1525,11 @@ fn every_status_writes_its_code_and_reason_on_the_status_line() {
         Status::LengthRequired,
         Status::PayloadTooLarge,
         Status::UnsupportedMediaType,
+        Status::ExpectationFailed,
         Status::InternalServerError,
     ] {
         let mut out = Vec::new();
-        write_response(&mut out, status, CONTENT_TYPE, false, b"").expect("written");
+        write_response(&mut out, status, CONTENT_TYPE, false, &[], b"").expect("written");
         let (head, _) = split_head(&out);
         assert_eq!(
             head[0],
@@ -1509,7 +1541,15 @@ fn every_status_writes_its_code_and_reason_on_the_status_line() {
 #[test]
 fn a_response_is_flushed_once_written() {
     let sink = Sink::default();
-    write_response(&mut sink.clone(), Status::Ok, CONTENT_TYPE, true, b"hi").expect("written");
+    write_response(
+        &mut sink.clone(),
+        Status::Ok,
+        CONTENT_TYPE,
+        true,
+        &[],
+        b"hi",
+    )
+    .expect("written");
     assert!(sink.flushes.get() >= 1);
     assert!(sink.bytes().ends_with(b"\r\n\r\nhi"));
     assert_eq!(
@@ -1525,18 +1565,18 @@ fn a_failing_sink_fails_the_response() {
         allowed: 0,
         bytes: Vec::new(),
     };
-    let error = write_response(&mut sink, Status::Ok, CONTENT_TYPE, true, b"hi")
+    let error = write_response(&mut sink, Status::Ok, CONTENT_TYPE, true, &[], b"hi")
         .expect_err("the sink refuses");
     assert_eq!(error.to_string(), "the socket is gone");
 
     // The head fits, the body does not.
     let mut whole = Vec::new();
-    write_response(&mut whole, Status::Ok, CONTENT_TYPE, true, b"hi").expect("written");
+    write_response(&mut whole, Status::Ok, CONTENT_TYPE, true, &[], b"hi").expect("written");
     let mut sink = Budget {
         allowed: whole.len() - 2,
         bytes: Vec::new(),
     };
-    let error = write_response(&mut sink, Status::Ok, CONTENT_TYPE, true, b"hi")
+    let error = write_response(&mut sink, Status::Ok, CONTENT_TYPE, true, &[], b"hi")
         .expect_err("the body refuses");
     assert_eq!(error.to_string(), "the socket is gone");
     assert_eq!(
@@ -1551,14 +1591,21 @@ fn a_failing_sink_fails_the_response() {
 #[test]
 fn a_chunked_response_opens_with_a_head_that_states_the_chunked_coding() {
     let sink = Sink::default();
-    let chunked = begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let chunked =
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     assert_eq!(sink.bytes(), CHUNKED_HEAD.as_bytes());
     drop(chunked);
 
-    let closing = begin_chunked(Vec::new(), Status::InternalServerError, "text/xml", false)
-        .expect("the head")
-        .finish()
-        .expect("finished");
+    let closing = begin_chunked(
+        Vec::new(),
+        Status::InternalServerError,
+        "text/xml",
+        false,
+        &[],
+    )
+    .expect("the head")
+    .finish()
+    .expect("finished");
     let (head, _) = split_head(&closing);
     assert_eq!(
         head,
@@ -1574,7 +1621,7 @@ fn a_chunked_response_opens_with_a_head_that_states_the_chunked_coding() {
 
 #[test]
 fn a_chunked_response_with_no_body_is_the_terminating_chunk_alone() {
-    let out = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true)
+    let out = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true, &[])
         .expect("the head")
         .finish()
         .expect("finished");
@@ -1583,7 +1630,8 @@ fn a_chunked_response_with_no_body_is_the_terminating_chunk_alone() {
 
 #[test]
 fn a_chunked_response_frames_what_is_written_and_ends_with_the_terminating_chunk() {
-    let mut chunked = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let mut chunked =
+        begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     chunked.write_all(b"<row>1</row>").expect("written");
     write!(chunked, "<row>{}</row>", 2).expect("written");
     let out = chunked.finish().expect("finished");
@@ -1601,7 +1649,7 @@ fn a_chunked_response_frames_what_is_written_and_ends_with_the_terminating_chunk
 fn small_writes_gather_until_a_flush_sends_them_as_one_chunk() {
     let sink = Sink::default();
     let mut chunked =
-        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     for row in [&b"ab"[..], b"cd", b"ef"] {
         assert_eq!(chunked.write(row).expect("gathered"), row.len());
     }
@@ -1650,7 +1698,7 @@ fn small_writes_gather_until_a_flush_sends_them_as_one_chunk() {
 fn an_empty_write_or_flush_emits_no_chunk_that_would_end_the_body() {
     let sink = Sink::default();
     let mut chunked =
-        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     assert_eq!(chunked.write(b"").expect("nothing to gather"), 0);
     chunked.flush().expect("flushed");
     chunked.flush().expect("flushed again");
@@ -1679,7 +1727,7 @@ fn an_empty_write_or_flush_emits_no_chunk_that_would_end_the_body() {
 fn a_full_chunk_goes_out_without_a_flush_and_the_rest_waits() {
     let sink = Sink::default();
     let mut chunked =
-        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     chunked
         .write_all(&vec![b'a'; FULL_CHUNK - 1])
         .expect("gathered");
@@ -1708,7 +1756,7 @@ fn a_full_chunk_goes_out_without_a_flush_and_the_rest_waits() {
 fn after_every_write_less_than_one_chunk_waits_unsent() {
     let sink = Sink::default();
     let mut chunked =
-        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     let mut written = Vec::new();
     let sizes = [
         1,
@@ -1751,7 +1799,8 @@ fn many_small_writes_share_chunks_and_decode_to_what_was_written() {
     let payload: Vec<u8> = (0..=250_u8).cycle().take(150_000).collect();
     let rows = payload.chunks(100);
     let writes = rows.len();
-    let mut chunked = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let mut chunked =
+        begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     for row in rows {
         chunked.write_all(row).expect("written");
     }
@@ -1766,7 +1815,8 @@ fn many_small_writes_share_chunks_and_decode_to_what_was_written() {
 #[test]
 fn one_large_write_decodes_to_the_same_bytes() {
     let payload: Vec<u8> = (0..=250_u8).cycle().take(200_000).collect();
-    let mut chunked = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let mut chunked =
+        begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     chunked.write_all(&payload).expect("written");
     let out = chunked.finish().expect("finished");
     let (_, body) = split_head(&out);
@@ -1780,7 +1830,8 @@ fn a_chunked_response_body_reads_back_as_a_chunked_request_body() {
         .cycle()
         .take(150_000)
         .collect();
-    let mut chunked = begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let mut chunked =
+        begin_chunked(Vec::new(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head");
     for row in payload.chunks(1000) {
         chunked.write_all(row).expect("written");
     }
@@ -1807,6 +1858,7 @@ fn a_failing_sink_fails_the_chunked_head_and_the_chunks() {
         Status::Ok,
         CONTENT_TYPE,
         true,
+        &[],
     )
     .err()
     .expect("the head refuses");
@@ -1817,23 +1869,24 @@ fn a_failing_sink_fails_the_chunked_head_and_the_chunks() {
         bytes: Vec::new(),
     };
     let mut chunked =
-        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
+        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head fits");
     chunked.write_all(b"row").expect("gathered, not yet sent");
     let error = chunked.flush().expect_err("the chunk refuses");
     assert_eq!(error.to_string(), "the socket is gone");
 
     let mut chunked =
-        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
+        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head fits");
     chunked.write_all(b"row").expect("gathered, not yet sent");
     let error = chunked.finish().expect_err("the last chunk refuses");
     assert_eq!(error.to_string(), "the socket is gone");
 
-    let chunked = begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
+    let chunked =
+        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head fits");
     let error = chunked.finish().expect_err("the terminator refuses");
     assert_eq!(error.to_string(), "the socket is gone");
 
     let mut chunked =
-        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
+        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true, &[]).expect("the head fits");
     chunked
         .write_all(&vec![b'a'; FULL_CHUNK - 1])
         .expect("gathered, not yet sent");
@@ -1841,4 +1894,181 @@ fn a_failing_sink_fails_the_chunked_head_and_the_chunks() {
         .write_all(b"a")
         .expect_err("the write that fills a chunk refuses");
     assert_eq!(error.to_string(), "the socket is gone");
+}
+
+// --- Expect: 100-continue --------------------------------------------------
+
+/// Read `wire` under the default bound, handing back the request and what
+/// the interim writer received.
+fn read_expecting(wire: &[u8]) -> (Request, Vec<u8>) {
+    let mut interim = Vec::new();
+    let request = Request::read(&mut Cursor::new(wire), &mut interim, LIMIT)
+        .unwrap_or_else(|error| panic!("{}: {error}", String::from_utf8_lossy(wire)))
+        .expect("a request, not a closed connection");
+    (request, interim)
+}
+
+/// A reader that fails before a byte: what a socket answers once its peer
+/// reset it, or its read timeout lapsed on a connection nothing was written
+/// to.
+struct Failing(io::ErrorKind);
+
+impl Read for Failing {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+        Err(io::Error::from(self.0))
+    }
+}
+
+impl BufRead for Failing {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        Err(io::Error::from(self.0))
+    }
+
+    fn consume(&mut self, _: usize) {}
+}
+
+#[test]
+fn a_connection_that_goes_away_before_a_request_line_asked_nothing() {
+    // MSOLAP opens connections it never writes to; each is closed, reset or
+    // idle until the timeout, and none of them is an exchange.
+    for kind in [
+        io::ErrorKind::TimedOut,
+        io::ErrorKind::WouldBlock,
+        io::ErrorKind::ConnectionReset,
+        io::ErrorKind::ConnectionAborted,
+    ] {
+        let mut interim = Vec::new();
+        let read = Request::read(&mut Failing(kind), &mut interim, LIMIT)
+            .unwrap_or_else(|error| panic!("{kind:?}: {error}"));
+        assert!(read.is_none(), "{kind:?}: nothing was asked");
+        assert!(interim.is_empty(), "{kind:?}: nothing is answered");
+    }
+    let mut interim = Vec::new();
+    let closed = Request::read(&mut Cursor::new(b""), &mut interim, LIMIT).expect("closed cleanly");
+    assert!(closed.is_none());
+    assert!(interim.is_empty());
+}
+
+#[test]
+fn a_client_expecting_a_continue_is_sent_one_before_its_body_is_read() {
+    let wire = post("Content-Length: 5\r\nExpect: 100-continue\r\n", b"hello");
+    let (request, interim) = read_expecting(&wire);
+    assert_eq!(interim, b"HTTP/1.1 100 Continue\r\n\r\n");
+    assert_eq!(request.body(), b"hello");
+}
+
+#[test]
+fn the_expectation_is_read_in_any_case_and_met_for_a_chunked_body_too() {
+    let wire = post(
+        "Transfer-Encoding: chunked\r\nexpect: 100-Continue\r\n",
+        b"5\r\nhello\r\n0\r\n\r\n",
+    );
+    let (request, interim) = read_expecting(&wire);
+    assert_eq!(interim, b"HTTP/1.1 100 Continue\r\n\r\n");
+    assert_eq!(request.body(), b"hello");
+}
+
+#[test]
+fn no_continue_goes_to_an_http_1_0_client_an_empty_body_or_a_request_that_expects_none() {
+    let old = b"POST /xmla HTTP/1.0\r\nContent-Length: 5\r\nExpect: 100-continue\r\n\r\nhello";
+    let (request, interim) = read_expecting(old);
+    assert!(interim.is_empty());
+    assert_eq!(request.body(), b"hello");
+    let (_, interim) = read_expecting(&post("Content-Length: 0\r\nExpect: 100-continue\r\n", b""));
+    assert!(interim.is_empty());
+    let (_, interim) = read_expecting(&post("Content-Length: 5\r\n", b"hello"));
+    assert!(interim.is_empty());
+}
+
+#[test]
+fn a_head_refused_before_the_body_earns_its_final_status_and_no_continue() {
+    let mut interim = Vec::new();
+    let wire = post("Content-Length: 6\r\nExpect: 100-continue\r\n", b"hello!");
+    let error = Request::read(&mut Cursor::new(&wire[..]), &mut interim, 5).expect_err("too large");
+    assert_eq!(error.status(), Status::PayloadTooLarge);
+    assert!(interim.is_empty());
+    let wire = post("Expect: 100-continue\r\n", b"");
+    let error =
+        Request::read(&mut Cursor::new(&wire[..]), &mut interim, LIMIT).expect_err("no length");
+    assert_eq!(error.status(), Status::LengthRequired);
+    assert!(interim.is_empty());
+}
+
+#[test]
+fn an_expectation_this_server_does_not_meet_is_refused_with_417() {
+    let mut interim = Vec::new();
+    let wire = post("Content-Length: 5\r\nExpect: 202-accepted\r\n", b"hello");
+    let error =
+        Request::read(&mut Cursor::new(&wire[..]), &mut interim, LIMIT).expect_err("refused");
+    assert_eq!(
+        (error.status(), error.reason()),
+        (
+            Status::ExpectationFailed,
+            "expected `100-continue` as the expectation, got \"202-accepted\""
+        )
+    );
+    assert_eq!(
+        error.to_string(),
+        format!("417 Expectation Failed: {}", error.reason())
+    );
+    assert!(interim.is_empty());
+}
+
+#[test]
+fn an_interim_writer_that_fails_refuses_the_read_with_500() {
+    let wire = post("Content-Length: 5\r\nExpect: 100-continue\r\n", b"hello");
+    let mut writer = Budget {
+        allowed: 0,
+        bytes: Vec::new(),
+    };
+    let error =
+        Request::read(&mut Cursor::new(&wire[..]), &mut writer, LIMIT).expect_err("refused");
+    assert_eq!(error.status(), Status::InternalServerError);
+    assert_eq!(
+        error.reason(),
+        "writing the interim status failed: the socket is gone"
+    );
+}
+
+// --- Extra headers ----------------------------------------------------------
+
+#[test]
+fn extra_headers_follow_the_framing_headers_on_both_response_shapes() {
+    let flags = ("X-Transport-Caps-Negotiation-Flags", "0,0,0,0,0");
+    let mut out = Vec::new();
+    write_response(&mut out, Status::Ok, CONTENT_TYPE, true, &[flags], b"hi").expect("written");
+    let (head, body) = split_head(&out);
+    assert_eq!(
+        head,
+        [
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/xml; charset=utf-8",
+            "Content-Length: 2",
+            "Connection: keep-alive",
+            "X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0",
+        ]
+    );
+    assert_eq!(body, b"hi");
+    let chunked = begin_chunked(
+        Vec::new(),
+        Status::Ok,
+        CONTENT_TYPE,
+        false,
+        &[("A", "1"), ("B", "2")],
+    )
+    .expect("the head");
+    let out = chunked.finish().expect("finished");
+    let (head, body) = split_head(&out);
+    assert_eq!(
+        head,
+        [
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/xml; charset=utf-8",
+            "Transfer-Encoding: chunked",
+            "Connection: close",
+            "A: 1",
+            "B: 2",
+        ]
+    );
+    assert_eq!(body, b"0\r\n\r\n");
 }

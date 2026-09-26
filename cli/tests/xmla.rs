@@ -204,3 +204,60 @@ fn serve_refuses_an_address_it_cannot_bind() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn serve_traces_each_exchange_under_the_folder_asked_for() {
+    let root = catalog_root();
+    let trace = root.with_extension("trace");
+    let _ = std::fs::remove_dir_all(&trace);
+    let mut child = ygg()
+        .args(["xmla", "serve", "--bind", "127.0.0.1:0", "--trace"])
+        .arg(trace.to_str().expect("a UTF-8 path"))
+        .arg(format!("market={}", root.display()))
+        .spawn()
+        .expect("the provider starts");
+    let stdout = child.stdout.take().expect("piped stdout");
+    let served = Served(child);
+    let mut lines = BufReader::new(stdout);
+    let mut endpoint = String::new();
+    lines.read_line(&mut endpoint).expect("the endpoint line");
+    let address = endpoint
+        .trim()
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .expect("an authority")
+        .to_owned();
+    let payload = Request::from(Discover::new(RequestType::DbschemaCatalogs))
+        .into_bytes()
+        .expect("a request encodes");
+    let mut request = format!(
+        "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
+         Content-Length: {}\r\nConnection: close\r\n\r\n",
+        payload.len()
+    )
+    .into_bytes();
+    request.extend_from_slice(&payload);
+    let (status, _) = exchange(&address, &request);
+    assert_eq!(status, 200);
+    // The response file is completed once the exchange ends, on the
+    // connection's own thread: a moment after the client read the last byte.
+    let response = trace.join("0000-response.http");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline
+        && !std::fs::read(&response).is_ok_and(|bytes| bytes.ends_with(b"0\r\n\r\n"))
+    {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    drop(served);
+    let traced = std::fs::read(trace.join("0000-request.http")).expect("the request is traced");
+    assert_eq!(traced, request);
+    let response = std::fs::read(response).expect("the response is traced");
+    assert!(
+        response.starts_with(b"HTTP/1.1 200 OK\r\n") && response.ends_with(b"0\r\n\r\n"),
+        "{}",
+        String::from_utf8_lossy(&response)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&trace);
+}

@@ -4154,3 +4154,9 @@ fn a_struct_child_instant_written_by_the_rowset_reads_back_as_an_instant() {
         "{text}"
     );
 }
+
+#[test]
+fn the_fixed_decimals_are_declared_as_decimals() {
+    assert_eq!(XsdType::of(&DataType::Decimal), Some(XsdType::Decimal));
+    assert_eq!(XsdType::of(&DataType::BigDecimal), Some(XsdType::Decimal));
+}

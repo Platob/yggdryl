@@ -473,15 +473,17 @@ pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> 
     envelope.finish()
 }
 
-/// Write a fault as the whole message.
+/// Write a fault as the whole message, under `header`: the session block the
+/// request earned travels on a fault as it does on a rowset, so a client
+/// that opened a session keeps it through a refused request.
 ///
 /// # Errors
 ///
 /// Returns the sink's failure, or the XML writer's refusal of a fault whose
 /// text or detail it cannot spell - a control character XML 1.0 has no
 /// escape for.
-pub fn write_fault<W: Write>(writer: W, fault: &Fault) -> Result<W> {
-    EnvelopeWriter::begin(writer, &[])?.fault(fault)
+pub fn write_fault<W: Write>(writer: W, header: &[Fragment], fault: &Fault) -> Result<W> {
+    EnvelopeWriter::begin(writer, header)?.fault(fault)
 }
 
 fn open_response<W: Write>(writer: &mut W, method: Method) -> Result<()> {

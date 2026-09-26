@@ -119,7 +119,10 @@ def main() -> int:
         print(f"cleared {staged.relative_to(ROOT)}")
         return 0
 
-    command = ["cargo", "build", "-p", "yggdryl-cli"]
+    # The staged binary reads Iceberg tables: `ygg xmla serve` over a table
+    # folder is the reason a wheel ships a `ygg` at all, and the extension
+    # beside it is built with the same feature.
+    command = ["cargo", "build", "-p", "yggdryl-cli", "--features", "iceberg"]
     if not arguments.debug:
         command.append("--release")
     if arguments.target:

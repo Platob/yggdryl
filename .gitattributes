@@ -1,0 +1,2 @@
+# Captured HTTP exchanges keep their CRLF framing on every checkout.
+rust/tests/xmla/fixtures/** -text

@@ -195,7 +195,9 @@ impl XsdType {
             DataType::Decimal32 { .. }
             | DataType::Decimal64 { .. }
             | DataType::Decimal128 { .. }
-            | DataType::Decimal256 { .. } => Self::Decimal,
+            | DataType::Decimal256 { .. }
+            | DataType::Decimal
+            | DataType::BigDecimal => Self::Decimal,
             DataType::Date32 | DataType::Date64 => Self::Date,
             DataType::Time32(_) | DataType::Time64(_) => Self::Time,
             DataType::DateTime64 { .. } => Self::DateTime,

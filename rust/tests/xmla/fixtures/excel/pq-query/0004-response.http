@@ -1,0 +1,12 @@
+HTTP/1.1 100 Continue
+
+HTTP/1.1 200 OK
+Content-Type: text/xml; charset=utf-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+X-Transport-Caps-Negotiation-Flags: 0,0,0,0,0
+
+7c0
+<?xml version="1.0" encoding="utf-8"?><SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header><Session SessionId="01a0de7d-c7ea-7cc3-877b-3abb6f87acd9" xmlns="urn:schemas-microsoft-com:xml-analysis"/></SOAP-ENV:Header><SOAP-ENV:Body><DiscoverResponse xmlns="urn:schemas-microsoft-com:xml-analysis"><return><root xmlns="urn:schemas-microsoft-com:xml-analysis:rowset" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:EX="urn:schemas-microsoft-com:xml-analysis:exception"><xsd:schema targetNamespace="urn:schemas-microsoft-com:xml-analysis:rowset" xmlns:sql="urn:schemas-microsoft-com:xml-sql" elementFormDefault="qualified"><xsd:element name="root"><xsd:complexType><xsd:sequence minOccurs="0" maxOccurs="unbounded"><xsd:element name="row" type="row"/></xsd:sequence></xsd:complexType></xsd:element><xsd:simpleType name="uuid"><xsd:restriction base="xsd:string"><xsd:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"/></xsd:restriction></xsd:simpleType><xsd:complexType name="row"><xsd:sequence><xsd:element sql:field="PropertyName" name="PropertyName" type="xsd:string"/><xsd:element sql:field="PropertyDescription" name="PropertyDescription" type="xsd:string"/><xsd:element sql:field="PropertyType" name="PropertyType" type="xsd:string"/><xsd:element sql:field="PropertyAccessType" name="PropertyAccessType" type="xsd:string"/><xsd:element sql:field="IsRequired" name="IsRequired" type="xsd:boolean"/><xsd:element sql:field="Value" name="Value" type="xsd:string" minOccurs="0"/></xsd:sequence></xsd:complexType></xsd:schema><row><PropertyName>ProviderVersion</PropertyName><PropertyDescription>The provider's version.</PropertyDescription><PropertyType>string</PropertyType><PropertyAccessType>Read</PropertyAccessType><IsRequired>false</IsRequired><Value>0.1.13</Value></row></root></return></DiscoverResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>
+0
+
