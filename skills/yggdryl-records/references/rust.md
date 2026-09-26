@@ -120,6 +120,44 @@ assert_eq!(first.num_columns(), 1);
 assert_eq!(first.column(0).data_type(), &arrow_schema::DataType::Int32);
 ```
 
+## Refuse a value the declared field cannot convert
+
+A nullable declared column takes a value it cannot convert as null while `safe` holds, and `safe` is the default; `with_safe(false)` (or a required column) refuses it by path.
+
+```rust
+use std::sync::Arc;
+
+use arrow_array::{Array, Int32Array, RecordBatch, StringArray};
+use yggdryl::holder::Buffer;
+use yggdryl::media::IORecordOptions;
+use yggdryl::{arrow, DataType, IOBase, IOMedia, MimeType, StructType};
+
+let stored = DataType::from(StructType::from_fields([DataType::utf8().nullable_field("v")])?)
+    .required_field("row");
+let arrow_schema = stored.into_arrow_schema()?;
+let batch = RecordBatch::try_new(Arc::clone(&arrow_schema), vec![Arc::new(StringArray::from(vec!["1", "x"]))])?;
+let mut handle = Buffer::new().with_media_type(MimeType::ARROW_STREAM.into());
+let options = handle.record_options()?;
+handle.overwrite_arrow_reader(arrow::batch_reader(arrow_schema, [batch]), &options)?;
+
+let declared = options.with_field(
+    DataType::from(StructType::from_fields([DataType::Int32.nullable_field("v")])?).required_field("row"),
+);
+
+// Default: the unconvertible "x" becomes null without a word.
+let read = handle.read_arrow_reader(&declared)?.next().expect("a batch")?;
+let v = read.column(0).as_any().downcast_ref::<Int32Array>().expect("int32");
+assert_eq!((v.value(0), v.is_null(1)), (1, true));
+
+// with_safe(false) names the column and the value instead.
+let strict = declared.with_safe(false);
+let refused = match handle.read_arrow_reader(&strict) {
+    Ok(reader) => reader.collect::<Result<Vec<_>, _>>().map(|_| ()).unwrap_err().to_string(),
+    Err(error) => error.to_string(),
+};
+assert!(refused.contains("$.v"), "{refused}");
+```
+
 ## Write and read rows as values
 
 `*_records` takes anything `Into<Scalar>` in the field's column order; `read_arrow` answers a `SerieReader`, one record `Serie` per batch, whose children are the columns.
@@ -227,7 +265,11 @@ assert_eq!(stream.row_size()?, 2);
 let mut lines = Buffer::new().with_media_type(Url::from_str("file:///quotes.jsonl")?.media_type());
 lines.write_arrow(SerieReader::from_serie(rows.clone())?, IOMode::Overwrite, None)?;
 let declared = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)?.with_field(root);
-assert_eq!(lines.read_arrow(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows]);
+assert_eq!(lines.read_arrow(Some(&declared))?.collect::<Result<Vec<_>, _>>()?, vec![rows.clone()]);
+
+// A document is written whole: write_arrow on it takes IOMode::Overwrite only.
+let refused = lines.write_arrow(SerieReader::from_serie(rows)?, IOMode::Append, None).unwrap_err();
+assert!(refused.to_string().contains("expected overwrite, got append"), "{refused}");
 ```
 
 ## Bound memory on large writes
@@ -572,5 +614,7 @@ std::fs::remove_dir_all(&root)?;
 - Every record verb takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
 - `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_row_size` do not.
 - `RecordOptions` has no offset: `with_plan` keeps a plan's `limit` as `max_row_size` and drops its `offset`. Use `Plan::apply_arrow_reader` or `Plan::execute`.
+- `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
+- A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
 - There is no `read_records` in Rust: rows out are `read_arrow` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.
 - Parquet, Iceberg and S3 do not exist without their Cargo features; a Parquet-only setter on another encoding's options is an error, not a no-op.

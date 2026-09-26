@@ -13,7 +13,7 @@ answers the same `IOMedia` calls; this table is what differs.
 | Plain text | `text/plain`, `.txt`, `.log` | default | one row per line (or per framed chain): 16 event columns, `body`, then one column per `rowheader` capture | writes each row's non-null, non-empty `body` as one line |
 | Iceberg table | a folder with `metadata/` and `data/` | `iceberg` feature (implies `parquet`) | a scan planned from the snapshot's manifests, files decoded side by side | `append`/`overwrite`/`merge` commits of Parquet data files |
 | Partitioned folder | a folder of `column=value/` leaves | the leaves' encodings | every leaf, partition columns restored from the path | rows routed to their leaf; the leaf stores only non-partition columns |
-| JSON, JSON Lines, YAML, TOML, XML | `.json`, `.jsonl`, `.yaml`, `.toml`, `.xml` | default | only through `read_arrow` (one record column) | only through `write_arrow` (one document per row, or one document) |
+| JSON, JSON Lines, YAML, TOML, XML | `.json`, `.jsonl`, `.yaml`, `.toml`, `.xml` | default | only through `read_arrow` (one record column) | only through `write_arrow`, overwrite only (one document per row, or one document; written whole, so append is refused) |
 
 `text/csv` and any other type answer `record_options()` with a refusal naming
 the encodings the build implements.

@@ -9,8 +9,9 @@ Four structured text codecs - JSON (and JSON Lines), YAML, TOML, XML - over
 the one `Scalar`. A document decodes to a `Scalar` (Rust) or to natural host
 values (Python, JavaScript; `cls=Scalar` / `{ scalar: true }` for the core
 value), and a value encodes to UTF-8 bytes in the format's ordinary shapes: no
-tags, envelopes or private wire forms, and anything a format cannot spell is
-refused rather than approximated.
+envelopes or private wire forms (YAML's standard `!!binary` for bytes is the
+one tag written), and anything a format cannot spell is refused rather than
+approximated.
 
 Hold one model: **without a field a document proves only its own types; a
 field types it.** JSON numbers, YAML scalars, TOML's native dates and XML's
@@ -32,7 +33,9 @@ field's columns, and refuses what does not fit with a located error.
 | write a file or stream | `json::into_writer(&v, File::create(p)?)?` | `json.dump(v, "out.json")`, `json.dump(v, stream)` | `json.dump(v, 'out.json')`, `await json.dump(v, writable)` |
 | async byte source | - | - | `await json.load(readable)`, `json.loadStream(readable)` |
 | JSON Lines / YAML stream, whole | `json::from_lines_utf8(s)?`, `yaml::from_utf8_all(s)?`, `into_utf8_all(&vs)?` | `json.loads_all(src)`, `yaml.loads_all(src)`, `dumps_all(vs)` | `json.loadsAll(src)`, `yaml.loadsAll(src)`, `dumpAll(vs)` |
-| JSON Lines / YAML stream, lazy | `json::from_lines_reader_iter(&mut r)`, `yaml::from_reader_iter(&mut r)` | `json.load_all(path_or_reader)`, `dump_all(vs, dest)` | `for await (const d of json.loadAll(readable))`, `dumpAll(vs, writable)` |
+| JSON Lines / YAML stream, lazy | `json::from_lines_reader_iter(&mut r)`, `yaml::from_reader_iter(&mut r)`, `json::into_writer_all(vs, w)?` (no cap) | `json.load_all(path_or_reader)`, `dump_all(vs, dest)` (at most 1,024 values per call) | `for await (const d of json.loadAll(readable))`, `dumpAll(vs, writable)` (at most 1,024 values per call) |
+| lazy read past 1,024 documents / 64 MiB | `json::from_lines_reader_iter_with_limits(&mut r, Limits::new(..))`, `yaml::from_reader_iter_with_limits` | `json.load_all(src, max_documents=..., max_input_bytes=...)` | `json.loadAll(readable, { maxDocuments, maxInputBytes })` |
+| field-typed row back to a named record | `field.into_natural_value(row)?` | `loads(src, field=f)` (no `cls=Scalar`) | `loads(src, { field })` (no `scalar: true`) |
 | whitespace-separated JSON values | `json::from_utf8_all(s)?` | - | - |
 | XML attribute / own text keys | `xml::ATTRIBUTE_PREFIX` (`@`), `xml::TEXT_KEY` (`#text`) | `"@id"`, `"#text"` | `'@id'`, `'#text'` |
 | check a value is writable before writing | `toml::validate_for_write(&v)?`, `xml::validate_for_write(&v)?` | - (the `dumps` refusal) | - (the `dumps` refusal) |
@@ -55,9 +58,15 @@ field's columns, and refuses what does not fit with a located error.
 3. **Stream multi-document input.** `load_all` / `loadAll(readable)` /
    `from_*_reader_iter` hold one document at a time; `loads_all` / `loadsAll`
    / `from_*_all` materialize the list. JSON Lines and YAML are the only
-   multi-document formats.
-4. **Bound untrusted input.** Defaults are depth 128, 64 MiB, 1,000,000
-   nodes, 1,024 documents; lower them for untrusted payloads. YAML alias
+   multi-document formats. The limits cover the whole stream, not each
+   document: by default a lazy read stops after 1,024 documents or 64 MiB in
+   total. For a large trusted stream raise `max_documents` / `max_input_bytes`
+   (`maxDocuments` / `maxInputBytes`; Rust
+   `json::from_lines_reader_iter_with_limits(&mut r, Limits::new(128, usize::MAX, 1_000_000, usize::MAX))`).
+   For bulk rows, use `read_arrow` from `yggdryl-records`.
+4. **Bound untrusted input.** Defaults are depth 128 (48 in JavaScript,
+   which is also its ceiling for reads and writes), 64 MiB, 1,000,000 nodes,
+   1,024 documents; lower them for untrusted payloads. YAML alias
    expansion counts nodes, so a billion-laughs document fails at the limit.
    Parser hard ceilings: JSON/YAML/XML depth 384, TOML 64, YAML flow 255,
    JavaScript `maxDepth` 1..48.
@@ -80,15 +89,18 @@ field's columns, and refuses what does not fit with a located error.
    on any backend - no manual decompress-then-parse.
 10. **Errors are located.** A syntax error or a breached limit names the
     format and the byte (`invalid json data at byte 8: trailing comma`); a
-    field refusal names the path (`$.port`); a Python dataclass mismatch is a
+    field refusal names the path from the root field (`invalid record value
+    at $.cfg.port: expected int16, got u64`); a Python dataclass mismatch is a
     `TypeError` naming `Class.field`. Fix the input it names; `errors="default"`
     (Python `cls=` only) falls back to a field's declared default instead.
 11. **Build classes only when you need them.** Reconstructing a dataclass
     costs far more than the parse (CPython JSON on the docs' fixture: 19.5 us
     to decode bytes, 340 us to decode into a field class). Stay with natural
     values or `Scalar` on hot paths.
-12. **Writers emit natural shapes only.** Exact decimals and binary values are
-    written as ordinary strings where the format has no type for them, a TOML
+12. **Writers emit natural shapes only.** Exact decimals are written as
+    strings. Binary is base64 text in JSON, TOML and XML, and reads back as
+    that text unless a `binary` field types it; YAML writes binary as a
+    `!!binary` scalar and reads it back as bytes. A TOML
     datetime as a TOML datetime, an XML leaf as text; a value with no
     spelling in the format (a TOML root that is not a record, a nested
     sequence in XML) is refused rather than approximated.
@@ -137,6 +149,16 @@ field's columns, and refuses what does not fit with a located error.
   handle `trade.json.gz` and call `write_scalar`.
 - Writing JSON Lines with `json.dumps(rows)` - that is one JSON array; use
   `dumps_all` / `dumpAll` / `json::into_utf8_all`.
+- More than 1,024 values through Python `dumps_all` / `dump_all` or
+  JavaScript `dumpAll` - refused, and no option lifts the cap (`maxDocuments`
+  is ignored on write). Write chunks of at most 1,024 to one open stream, or
+  write records with `write_arrow` (`yggdryl-records`). Rust
+  `json::into_writer_all` has no cap.
+- Writing back a field-typed row (`*_with_field`, `read_scalar(Some(&field))`,
+  `cls=Scalar` / `{ scalar: true }` with a field) - it emits a positional
+  array such as `[5]`. In Rust restore the names first with
+  `into_json_scalar(&field.into_natural_value(row)?)`; in Python and
+  JavaScript dump the natural value (no `cls=Scalar` / `scalar: true`).
 
 ## Language references
 

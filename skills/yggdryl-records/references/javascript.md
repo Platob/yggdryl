@@ -101,6 +101,28 @@ assert.deepEqual([...handle.readArrowReader(options).intoTable().getChild('id')]
 fs.rmSync(root, { recursive: true, force: true })
 ```
 
+## Refuse a value the declared field cannot convert
+
+A nullable declared column takes a value it cannot convert as null while `safe` holds, and `safe` is the default; `{ safe: false }` (or a `not null` column) refuses it by path.
+
+```javascript
+const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
+const { Field, IOBase, MimeType } = require('yggdryl')
+
+const handle = IOBase.fromBytes()
+handle.mediaType = MimeType.PARQUET
+handle.overwriteArrowTable(new arrow.Table({ v: arrow.vectorFromArray(['1', 'x'], new arrow.Utf8()) }))
+const field = Field.from('row: struct<v: int32> not null')
+
+// Default: the unconvertible 'x' becomes null without a word.
+const read = handle.readArrowReader({ field }).intoTable()
+assert.deepEqual([...read.getChild('v')], [1, null])
+
+// safe: false names the column and the value instead.
+assert.throws(() => handle.readArrowReader({ field, safe: false }).intoTable(), /\$\.v/)
+```
+
 ## Write and read plain rows or class instances
 
 `*Records` takes plain objects; `readRecords()` yields plain objects and `readRecords(Cls)` instances built from each row. Declare a `field` when writing: Arrow JS infers strings as dictionaries otherwise.
@@ -117,6 +139,9 @@ handle.mediaType = MimeType.ARROW_STREAM
 handle.overwriteRecords([{ id: 1n, venue: 'XNAS' }, { id: 2n, venue: 'XNYS' }], { field: schema })
 handle.appendRecords([{ id: 3n, venue: 'XLON' }], { field: schema })
 assert.equal(String(handle.readArrowField().fieldAt(1).dtype), 'utf8')
+
+// number or bigint under a declared field, but one kind per call: Arrow JS infers from the first row.
+assert.throws(() => handle.appendRecords([{ id: 4, venue: 'XPAR' }, { id: 5n, venue: 'XPAR' }], { field: schema }), TypeError)
 
 class Trade {
   constructor(row) {
@@ -456,7 +481,8 @@ fs.rmSync(root, { recursive: true, force: true })
 ## Gotchas in JavaScript
 
 - Arrow JS interop is copied IPC: cross in whole batches or tables, never row by row; `intoTable()` drains the reader.
-- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`).
+- `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*Records` under a declared field accepts `number` or `bigint`, but not both in one call: Arrow JS infers the rows from the first row before the field applies, so `[{ id: 1 }, { id: 2n }]` throws a `TypeError`.
+- A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `{ safe: false }` to have it refused.
 - Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro cannot store that. Pass `{ field }` on the write.
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.
 - `RecordOptions` has no offset: a plan's `offset` given through `withPlan` is dropped. Use `Plan.applyArrowReader(reader)` or `Plan.execute()`.

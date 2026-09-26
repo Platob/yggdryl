@@ -39,6 +39,12 @@ assert row == {"px": decimal.Decimal("12.50"), "day": datetime.date(2024, 1, 2),
 
 exact = json.loads('{"n": 7, "day": "2024-01-02", "px": "12.50"}', field=field, cls=Scalar)
 assert exact.kind == "serie"  # an ordered row in the field's column order
+# That row is positional: dumped back it is an array. Dump the natural value.
+cfg = Field("cfg", "struct<port: int16 not null>", nullable=False)
+assert json.dumps(json.loads('{"port": 5}', field=cfg, cls=Scalar)) == b"[5]"
+assert json.dumps(json.loads('{"port": 5}', field=cfg)) == b'{"port":5}'
+with pytest.raises(ValueError, match=r"\$\.cfg\.port"):
+    yaml.loads("port: 99999\n", field=cfg)
 
 @scalar(frozen=True)
 class Trade:
@@ -91,10 +97,12 @@ assert text.getvalue() == '{"id":7}'
 
 ## JSON Lines and YAML document streams
 
-`dumps_all`/`loads_all` handle whole streams (JSON Lines for `json`, `---` documents for `yaml`); `load_all` reads a path or file object lazily, one document at a time, and `dump_all` writes one at a time.
+`dumps_all`/`loads_all` handle whole streams (JSON Lines for `json`, `---` documents for `yaml`); `load_all` reads a path or file object lazily, one document at a time, and `dump_all` writes one at a time. The limits cover the whole stream: by default `load_all` stops after 1,024 documents or 64 MiB in total, so raise `max_documents` / `max_input_bytes` for a large trusted stream. `dumps_all` / `dump_all` refuse more than 1,024 values per call with no option to lift it; write chunks to one open stream.
 
 ```python
 import io
+
+import pytest
 
 from yggdryl import json, yaml
 
@@ -111,6 +119,21 @@ assert [row["id"] for row in json.load_all(source)] == [1, 2, 3]
 sink = io.BytesIO()
 json.dump_all(({"id": n} for n in range(3)), sink)
 assert sink.getvalue().count(b"\n") == 3
+
+# The default limits bound the whole stream: 1,024 documents in total.
+lines = b"".join(b'{"id":%d}\n' % n for n in range(2000))
+with pytest.raises(ValueError, match="document limit"):
+    list(json.load_all(io.BytesIO(lines)))
+assert len(list(json.load_all(io.BytesIO(lines), max_documents=10**9))) == 2000
+
+# The writers cap one call at 1,024 values; chunk into one open stream.
+rows = [{"id": n} for n in range(2000)]
+with pytest.raises(ValueError, match="1024"):
+    json.dumps_all(rows)
+sink = io.BytesIO()
+for start in range(0, len(rows), 1024):
+    json.dump_all(rows[start:start + 1024], sink)
+assert sink.getvalue().count(b"\n") == 2000
 ```
 
 ## TOML: one record per document
@@ -161,7 +184,7 @@ assert xml.loads("<order><symbol>AAPL</symbol><leg>1</leg></order>", cls=Order) 
 
 ## Bound untrusted input
 
-`max_depth`, `max_input_bytes`, `max_nodes` and `max_documents` bound one decode (defaults 128, 64 MiB, 1,000,000, 1,024); YAML alias expansion counts against `max_nodes`. A breach raises `ValueError` naming the byte.
+`max_depth`, `max_input_bytes`, `max_nodes` and `max_documents` bound one decode - for `load_all`, the whole stream (defaults 128, 64 MiB, 1,000,000, 1,024); YAML alias expansion counts against `max_nodes`. A breach raises `ValueError` naming the byte.
 
 ```python
 import pytest
@@ -265,5 +288,8 @@ assert handle.read_scalar() == {"quantity": 2, "symbol": "AAPL"}
 - `dumps` returns `bytes`; use `dump(value, utf8=True)` or `.decode()` for `str`.
 - There is no `json.load`/`yaml.load`; `loads` takes paths and readers. `load_all` is the lazy stream reader.
 - JSON and YAML integers without a field come back as Python `int`, quoted decimals and JSON/YAML dates as `str`; declare `field=` or a dataclass for `Decimal`, `date`, `datetime`.
+- Bytes are base64 text in JSON, TOML and XML (`json.dumps(b"ab") == b'"YWI="'`) and read back as `str` unless a `binary` field types them; YAML writes `!!binary` and reads back `bytes`.
+- `dumps_all` / `dump_all` refuse more than 1,024 values per call and take no `max_documents`; `load_all`'s limits count the whole stream, not each document.
+- A field-typed `cls=Scalar` row dumps as a positional array (`b"[5]"`); dump the natural value instead.
 - A document carries shapes, never class names: a `set` reads back as a `list`, a `uuid.UUID` as its text; classes are built only through `cls=`.
 - `placeholders=` is a YAML/TOML/XML argument; `environment=True` reads `os.environ` - never turn it on for untrusted documents that are later dumped or logged.

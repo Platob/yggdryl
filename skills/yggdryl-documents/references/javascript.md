@@ -49,6 +49,12 @@ const exact = json.loads('{"n": 7, "day": "2024-01-02", "px": "12.50"}', {
 })
 assert.equal(exact.kind, 'serie') // an ordered row in the field's column order
 
+// That row is positional: dumped back it is an array. Dump the natural value.
+const cfg = new Field('cfg', 'struct<port: int16 not null>', false)
+assert.equal(json.dumps(json.loads('{"port":5}', { field: cfg, scalar: true })).toString(), '[5]')
+assert.equal(json.dumps(json.loads('{"port":5}', { field: cfg })).toString(), '{"port":5}')
+assert.throws(() => yaml.loads('port: 99999\n', { field: cfg }), /\$\.cfg\.port/)
+
 // The same field reads every format the same way.
 const amount = new Field('amount', 'decimal(10,2)', false)
 assert.ok(yaml.loads("'12.50'\n", { field: amount }).equals(json.loads('"12.50"', { field: amount })))
@@ -99,11 +105,11 @@ assert.throws(() => json.loads(file))
 
 ## JSON Lines and YAML document streams
 
-`dumpAll`/`loadsAll` handle whole streams (JSON Lines for `json`, `---` documents for `yaml`); `loadAll` over an async byte source is a lazy async iterator that holds one document at a time.
+`dumpAll`/`loadsAll` handle whole streams (JSON Lines for `json`, `---` documents for `yaml`); `loadAll` over an async byte source is a lazy async iterator that holds one document at a time. The limits cover the whole stream: by default `loadAll` stops after 1,024 documents or 64 MiB in total, so raise `maxDocuments` / `maxInputBytes` for a large trusted stream. `dumpAll` refuses more than 1,024 values per call and ignores `maxDocuments`; write chunks to one open writable.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Readable } = require('node:stream')
+const { Readable, Writable } = require('node:stream')
 const { json, yaml } = require('yggdryl')
 
 assert.equal(json.dumpAll([{ id: 1 }, { id: 2 }]).toString(), '{"id":1}\n{"id":2}\n')
@@ -118,6 +124,23 @@ assert.deepEqual(yaml.loadsAll('id: 1\n---\nid: 2\n'), [{ id: 1 }, { id: 2 }])
     ids.push(row.id)
   }
   assert.deepEqual(ids, [1, 2, 3])
+
+  // The default limits bound the whole stream: 1,024 documents in total.
+  const lines = Array.from({ length: 2000 }, (_, n) => `{"id":${n}}\n`)
+  await assert.rejects(async () => {
+    for await (const row of json.loadAll(Readable.from(lines))) assert.ok(row)
+  }, /document limit/)
+  let count = 0
+  for await (const row of json.loadAll(Readable.from(lines), { maxDocuments: 1e9 })) count += row.id >= 0
+  assert.equal(count, 2000)
+
+  // The writers cap one call at 1,024 values; chunk into one open writable.
+  const rows = lines.map((_, id) => ({ id }))
+  assert.throws(() => json.dumpAll(rows), /1024/)
+  const chunks = []
+  const sink = new Writable({ write(chunk, _encoding, done) { chunks.push(chunk); done() } })
+  for (let start = 0; start < rows.length; start += 1024) await json.dumpAll(rows.slice(start, start + 1024), sink)
+  assert.equal(Buffer.concat(chunks).toString().split('\n').length - 1, 2000)
 })().catch((error) => {
   console.error(error)
   process.exit(1)
@@ -170,7 +193,7 @@ assert.deepEqual(xml.loads('<order id="1"><symbol>X</symbol><leg>5</leg></order>
 
 ## Bound untrusted input
 
-`maxDepth` (1..48 in JavaScript), `maxInputBytes`, `maxNodes` and `maxDocuments` bound one decode; YAML alias expansion counts against `maxNodes`. A breach throws, naming the byte.
+`maxDepth` (default and ceiling 48 in JavaScript, for reads and writes), `maxInputBytes`, `maxNodes` and `maxDocuments` bound one decode - for `loadAll`, the whole stream; YAML alias expansion counts against `maxNodes`. A breach throws, naming the byte.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -274,4 +297,8 @@ fs.rmSync(root, { recursive: true, force: true })
 - `json.load(readable)` buffers one bounded document because Node's async reader cannot feed a synchronous parser; `loadAll(readable)` stays incremental.
 - Decimals and `date32` values under a field stay native `Scalar`s (JavaScript has no decimal); read them with `.asJs()`, `String(...)` or `{ scalar: true }`.
 - Integers above `Number.MAX_SAFE_INTEGER` arrive as `bigint`; pass `bigint` in for exact 64-bit values.
+- The default depth is 48, not 128: a 60-deep document or value is refused by `loads` and `dumps` alike.
+- `dumpAll` refuses more than 1,024 values per call and ignores `maxDocuments`; `loadAll`'s limits count the whole stream, not each document.
+- A field-typed `{ scalar: true }` row dumps as a positional array (`[5]`); dump the natural value instead.
+- A `Buffer` is base64 text in JSON, TOML and XML and reads back as a string unless a `binary` field types it; YAML writes `!!binary` and reads back a `Buffer`.
 - `environment: true` reads `process.env`; never turn it on for documents that are later dumped or logged.

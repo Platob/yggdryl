@@ -25,7 +25,7 @@ assert_eq!(json::into_utf8(&value)?, encoded);
 `*_with_field` types natural text (decimals, dates, exact widths), orders a record into the field's column order and validates it; a record answers an ordered `Scalar::Serie` row.
 
 ```rust
-use yggdryl::{from_json_scalar_with_field, from_yaml_scalar_with_field, DataType, Field, Scalar, StructType};
+use yggdryl::{from_json_scalar_with_field, from_yaml_scalar_with_field, into_json_scalar, DataType, Field, Scalar, StructType};
 
 let field = DataType::from(StructType::from_fields([
     DataType::decimal128(10, 2)?.required_field("px"),
@@ -44,7 +44,14 @@ let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
 assert_eq!(from_yaml_scalar_with_field("'12.50'\n", &amount)?, Scalar::d128(1250, 2));
 
 // A value the field cannot hold is refused with its location.
-assert!(from_json_scalar_with_field(r#"{"n":700,"day":"2024-01-02","px":"1"}"#, &field).is_err());
+let refused = from_json_scalar_with_field(r#"{"n":700,"day":"2024-01-02","px":"1"}"#, &field).unwrap_err();
+assert!(refused.to_string().contains("$.trade.n"), "{refused}");
+
+// The row is positional, so it writes back as an array; restore the names first.
+let cfg = DataType::from(StructType::from_fields([DataType::Int16.required_field("port")])?).required_field("cfg");
+let typed = from_json_scalar_with_field(r#"{"port":5}"#, &cfg)?;
+assert_eq!(into_json_scalar(&typed)?, "[5]");
+assert_eq!(into_json_scalar(&cfg.into_natural_value(typed)?)?, r#"{"port":5}"#);
 ```
 
 ## Read from a file and write to a writer
@@ -72,11 +79,12 @@ std::fs::remove_file(&path)?;
 
 ## JSON Lines and YAML document streams
 
-`json::from_lines_*` is strict newline-delimited JSON; `yaml::from_utf8_all` reads `---`-separated documents; `into_*_all` writes them. `from_*_reader_iter` decodes lazily, one document at a time.
+`json::from_lines_*` is strict newline-delimited JSON; `yaml::from_utf8_all` reads `---`-separated documents; `into_*_all` writes them. `from_*_reader_iter` decodes lazily, one document at a time. Its limits cover the whole stream (by default 1,024 documents or 64 MiB in total); the `_with_limits` form lifts them for a large trusted stream. `into_writer_all` writes any iterator with no document cap.
 
 ```rust
 use std::io::Cursor;
 
+use yggdryl::text::Limits;
 use yggdryl::{json, yaml, Scalar};
 
 let rows = json::from_lines_utf8("{\"id\":1}\n{\"id\":2}\n")?;
@@ -96,6 +104,19 @@ for value in json::from_lines_reader_iter(&mut source) {
     ids.push(value?.get_key_str("id").and_then(Scalar::as_i64).expect("an id"));
 }
 assert_eq!(ids, [1, 2, 3]);
+
+// The default limits bound the whole stream: 1,024 documents in total.
+let lines: String = (0..2000).map(|n| format!("{{\"id\":{n}}}\n")).collect();
+let mut source = Cursor::new(lines.as_bytes());
+assert!(json::from_lines_reader_iter(&mut source).any(|value| value.is_err()));
+let mut source = Cursor::new(lines.as_bytes());
+let trusted = Limits::new(128, usize::MAX, 1_000_000, usize::MAX);
+assert_eq!(json::from_lines_reader_iter_with_limits(&mut source, trusted).count(), 2000);
+
+// The writer takes any iterator and has no document cap.
+let mut sink = Vec::new();
+json::into_writer_all((0..2000_i64).map(Scalar::from), &mut sink)?;
+assert_eq!(sink.iter().filter(|byte| **byte == b'\n').count(), 2000);
 ```
 
 ## TOML: one record per document
@@ -253,4 +274,8 @@ assert_eq!(handle.read_scalar(None)?.get_key_str("symbol").and_then(Scalar::as_s
 - Without a field a record is a sorted `Scalar::Struct` (`get_key_str`); with one it is an ordered `Scalar::Serie` row (`get(i)`).
 - Without a field, JSON and YAML integers decode as `u64` (non-negative) or `i64`, TOML's as `i64`, and quoted decimals and JSON/YAML dates stay text (TOML's native dates are dates); declare the field for exact widths, decimals, dates and timestamps. Scalar equality compares values across widths.
 - `json::from_utf8_all` reads whitespace-separated values; `json::from_lines_*` is strict JSON Lines. `into_utf8_all` writes JSON Lines.
+- A `_with_field` row writes back as a positional array (`[5]`); `into_json_scalar(&field.into_natural_value(row)?)` restores the names.
+- A lazy reader's limits count the whole stream, not each document: 1,024 documents or 64 MiB by default; use `from_lines_reader_iter_with_limits` / `yaml::from_reader_iter_with_limits` for a large trusted stream.
+- A field refusal names the path from the root field (`$.cfg.port`).
+- Bytes are base64 text in JSON, TOML and XML and read back as text unless a `binary` field types them; YAML writes `!!binary` and reads back bytes.
 - TOML and XML are one document each; XML writes one root and refuses a key that is not an XML name or a sequence inside a sequence.

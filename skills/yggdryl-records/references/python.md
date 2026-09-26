@@ -92,6 +92,31 @@ options.plan = "select id, venue where venue = 'XNYS' limit 3"
 assert handle.read_arrow_reader(options=options).read_all().column("id").to_pylist() == [1, 3, 5]
 ```
 
+## Refuse a value the declared field cannot convert
+
+A nullable declared column takes a value it cannot convert as null while `safe` holds, and `safe` is the default; `safe=False` (or a `not null` column) refuses it by path.
+
+```python
+import pathlib
+import tempfile
+
+import pyarrow as pa
+import pytest
+
+from yggdryl import IOBase
+
+handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "raw.parquet")
+handle.overwrite_arrow_table(pa.table({"v": ["1", "x"]}))
+declared = "row: struct<v: int32> not null"
+
+# Default: the unconvertible "x" becomes null without a word.
+assert handle.read_arrow_reader(field=declared).read_all().to_pylist() == [{"v": 1}, {"v": None}]
+
+# safe=False names the column and the value instead.
+with pytest.raises(pa.ArrowInvalid, match=r"\$\.v"):
+    handle.read_arrow_reader(field=declared, safe=False).read_all()
+```
+
 ## Write and read plain rows or dataclasses
 
 `*_records` takes mappings or `@scalar` dataclass instances; `read_records()` yields dicts, `read_records(Cls)` instances. The stream still batches underneath.
@@ -168,6 +193,13 @@ assert lines.read_bytes().count(b"\n") == 2
 read = lines.read_arrow()
 assert isinstance(read, SerieReader)
 assert len(Serie.from_(read)) == 2
+
+# A document is written whole: write_arrow on it takes "overwrite" only.
+try:
+    lines.write_arrow(pa.table({"symbol": ["NVDA"], "size": [300]}), "append")
+    raise AssertionError("append to a document must be refused")
+except ValueError as refused:
+    assert "expected overwrite, got append" in str(refused)
 ```
 
 ## Bound memory on large writes
@@ -442,7 +474,8 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 
 - Options are keyword-only: `read_arrow_reader(options=o)` or `read_arrow_reader(select=[...])`; a positional options argument is a `TypeError`.
 - `RecordOptions` has no `offset`: a plan's `offset` assigned through `options.plan` is dropped. Use `Plan(...).apply_arrow_reader(reader)` or `Plan.execute()` for an offset.
-- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`.
+- JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`. `write_arrow` on them accepts `"overwrite"` only - a document is written whole.
+- A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
 - `Table` objects cache their metadata; after writing through another handle, `Table.open(...)` again.
 - `update_schema().commit()` returns `None` in Python (JavaScript returns the schema id).

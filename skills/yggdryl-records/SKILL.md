@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC, Parquet, Avro, plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), RecordOptions (field, select, filter, merge_by, max_row_size, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC, Parquet, Avro, plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), RecordOptions (field, safe, select, filter, merge_by, max_row_size, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -35,7 +35,8 @@ medium does the work before a byte is decoded.
 | upsert by key | `merge_arrow_reader(r, &options.with_merge_by(["id"])?)?` | `merge_arrow_table(t, merge_by=["id"])` | `mergeArrowTable(t, { mergeBy: ['id'] })` |
 | mode chosen at run time | `write_arrow_reader(r, IOMode::Append, &options)?`, `write_arrow_batch`, `write_records` | `write_arrow_table(t, "append")`, `write_arrow_reader`, `write_arrow_batch`, `write_records` | `writeArrowTable(t, 'append')`, `writeArrowReader`, `writeArrowBatch`, `writeRecords` |
 | native rows in | `overwrite_records(rows, &options)?` (rows `Into<Scalar>`) | `overwrite_records([dict or @scalar instance])` | `overwriteRecords([object], { field })` |
-| a `SerieReader` or held column in (also JSON/YAML/TOML/XML rows) | `write_arrow(SerieReader::from_serie(s)?, IOMode::Overwrite, None)?` | `write_arrow(value, "overwrite")` | not bound |
+| a `SerieReader` or held column in (also JSON/YAML/TOML/XML rows) | `write_arrow(SerieReader::from_serie(s)?, IOMode::Overwrite, None)?` (a document handle takes `Overwrite` only) | `write_arrow(value, "overwrite")` (document handle: overwrite only) | not bound |
+| refuse values the declared field cannot convert | `options.with_field(root).with_safe(false)` | `read_arrow_reader(field=f, safe=False)` | `readArrowReader({ field, safe: false })` |
 | one setting for one call | `options.clone().with_select(["id"])?.with_filter("id > 3")?` | `read_arrow_reader(select=["id"], filter="id > 3")` | `readArrowReader({ select: ['id'], filter: 'id > 3' })` |
 | sections as one plan | `options.with_plan("select id where x > 1 limit 5")?` | `options.plan = "select ..."` | `options.withPlan('select ...')` |
 | Parquet page codec | `options.set_parquet_compression_name("zstd(3)")?`, `ParquetOptions::new().with_compression(..)` | `compression="zstd(3)"` | `{ compression: 'zstd(3)' }`, `withCompression` |
@@ -67,7 +68,11 @@ medium does the work before a byte is decoded.
 3. **Declare the `field` to cast once.** A narrower field is a projection; a
    wider one fills missing nullable columns with nulls; the cast runs in the
    same pass as the decode. A `not null` column refuses a value, a null or a
-   missing column by name - it never stores a default.
+   missing column by name - it never stores a default. A nullable declared
+   column takes a value it cannot convert as null while `safe` holds, and
+   `safe` is on by default - so a bad value vanishes silently. Pass
+   `safe=False` / `{ safe: false }` / `.with_safe(false)` (or declare the
+   column `not null`) when an unconvertible value must be refused.
 4. **`merge_by` is required for merge.** Keys use Arrow's row format: null
    matches null and the last arrival wins. Merge holds only the stored side in
    memory; `merge_by` absent is a refusal, never an overwrite.
@@ -135,6 +140,13 @@ medium does the work before a byte is decoded.
   this build implements"); use
   `write_arrow` / `read_arrow` (Rust, Python) or the codecs in
   `yggdryl-documents`.
+- Appending rows to a `.json`/`.jsonl`/`.yaml`/`.toml`/`.xml` handle with
+  `write_arrow(..., append)` - refused: a structured document is written
+  whole, so only `overwrite` is accepted; to accumulate rows use an
+  `.arrows`, `.parquet` or `.avro` handle, or read, extend and overwrite.
+- Declaring `int32` over a column holding `"x"` and trusting the read: under
+  the default `safe` a nullable column reads it as null. Pass `safe=False` /
+  `{ safe: false }` / `.with_safe(false)` to be told.
 - JavaScript plain-object rows with strings are inferred as
   `dictionary(int32,utf8)`, which Avro cannot store - pass `{ field }`.
 - Python: `read_arrow_reader(options)` positionally is a `TypeError`; options
@@ -148,8 +160,11 @@ medium does the work before a byte is decoded.
 - `commit_row_size` on an Iceberg write: every commit is a snapshot, so a
   small `N` leaves many snapshots; expire them (`expire_snapshots`) or commit
   once.
-- Building an Arrow JS `Int64` vector from `number`s: use `bigint` (`1n`);
-  record writes under a declared field accept either.
+- Building an Arrow JS `Int64` vector from `number`s: use `bigint` (`1n`).
+  Record writes under a declared field accept either `number` or `bigint`,
+  but not both in one call: Arrow JS infers the rows from the first row
+  before the declared field applies, so `[{ id: 1 }, { id: 2n }]` throws a
+  `TypeError` - keep one numeric kind per column.
 - Looking for a CSV reader: `text/csv` is not a record encoding; read lines
   with a `rowheader` regex, or convert upstream.
 
