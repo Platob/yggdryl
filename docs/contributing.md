@@ -42,7 +42,7 @@ test file at the matching path.
 
 | Source | Docs tab |
 | --- | --- |
-| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the twelve codes including `figi_code.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
+| `rust/src/datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `typed.rs`, `protocol.rs`, `metadata.rs` and one root file per type - `string.rs`, `bytes.rs`, `integer.rs`, `decimal.rs` with `int256.rs`, the five temporal files with `temporal.rs`, `timezone.rs`, `uuid.rs`, `geospatial.rs`, `code.rs` with the fourteen codes including `bbg.rs` and `ric.rs`, `mime_type/datatype.rs`, `media_type/datatype.rs` | [Types](types/index.md) |
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
 | `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/index.md#compression) |
 | `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/index.md#charsets) |
@@ -52,7 +52,7 @@ test file at the matching path.
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
 | `rust/src/graph/`, `rust/src/limit.rs` | [Graph](graph/index.md) |
-| `node/replay.js`, `node/replay/`, `node/web/` | [Graph: replay](graph/replay.md) and [components](graph/components.md) |
+| `node/replay.js`, `node/replay/`, `node/web/` | [Graph: replay](graph/replay.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 

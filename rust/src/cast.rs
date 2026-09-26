@@ -59,8 +59,8 @@ use crate::temporal::casts::{
 use crate::uuid::casts::ingest_uuid_array;
 use crate::version::casts::{ingest_version_array, is_text_layout};
 use crate::{
-    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
+    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    RIC_WIDTH, RecognizedExtension, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH,
     UNIT_WIDTH, code_refusal, recognized_arrow_extension,
 };
 use crate::{BytesType, DataType, Field, Scalar};
@@ -2441,49 +2441,56 @@ impl ArrayCastPlan {
                     exposure,
                     budget,
                 )?,
-                DataType::MicCode => ingest_code_array::<MIC_WIDTH>(
+                DataType::Mic => ingest_code_array::<MIC_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::CfiCode => ingest_code_array::<CFI_WIDTH>(
+                DataType::Cfi => ingest_code_array::<CFI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::IsinCode => ingest_code_array::<ISIN_WIDTH>(
+                DataType::Isin => ingest_code_array::<ISIN_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::CusipCode => ingest_code_array::<CUSIP_WIDTH>(
+                DataType::Cusip => ingest_code_array::<CUSIP_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::SedolCode => ingest_code_array::<SEDOL_WIDTH>(
+                DataType::Sedol => ingest_code_array::<SEDOL_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::BloombergCode => ingest_code_array::<BLOOMBERG_WIDTH>(
+                DataType::Bbg => ingest_code_array::<BBG_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,
                     exposure,
                     budget,
                 )?,
-                DataType::FIGICode => ingest_code_array::<FIGI_WIDTH>(
+                DataType::Ric => ingest_code_array::<RIC_WIDTH>(
+                    &array,
+                    self.safe(),
+                    &self.field,
+                    exposure,
+                    budget,
+                )?,
+                DataType::Figi => ingest_code_array::<FIGI_WIDTH>(
                     &array,
                     self.safe(),
                     &self.field,

@@ -260,15 +260,23 @@ The listing ships with the package as `StringEnum::CURRENCIES`, reached by the l
     assert.equal(currencies.get('USD'), 'USD')
     ```
 
-Python declares a vocabulary over the width as well: `yggdryl.enums.Ccy` is the registered base, whose members are their own storage bytes read big-endian.
+Python declares a vocabulary over the width as well: `yggdryl.enums.CCY` is the shipped vocabulary over the `yggdryl.enums.Ccy` base, its members their own storage bytes read big-endian, and a caller subclasses `Ccy` for a vocabulary of its own.
 
 === "Python"
 
     ```python
-    from yggdryl.enums import Ccy
+    from yggdryl.enums import CCY, Ccy
 
-    assert int(Ccy.USD) == 0x555344
-    assert str(Ccy.USD) == "USD"
+    assert int(CCY.USD) == 0x555344
+    assert str(CCY.USD) == "USD"
+
+    # A vocabulary of the caller's own is the same base, so the same integers.
+    class Settlement(Ccy):
+        USD = "USD"
+        EUR = "EUR"
+
+    assert issubclass(CCY, Ccy)
+    assert int(Settlement.EUR) == int(CCY.EUR)
     ```
 
 ## Edges
@@ -284,7 +292,7 @@ Python declares a vocabulary over the width as well: `yggdryl.enums.Ccy` is the 
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"

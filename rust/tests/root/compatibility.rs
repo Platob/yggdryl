@@ -797,7 +797,7 @@ fn iceberg_passes_first_class_geospatial_identity_and_still_rejects_foreign_exte
 
 #[test]
 fn every_scalar_leaf_has_an_answer_for_every_target() {
-    // Seven leaves - Side, State, TimeInForce, BloombergCode, Timezone, MimeType
+    // Seven leaves - Side, State, TimeInForce, Bbg, Timezone, MimeType
     // and MediaType - were absent from all four per-target matches, so each
     // fell through to the container arm and answered "expected a scalar
     // datatype, got side; this container is handled by the generic walker".

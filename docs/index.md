@@ -77,7 +77,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |
 | Hashing | xxHash digests over bytes, values, handles, and Arrow rows, and TxHash: an instant coupled with a digest, its sortable keys, coupled columns, and the `DIGEST:time` holder | [hashing](hashing.md) |
-| Graph | Market elements and events, the book walk and its views, and the trading replay that serves it to a browser: a recorded [replay](graph/replay.md) and its [components](graph/components.md) | [graph](graph/index.md) |
+| Graph | Market elements and events, the book walk and its views, and the order book replay that serves it to a browser: a recorded [replay](graph/replay.md) | [graph](graph/index.md) |
 | FIX | Protocol vocabulary, registries, and messages over `Field`, with a live [explorer](fix/explorer.md), [decoder](fix/decode.md) and [composer](fix/encode.md) | [fix](fix/index.md) |
 
 ## Install

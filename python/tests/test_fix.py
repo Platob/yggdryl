@@ -2018,7 +2018,7 @@ def test_the_crate_fields_declare_their_own_protocols() -> None:
     assert fields["msgcat"].dtype == DataType("int32")
     for name, dtype in (
         ("isincode", "isin"),
-        ("bloombergcode", "bloomberg"),
+        ("bloombergcode", "bbg"),
         ("miccode", "mic"),
     ):
         assert fields[name].dtype == DataType(dtype), name

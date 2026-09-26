@@ -168,8 +168,9 @@ nav:
       - ISIN: types/codes/isin.md
       - CUSIP: types/codes/cusip.md
       - SEDOL: types/codes/sedol.md
-      - Bloomberg: types/codes/bloomberg.md
+      - Bbg: types/codes/bbg.md
       - FIGI: types/codes/figi.md
+      - RIC: types/codes/ric.md
       - Side: types/codes/side.md
       - State: types/codes/state.md
       - Time in force: types/codes/timeinforce.md
@@ -218,8 +219,17 @@ nav:
   - Hashing: hashing.md
   - Graph:
     - graph/index.md
+    - Element: graph/element.md
+    - Event: graph/event.md
+    - Market: graph/market.md
+    - Operation: graph/operation.md
+    - Order: graph/order.md
+    - Quote: graph/quote.md
+    - Execution: graph/execution.md
+    - Trade: graph/trade.md
+    - Book: graph/book.md
+    - Market data: graph/market-data.md
     - Replay: graph/replay.md
-    - Components: graph/components.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

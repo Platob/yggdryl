@@ -566,7 +566,7 @@ fn narrow_span_gathers_preserve_nested_zero_width_rows_and_view_order() {
     let values: ArrayRef = Arc::new(StructArray::new(
         vec![
             Arc::new(ArrowField::new("empty", empty.data_type().clone(), false)),
-            DataType::IsinCode
+            DataType::Isin
                 .required_field("code")
                 .into_arrow_field_ref()
                 .unwrap(),
@@ -653,7 +653,7 @@ fn narrow_sibling_compactions_share_one_materialization_budget() {
         }
     }));
     let array: ArrayRef = Arc::new(ListArray::new(
-        DataType::IsinCode
+        DataType::Isin
             .required_field("item")
             .into_arrow_field_ref()
             .unwrap(),
@@ -835,7 +835,7 @@ fn hidden_spans_borrow_sibling_columns_larger_than_the_materialization_limit() {
 fn inherited_nulls_reach_view_and_fixed_items_through_two_records() {
     for fixed in [false, true] {
         for visible_bad in [false, true] {
-            let item = DataType::IsinCode
+            let item = DataType::Isin
                 .required_field("item")
                 .into_arrow_field_ref()
                 .unwrap();
@@ -965,7 +965,7 @@ fn null_sequence_rows_mask_their_physical_items_during_inferred_batch_landing() 
         );
     }
 
-    let item = DataType::IsinCode
+    let item = DataType::Isin
         .required_field("item")
         .into_arrow_field_ref()
         .expect("ISIN projects");

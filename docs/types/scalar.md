@@ -267,7 +267,7 @@ Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(I
 | floats | `F16`, `F32`, `F64` |
 | decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale; the fixed [`Decimal` and `BigDecimal`](numeric/decimal.md#decimal), their units at scale eighteen under the wire tags `decimal` and `bigdecimal` |
 | text and binary | one variant per string leaf - `Utf8String`, `LargeUtf8String`, `Utf8StringView`, `LargeUtf8StringView`, `FixedUtf8String`, `SizedUtf8String` and the same six for `Ascii` and `Cp1252` - each holding the characters and, fixed or sized, its number; one per byte leaf - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`, `FixedBinary`, `SizedBinary` - likewise; `Geometry`, `Geography`. Every string leaf writes the one wire tag `string` and every byte leaf `bytes`: the plain leaf its characters or payload alone, any other its `layout`, its number under `fixed`, and the text or bytes |
-| registered codes | `Country`, `Ccy`, `MicCode`, `CfiCode`, `Side`, `State`, `TimeInForce`, `IsinCode`, `CusipCode`, `SedolCode`, `BloombergCode`, `FIGICode` |
+| registered codes | `Country`, `Ccy`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bbg`, `Figi`, `Unit`, `Ric` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
@@ -449,7 +449,7 @@ See [Field](field.md), [Serie: one row](serie.md#arrow-one-row), and [Structured
 - Physical Arrow identity -> exact constructors, [Rust only](numeric/index.md).
 - `MimeType::PUFFIN` -> `application/vnd.apache.puffin`, `.puffin`, `PFA1`; the specification names no MIME type.
 - Geospatial value across a binding -> WKB bytes; `wkb` reader [Rust only](geospatial/index.md).
-- [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds and the four registered code bases, building the shared `StringEnum`.
+- [Code](codes/index.md) bases in `yggdryl.enums` -> Python only: the fixed US-ASCII widths `fixed_ascii(width)` builds, the four registered code bases `Country`, `Ccy`, `Mic`, `Cfi` and the vocabularies declared over them, `COUNTRY`, `CCY`, `MIC`, `CFI`, building the shared `StringEnum`.
 - Field inference -> `Scalar.into_field` in Python, beside the `into_field` a `@scalar` class caches for its own struct root; no binding reimplements it.
 - Named record rows -> a non-null Struct root named `row`.
 - One row crosses Arrow as a one-row column: `Serie::from_scalars(field, [value])` lays it out and `Serie::from_arrow_array(Some(&field), array, options)?.scalar(0)` reads it back ([Serie: one row](serie.md#arrow-one-row)); a `FieldScalar` has no Arrow door of its own.

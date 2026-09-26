@@ -18,7 +18,7 @@ use yggdryl::graph::{BookSide, Element, Event, Lane, Market, Operation, OrderEve
 use yggdryl::idmap::IdMap;
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::xxhash::Xxh3;
-use yggdryl::{Ccy, CfiCode, Decimal, IsinCode, MicCode, Side, State, TimeInForce, Unit, Uuid};
+use yggdryl::{Ccy, Cfi, Decimal, Isin, Mic, Side, State, TimeInForce, Unit, Uuid};
 
 #[test]
 fn generic_event_uuid_lists_are_sorted_unique_at_the_storage_boundary() {
@@ -1542,8 +1542,8 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
         held.insert_securityid(securityid("BLOOMBERG", "AAPL US EQUITY"))
             .expect("a plain holder")
     );
-    held.set_cficode(Some(CfiCode::new("ESVUFR").expect("a CFI")));
-    held.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
+    held.set_cficode(Some(Cfi::new("ESVUFR").expect("a CFI")));
+    held.set_miccode(Some(Mic::new("XPAR").expect("a MIC")));
     // Read by the source's name, its FIX code or its spelling folded.
     assert_eq!(held.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(held.get_securityids().get("4"), Some("US0378331005"));
@@ -1563,8 +1563,8 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
         ["BLOOMBERG", "CUSIP", "ISIN", "SEDOL"],
         "held in source order"
     );
-    assert_eq!(held.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
-    assert_eq!(held.get_miccode().map(MicCode::as_str), Some("XPAR"));
+    assert_eq!(held.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
+    assert_eq!(held.get_miccode().map(Mic::as_str), Some("XPAR"));
     // Each is unsaid on its own; a stated identifier is never overwritten
     // by inserting, and a second statement under a held source fills nothing.
     assert!(
@@ -1582,7 +1582,7 @@ fn a_market_element_names_its_instrument_the_way_the_market_does() {
     // The codes are the crate's own: a spelling that is no identifier never
     // reaches the element.
     assert!(
-        IsinCode::new("US0378331006").is_err(),
+        Isin::new("US0378331006").is_err(),
         "a wrong check digit is no ISIN"
     );
     assert!(
@@ -1665,7 +1665,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     let mut first = trade(10);
     first.set_currency(Ccy::none());
     first.set_side(Side::Unknown);
-    first.set_cficode(Some(CfiCode::new("ESXXXR").expect("a CFI")));
+    first.set_cficode(Some(Cfi::new("ESXXXR").expect("a CFI")));
     first
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .expect("a plain holder");
@@ -1679,8 +1679,8 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     later.set_unit(unit("MWh"));
     later.set_currency(currency("EUR"));
     later.set_side(Side::read("2").expect("a side"));
-    later.set_cficode(Some(CfiCode::new("ESVUFX").expect("a CFI")));
-    later.set_miccode(Some(MicCode::new("XPAR").expect("a MIC")));
+    later.set_cficode(Some(Cfi::new("ESVUFX").expect("a CFI")));
+    later.set_miccode(Some(Mic::new("XPAR").expect("a MIC")));
     // The capture protocol already proved these are two observations of one
     // event. Identity-input setters keep a standalone event coherent, so
     // state that shared capture identity explicitly before the generic fold.
@@ -1705,14 +1705,14 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
     );
     assert_eq!(merged.get_currency().as_str(), "EUR");
     assert_eq!(merged.get_side().as_str(), "SELL");
-    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
     assert_eq!(merged.get_securityids().get("ISIN"), Some("US0378331005"));
     assert_eq!(
         merged.get_securityids().get("CUSIP"),
         Some("037833100"),
         "the CUSIP the ISIN carries was derived when the first statement finalized"
     );
-    assert_eq!(merged.get_miccode().map(MicCode::as_str), Some("XPAR"));
+    assert_eq!(merged.get_miccode().map(Mic::as_str), Some("XPAR"));
     // Merged, the event is finalized: its identity is what it now says.
     assert_eq!(
         merged.get_curruuid(),
@@ -1727,7 +1727,7 @@ fn merging_a_market_event_takes_the_later_statement_and_the_better_codes() {
         (merged.get_price(), merged.get_currency().as_str()),
         (Some(Decimal::from_int(83)), "EUR")
     );
-    assert_eq!(merged.get_cficode().map(CfiCode::as_str), Some("ESVUFR"));
+    assert_eq!(merged.get_cficode().map(Cfi::as_str), Some("ESVUFR"));
     assert_eq!(merged.get_securityids().get("ISIN"), Some("US0378331005"));
 
     // A statement that knows a code the later one states as none keeps
@@ -2453,7 +2453,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     order
         .insert_securityid(securityid("ISIN", "US0378331005"))
         .expect("a plain holder");
-    order.set_miccode(Some(MicCode::new("XLON").expect("a MIC")));
+    order.set_miccode(Some(Mic::new("XLON").expect("a MIC")));
     order.finalize();
 
     // The report that answers it names none of that, and states a price and
@@ -2477,7 +2477,7 @@ fn a_market_event_carries_what_its_chain_is_about_forward_and_folds_the_rest() {
     assert_eq!(followed.get_unit().as_str(), "bbl");
     assert_eq!(followed.get_side().as_str(), "BUY");
     assert_eq!(followed.get_securityids().get("ISIN"), Some("US0378331005"));
-    assert_eq!(followed.get_miccode().map(MicCode::as_str), Some("XLON"));
+    assert_eq!(followed.get_miccode().map(Mic::as_str), Some("XLON"));
     // What this report does say is its own: the price it states is not the
     // one it followed.
     assert_eq!(followed.get_price(), Some(Decimal::from_int(83)));

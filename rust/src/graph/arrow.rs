@@ -60,8 +60,8 @@ use crate::serie::{
     SerieSerie, UInt32Serie, UInt64Serie, Utf8StringSerie,
 };
 use crate::{
-    ArrowCastOptions, Ccy, CfiCode, CodeValue, DataType, Decimal, Error, Field, Limit, MicCode,
-    Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
+    ArrowCastOptions, Ccy, Cfi, CodeValue, DataType, Decimal, Error, Field, Limit, Mic, Result,
+    Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 
 // The column names the graph module shares: the root and its nested columns,
@@ -814,8 +814,8 @@ impl<'a> Row<'a> {
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
             Column::Market(MarketColumn::Unit) => Some(market.get_unit().as_str()),
             Column::Market(MarketColumn::Side) => Some(market.get_side().as_str()),
-            Column::Market(MarketColumn::CfiCode) => market.get_cficode().map(CfiCode::as_str),
-            Column::Market(MarketColumn::MicCode) => market.get_miccode().map(MicCode::as_str),
+            Column::Market(MarketColumn::CfiCode) => market.get_cficode().map(Cfi::as_str),
+            Column::Market(MarketColumn::MicCode) => market.get_miccode().map(Mic::as_str),
             Column::Market(MarketColumn::Ticker) => market.get_ticker(),
             Column::Operation(OperationColumn::TimeInForce) => {
                 let operation: &'a dyn Operation = self.operation?;
@@ -1740,8 +1740,8 @@ impl Code {
             | (Self::Ccy, Serie::Ccy(held))
             | (Self::Unit, Serie::Unit(held))
             | (Self::Side, Serie::Side(held))
-            | (Self::Cfi, Serie::CfiCode(held))
-            | (Self::Mic, Serie::MicCode(held))
+            | (Self::Cfi, Serie::Cfi(held))
+            | (Self::Mic, Serie::Mic(held))
             | (Self::TimeInForce, Serie::TimeInForce(held)) => Some(held),
             _ => None,
         }
@@ -2592,12 +2592,12 @@ impl Landed {
                         }
                     }
                     MarketColumn::CfiCode => {
-                        if let Some(held) = leaf.code(row, path, name, |text| CfiCode::new(text))? {
+                        if let Some(held) = leaf.code(row, path, name, |text| Cfi::new(text))? {
                             target.set_cficode(Some(held));
                         }
                     }
                     MarketColumn::MicCode => {
-                        if let Some(held) = leaf.code(row, path, name, |text| MicCode::new(text))? {
+                        if let Some(held) = leaf.code(row, path, name, |text| Mic::new(text))? {
                             target.set_miccode(Some(held));
                         }
                     }
@@ -2840,7 +2840,7 @@ impl Landed {
                         leaf,
                         row,
                         canonical.get_cficode(),
-                        |text| CfiCode::new(text),
+                        |text| Cfi::new(text),
                         path,
                         name,
                     )?,
@@ -2848,7 +2848,7 @@ impl Landed {
                         leaf,
                         row,
                         canonical.get_miccode(),
-                        |text| MicCode::new(text),
+                        |text| Mic::new(text),
                         path,
                         name,
                     )?,

@@ -6,10 +6,11 @@ import {
   type BytesDataTypeId,
   type BytesField,
   type BigDecimalField,
+  type BbgField,
   type CcyField,
   type DecimalField,
   type DecimalWidthField,
-  type FIGICodeField,
+  type FigiField,
   type FixedAsciiField,
   type FixedCp1252Field,
   type FixedUtf8Field,
@@ -27,6 +28,7 @@ import {
   type MapField,
   type MediaTypeField,
   type MimeTypeField,
+  type RicField,
   type TimezoneField,
   type TimeField,
   type DateTime64Field,
@@ -96,9 +98,17 @@ const ccy: CcyField = fields.ccy('ccy', { nullable: false })
 const ccyId: 'ccy' = ccy.dtype.id
 const ccyKind: 'code' = ccy.dtype.kind
 const ccyValue: string = ccy.defaultJSValue()
-const figi: FIGICodeField = fields.figi('figi', { nullable: false })
+const figi: FigiField = fields.figi('figi', { nullable: false })
 const figiId: 'figi' = figi.dtype.id
 const figiValue: string = figi.defaultJSValue()
+const bbg: BbgField = fields.bbg('bbg', { nullable: false })
+const bbgId: 'bbg' = bbg.dtype.id
+const bbgKind: 'code' = bbg.dtype.kind
+const ric: RicField = fields.ric('ric', { nullable: false })
+const ricId: 'ric' = ric.dtype.id
+const ricKind: 'code' = ric.dtype.kind
+// A RIC has no neutral member, so a default is what a nullable column holds.
+const nullableRic: string | null = fields.ric('ric').defaultJSValue()
 const note: AsciiField = fields.ascii('note', { nullable: false })
 const noteId: 'ascii' = note.dtype.id
 const noteKind: 'text' = note.dtype.kind
@@ -133,6 +143,13 @@ void ccyValue
 void figi
 void figiId
 void figiValue
+void bbg
+void bbgId
+void bbgKind
+void ric
+void ricId
+void ricKind
+void nullableRic
 void note
 void noteId
 void noteKind

@@ -865,13 +865,14 @@ impl fmt::Display for DataType {
             | D::Float64
             | D::Country
             | D::Ccy
-            | D::MicCode
-            | D::CfiCode
-            | D::IsinCode
-            | D::CusipCode
-            | D::SedolCode
-            | D::BloombergCode
-            | D::FIGICode
+            | D::Mic
+            | D::Cfi
+            | D::Isin
+            | D::Cusip
+            | D::Sedol
+            | D::Bbg
+            | D::Ric
+            | D::Figi
             | D::Side
             | D::State
             | D::TimeInForce

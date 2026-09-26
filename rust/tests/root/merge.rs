@@ -409,8 +409,8 @@ mod lattice {
             assert_ne!(up(&DataType::Ccy, &other), DataType::Ccy);
         }
         assert_eq!(
-            down(&DataType::CfiCode, &DataType::fixed_ascii(6).unwrap()),
-            DataType::CfiCode
+            down(&DataType::Cfi, &DataType::fixed_ascii(6).unwrap()),
+            DataType::Cfi
         );
 
         // A side narrower than the code still outranks it: narrowing is the

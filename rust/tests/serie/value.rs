@@ -209,12 +209,14 @@ mod widths {
             ),
             (DataType::Country, Scalar::from("US"), DataTypeId::Country),
             (DataType::Ccy, Scalar::from("USD"), DataTypeId::Ccy),
-            (DataType::MicCode, Scalar::from("XNAS"), DataTypeId::MicCode),
+            (DataType::Mic, Scalar::from("XNAS"), DataTypeId::Mic),
+            (DataType::Cfi, Scalar::from("ESXXXX"), DataTypeId::Cfi),
             (
-                DataType::CfiCode,
-                Scalar::from("ESXXXX"),
-                DataTypeId::CfiCode,
+                DataType::Bbg,
+                Scalar::from("AAPL US Equity"),
+                DataTypeId::Bbg,
             ),
+            (DataType::Ric, Scalar::from("AAPL.OQ"), DataTypeId::Ric),
             (
                 DataType::interval(TimeUnit::YearMonth).unwrap(),
                 Scalar::from(15),

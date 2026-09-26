@@ -95,16 +95,18 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         string if string.is_string() => JsValueHint::String,
         D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Figi
         | D::Side
         | D::State
         | D::TimeInForce
+        | D::Unit
+        | D::Ric
         | D::Uuid
         | D::Url
         | D::Urn
@@ -363,16 +365,18 @@ fn text_or_binary_to_js<'env>(
             .into_unknown(env)?,
         D::Country
         | D::Ccy
-        | D::MicCode
-        | D::CfiCode
-        | D::IsinCode
-        | D::CusipCode
-        | D::SedolCode
-        | D::BloombergCode
-        | D::FIGICode
+        | D::Mic
+        | D::Cfi
+        | D::Isin
+        | D::Cusip
+        | D::Sedol
+        | D::Bbg
+        | D::Figi
         | D::Side
         | D::State
-        | D::TimeInForce => value
+        | D::TimeInForce
+        | D::Unit
+        | D::Ric => value
             .as_str()
             .ok_or_else(|| napi_error("invalid native string record value"))?
             .to_owned()

@@ -410,7 +410,7 @@ fn isin_run_batch(
         "isin",
         DataType::run_end_encoded(
             Field::new("run_ends", DataType::Int32, false),
-            Field::new("values", DataType::IsinCode, false),
+            Field::new("values", DataType::Isin, false),
         )
         .expect("int32 run ends"),
         false,
@@ -480,7 +480,7 @@ fn list_view_gathers_sliced_isin_runs_in_reordered_overlapping_order() {
         "item",
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::IsinCode.required_field("values"),
+            DataType::Isin.required_field("values"),
         )
         .expect("int32 run ends"),
         false,
@@ -529,7 +529,7 @@ fn list_view_gathers_sliced_isin_runs_in_reordered_overlapping_order() {
         Scalar::SerieView(Serie::new(
             values
                 .iter()
-                .map(|value| Scalar::IsinCode(yggdryl::IsinCode::new(value).unwrap()))
+                .map(|value| Scalar::Isin(yggdryl::Isin::new(value).unwrap()))
                 .collect::<Vec<_>>(),
         ))
     };
@@ -553,7 +553,7 @@ fn list_view_gathers_sliced_isin_runs_in_reordered_overlapping_order() {
             .collect::<Vec<_>>(),
         [C, C, A, A, B, B, B, B, C, C]
             .into_iter()
-            .map(|value| Scalar::IsinCode(yggdryl::IsinCode::new(value).unwrap()))
+            .map(|value| Scalar::Isin(yggdryl::Isin::new(value).unwrap()))
             .collect::<Vec<_>>()
     );
 
@@ -588,7 +588,7 @@ fn list_view_run_gather_refuses_an_i16_logical_total_before_building_arrow() {
         "item",
         DataType::run_end_encoded(
             DataType::Int16.required_field("run_ends"),
-            DataType::IsinCode.required_field("values"),
+            DataType::Isin.required_field("values"),
         )
         .expect("int16 run ends"),
         false,
@@ -648,7 +648,7 @@ fn list_view_run_gather_rejects_a_huge_single_run_at_the_budget() {
         "item",
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::IsinCode.required_field("values"),
+            DataType::Isin.required_field("values"),
         )
         .expect("int32 run ends"),
         false,
@@ -713,11 +713,8 @@ fn list_view_gathers_nested_run_values_with_null_and_zero_width_children() {
     let values_field = Field::new(
         "values",
         DataType::from(
-            yggdryl::StructType::from_fields([
-                DataType::IsinCode.required_field("code"),
-                empty_field,
-            ])
-            .expect("two record children"),
+            yggdryl::StructType::from_fields([DataType::Isin.required_field("code"), empty_field])
+                .expect("two record children"),
         ),
         true,
     );
@@ -898,7 +895,7 @@ fn list_view_gathers_struct_items_with_nested_isin_runs() {
         "encoded",
         DataType::run_end_encoded(
             DataType::Int32.required_field("run_ends"),
-            DataType::IsinCode.required_field("values"),
+            DataType::Isin.required_field("values"),
         )
         .expect("int32 run ends"),
         false,

@@ -28,24 +28,16 @@ function scratch(prefix) {
 test('the package exports the entry as yggdryl/replay', () => {
   assert.equal(require.resolve('yggdryl/replay'), ENTRY)
   assert.deepEqual(Object.keys(replay).sort(), [
-    'DEFAULT_STATE_DIR',
     'bookAt',
     'bookJson',
     'booksBetween',
     'booksJson',
     'createReplayServer',
-    'eventJson',
     'indexBooks',
-    'leafFromJson',
-    'leafJson',
-    'leavesJson',
     'loadSource',
     'main',
-    'merged',
-    'openScenarios',
     'parseArgs',
     'refusalText',
-    'rerun',
     'rowsOf',
     'synthetic',
     'toJson',
@@ -53,7 +45,6 @@ test('the package exports the entry as yggdryl/replay', () => {
   ])
   assert.equal(replay.createReplayServer, require('../replay/server.js').createReplayServer)
   assert.equal(replay.synthetic.books, require('../replay/synthetic.js').books)
-  assert.equal(replay.DEFAULT_STATE_DIR, path.join(os.homedir(), '.config', 'yggdryl', 'replay'))
 })
 
 test('parseArgs: one source, every option read once, the defaults in one place', () => {
@@ -65,13 +56,12 @@ test('parseArgs: one source, every option read once, the defaults in one place',
     rowheader: undefined,
     sendingTime: undefined,
     registry: undefined,
-    state: replay.DEFAULT_STATE_DIR,
     web: undefined,
   })
   assert.deepEqual(
     replay.parseArgs([
       '--port', '8080', 'capture.log', '--snapshot-millis', '250', '--global', '--rowheader', '^(?P<x>\\d+) ',
-      '--sending-time', '2024-01-02T10:15:30Z', '--registry', 'config/fix', '--state', 'st', '--web', 'w',
+      '--sending-time', '2024-01-02T10:15:30Z', '--registry', 'config/fix', '--web', 'w',
     ]),
     {
       source: 'capture.log',
@@ -81,7 +71,6 @@ test('parseArgs: one source, every option read once, the defaults in one place',
       rowheader: '^(?P<x>\\d+) ',
       sendingTime: '2024-01-02T10:15:30Z',
       registry: 'config/fix',
-      state: 'st',
       web: 'w',
     },
   )
@@ -94,11 +83,11 @@ test('parseArgs refuses what it cannot read, by name', () => {
   assert.throws(() => replay.parseArgs(['a', '--port', '-1']), { message: '--port: expected a non-negative whole number, got "-1"' })
   assert.throws(() => replay.parseArgs(['a', '--snapshot-millis', '1.5']), /--snapshot-millis: expected a non-negative whole number/)
   assert.throws(() => replay.parseArgs(['a', '--verbose']), /unknown option --verbose; the options are --global, --port/)
+  assert.throws(() => replay.parseArgs(['a', '--state', 'st']), /unknown option --state/)
 })
 
 test('the command line serves a source until interrupted', async () => {
-  const state = path.join(scratch('yggdryl-replay-cli-'), 'state')
-  const child = spawn(process.execPath, [ENTRY, 'synthetic', '--port', '0', '--state', state], {
+  const child = spawn(process.execPath, [ENTRY, 'synthetic', '--port', '0'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     timeout: 60_000,
   })
@@ -152,12 +141,11 @@ test('the command line refuses a source it cannot load, verbatim, and exits 1', 
 })
 
 test('main answers the URL and a close that stops serving', async () => {
-  const state = path.join(scratch('yggdryl-replay-main-'), 'state')
   // It prints the URL and a line about the source, as the command line does.
-  const served = await replay.main(['synthetic', '--state', state])
+  const served = await replay.main(['synthetic'])
   try {
     assert.match(served.url, /^http:\/\/127\.0\.0\.1:\d+\/$/)
-    const answer = await fetch(new URL('/api/field', served.url))
+    const answer = await fetch(new URL('/api/sources/synthetic/books?symbol=BETA', served.url))
     assert.equal(answer.status, 200)
   } finally {
     await served.close()

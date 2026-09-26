@@ -377,16 +377,16 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
         self.data.derive_securityid(id)
     }
-    fn get_cficode(&self) -> Option<&crate::CfiCode> {
+    fn get_cficode(&self) -> Option<&crate::Cfi> {
         self.data.get_cficode()
     }
-    fn set_cficode(&mut self, code: Option<crate::CfiCode>) {
+    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
         self.data.set_cficode(code);
     }
-    fn get_miccode(&self) -> Option<&crate::MicCode> {
+    fn get_miccode(&self) -> Option<&crate::Mic> {
         self.data.get_miccode()
     }
-    fn set_miccode(&mut self, code: Option<crate::MicCode>) {
+    fn set_miccode(&mut self, code: Option<crate::Mic>) {
         self.data.set_miccode(code);
     }
     fn get_lastpx(&self) -> Option<Decimal> {
@@ -874,16 +874,16 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn derive_securityid(&mut self, id: crate::securityid::SecurityId) -> bool {
         self.data.derive_securityid(id)
     }
-    fn get_cficode(&self) -> Option<&crate::CfiCode> {
+    fn get_cficode(&self) -> Option<&crate::Cfi> {
         self.data.get_cficode()
     }
-    fn set_cficode(&mut self, code: Option<crate::CfiCode>) {
+    fn set_cficode(&mut self, code: Option<crate::Cfi>) {
         self.data.set_cficode(code);
     }
-    fn get_miccode(&self) -> Option<&crate::MicCode> {
+    fn get_miccode(&self) -> Option<&crate::Mic> {
         self.data.get_miccode()
     }
-    fn set_miccode(&mut self, code: Option<crate::MicCode>) {
+    fn set_miccode(&mut self, code: Option<crate::Mic>) {
         self.data.set_miccode(code);
     }
     fn get_lastpx(&self) -> Option<Decimal> {

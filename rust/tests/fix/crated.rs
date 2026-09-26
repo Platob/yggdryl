@@ -7,7 +7,7 @@ use super::fixed_codec;
 mod categories {
     use std::sync::Arc;
     use yggdryl::graph::Market;
-    use yggdryl::{FIGICode, FixMsg, Scalar};
+    use yggdryl::{Figi, FixMsg, Scalar};
 
     #[test]
     fn figi_sources_lift_to_one_typed_crate_column_without_bloomberg_fallback() {
@@ -39,7 +39,7 @@ mod categories {
         explicit
             .set(
                 yggdryl::FIGICODE_TAG_NAME.0,
-                Scalar::FIGICode(FIGICode::new("BBG000BLNQ16").unwrap()),
+                Scalar::Figi(Figi::new("BBG000BLNQ16").unwrap()),
             )
             .expect("a direct FIGI fact");
         let row = explicit.into_row(&schema).unwrap();

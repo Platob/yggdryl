@@ -1,30 +1,23 @@
 'use strict'
 
 // The replay service: Node's `http` over the native package. Every answer is
-// the native package's - the walk's books, a view's rows, a constructor's
-// refusal - rendered by `json.js`; the service routes, holds the walks it
-// served, keeps the scenarios as files, streams books as server-sent events
-// and serves the page. Instants cross as the decimal text of nanoseconds,
-// decimals as their exact text, and a refusal as the native message, verbatim.
+// the native package's - the sources, the walk's books, a refusal - rendered
+// by `json.js`; the service routes, holds the walks it served, streams books
+// as server-sent events and serves the page. Instants cross as the decimal
+// text of nanoseconds, decimals as their exact text, and a refusal as the
+// native message, verbatim.
 
-const { randomUUID } = require('node:crypto')
 const fs = require('node:fs')
 const http = require('node:http')
-const os = require('node:os')
 const path = require('node:path')
 
-const { enums, graph } = require('../binding.js')
+const { graph } = require('../binding.js')
 
-const { DATED_KINDS, INSTANT_COLUMNS, KINDS, MARKETDATA_COLUMNS, booksJson, bookJson, leafFromJson, refusalText, rowsOf, toJson } =
-  require('./json.js')
-const { checkName, openScenarios } = require('./scenarios.js')
-const { bookAt, booksBetween, indexBooks, rerun, walk } = require('./walk.js')
-const web = require('./web.js')
+const { booksJson, refusalText, toJson } = require('./json.js')
+const { booksBetween, indexBooks, walk } = require('./walk.js')
 
 /** The component library and the page, beside this package. */
 const WEB_DIR = path.join(__dirname, '..', 'web')
-/** The largest request body read: a scenario of a few hundred events, each ~250 KiB of native text. */
-const BODY_LIMIT = 64 * 1024 * 1024
 /** Books rendered through one Arrow stream while an event stream is written. */
 const SSE_CHUNK = 256
 /** Walks held per source, one per grid setting asked for; the oldest is dropped past it. */
@@ -105,39 +98,6 @@ function flagParam(params, name, fallback) {
   throw new HttpError(400, `${name}: expected true or false, got ${JSON.stringify(value)}`)
 }
 
-/** The request body as text, bounded by `BODY_LIMIT`. */
-async function bodyText(req) {
-  const chunks = []
-  let length = 0
-  for await (const chunk of req) {
-    length += chunk.length
-    if (length > BODY_LIMIT) throw new HttpError(413, `request body exceeds ${BODY_LIMIT} bytes`)
-    chunks.push(chunk)
-  }
-  return Buffer.concat(chunks).toString('utf8')
-}
-
-/**
- * The request body as JSON; an instant - `currunix` or any `marketdata`
- * instant column - stays the text it was written as, so a nanosecond count
- * past 2^53 arrives exact.
- */
-async function bodyJson(req) {
-  const text = await bodyText(req)
-  if (!text.trim()) return {}
-  try {
-    return JSON.parse(text, function revive(key, value, context) {
-      if (typeof value !== 'number' || !INSTANT_COLUMNS.has(key)) return value
-      if (context && typeof context.source === 'string') return context.source
-      if (Number.isSafeInteger(value)) return String(value)
-      throw new HttpError(400, `${key}: expected the decimal text of nanoseconds, got a number past 2^53`)
-    })
-  } catch (error) {
-    if (error instanceof HttpError) throw error
-    throw new HttpError(400, `the request body is not JSON: ${error.message}`)
-  }
-}
-
 // ---- responses -------------------------------------------------------------
 
 function sendJson(res, status, body, headers = {}) {
@@ -150,11 +110,6 @@ function sendJson(res, status, body, headers = {}) {
     ...headers,
   })
   res.end(text)
-}
-
-function sendEmpty(res, status) {
-  res.writeHead(status, { 'Cache-Control': 'no-store' })
-  res.end()
 }
 
 /** Wait until `res` drains or closes; at once when its client has already left. */
@@ -173,10 +128,10 @@ function drained(res) {
 
 /**
  * Stream `books` as server-sent events - `event: book` per book in walk
- * order, then `event: end` with the count and `end`'s facts - rendering them
- * a chunk at a time and stopping when the client leaves.
+ * order, then `event: end` with the count - rendering them a chunk at a
+ * time and stopping when the client leaves.
  */
-async function streamBooks(res, books, end = {}) {
+async function streamBooks(res, books) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -195,7 +150,7 @@ async function streamBooks(res, books, end = {}) {
       count += 1
     }
   }
-  if (!closed) res.end(`event: end\ndata: ${toJson({ count, ...end })}\n\n`)
+  if (!closed) res.end(`event: end\ndata: ${toJson({ count })}\n\n`)
 }
 
 // ---- the service -----------------------------------------------------------
@@ -214,24 +169,13 @@ function sourcesOf(sources) {
 /**
  * The replay service over loaded sources (`loadSource` answers each):
  * `listen(port = 0, host = '127.0.0.1')` answers the URL it serves at,
- * `close()` ends every open stream and stops. `stateDir` holds the scenarios
- * (when omitted, a fresh temporary folder of the service's own, created on
- * the first save and removed by `close`), `webDir` the component library and
- * the page, `snapshotMillis` and `global` the walk a request that names
+ * `close()` ends every open stream and stops. `webDir` holds the component
+ * and the page, `snapshotMillis` and `global` the walk a request that names
  * neither reads.
  */
 function createReplayServer(options = {}) {
-  const { sources, stateDir, webDir = WEB_DIR, snapshotMillis: defaultMillis = 0, global: defaultGlobal = false } = options
+  const { sources, webDir = WEB_DIR, snapshotMillis: defaultMillis = 0, global: defaultGlobal = false } = options
   const states = new Map([...sourcesOf(sources)].map(([id, source]) => [id, { id, source, walks: new Map() }]))
-  // The folder the service made itself, which it alone removes; a named one is the caller's.
-  const ownState = stateDir === undefined ? path.join(os.tmpdir(), `yggdryl-replay-${randomUUID()}`) : null
-  const stateFolder = stateDir ?? ownState
-  let store
-
-  function scenarios() {
-    store ??= openScenarios(stateFolder)
-    return store
-  }
 
   function stateOf(id) {
     const state = states.get(id)
@@ -262,60 +206,24 @@ function createReplayServer(options = {}) {
     return held
   }
 
-  /**
-   * The symbol a request names, checked against the walks it reads - one, or
-   * the base and the scenario's - and known when either has it; the one
-   * `GLOBAL` of a consolidated walk by default.
-   */
-  function symbolParam(params, indexes, walkOpts, required) {
-    const known = [...new Set(indexes.flatMap((index) => [...index.bySymbol.keys()]))]
+  /** The symbol a request names, checked against the walk it reads; `GLOBAL` for a consolidated walk by default. */
+  function symbolParam(params, index, walkOpts) {
+    const known = [...index.bySymbol.keys()]
     let symbol = params.get('symbol') ?? undefined
     if (symbol === undefined && walkOpts.global) symbol = graph.GLOBAL_SYMBOL
-    if (symbol === undefined) {
-      if (!required) return undefined
-      throw new HttpError(400, `symbol: expected one of ${known.join(', ')}`)
-    }
-    if (!known.includes(symbol)) {
-      const walks = indexes.length > 1 ? 'the base or the scenario walk; their' : 'this walk; its'
-      throw new HttpError(404, `no symbol ${JSON.stringify(symbol)} in ${walks} symbols are ${known.join(', ')}`)
+    if (symbol !== undefined && !known.includes(symbol)) {
+      throw new HttpError(404, `no symbol ${JSON.stringify(symbol)} in this walk; its symbols are ${known.join(', ')}`)
     }
     return symbol
   }
 
-  /**
-   * What `read(store)` answers of the scenario `name`: a name that names no
-   * file is the request's fault (400), a file that cannot be read back the
-   * service's (500, its message).
-   */
-  async function stored(name, read) {
-    const store = await scenarios()
-    checkName(name)
-    try {
-      return read(store)
-    } catch (error) {
-      throw new HttpError(500, refusalText(error))
-    }
-  }
-
-  /** `{ scenario, operations }`: the stored scenario and its events' native leaves, each decoded once. */
-  async function loadScenario(name) {
-    const loaded = await stored(name, (store) => store.load(name))
-    if (loaded === null) throw new HttpError(404, `no scenario ${JSON.stringify(name)}`)
-    return loaded
-  }
-
   const routes = [
-    // The insert form's vocabulary: every column, and the kinds an inserted event may name - the dated
-    // ones, because admission is the native walk over the leaf alone and it refuses an undated leaf.
-    ['GET', ['api', 'field'], () => ({ columns: MARKETDATA_COLUMNS, kinds: DATED_KINDS })],
     [
       'GET',
       ['api', 'sources'],
       () => ({
         snapshotMillis: defaultMillis,
         global: defaultGlobal,
-        // The view names the view route reads: the package's own listing, served so no page keeps a copy.
-        views: enums.marketViews,
         sources: [...states.values()].map(({ id, source }) => ({
           id,
           kind: source.kind,
@@ -332,148 +240,8 @@ function createReplayServer(options = {}) {
       async ({ res, params, source }) => {
         const walkOpts = walkOptions(params)
         const { index } = walkOf(stateOf(source), walkOpts)
-        const symbol = symbolParam(params, [index], walkOpts, false)
+        const symbol = symbolParam(params, index, walkOpts)
         await streamBooks(res, booksBetween(index, symbol, instantParam(params, 'from'), instantParam(params, 'to')))
-      },
-    ],
-    [
-      'GET',
-      ['api', 'sources', ':source', 'book'],
-      ({ params, source }) => {
-        const walkOpts = walkOptions(params)
-        const { index } = walkOf(stateOf(source), walkOpts)
-        const symbol = symbolParam(params, [index], walkOpts, true)
-        const at = instantParam(params, 'at')
-        const book = bookAt(index, symbol, at)
-        if (book === null) throw new HttpError(404, `no book of ${symbol} stands at ${at}`)
-        return bookJson(book)
-      },
-    ],
-    [
-      'GET',
-      ['api', 'sources', ':source', 'lifecycle'],
-      ({ params, source }) => {
-        const { operations } = stateOf(source).source
-        const reader = graph.MarketData.arrowReader(operations)
-        return rowsOf(graph.MarketData.applyView('lifecycle', reader, [], params.get('crosscode')))
-      },
-    ],
-    [
-      'GET',
-      ['api', 'sources', ':source', 'view'],
-      ({ params, source }) => {
-        // The replay's whole stream: the operations, then the books the
-        // walk the request names folded them into; each view keeps its kinds.
-        const state = stateOf(source)
-        const { books } = walkOf(state, walkOptions(params))
-        const reader = graph.MarketData.arrowReader([...state.source.operations, ...books])
-        const view = params.get('view') ?? ''
-        return rowsOf(graph.MarketData.applyView(view, reader, params.getAll('lift'), params.get('crosscode')))
-      },
-    ],
-    [
-      'GET',
-      ['api', 'sources', ':source', 'scenarios', ':name', 'books'],
-      async ({ res, params, source, name }) => {
-        const state = stateOf(source)
-        const walkOpts = walkOptions(params)
-        const { scenario, operations } = await loadScenario(name)
-        const { books, from } = await rerun(state.source.operations, scenario, walkOpts, operations)
-        const index = indexBooks(books)
-        const symbol = symbolParam(params, [index], walkOpts, false)
-        const start = instantParam(params, 'from') ?? from ?? undefined
-        const range = booksBetween(index, symbol, start, instantParam(params, 'to'))
-        await streamBooks(res, range, { from: from === null ? null : String(from) })
-      },
-    ],
-    [
-      'GET',
-      ['api', 'sources', ':source', 'scenarios', ':name', 'diff'],
-      async ({ params, source, name }) => {
-        const state = stateOf(source)
-        const walkOpts = walkOptions(params)
-        const { scenario, operations } = await loadScenario(name)
-        const base = walkOf(state, walkOpts).index
-        // The re-run first: a symbol only the scenario introduces diffs
-        // against an empty base, every instant of it added.
-        const { books, from } = await rerun(state.source.operations, scenario, walkOpts, operations)
-        const other = indexBooks(books)
-        const symbol = symbolParam(params, [base, other], walkOpts, true)
-        const bounds = [instantParam(params, 'from'), instantParam(params, 'to')]
-        const { diffStreams } = await web()
-        const diff = diffStreams(
-          booksJson(booksBetween(base, symbol, ...bounds)),
-          booksJson(booksBetween(other, symbol, ...bounds)),
-        )
-        return {
-          symbol,
-          from: from === null ? null : String(from),
-          instants: diff,
-        }
-      },
-    ],
-    [
-      'GET',
-      ['api', 'scenarios'],
-      async () => {
-        // Every scenario whole, as its file holds it, in one pass over the folder.
-        const store = await scenarios()
-        const all = store.list().map((name) => {
-          try {
-            return store.read(name)
-          } catch (error) {
-            throw new HttpError(500, `scenario ${JSON.stringify(name)}: ${refusalText(error)}`)
-          }
-        })
-        return { scenarios: all.filter((scenario) => scenario !== null) }
-      },
-    ],
-    ['GET', ['api', 'scenarios', ':name'], async ({ name }) => (await loadScenario(name)).scenario],
-    [
-      'PUT',
-      ['api', 'scenarios', ':name'],
-      async ({ req, name }) => {
-        const body = await bodyJson(req)
-        if (body.name !== undefined && body.name !== name) {
-          throw new HttpError(400, `the body names the scenario ${JSON.stringify(body.name)}, the path ${JSON.stringify(name)}`)
-        }
-        if (body.events !== undefined && !Array.isArray(body.events)) throw new HttpError(400, 'events: expected a list')
-        // The store rebuilds, admits and re-renders each event, as a POST does.
-        return (await scenarios()).save({ name, events: body.events ?? [] })
-      },
-    ],
-    [
-      'DELETE',
-      ['api', 'scenarios', ':name'],
-      async ({ res, name }) => {
-        if (!(await scenarios()).remove(name)) throw new HttpError(404, `no scenario ${JSON.stringify(name)}`)
-        sendEmpty(res, 204)
-      },
-    ],
-    [
-      'POST',
-      ['api', 'scenarios', ':name', 'events'],
-      async ({ req, res, name }) => {
-        const leaf = leafFromJson(await bodyJson(req))
-        const { createScenario } = await web()
-        const store = await scenarios()
-        // The events already held are kept as stored; only the new one is rendered.
-        const held = (await stored(name, () => store.read(name))) ?? createScenario(name)
-        sendJson(res, 201, store.insert(held, leaf))
-      },
-    ],
-    [
-      'DELETE',
-      ['api', 'scenarios', ':name', 'events', ':curruuid'],
-      async ({ res, name, curruuid }) => {
-        const { removeEvent } = await web()
-        const { scenario, operations } = await loadScenario(name)
-        const kept = removeEvent(scenario, curruuid)
-        if (kept === scenario) throw new HttpError(404, `no event ${curruuid} in scenario ${JSON.stringify(name)}`)
-        // The leaves the load decoded are handed on, the removed one left out.
-        const leaves = operations.filter((_, at) => scenario.events[at].curruuid !== curruuid)
-        ;(await scenarios()).save(kept, leaves)
-        sendEmpty(res, 204)
       },
     ],
   ]
@@ -508,7 +276,7 @@ function createReplayServer(options = {}) {
       throw new HttpError(405, `${req.method} is not allowed here; allowed: ${allowed}`, { Allow: allowed })
     }
     const [handler, named] = held
-    const answer = await handler({ req, res, params, ...named })
+    const answer = await handler({ res, params, ...named })
     if (!res.headersSent && answer !== undefined) sendJson(res, 200, answer)
   }
 
@@ -589,8 +357,6 @@ function createReplayServer(options = {}) {
 
   return {
     server,
-    /** The folder the scenarios are kept in. */
-    stateDir: stateFolder,
     /** Serve on `port` (an ephemeral one by default), answering the base URL. */
     listen(port = 0, host = '127.0.0.1') {
       return new Promise((resolve, reject) => {
@@ -602,13 +368,11 @@ function createReplayServer(options = {}) {
         })
       })
     },
-    /** Stop serving, ending every open connection and stream; the state folder the service made is removed. */
+    /** Stop serving, ending every open connection and stream. */
     close() {
       return new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()))
         server.closeAllConnections()
-      }).finally(() => {
-        if (ownState !== null) fs.rmSync(ownState, { recursive: true, force: true })
       })
     },
   }

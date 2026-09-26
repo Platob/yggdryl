@@ -18,16 +18,13 @@ test('a served module page runs in headless Chromium and screenshots', async () 
     `<!doctype html><html data-theme="dark"><head><link rel="stylesheet" href="/theme.css"></head>
 <body><main id="root" class="ygg-ui"></main>
 <script type="module">
-  import { toPixels } from '/instant.js'
-  import { formatDecimal } from '/decimal.js'
-  import { createStore } from '/store.js'
-  const store = createStore({ px: '82.50' })
-  document.getElementById('root').textContent = formatDecimal(store.get().px) + ' @ ' + toPixels(1700000000000000005n, 1700000000000000000n, 1n)
+  import { instantText, priceText } from '/book-timeline.js'
+  document.getElementById('root').textContent = priceText(null) + ' @ ' + instantText('1700000000000000005')
   window.ready = true
 </script></body></html>`,
   )
-  // The pure modules are served from the library folder beside the page.
-  for (const name of ['instant.js', 'decimal.js', 'store.js', 'theme.css']) {
+  // The component and the theme are served from the library folder beside the page.
+  for (const name of ['book-timeline.js', 'theme.css']) {
     writeFileSync(path.join(site, name), await import('node:fs').then((fs) => fs.readFileSync(path.join(WEB, name))))
   }
   const server = await serve(site)
@@ -36,7 +33,7 @@ test('a served module page runs in headless Chromium and screenshots', async () 
     page = await launch()
     await page.open(server.url)
     assert.equal(await page.evaluate('window.ready'), true)
-    assert.equal(await page.evaluate("document.getElementById('root').textContent"), '82.5 @ 5')
+    assert.equal(await page.evaluate("document.getElementById('root').textContent"), 'market @ 2023-11-14T22:13:20.000000005Z')
     assert.equal(
       await page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--ygg-ui-page').trim()"),
       '#000000',

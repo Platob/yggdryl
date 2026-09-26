@@ -953,7 +953,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
 
-`TextLine` exposes the [event identity](../graph/index.md#event) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+`TextLine` exposes the [event identity](../graph/event.md#identity) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 
 === "Rust"
 

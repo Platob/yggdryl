@@ -533,6 +533,9 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("timeinforce", "GTC"),
         ("cusip", "037833100"),
         ("sedol", "B0YBKJ7"),
+        ("bbg", "AAPL US Equity"),
+        ("ric", "VOD.L"),
+        ("figi", "BBG000BLNQ16"),
     ]
     record_state = (
         "struct",

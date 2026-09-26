@@ -272,7 +272,7 @@ assert_eq!(State::read("Filled")?.merge_with(&State::read("New")?), State::read(
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"

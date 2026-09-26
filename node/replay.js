@@ -6,29 +6,20 @@
 //
 //   node node/replay.js <source> [--port 0] [--snapshot-millis 0] [--global]
 //     [--rowheader <regex>] [--sending-time <ns|ISO 8601>] [--registry <dir>]
-//     [--state <dir>] [--web <dir>]
+//     [--web <dir>]
 //
 // `<source>` is a `.arrow`/`.ipc`/`.feather`/`.parquet` file of `marketdata`
 // rows, the word `synthetic`, or any other file as a FIX capture read under
 // the row header (the ULBridge one by default), dated by the sending clock
 // where a line states none (2024-01-02T10:15:30Z by default) and resolved
 // against the dictionary in `--registry` (the process default otherwise).
-// Prints the URL it serves at and serves until SIGINT; scenarios are kept in
-// `--state`, `~/.config/yggdryl/replay` by default.
+// Prints the URL it serves at and serves until SIGINT.
 
-const os = require('node:os')
-const path = require('node:path')
-
-const { bookJson, booksJson, eventJson, leafFromJson, leafJson, leavesJson, refusalText, rowsOf, toJson } =
-  require('./replay/json.js')
-const { openScenarios } = require('./replay/scenarios.js')
+const { bookJson, booksJson, refusalText, rowsOf, toJson } = require('./replay/json.js')
 const { createReplayServer } = require('./replay/server.js')
 const { loadSource } = require('./replay/sources.js')
 const { synthetic } = require('./replay/synthetic.js')
-const { bookAt, booksBetween, indexBooks, merged, rerun, walk } = require('./replay/walk.js')
-
-/** Where the command line keeps scenarios unless `--state` names a folder. */
-const DEFAULT_STATE_DIR = path.join(os.homedir(), '.config', 'yggdryl', 'replay')
+const { bookAt, booksBetween, indexBooks, walk } = require('./replay/walk.js')
 
 const OPTIONS = Object.freeze({
   '--port': 'port',
@@ -36,7 +27,6 @@ const OPTIONS = Object.freeze({
   '--rowheader': 'rowheader',
   '--sending-time': 'sendingTime',
   '--registry': 'registry',
-  '--state': 'state',
   '--web': 'web',
 })
 
@@ -59,7 +49,6 @@ function parseArgs(argv) {
     rowheader: undefined,
     sendingTime: undefined,
     registry: undefined,
-    state: DEFAULT_STATE_DIR,
     web: undefined,
   }
   for (let at = 0; at < argv.length; at += 1) {
@@ -101,7 +90,6 @@ async function main(argv = process.argv.slice(2)) {
   })
   const service = createReplayServer({
     sources: [source],
-    stateDir: args.state,
     webDir: args.web,
     snapshotMillis: args.snapshotMillis,
     global: args.global,
@@ -133,24 +121,16 @@ if (require.main === module) {
 }
 
 module.exports = {
-  DEFAULT_STATE_DIR,
   bookAt,
   bookJson,
   booksBetween,
   booksJson,
   createReplayServer,
-  eventJson,
   indexBooks,
-  leafFromJson,
-  leafJson,
-  leavesJson,
   loadSource,
   main,
-  merged,
-  openScenarios,
   parseArgs,
   refusalText,
-  rerun,
   rowsOf,
   synthetic,
   toJson,

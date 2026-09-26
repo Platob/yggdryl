@@ -774,6 +774,8 @@ def test_a_registered_code_is_its_own_datatype() -> None:
         ("isin", 12),
         ("cusip", 9),
         ("sedol", 7),
+        ("bbg", 32),
+        ("ric", 32),
     ]:
         dtype = DataType(name)
         assert (dtype.id, dtype.code_width, dtype.kind) == (name, width, "code")
@@ -908,6 +910,56 @@ def test_a_registered_code_carries_its_identity_across_arrow() -> None:
     assert Serie.from_arrow_array(pa.array(["EURO"]), ccy).into_arrow_array().to_pylist() == [None]
     with pytest.raises(ValueError, match="at most 3 bytes"):
         Serie.from_arrow_array(pa.array(["EURO"]), ccy, safe=False).into_arrow_array()
+
+
+def test_a_ric_is_one_printable_token_that_keeps_its_case() -> None:
+    # A Refinitiv Identification Code has no registry and no check digit, so
+    # its rule is its shape: one token of printable ASCII - no space, no
+    # control byte - of at most thirty-two bytes, its case part of the code.
+    ric = DataType("ric")
+    assert ric == DataType.from_logical_name("ric")
+    assert (ric.id, ric.kind, ric.code_name, ric.code_width) == ("ric", "code", "ric", 32)
+    assert ric.fixed_byte_width is None
+    assert ric.string_parameters is None
+    assert yggdryl.ric("instrument").dtype == ric
+
+    vodafone = ric.scalar("VOD.L")
+    assert vodafone.as_py() == "VOD.L"
+    assert vodafone.kind == "ric"
+    assert pickle.loads(pickle.dumps(vodafone)) == vodafone
+    assert ric.scalar("ESc1").as_py() == "ESc1"
+    assert ric.scalar("ESc1") != ric.scalar("ESC1")
+    with pytest.raises(ValueError, match="printable ASCII, got 0x20 at 3"):
+        ric.scalar("VOD L")
+    with pytest.raises(ValueError, match="at most 32 bytes"):
+        ric.scalar("V" * 33)
+    # No member is neutral, so there is no default to fill with: empty text
+    # is absence, which only a nullable column accepts.
+    with pytest.raises(ValueError, match="invalid ric datatype"):
+        ric.default_scalar()
+    assert ric.scalar("").kind == "null"
+    with pytest.raises(ValueError, match="non-nullable"):
+        Field("instrument", ric, nullable=False).scalar("")
+    # One text under two identities is two values, each crossing Arrow
+    # under its own extension name.
+    assert ric.scalar("IBM") != DataType("bbg").scalar("IBM")
+    assert Field("id", "bbg").into_arrow().metadata[b"ARROW:extension:name"] == b"yggdryl.bbg"
+
+    field = Field("instrument", "ric")
+    arrow_field = field.into_arrow()
+    assert arrow_field.type == pa.string()
+    assert arrow_field.metadata == {
+        b"ARROW:extension:name": b"yggdryl.ric",
+        b"ARROW:extension:metadata": b"",
+    }
+    assert Field.from_arrow(arrow_field) == field
+    # A cell the code refuses is null under the safe cast, and so is an
+    # empty cell, since a RIC has no neutral member to fill it with.
+    assert Serie.from_arrow_array(
+        pa.array(["VOD.L", "VOD L", ""]), field
+    ).into_arrow_array().to_pylist() == ["VOD.L", None, None]
+    with pytest.raises(ValueError, match='row 0 of column instrument.*"VOD L"'):
+        Serie.from_arrow_array(pa.array(["VOD L"]), field, safe=False).into_arrow_array()
 
 
 def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> None:
@@ -1420,7 +1472,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "isin": yggdryl.isin("value"),
         "cusip": yggdryl.cusip("value"),
         "sedol": yggdryl.sedol("value"),
-        "bloomberg": yggdryl.bloomberg("value"),
+        "bbg": yggdryl.bbg("value"),
+        "ric": yggdryl.ric("value"),
         "figi": yggdryl.figi("value"),
         "uuid": yggdryl.uuid("value"),
         "version": yggdryl.version("value"),

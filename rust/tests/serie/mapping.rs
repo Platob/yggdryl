@@ -397,7 +397,7 @@ fn null_map_rows_and_null_struct_ancestors_mask_their_physical_entries() {
     fn map(nulls: Option<NullBuffer>) -> MapArray {
         let fields: Fields = vec![
             Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
-            DataType::IsinCode
+            DataType::Isin
                 .required_field("value")
                 .into_arrow_field_ref()
                 .expect("ISIN projects"),
@@ -481,7 +481,7 @@ fn hidden_narrow_map_spans_are_compacted_and_visible_bad_values_are_refused() {
     fn physical(nulls: Option<NullBuffer>) -> MapArray {
         let fields: Fields = vec![
             Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
-            DataType::IsinCode
+            DataType::Isin
                 .required_field("value")
                 .into_arrow_field_ref()
                 .expect("ISIN projects"),
@@ -560,7 +560,7 @@ fn hidden_narrow_map_spans_are_compacted_and_visible_bad_values_are_refused() {
 fn a_null_struct_ancestor_compacts_its_hidden_narrow_map_span() {
     let fields: Fields = vec![
         Arc::new(ArrowField::new("key", ArrowDataType::Utf8, false)),
-        DataType::IsinCode
+        DataType::Isin
             .required_field("value")
             .into_arrow_field_ref()
             .expect("ISIN projects"),

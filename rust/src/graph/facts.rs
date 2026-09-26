@@ -22,7 +22,7 @@ use super::market::{Lane, Metadata, empty_metadata, restating_operation};
 use super::{Element, Event, Market, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
-use crate::{Ccy, CfiCode, Decimal, MicCode, Result, Side, State, TimeInForce, Unit, Uuid};
+use crate::{Ccy, Cfi, Decimal, Mic, Result, Side, State, TimeInForce, Unit, Uuid};
 
 /// Every fact [`Element`] and [`Market`] name, as plain fields, with no
 /// instant: what a book level, a side's summary or an undated entry is.
@@ -40,8 +40,11 @@ pub(crate) struct MarketFacts {
     unit: Unit,
     side: Side,
     securityids: SecurityIds,
-    cficode: Option<CfiCode>,
-    miccode: Option<MicCode>,
+    /// The sources `securityids` holds by derivation alone: provenance,
+    /// never content.
+    derived: Derived,
+    cficode: Option<Cfi>,
+    miccode: Option<Mic>,
     lastpx: Option<Decimal>,
     lastqty: Option<Decimal>,
     avgpx: Option<Decimal>,
@@ -71,6 +74,7 @@ impl Default for MarketFacts {
             unit: Unit::none(),
             side: Side::Unknown,
             securityids: SecurityIds::default(),
+            derived: Derived::default(),
             cficode: None,
             miccode: None,
             lastpx: None,
@@ -85,6 +89,73 @@ impl Default for MarketFacts {
             ticker: None,
             metadata: None,
         }
+    }
+}
+
+/// Which of an element's identifiers it holds by derivation alone - what
+/// its ISIN implies, what a lifecycle learned under it - and never states:
+/// one bit per position of the sorted set, so tracking allocates nothing. A
+/// stated identifier replaces a derived one, and removing the ISIN, which
+/// every one hangs on, takes them all back. A position past the 64 a mask
+/// counts holds as stated; the set has 33 known sources.
+///
+/// Provenance rather than content: a row does not carry it, so two elements
+/// holding the same identifiers are equal whichever of them were derived.
+#[derive(Clone, Copy, Debug, Default)]
+struct Derived(u64);
+
+impl PartialEq for Derived {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Derived {
+    fn bit(position: usize) -> u64 {
+        1_u64.checked_shl(position as u32).unwrap_or(0)
+    }
+
+    /// Every position before `position`.
+    fn below(position: usize) -> u64 {
+        Self::bit(position).wrapping_sub(1)
+    }
+
+    fn contains(self, position: usize) -> bool {
+        self.0 & Self::bit(position) != 0
+    }
+
+    /// An identifier entered at `position`: the ones after it move up.
+    fn entered(&mut self, position: usize, derived: bool) {
+        let below = Self::below(position);
+        self.0 = (self.0 & below) | ((self.0 & !below) << 1);
+        if derived {
+            self.0 |= Self::bit(position);
+        }
+    }
+
+    /// The identifier at `position` is stated now.
+    fn stated(&mut self, position: usize) {
+        self.0 &= !Self::bit(position);
+    }
+
+    /// The identifier at `position` left: the ones after it move down.
+    fn left(&mut self, position: usize) {
+        let below = Self::below(position);
+        self.0 = (self.0 & below) | ((self.0 >> 1) & !below);
+    }
+}
+
+impl MarketFacts {
+    /// Where `key` stands in the sorted identifiers, or where it would.
+    fn slot(&self, key: &str) -> std::result::Result<usize, usize> {
+        self.securityids
+            .binary_search_by(|held| held.key_str().cmp(key))
+    }
+
+    /// Whether `key`'s identifier is held by derivation alone.
+    pub(crate) fn is_derived_securityid(&self, key: &SecType) -> bool {
+        self.slot(key.as_str())
+            .is_ok_and(|position| self.derived.contains(position))
     }
 }
 
@@ -216,36 +287,69 @@ impl Market for MarketFacts {
 
     fn set_securityids(&mut self, ids: SecurityIds) -> Result<()> {
         self.securityids = ids;
+        self.derived = Derived::default();
         Ok(())
     }
 
+    /// A stated identifier fills an absent source or replaces a derived one.
     fn insert_securityid(&mut self, id: SecurityId) -> Result<bool> {
-        Ok(self.securityids.insert(id))
+        match self.slot(id.key_str()) {
+            Ok(position) if self.derived.contains(position) => {
+                self.derived.stated(position);
+                self.securityids.set(id);
+                Ok(true)
+            }
+            Ok(_) => Ok(false),
+            Err(position) => {
+                self.derived.entered(position, false);
+                Ok(self.securityids.insert(id))
+            }
+        }
     }
 
     fn remove_securityid(&mut self, key: &SecType) -> Result<bool> {
-        Ok(self.securityids.remove(key).is_some())
+        let Ok(position) = self.slot(key.as_str()) else {
+            return Ok(false);
+        };
+        self.securityids.remove(key);
+        self.derived.left(position);
+        if key.as_str() == "ISIN" {
+            for position in (0..self.securityids.len()).rev() {
+                if self.derived.contains(position) {
+                    let derived = self.securityids[position].sectype();
+                    self.securityids.remove(&derived);
+                    self.derived.left(position);
+                }
+            }
+        }
+        Ok(true)
     }
 
     fn derive_securityid(&mut self, id: SecurityId) -> bool {
-        self.securityids.insert(id)
+        match self.slot(id.key_str()) {
+            Ok(_) => false,
+            Err(position) => {
+                self.derived.entered(position, true);
+                self.securityids.insert(id)
+            }
+        }
     }
 
-    fn get_cficode(&self) -> Option<&CfiCode> {
+    fn get_cficode(&self) -> Option<&Cfi> {
         self.cficode.as_ref()
     }
 
     /// A market keeps only a detailed classification: a code that says
     /// nothing past its category and group is stored as none.
-    fn set_cficode(&mut self, code: Option<CfiCode>) {
-        self.cficode = code.filter(|held| CfiCode::is_detailed(held.as_str()));
+    fn set_cficode(&mut self, code: Option<Cfi>) {
+        self.cficode = code.filter(|held| Cfi::is_detailed(held.as_str()));
     }
 
-    fn get_miccode(&self) -> Option<&MicCode> {
+    fn get_miccode(&self) -> Option<&Mic> {
         self.miccode.as_ref()
     }
 
-    fn set_miccode(&mut self, code: Option<MicCode>) {
+    fn set_miccode(&mut self, code: Option<Mic>) {
         self.miccode = code;
     }
 
@@ -805,6 +909,11 @@ impl OperationEventFacts {
             event: MarketEventFacts::at(unix),
             operation: OperationExtras::default(),
         }
+    }
+
+    /// Whether `key`'s identifier is held by derivation alone.
+    pub(crate) fn is_derived_securityid(&self, key: &SecType) -> bool {
+        self.event.market.is_derived_securityid(key)
     }
 
     /// This operation as the event alone, the operation facts dropped: a

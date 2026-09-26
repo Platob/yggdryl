@@ -365,12 +365,13 @@ export type DataTypeId =
   | 'isin'
   | 'cusip'
   | 'sedol'
-  | 'bloomberg'
+  | 'bbg'
   | 'figi'
   | 'side'
   | 'state'
   | 'timeinforce'
   | 'unit'
+  | 'ric'
   | 'uuid'
   | 'version'
   | 'url'
@@ -475,12 +476,13 @@ interface DataTypeKindById {
   isin: 'code'
   cusip: 'code'
   sedol: 'code'
-  bloomberg: 'code'
+  bbg: 'code'
   figi: 'code'
   side: 'code'
   state: 'code'
   timeinforce: 'code'
   unit: 'code'
+  ric: 'code'
   uuid: 'uuid'
   version: 'text'
   url: 'text'
@@ -1223,19 +1225,19 @@ export type CountryField = FieldOf<'country', string>
 /** ISO 4217, the three-letter currency code, stored as its text. */
 export type CcyField = FieldOf<'ccy', string>
 /** ISO 10383, the four-character market identifier code. */
-export type MicCodeField = FieldOf<'mic', string>
+export type MicField = FieldOf<'mic', string>
 /** ISO 10962, the six-character instrument classification. */
-export type CfiCodeField = FieldOf<'cfi', string>
+export type CfiField = FieldOf<'cfi', string>
 /** ISO 6166, the twelve-character securities identifier closed by its check digit. */
-export type IsinCodeField = FieldOf<'isin', string>
+export type IsinField = FieldOf<'isin', string>
 /** CUSIP, the nine-character securities identifier closed by its check digit. */
-export type CusipCodeField = FieldOf<'cusip', string>
+export type CusipField = FieldOf<'cusip', string>
 /** SEDOL, the seven-character securities identifier closed by its check digit. */
-export type SedolCodeField = FieldOf<'sedol', string>
+export type SedolField = FieldOf<'sedol', string>
 /** A Bloomberg identifier - a ticker, a market and a yellow key - bounded at thirty-two bytes. */
-export type BloombergCodeField = FieldOf<'bloomberg', string>
+export type BbgField = FieldOf<'bbg', string>
 /** FIGI, the twelve-character Financial Instrument Global Identifier closed by its check digit. */
-export type FIGICodeField = FieldOf<'figi', string>
+export type FigiField = FieldOf<'figi', string>
 /** FIX Side(54), the one-character order side, held to four bytes. */
 export type SideField = FieldOf<'side', string>
 /** An order state ranked from the first to the terminal ones, held to ten bytes. */
@@ -1244,6 +1246,8 @@ export type StateField = FieldOf<'state', string>
 export type TimeInForceField = FieldOf<'timeinforce', string>
 /** The unit a quantity is counted in, FIX UnitOfMeasure(996), ASCII held to thirty-two bytes. */
 export type UnitField = FieldOf<'unit', string>
+/** A Refinitiv Identification Code - a ticker and an exchange code - printable ASCII bounded at thirty-two bytes. */
+export type RicField = FieldOf<'ric', string>
 export type SerieField<V = unknown> = FieldOf<'serie', V[], string, unknown>
 export type SerieViewField<V = unknown> = FieldOf<
   'serie_view',
@@ -1535,17 +1539,18 @@ export interface FieldsNamespace {
   mediatype(name: string, options?: FieldOptions): MediaTypeField
   country(name: string, options?: FieldOptions): CountryField
   ccy(name: string, options?: FieldOptions): CcyField
-  mic(name: string, options?: FieldOptions): MicCodeField
-  cfi(name: string, options?: FieldOptions): CfiCodeField
-  isin(name: string, options?: FieldOptions): IsinCodeField
-  cusip(name: string, options?: FieldOptions): CusipCodeField
-  sedol(name: string, options?: FieldOptions): SedolCodeField
-  bloomberg(name: string, options?: FieldOptions): BloombergCodeField
-  figi(name: string, options?: FieldOptions): FIGICodeField
+  mic(name: string, options?: FieldOptions): MicField
+  cfi(name: string, options?: FieldOptions): CfiField
+  isin(name: string, options?: FieldOptions): IsinField
+  cusip(name: string, options?: FieldOptions): CusipField
+  sedol(name: string, options?: FieldOptions): SedolField
+  bbg(name: string, options?: FieldOptions): BbgField
+  figi(name: string, options?: FieldOptions): FigiField
   side(name: string, options?: FieldOptions): SideField
   state(name: string, options?: FieldOptions): StateField
   timeinforce(name: string, options?: FieldOptions): TimeInForceField
   unit(name: string, options?: FieldOptions): UnitField
+  ric(name: string, options?: FieldOptions): RicField
   geometry(name: string, crs?: string, options?: FieldOptions): GeometryField
   geometry(name: string, options: FieldOptions): GeometryField
   geography(
@@ -2163,10 +2168,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'sedol', string, N, O>
-  bloomberg<const N extends string, const O extends FieldOptionsInput = undefined>(
+  bbg<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
-  ): NamedField<'bloomberg', string, N, O>
+  ): NamedField<'bbg', string, N, O>
   figi<const N extends string, const O extends FieldOptionsInput = undefined>(
     name: N,
     options?: O,
@@ -2193,6 +2198,10 @@ export interface FieldsNamespace {
     name: N,
     options?: O,
   ): NamedField<'unit', string, N, O>
+  ric<const N extends string, const O extends FieldOptionsInput = undefined>(
+    name: N,
+    options?: O,
+  ): NamedField<'ric', string, N, O>
   geometry<
     const N extends string,
     const O extends FieldOptionsInput = undefined,
