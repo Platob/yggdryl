@@ -495,7 +495,12 @@ def test_a_float_cast_into_a_decimal_rounds_half_away_from_zero_on_both_tiers() 
     bound = cast.bind(root)
     assert [bound.apply_row({"v": value}) for value in values] == expected
     batch = pa.record_batch({"v": pa.array(values, pa.float64())})
-    assert cast.apply_arrow_batch(batch).to_pylist() == expected
+    # `decimal(10,2)` is Arrow's decimal64, which pyarrow 18 cannot turn into Python values, so
+    # the batch is read back through the package's own column door rather than `to_pylist`.
+    answer = Serie.from_arrow_batch(cast.apply_arrow_batch(batch))
+    assert {name: answer.child(name).as_py() for name in expected[0]} == {
+        name: [row[name] for row in expected] for name in expected[0]
+    }
 
 
 def test_a_fixed_decimal_leaf_cast_to_text_is_its_trimmed_text_on_both_tiers() -> None:
