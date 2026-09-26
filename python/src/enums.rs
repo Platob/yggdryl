@@ -260,6 +260,12 @@ impl PyMimeType {
     }
 
     #[classattr]
+    #[pyo3(name = "HTTP")]
+    fn http_constant() -> Self {
+        Self::from_core(CoreMimeType::HTTP)
+    }
+
+    #[classattr]
     #[pyo3(name = "PDF")]
     fn pdf_constant() -> Self {
         Self::from_core(CoreMimeType::PDF)

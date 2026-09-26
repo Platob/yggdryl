@@ -528,6 +528,143 @@ impl Url {
         Self::from_uri(self.0.joinpath(value)?)
     }
 
+    /// Resolve a URI reference against this URL, as RFC 3986 section 5.2
+    /// does.
+    ///
+    /// This is what a `Location` header, a `Link` target or a `next` URL in
+    /// a document is read through: the reference is whatever the server
+    /// wrote, and this URL is where it was read. An absolute reference is
+    /// itself; `//host/path` keeps the scheme; `/path` replaces the path; a
+    /// relative path merges onto this path with its dot segments removed;
+    /// `?q` keeps the path; `#f` keeps the path and the query; an empty
+    /// reference is this URL without its fragment. A reference spelling this
+    /// URL's own scheme without an authority - `http:g` - is read the
+    /// backward-compatible way the RFC describes, as the relative reference
+    /// after the scheme.
+    ///
+    /// ```
+    /// use yggdryl::Url;
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let page = Url::from_str("https://api.example.com/v1/items?page=1")?;
+    ///
+    /// assert_eq!(
+    ///     page.join_reference("../users?after=x")?.to_string(),
+    ///     "https://api.example.com/users?after=x"
+    /// );
+    /// assert_eq!(
+    ///     page.join_reference("//cdn.example.com/a.json")?.to_string(),
+    ///     "https://cdn.example.com/a.json"
+    /// );
+    /// assert_eq!(
+    ///     page.join_reference("#top")?.to_string(),
+    ///     "https://api.example.com/v1/items?page=1#top"
+    /// );
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns a parse error naming the byte of the reference that is not URI
+    /// syntax, or the reason an absolute reference is not a URL - a scheme
+    /// with no authority, such as `mailto:`, names no location this type can
+    /// hold.
+    pub fn join_reference(&self, reference: &str) -> Result<Self> {
+        const TARGET: &str = "url reference";
+
+        let (before_fragment, fragment) = match reference.find('#') {
+            Some(position) => (&reference[..position], Some(&reference[position + 1..])),
+            None => (reference, None),
+        };
+        let (hierarchy, query) = match before_fragment.find('?') {
+            Some(position) => (
+                &before_fragment[..position],
+                Some(&before_fragment[position + 1..]),
+            ),
+            None => (before_fragment, None),
+        };
+        if let Some(fragment) = fragment {
+            let offset = before_fragment.len() + 1;
+            validate_component(fragment, TARGET, offset, is_query_fragment_byte)?;
+        }
+        if let Some(query) = query {
+            validate_component(query, TARGET, hierarchy.len() + 1, is_query_fragment_byte)?;
+        }
+
+        // A reference with a scheme is absolute - unless it is this URL's own
+        // scheme with no authority behind it, which the RFC reads as the
+        // relative reference that follows the scheme.
+        if let Some(scheme_end) = reference_scheme_end(hierarchy) {
+            let same_scheme = hierarchy[..scheme_end].eq_ignore_ascii_case(self.scheme().as_str());
+            if same_scheme && !hierarchy[scheme_end + 1..].starts_with("//") {
+                return self.join_reference(&reference[scheme_end + 1..]);
+            }
+            return Self::from_str(reference).map_err(|error| {
+                offset_parse_error(error, TARGET, 0, "an absolute reference must be a URL")
+            });
+        }
+
+        let mut composed = String::with_capacity(
+            self.scheme().as_str().len()
+                + self.authority().as_str().len()
+                + self.path().as_str().len()
+                + reference.len()
+                + 4,
+        );
+        composed.push_str(self.scheme().as_str());
+        composed.push_str("://");
+        if let Some(network) = hierarchy.strip_prefix("//") {
+            let path_start = network.find('/').unwrap_or(network.len());
+            let (authority, path) = network.split_at(path_start);
+            validate_component(authority, TARGET, 2, is_authority_byte)?;
+            validate_component(path, TARGET, 2 + path_start, is_path_byte)?;
+            composed.push_str(authority);
+            composed.push_str(&remove_dot_segments(path));
+        } else {
+            validate_component(hierarchy, TARGET, 0, is_path_byte)?;
+            composed.push_str(self.authority().as_str());
+            if hierarchy.is_empty() {
+                composed.push_str(self.path().as_str());
+            } else if hierarchy.starts_with('/') {
+                composed.push_str(&remove_dot_segments(hierarchy));
+            } else {
+                // Merge: the reference replaces everything after the last
+                // slash of this path, and a URL with no path at all has an
+                // authority, so the reference lands under its root.
+                let base = self.path().as_str();
+                let kept = base.rfind('/').map_or(0, |slash| slash + 1);
+                let mut merged = String::with_capacity(kept + hierarchy.len() + 1);
+                if base.is_empty() {
+                    merged.push('/');
+                }
+                merged.push_str(&base[..kept]);
+                merged.push_str(hierarchy);
+                composed.push_str(&remove_dot_segments(&merged));
+            }
+        }
+        match query {
+            Some(query) => {
+                composed.push('?');
+                composed.push_str(query);
+            }
+            None if hierarchy.is_empty() => {
+                if let Some(query) = self.0.query(false)? {
+                    composed.push('?');
+                    composed.push_str(&query);
+                }
+            }
+            None => {}
+        }
+        if let Some(fragment) = fragment {
+            composed.push('#');
+            composed.push_str(fragment);
+        }
+        Self::from_str(&composed).map_err(|error| {
+            offset_parse_error(error, TARGET, 0, "the reference does not resolve to a URL")
+        })
+    }
+
     /// Return this URL addressing its containing path, or `None` at the root.
     pub fn parent(&self) -> Option<Self> {
         Self::from_uri(self.0.parent()?).ok()
@@ -548,6 +685,69 @@ impl Url {
     /// Return a deterministic cross-language hash of the canonical URL.
     pub fn stable_hash(&self) -> u64 {
         stable_hash_display(self)
+    }
+}
+
+/// Where the scheme of a URI reference ends, when it carries one.
+///
+/// RFC 3986 section 3.1: a letter, then letters, digits, `+`, `-` and `.`,
+/// then the colon - and nothing before that colon may be a slash, because a
+/// colon inside a path segment is part of the segment.
+fn reference_scheme_end(hierarchy: &str) -> Option<usize> {
+    let end = hierarchy.find(':')?;
+    let scheme = &hierarchy.as_bytes()[..end];
+    let well_formed = scheme.first().is_some_and(u8::is_ascii_alphabetic)
+        && scheme
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'));
+    well_formed.then_some(end)
+}
+
+/// RFC 3986 section 5.2.4, letter for letter.
+///
+/// Every dot segment goes, including the ones a relative reference climbs
+/// past the root with, and every empty segment stays: `//` inside a path is
+/// two separators the reference wrote, and `a/./` keeps the trailing slash
+/// that says a container is meant. [`UriPath::normalize`] is the other
+/// reading, for a path a caller composed rather than one a server wrote.
+fn remove_dot_segments(path: &str) -> String {
+    let mut input = path;
+    let mut output = String::with_capacity(path.len());
+    while !input.is_empty() {
+        if let Some(rest) = input
+            .strip_prefix("../")
+            .or_else(|| input.strip_prefix("./"))
+        {
+            input = rest;
+        } else if input.starts_with("/./") {
+            input = &input[2..];
+        } else if input == "/." {
+            input = "/";
+        } else if input.starts_with("/../") {
+            input = &input[3..];
+            pop_segment(&mut output);
+        } else if input == "/.." {
+            input = "/";
+            pop_segment(&mut output);
+        } else if input == "." || input == ".." {
+            input = "";
+        } else {
+            let start = usize::from(input.starts_with('/'));
+            let end = input[start..]
+                .find('/')
+                .map_or(input.len(), |slash| start + slash);
+            output.push_str(&input[..end]);
+            input = &input[end..];
+        }
+    }
+    output
+}
+
+/// Drop the last segment of `output` and the slash before it, if any.
+fn pop_segment(output: &mut String) {
+    match output.rfind('/') {
+        Some(slash) => output.truncate(slash),
+        None => output.clear(),
     }
 }
 

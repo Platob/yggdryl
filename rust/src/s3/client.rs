@@ -7,11 +7,13 @@
 //! [`Client::stats`] reports what actually went out.
 //!
 //! What is here is what every store shares: the connection pool, the signing
-//! hook, the retry budget and its jittered backoff, the streaming reader that
-//! resumes a transfer the network cut, the range arithmetic, and the request
-//! accounting. What a store spells for itself - its hostnames, its request
-//! paths, its upload protocol, its documents - is its dialect's, reached
-//! through the one [`Provider`] value that says which store this is.
+//! hook, the streaming reader that resumes a transfer the network cut, the
+//! range arithmetic, and the request accounting. The retry rules - the budget,
+//! the jittered backoff, the `Retry-After` reading and the verdict on a
+//! failure - are [`crate::http::retry`]'s, read here as every HTTP client of
+//! the crate reads them. What a store spells for itself - its hostnames, its
+//! request paths, its upload protocol, its documents - is its dialect's,
+//! reached through the one [`Provider`] value that says which store this is.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -29,27 +31,14 @@ use super::request::Request;
 use crate::auth::{is_true, variable};
 use crate::aws::sigv4::{self, Signer};
 use crate::aws::{Credentials, Session};
+use crate::http::retry::{
+    self, RETRY_COST, RETRY_REFUND, RetryBudget, fresh_jitter, is_resumable, is_retryable_transport,
+};
 use crate::{Error, Result, Url};
 
 /// The region assumed when nothing names one; also the signing region for the
 /// `GetBucketLocation`-free discovery a redirect performs.
 const DEFAULT_REGION: &str = "us-east-1";
-/// Base of the exponential backoff between attempts.
-const RETRY_BACKOFF: Duration = Duration::from_millis(50);
-/// The longest a retry ever waits, however many attempts precede it.
-const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(20);
-/// The longest a `Retry-After` the store sent is honoured for.
-///
-/// A store under load may ask for minutes. Waiting that long inside a call
-/// nobody can cancel is worse than failing and letting the caller decide, so
-/// anything past this is treated as "not now" rather than as an instruction.
-const RETRY_AFTER_CAP: Duration = Duration::from_secs(30);
-/// Tokens a client starts with, and never exceeds.
-const RETRY_TOKENS: i64 = 500;
-/// What one retry costs, so a client whose requests are all failing runs out.
-const RETRY_COST: i64 = 5;
-/// What a first-attempt success refunds.
-const RETRY_REFUND: i64 = 1;
 
 /// How many requests of each shape have gone out.
 ///
@@ -742,27 +731,10 @@ impl Client {
         Ok(Some(signer))
     }
 
-    /// Wait before the next attempt.
-    ///
-    /// A `Retry-After` is an instruction and is waited out as given. Anything
-    /// else is a *window*, and the wait is drawn uniformly from it: doubling
-    /// alone puts every client that failed at the same instant back on the
-    /// wire at the same instant, which is the herd the backoff exists to
-    /// prevent. The draw is a hash of a per-client counter rather than a
-    /// random number generator - no dependency, no global state, and a
-    /// sequence a test can predict.
+    /// Wait before the next attempt: what the store asked for, else a draw
+    /// from the backoff window ([`retry::delay`]).
     fn pause(&self, attempt: u32, asked: Option<Duration>) {
-        let delay = match asked {
-            Some(asked) => asked,
-            None => {
-                let window = backoff(attempt);
-                let span = u64::try_from(window.as_nanos()).unwrap_or(u64::MAX);
-                let draw =
-                    crate::xxhash::xxh3(&self.jitter.fetch_add(1, Ordering::Relaxed).to_le_bytes());
-                Duration::from_nanos(draw % span.saturating_add(1))
-            }
-        };
-        std::thread::sleep(delay);
+        std::thread::sleep(retry::delay(attempt, asked, &self.jitter));
     }
 
     /// Re-open a body from `offset`, for a transfer that was cut.
@@ -843,7 +815,7 @@ impl Client {
                 continue;
             }
             if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
-                self.pause(attempt, retry_after(&answer));
+                self.pause(attempt, retry::retry_after(answer.header("retry-after")));
                 continue;
             }
             self.settle(&answer, attempt);
@@ -1086,7 +1058,7 @@ impl Client {
                     continue;
                 }
                 if (answer.status >= 500 || answer.status == 429) && self.may_retry(attempt) {
-                    self.pause(attempt, retry_after(&answer));
+                    self.pause(attempt, retry::retry_after(answer.header("retry-after")));
                     continue;
                 }
                 self.settle(&answer, attempt);
@@ -2525,62 +2497,6 @@ fn build_agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> ureq::
     ureq::Agent::new_with_config(builder.build())
 }
 
-/// The window attempt `attempt + 1` is drawn from: doubling, and capped.
-fn backoff(attempt: u32) -> Duration {
-    let steps = attempt.saturating_sub(1).min(6);
-    RETRY_BACKOFF
-        .saturating_mul(1_u32 << steps)
-        .min(RETRY_BACKOFF_CAP)
-}
-
-/// How long a client may spend on retries before it stops making them.
-///
-/// Doubling spreads one client's own attempts, and does nothing about the
-/// other hundred that failed at the same instant: when a store is refusing
-/// broadly, every client retrying every request turns a partial outage into a
-/// worse one. A budget is what makes the client's total retry load bounded
-/// rather than proportional to its failure rate. Each retry costs
-/// [`RETRY_COST`] tokens, a request that succeeds without one refunds
-/// [`RETRY_REFUND`], and a retry that succeeds gives its cost back, so a
-/// healthy client always has budget and a client that is only failing runs out
-/// and fails fast.
-struct RetryBudget {
-    tokens: std::sync::atomic::AtomicI64,
-}
-
-impl Default for RetryBudget {
-    fn default() -> Self {
-        Self {
-            tokens: std::sync::atomic::AtomicI64::new(RETRY_TOKENS),
-        }
-    }
-}
-
-impl RetryBudget {
-    /// Take the price of one retry, or refuse it.
-    fn withdraw(&self) -> bool {
-        self.tokens
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
-                (held >= RETRY_COST).then_some(held - RETRY_COST)
-            })
-            .is_ok()
-    }
-
-    /// Put `tokens` back, never above where the budget started.
-    fn refund(&self, tokens: i64) {
-        let _ = self
-            .tokens
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |held| {
-                Some((held + tokens).min(RETRY_TOKENS))
-            });
-    }
-
-    /// What is left, for the counters to report.
-    fn remaining(&self) -> i64 {
-        self.tokens.load(Ordering::Relaxed)
-    }
-}
-
 /// A body that re-opens itself when the transfer dies part way through.
 ///
 /// A long read over a network dies for reasons that have nothing to do with
@@ -2649,63 +2565,6 @@ impl Read for Resuming {
             }
         }
     }
-}
-
-/// Whether a read failure is the transport's rather than the store's verdict.
-///
-/// The generic kind is included deliberately: a client library reports a
-/// severed connection in more than one shape, and mistaking one for a decoding
-/// failure costs the whole transfer where mistaking it the other way costs one
-/// bounded re-open.
-fn is_resumable(error: &std::io::Error) -> bool {
-    matches!(
-        error.kind(),
-        std::io::ErrorKind::ConnectionReset
-            | std::io::ErrorKind::ConnectionAborted
-            | std::io::ErrorKind::BrokenPipe
-            | std::io::ErrorKind::UnexpectedEof
-            | std::io::ErrorKind::TimedOut
-            | std::io::ErrorKind::Interrupted
-            | std::io::ErrorKind::Other
-    )
-}
-
-/// A starting point for one client's jitter, different from every other's.
-///
-/// Two clients in one process that fail at the same instant should not draw
-/// the same delays, so each starts its counter somewhere of its own.
-fn fresh_jitter() -> u64 {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let ordinal = NEXT.fetch_add(1, Ordering::Relaxed);
-    crate::xxhash::xxh3(
-        &[u64::from(std::process::id()), ordinal]
-            .map(u64::to_le_bytes)
-            .concat(),
-    )
-}
-
-/// The `Retry-After` an answer asks for, when it asks for one this will wait.
-///
-/// Seconds only: the HTTP-date spelling is legal and no S3 implementation
-/// sends it, and reading a date needs a clock this has no reason to trust.
-fn retry_after(answer: &Answer) -> Option<Duration> {
-    let seconds: u64 = answer.header("retry-after")?.trim().parse().ok()?;
-    let asked = Duration::from_secs(seconds);
-    (asked <= RETRY_AFTER_CAP).then_some(asked)
-}
-
-/// Whether a transport failure is worth another attempt.
-///
-/// A connection that never established, timed out, or was cut is; a request
-/// the client itself could not form is not.
-fn is_retryable_transport(error: &ureq::Error) -> bool {
-    matches!(
-        error,
-        ureq::Error::Io(_)
-            | ureq::Error::Timeout(_)
-            | ureq::Error::ConnectionFailed
-            | ureq::Error::HostNotFound
-    )
 }
 
 /// The region a redirect names, when it names one.
@@ -2811,12 +2670,14 @@ pub mod internals {
     /// The region a location that names no endpoint is signed for.
     pub const DEFAULT_REGION: &str = super::DEFAULT_REGION;
 
-    /// The pause before the first retry; each further one doubles it.
-    pub const RETRY_BACKOFF: Duration = super::RETRY_BACKOFF;
+    /// The pause before the first retry; each further one doubles it. The
+    /// rule is `crate::http::retry`'s, re-exported here because it is what
+    /// this client waits by.
+    pub const RETRY_BACKOFF: Duration = crate::http::retry::RETRY_BACKOFF;
 
     /// How long the client waits before attempt `attempt`.
     pub fn backoff(attempt: u32) -> Duration {
-        super::backoff(attempt)
+        crate::http::retry::backoff(attempt)
     }
 
     /// The region a redirect names, for an answer of `status` and `headers`.

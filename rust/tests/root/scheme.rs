@@ -84,6 +84,36 @@ mod vocabulary {
         assert_eq!(Scheme::S3N.as_str(), "s3n");
     }
 
+    /// `http` and `https` are one protocol for the backend that speaks it,
+    /// and two values for the location that reports them.
+    #[test]
+    fn the_two_http_spellings_are_one_protocol_and_stay_distinct_values() {
+        for scheme in [Scheme::HTTP, Scheme::HTTPS] {
+            assert!(scheme.is_http(), "{scheme}");
+            assert!(scheme.is_storage(), "{scheme}");
+            assert!(!scheme.is_object_store(), "{scheme}");
+            assert!(!scheme.has_container(), "{scheme}");
+        }
+        assert_eq!(Scheme::HTTP.default_port(), Some(80));
+        assert_eq!(Scheme::HTTPS.default_port(), Some(443));
+        assert_ne!(Scheme::HTTP, Scheme::HTTPS);
+
+        for scheme in [
+            Scheme::FILE,
+            Scheme::S3,
+            Scheme::GS,
+            Scheme::AZ,
+            Scheme::URN,
+            Scheme::ARN,
+            Scheme::ARROW,
+        ] {
+            assert!(!scheme.is_http(), "{scheme}");
+        }
+        assert!(!Scheme::from_str("httpx").unwrap().is_http());
+        assert!(!Scheme::from_str("shttp").unwrap().is_http());
+        assert!(Scheme::from_str("HTTPS").unwrap().is_http());
+    }
+
     #[test]
     fn known_and_custom_schemes_share_canonical_value_semantics() {
         let known = Scheme::from_str("POSTGRES").unwrap();

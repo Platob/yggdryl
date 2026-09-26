@@ -3094,6 +3094,7 @@ declare module './index' {
     const CSS: MimeType
     const JAVASCRIPT: MimeType
     const XML: MimeType
+    const HTTP: MimeType
     const PDF: MimeType
     const CBOR: MimeType
     const MESSAGE_PACK: MimeType

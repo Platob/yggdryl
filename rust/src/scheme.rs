@@ -304,6 +304,17 @@ impl Scheme {
         self.is_s3() || self.is_gs() || self.is_az()
     }
 
+    /// Return whether the scheme addresses a resource over HTTP.
+    ///
+    /// `http` and `https` name one protocol spoken over two transports, and
+    /// every request, response and stream the HTTP backend answers is the same
+    /// under either. This is what selects that backend, the way
+    /// [`Self::is_object_store`] selects the store's, so a location reaches it
+    /// under both spellings and nothing else compares the two schemes apart.
+    pub const fn is_http(&self) -> bool {
+        matches!(self.0, SchemeWire::Http | SchemeWire::Https)
+    }
+
     /// Return whether a location under this scheme names a container.
     ///
     /// Every object store does - a bucket on Amazon S3 and Google Cloud

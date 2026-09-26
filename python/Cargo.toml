@@ -22,6 +22,7 @@ half.workspace = true
 log.workspace = true
 pyo3.workspace = true
 yggdryl = { path = "../rust", default-features = false, features = [
+    "http",
     "iceberg",
     "s3",
 ] }

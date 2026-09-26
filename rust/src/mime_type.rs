@@ -42,6 +42,7 @@ enum MimeTypeWire {
     Css,
     JavaScript,
     Xml,
+    Http,
     Pdf,
     Cbor,
     MessagePack,
@@ -202,6 +203,9 @@ impl MimeType {
     pub const JAVASCRIPT: Self = Self(MimeTypeWire::JavaScript);
     /// XML structured data.
     pub const XML: Self = Self(MimeTypeWire::Xml);
+    /// An HTTP message: a request or a response with its head and its body,
+    /// as RFC 9112 frames one on the wire.
+    pub const HTTP: Self = Self(MimeTypeWire::Http);
     /// A PDF document.
     pub const PDF: Self = Self(MimeTypeWire::Pdf);
     /// CBOR structured data.
@@ -452,6 +456,7 @@ impl MimeType {
             MimeTypeWire::Css => "text/css",
             MimeTypeWire::JavaScript => "text/javascript",
             MimeTypeWire::Xml => "application/xml",
+            MimeTypeWire::Http => "message/http",
             MimeTypeWire::Pdf => "application/pdf",
             MimeTypeWire::Cbor => "application/cbor",
             MimeTypeWire::MessagePack => "application/vnd.msgpack",
@@ -552,6 +557,7 @@ impl MimeType {
             MimeTypeWire::Css => Some("css"),
             MimeTypeWire::JavaScript => Some("js"),
             MimeTypeWire::Xml => Some("xml"),
+            MimeTypeWire::Http => Some("http"),
             MimeTypeWire::Pdf => Some("pdf"),
             MimeTypeWire::Cbor => Some("cbor"),
             MimeTypeWire::MessagePack => Some("msgpack"),

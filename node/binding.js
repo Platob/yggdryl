@@ -463,6 +463,7 @@ const knownMimeNames = Object.freeze([
   'CSS',
   'JAVASCRIPT',
   'XML',
+  'HTTP',
   'PDF',
   'CBOR',
   'MESSAGE_PACK',

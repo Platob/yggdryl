@@ -20,6 +20,7 @@ half.workspace = true
 napi = { workspace = true, features = ["serde-json"] }
 napi-derive.workspace = true
 yggdryl = { path = "../rust", default-features = false, features = [
+    "http",
     "iceberg",
     "s3",
 ] }

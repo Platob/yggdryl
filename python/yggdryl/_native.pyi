@@ -119,6 +119,7 @@ class MimeType:
     CSS: ClassVar[MimeType]
     JAVASCRIPT: ClassVar[MimeType]
     XML: ClassVar[MimeType]
+    HTTP: ClassVar[MimeType]
     PDF: ClassVar[MimeType]
     CBOR: ClassVar[MimeType]
     MESSAGE_PACK: ClassVar[MimeType]

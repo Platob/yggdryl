@@ -8,6 +8,7 @@
 //! a secret is written to on purpose - a cache the tools share - is written
 //! by [`write_private`], as a file only its owner can read.
 
+#[cfg(feature = "aws")]
 use std::path::Path;
 
 /// Text that renders as `<redacted>`.
@@ -48,6 +49,7 @@ impl From<&str> for Secret {
     }
 }
 
+#[cfg(feature = "aws")]
 /// Write `bytes` to `path` as a file only its owner can read, creating the
 /// directories above it the same way, which is what the AWS tools do with
 /// every cache they keep a secret in.
@@ -89,5 +91,7 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 #[doc(hidden)]
 pub mod internals {
     //! What `rust/tests/auth/secret.rs` pins and a caller cannot reach.
-    pub use super::{Secret, write_private};
+    pub use super::Secret;
+    #[cfg(feature = "aws")]
+    pub use super::write_private;
 }

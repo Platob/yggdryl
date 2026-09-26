@@ -393,6 +393,166 @@ mod encoding {
     }
 }
 
+mod reference {
+    use yggdryl::{Error, Url};
+
+    /// RFC 3986 section 5.4: the base and both example tables.
+    const BASE: &str = "http://a/b/c/d;p?q";
+
+    fn base() -> Url {
+        Url::from_str(BASE).unwrap()
+    }
+
+    #[test]
+    fn the_normal_examples_of_the_rfc_resolve_as_written() {
+        for (reference, expected) in [
+            ("g", "http://a/b/c/g"),
+            ("./g", "http://a/b/c/g"),
+            ("g/", "http://a/b/c/g/"),
+            ("/g", "http://a/g"),
+            ("//g", "http://g"),
+            ("?y", "http://a/b/c/d;p?y"),
+            ("g?y", "http://a/b/c/g?y"),
+            ("#s", "http://a/b/c/d;p?q#s"),
+            ("g#s", "http://a/b/c/g#s"),
+            ("g?y#s", "http://a/b/c/g?y#s"),
+            (";x", "http://a/b/c/;x"),
+            ("g;x", "http://a/b/c/g;x"),
+            ("g;x?y#s", "http://a/b/c/g;x?y#s"),
+            ("", "http://a/b/c/d;p?q"),
+            (".", "http://a/b/c/"),
+            ("./", "http://a/b/c/"),
+            ("..", "http://a/b/"),
+            ("../", "http://a/b/"),
+            ("../g", "http://a/b/g"),
+            ("../..", "http://a/"),
+            ("../../", "http://a/"),
+            ("../../g", "http://a/g"),
+        ] {
+            assert_eq!(
+                base().join_reference(reference).unwrap().to_string(),
+                expected,
+                "{reference:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_abnormal_examples_of_the_rfc_resolve_as_written() {
+        for (reference, expected) in [
+            ("../../../g", "http://a/g"),
+            ("../../../../g", "http://a/g"),
+            ("/./g", "http://a/g"),
+            ("/../g", "http://a/g"),
+            ("g.", "http://a/b/c/g."),
+            (".g", "http://a/b/c/.g"),
+            ("g..", "http://a/b/c/g.."),
+            ("..g", "http://a/b/c/..g"),
+            ("./../g", "http://a/b/g"),
+            ("./g/.", "http://a/b/c/g/"),
+            ("g/./h", "http://a/b/c/g/h"),
+            ("g/../h", "http://a/b/c/h"),
+            ("g;x=1/./y", "http://a/b/c/g;x=1/y"),
+            ("g;x=1/../y", "http://a/b/c/y"),
+            ("g?y/./x", "http://a/b/c/g?y/./x"),
+            ("g?y/../x", "http://a/b/c/g?y/../x"),
+            ("g#s/./x", "http://a/b/c/g#s/./x"),
+            ("g#s/../x", "http://a/b/c/g#s/../x"),
+            // The RFC's backward-compatible reading: the base's own scheme
+            // with no authority is the relative reference after the colon.
+            ("http:g", "http://a/b/c/g"),
+            ("HTTP:/g", "http://a/g"),
+        ] {
+            assert_eq!(
+                base().join_reference(reference).unwrap().to_string(),
+                expected,
+                "{reference:?}"
+            );
+        }
+    }
+
+    /// An absolute reference is itself, whatever the base; the base's
+    /// fragment never survives; a base with no path takes the reference under
+    /// its root; a network-path reference keeps the scheme and takes the
+    /// query and fragment it wrote.
+    #[test]
+    fn absolute_and_network_path_references_keep_what_they_state() {
+        let base = Url::from_str("https://api.example.com/v1/items?page=1#top").unwrap();
+        assert_eq!(
+            base.join_reference("http://other.example.org/x?y#z")
+                .unwrap()
+                .to_string(),
+            "http://other.example.org/x?y#z"
+        );
+        assert_eq!(
+            base.join_reference("").unwrap().to_string(),
+            "https://api.example.com/v1/items?page=1"
+        );
+        assert_eq!(
+            base.join_reference("//cdn.example.com/a/../b.json?v=2#f")
+                .unwrap()
+                .to_string(),
+            "https://cdn.example.com/b.json?v=2#f"
+        );
+        assert_eq!(
+            base.join_reference("//cdn.example.com")
+                .unwrap()
+                .to_string(),
+            "https://cdn.example.com"
+        );
+        assert_eq!(
+            Url::from_str("http://a")
+                .unwrap()
+                .join_reference("g")
+                .unwrap()
+                .to_string(),
+            "http://a/g"
+        );
+        // Escapes are kept as written and normalized as every URL is; a
+        // reference already resolved reads back as itself.
+        let next = base.join_reference("items?cursor=a%2fb").unwrap();
+        assert_eq!(
+            next.to_string(),
+            "https://api.example.com/v1/items?cursor=a%2Fb"
+        );
+        assert_eq!(base.join_reference(&next.to_string()).unwrap(), next);
+    }
+
+    /// A byte that is not URI syntax is refused at its own position in the
+    /// reference, and an absolute reference this type cannot hold - a scheme
+    /// with no authority - is refused as a URL.
+    #[test]
+    fn a_reference_that_is_not_uri_syntax_or_not_a_url_is_refused_by_position() {
+        for (reference, position) in [("a b", 1), ("g?x y", 3), ("g#a b", 3), ("//h st/p", 3)] {
+            let error = base().join_reference(reference).unwrap_err();
+            assert!(
+                matches!(
+                    &error,
+                    Error::Parse {
+                        target: "url reference",
+                        position: actual,
+                        ..
+                    } if *actual == position
+                ),
+                "{reference:?}: {error}"
+            );
+        }
+        for reference in ["g:h", "mailto:x@example.com", "urn:isbn:1"] {
+            let error = base().join_reference(reference).unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    Error::Parse {
+                        target: "url reference",
+                        ..
+                    }
+                ),
+                "{reference:?}: {error}"
+            );
+        }
+    }
+}
+
 mod location {
 
     use yggdryl::{Uri, Url, Urn};
