@@ -128,7 +128,7 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | gzip, zlib, zstd | [Coding](media/index.md#compression) |
 | Character encodings | [Charset](media/index.md#charsets) |
 | IPC, Parquet, Avro, Iceberg | [Media](media/index.md) |
-| JSON, YAML, TOML | [Structured documents](media/index.md#json) |
+| JSON, YAML, TOML, XML | [Structured documents](media/index.md#json) |
 | Naming a resource | [URI](uri/index.md) |
 | Scalars, schemas, and batch readers at the Arrow boundary | [Arrow](arrow/index.md) |
 | Predicates and pushdown | [Expression](expression/index.md) |

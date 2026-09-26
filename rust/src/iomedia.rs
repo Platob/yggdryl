@@ -266,7 +266,7 @@ pub trait IOMedia: Send {
     /// record encoding - Arrow IPC, Parquet, Avro, plain text - answers the
     /// stream [`read_arrow_reader`](Self::read_arrow_reader) already
     /// produces under `options`, each batch landed as it arrives; a
-    /// structured text document - JSON, JSON Lines, YAML, TOML - answers the
+    /// structured text document - JSON, JSON Lines, YAML, TOML, XML - answers the
     /// one record column its rows parse into, because a document has no
     /// frame to read a prefix of, and reads only the declared field off the
     /// options.

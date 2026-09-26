@@ -117,6 +117,8 @@ mod mime {
         assert!(MimeType::JSON.is_structured());
         assert!(!MimeType::JSON.is_binary());
         assert_eq!(MimeType::JSON.format(), Some(Format::Json));
+        assert_eq!(MimeType::XML.format(), Some(Format::Xml));
+        assert_eq!(MimeType::SVG.format(), Some(Format::Xml), "SVG is XML");
         assert!(MimeType::PNG.is_image());
         assert!(MimeType::MP3.is_audio());
         assert!(MimeType::MP4.is_video());
@@ -133,6 +135,7 @@ mod mime {
         assert!(vendor_json.is_textual());
         assert!(vendor_json.is_structured());
         assert!(vendor_xml.is_textual());
+        assert_eq!(vendor_xml.format(), Some(Format::Xml));
         assert!(vendor_xml.is_structured());
     }
 }

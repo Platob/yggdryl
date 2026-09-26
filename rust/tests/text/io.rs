@@ -46,6 +46,8 @@ fn plans_follow_compound_filenames() {
         ("a.json.gz", Format::Json, Codec::Gzip),
         ("a.yaml.zst", Format::Yaml, Codec::Zstd),
         ("a.toml", Format::Toml, Codec::Identity),
+        ("a.xml", Format::Xml, Codec::Identity),
+        ("a.xml.gz", Format::Xml, Codec::Gzip),
     ];
     for (name, format, codec) in cases {
         let plan = Plan::infer(&handle(name)).unwrap();
@@ -59,6 +61,20 @@ fn formats_and_codings_round_trip() {
         let mut target = handle(name);
         into_io(&sample(), &mut target).unwrap();
         assert_eq!(from_io(&target).unwrap(), sample(), "{name}");
+    }
+}
+
+#[test]
+fn an_xml_handle_round_trips_the_one_root_a_document_has() {
+    let document = Scalar::from_struct([("sample", sample())]).unwrap();
+    for name in ["a.xml", "a.xml.gz"] {
+        let mut target = handle(name);
+        into_io(&document, &mut target).unwrap();
+        assert_eq!(
+            from_io(&target).unwrap(),
+            yggdryl::xml::from_bytes(&yggdryl::xml::into_bytes(&document).unwrap()).unwrap(),
+            "{name}"
+        );
     }
 }
 

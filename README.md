@@ -67,7 +67,8 @@ rust/                    The core crate
                          One folder per record medium
   src/text/              The plain-text medium and what the structured
                          codecs share
-  src/{json,toml,yaml}/  One folder per structured codec
+  src/{json,toml,yaml,xml}/
+                         One folder per structured codec
   src/{metadata,mime_type,media_type,uri}/
                          Field metadata, MIME and media types, identifiers
   src/{arrow,expression,graph,fix}/
@@ -157,7 +158,7 @@ carrying the exact `Field` that types it - a `ChunkedSerie` where a chunked
 column or a table of several batches stays apart - a `pyarrow.ChunkedArray`,
 `Serie` columns of one `Field` - or a `SerieReader`, a stream of them. `IOMedia::read_arrow`/`write_arrow`
 read and write a `SerieReader` whatever the handle holds - a record encoding
-as its batch stream, a JSON, JSON Lines, YAML, or TOML document as the one
+as its batch stream, a JSON, JSON Lines, YAML, TOML, or XML document as the one
 batch its rows parse into. In Python `Serie.from_`, `ChunkedSerie.from_` and
 `SerieReader.from_` share the one recognition every columnar runtime crosses: a `pyarrow` container, a
 pandas or polars frame or series, a NumPy array, or anything exporting the
@@ -219,7 +220,7 @@ extensions are borrowed views and do not allocate. URI-family mutators validate 
 complete replacement before changing the identifier; MIME and media setters use
 the same preferred-extension table as inference.
 
-## JSON, TOML, and YAML bytes
+## JSON, TOML, YAML, and XML bytes
 
 ```rust
 use yggdryl::text::{self, Format};
@@ -239,10 +240,11 @@ assert_eq!(text::from_bytes(&bytes, Format::Json)?, value);
 
 Without a `Field`, a document answers only the types it proves; with one, the
 field types natural strings, orders records, and canonicalizes the value.
-Slice, reader, writer, JSON Lines, TOML document, and YAML document APIs apply
-explicit byte, depth, node, and document limits. See the
-[JSON](docs/media/index.md#json), [TOML](docs/media/index.md#toml), and
-[YAML](docs/media/index.md#yaml) sections of the media page.
+Slice, reader, writer, JSON Lines, TOML document, YAML document, and XML
+document APIs apply explicit byte, depth, node, and document limits. See the
+[JSON](docs/media/index.md#json), [TOML](docs/media/index.md#toml),
+[YAML](docs/media/index.md#yaml), and [XML](docs/media/index.md#xml) sections
+of the media page.
 
 ## Native value behavior
 
@@ -265,7 +267,8 @@ and metadata-mapping protocols, inferred string and PyArrow conversion, and
 cached native fields for ordinary dataclasses through `@scalar` and the static
 `Class.into_field()` accessor; `field(value, name=None)` remains a pure builder.
 It also provides precise `Annotated` Arrow and Field overrides and byte-first
-`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` modules. JavaScript provides
+`yggdryl.json`, `yggdryl.toml`, `yggdryl.yaml`, and `yggdryl.xml` modules.
+JavaScript provides
 the equivalent value protocols plus Buffer-first codecs and safe, explicit
 class registries. The URI family wrappers expose the same canonical components
 and resource-path views in both languages.

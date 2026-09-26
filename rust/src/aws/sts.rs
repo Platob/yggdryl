@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use super::credentials::Credentials;
 use super::sigv4::{self, Signer};
 use crate::auth::{instant, iso8601, write_private};
-use crate::xml::{parse_document, parse_root};
+use crate::xml::scanner::{parse_document, parse_root};
 use crate::{Error, Result};
 
 /// The STS API version every request names.

@@ -1,6 +1,6 @@
 //! Structured text as Arrow rows.
 //!
-//! JSON, JSON Lines, YAML, and TOML are not record encodings: they carry
+//! JSON, JSON Lines, YAML, TOML, and XML are not record encodings: they carry
 //! documents, not typed columns, so [`RecordOptions`](super::RecordOptions)
 //! does not name them and no reader in [`crate::iobase`] speaks them. This
 //! module is the one bridge between them and Arrow, and it holds no format
@@ -9,7 +9,7 @@
 //!
 //! The two directions are deliberately asymmetric, because the formats are:
 //!
-//! | Direction | JSON, TOML | JSON Lines, YAML |
+//! | Direction | JSON, TOML, XML | JSON Lines, YAML |
 //! | --- | --- | --- |
 //! | Read | one document, then one batch | every document, then one batch |
 //! | Write | one document, rows held | streamed, one batch of rows at a time |
@@ -33,7 +33,10 @@ use crate::{Error, Field, IOBase, Result, Scalar, Serie, SerieReader};
 ///
 /// Rows come from the document's own shape: one document that is a sequence
 /// holds them, and every other document is one row. TOML has no top-level
-/// sequence, so its rows are the array of tables stored under the root's name.
+/// sequence, so its rows are the array of tables stored under the root's name;
+/// an XML document is its root element, so its rows are the root's children
+/// named after the root field, the root itself when it has none, and no row
+/// at all when the root is empty.
 ///
 /// # Errors
 ///
@@ -42,7 +45,13 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(handle: &H, field: Option<&Field>) 
     let format = Format::from_handle(handle)?;
     let name = field.map_or(crate::media::DEFAULT_ROOT_NAME, Field::name);
     let documents = crate::text::from_io_all(handle)?;
-    let rows = rows_of(documents, format, name);
+    let rows = rows_of(documents, format, name, field.is_some());
+    // XML states less than a field does - a child read once, text where a
+    // number is declared - and its codec restates that before the contract.
+    let shape = |row: Scalar, root: &Field| match format {
+        Format::Xml => crate::xml::shaped(row, root),
+        _ => row,
+    };
 
     let rows = Scalar::from_sequence(rows);
     let root = match field {
@@ -57,7 +66,7 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(handle: &H, field: Option<&Field>) 
         .sequence_rows()
         .unwrap_or_default()
         .iter()
-        .map(|row| root.from_natural_value(row.clone()))
+        .map(|row| root.from_natural_value(shape(row.clone(), &root)))
         .collect::<Result<Vec<_>>>()?;
     let borrowed: Vec<&Scalar> = canonical.iter().collect();
     crate::serie::from_canonical_rows(std::sync::Arc::new(root), &borrowed)
@@ -72,8 +81,10 @@ pub(crate) fn read_arrow<H: IOBase + ?Sized>(handle: &H, field: Option<&Field>) 
 /// positional array.
 ///
 /// A document-per-row format - JSON Lines and YAML - never holds more than the
-/// batch currently being encoded. JSON writes one array and TOML one array of
-/// tables under the root's name, so both hold the rows they are framing.
+/// batch currently being encoded. JSON writes one array, TOML one array of
+/// tables under the root's name, and XML one document element holding one
+/// child element per row named after the root, so all three hold the rows
+/// they are framing.
 ///
 /// # Errors
 ///
@@ -91,48 +102,60 @@ pub(crate) fn write_arrow<H: IOBase + ?Sized>(
 
     let mut encoded = Vec::new();
     {
-        let mut writer = plan
+        let mut coded = plan
             .codec()
             .writer_with_level(&mut encoded, formatting.level());
-        match format {
-            // Document per row: the framing is per value, so the rows travel
-            // as an iterator and only the current batch is ever held.
-            Format::JsonLines | Format::Yaml => {
-                let mut rows = Rows::new(batches, root);
-                crate::text::into_writer_all_with_formatting(
-                    &mut rows,
-                    &mut writer,
-                    plan.format(),
-                    formatting,
-                )?;
-                rows.into_result()?;
+        {
+            // Rendered text is encoded in the declared charset, and only then
+            // compressed: the coding applies to the bytes a reader will meet.
+            let mut writer = plan.charset().writer(&mut coded);
+            plan.write_prolog(&mut writer)?;
+            match format {
+                // Document per row: the framing is per value, so the rows
+                // travel as an iterator and only the current batch is ever
+                // held.
+                Format::JsonLines | Format::Yaml => {
+                    let mut rows = Rows::new(batches, root, format);
+                    crate::text::into_writer_all_with_formatting(
+                        &mut rows,
+                        &mut writer,
+                        plan.format(),
+                        formatting,
+                    )?;
+                    rows.into_result()?;
+                }
+                // One document: the frame encloses every row, so they are held.
+                Format::Json | Format::Toml | Format::Xml => {
+                    let mut rows = Rows::new(batches, root, format);
+                    let held = rows.by_ref().collect::<Vec<_>>();
+                    rows.into_result()?;
+                    let document = Scalar::from_sequence(held);
+                    let document = match format {
+                        Format::Toml => Scalar::from_struct([(name, document)])?,
+                        Format::Xml => Scalar::from_struct([(
+                            SmolStr::new_static(crate::xml::DOCUMENT_ELEMENT),
+                            Scalar::from_struct([(name, document)])?,
+                        )])?,
+                        _ => document,
+                    };
+                    crate::text::into_writer_with_formatting(
+                        &document,
+                        &mut writer,
+                        plan.format(),
+                        formatting,
+                    )?;
+                }
             }
-            // One document: the frame encloses every row, so they are held.
-            Format::Json | Format::Toml => {
-                let mut rows = Rows::new(batches, root);
-                let held = rows.by_ref().collect::<Vec<_>>();
-                rows.into_result()?;
-                let document = Scalar::from_sequence(held);
-                let document = if matches!(format, Format::Toml) {
-                    Scalar::from_struct([(name, document)])?
-                } else {
-                    document
-                };
-                crate::text::into_writer_with_formatting(
-                    &document,
-                    &mut writer,
-                    plan.format(),
-                    formatting,
-                )?;
-            }
+            writer.finish()?;
         }
-        writer.finish()?;
+        coded.finish()?;
     }
     handle.write_all_bytes(&encoded)
 }
 
-/// Select the rows a parsed document set holds.
-fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
+/// Select the rows a parsed document set holds; `declared` says whether
+/// `name` was a field's own or the default.
+fn rows_of(documents: Vec<Scalar>, format: Format, name: &str, declared: bool) -> Vec<Scalar> {
     let [document] = documents.as_slice() else {
         // Several documents are several rows, which is what a document-per-row
         // format writes.
@@ -144,6 +167,57 @@ fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
         return match document.get_key_str(name).and_then(Scalar::as_sequence) {
             Some(rows) => rows.to_vec(),
             None => documents,
+        };
+    }
+    if matches!(format, Format::Xml) {
+        // An XML document is its root element. The rows are the root's
+        // children named after the root field - one such child being one
+        // row. Where no field named one, they are the root's children of its
+        // one child name, when those are records; otherwise the root is
+        // itself the one row, unless it is empty, which is what a stream of
+        // no rows was written as.
+        let Some(root) = document
+            .as_struct()
+            .and_then(|entries| entries.values().next())
+        else {
+            return documents;
+        };
+        return match root {
+            // `<data/>` and `<data></data>`: a stream of no rows writes the
+            // second, and neither holds one.
+            Scalar::Null => Vec::new(),
+            crate::string_scalars!(text) if text.as_str().is_empty() => Vec::new(),
+            Scalar::Struct(entries) => {
+                let entries = entries.as_map();
+                let rows = entries.get(name).or_else(|| {
+                    if declared {
+                        return None;
+                    }
+                    let mut children = entries
+                        .iter()
+                        .filter(|(key, _)| !key.starts_with('@') && !key.starts_with('#'));
+                    match (children.next(), children.next()) {
+                        (Some((_, rows)), None) if rows.as_struct().is_some() => Some(rows),
+                        (Some((_, rows)), None)
+                            if rows.as_sequence().is_some_and(|rows| {
+                                rows.iter().all(|row| row.as_struct().is_some())
+                            }) =>
+                        {
+                            Some(rows)
+                        }
+                        _ => None,
+                    }
+                });
+                match rows {
+                    Some(rows) => match rows.as_sequence() {
+                        Some(rows) => rows.to_vec(),
+                        None => vec![rows.clone()],
+                    },
+                    None if entries.is_empty() => Vec::new(),
+                    None => vec![root.clone()],
+                }
+            }
+            other => vec![other.clone()],
         };
     }
     match document.as_sequence() {
@@ -163,15 +237,17 @@ fn rows_of(documents: Vec<Scalar>, format: Format, name: &str) -> Vec<Scalar> {
 struct Rows {
     batches: Option<SerieReader>,
     root: Field,
+    format: Format,
     buffered: VecDeque<Scalar>,
     failure: Option<Error>,
 }
 
 impl Rows {
-    const fn new(batches: SerieReader, root: Field) -> Self {
+    const fn new(batches: SerieReader, root: Field, format: Format) -> Self {
         Self {
             batches: Some(batches),
             root,
+            format,
             buffered: VecDeque::new(),
             failure: None,
         }
@@ -194,8 +270,13 @@ impl Rows {
         };
         let records = batch?;
         for row in 0..records.len() {
-            self.buffered
-                .push_back(self.root.into_natural_value(records.scalar(row)?)?);
+            let natural = self.root.into_natural_value(records.scalar(row)?)?;
+            // A sequence inside a sequence has no element to repeat, so XML
+            // restates it under the item's own name before the writer.
+            self.buffered.push_back(match self.format {
+                Format::Xml => crate::xml::natural(natural, &self.root),
+                _ => natural,
+            });
         }
         Ok(true)
     }

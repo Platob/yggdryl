@@ -2,7 +2,7 @@
 //!
 //! S3 answers listings, bulk deletes, multipart uploads, and every failure
 //! with small documents of a fixed shape, and takes three equally small ones
-//! as request bodies. The scanner is [`crate::xml`] and the `<Error>`
+//! as request bodies. The scanner is [`crate::xml::scanner`] and the `<Error>`
 //! document [`crate::s3::xml`]'s; this module names the elements and nothing
 //! else.
 //!

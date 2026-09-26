@@ -1,11 +1,18 @@
 //! A deterministic reader for the small XML documents AWS-style APIs answer.
 //!
+//! This is not the XML medium: [`super`] reads and writes any document as a
+//! [`Scalar`](crate::Scalar) over quick-xml, which every build already
+//! carries. The scanner stays beside it as the object-store readers' own
+//! reading - an element tree matched by local name, attributes skipped,
+//! under the `aws` feature - and folding those readers onto the codec is a
+//! follow-up, not a dependency question.
+//!
 //! Amazon S3, Azure Blob Storage and AWS STS answer listings, bulk deletes,
 //! multipart uploads, a role's credentials and every failure as small
 //! documents of a fixed shape. That is narrow enough for a scanner - elements
 //! by local name in document order, the declaration, comments, CDATA, the
-//! five named entities and numeric character references - to cover without an
-//! XML dependency. Attributes (the `xmlns` on every root) are skipped,
+//! five named entities and numeric character references - to cover on its
+//! own. Attributes (the `xmlns` on every root) are skipped,
 //! namespace prefixes are dropped so names match locally, unknown elements
 //! are ignored, and anything malformed is an [`XmlError`].
 //!
@@ -329,7 +336,7 @@ fn character_reference(reference: &str) -> Option<char> {
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
-    //! What `rust/tests/root/xml.rs` and the readers' suites pin and a caller
+    //! What `rust/tests/xml/scanner.rs` and the readers' suites pin and a caller
     //! cannot reach.
     //!
     //! The scanner is the reading every XML answer goes through, and what it

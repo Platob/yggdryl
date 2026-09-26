@@ -132,19 +132,19 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
   test('JSON refuses placeholders by name at the call site', async () => {
     assert.throws(
       () => json.loads('{"a": "{{ NAME }}"}', { placeholders: { NAME: 'app' } }),
-      /yaml\/toml feature/,
+      /yaml\/toml\/xml feature/,
     )
-    assert.throws(() => json.loads('{"a": 1}', { environment: true }), /yaml\/toml feature/)
+    assert.throws(() => json.loads('{"a": 1}', { environment: true }), /yaml\/toml\/xml feature/)
     // The multi-document spellings refuse the same way, the streaming one as a
     // clean TypeError on the first pull - even over an empty stream.
     assert.throws(
       () => json.loadsAll('{"a": 1}\n', { placeholders: { NAME: 'app' } }),
-      /yaml\/toml feature/,
+      /yaml\/toml\/xml feature/,
     )
     async function* empty() {}
     await assert.rejects(
       json.loadAllStream(empty(), { placeholders: { NAME: 'app' } }).next(),
-      /yaml\/toml feature/,
+      /yaml\/toml\/xml feature/,
     )
     // And a plain JSON load reads braces as the text they are.
     assert.equal(json.loads('{"a": "{{ NAME }}"}').a, '{{ NAME }}')
@@ -2368,5 +2368,159 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
 
     assert.throws(() => Scalar.fromValueBytes(Buffer.from([1, 0])), /version 1/)
     assert.throws(() => Scalar.fromValueBytes(Buffer.from([0, 0, 0])), /bytes left/)
+  })
+}
+
+// The `xml` suite, in its own block: it brings its own fixtures, and
+// `const` is block-scoped.
+{
+  const assert = require('node:assert/strict')
+  const fs = require('node:fs')
+  const os = require('node:os')
+  const path = require('node:path')
+  const test = require('node:test')
+  const { pathToFileURL } = require('node:url')
+
+  const { DataType, Field, Scalar, codec, fields, xml } = require('yggdryl')
+
+  // A text leaf: XML proves text and nothing else, so the round trip holds
+  // for text.
+  function nestedRecord(count) {
+    let value = { leaf: 'x' }
+    for (let index = 0; index < count; index += 1) {
+      value = { nested: value }
+    }
+    return { root: value }
+  }
+
+  test('XML is a byte-first single-document facade over the record naming its root', () => {
+    const source = '<order id="7"><symbol>AAPL &amp; co</symbol><leg>1</leg><leg>2</leg><note/></order>'
+    const value = xml.loads(source)
+    assert.deepEqual(value, {
+      order: { '@id': '7', symbol: 'AAPL & co', leg: ['1', '2'], note: null },
+    })
+
+    const encoded = xml.dumps(value)
+    assert.ok(Buffer.isBuffer(encoded))
+    assert.equal(
+      encoded.toString(),
+      '<order id="7"><leg>1</leg><leg>2</leg><note/><symbol>AAPL &amp; co</symbol></order>',
+    )
+    assert.deepEqual(xml.loads(encoded), value)
+    assert.equal(
+      xml.dumps(value, { indent: 2 }).toString(),
+      '<order id="7">\n  <leg>1</leg>\n  <leg>2</leg>\n  <note/>\n  <symbol>AAPL &amp; co</symbol>\n</order>',
+    )
+    const exact = xml.loads(encoded, { scalar: true })
+    assert.ok(exact instanceof Scalar)
+    assert.equal(exact.kind, 'struct')
+    assert.ok(Object.isFrozen(xml))
+
+    for (const name of ['loadsAll', 'loadAll', 'dumpAll', 'loadAllStream', 'dumpAllStream']) {
+      assert.equal(xml[name], undefined)
+    }
+  })
+
+  test('XML writes text spellings and refuses what it cannot spell', () => {
+    const written = xml.dumps({
+      row: {
+        at: new Date('2026-08-15T12:30:00.000Z'),
+        bytes: Buffer.from([0, 255]),
+        flag: true,
+        on: new DataType('date32').scalar(19723),
+        price: Scalar.decimal(-1050n, 2),
+        ratio: 1.5,
+        tags: ['a', 'b'],
+      },
+    })
+    assert.equal(
+      written.toString(),
+      '<row><at>2026-08-15T12:30:00.000Z</at><bytes>AP8=</bytes><flag>true</flag>' +
+        '<on>2024-01-01</on><price>-10.50</price><ratio>1.5</ratio><tags>a</tags><tags>b</tags></row>',
+    )
+    // XML proves text and nothing else.
+    assert.deepEqual(xml.loads(written), {
+      row: {
+        at: '2026-08-15T12:30:00.000Z',
+        bytes: 'AP8=',
+        flag: 'true',
+        on: '2024-01-01',
+        price: '-10.50',
+        ratio: '1.5',
+        tags: ['a', 'b'],
+      },
+    })
+
+    assert.throws(() => xml.dumps({ a: 1, b: 2 }), /document element/i)
+    assert.throws(() => xml.dumps({ rows: [1, 2] }), /repeat the root/i)
+    assert.throws(() => xml.dumps({ a: { m: [[1]] } }), /sequence inside a sequence/i)
+    assert.throws(() => xml.dumps({ '1st': 1 }), /XML name/i)
+    assert.throws(() => xml.dumps({ a: new Map([[1, 2]]) }), /names must be strings/i)
+    for (const root of [null, 'scalar root', [1, 2], Buffer.from([1, 2])]) {
+      assert.throws(() => xml.dumps(root), /root must be a record/i)
+    }
+  })
+
+  test('a field types the root element, one repeated element read once being one item', () => {
+    const field = fields.struct('row', [
+      fields.datetime64('at', 's', 'UTC', { nullable: false }),
+      fields.date32('on', { nullable: false }),
+      fields.decimal128('price', 10, 2, { nullable: false }),
+      new Field('tags', 'serie<utf8>', false),
+      new Field('note', 'utf8', true),
+    ], { nullable: false })
+    const typed = xml.loads(
+      '<anything><at>2026-08-15T12:30:00Z</at><on>2024-01-01</on><price> -10.50 </price><tags>a</tags><note/></anything>',
+      { field },
+    )
+    assert.ok(typed.at instanceof Date)
+    assert.equal(typed.at.toISOString(), '2026-08-15T12:30:00.000Z')
+    assert.ok(typed.on.equals(new DataType('date32').scalar(19723)))
+    assert.ok(typed.price.equals(Scalar.decimal(-1050n, 2)))
+    assert.deepEqual(typed.tags, ['a'])
+    assert.equal(typed.note, null)
+
+    const none = xml.loads(
+      '<row><at>2026-08-15T12:30:00Z</at><on>2024-01-01</on><price>1</price></row>',
+      { field },
+    )
+    assert.deepEqual(none.tags, [], 'a repeated element occurring no time is the empty array')
+  })
+
+  test('XML resolves placeholders and applies the requested depth', () => {
+    assert.deepEqual(
+      xml.loads('<cfg><port>{{ PORT }}</port><path>{{ ROOT }}/app</path></cfg>', {
+        placeholders: { PORT: 8080, ROOT: '/srv' },
+      }),
+      { cfg: { port: 8080, path: '/srv/app' } },
+    )
+
+    const defaultBoundary = nestedRecord(12)
+    assert.deepEqual(xml.loads(xml.dumps(defaultBoundary)), nestedRecord(12))
+    assert.deepEqual(
+      codec.from(codec.into(defaultBoundary, { format: 'xml' }), { format: 'xml' }),
+      defaultBoundary,
+    )
+    assert.throws(() => xml.dumps(nestedRecord(49)), /depth/i)
+    assert.throws(() => xml.dumps(nestedRecord(3), { maxDepth: 3 }), /depth/i)
+    assert.throws(() => xml.loads('<a><b><c/></b></a>', { maxDepth: 2 }), /depth/i)
+  })
+
+  test('XML reads and writes paths, and the generic codec infers it', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-xml-'))
+    try {
+      const file = path.join(directory, 'value.xml')
+      const value = { v: { a: 1 } }
+      xml.dump(value, file)
+      assert.equal(fs.readFileSync(file, 'utf8'), '<v><a>1</a></v>')
+      assert.deepEqual(xml.load(pathToFileURL(file)), { v: { a: '1' } })
+      assert.deepEqual(codec.from(pathToFileURL(file)), { v: { a: '1' } })
+      assert.deepEqual(codec.from(Buffer.from('<v>1</v>')), { v: '1' })
+      assert.equal(codec.into({ v: 1 }, { format: 'xml' }).toString(), '<v>1</v>')
+      assert.throws(() => xml.loads('<a><b></a>'), /expected `<\/b>`/)
+      assert.throws(() => xml.loads('<a/><b/>'), /after the root/i)
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true })
+    }
   })
 }

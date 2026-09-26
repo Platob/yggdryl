@@ -305,7 +305,9 @@ export type ObjectMap<K extends PropertyKey, V> = { [P in K]: V }
 export type JsonLinesCodecFormat =
   'json_lines' | 'json-lines' | 'jsonl' | 'ndjson'
 export type TomlCodecFormat = 'toml'
-export type SingleCodecFormat = 'json' | 'yaml' | 'yml' | TomlCodecFormat
+export type XmlCodecFormat = 'xml' | 'application/xml' | 'text/xml'
+export type SingleCodecFormat =
+  'json' | 'yaml' | 'yml' | TomlCodecFormat | XmlCodecFormat
 export type CodecFormat = SingleCodecFormat | JsonLinesCodecFormat
 export type JsonLinesPath = `${string}.jsonl` | `${string}.ndjson`
 export type CodecContent =
@@ -2533,7 +2535,7 @@ export interface BufferedOptions {
 }
 
 /**
- * The options of a format with `{{ }}` placeholder support: YAML and TOML.
+ * The options of a format with `{{ }}` placeholder support: YAML, TOML and XML.
  *
  * JSON is a data interchange format and refuses the pair by name, which is
  * why its methods take plain {@link CodecOptions}.
@@ -2799,6 +2801,15 @@ export interface ParquetFileStatistics {
 export declare const json: StructuredCodec
 /** Byte-first single-document TOML codec using only natural TOML shapes. */
 export declare const toml: SingleDocumentCodec<TemplateCodecOptions>
+/**
+ * Byte-first single-document XML codec.
+ *
+ * A document is the record naming its root element: attributes are `@name`
+ * entries, an element's own text beside them is `#text`, repeated elements are
+ * an array, a self-closed element is `null`, one with an empty body is `''`,
+ * and every leaf is text until a `field` types the root element's value.
+ */
+export declare const xml: SingleDocumentCodec<TemplateCodecOptions>
 /** Byte-first YAML codec with tagged class comments and multi-document support. */
 export declare const yaml: StructuredCodec<TemplateCodecOptions>
 
@@ -3272,7 +3283,7 @@ declare module './index' {
     ): Buffer
     /** Append bytes or UTF-8 text after the last byte, returning its offset. */
     append(data: ArrayBufferView | ArrayBuffer | string): number
-    /** Decode inferred JSON, YAML, or TOML, including its content coding. */
+    /** Decode inferred JSON, YAML, TOML, or XML, including its content coding. */
     readScalar(options: ScalarReadOptions & { scalar: true }): Scalar
     readScalar<T = unknown>(options?: ScalarReadOptions | FieldLike | null): T
     /** Encode one JavaScript or native `Scalar` through the inferred format. */

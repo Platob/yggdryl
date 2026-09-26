@@ -72,7 +72,7 @@ One tab per layer in the top bar; one page per family in that layer's sidebar.
 | Coding | gzip, zlib/deflate, and Zstandard over any handle | [coding](media/index.md#compression) |
 | Charset | UTF-8, UTF-16, US-ASCII, and the ISO 8859, Windows, DOS and Mac code pages over any handle | [charset](media/index.md#charsets) |
 | Media | Arrow IPC, Parquet, Avro, plain-text records, and Iceberg tables | [media](media/index.md) |
-| Text | JSON, YAML, and TOML over the shared `Scalar` | [text](media/index.md#json) |
+| Text | JSON, YAML, TOML, and XML over the shared `Scalar` | [text](media/index.md#json) |
 | URI | `Uri`, `Url`, `Urn`, `Arn`, paths, globs, and partitions | [uri](uri/index.md) |
 | Arrow | Scalars, schema projection, and batch readers at the Arrow boundary | [arrow](arrow/index.md) |
 | Expression | Predicates: parse, bind, evaluate, and push down | [expression](expression/index.md) |

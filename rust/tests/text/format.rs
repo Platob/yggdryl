@@ -28,6 +28,12 @@ fn format_names_and_extensions_are_inferred() {
         Format::from_path(Path::new("pyproject.toml")).unwrap(),
         Format::Toml
     );
+    assert_eq!(Format::from_str("text/xml").unwrap(), Format::Xml);
+    assert_eq!(Format::from_extension(".xml").unwrap(), Format::Xml);
+    assert_eq!(
+        Format::from_path(Path::new("orders.XML")).unwrap(),
+        Format::Xml
+    );
     assert!(Format::from_path(Path::new("no-extension")).is_err());
 }
 
@@ -76,6 +82,8 @@ mod runtime_format {
             ("file:///t.jsonl.gz", Format::JsonLines),
             ("file:///t.yaml", Format::Yaml),
             ("file:///t.toml", Format::Toml),
+            ("file:///t.xml", Format::Xml),
+            ("file:///t.xml.zst", Format::Xml),
         ] {
             assert_eq!(
                 Format::from_url(&Url::from_str(name).unwrap()).unwrap(),
@@ -134,6 +142,7 @@ mod mime {
             (Format::JsonLines, MimeType::JSON_LINES),
             (Format::Yaml, MimeType::YAML),
             (Format::Toml, MimeType::TOML),
+            (Format::Xml, MimeType::XML),
         ] {
             assert_eq!(format.mime_type(), mime);
             assert_eq!(mime.format(), Some(format));
@@ -149,6 +158,9 @@ mod mime {
             ("yml", Format::Yaml),
             ("application/x-yaml", Format::Yaml),
             ("toml", Format::Toml),
+            ("xml", Format::Xml),
+            ("application/xml", Format::Xml),
+            ("text/xml", Format::Xml),
         ] {
             assert_eq!(Format::from_str(alias).unwrap(), format, "{alias:?}");
         }

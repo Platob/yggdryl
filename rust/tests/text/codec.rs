@@ -1,11 +1,11 @@
-//! `rust/src/text/codec.rs`: one codec surface over the four structured
+//! `rust/src/text/codec.rs`: one codec surface over the five structured
 //! formats, read and written through a handle that applies its own content
 //! coding.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use yggdryl::IOBase;
 use yggdryl::holder::Buffer;
-use yggdryl::text::{Json, Jsonl, TextCodec, Toml, Yaml};
+use yggdryl::text::{Json, Jsonl, TextCodec, Toml, Xml, Yaml};
 use yggdryl::{MimeType, Scalar, Url};
 
 fn handle(name: &str) -> Buffer {
@@ -34,6 +34,18 @@ fn text_bytes_and_readers_share_one_contract() {
     let bytes = Json.into_bytes(&expected).unwrap();
     assert_eq!(Json.from_bytes(&bytes).unwrap(), expected);
     assert_eq!(Json.from_reader(bytes.as_slice()).unwrap(), expected);
+
+    // XML is a document with one root, so a record travels under one name.
+    let quote = Scalar::from_struct([("quote", expected)]).unwrap();
+    let xml = Xml.into_bytes(&quote).unwrap();
+    assert_eq!(
+        xml,
+        b"<quote><price>1.5</price><symbol>AAPL</symbol></quote>"
+    );
+    assert_eq!(
+        Xml.from_reader(xml.as_slice()).unwrap(),
+        Xml.from_bytes(&xml).unwrap()
+    );
 }
 
 #[test]
@@ -66,6 +78,7 @@ fn formats_report_their_media_types() {
     assert_eq!(Jsonl.mime_type(), MimeType::JSON_LINES);
     assert_eq!(Yaml.mime_type(), MimeType::YAML);
     assert_eq!(Toml.mime_type(), MimeType::TOML);
+    assert_eq!(Xml.mime_type(), MimeType::XML);
 }
 
 /// A source whose size accessor is observable. Structured parsing must use
