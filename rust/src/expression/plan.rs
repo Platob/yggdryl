@@ -1434,14 +1434,16 @@ mod arrow {
             match &self.from {
                 Some(Source::Target(target)) => {
                     let holder = target.holder(None)?;
-                    // Ordering cannot be pushed down, and a limit after an
-                    // ordering counts sorted rows, so both stay here when the
-                    // plan orders; otherwise the media applies the limit too.
-                    // A projection the keys do not survive stays here as well,
-                    // so `select name ... order by id` still orders by `id`.
+                    // Ordering and an offset cannot be pushed down - record
+                    // options hold neither - and a limit after either counts
+                    // the rows they leave, so all three stay here whenever the
+                    // plan orders or skips; otherwise the media applies the
+                    // limit too. A projection the keys do not survive stays
+                    // here as well, so `select name ... order by id` still
+                    // orders by `id`.
                     let mut pushed = self.read_sections();
                     let mut rest = Self::new();
-                    if !self.order_by.is_empty() {
+                    if !self.order_by.is_empty() || self.offset.is_some() {
                         pushed.order_by.clear();
                         pushed.limit = None;
                         pushed.offset = None;

@@ -79,7 +79,7 @@ from .expression import (
     Term,
 )
 from .holder import IOBase, IOCursor
-from .media import Avro, Ipc, Media, Parquet, RecordOptions, Text
+from .media import Avro, Ipc, Media, Parquet, RecordOptions, Text, Xmla
 from .mediatype import MediaType
 from .mimetype import MimeType
 from .text import TextEntries, TextEntry, TextLine, TextLines, TextOptions
@@ -392,6 +392,7 @@ __all__ = [
     "VariantField",
     "Version",
     "VersionField",
+    "Xmla",
     "__version__",
     "ascii",
     "ascii_view",

@@ -2540,6 +2540,7 @@ pub enum Media
   pub fn avro(handle: Holder) -> Self
   pub fn with_field(self, field: Field) -> Self
   pub fn text(handle: Holder) -> Self
+  pub fn xmla(handle: Holder) -> Self
   pub const fn handle(&self) -> &Holder
   pub fn into_handle(self) -> Holder
   pub fn as_io(&self) -> &dyn IOBase
@@ -2967,6 +2968,7 @@ pub struct MimeType(MimeTypeWire);
   pub const CSS: Self = Self(MimeTypeWire::Css);
   pub const JAVASCRIPT: Self = Self(MimeTypeWire::JavaScript);
   pub const XML: Self = Self(MimeTypeWire::Xml);
+  pub const XMLA: Self = Self(MimeTypeWire::Xmla);  (`application/xmla+xml`, the `.xmla` rowset document)
   pub const PDF: Self = Self(MimeTypeWire::Pdf);
   pub const CBOR: Self = Self(MimeTypeWire::Cbor);
   pub const MESSAGE_PACK: Self = Self(MimeTypeWire::MessagePack);
@@ -3292,6 +3294,7 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::xml  [rust/src/xml/mod.rs]
+pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};  (the namespace-aware view over a parsed document, which `soap/` and `xmla/` read through)
 pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_xml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
   pub fn into_xml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
@@ -3345,6 +3348,414 @@ pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported 
   pub fn into_utf8_all_with_formatting(values: &[Scalar], formatting: Formatting) -> Result<String>
   pub fn into_writer_all<W, I, V>(values: I, writer: W) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
+
+### yggdryl::xml::element  [rust/src/xml/element.rs]
+pub const XSD_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema"
+pub const XSI_NAMESPACE: &str = "http://www.w3.org/2001/XMLSchema-instance"
+pub struct Scope
+  pub const fn new() -> Self
+  pub fn bind(&mut self, prefix: impl Into<SmolStr>, namespace: impl Into<SmolStr>)
+  pub fn with(mut self, prefix: impl Into<SmolStr>, namespace: impl Into<SmolStr>) -> Self
+  pub fn resolve(&self, prefix: &str) -> Option<&str>
+  pub fn bindings(&self) -> impl Iterator<Item = (&str, &str)> + '_
+  pub fn prefix_of(&self, namespace: &str) -> Option<&str>
+pub struct Element<'a>
+  pub fn root(document: &'a Scalar) -> Result<Self>
+  pub fn new(name: &'a str, value: &'a Scalar, scope: &Scope) -> Self
+  pub const fn name(&self) -> &'a str
+  pub fn local_name(&self) -> &'a str
+  pub fn prefix(&self) -> Option<&'a str>
+  pub fn namespace(&self) -> Option<&str>
+  pub const fn scope(&self) -> &Scope
+  pub fn value(&self) -> &Scalar
+  pub fn is(&self, namespace: Option<&str>, local: &str) -> bool
+  pub fn is_in(&self, namespace: &str, local: &str) -> bool
+  pub fn text(&self) -> Option<&str>
+  pub fn is_nil(&self) -> bool
+  pub fn attribute(&self, name: &str) -> Option<&Scalar>
+  pub fn attribute_in(&self, namespace: Option<&str>, local: &str) -> Option<&str>
+  pub fn attributes(&self) -> impl Iterator<Item = (&str, &Scalar)> + '_
+  pub fn children(&self) -> impl Iterator<Item = Element<'_>> + '_
+  pub fn children_in(&self, namespace: Option<&str>, local: &str) -> Vec<Element<'_>>
+  pub fn child(&self, namespace: Option<&str>, local: &str) -> Option<Element<'_>>
+  pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
+  pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
+
+### yggdryl::soap  [rust/src/soap/mod.rs]
+pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
+pub const ENCODING_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/encoding/"
+pub const PREFIX: &str = "SOAP-ENV"
+pub const CONTENT_TYPE: &str = "text/xml; charset=utf-8"
+pub const ACTION_HEADER: &str = "SOAPAction"
+pub struct Fragment
+  pub fn new(name: impl Into<SmolStr>, value: Scalar) -> Self
+  pub fn in_namespace( name: impl Into<SmolStr>, namespace: &str, value: Scalar, ) -> Result<Self>
+  pub fn name(&self) -> &str
+  pub const fn value(&self) -> &Scalar
+  pub fn into_value(self) -> Scalar
+  pub fn element(&self) -> Element<'_>
+  pub fn from_element(element: &Element<'_>) -> Self  (remembers the declarations in scope at the element)
+  pub fn write<W: Write>(&self, writer: &mut W) -> Result<()>  (declares the prefixes it spells that its value does not)
+pub enum FaultCode
+  pub fn as_str(&self) -> &str
+pub struct Fault
+  pub fn new(code: FaultCode, string: impl Into<String>) -> Self
+  pub fn client(string: impl Into<String>) -> Self
+  pub fn server(string: impl Into<String>) -> Self
+  pub fn with_subcode(mut self, subcode: impl Into<SmolStr>) -> Self
+  pub fn with_actor(mut self, actor: impl Into<String>) -> Self
+  pub fn with_detail(mut self, detail: Fragment) -> Self
+  pub const fn code(&self) -> &FaultCode
+  pub fn subcode(&self) -> Option<&str>
+  pub fn string(&self) -> &str
+  pub fn actor(&self) -> Option<&str>
+  pub fn detail(&self) -> &[Fragment]
+pub enum Body
+pub struct Envelope
+  pub const fn new(body: Body) -> Self
+  pub const fn from_payload(payload: Fragment) -> Self
+  pub const fn from_fault(fault: Fault) -> Self
+  pub fn with_header(mut self, block: Fragment) -> Self
+  pub fn header(&self) -> &[Fragment]
+  pub const fn body(&self) -> &Body
+  pub const fn payload(&self) -> Option<&Fragment>
+  pub const fn fault(&self) -> Option<&Fault>
+  pub fn into_payload(self) -> Result<Fragment>
+  pub fn from_bytes(input: &[u8]) -> Result<Self>
+  pub fn from_bytes_with_limits(input: &[u8], limits: Limits) -> Result<Self>
+  pub fn from_natural(document: &Scalar) -> Result<Self>
+  pub fn into_natural(&self) -> Result<Scalar>
+  pub fn into_bytes(&self) -> Result<Vec<u8>>
+  pub fn into_writer<W: Write>(&self, mut writer: W) -> Result<()>
+pub struct EnvelopeWriter<W: Write>
+  pub fn begin(mut writer: W, header: &[Fragment]) -> Result<Self>
+  pub fn body(&mut self) -> &mut W
+  pub fn fault(mut self, fault: &Fault) -> Result<W>
+  pub fn finish(mut self) -> Result<W>
+
+### yggdryl::soap::http  [rust/src/soap/http.rs]
+pub const MAX_LINE: usize = 8192
+pub const MAX_HEADERS: usize = 128
+pub enum Status
+  pub const fn code(self) -> u16
+  pub const fn reason(self) -> &'static str
+pub struct HttpError
+  pub fn new(status: Status, reason: impl Into<String>) -> Self
+  pub const fn status(&self) -> Status
+  pub fn reason(&self) -> &str
+pub enum Version
+pub struct Request
+  pub fn read<R: BufRead>(reader: &mut R, max_body: usize) -> Result<Option<Self>, HttpError>
+  pub fn method(&self) -> &str
+  pub fn target(&self) -> &str
+  pub const fn version(&self) -> Version
+  pub fn header(&self, name: &str) -> Option<&str>
+  pub fn headers(&self) -> &[(String, String)]
+  pub fn body(&self) -> &[u8]
+  pub fn content_type(&self) -> Option<&str>
+  pub fn soap_action(&self) -> Option<&str>
+  pub fn keep_alive(&self) -> bool
+pub fn write_response<W: Write>( writer: &mut W, status: Status, content_type: &str, keep_alive: bool, body: &[u8], ) -> io::Result<()>
+pub fn begin_chunked<W: Write>( mut writer: W, status: Status, content_type: &str, keep_alive: bool, ) -> io::Result<ChunkedWriter<W>>
+pub struct ChunkedWriter<W: Write>
+  pub fn finish(mut self) -> io::Result<W>
+
+### yggdryl::xmla  [rust/src/xmla/mod.rs]
+pub const NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis"
+pub const ROWSET_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:rowset"
+pub const MDDATASET_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:mddataset"
+pub const EMPTY_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:empty"
+pub const EXCEPTION_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:exception"
+pub const SQL_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-sql"
+
+### yggdryl::xmla::catalog  [rust/src/xmla/catalog.rs]
+pub struct Catalog
+  pub fn new(name: impl Into<SmolStr>, holder: Holder) -> Self
+  pub fn with_description(mut self, description: impl Into<String>) -> Self
+  pub fn name(&self) -> &str
+  pub const fn holder(&self) -> &Holder
+  pub fn description(&self) -> Option<&str>
+  pub fn url(&self) -> Option<&Url>
+  pub fn modified(&self) -> Option<i64>
+  pub fn tables(&self) -> Result<Vec<Table>>
+  pub fn schemas(&self) -> Result<Vec<SmolStr>>
+  pub fn table(&self, schema: Option<&str>, name: &str) -> Result<Table>
+pub struct Table
+  pub fn catalog(&self) -> &str
+  pub fn schema(&self) -> Option<&str>
+  pub fn name(&self) -> &str
+  pub const fn holder(&self) -> &Holder
+  pub fn url(&self) -> Option<&Url>
+  pub fn modified(&self) -> Option<i64>
+  pub const fn table_type(&self) -> &'static str
+  pub fn description(&self) -> String
+  pub fn record_options(&self) -> Result<RecordOptions>
+  pub fn field(&self) -> Result<Field>
+  pub fn path(&self) -> String
+
+### yggdryl::xmla::dbtype  [rust/src/xmla/dbtype.rs]
+pub enum DbType
+  pub const ALL: &'static [Self]
+  pub const fn code(self) -> u16
+  pub const fn as_str(self) -> &'static str
+  pub fn from_code(code: u16) -> Option<Self>
+  pub fn of(dtype: &DataType) -> Self
+  pub const fn column_size(self) -> Option<u32>
+  pub const fn is_unsigned(self) -> Option<bool>
+  pub const fn is_fixed_precision(self) -> bool
+
+### yggdryl::xmla::definitions  [rust/src/xmla/definitions.rs]
+pub struct Definition
+  pub const fn request_type(&self) -> &RequestType
+  pub const fn description(&self) -> &'static str
+  pub const fn rowset(&self) -> &Rowset
+  pub fn field(&self) -> &Field
+  pub fn restrictions(&self) -> Vec<&Field>
+  pub fn restricts_by(&self, column: &str) -> Option<&Field>
+pub fn definitions() -> &'static [Definition]
+pub fn definition_of(request_type: &RequestType) -> Option<&'static Definition>
+
+### yggdryl::xmla::media  [rust/src/xmla/media.rs]
+pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Result<Field>
+pub fn read_batch_reader<H: IOBase + ?Sized>( handle: &H, field: Option<&Field>, options: &XmlaOptions, ) -> crate::arrow::Result<BatchReader>
+pub fn overwrite_arrow_reader<H: IOBase + ?Sized>( handle: &mut H, batches: BatchReader, options: &XmlaOptions, ) -> Result<()>
+pub struct Xmla<H: IOBase>
+  pub fn new(handle: H) -> Self
+  pub fn with_options(mut self, options: XmlaOptions) -> Self
+  pub fn with_field(mut self, field: Field) -> Self
+  pub const fn options(&self) -> &XmlaOptions
+  pub fn options_mut(&mut self) -> &mut XmlaOptions
+  pub const fn handle(&self) -> &H
+  pub fn handle_mut(&mut self) -> &mut H
+  pub fn into_handle(self) -> H
+
+### yggdryl::xmla::options  [rust/src/xmla/options.rs]
+pub struct XmlaOptions
+  pub fn new() -> Self
+  pub const fn without_envelope(mut self) -> Self
+  pub const fn with_method(mut self, method: Method) -> Self
+  pub const fn with_content(mut self, content: Content) -> Self
+
+### yggdryl::xmla::request  [rust/src/xmla/request.rs]
+pub struct Discover
+  pub fn new(request_type: RequestType) -> Self
+  pub fn with_restrictions(mut self, restrictions: Restrictions) -> Self
+  pub fn with_properties(mut self, properties: PropertyList) -> Self
+  pub const fn request_type(&self) -> &RequestType
+  pub const fn restrictions(&self) -> &Restrictions
+  pub const fn properties(&self) -> &PropertyList
+  pub fn properties_mut(&mut self) -> &mut PropertyList
+pub enum Command
+  pub fn statement(&self) -> Option<&str>
+  pub fn name(&self) -> &str
+pub struct Execute
+  pub fn statement(statement: impl Into<String>) -> Self
+  pub const fn new(command: Command) -> Self
+  pub fn with_properties(mut self, properties: PropertyList) -> Self
+  pub fn with_parameter(mut self, name: impl Into<SmolStr>, value: Scalar) -> Self
+  pub const fn command(&self) -> &Command
+  pub const fn properties(&self) -> &PropertyList
+  pub fn properties_mut(&mut self) -> &mut PropertyList
+  pub fn parameters(&self) -> &[(SmolStr, Scalar)]
+pub enum Session
+  pub const fn name(&self) -> &'static str
+  pub fn session_id(&self) -> Option<&str>
+  pub fn read(header: &[Fragment]) -> Result<Option<Self>>
+  pub fn into_fragment(&self) -> Result<Fragment>  (the client's block, `mustUnderstand="1"` unprefixed as Excel spells it)
+  pub fn into_answer_fragment(&self) -> Result<Fragment>  (the provider's block, without `mustUnderstand`)
+pub enum RequestMethod
+pub struct Request
+  pub const fn new(method: RequestMethod) -> Self
+  pub fn with_header(mut self, block: Fragment) -> Self
+  pub fn with_session(self, session: &Session) -> Result<Self>
+  pub fn header(&self) -> &[Fragment]
+  pub const fn method(&self) -> &RequestMethod
+  pub const fn kind(&self) -> Method
+  pub const fn discover(&self) -> Option<&Discover>
+  pub const fn execute(&self) -> Option<&Execute>
+  pub const fn properties(&self) -> &PropertyList
+  pub fn session(&self) -> Result<Option<Session>>
+  pub fn from_envelope(envelope: &Envelope) -> Result<Self>
+  pub fn from_bytes(input: &[u8]) -> Result<Self>
+  pub fn into_envelope(&self) -> Result<Envelope>
+  pub fn into_bytes(&self) -> Result<Vec<u8>>
+  pub fn into_writer<W: Write>(&self, writer: W) -> Result<W>  (the payload's children in the XMLA schema's order)
+
+### yggdryl::xmla::response  [rust/src/xmla/response.rs]
+pub const ACTOR: &str = "yggdryl"
+pub struct XmlaError
+  pub fn new(code: u32, description: impl Into<String>) -> Self
+  pub fn with_source(mut self, source: impl Into<String>) -> Self
+  pub const fn code(&self) -> u32
+  pub fn description(&self) -> &str
+  pub fn source(&self) -> &str
+  pub fn help_file(&self) -> &str
+  pub fn into_fragment(&self) -> Result<Fragment>
+  pub fn from_element(element: &Element<'_>) -> Option<Self>
+  pub fn write<W: Write>(&self, writer: &mut W) -> Result<()>
+  pub fn from_fault(fault: &Fault) -> Vec<Self>  (the XMLA `Error` elements, and olap4j's own `error`)
+pub fn fault(code: FaultCode, error: XmlaError) -> Result<Fault>
+pub enum Answer
+pub struct Response
+  pub fn header(&self) -> &[Fragment]
+  pub const fn method(&self) -> Method
+  pub const fn answer(&self) -> &Answer
+  pub const fn rows(&self) -> Option<&Serie>
+  pub const fn rowset(&self) -> Option<&Rowset>
+  pub fn from_envelope(envelope: &Envelope, field: Option<&Field>) -> Result<Self>
+  pub fn from_envelope_with(envelope: &Envelope, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<Self>
+  pub fn from_bytes(input: &[u8], field: Option<&Field>) -> Result<Self>
+pub fn write_rowset<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<W>
+pub fn write_rowset_reporting<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<(W, Option<XmlaError>)>  (a batch failing mid-stream is reported inside the root as `Messages/Error`)
+pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W>
+pub fn write_fault<W: Write>(writer: W, fault: &Fault) -> Result<W>
+
+### yggdryl::xmla::rowset  [rust/src/xmla/rowset.rs]
+pub const ROW_ELEMENT: &str = "row"
+pub const ROOT_ELEMENT: &str = "root"
+pub enum XsdType
+  pub const ALL: &'static [Self]
+  pub const fn as_str(self) -> &'static str
+  pub fn local_name(self) -> &'static str
+  pub fn of(dtype: &DataType) -> Option<Self>
+  pub fn datatype(self) -> DataType
+  pub fn from_qualified(namespace: Option<&str>, local: &str) -> Option<Self>
+pub fn encode_name(name: &str) -> SmolStr
+pub fn decode_name(encoded: &str) -> SmolStr
+pub struct Rowset
+  pub fn new(field: Field) -> Result<Self>
+  pub fn field(&self) -> &Field
+  pub const fn shared_field(&self) -> &Arc<Field>
+  pub fn element_names(&self) -> Vec<&str>
+  pub fn write_root<W: Write>( &self, writer: &mut W, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, schema: bool, data: bool, ) -> Result<()>
+  pub fn write_root_reporting<W: Write>( &self, writer: &mut W, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, schema: bool, data: bool, ) -> Result<Option<super::response::XmlaError>>
+  pub fn write_schema<W: Write>(&self, writer: &mut W) -> Result<()>
+  pub fn write_rows<W: Write>(&self, writer: &mut W, batch: &Serie) -> Result<()>
+  pub fn from_schema(schema: &Element<'_>) -> Result<Self>
+  pub fn read_rows(&self, root: &Element<'_>) -> Result<Serie>
+  pub fn read_root(root: &Element<'_>, field: Option<&Field>) -> Result<(Self, Serie)>
+  pub fn read_root_with(root: &Element<'_>, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<(Self, Serie)>  (a declared field types the rows; a safe cast nulls what it cannot hold)
+  pub fn stated_field(root: &Element<'_>) -> Result<Option<Field>>
+
+### yggdryl::xmla::server  [rust/src/xmla/server.rs]
+pub struct ServerOptions
+  pub fn new() -> Self
+  pub fn with_path(mut self, path: impl Into<String>) -> Self
+  pub const fn with_max_body(mut self, max_body: usize) -> Self
+pub struct Server
+  pub fn bind(service: Service, address: impl ToSocketAddrs) -> io::Result<Self>
+  pub fn with_options(mut self, options: ServerOptions) -> Self
+  pub fn local_addr(&self) -> io::Result<SocketAddr>
+  pub fn endpoint(&self) -> String
+  pub fn service(&self) -> &Arc<Service>
+  pub fn serve(self) -> io::Result<()>
+  pub fn spawn(self) -> Running
+pub struct Running
+  pub const fn local_addr(&self) -> Option<SocketAddr>
+  pub fn endpoint(&self) -> &str
+  pub fn service(&self) -> &Arc<Service>
+  pub fn stop(mut self)
+
+### yggdryl::xmla::service  [rust/src/xmla/service.rs]
+pub mod code  (the `ErrorCode` values the provider's faults carry)
+  pub const BAD_REQUEST: u32 = 0x0001
+  pub const UNSUPPORTED_REQUEST_TYPE: u32 = 0x0002
+  pub const BAD_RESTRICTION: u32 = 0x0003
+  pub const BAD_PROPERTY: u32 = 0x0004
+  pub const UNSUPPORTED_FORMAT: u32 = 0x0005
+  pub const BAD_STATEMENT: u32 = 0x0006
+  pub const UNKNOWN_TABLE: u32 = 0x0007
+  pub const READ_ONLY: u32 = 0x0008
+  pub const UNSUPPORTED_COMMAND: u32 = 0x0009
+  pub const EXECUTION_FAILED: u32 = 0x000A
+  pub const CATALOG_FAILED: u32 = 0x000B
+  pub const BAD_SESSION: u32 = 0x000C
+pub struct ServiceOptions
+  pub fn new() -> Self
+  pub fn with_url(mut self, url: impl Into<String>) -> Self
+  pub const fn with_writable(mut self, writable: bool) -> Self
+pub enum Execution
+pub struct Service
+  pub const fn new(options: ServiceOptions) -> Self
+  pub fn with_catalog(mut self, catalog: Catalog) -> Self
+  pub const fn options(&self) -> &ServiceOptions
+  pub fn catalogs(&self) -> &[Catalog]
+  pub fn catalog(&self, name: &str) -> Option<&Catalog>
+  pub fn handle<W: Write>(&self, message: &[u8], writer: W) -> Result<W>
+  pub fn answer<W: Write>(&self, request: &Request, writer: W) -> Result<W>
+  pub fn discover(&self, discover: &Discover) -> std::result::Result<(&'static Definition, Serie), Fault>
+  pub fn execute(&self, execute: &Execute) -> std::result::Result<Execution, Fault>
+pub const KEYWORDS: &[&str]  (the statement grammar's reserved words, the rows of DISCOVER_KEYWORDS)
+
+### yggdryl::xmla::vocabulary  [rust/src/xmla/vocabulary.rs]
+pub enum Method
+  pub const ALL: [Self; 2] = [Self::Discover, Self::Execute]
+  pub const fn as_str(self) -> &'static str
+  pub const fn response_name(self) -> &'static str
+  pub const fn soap_action(self) -> &'static str
+pub enum Format  (`Tabular`, `Multidimensional`, `Native`; each enumeration below answers `ALL`, `as_str`, `description`, `FromStr` and `Display`)
+  pub const ALL: &'static [Self]
+  pub const fn as_str(self) -> &'static str
+  pub const fn description(self) -> &'static str
+  pub const DEFAULT: Self = Self::Native
+pub enum Content  (`None`, `Schema`, `Data`, `SchemaData`, `DataOmitDefaultSlicer`, `DataIncludeDefaultSlicer`)
+  pub const DEFAULT: Self = Self::SchemaData
+  pub const fn has_schema(self) -> bool
+  pub const fn has_data(self) -> bool
+pub enum AxisFormat
+pub enum ProviderType
+pub enum AuthenticationMode
+pub enum Access
+pub enum StateSupport
+pub enum MdxSupport
+pub enum RequestType
+  pub const ALL: &'static [Self]
+  pub fn as_str(&self) -> &str
+  pub fn is_discover(&self) -> bool
+  pub fn is_dbschema(&self) -> bool
+  pub fn is_mdschema(&self) -> bool
+pub mod property  (the XMLA property names, spelled as the specification does)
+  pub const AXIS_FORMAT: &str = "AxisFormat"
+  pub const BEGIN_RANGE: &str = "BeginRange"
+  pub const CATALOG: &str = "Catalog"
+  pub const CONTENT: &str = "Content"
+  pub const CUBE: &str = "Cube"
+  pub const DATA_SOURCE_INFO: &str = "DataSourceInfo"
+  pub const DBMS_VERSION: &str = "DBMSVersion"
+  pub const END_RANGE: &str = "EndRange"
+  pub const FORMAT: &str = "Format"
+  pub const LOCALE_IDENTIFIER: &str = "LocaleIdentifier"
+  pub const MDX_SUPPORT: &str = "MDXSupport"
+  pub const PASSWORD: &str = "Password"
+  pub const PROVIDER_NAME: &str = "ProviderName"
+  pub const PROVIDER_VERSION: &str = "ProviderVersion"
+  pub const STATE_SUPPORT: &str = "StateSupport"
+  pub const TIMEOUT: &str = "Timeout"
+  pub const USER_NAME: &str = "UserName"
+  pub const VISUAL_MODE: &str = "VisualMode"
+pub struct PropertyList
+  pub const fn new() -> Self
+  pub fn get(&self, name: &str) -> Option<&str>
+  pub fn set(&mut self, name: impl Into<SmolStr>, value: impl Into<String>)
+  pub fn with(mut self, name: impl Into<SmolStr>, value: impl Into<String>) -> Self
+  pub fn remove(&mut self, name: &str) -> Option<String>
+  pub fn entries(&self) -> &[(SmolStr, String)]
+  pub fn is_empty(&self) -> bool
+  pub fn len(&self) -> usize
+  pub fn format(&self) -> Result<Format>
+  pub fn content(&self) -> Result<Content>
+  pub fn axis_format(&self) -> Result<AxisFormat>
+  pub fn catalog(&self) -> Option<&str>
+  pub fn data_source_info(&self) -> Option<&str>
+  pub fn timeout(&self) -> Result<Option<u32>>
+pub struct Restrictions
+  pub const fn new() -> Self
+  pub fn get(&self, name: &str) -> Option<&[String]>
+  pub fn push(&mut self, name: impl Into<SmolStr>, value: impl Into<String>)
+  pub fn with(mut self, name: impl Into<SmolStr>, value: impl Into<String>) -> Self
+  pub fn entries(&self) -> &[(SmolStr, Vec<String>)]
+  pub fn is_empty(&self) -> bool
+  pub fn len(&self) -> usize
 
 ### yggdryl::yaml  [rust/src/yaml/mod.rs]
 pub fn from_yaml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)

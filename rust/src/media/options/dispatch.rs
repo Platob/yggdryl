@@ -12,6 +12,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.name(),
             Self::Avro(options) => options.name(),
             Self::Text(options) => options.name(),
+            Self::Xmla(options) => options.name(),
         }
     }
 
@@ -22,6 +23,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_name(name),
             Self::Avro(options) => options.set_name(name),
             Self::Text(options) => options.set_name(name),
+            Self::Xmla(options) => options.set_name(name),
         }
     }
 
@@ -32,6 +34,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.declared(),
             Self::Avro(options) => options.declared(),
             Self::Text(options) => options.declared(),
+            Self::Xmla(options) => options.declared(),
         }
     }
 
@@ -42,6 +45,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_declared(field),
             Self::Avro(options) => options.set_declared(field),
             Self::Text(options) => options.set_declared(field),
+            Self::Xmla(options) => options.set_declared(field),
         }
     }
 
@@ -52,6 +56,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.merge_by(),
             Self::Avro(options) => options.merge_by(),
             Self::Text(options) => options.merge_by(),
+            Self::Xmla(options) => options.merge_by(),
         }
     }
 
@@ -62,6 +67,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_merge_by(merge_by),
             Self::Avro(options) => options.set_merge_by(merge_by),
             Self::Text(options) => options.set_merge_by(merge_by),
+            Self::Xmla(options) => options.set_merge_by(merge_by),
         }
     }
 
@@ -72,6 +78,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.filter(),
             Self::Avro(options) => options.filter(),
             Self::Text(options) => options.filter(),
+            Self::Xmla(options) => options.filter(),
         }
     }
 
@@ -82,6 +89,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_filter(filter),
             Self::Avro(options) => options.set_filter(filter),
             Self::Text(options) => options.set_filter(filter),
+            Self::Xmla(options) => options.set_filter(filter),
         }
     }
 
@@ -92,6 +100,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.select(),
             Self::Avro(options) => options.select(),
             Self::Text(options) => options.select(),
+            Self::Xmla(options) => options.select(),
         }
     }
 
@@ -102,6 +111,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_select(select),
             Self::Avro(options) => options.set_select(select),
             Self::Text(options) => options.set_select(select),
+            Self::Xmla(options) => options.set_select(select),
         }
     }
 
@@ -112,6 +122,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.safe(),
             Self::Avro(options) => options.safe(),
             Self::Text(options) => options.safe(),
+            Self::Xmla(options) => options.safe(),
         }
     }
 
@@ -122,6 +133,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_safe(safe),
             Self::Avro(options) => options.set_safe(safe),
             Self::Text(options) => options.set_safe(safe),
+            Self::Xmla(options) => options.set_safe(safe),
         }
     }
 
@@ -132,6 +144,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.batch_byte_size(),
             Self::Avro(options) => options.batch_byte_size(),
             Self::Text(options) => options.batch_byte_size(),
+            Self::Xmla(options) => options.batch_byte_size(),
         }
     }
 
@@ -142,6 +155,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.batch_row_size(),
             Self::Avro(options) => options.batch_row_size(),
             Self::Text(options) => options.batch_row_size(),
+            Self::Xmla(options) => options.batch_row_size(),
         }
     }
 
@@ -152,6 +166,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_batch_byte_size(batch_byte_size),
             Self::Avro(options) => options.set_batch_byte_size(batch_byte_size),
             Self::Text(options) => options.set_batch_byte_size(batch_byte_size),
+            Self::Xmla(options) => options.set_batch_byte_size(batch_byte_size),
         }
     }
 
@@ -162,6 +177,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_batch_row_size(batch_row_size),
             Self::Avro(options) => options.set_batch_row_size(batch_row_size),
             Self::Text(options) => options.set_batch_row_size(batch_row_size),
+            Self::Xmla(options) => options.set_batch_row_size(batch_row_size),
         }
     }
 
@@ -172,6 +188,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.max_row_size(),
             Self::Avro(options) => options.max_row_size(),
             Self::Text(options) => options.max_row_size(),
+            Self::Xmla(options) => options.max_row_size(),
         }
     }
 
@@ -182,6 +199,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_max_row_size(max_row_size),
             Self::Avro(options) => options.set_max_row_size(max_row_size),
             Self::Text(options) => options.set_max_row_size(max_row_size),
+            Self::Xmla(options) => options.set_max_row_size(max_row_size),
         }
     }
 
@@ -192,6 +210,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.max_byte_size(),
             Self::Avro(options) => options.max_byte_size(),
             Self::Text(options) => options.max_byte_size(),
+            Self::Xmla(options) => options.max_byte_size(),
         }
     }
 
@@ -202,6 +221,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_max_byte_size(max_byte_size),
             Self::Avro(options) => options.set_max_byte_size(max_byte_size),
             Self::Text(options) => options.set_max_byte_size(max_byte_size),
+            Self::Xmla(options) => options.set_max_byte_size(max_byte_size),
         }
     }
 
@@ -212,6 +232,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.commit_row_size(),
             Self::Avro(options) => options.commit_row_size(),
             Self::Text(options) => options.commit_row_size(),
+            Self::Xmla(options) => options.commit_row_size(),
         }
     }
 
@@ -222,6 +243,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_commit_row_size(commit_row_size),
             Self::Avro(options) => options.set_commit_row_size(commit_row_size),
             Self::Text(options) => options.set_commit_row_size(commit_row_size),
+            Self::Xmla(options) => options.set_commit_row_size(commit_row_size),
         }
     }
 
@@ -232,6 +254,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.level(),
             Self::Avro(options) => options.level(),
             Self::Text(options) => options.level(),
+            Self::Xmla(options) => options.level(),
         }
     }
 
@@ -242,6 +265,7 @@ impl IORecordOptions for RecordOptions {
             Self::Parquet(options) => options.set_level(level),
             Self::Avro(options) => options.set_level(level),
             Self::Text(options) => options.set_level(level),
+            Self::Xmla(options) => options.set_level(level),
         }
     }
 }
@@ -268,5 +292,11 @@ impl From<crate::avro::AvroOptions> for RecordOptions {
 impl From<crate::text::TextOptions> for RecordOptions {
     fn from(value: crate::text::TextOptions) -> Self {
         Self::Text(Box::new(value))
+    }
+}
+
+impl From<crate::xmla::XmlaOptions> for RecordOptions {
+    fn from(value: crate::xmla::XmlaOptions) -> Self {
+        Self::Xmla(value)
     }
 }

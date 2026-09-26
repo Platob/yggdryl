@@ -70,6 +70,7 @@ from .media import (
     Parquet as Parquet,
     RecordOptions as RecordOptions,
     Text as Text,
+    Xmla as Xmla,
 )
 from .mediatype import (
     MediaType as MediaType,

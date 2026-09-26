@@ -18,6 +18,48 @@ mod text {
     }
 
     #[test]
+    fn a_member_of_a_located_archive_reads_its_own_lines_not_the_archive_s() {
+        // A member is addressed in the archive's URL fragment, so the file name
+        // of its location is the archive's: reopening the member by that name
+        // would read the archive's own bytes as the lines. The member reads as
+        // the lines it holds, from an archive that has a location.
+        use arrow_array::Array as _;
+
+        let mut root = yggdryl::local::LocalFolder::temporary()
+            .unwrap()
+            .path()
+            .unwrap();
+        root.push(format!("yggdryl-text-zip-member-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let archive =
+            yggdryl::zip::mount(yggdryl::holder::Holder::local(root.join("day.zip")).unwrap());
+        let mut member = archive.child_by_path("notes/day.txt").unwrap();
+        member.write_all_bytes(b"one\ntwo\n").unwrap();
+        let member = archive.child_by_path("notes/day.txt").unwrap();
+        let options: RecordOptions = TextOptions::new().into();
+        let batches: Vec<arrow_array::RecordBatch> = member
+            .read_arrow_reader(&options)
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let bodies: Vec<String> = batches
+            .iter()
+            .flat_map(|batch| {
+                let body = batch
+                    .column_by_name("body")
+                    .expect("a body column")
+                    .as_any()
+                    .downcast_ref::<StringArray>()
+                    .expect("text")
+                    .clone();
+                (0..body.len()).map(move |row| body.value(row).to_owned())
+            })
+            .collect();
+        assert_eq!(bodies, ["one", "two"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn a_dictionary_encoded_body_is_a_text_body_a_write_unpacks_once() {
         // Arrow JS infers `Dictionary<Int32, Utf8>` for a plain record's string,
         // so a body column in that layout is the same text under another

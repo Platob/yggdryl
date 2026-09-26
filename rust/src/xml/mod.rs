@@ -52,12 +52,17 @@
 use std::borrow::Borrow;
 use std::io::{Read, Write};
 
+pub mod element;
 mod parser;
 #[cfg(feature = "aws")]
 pub(crate) mod scanner;
 mod wire;
 
-pub(crate) use wire::{natural, shaped};
+pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};
+pub(crate) use wire::{
+    is_name_char, is_name_start, natural, shaped, write_attribute_text, write_element_text,
+    write_fragment, write_leaf_text,
+};
 
 use crate::text::{Formatting, Limits, Scalar, ScalarIter, check_input_size};
 use crate::{Charset, Error, Field, Result};

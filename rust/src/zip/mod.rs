@@ -152,8 +152,9 @@ pub fn from_url(url: &crate::Url) -> crate::Result<Holder> {
     Ok(held)
 }
 
-/// The member name a holder inside an archive addresses.
-fn member_name(holder: &Holder) -> Option<&str> {
+/// The member name a holder inside an archive addresses - its whole path in
+/// the archive, `eu/fills.arrows` - and `None` for a holder outside one.
+pub(crate) fn member_name(holder: &Holder) -> Option<&str> {
     match holder {
         Holder::ZipNode(node) => Some(node.name()),
         Holder::ZipPath(path) => Some(path.name()),

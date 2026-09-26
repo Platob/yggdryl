@@ -193,6 +193,7 @@ impl Role {
             Self::Media(Encoding::Ipc) => "Ipc",
             Self::Media(Encoding::Parquet) => "Parquet",
             Self::Media(Encoding::Avro) => "Avro",
+            Self::Media(Encoding::Xmla) => "Xmla",
             Self::Held => "IOBase",
         }
     }

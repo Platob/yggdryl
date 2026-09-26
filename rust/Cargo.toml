@@ -98,6 +98,9 @@ parquet = { version = "59.2.0", default-features = false, features = [
     "zstd",
 ], optional = true }
 serde_json = { version = "1.0", features = ["raw_value", "unbounded_depth"] }
+# The shortest round-trip float spelling serde_json writes, into a stack buffer:
+# what the XML writer spells a float cell with, so a row costs no string.
+ryu = "1.0"
 sha2 = { version = "0.11", optional = true }
 # Inline small collections: the two or three identifiers a market names an
 # instrument by, and the handful of ids a message states, held without a heap

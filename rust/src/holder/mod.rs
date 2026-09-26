@@ -398,6 +398,7 @@ impl Holder {
             || *base == crate::MimeType::ARROW_FILE
             || *base == crate::MimeType::AVRO
             || *base == crate::MimeType::PLAIN_TEXT
+            || *base == crate::MimeType::XMLA
             || cfg!(feature = "parquet") && *base == crate::MimeType::PARQUET;
         if !supported {
             return self;
@@ -421,6 +422,9 @@ impl Holder {
         }
         if *base == crate::MimeType::PLAIN_TEXT {
             return self.into_text();
+        }
+        if *base == crate::MimeType::XMLA {
+            return Self::Media(Box::new(crate::media::Media::xmla(self)));
         }
         debug_assert_eq!(*base, crate::MimeType::AVRO);
         Self::Media(Box::new(crate::media::Media::avro(self)))
