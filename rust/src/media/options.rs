@@ -663,12 +663,14 @@ pub trait IORecordOptions: Sized {
         self.require_merge_by().map(|()| self)
     }
 
-    /// Refuse a match key that names a column twice.
+    /// Refuse a match key that names a column twice, or that unnests: a key
+    /// is one value per row, where an `unnest` is one row per element.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the repeated column.
+    /// Returns an error naming the repeated column, or the `unnest`.
     fn require_merge_by(&self) -> Result<()> {
+        self.merge_by().refuse_unnest("in a key")?;
         let names = self.merge_by().names();
         for (index, name) in names.iter().enumerate() {
             if names[..index]

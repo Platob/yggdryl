@@ -380,6 +380,39 @@ fn a_satisfied_limit_stops_pulling_the_inner_reader() {
     assert_eq!(pulls.load(std::sync::atomic::Ordering::SeqCst), 5);
 }
 
+/// What `docs/expression/grammar.md` states for an `unnest` standing as a
+/// key: a key is one value per row, and an unnest is one row per element.
+const UNNEST_IN_A_KEY: &str = "unnest is a select-list form: expected `unnest(xs)` as the whole term of a projection, got it in a key";
+
+#[test]
+fn an_unnest_is_refused_as_a_match_key_at_every_door_that_takes_one() {
+    let refused = |error: yggdryl::Error| {
+        let message = error.to_string();
+        assert!(message.contains(UNNEST_IN_A_KEY), "{message}");
+    };
+    refused(IpcOptions::new().with_merge_by("unnest(xs)").unwrap_err());
+    // `explode` is the same verb, and an alias does not make it one value.
+    refused(
+        IpcOptions::new()
+            .with_merge_by("id, explode(xs) as x")
+            .unwrap_err(),
+    );
+    refused(
+        IpcOptions::new()
+            .with_merge_by_scalar(&yggdryl::Scalar::from("unnest(xs)"))
+            .unwrap_err(),
+    );
+    // An upsert's `by (...)` is the same key.
+    refused(
+        IpcOptions::new()
+            .with_plan("upsert by (unnest(xs))")
+            .unwrap_err(),
+    );
+    // A computed key that reads one value per row is still a key.
+    let keyed = IpcOptions::new().with_merge_by("id, lower(tag)").unwrap();
+    assert_eq!(keyed.merge_by().to_string(), "id, lower(tag)");
+}
+
 #[test]
 fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
     let options = IpcOptions::new()

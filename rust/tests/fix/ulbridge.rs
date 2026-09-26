@@ -1185,6 +1185,57 @@ mod dataset {
         );
         assert!(trade.market_operations().is_err());
     }
+
+    #[test]
+    fn the_arrow_twin_over_unwalked_rows_answers_the_leaves_their_messages_do() {
+        use yggdryl::graph::MarketData;
+
+        let codec = codec();
+        // Every message the capture reads as, less the trade capture whose
+        // expansion is refused: one refusal is an Arrow door's only answer.
+        let messages: Vec<FixMsg> = line_messages(&codec)
+            .into_iter()
+            .filter(|message| {
+                codec
+                    .market_operations([message.clone()])
+                    .all(|held| held.is_ok())
+            })
+            .collect();
+        assert_eq!(messages.len(), ROWS - 1);
+        let direct = codec
+            .market_operations(messages.clone())
+            .collect::<yggdryl::Result<Vec<MarketData>>>()
+            .expect("the capture expands");
+        // Rows no walk wrote: each is read as its own message, so the twin
+        // answers what the messages do, leaf for leaf. A walked capture
+        // reaches the sorted door as messages instead - what a walk settles
+        // from a message's predecessors is no cell of its row.
+        let rows = codec
+            .arrow_reader(super::format_target(&registry()), messages)
+            .expect("the FIX rows");
+        let twin = MarketData::from_arrow_reader(
+            codec
+                .market_operations_arrow_reader(rows)
+                .expect("the twin opens"),
+        )
+        .expect("the rows read back")
+        .collect::<yggdryl::Result<Vec<MarketData>>>()
+        .expect("every row");
+        // Every observation's leaves, the repeated deliveries among them:
+        // nothing walked folds a repeat onto the delivery it repeats.
+        assert_eq!(direct.len(), 60);
+        assert_eq!(twin.len(), direct.len());
+        for (index, (twin, direct)) in twin.iter().zip(&direct).enumerate() {
+            assert_eq!(twin.kind(), direct.kind(), "leaf {index}");
+            assert_eq!(twin.get_curruuid(), direct.get_curruuid(), "leaf {index}");
+            assert_eq!(
+                twin.get_currhashcode(),
+                direct.get_currhashcode(),
+                "leaf {index}"
+            );
+        }
+        assert_eq!(twin, direct);
+    }
 }
 
 mod pipeline {

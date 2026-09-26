@@ -2,7 +2,7 @@
 //! there and the entries that rest there - with its datatype, its field and
 //! its scalar.
 
-use smol_str::{SmolStr, format_smolstr};
+use smol_str::SmolStr;
 
 use crate::text::expected_got;
 use crate::{DataType, Decimal, Error, Field, Result, Scalar, StructType, Uuid};
@@ -84,85 +84,68 @@ impl Limit {
 
     /// Reads a limit back from the named struct [`Self::into_scalar`]
     /// answers or from the ordered row of three cells [`Self::dtype`]'s
-    /// value door canonicalizes it to; a name the struct lacks is a null.
+    /// value door canonicalizes it to. The value passes that one door first,
+    /// through [`Self::field`], so a cell is read exactly as a `limits`
+    /// column would hold it - a text or a number the decimal datatype
+    /// restates is read as it restates it - except that a name the struct
+    /// lacks is a null rather than the default the door fills a required
+    /// cell with: a limit states its quantity, never a zero it was not given.
     ///
     /// # Errors
     ///
-    /// [`Error::InvalidRecord`] located at `$.price` for a price that is no
-    /// decimal, `$.quantity` for a null or non-decimal quantity, `$.uuids`
-    /// for entries that are no serie, `$.uuids[i]` for an entry that is no
-    /// uuid, `$.<name>` for a name the struct should not hold, and `$` for
-    /// a row of another width or a value of another shape.
+    /// The refusal [`Self::field`]'s [`Field::scalar`] answers, located
+    /// under `$.limit`: a price that is no decimal, a null, missing or
+    /// non-decimal quantity, entries that are missing or no serie of uuids,
+    /// a name the struct should not hold, a row of another width or a value
+    /// of another shape.
     pub fn from_scalar(value: &Scalar) -> Result<Self> {
-        if let Some(fields) = value.as_struct() {
-            if let Some(name) = fields.keys().find(|name| !NAMES.contains(&name.as_str())) {
-                return Err(refusal(
-                    format_smolstr!("$.{name}"),
-                    SmolStr::new_static("expected price, quantity or uuids, got an unknown field"),
-                ));
+        let value = match value.as_struct() {
+            Some(fields) if NAMES.iter().any(|name| !fields.contains_key(*name)) => {
+                let absent = NAMES
+                    .iter()
+                    .filter(|name| !fields.contains_key(**name))
+                    .map(|name| (SmolStr::new_static(name), Scalar::Null));
+                Scalar::from_struct(
+                    fields
+                        .iter()
+                        .map(|(name, cell)| (name.clone(), cell.clone()))
+                        .chain(absent),
+                )?
             }
-            let cell = |name: &str| fields.get(name).unwrap_or(&Scalar::Null);
-            return Self::from_cells(cell(NAMES[0]), cell(NAMES[1]), cell(NAMES[2]));
-        }
-        let Some(row) = value.sequence_rows() else {
-            return Err(refusal(
-                SmolStr::new_static("$"),
-                expected_got("a limit struct or its row", value.kind()),
-            ));
+            _ => value.clone(),
         };
-        let [price, quantity, uuids] = row.as_ref() else {
-            return Err(refusal(
-                SmolStr::new_static("$"),
-                expected_got(
-                    format_args!("a row of {} cells", NAMES.len()),
-                    format_args!("{} cells", row.len()),
-                ),
-            ));
+        let row = Self::field().scalar(value)?;
+        let cells = row.sequence_rows();
+        let Some([price, Scalar::Decimal(quantity), uuids]) = cells.as_deref() else {
+            return Err(unread(&row));
         };
-        Self::from_cells(price, quantity, uuids)
-    }
-
-    fn from_cells(price: &Scalar, quantity: &Scalar, uuids: &Scalar) -> Result<Self> {
         let price = match price {
+            Scalar::Decimal(price) => Some(*price),
             Scalar::Null => None,
-            held => Some(Decimal::from_scalar(held).ok_or_else(|| {
-                refusal(
-                    SmolStr::new_static("$.price"),
-                    expected_got("a decimal or null", held.kind()),
-                )
-            })?),
+            _ => return Err(unread(&row)),
         };
-        let quantity = Decimal::from_scalar(quantity).ok_or_else(|| {
-            refusal(
-                SmolStr::new_static("$.quantity"),
-                expected_got("a decimal", quantity.kind()),
-            )
-        })?;
-        let Some(entries) = uuids.sequence_rows() else {
-            return Err(refusal(
-                SmolStr::new_static("$.uuids"),
-                expected_got("a serie of uuids", uuids.kind()),
-            ));
-        };
-        let uuids = entries
+        let uuids = uuids
+            .sequence_rows()
+            .ok_or_else(|| unread(&row))?
             .iter()
-            .enumerate()
-            .map(|(index, entry)| match entry {
+            .map(|entry| match entry {
                 Scalar::Uuid(uuid) => Ok(*uuid),
-                other => Err(refusal(
-                    format_smolstr!("$.uuids[{index}]"),
-                    expected_got("a uuid", other.kind()),
-                )),
+                _ => Err(unread(&row)),
             })
             .collect::<Result<Vec<_>>>()?;
         Ok(Self {
             price,
-            quantity,
+            quantity: *quantity,
             uuids,
         })
     }
 }
 
-fn refusal(path: SmolStr, reason: SmolStr) -> Error {
-    Error::InvalidRecord { path, reason }
+/// The value door answered a row this reading does not know: the one
+/// contract and this reading disagree, which no caller value can cause.
+fn unread(row: &Scalar) -> Error {
+    Error::InvalidRecord {
+        path: SmolStr::new_static("$.limit"),
+        reason: expected_got("the canonical limit row", row.kind()),
+    }
 }

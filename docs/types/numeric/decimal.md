@@ -329,7 +329,7 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
 
 ## Casts
 
-Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient; the declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
+Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact and is cut. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 
@@ -412,7 +412,7 @@ assert_eq!(i256::from_le_bytes(i256::from_i128(9).into_le_bytes()), i256::from_i
 | --- | --- |
 | Value | `yggdryl::Decimal`: one `i128` of units at scale eighteen, bounded to thirty-eight digits, `MIN` to `MAX`; add, subtract and compare are the integer's, and multiply and divide widen to 256 bits for the one product |
 | Arithmetic | `checked_add`, `checked_sub`, `checked_mul`, `checked_div` answer `None` past thirty-eight digits, the last also for a divisor of nothing; `checked_mul` and `checked_div` keep eighteen fractional digits and truncate the rest toward zero; the operators refuse an overflow as the integers' do |
-| Text | `Decimal::parse` (and `FromStr`) is lenient and one pass: surrounding whitespace, an empty text as zero, a sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, an exponent, and digits past the eighteenth fractional one truncated toward zero; it refuses only text stating no number and a value past thirty-eight digits. The value door - `DataType::Decimal.scalar`, `Field::scalar` - is strict: a nineteenth fractional digit is refused, never truncated |
+| Text | `Decimal::parse` (and `FromStr`) is lenient and one pass: surrounding whitespace, an empty text as zero, a sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, an exponent, and digits past the eighteenth fractional one truncated toward zero; it refuses only text stating no number and a value past thirty-eight digits, and an exponent past every width is that refusal or, negative, zero. The value door - `DataType::Decimal.scalar`, `Field::scalar` - is strict: a nineteenth fractional digit is refused, never truncated. `from_f64` reads a float as the shortest text naming it, rounded half away from zero at the eighteenth digit: a float is an inexact reading and is rounded, text is exact and is cut |
 | Width | `widened()` is the lossless way into [`BigDecimal`](#bigdecimal); `DataType::DECIMAL` is the `decimal128(38, 18)` storage the leaf rides and the spelling a FIX dictionary types a price with, a parameterized width and not the leaf |
 | Identity | `DataTypeId::Decimal`, `0x2d`, inside the decimal family's [range](../scalar.md#families): `is_decimal` answers it and `is_parameterized` does not |
 
@@ -520,7 +520,7 @@ Bare `decimal` is the leaf; a parenthesis names the parameterized family, so `de
 
 ### Scalar
 
-`Scalar::Decimal` holds the value; its wire tag is `decimal`, carrying the units. It equals, orders and hashes as the `d128` twin naming the same number, and digests alike, so a value is one value whichever leaf holds it. `as_decimal` reads it as its units at scale eighteen, and `Display` trims the zeros behind the point. Arithmetic over a leaf keeps the leaf: the other operand meets it at scale eighteen, a `bigdecimal` on either side answers a `bigdecimal`, and a remainder is refused because a fixed scale states none.
+`Scalar::Decimal` holds the value; its wire tag is `decimal`, carrying the units. It equals, orders and hashes as the `d128` twin naming the same number, and digests alike, so a value is one value whichever leaf holds it. `as_decimal` reads it as its units at scale eighteen, and `Display` trims the zeros behind the point - the one text a leaf spells, which a column cast to text writes too, in a batch as in a row. Arithmetic over a leaf keeps the leaf: the other operand - an exact decimal at any scale or an integer of any width - meets it at scale eighteen, a `bigdecimal`, `decimal256`, `int128` or `uint128` on either side answers a `bigdecimal`, a product or a quotient truncates toward zero past the eighteenth digit, a remainder is exact with the dividend's sign, and a divisor of nothing is a division by zero. An expression types the same way: `px * qty` over two `decimal` columns is a `decimal`, and `n + 1` over a `bigdecimal` is a `bigdecimal`.
 
 === "Rust"
 
@@ -556,9 +556,9 @@ Bare `decimal` is the leaf; a parenthesis names the parameterized family, so `de
     assert_eq!(DataType::Decimal.scalar(Scalar::d128(825, 1))?, value);
     assert!(DataType::Decimal.scalar(Scalar::d128(1, 19)).is_err(), "a nineteenth digit");
 
-    // Arithmetic keeps the leaf; a remainder is refused.
+    // Arithmetic keeps the leaf; a remainder is exact at scale eighteen.
     assert_eq!(value.checked_mul(&Scalar::from(1_000_i64))?, Scalar::Decimal(Decimal::from_int(82_500)));
-    assert!(value.checked_rem(&Scalar::from(2_i64)).is_err());
+    assert_eq!(value.checked_rem(&Scalar::from(2_i64))?, Scalar::Decimal("0.5".parse::<Decimal>()?));
     ```
 
 === "Python"
@@ -849,7 +849,11 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 - A decimal beside a float -> refused; an exact number and an approximate one have no meeting point that is not a re-encoding.
 - `Decimal::MAX.checked_add(Decimal::ONE)` and `BigDecimal::MAX.checked_add(BigDecimal::ONE)` -> `None`; the operator form refuses as the integers' do.
 - `Decimal::parse("0.1234567890123456789")` -> truncated to eighteen digits; `DataType::Decimal.scalar` of the same number -> refused, because the value door restates exactly or not at all.
-- A `decimal` or `bigdecimal` value under `%` -> refused: a fixed scale states no remainder. Beside a float -> refused, as every exact decimal is.
+- A `decimal` or `bigdecimal` value under `%` -> the exact remainder at scale eighteen, its sign the dividend's: `-5.5 % 2` is `-1.5`. By a divisor of nothing, under `/` or `%` -> `Error::DivisionByZero`. Beside a float -> refused, as every exact decimal is.
+- `-1 / 3` over either leaf -> `-0.333333333333333333`: truncation is toward zero whatever the sign.
+- A `u64` past `i64`, an `int128` or a `uint128` beside a leaf -> read whole; the two 128-bit widths and `decimal256` answer a `bigdecimal`, as they widen the family to `d256`.
+- `Decimal::parse("1e2147483647")` -> refused as too many digits; `"1e-2147483648"` and `"0e2147483647"` -> zero, for both leaves.
+- `cast(f as bigdecimal)` over a float -> the number its shortest text names, `1e25` exactly; a float past the target's digits, `nan` or an infinity -> refused, `null` under `try_cast`. The same reading serves every decimal width, a column as a row: `1.15` into `decimal(10, 2)` is `1.15`, `0.125` is `0.13`, and `2.5` and `-2.5` into `decimal(10, 0)` are `3` and `-3`, rounded half away from zero where text would be cut.
 - `BigDecimal::narrowed()` past thirty-eight digits -> `None`; a `bigdecimal` column cast onto `decimal` narrows under the cast's `safe` rule.
 - `yggdryl.decimal` or `yggdryl.bigdecimal` over another storage, or with a nonempty document -> imports as that storage, a foreign field wearing the name.
 - A `bigdecimal` column into Avro, Iceberg, Spark, Polars or pandas -> refused by name; a `decimal` column crosses as their `decimal(38, 18)`.
@@ -860,9 +864,10 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- compatibility decimal::exact::comparison decimal::exact::family decimal::exact::fixed decimal::exact::representation decimal::exact::restating decimal::fields decimal::selection int256 merge::lattice parser::families regex::fractions temporal::datatypes variant::encoding wkb::exactness
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- compatibility decimal::exact::comparison decimal::exact::family decimal::exact::fixed decimal::exact::representation decimal::exact::restating decimal::fields decimal::selection cast::fixed_decimal_text cast::float_decimals int256 merge::lattice parser::families regex::fractions temporal::datatypes variant::encoding wkb::exactness
     cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test value -- canonical::value::readings
     cargo test --features "iceberg internals parquet" --manifest-path rust/Cargo.toml -p yggdryl --test root -- decimal::internal::reading arithmetic
+    cargo test --manifest-path rust/Cargo.toml -p yggdryl --test expression -- fixed_leaves
     cargo bench --manifest-path rust/Cargo.toml --bench types -- '^decimal/'
     ```
 

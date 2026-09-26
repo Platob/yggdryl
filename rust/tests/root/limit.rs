@@ -30,6 +30,21 @@ fn refused(value: &Scalar) -> (String, String) {
     }
 }
 
+/// What `Limit::from_scalar` answers, asserted to be what the one value door
+/// `Limit::field().scalar` answers: its refusal as it stands, or the limit
+/// its canonical row reads as.
+fn read_as_the_door(value: &Scalar) -> Result<Limit, String> {
+    let read = Limit::from_scalar(value).map_err(|error| error.to_string());
+    match Limit::field().scalar(value.clone()) {
+        Err(door) => assert_eq!(read, Err(door.to_string())),
+        Ok(row) => assert_eq!(
+            read,
+            Limit::from_scalar(&row).map_err(|error| error.to_string())
+        ),
+    }
+    read
+}
+
 /// A struct scalar under the three names, `edit` replacing one cell.
 fn struct_with(name: &str, cell: Scalar) -> Scalar {
     let limit = priced().into_scalar();
@@ -120,71 +135,111 @@ fn from_scalar_reads_the_struct_and_the_canonical_row() {
 }
 
 #[test]
-fn a_price_that_is_no_decimal_is_refused_at_its_path() {
+fn a_cell_is_refused_exactly_as_the_value_door_refuses_it() {
     let wrong = Scalar::Uuid(Uuid::from_v8(9));
-    for value in [
-        struct_with("price", wrong.clone()),
-        row_with(0, wrong.clone()),
+    let mixed = Scalar::from_sequence([Scalar::Uuid(Uuid::from_v8(1)), Scalar::from(1_i64)]);
+    for (name, index, cell, path) in [
+        ("price", 0, wrong.clone(), "$.limit.price"),
+        ("quantity", 1, wrong.clone(), "$.limit.quantity"),
+        ("quantity", 1, Scalar::Null, "$.limit.quantity"),
+        ("uuids", 2, Scalar::Null, "$.limit.uuids"),
+        ("uuids", 2, Scalar::from("O-1"), "$.limit.uuids"),
+        ("uuids", 2, mixed, "$.limit.uuids[1].uuid"),
     ] {
-        let (path, reason) = refused(&value);
-        assert_eq!(path, "$.price");
+        for value in [
+            struct_with(name, cell.clone()),
+            row_with(index, cell.clone()),
+        ] {
+            assert!(read_as_the_door(&value).is_err(), "{name} = {cell:?}");
+            assert_eq!(refused(&value).0, path, "{name} = {cell:?}");
+        }
+    }
+}
+
+#[test]
+fn an_empty_text_is_never_a_price_or_a_quantity_of_zero() {
+    let empty = Scalar::from("");
+    for (name, index) in [("price", 0), ("quantity", 1)] {
+        for value in [
+            struct_with(name, empty.clone()),
+            row_with(index, empty.clone()),
+        ] {
+            match read_as_the_door(&value) {
+                // The door refuses the text where it stands ...
+                Err(_) => assert_eq!(refused(&value).0, format!("$.limit.{name}")),
+                // ... or reads it as a null: no price, and a quantity is required.
+                Ok(limit) => {
+                    assert_eq!(name, "price", "a null quantity is refused");
+                    assert_eq!(limit.price, None);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_float_grouped_digits_or_a_nineteenth_fractional_digit_is_refused() {
+    for (name, index, cell) in [
+        ("quantity", 1, Scalar::from(0.1_f64)),
+        ("price", 0, Scalar::from(101.5_f64)),
+        ("price", 0, Scalar::from("1,250.50")),
+        ("quantity", 1, Scalar::from("1,250")),
+        ("price", 0, Scalar::from("0.1234567890123456789")),
+        ("quantity", 1, Scalar::from("7.0000000000000000001")),
+    ] {
+        for value in [
+            struct_with(name, cell.clone()),
+            row_with(index, cell.clone()),
+        ] {
+            assert!(read_as_the_door(&value).is_err(), "{name} = {cell:?}");
+            assert_eq!(refused(&value).0, format!("$.limit.{name}"));
+        }
+    }
+}
+
+#[test]
+fn what_the_value_door_accepts_reads_as_the_limit_it_canonicalizes_to() {
+    let limit = read_as_the_door(&struct_with("price", Scalar::from("101.25"))).unwrap();
+    assert_eq!(limit.price, Some("101.25".parse().unwrap()));
+    let limit = read_as_the_door(&row_with(1, Scalar::from(5_i64))).unwrap();
+    assert_eq!(limit.quantity, Decimal::from_int(5));
+    // A name the struct lacks is a null: a missing price is none.
+    let missing = Scalar::from_struct([
+        ("quantity", Scalar::from(Decimal::ONE)),
+        ("uuids", Scalar::from_sequence([])),
+    ])
+    .unwrap();
+    assert_eq!(read_as_the_door(&missing).unwrap().price, None);
+}
+
+#[test]
+fn a_name_the_struct_lacks_is_a_null_never_the_default_a_required_cell_takes() {
+    for name in ["quantity", "uuids"] {
+        let fields = priced().into_scalar();
+        let lacking = Scalar::from_struct(
+            fields
+                .as_struct()
+                .unwrap()
+                .iter()
+                .filter(|(key, _)| key.as_str() != name)
+                .map(|(key, value)| (key.clone(), value.clone())),
+        )
+        .unwrap();
+        // The door alone fills a required cell with its default - a quantity
+        // of zero - which a limit never states.
+        assert!(Limit::field().scalar(lacking.clone()).is_ok());
+        let stated_null = read_as_the_door(&struct_with(name, Scalar::Null)).unwrap_err();
         assert_eq!(
-            reason,
-            format!("expected a decimal or null, got {}", wrong.kind())
+            Limit::from_scalar(&lacking).map_err(|error| error.to_string()),
+            Err(stated_null),
+            "{name}"
         );
-    }
-}
-
-#[test]
-fn a_null_or_non_decimal_quantity_is_refused_at_its_path() {
-    let wrong = Scalar::Uuid(Uuid::from_v8(9));
-    for (cell, got) in [(Scalar::Null, "null"), (wrong.clone(), wrong.kind())] {
-        for value in [
-            struct_with("quantity", cell.clone()),
-            row_with(1, cell.clone()),
-        ] {
-            let (path, reason) = refused(&value);
-            assert_eq!(path, "$.quantity");
-            assert_eq!(reason, format!("expected a decimal, got {got}"));
-        }
-    }
-}
-
-#[test]
-fn uuids_that_are_no_serie_are_refused_at_their_path() {
-    for cell in [Scalar::Null, Scalar::from("O-1")] {
-        let got = cell.kind();
-        for value in [
-            struct_with("uuids", cell.clone()),
-            row_with(2, cell.clone()),
-        ] {
-            let (path, reason) = refused(&value);
-            assert_eq!(path, "$.uuids");
-            assert_eq!(reason, format!("expected a serie of uuids, got {got}"));
-        }
-    }
-}
-
-#[test]
-fn a_uuid_that_is_no_uuid_is_refused_at_its_index() {
-    let wrong = Scalar::from(1_i64);
-    let uuids = Scalar::from_sequence([Scalar::Uuid(Uuid::from_v8(1)), wrong.clone()]);
-    for value in [
-        struct_with("uuids", uuids.clone()),
-        row_with(2, uuids.clone()),
-    ] {
-        let (path, reason) = refused(&value);
-        assert_eq!(path, "$.uuids[1]");
-        assert_eq!(reason, format!("expected a uuid, got {}", wrong.kind()));
+        assert_eq!(refused(&lacking).0, format!("$.limit.{name}"));
     }
 }
 
 #[test]
 fn a_row_of_another_width_an_unknown_name_or_another_shape_is_refused() {
-    let (path, reason) = refused(&Scalar::from_sequence([Scalar::Null, Scalar::Null]));
-    assert_eq!(path, "$");
-    assert_eq!(reason, "expected a row of 3 cells, got 2 cells");
-
     let named = Scalar::from_struct([
         ("price", Scalar::Null),
         ("quantity", Scalar::from(Decimal::ONE)),
@@ -192,20 +247,28 @@ fn a_row_of_another_width_an_unknown_name_or_another_shape_is_refused() {
         ("venue", Scalar::from("XNAS")),
     ])
     .unwrap();
-    let (path, reason) = refused(&named);
-    assert_eq!(path, "$.venue");
-    assert_eq!(
-        reason,
-        "expected price, quantity or uuids, got an unknown field"
+    for value in [
+        Scalar::from_sequence([Scalar::Null, Scalar::Null]),
+        named,
+        Scalar::from("101"),
+        Scalar::Null,
+    ] {
+        assert!(read_as_the_door(&value).is_err(), "{value:?}");
+        assert!(
+            refused(&value).0.starts_with("$.limit"),
+            "{value:?} is refused under the field"
+        );
+    }
+    let (_, reason) = refused(
+        &Scalar::from_struct([
+            ("price", Scalar::Null),
+            ("quantity", Scalar::from(Decimal::ONE)),
+            ("uuids", Scalar::from_sequence([])),
+            ("venue", Scalar::from("XNAS")),
+        ])
+        .unwrap(),
     );
-
-    let text = Scalar::from("101");
-    let (path, reason) = refused(&text);
-    assert_eq!(path, "$");
-    assert_eq!(
-        reason,
-        format!("expected a limit struct or its row, got {}", text.kind())
-    );
+    assert!(reason.contains("venue"), "{reason}");
 }
 
 #[test]

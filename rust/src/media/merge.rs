@@ -156,7 +156,9 @@ pub(crate) fn merged(
 ///
 /// Names fold ASCII case, the way every name resolution in the crate folds,
 /// because the cast that shaped these rows matched their columns with the
-/// same fold. A key the root does not declare is refused naming what it does.
+/// same fold. A key the root does not declare is refused naming what it does,
+/// and so is an `unnest`: a key is one value per row, where an unnest is one
+/// row per element.
 fn key_selector(field: &Field, merge_by: &Selector) -> Result<BoundSelector> {
     if merge_by.is_empty() {
         return Err(Error::InvalidRecord {
@@ -166,6 +168,7 @@ fn key_selector(field: &Field, merge_by: &Selector) -> Result<BoundSelector> {
             ),
         });
     }
+    merge_by.refuse_unnest("in a key")?;
     merge_by.bind(field)
 }
 

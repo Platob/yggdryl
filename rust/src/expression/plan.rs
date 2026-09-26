@@ -1363,12 +1363,12 @@ pub(crate) fn unreachable(target: &Target, reason: impl fmt::Display) -> Error {
 mod arrow {
     use std::sync::Arc;
 
-    use arrow_array::RecordBatch;
+    use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
     use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
 
     use super::{Plan, Source, Target, Verb};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-    use crate::expression::arrow::{collected, one_batch};
+    use crate::expression::arrow::{collected, one_batch, scattered, struct_rows};
     use crate::holder::Holder;
     use crate::media::{IORecordOptions, RecordOptions};
     use crate::{Field, IOMedia, Result, Url};
@@ -1607,24 +1607,137 @@ mod arrow {
 
         /// Order a whole stream, which is the one section that has to collect.
         fn sorted_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
-            let root = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &reader.schema())?;
             let batch = collected(reader)?;
-            let mut columns = Vec::with_capacity(self.order_by.len());
+            let indices = self.order_indices(&batch, None)?;
+            let sorted = arrow_select::take::take_record_batch(&batch, &indices)
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
+            Ok(one_batch(&sorted))
+        }
+
+        /// The order the `order by` keys put rows in.
+        ///
+        /// The ordering is stable: rows the keys cannot tell apart keep the
+        /// order they arrived in, because the row's position is the last key.
+        /// The keys read `batch`; with `scatter`, each key is laid out at the
+        /// struct positions it names first, null at a null struct row - a row
+        /// every key answers unknown for.
+        fn order_indices(
+            &self,
+            batch: &RecordBatch,
+            scatter: Option<&UInt32Array>,
+        ) -> Result<UInt32Array> {
+            let root = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &batch.schema())?;
+            let rows = scatter.map_or(batch.num_rows(), Array::len);
+            let positions = u32::try_from(rows).map_err(|_| crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$"),
+                reason: smol_str::format_smolstr!(
+                    "expected at most {} rows to order, got {rows}",
+                    u32::MAX
+                ),
+            })?;
+            let mut columns = Vec::with_capacity(self.order_by.len() + 1);
             for key in &self.order_by {
-                let bound = key.term.bind(&root)?;
+                let mut values = key.term.bind(&root)?.evaluate(batch)?;
+                if let Some(scatter) = scatter {
+                    values = scattered(&values, scatter)?;
+                }
                 columns.push(SortColumn {
-                    values: bound.evaluate(&batch)?,
+                    values,
                     options: Some(SortOptions {
                         descending: key.descending,
                         nulls_first: key.nulls_first,
                     }),
                 });
             }
-            let indices = lexsort_to_indices(&columns, None)
-                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
-            let sorted = arrow_select::take::take_record_batch(&batch, &indices)
-                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
-            Ok(one_batch(&sorted))
+            columns.push(SortColumn {
+                values: Arc::new(UInt32Array::from_iter_values(0..positions)),
+                options: None,
+            });
+            lexsort_to_indices(&columns, None)
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))
+        }
+
+        /// Apply this plan to one struct array: the plan over the struct's
+        /// rows, a null struct a row every term answers unknown for.
+        ///
+        /// [`Expression::apply_arrow_array`](crate::Expression::apply_arrow_array)
+        /// carries the rule.
+        pub(crate) fn apply_arrow_array(&self, array: &ArrayRef) -> Result<ArrayRef> {
+            let rows = struct_rows(array, "run a plan over")?;
+            let deletes = self
+                .write
+                .as_ref()
+                .is_some_and(|write| write.verb == Verb::Delete);
+            // A `where` drops a null row, an unnest lays out none for it, and
+            // a delete reads no row of the stream: the plan answers the
+            // struct's other rows alone.
+            let Some(scatter) = rows
+                .scatter
+                .as_ref()
+                .filter(|_| self.filter.is_always_true() && !self.selector.unnests() && !deletes)
+            else {
+                let applied = collected(self.apply_arrow_reader(one_batch(&rows.batch))?)?;
+                return Ok(Arc::new(StructArray::from(applied)));
+            };
+            if let Some(target) = self.write_target() {
+                let row = scatter
+                    .iter()
+                    .position(|at| at.is_none())
+                    .unwrap_or_default();
+                return Err(crate::Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$[{row}]"),
+                    reason: smol_str::format_smolstr!(
+                        "expected a record to write to {}, got a null struct at row {row}",
+                        target.location()
+                    ),
+                });
+            }
+            // Every null row survives: the struct's other rows are shaped and
+            // cast one for one, laid back out at their positions under the
+            // struct's mask, then ordered and bounded among the null rows.
+            let mut shaping = self.read_sections();
+            shaping.order_by.clear();
+            shaping.limit = None;
+            shaping.offset = None;
+            let shaped = collected(shaping.shape_arrow_reader(one_batch(&rows.batch))?)?;
+            let declared = collected(self.write_arrow_reader(one_batch(&shaped))?)?;
+            let columns = declared
+                .columns()
+                .iter()
+                .map(|column| scattered(column, scatter))
+                .collect::<Result<Vec<_>>>()?;
+            let mut laid: ArrayRef = Arc::new(
+                StructArray::try_new_with_length(
+                    declared.schema().fields().clone(),
+                    columns,
+                    rows.held.nulls().cloned(),
+                    rows.held.len(),
+                )
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?,
+            );
+            if !self.order_by.is_empty() {
+                // Keys over stored columns read the struct's rows; a key over
+                // what the select publishes reads the shaped ones.
+                let stored = rows.batch.schema();
+                let keyed = if self
+                    .ordering_reads_only(stored.fields().iter().map(|field| field.name().as_str()))
+                {
+                    &rows.batch
+                } else {
+                    &shaped
+                };
+                let indices = self.order_indices(keyed, Some(scatter))?;
+                laid = arrow_select::take::take(laid.as_ref(), &indices, None)
+                    .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
+            }
+            let bound = |count: Option<u64>| {
+                count.map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+            };
+            let offset = bound(self.offset).unwrap_or(0).min(laid.len());
+            let length = bound(self.limit)
+                .unwrap_or(usize::MAX)
+                .min(laid.len() - offset);
+            Ok(laid.slice(offset, length))
         }
 
         /// Write a shaped stream where the plan says, or hand it back.

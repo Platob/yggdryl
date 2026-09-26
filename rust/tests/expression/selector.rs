@@ -991,9 +991,64 @@ mod unnest {
             held[4],
             Scalar::from_sequence([Scalar::from(4_i64), Scalar::from(7_i64)])
         );
-        // A struct array keeps one row per struct, which an unnest cannot.
-        let array: ArrayRef = Arc::new(arrow_array::StructArray::from(batch()));
-        let error = selector.apply_arrow_array(&array).unwrap_err().to_string();
-        assert!(error.contains("unnest"), "{error}");
+    }
+
+    #[test]
+    fn a_struct_array_unnests_into_what_the_batch_of_its_rows_does() {
+        let schema = schema();
+        // Four rows unnest into five, and the last two - a null run, then two
+        // elements - into two rows that are not the two they came from: the
+        // answer is the batch door's whatever the counts, and no struct row
+        // is null in either.
+        for rows in [batch(), batch().slice(2, 2)] {
+            let array: ArrayRef = Arc::new(arrow_array::StructArray::from(rows.clone()));
+            for text in ["id, unnest(xs) as x", "unnest(legs) as leg, tag"] {
+                let selector: Selector = text.parse().unwrap();
+                let expected: ArrayRef = Arc::new(arrow_array::StructArray::from(
+                    selector.apply_arrow_batch(&rows).unwrap(),
+                ));
+                let out = selector
+                    .apply_arrow_array(&array)
+                    .unwrap_or_else(|error| panic!("{text}: {error}"));
+                assert_eq!(&out, &expected, "{text} over {} rows", rows.num_rows());
+                assert_eq!(out.null_count(), 0, "{text}");
+                let bound = selector.bind(&schema).unwrap();
+                assert_eq!(
+                    &bound.apply_arrow_array(&array).unwrap(),
+                    &expected,
+                    "{text}"
+                );
+            }
+        }
+        // A null struct lays out no row: its serie is unknown, whatever its
+        // buffer holds.
+        let (fields, columns, _) = arrow_array::StructArray::from(batch()).into_parts();
+        let masked: ArrayRef = Arc::new(
+            arrow_array::StructArray::try_new(
+                fields,
+                columns,
+                Some(arrow_buffer::NullBuffer::from(vec![
+                    false, true, true, true,
+                ])),
+            )
+            .unwrap(),
+        );
+        let selector: Selector = "id, unnest(xs) as x".parse().unwrap();
+        let out = selector.apply_arrow_array(&masked).unwrap();
+        let expected: ArrayRef = Arc::new(arrow_array::StructArray::from(
+            selector.apply_arrow_batch(&batch().slice(1, 3)).unwrap(),
+        ));
+        assert_eq!(&out, &expected);
+        assert_eq!(out.len(), 2);
+        let rows = batch().slice(2, 2);
+        let array: ArrayRef = Arc::new(arrow_array::StructArray::from(rows));
+        let selector: Selector = "id, unnest(xs) as x".parse().unwrap();
+        let out = selector.apply_arrow_array(&array).unwrap();
+        let out = out
+            .as_any()
+            .downcast_ref::<arrow_array::StructArray>()
+            .unwrap();
+        assert_eq!(int64s(out.column(0)), [Some(4), Some(4)]);
+        assert_eq!(int64s(out.column(1)), [None, Some(7)]);
     }
 }

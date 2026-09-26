@@ -507,11 +507,15 @@ export declare class BookSide {
   /** Whether the side holds no live entry. */
   get isEmpty(): boolean
   /**
-   * The best live price on this side, as decimal text; `null` where
-   * empty.
+   * The best live price on this side, as decimal text: the first priced
+   * level's price, `null` for an empty side or one holding only unpriced
+   * entries.
    */
   get bestPrice(): string | null
-  /** The aggregate quantity at the exact best price; `null` where empty. */
+  /**
+   * The exact aggregate quantity at the best price, as decimal text, an
+   * entry stating none adding nothing; `null` where `bestPrice` is.
+   */
   get bestQuantity(): string | null
   /**
    * One limit per price level, best first and the one unpriced limit
@@ -2506,8 +2510,15 @@ export declare class FixCodec {
   messages(source: JsBatchReader): FixMessages
   /**
    * A stream of batches of FIX rows as batches of lifted `marketdata`
-   * rows: `messages` into `marketArrowReader`. A schema making no FIX
-   * root is refused before a row is read. The source is consumed.
+   * rows: `messages` into `marketArrowReader`, each row read as its own
+   * message. Over rows no walk wrote it answers what `marketArrowReader`
+   * answers for their messages. A walked capture reaches the sorted door
+   * as messages - `marketArrowReader(codec.lifecycle(messages))` - never
+   * as the rows `lifecycleArrowReader` writes: what a walk settles from a
+   * message's predecessors (its `prevpx` and `prevqty`, a side or a ticker
+   * carried forward, an execution instant) is no cell of the row. A
+   * schema making no FIX root is refused before a row is read. The source
+   * is consumed.
    */
   marketOperationsArrowReader(source: JsBatchReader): JsBatchReader
   /**

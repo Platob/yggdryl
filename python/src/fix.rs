@@ -2877,9 +2877,15 @@ impl PyFixCodec {
     }
 
     /// The Arrow twin of `market_arrow_reader`: batches of FIX rows in -
-    /// each row a message as `messages` reads it - and lifted `marketdata`
-    /// rows out, as a `pyarrow.RecordBatchReader`. A schema making no FIX
-    /// row is refused before a row is read.
+    /// each row read as its own message, as `messages` reads it - and lifted
+    /// `marketdata` rows out, as a `pyarrow.RecordBatchReader`. Over rows no
+    /// walk wrote it answers what `market_arrow_reader` answers for their
+    /// messages. A walked capture reaches the sorted door as messages -
+    /// `market_arrow_reader(codec.lifecycle(messages))` - never as the rows
+    /// `lifecycle_arrow_reader` writes: what a walk settles from a message's
+    /// predecessors (its `prevpx` and `prevqty`, a side or a ticker carried
+    /// forward, an execution instant) is no cell of the row. A schema making
+    /// no FIX row is refused before a row is read.
     fn market_operations_arrow_reader<'py>(
         &self,
         py: Python<'py>,

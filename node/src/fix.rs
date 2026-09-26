@@ -2695,8 +2695,15 @@ impl JsFixCodec {
     }
 
     /// A stream of batches of FIX rows as batches of lifted `marketdata`
-    /// rows: `messages` into `marketArrowReader`. A schema making no FIX
-    /// root is refused before a row is read. The source is consumed.
+    /// rows: `messages` into `marketArrowReader`, each row read as its own
+    /// message. Over rows no walk wrote it answers what `marketArrowReader`
+    /// answers for their messages. A walked capture reaches the sorted door
+    /// as messages - `marketArrowReader(codec.lifecycle(messages))` - never
+    /// as the rows `lifecycleArrowReader` writes: what a walk settles from a
+    /// message's predecessors (its `prevpx` and `prevqty`, a side or a ticker
+    /// carried forward, an execution instant) is no cell of the row. A
+    /// schema making no FIX root is refused before a row is read. The source
+    /// is consumed.
     #[napi]
     pub fn market_operations_arrow_reader(
         &self,

@@ -279,7 +279,7 @@ Arithmetic is checked in the Rust value model, both bindings redirect to it, and
 | --- | --- | --- |
 | integers | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | keep a shared width; mixed signed/unsigned inputs promote only when lossless |
 | floats | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | retain the widest float input; mixing an integer uses `F64` |
-| exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused. A [`decimal` or `bigdecimal`](numeric/decimal.md#decimal) operand keeps its leaf at scale eighteen - `*` and `/` truncate toward zero, a `bigdecimal` on either side answers one, and `%` is refused |
+| exact decimals | `+`, `-`, `*`, `/`, `%`, unary `-`, `abs` | preserve an exact coefficient and scale; an inexact quotient is refused. A [`decimal` or `bigdecimal`](numeric/decimal.md#decimal) operand keeps its leaf at scale eighteen - an exact decimal at any scale or an integer of any width meets it there, `*` and `/` truncate toward zero, `%` is exact with the dividend's sign, a divisor of nothing is `DivisionByZero`, and a `bigdecimal`, `decimal256`, `int128` or `uint128` on either side answers a `bigdecimal` |
 | temporal and duration | temporal `+/-` duration, temporal `-` temporal, duration `+/-` duration, duration `*` integer, duration `/` integer | preserve the temporal kind or return an exact duration in the finest required unit |
 | text, bytes, sequences | `+` only | concatenation - the join a repertoire with no sum has. Both sides one repertoire; a code joins as its text and stops being a code; a WKB payload does not join |
 | null | every binary operation above | propagate `Null` |

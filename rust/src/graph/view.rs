@@ -45,7 +45,7 @@ const NESTED: [&str; 7] = [
 /// | `trades` | one per execution of a trade | the trade's flat columns, then `execution.<column>` per execution column |
 /// | `book_sides` | two per book, bid then ask | `currunix`, `snapunix`, then `side.<column>` per side column |
 /// | `books` | one per book | every root column but the executions and a book side's own nested rows |
-/// | `lifecycle` | every leaf of one `crosscode`, ordered by `currunix` | every flat root column |
+/// | `lifecycle` | every leaf of one `crosscode`, ordered by `currunix`, tied instants in arrival order | every flat root column |
 ///
 /// Lifts are appended after the view's own columns in every view.
 ///
@@ -75,7 +75,9 @@ pub enum MarketView {
     BookSides,
     /// One row per book, its sides and partitions kept nested.
     Books,
-    /// Every leaf of one element's chain, in the order it happened.
+    /// Every leaf of one element's chain, in the order it happened: ordered
+    /// by `currunix`, the leaves that share an instant kept in the order the
+    /// stream states them, because the ordering is stable.
     ///
     /// The ordering collects the stream it is applied to: the bound on what
     /// it holds is the one chain the `crosscode` names, after the `where`

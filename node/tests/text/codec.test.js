@@ -1113,6 +1113,35 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     }
   })
 
+  test('the fixed decimal leaves keep an exact remainder and refuse a zero divisor', () => {
+    const price = new DataType('decimal')
+    const wide = new DataType('bigdecimal')
+    // `remainder` is exact at scale eighteen, its sign the dividend's.
+    const rest = price.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(rest.id, 'decimal')
+    assert.ok(rest.equals(price.scalar('1.5')))
+    assert.ok(price.scalar('-7.5').remainder(2).equals(price.scalar('-1.5')))
+    assert.ok(price.scalar('7.5').remainder(price.scalar('-2')).equals(price.scalar('1.5')))
+    // A bigdecimal on either side answers one.
+    const widened = wide.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(widened.id, 'bigdecimal')
+    assert.ok(widened.equals(wide.scalar('1.5')))
+    // A divisor of nothing is a division by zero - a RangeError, as for every
+    // other exact value, where it used to be a TypeError.
+    for (const dividend of [price.scalar('1'), wide.scalar('1')]) {
+      for (const operation of ['divide', 'remainder']) {
+        assert.throws(
+          () => dividend[operation](price.scalar('0')),
+          (error) =>
+            error instanceof RangeError &&
+            error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO' &&
+            /by zero/.test(error.message),
+          `${dividend.id} ${operation}`,
+        )
+      }
+    }
+  })
+
   test('Field-directed natural JSON keeps exact typed values', () => {
     const narrow = json.loads('7', {
       field: new Field('value', 'int16', false),

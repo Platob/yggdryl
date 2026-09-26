@@ -416,9 +416,8 @@ pub(super) const MARKET_TAGS: [i32; 32] = [
 
 /// Every tag a book entry's own facts are read from, at any depth of its
 /// `NoMDEntries(268)` occurrence, one line per tag naming what it feeds:
-/// the reads of `Facts::record` in `market.rs`. A book message's root states
-/// the context every entry inherits through the same reads, so these are
-/// its root's too.
+/// the reads of `Facts::record` in `market.rs`. What a book message's root
+/// states for its entries is [`BOOK_ROOT_TAGS`], a part of these.
 pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     279,  // MDUpdateAction: the book control's action, and the state
     269,  // MDEntryType: the leaf's kind, and a level's side
@@ -443,6 +442,25 @@ pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
     1300, // MarketSegmentID: the book scope
     262,  // MDReqID: the book scope
     264,  // MarketDepth: the book scope
+];
+
+/// Every root tag of a book message its entries inherit, one line per tag
+/// naming what it feeds: the reads of `Facts::inherit_context` and
+/// `root_temporal_count` in `market.rs`, which are also all an empty `W`
+/// reads. Any other [`BOOK_ENTRY_TAGS`] member a root states is read by no
+/// entry, so it rides every leaf's metadata as any unread field does.
+pub(super) const BOOK_ROOT_TAGS: [i32; 11] = [
+    55,   // Symbol: ticker, and the book scope
+    1021, // MDBookType: the book scope
+    1173, // MDSubBookType: the book scope
+    1022, // MDFeedType: the book scope
+    1500, // MDStreamID: the book scope
+    1301, // MarketID: the book scope
+    1300, // MarketSegmentID: the book scope
+    262,  // MDReqID: the book scope
+    264,  // MarketDepth: the book scope
+    272,  // MDEntryDate: the date an entry stating none takes
+    273,  // MDEntryTime: the time an entry stating none takes
 ];
 
 /// Every tag a trade side's execution is read from, at any depth of its

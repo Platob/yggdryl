@@ -617,6 +617,20 @@ impl Selector {
             .any(|projection| projection.term.as_unnest().is_some())
     }
 
+    /// Refuse an `unnest` among this selector's projections, naming the
+    /// call and `place`, where it stood: a key or a column declaration is one
+    /// value of one row, and an unnest publishes one row per element.
+    pub(crate) fn refuse_unnest(&self, place: &str) -> Result<()> {
+        match self
+            .projections
+            .iter()
+            .find(|projection| projection.term.as_unnest().is_some())
+        {
+            Some(projection) => Err(super::typing::unnest_misplaced(&projection.term, place)),
+            None => Ok(()),
+        }
+    }
+
     /// Return this selector with one more projection, appended after
     /// everything it already publishes - a `*` and its exclusions included.
     #[must_use]
@@ -954,20 +968,15 @@ impl Selector {
     pub fn declared_field(&self, root: Option<&Field>, name: &str) -> Result<Field> {
         // With no root to expand it against, a `*` declares nothing and the
         // projections after it declare themselves.
+        // A declared column is one column of one row; the rows an unnest
+        // publishes are a select's alone.
+        self.refuse_unnest("in a column declaration")?;
         let projections = match root {
             Some(root) => self.expanded(root),
             None => self.projections.to_vec(),
         };
         let mut children: Vec<Field> = Vec::with_capacity(projections.len());
         for projection in &projections {
-            // A declared column is one column of one row; the rows an unnest
-            // publishes are a select's alone.
-            if projection.term.as_unnest().is_some() {
-                return Err(super::typing::unnest_misplaced(
-                    &projection.term,
-                    "in a column declaration",
-                ));
-            }
             let declared = projection.term.as_column().and_then(|column| {
                 let stored = root.is_some_and(|root| root.index_of(column).is_some());
                 (!stored).then_some(column).zip(projection.dtype.as_ref())
@@ -1327,7 +1336,9 @@ mod arrow {
     use super::{BoundSelector, ColumnCast, Selector};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
     use crate::cast::ArrowCastOptions;
-    use crate::expression::arrow::{collected, one_batch, struct_batch, struct_children, unnest};
+    use crate::expression::arrow::{
+        StructRows, collected, one_batch, scattered, struct_children, struct_rows, unnest,
+    };
     use crate::{Error, Field, Result};
 
     impl Selector {
@@ -1373,7 +1384,11 @@ mod arrow {
         /// The struct array this selector publishes from one struct array.
         ///
         /// The array's own null mask is kept: a struct that was null stays
-        /// null whatever its projections compute.
+        /// null whatever its projections compute, and none of its children
+        /// is read. An `unnest` publishes exactly the rows
+        /// [`Self::apply_arrow_batch`] does for the struct's rows that are
+        /// not null - one per element, however many that is - and they are
+        /// rows of their own, which the struct's mask does not describe.
         ///
         /// # Errors
         ///
@@ -1383,9 +1398,9 @@ mod arrow {
             if self.is_all() {
                 return Ok(Arc::clone(array));
             }
-            let (held, batch) = struct_batch(array, "select from")?;
-            let projected = self.apply_arrow_batch(&batch)?;
-            rebuilt_struct(held, &projected)
+            let rows = struct_rows(array, "select from")?;
+            let projected = self.apply_arrow_batch(&rows.batch)?;
+            rebuilt_struct(&rows, &projected, self.unnests())
         }
     }
 
@@ -1476,9 +1491,9 @@ mod arrow {
             if self.is_identity() {
                 return Ok(Arc::clone(array));
             }
-            let (held, batch) = struct_batch(array, "select from")?;
-            let projected = self.apply_arrow_batch(&batch)?;
-            rebuilt_struct(held, &projected)
+            let rows = struct_rows(array, "select from")?;
+            let projected = self.apply_arrow_batch(&rows.batch)?;
+            rebuilt_struct(&rows, &projected, self.unnested.is_some())
         }
 
         /// Wrap a reader so every batch it yields is what this selector
@@ -1519,27 +1534,39 @@ mod arrow {
             })
     }
 
-    /// One struct's projected columns under the struct's own null mask.
-    fn rebuilt_struct(held: &StructArray, projected: &RecordBatch) -> Result<ArrayRef> {
-        if projected.num_rows() != held.len() {
-            // Only an unnest changes how many rows there are, and a struct
-            // array has one mask for the rows it held.
-            return Err(Error::InvalidRecord {
-                path: smol_str::SmolStr::new_static("$"),
-                reason: smol_str::format_smolstr!(
-                    "expected one row out per struct in, got {} rows from {}: an unnest \
-                     publishes one row per element, so apply it to a batch or a stream",
-                    projected.num_rows(),
-                    held.len()
-                ),
-            });
+    /// One struct's projected columns, laid back out at the struct's own
+    /// positions under its own null mask where the rows are the struct's. An
+    /// unnest's rows are one per element, never the held rows even where
+    /// they number as many, so no held mask describes them.
+    fn rebuilt_struct(
+        rows: &StructRows<'_>,
+        projected: &RecordBatch,
+        unnests: bool,
+    ) -> Result<ArrayRef> {
+        let fields = projected.schema().fields().clone();
+        let rebuilt = if unnests {
+            StructArray::try_new_with_length(
+                fields,
+                projected.columns().to_vec(),
+                None,
+                projected.num_rows(),
+            )
+        } else {
+            let columns = match &rows.scatter {
+                Some(scatter) => projected
+                    .columns()
+                    .iter()
+                    .map(|column| scattered(column, scatter))
+                    .collect::<Result<Vec<_>>>()?,
+                None => projected.columns().to_vec(),
+            };
+            StructArray::try_new_with_length(
+                fields,
+                columns,
+                rows.held.nulls().cloned(),
+                rows.held.len(),
+            )
         }
-        let rebuilt = StructArray::try_new_with_length(
-            projected.schema().fields().clone(),
-            projected.columns().to_vec(),
-            held.nulls().cloned(),
-            held.len(),
-        )
         .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?;
         Ok(Arc::new(rebuilt))
     }

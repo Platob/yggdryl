@@ -3476,3 +3476,172 @@ mod chunked {
         assert!(plan.apply_chunked(&text).is_err());
     }
 }
+
+mod fixed_decimal_text {
+    //! A fixed decimal leaf spells one text, whether a column is cast or a
+    //! value is restated.
+
+    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie};
+
+    #[test]
+    fn a_fixed_leaf_renders_its_trimmed_text_in_a_batch_as_in_a_row() {
+        let narrow = |text: &str| Scalar::Decimal(text.parse::<Decimal>().unwrap());
+        let wide = |text: &str| Scalar::BigDecimal(text.parse::<BigDecimal>().unwrap());
+        let cases = [
+            (DataType::Decimal, narrow("1.125"), "1.125"),
+            (DataType::Decimal, narrow("-82500"), "-82500"),
+            (DataType::Decimal, narrow("0"), "0"),
+            (DataType::BigDecimal, wide("1.125"), "1.125"),
+            (
+                DataType::BigDecimal,
+                wide("123456789012345678901234567890.5"),
+                "123456789012345678901234567890.5",
+            ),
+        ];
+        for (dtype, value, spelled) in cases {
+            let source = Field::new("x", dtype.clone(), true);
+            let column = Serie::from_scalars(source, [value.clone(), Scalar::Null]).unwrap();
+            for target in [
+                DataType::utf8(),
+                DataType::large_utf8(),
+                DataType::utf8_view(),
+                DataType::sized_utf8(64).unwrap(),
+                DataType::ascii(),
+            ] {
+                let row = target.scalar(value.clone()).unwrap();
+                let cast = column
+                    .cast(
+                        &Field::new("x", target.clone(), true),
+                        ArrowCastOptions::new(),
+                    )
+                    .unwrap();
+                assert_eq!(cast.scalar(0).unwrap(), row, "{dtype} into {target}");
+                assert_eq!(row.as_str(), Some(spelled), "{dtype} into {target}");
+                assert_eq!(cast.scalar(1).unwrap(), Scalar::Null);
+            }
+        }
+        // The parameterized width keeps its full-scale text on both paths.
+        let storage = Field::new("x", DataType::DECIMAL, true);
+        let value = Scalar::d128(1_125_000_000_000_000_000, 18);
+        let column = Serie::from_scalars(storage, [value.clone()]).unwrap();
+        let cast = column
+            .cast(
+                &Field::new("x", DataType::utf8(), true),
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            cast.scalar(0).unwrap(),
+            Scalar::from("1.125000000000000000")
+        );
+        assert_eq!(
+            DataType::utf8().scalar(value).unwrap(),
+            cast.scalar(0).unwrap()
+        );
+    }
+}
+
+mod float_decimals {
+    //! A float column enters a decimal as the numbers its floats name.
+
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Float32Array, Float64Array};
+    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie};
+
+    fn floats() -> ArrayRef {
+        Arc::new(Float64Array::from(vec![
+            Some(1.15),
+            Some(0.125),
+            Some(-0.125),
+            None,
+            Some(1e25),
+        ]))
+    }
+
+    fn cast(target: DataType, safe: bool) -> yggdryl::arrow::Result<Serie> {
+        let column = Serie::from_arrow_array(None, floats(), ArrowCastOptions::new())?;
+        column.cast(
+            &Field::new("x", target, true),
+            ArrowCastOptions::new().with_safe(safe),
+        )
+    }
+
+    #[test]
+    fn every_decimal_width_reads_the_number_a_float_names() {
+        let rows = |serie: Serie| {
+            (0..serie.len())
+                .map(|index| serie.scalar(index).unwrap())
+                .collect::<Vec<_>>()
+        };
+        // Rounded half away from zero at the declared scale, and a float
+        // past the precision is null under `safe`.
+        assert_eq!(
+            rows(cast(DataType::decimal(10, 2).unwrap(), true).unwrap()),
+            [
+                Scalar::d128(115, 2),
+                Scalar::d128(13, 2),
+                Scalar::d128(-13, 2),
+                Scalar::Null,
+                Scalar::Null,
+            ]
+        );
+        let halves = Serie::from_arrow_array(
+            None,
+            Arc::new(Float64Array::from(vec![2.5, -2.5, 2.4, f64::NAN])),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let whole = Field::new("x", DataType::decimal(10, 0).unwrap(), true);
+        assert_eq!(
+            rows(
+                halves
+                    .cast(&whole, ArrowCastOptions::new().with_safe(true))
+                    .unwrap()
+            ),
+            [
+                Scalar::d128(3, 0),
+                Scalar::d128(-3, 0),
+                Scalar::d128(2, 0),
+                Scalar::Null,
+            ]
+        );
+        assert!(
+            halves
+                .cast(&whole, ArrowCastOptions::new().with_safe(false))
+                .is_err(),
+            "a nan is no decimal"
+        );
+        let big = |text: &str| Scalar::BigDecimal(text.parse::<BigDecimal>().unwrap());
+        assert_eq!(
+            rows(cast(DataType::BigDecimal, false).unwrap()),
+            [
+                big("1.15"),
+                big("0.125"),
+                big("-0.125"),
+                Scalar::Null,
+                big("10000000000000000000000000"),
+            ]
+        );
+        // Strict names the row no decimal of the target holds.
+        let refused = cast(DataType::Decimal, false).unwrap_err().to_string();
+        assert!(refused.contains("row 4"), "{refused}");
+        // A narrower float widens exactly and reads the same way.
+        let column = Serie::from_arrow_array(
+            None,
+            Arc::new(Float32Array::from(vec![1.5_f32])),
+            ArrowCastOptions::new(),
+        )
+        .unwrap();
+        let cast = column
+            .cast(
+                &Field::new("x", DataType::Decimal, true),
+                ArrowCastOptions::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            cast.scalar(0).unwrap(),
+            Scalar::Decimal("1.5".parse::<Decimal>().unwrap())
+        );
+    }
+}

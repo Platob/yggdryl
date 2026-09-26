@@ -5,7 +5,7 @@ use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::identity::{BOOK_ENTRY_TAGS, TRADE_SIDE_TAGS};
+use super::identity::{BOOK_ENTRY_TAGS, BOOK_ROOT_TAGS, TRADE_SIDE_TAGS};
 use super::msg::{Expanded, Unmapped};
 use super::{FixCodec, FixEntry, FixMsg};
 use crate::arrow::BatchReader;
@@ -27,7 +27,7 @@ const NANOS_PER_DAY: i64 = 86_400_000_000_000;
 const BOOK_EXPANSION: Expanded = Expanded {
     counter: MD_ENTRIES,
     reads: &BOOK_ENTRY_TAGS,
-    inherited: true,
+    inherited: &BOOK_ROOT_TAGS,
 };
 
 /// A trade becomes one execution per `NoSides(552)` occurrence, beside the
@@ -35,7 +35,7 @@ const BOOK_EXPANSION: Expanded = Expanded {
 const TRADE_EXPANSION: Expanded = Expanded {
     counter: TRADE_SIDES,
     reads: &TRADE_SIDE_TAGS,
-    inherited: false,
+    inherited: &[],
 };
 
 #[derive(Clone, Default)]
@@ -132,6 +132,9 @@ impl Facts {
         );
     }
 
+    /// Takes the root's context: exactly
+    /// [`BOOK_ROOT_TAGS`](super::identity::BOOK_ROOT_TAGS), which is what
+    /// keeps every other tag a root states in its leaves' metadata.
     fn inherit_context(&mut self, root: &Self) {
         self.symbol.clone_from(&root.symbol);
         self.book_type.clone_from(&root.book_type);
