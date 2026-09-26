@@ -28,6 +28,7 @@ use super::{ROWSET_NAMESPACE, invalid};
 fn read_document<H: IOBase + ?Sized>(
     handle: &H,
     field: Option<&Field>,
+    cast: ArrowCastOptions,
 ) -> Result<Option<(Rowset, Serie)>> {
     let encoded = handle.read_all_bytes()?;
     if encoded.is_empty() {
@@ -39,9 +40,10 @@ fn read_document<H: IOBase + ?Sized>(
     let document = crate::xml::from_utf8(&text)?;
     let root = Element::root(&document)?;
     if root.is(Some(ENVELOPE_NAMESPACE), "Envelope") {
-        let response = Response::from_envelope(
+        let response = Response::from_envelope_with(
             &crate::soap::Envelope::from_natural(&document)?,
             field,
+            cast,
         )?;
         return match response.answer() {
             super::response::Answer::Rowset { rowset, rows } => {
@@ -56,7 +58,7 @@ fn read_document<H: IOBase + ?Sized>(
     if root.local_name() == "root"
         && matches!(root.namespace(), Some(ROWSET_NAMESPACE) | None)
     {
-        return Rowset::read_root(&root, field).map(Some);
+        return Rowset::read_root_with(&root, field, cast).map(Some);
     }
     Err(invalid(smol_str::format_smolstr!(
         "expected a SOAP envelope or a rowset `root`, got `{}`",
@@ -105,6 +107,11 @@ pub(crate) fn stated_field<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Fiel
     Ok(root)
 }
 
+/// The cast a read under `options` runs: strict unless the options say `safe`.
+fn cast_of(options: &XmlaOptions) -> ArrowCastOptions {
+    ArrowCastOptions::default().with_safe(options.safe())
+}
+
 /// Read the schema of the document `handle` holds.
 ///
 /// # Errors
@@ -114,7 +121,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Resu
     if let Some(field) = options.field() {
         return Ok(field.clone());
     }
-    match read_document(handle, None)? {
+    match read_document(handle, None, cast_of(options))? {
         Some((rowset, _)) => Ok(rowset.field().clone().with_name(options.name())),
         None => Err(invalid("an empty document declares no schema")),
     }
@@ -127,7 +134,7 @@ pub fn read_field<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Resu
 /// Returns a read, decoding, or schema failure.
 pub(crate) fn row_size<H: IOBase + ?Sized>(handle: &H, options: &XmlaOptions) -> Result<u64> {
     let field = options.field();
-    Ok(read_document(handle, field.as_ref())?
+    Ok(read_document(handle, field.as_ref(), cast_of(options))?
         .map_or(0, |(_, rows)| rows.len() as u64))
 }
 
@@ -145,7 +152,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     field: Option<&Field>,
     options: &XmlaOptions,
 ) -> crate::arrow::Result<BatchReader> {
-    match read_document(handle, field)? {
+    match read_document(handle, field, cast_of(options))? {
         Some((_, rows)) => {
             let batch = rows.into_arrow_batch()?;
             let schema = batch.schema();
@@ -317,7 +324,8 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         }
         // One read answers both an empty document (no columns) and a held
         // one, so no size probe precedes it.
-        Ok(read_document(&self.handle, None)?.map_or(0, |(rowset, _)| rowset.field().field_len()))
+        Ok(read_document(&self.handle, None, cast_of(&self.options))?
+            .map_or(0, |(rowset, _)| rowset.field().field_len()))
     }
 
     fn record_options(&self) -> Result<RecordOptions> {

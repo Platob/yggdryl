@@ -137,7 +137,7 @@ pub fn definitions() -> &'static [Definition] {
         let mut definitions = vec![
             definition(
                 RequestType::DiscoverDatasources,
-                "The data sources this provider serves: one per catalog root.",
+                "The one data source this provider is; DBSCHEMA_CATALOGS lists its catalogs, one per root folder.",
                 vec![
                     restricting(required("DataSourceName", text())),
                     nullable("DataSourceDescription", text()),

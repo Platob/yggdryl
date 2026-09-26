@@ -1528,3 +1528,125 @@ fn a_command_under_a_prefix_declared_above_it_keeps_that_namespace() {
         written(&request)
     );
 }
+
+#[test]
+fn zz_probe() {
+    let show = |label: &str, message: &str| match Request::from_bytes(message.as_bytes()) {
+        Ok(request) => println!("{label}: OK {:?}", request.method()),
+        Err(error) => println!("{label}: ERR {error:?}"),
+    };
+    // 1. unqualified command inside a prefixed Execute
+    let request = read(
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\
+         <soap:Body><xmla:Execute xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <xmla:Command><Cancel/></xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
+    );
+    let Command::Other(cancel) = request.execute().unwrap().command() else { panic!() };
+    println!("1 read ns {:?}", cancel.element().namespace());
+    let again = round_trip(&request);
+    let Command::Other(cancel2) = again.execute().unwrap().command() else { panic!() };
+    println!("1 again ns {:?} eq {}", cancel2.element().namespace(), again == request);
+    println!("1 written {}", written(&request));
+    // 2. prefixed xmla:Cancel in prefixed envelope
+    let request = read(
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <soap:Body><xmla:Execute>\
+         <xmla:Command><xmla:Cancel/></xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
+    );
+    let again = round_trip(&request);
+    println!("2 eq {} written {}", again == request, written(&request));
+    println!("2 {:?}\n2 {:?}", request.execute().unwrap().command(), again.execute().unwrap().command());
+    // 3. as:Batch into_envelope
+    let request = read(
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" \
+         xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\" \
+         xmlns:as=\"http://schemas.microsoft.com/analysisservices/2003/engine\">\
+         <soap:Body><xmla:Execute><xmla:Command><as:Batch><as:Process/></as:Batch>\
+         </xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
+    );
+    let natural = request.into_envelope().unwrap();
+    let from = Request::from_envelope(&natural).unwrap();
+    let Command::Other(batch) = from.execute().unwrap().command() else { panic!() };
+    println!("3 from_envelope ns {:?} eq {}", batch.element().namespace(), from == request);
+    match natural.into_bytes() {
+        Ok(bytes) => { println!("3 env bytes {}", String::from_utf8_lossy(&bytes)); show("3 reread", &String::from_utf8_lossy(&bytes)); }
+        Err(e) => println!("3 env bytes ERR {e:?}"),
+    }
+    // 4. whitespace-only
+    for (label, children) in [
+        ("4 stmt ws", "<Command><Statement>   </Statement></Command>"),
+        ("4 value ws", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>   </Value></Parameter></Parameters>"),
+        ("4 name ws", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>  </Name><Value>1</Value></Parameter></Parameters>"),
+        ("4 prop ws", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Catalog>  </Catalog><Format> Tabular </Format></PropertyList></Properties>"),
+        ("4 dup prop", "<Command><Statement>s</Statement></Command><Properties><PropertyList><format>Multidimensional</format><Format>Tabular</Format></PropertyList></Properties>"),
+        ("4 dup prop same", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Format>Tabular</Format><Format>Multidimensional</Format></PropertyList></Properties>"),
+        ("4 two props", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Format>Tabular</Format></PropertyList></Properties><Properties><PropertyList><Catalog>x</Catalog></PropertyList></Properties>"),
+        ("4 two params", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>1</Value></Parameter></Parameters><Parameters><Parameter><Name>b</Name><Value>2</Value></Parameter></Parameters>"),
+        ("4 two names", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Name>b</Name><Value>1</Value></Parameter></Parameters>"),
+        ("4 two values", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>1</Value><Value>2</Value></Parameter></Parameters>"),
+        ("4 xsi type", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"xsd:int\">10</Value></Parameter></Parameters>"),
+        ("4 xsi nil", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:nil=\"true\"/></Parameter></Parameters>"),
+        ("4 foreign param", "<Command><Statement>s</Statement></Command><Parameters><Parameter xmlns=\"urn:other\"><Name>a</Name><Value>1</Value></Parameter></Parameters>"),
+        ("4 stmt attr", "<Command><Statement xml:space=\"preserve\">select 1</Statement></Command>"),
+        ("4 stmt child", "<Command><Statement><b>x</b></Statement></Command>"),
+        ("4 stmt mixed", "<Command><Statement>select <b/> 1</Statement></Command>"),
+        ("4 foreign command", "<o:Command xmlns:o=\"urn:other\"><Statement>s</Statement></o:Command>"),
+        ("4 foreign props", "<Command><Statement>s</Statement></Command><Properties xmlns=\"urn:other\"><PropertyList><Format>Tabular</Format></PropertyList></Properties>"),
+    ] {
+        show(label, &envelope("", &execute_body(children)));
+    }
+    for (label, children) in [
+        ("5 value children", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value>TABLE</Value><Value>VIEW</Value></TABLE_TYPE></RestrictionList></Restrictions>"),
+        ("5 value one", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value>TABLE</Value></TABLE_TYPE><TABLE_TYPE>VIEW</TABLE_TYPE></RestrictionList></Restrictions>"),
+        ("5 value empty", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value/><x:Value xmlns:x=\"urn:o\">V</x:Value></TABLE_TYPE></RestrictionList></Restrictions>"),
+        ("5 other child", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Other>x</Other></TABLE_TYPE></RestrictionList></Restrictions>"),
+        ("5 no list", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><CATALOG_NAME>x</CATALOG_NAME></Restrictions>"),
+        ("5 two restrictions", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><A>1</A></RestrictionList></Restrictions><Restrictions><RestrictionList><B>2</B></RestrictionList></Restrictions>"),
+        ("5 ws restriction", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><A>  </A><B> b </B></RestrictionList></Restrictions>"),
+        ("5 prop empty", "<RequestType>DBSCHEMA_TABLES</RequestType><Properties><PropertyList><Catalog/></PropertyList></Properties>"),
+    ] {
+        show(label, &envelope("", &discover_body(children)));
+    }
+    // 6 writer errors
+    for request in [
+        Request::from(Execute::statement("select \u{0}")),
+        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("bad name", "x"))),
+        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("@xmlns", "urn:evil"))),
+        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("#text", "x"))),
+        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("Catalog", "\u{1}"))),
+        Request::from(Discover::new(RequestType::DbschemaTables).with_restrictions(Restrictions::new().with("1st", "x"))),
+        Request::from(Discover::new(RequestType::DbschemaTables).with_restrictions(Restrictions::new().with("A", "\u{b}"))),
+        Request::from(Discover::new(RequestType::Other("\u{1}".into()))),
+        Request::from(Execute::statement("s").with_parameter("a\u{0}", Scalar::from("1"))),
+        Request::from(Execute::statement("s").with_parameter("a", Scalar::from_sequence([Scalar::from("x"), Scalar::from("y")]))),
+        Request::from(Execute::statement("s").with_parameter("a", Scalar::from("\u{2}"))),
+        Request::from(Execute::statement("s")).with_header(Fragment::new("bad name", Scalar::Null)),
+        Request::from(Execute::statement("s")).with_header(Fragment::new("Security", Scalar::Null)).with_header(Fragment::new("Security", Scalar::Null)),
+        Request::from(Execute::new(Command::Other(Fragment::new("bad name", Scalar::Null)))),
+    ] {
+        let bytes = request.into_bytes();
+        let env = request.into_envelope();
+        let env_bytes = env.as_ref().map(|e| e.into_bytes());
+        println!("6 {:?}\n   bytes {:?}\n   env {:?}\n   env_bytes {:?}", request.method(), bytes.map(|b| String::from_utf8_lossy(&b).into_owned()), env.as_ref().map(|_| ()), env_bytes.map(|r| r.map(|b| String::from_utf8_lossy(&b).into_owned())));
+    }
+    // 7 session answer
+    let answer = Session::Continue("581".into()).into_answer_fragment().unwrap();
+    println!("7 {:?}", answer);
+    let bytes = Request::from(Execute::statement("s")).with_header(answer).into_bytes().unwrap();
+    println!("7 {}", String::from_utf8_lossy(&bytes));
+    let s = Request::from(Execute::statement("s")).with_session(&Session::Continue("sé \"7\" <&> '→'\t\n".into())).unwrap();
+    println!("8 {}", written(&s));
+    println!("8 {:?}", round_trip(&s).session());
+    let d = Request::from(Discover::new(RequestType::Other("A&B<c>".into())).with_restrictions(Restrictions::new().with("Z", "q\"'<&>").with("A", "1")).with_properties(PropertyList::new().with("Format", "x").with("Catalog", "c")));
+    println!("9 {}", written(&d));
+    let e = d.into_envelope().unwrap();
+    println!("9 natural children {:?}", e.payload().unwrap().element().children().map(|c| c.name().to_owned()).collect::<Vec<_>>());
+    println!("9 from_envelope eq {}", Request::from_envelope(&e).unwrap() == d);
+    let x = Request::from(trades_execute().with_parameter("n", Scalar::Null));
+    let e = x.into_envelope().unwrap();
+    println!("10 natural children {:?}", e.payload().unwrap().element().children().map(|c| c.name().to_owned()).collect::<Vec<_>>());
+    println!("10 from_envelope eq {}", Request::from_envelope(&e).unwrap() == x);
+    println!("10 env bytes eq {}", Request::from_bytes(&e.into_bytes().unwrap()).unwrap() == x);
+    let ws = Request::from(Execute::statement("   ").with_parameter("w", Scalar::from("  ")).with_properties(PropertyList::new().with("Catalog", "  ")));
+    println!("11 {:?}", round_trip(&ws).method());
+}

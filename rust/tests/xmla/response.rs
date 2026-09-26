@@ -11,12 +11,12 @@ use std::io::Write;
 
 use yggdryl::soap::{Envelope, Fault, FaultCode, Fragment};
 use yggdryl::xml::Element;
-use yggdryl::xmla::response::ACTOR;
+use yggdryl::xmla::response::{ACTOR, write_rowset_reporting};
 use yggdryl::xmla::{
     Answer, Content, Method, Response, Rowset, Session, XmlaError, fault, write_empty, write_fault,
     write_rowset,
 };
-use yggdryl::{DataType, Error, Field, Scalar, Serie, StructType};
+use yggdryl::{ArrowCastOptions, DataType, Error, Field, Scalar, Serie, StructType};
 
 const SOAP: &str = "http://schemas.xmlsoap.org/soap/envelope/";
 const XMLA: &str = "urn:schemas-microsoft-com:xml-analysis";
@@ -26,6 +26,7 @@ const MDDATASET: &str = "urn:schemas-microsoft-com:xml-analysis:mddataset";
 const EXCEPTION: &str = "urn:schemas-microsoft-com:xml-analysis:exception";
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+const MONDRIAN: &str = "http://mondrian.sourceforge.net";
 
 /// The rowset schema of the orders table, under the `xsd` prefix: a required
 /// `Order Id` spelled `Order_x0020_Id`, and a nullable `Symbol`.
@@ -457,7 +458,14 @@ fn the_description_attribute_wins_over_the_element_text() {
 
 #[test]
 fn a_code_is_read_trimmed_and_one_that_is_no_unsigned_integer_reads_as_zero() {
-    let codes: Vec<u32> = [" 42 ", "-1056178166", "0xC10A0004", "", "4294967296"]
+    let codes: Vec<u32> = [
+        " 42 ",
+        "4294967295",
+        "-1056178166",
+        "0xC10A0004",
+        "",
+        "4294967296",
+    ]
         .iter()
         .map(|code| {
             let xml = envelope(
@@ -472,7 +480,7 @@ fn a_code_is_read_trimmed_and_one_that_is_no_unsigned_integer_reads_as_zero() {
             errors[0].code()
         })
         .collect();
-    assert_eq!(codes, [42, 0, 0, 0, 0]);
+    assert_eq!(codes, [42, u32::MAX, 0, 0, 0, 0]);
 }
 
 #[test]
@@ -678,20 +686,25 @@ fn a_return_without_a_root_is_refused() {
 #[test]
 fn a_return_with_two_roots_is_refused() {
     // The rustdoc refuses a body that does not hold one `return` and one
-    // `root`: a second rowset is not silently dropped.
-    let xml = envelope(
-        "",
-        &response(
-            "DiscoverResponse",
-            &format!(
-                "{}{}",
-                rowset_root(&format!("{SCHEMA}{ROWS}")),
-                rowset_root(SCHEMA)
-            ),
+    // `root`: a second result is not silently dropped, whichever namespace
+    // either is in.
+    for roots in [
+        format!(
+            "{}{}",
+            rowset_root(&format!("{SCHEMA}{ROWS}")),
+            rowset_root(SCHEMA)
         ),
-    );
-    let error = refused(&xml, None);
-    assert!(error.to_string().contains("root"), "{error}");
+        format!("{}<root xmlns=\"{EMPTY}\"/>", rowset_root(SCHEMA)),
+        format!("<root xmlns=\"{EMPTY}\"/><x:root xmlns:x=\"urn:example:cube\"/>"),
+    ] {
+        let xml = envelope("", &response("DiscoverResponse", &roots));
+        let (path, reason) = invalid_record(refused(&xml, None));
+        assert_eq!(path, "$.xmla");
+        assert_eq!(
+            reason,
+            "the response's `return` holds several `root` elements; a response carries one result"
+        );
+    }
 }
 
 #[test]

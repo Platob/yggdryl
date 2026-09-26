@@ -343,12 +343,32 @@ pub trait IORecordOptions: Sized {
     /// # Errors
     ///
     /// Returns an error when the `create` section declares a column that
-    /// cannot be typed without rows, or the merge key names a column twice.
+    /// cannot be typed without rows, the merge key names a column twice, or
+    /// the plan carries a section these options have no property for - an
+    /// `order by` or an `offset` - which is refused by name rather than
+    /// dropped: a plan that orders or skips rows is applied to the rows
+    /// themselves, through the expression layer.
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
         // Everything that can refuse does so before the first write, so a
         // refused plan leaves every section as it was.
         let declared = plan.field()?;
         distinct_merge_key(plan.merge_by())?;
+        if !plan.ordering().is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.order_by"),
+                reason: SmolStr::new_static(
+                    "record options hold no `order by` section; apply the plan to the rows instead",
+                ),
+            });
+        }
+        if plan.row_offset().is_some() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.offset"),
+                reason: SmolStr::new_static(
+                    "record options hold no `offset` section; apply the plan to the rows instead",
+                ),
+            });
+        }
         self.set_declared(declared);
         self.set_filter(plan.filter_section().clone());
         self.set_select(plan.selector().clone());

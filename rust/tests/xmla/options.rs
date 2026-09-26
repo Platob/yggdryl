@@ -1325,7 +1325,13 @@ fn a_write_the_declared_field_cannot_cast_is_refused_unless_safe() {
 
     let mut refused = handle();
     let strict = RecordOptions::from(XmlaOptions::new().with_field(numeric_symbol()));
-    assert!(refused.overwrite_arrow_batch(rows(), &strict).is_err());
+    let message = refused
+        .overwrite_arrow_batch(rows(), &strict)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("symbol"), "{message}");
+    assert!(message.contains("'AAPL'"), "{message}");
+    assert!(message.contains("Int64"), "{message}");
     // A refused write leaves the handle as it was.
     assert!(refused.as_slice().is_empty());
 

@@ -764,6 +764,26 @@ impl Rowset {
     ///
     /// Returns the schema's or the rows' refusal.
     pub fn read_root(root: &Element<'_>, field: Option<&Field>) -> Result<(Self, Serie)> {
+        Self::read_root_with(root, field, crate::ArrowCastOptions::default().with_safe(false))
+    }
+
+    /// [`Self::read_root`] under `cast`: where the root states its own
+    /// columns and a field is declared, a strict cast reads each cell straight
+    /// into the declared type and refuses one it cannot hold, naming its row
+    /// and column; a `safe` cast reads the cells as stated and nulls each
+    /// value the declared type cannot hold, as a safe cast does in every
+    /// other encoding. The declared type of a datetime column is read directly
+    /// either way, because whether an `xsd:dateTime` is an instant or a wall
+    /// reading is the caller's to say.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema's, the rows' or the cast's refusal.
+    pub fn read_root_with(
+        root: &Element<'_>,
+        field: Option<&Field>,
+        cast: crate::ArrowCastOptions,
+    ) -> Result<(Self, Serie)> {
         match (field, root.child(Some(XSD_NAMESPACE), "schema")) {
             (Some(field), Some(schema)) => {
                 // The document's own schema says which element holds which
@@ -771,11 +791,16 @@ impl Rowset {
                 // the declared field says what each is read as, so a cell
                 // parses straight into the type asked for and the cast onto
                 // the field reorders, drops and completes, converting nothing.
-                let stated = Self::from_schema(&schema)?
-                    .zoned_where_the_rows_are(root)?
-                    .typed_as(field)?;
+                let stated = Self::from_schema(&schema)?.zoned_where_the_rows_are(root)?;
+                let stated = if cast.is_safe() {
+                    stated.typed_as(field, |_, wanted| {
+                        matches!(wanted.dtype(), DataType::DateTime64 { .. })
+                    })?
+                } else {
+                    stated.typed_as(field, |_, _| true)?
+                };
                 let rows = stated.read_rows(root)?;
-                let rows = rows.cast(field, crate::ArrowCastOptions::default())?;
+                let rows = rows.cast(field, cast)?;
                 Ok((Self::new(field.clone())?, rows))
             }
             (Some(field), None) => {
@@ -806,12 +831,13 @@ impl Rowset {
             .transpose()
     }
 
-    /// This rowset with every column a declared field also names read as
-    /// that field's datatype - what the caller asked for, which a text cell
-    /// parses into directly - and every other column kept as stated, so the
-    /// cast onto the declared field converts nothing.
-    fn typed_as(mut self, declared: &Field) -> Result<Self> {
-        let fields = typed_fields(self.field.fields(), declared.fields());
+    /// This rowset with every column a declared field also names, and
+    /// `adopt` admits, read as that field's datatype - what the caller asked
+    /// for, which a text cell parses into directly - and every other column
+    /// kept as stated, so the cast onto the declared field converts nothing
+    /// for the columns adopted.
+    fn typed_as(mut self, declared: &Field, adopt: impl Fn(&Field, &Field) -> bool) -> Result<Self> {
+        let fields = typed_fields(self.field.fields(), declared.fields(), &adopt);
         let field = Field::new(
             self.field.name(),
             DataType::from(StructType::from_fields(fields)?),
@@ -954,11 +980,15 @@ const fn is_sequence(dtype: &DataType) -> bool {
     )
 }
 
-/// `stated` with each column `declared` also names carrying the declared
-/// datatype, a struct column's children the same way, and its stated
-/// nullability kept: whether a cell may be absent is the document's fact,
-/// what it holds is the caller's.
-fn typed_fields(stated: &[Field], declared: &[Field]) -> Vec<Field> {
+/// `stated` with each column `declared` also names and `adopt` admits
+/// carrying the declared datatype, a struct column's children the same way,
+/// and its stated nullability kept: whether a cell may be absent is the
+/// document's fact, what it holds is the caller's.
+fn typed_fields(
+    stated: &[Field],
+    declared: &[Field],
+    adopt: &impl Fn(&Field, &Field) -> bool,
+) -> Vec<Field> {
     stated
         .iter()
         .map(|column| {
@@ -967,10 +997,11 @@ fn typed_fields(stated: &[Field], declared: &[Field]) -> Vec<Field> {
             };
             let dtype = match (column.dtype(), wanted.dtype()) {
                 (DataType::Struct(inner), DataType::Struct(want)) => {
-                    StructType::from_fields(typed_fields(inner, want))
+                    StructType::from_fields(typed_fields(inner, want, adopt))
                         .map_or_else(|_| wanted.dtype().clone(), DataType::from)
                 }
-                _ => wanted.dtype().clone(),
+                _ if adopt(column, wanted) => wanted.dtype().clone(),
+                _ => return column.clone(),
             };
             Field::new(column.name(), dtype, column.is_nullable())
         })

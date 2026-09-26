@@ -305,6 +305,26 @@ impl Response {
     /// the body is not a `DiscoverResponse` or `ExecuteResponse` holding one
     /// `return` and one `root`.
     pub fn from_envelope(envelope: &Envelope, field: Option<&Field>) -> Result<Self> {
+        Self::from_envelope_with(
+            envelope,
+            field,
+            crate::ArrowCastOptions::default().with_safe(false),
+        )
+    }
+
+    /// [`Self::from_envelope`] under `cast`, which is how a rowset whose
+    /// document states other columns lands on the declared field: strictly,
+    /// or nulling what the field cannot hold when `cast` is safe
+    /// ([`Rowset::read_root_with`]).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::from_envelope`].
+    pub fn from_envelope_with(
+        envelope: &Envelope,
+        field: Option<&Field>,
+        cast: crate::ArrowCastOptions,
+    ) -> Result<Self> {
         let payload = match envelope.body() {
             Body::Payload(fragment) => fragment,
             Body::Fault(fault) => {
@@ -343,7 +363,7 @@ impl Response {
         }
         let answer = match root.namespace() {
             Some(ROWSET_NAMESPACE) | None => {
-                let (rowset, rows) = Rowset::read_root(&root, field)?;
+                let (rowset, rows) = Rowset::read_root_with(&root, field, cast)?;
                 Answer::Rowset { rowset, rows }
             }
             Some(EMPTY_NAMESPACE) => Answer::Empty,
