@@ -214,8 +214,10 @@ assert.ok(part.fullMatch('/lake/**/*.parquet'))
 ## Read Hive partitions and select leaves by them
 
 `partitions` answers `{ column, value }` entries in path order and
-`partition(column)` one value or `null`. A handle's `childrenWhere` selects
-leaves by path with no call per file.
+`partition(column)` one value or `null`. A handle's `childrenWhere` keeps
+the leaves whose path spells every pair: it walks the whole tree (no call per
+file beyond the listing, but no pruning); to skip other partitions, `glob` from
+the fixed prefix.
 
 ```javascript
 const assert = require('node:assert/strict')

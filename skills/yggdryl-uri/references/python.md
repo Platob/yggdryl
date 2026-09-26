@@ -295,7 +295,9 @@ assert part.full_match_under(root, "**/*.parquet")
 
 `partitions` are the `column=value` directories in path order;
 `partitions_under(root)` answers only those below a table root. A handle's
-`children_where` selects leaves by path with no call per file.
+`children_where` keeps the leaves whose path spells every pair: it walks the
+whole tree (no call per file beyond the listing, but no pruning); to skip other
+partitions, `glob` from the fixed prefix.
 
 ```python
 import pathlib
@@ -381,9 +383,11 @@ assert str(Arn.from_parts("aws", "s3", "", "", "b/k")) == "arn:aws:s3:::b/k"
 
 ## Ask the local filesystem
 
-`exists`, `is_dir`, `is_file`, `is_local` and `local_mime_type` look at the
-disk for `file:` and answer `False` for any other scheme, with no network
-call. `is_private` judges the last segment (a dot-name).
+`exists()`, `is_dir()`, `is_file()` and `is_local()` look at the disk for
+`file:` and answer `False` for any other scheme, with no network call; the
+`local_mime_type` property asks the disk for a local `file:` URL
+(`inode/directory` for a folder) and otherwise answers the suffix's MIME type.
+`is_private()` judges the last segment (a dot-name).
 
 ```python
 import pathlib
@@ -437,7 +441,7 @@ except ValueError:
   `scheme`, `authority`, `path`, `bucket`, `key`, `file_name`, `parts`,
   `parent`, `partitions` are properties.
 - `Url(text)` is the location door (roots relative text at the working
-  directory, resolves URNs and S3 ARNs); `Url.from_str(text)` and
+  directory, resolves URNs and S3 / S3 Tables ARNs); `Url.from_str(text)` and
   `Url.from_uri(value)` are strict.
 - `hash(uri)` locks that wrapper: a later setter raises `TypeError`. Use
   `copy.copy` for an editable copy; `stable_hash()` never locks.

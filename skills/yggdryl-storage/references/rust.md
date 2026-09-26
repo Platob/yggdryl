@@ -8,7 +8,9 @@ session the `aws` feature (implied by `s3`); everything else is default.
 
 `Holder::local` records the location and decides the role only when an
 operation needs it; `Holder::from_url` lets the scheme pick the backend and
-reads `media_type`/`codec` properties for an extensionless resource.
+reads `media_type`/`codec` properties for an extensionless resource. Both
+address stored bytes (a coding is wrapped only for a `codec` property);
+`into_coded()`/`into_declared_media()` compose what the name declares.
 
 ```rust
 use yggdryl::holder::Holder;
@@ -74,6 +76,8 @@ assert_eq!(handle.append_bytes(b"AAPL,1\n")?, 13);
 
 // Offsets are explicit: two readers never share a position.
 assert_eq!(handle.read_range_bytes(13, 4)?, b"AAPL");
+// A footer is one ranged read off the size, never the whole value.
+assert_eq!(handle.read_range_bytes(handle.size() - 7, 7)?, b"AAPL,1\n");
 assert_eq!(handle.read_range_bytes(0, 6)?, b"symbol");
 // Past the end is empty, not an error.
 assert!(handle.read_range_bytes(100, 4)?.is_empty());
@@ -541,6 +545,9 @@ assert_eq!(archive.as_leaf("blob.bin")?.read_range_bytes(40_000, 8)?, payload[40
   process raises SIGBUS - snapshot with `copy_into(&mut Buffer::new())`.
 - `Buffered::buffered` re-wraps the one cache (inherent method wins);
   `into_handle()` gives the inner handle back, cache dropped.
+- `Holder::local("x.log.gz")` reads the stored gzip bytes, unlike Python
+  `IOBase("x.log.gz")`; call `into_coded()` (or `into_declared_media()` for
+  the record encoding too) to present what the name declares.
 - `compress_into` and `decompress_into` refuse a handle presenting a decoded
   view (a `Coded` target) by name rather than double-coding.
 - `Holder::from_url` with an `s3:`/`gs:`/`az:` scheme needs the `s3` feature;

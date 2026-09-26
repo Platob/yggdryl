@@ -50,6 +50,13 @@ assert late.parameters() == ["floor"]
 bound = late.bind(schema, {"floor": 10})
 assert str(bound.term) == "size >= 10"
 assert bound.matches({"size": 11})
+# A missing parameter is refused; an extra one is silently ignored.
+try:
+    late.bind(schema, {})
+    raise AssertionError("a named parameter must be supplied")
+except ValueError as error:
+    assert ":floor" in str(error)
+assert str(late.bind(schema, {"floor": 10, "typo": 1}).term) == "size >= 10"
 
 assert str(Term("a = 1 or a = 2").simplify()) == "a in (1, 2)"
 ```
@@ -237,8 +244,9 @@ assert str(built) == "select id, name from raw where id > 1 limit 10"
 
 ## Address a nested value by path
 
-`FieldPath` parses and renders the path grammar; inside a term the same steps
-are accessors, plus predicate segments over a serie of structs.
+`FieldPath` parses and renders the path grammar - child, position, key,
+slice `[1:3]` and predicate segment `[ccy = 'EUR']` - and inside a term the
+same steps are accessors.
 
 ```python
 from yggdryl import Field, FieldPath, Term
@@ -248,6 +256,7 @@ assert len(path) == 3 and path.column_name == "last_price"
 assert str(path.parent()) == "line[-1]"
 assert str(FieldPath("line").join(0)) == "line[0]"
 assert len(FieldPath('"a.b"')) == 1 and len(FieldPath("a.b")) == 2
+assert len(FieldPath("line[0:2]")) == 2 and len(FieldPath("line[ccy = 'EUR'][0].price")) == 4
 
 root = Field("orders", "struct<line:serie<struct<ccy:utf8,price:int64>>>", False)
 row = {"line": [{"ccy": "EUR", "price": 10}, {"ccy": "USD", "price": 12}, {"ccy": "EUR", "price": 14}]}
@@ -311,15 +320,25 @@ except ValueError as error:
 ## Keep a derivation on the schema
 
 `into_field` writes a selector as the declaration it is, each computed column
-carrying `TRANSFORM:` metadata; `Selector.from_field` reads it back.
+carrying `TRANSFORM:` metadata; `Selector.from_field` reads it back, and
+`Field.apply_arrow_batch` / `apply_arrow_reader` recomputes the derivations
+on a batch. Keep the source columns in the selector: the stored field is what
+the recompute reads.
 
 ```python
+import pyarrow as pa
+
 from yggdryl import Field, Selector
 
 root = Field("rows", "struct<ccy:utf8,size:int64>", False)
 stored = Selector("ccy, size * 2 as doubled int32").into_field(root)
 assert stored.dtype["doubled"].transform["expression"] == "size * 2"
 assert Selector.from_field(stored) == Selector("ccy utf8 null, size * 2 as doubled int32 null")
+
+# Recompute: the derived column may arrive absent; the transform fills it.
+holder = Selector("ccy, size, size * 2 as doubled int32").into_field(root)
+batch = pa.record_batch({"ccy": ["EUR", "USD"], "size": pa.array([3, 4], pa.int64())})
+assert holder.apply_arrow_batch(batch).column("doubled").to_pylist() == [6, 8]
 ```
 
 ## Read the plan, the text and the document
@@ -360,7 +379,12 @@ except ValueError as error:
   order), not builders - use `.gt()`, `.eq()`. `&`, `|`, `~` and arithmetic
   operators do build terms.
 - A Python `float` against a `decimal(9,2)` column is a different number:
-  pass `decimal.Decimal`.
+  pass `decimal.Decimal`. The same holds in text: `price > 9.5` is a
+  `float64` literal that compares as text (`cast(price as utf8) > '9.5'`);
+  write `price > decimal(9,2) '9.50'` or bind `{"x": Decimal("9.50")}`.
+- `Plan` has no `apply_field`: its output schema is `plan.field_from(root)`.
+- `bind(root, params)` ignores a key no `:name` reads; compare against
+  `parameters()` when a typo must fail.
 - `Filter.apply_arrow_batch` and `Selector.apply_arrow_batch` bind per call;
   in a loop use `apply_arrow_reader` once, or hold `bind(...)`.
 - `Bounds` and statistics pruning are Python and Rust only.

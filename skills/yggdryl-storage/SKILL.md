@@ -31,7 +31,7 @@ Install and cross-language conventions are in `yggdryl`.
 | whole read / write | `read_all_bytes()?`, `write_all_bytes(b)?` | `read_bytes()`, `read_text()`, `write_bytes(b)`, `write_text(s)` | `readBytes()`, `readText()`, `writeBytes(b)`, `writeText(s)` |
 | ranged read | `read_range_bytes(offset, len)?` | `read_range_bytes(offset, len)`, `read_range(o, n, cls=str)` | `readRangeBytes(offset, len)`, `readRange(o, n, { text: true })` |
 | positional write, append | `pwrite(o, b)?`, `append_bytes(b)?` -> offset | `pwrite(o, b)`, `append_bytes(b)`, `append(str_or_bytes)` | `pwrite(o, b)`, `appendBytes(b)`, `append(strOrBytes)` |
-| bounded chunks | `pstream_bytes(pos, batch)?` | `pstream_bytes(pos=0, batch_size=65536)` | `pstreamBytes(pos?, batchSize?)` |
+| bounded chunks | `pstream_bytes(position, batch_size)?` | `pstream_bytes(position=0, batch_size=65536)` | `pstreamBytes(position?, batchSize?)` |
 | cursor | `cursor()`, `cursor_at(n)` + `IOCursor` (`tell`, `seek_to`, `read_next`, `write_next`, `stream_bytes`), `std::io::Read/Write/Seek` | `cursor(pos)`: `read`, `readinto`, `write`, `seek(o, whence)`, `tell`, `stream_bytes` | `cursor(pos)`: `read`, `write`, `seek`, `tell`, `position`, `streamBytes` |
 | `std::io` adapters | `reader_at(o)`, `writer_at(o)` | the cursor is file-like | n/a |
 | size, kind, existence | `size()`, `kind()`, `is_container()`, `kind().is_known()` | `size`, `kind`, `exists()`, `is_dir()`, `is_file()` | `size`, `kind`, `exists()`, `isDir()`, `isFile()` |
@@ -60,8 +60,10 @@ Install and cross-language conventions are in `yggdryl`.
 ## Rules for fast, correct use
 
 1. **Count calls, not bytes.** `read_all_bytes` is one call whatever the size;
-   a footer is `read_range_bytes(size - 8, 8)` - one ranged `GET` on a store,
-   not the object. Slice later needs out of a read you already hold.
+   a footer is `read_range_bytes(size - 8, 8)` - one ranged `GET`, not the
+   object; `size` itself is one `HEAD` on a closed store handle and free on a
+   listed handle, inside `open()`, or after `S3File::with_known_size(n)`.
+   Slice later needs out of a read you already hold.
 2. **Construction touches nothing.** Building a handle, a child
    (`child_by_path`, `/`, `joinpath`), a media type or a partition costs zero
    calls on every backend, S3/GCS/Azure included.
@@ -90,7 +92,10 @@ Install and cross-language conventions are in `yggdryl`.
    role classes (`LocalPath`, `LocalFile`, `S3File`, `FsPath`) address stored
    bytes. JavaScript byte methods always address stored bytes; the coding is
    applied by `readScalar`/`writeScalar`, the record surface and
-   `compressInto`/`decompressInto`.
+   `compressInto`/`decompressInto`. Rust `Holder::local`, `Holder::from_url`
+   and the `Local*` roles address stored bytes; `holder.into_coded()` (or
+   `into_declared_media()`, which also puts the record encoding on top)
+   composes what the name declares - the Rust equivalent of Python `IOBase(name)`.
 9. **Wrappers compose over a handle, never inside it.** `Buffered<Coded<_>>`
    caches decoded pages, `Coded<Buffered<_>>` the encoded transport; wrapping
    twice reconfigures the one layer. Python conversions (`buffered`,
@@ -99,8 +104,10 @@ Install and cross-language conventions are in `yggdryl`.
     `Transcoded` handle, a media type's `;charset=`, or `Charset::decode` - and
     work in UTF-8 after. No reader takes a charset argument. `iso-8859-1` is
     never `windows-1252`; bare `utf-16` is refused (say `utf-16le`/`utf-16be`).
-11. **Listings are lazy, sorted, and free to stop.** Taking three entries of a
-    hundred thousand costs three; a recursive walk skips `.git`, `.venv`,
+11. **Listings are lazy, sorted, and free to stop.** Building a listing costs
+    nothing and stopping early stops the walk: taking the first entries reads
+    one directory level (all its names, sorted - never the tree) locally, or
+    one 1000-entry page on a store. A recursive walk skips `.git`, `.venv`,
     `.DS_Store` unless `include_private`. A glob descends its fixed prefix
     (`year=2024/**/*.parquet`) rather than listing and filtering; an object
     listing states every size, so a listed object is never re-asked.
@@ -125,7 +132,7 @@ Install and cross-language conventions are in `yggdryl`.
 | Wrong | Right |
 | --- | --- |
 | `if not h.exists(): h.mkdir()` then write | write; parents are created on the first write |
-| `h.read_all_bytes()[-8:]` for a footer | `h.read_range_bytes(h.size() - 8, 8)` |
+| reading the whole value to slice off a footer (`read_all_bytes` / `read_bytes()[-8:]`) | Rust `h.read_range_bytes(h.size() - 8, 8)?`, Python `h.read_range_bytes(h.size - 8, 8)`, JS `h.readRangeBytes(h.size - 8, 8)` |
 | a loop of `read_range_bytes` over a `.gz` handle | one `pstream_bytes` drain, or `open()`/`buffered` first |
 | Python `IOBase("x.gz").read_bytes()` expecting gzip bytes | it is decoded; `LocalPath("x.gz").read_bytes()` is stored |
 | JS `new IOBase('x.gz').writeText(s)` expecting a gzip file | writes plain bytes under a `.gz` name; `plain.compressInto(gz)` or `gz.writeBytes(gzip.dumps(b))` |

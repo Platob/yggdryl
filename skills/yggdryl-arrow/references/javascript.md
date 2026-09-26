@@ -218,7 +218,8 @@ assert.deepEqual(Serie.fromScalars(fields.int64('id'), [1n, 2n]).asJs(), [1, 2])
 
 Nullability of the target field decides absence; `safe` decides only whether
 a present value that fails to convert becomes null, and only where the column
-may hold null. An empty text cell is null before `safe` is asked.
+may hold null. An empty text cell is null before `safe` is asked, except
+in an interval column, which parses `""` and fails like any bad value.
 
 ```javascript
 const assert = require('node:assert/strict')

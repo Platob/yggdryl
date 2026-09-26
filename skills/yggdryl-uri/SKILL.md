@@ -29,7 +29,7 @@ Install and conventions are in `yggdryl`.
 | from a platform path | `Uri::from_path(p)?`, `Url::from_path(p)?`, `Uri::try_from(PathBuf)?` | `Uri.from_path(p)`, `Url.from_path(p)` | `Uri.fromPath(p)`, `Url.fromPath(p)` |
 | back to a platform path | `into_path()?` -> `PathBuf` | `into_path()`, `os.fspath(uri)` | `intoPath()` |
 | narrow | `into_url()?`, `into_urn()?`, `into_arn()?`, `Url::from_uri(uri)?` | `into_url()`, `into_urn()`, `into_arn()`, `Url.from_uri(v)` | `intoUrl()`, `intoUrn()`, `intoArn()`, `Url.fromUri(v)` |
-| widen | `Uri::from(&url)`, `into_uri()` | `Uri(url)`, `into_uri()` | `Uri.from(url)`, `intoUri()` |
+| widen | `Uri::from(&url)`, `into_uri()` | `into_uri()` (`Uri(url)` answers the `Url` again, because the constructor dispatches on the scheme) | `Uri.from(url)`, `intoUri()` |
 | from parts | `Uri::from_parts(scheme, authority, path, query, fragment)?` | `Uri.from_parts(scheme, authority, path, query=None, fragment=None)` | n/a |
 | components | `scheme()`, `authority()`, `path()`, `query(decode)?`, `fragment(decode)?`, `path_text(decode)?` | `scheme`, `authority`, `path`, `query(decode=False)`, `fragment()`, `path_text()` | `scheme`, `authority`, `path`, `query`, `fragment` (stored form only) |
 | credentials | `user()`, `password()`, `hostname()` | `user`, `password`, `hostname`, `port`, `host_port` | `user`, `password`, `hostname` |
@@ -49,7 +49,7 @@ Install and conventions are in `yggdryl`.
 | Hive partitions | `hive_partitions()`, `hive_partition(c)`, `hive_partitions_under(&root)`, `is_hive_partitioned()`, `with_hive_partition(c, v)?` | `partitions`, `partition(c)`, `partitions_under(root)`, `is_partitioned()`, `with_partition(c, v)` | `partitions` (`{column, value}[]`), `partition(c)` |
 | leaves by partition (on a handle) | `children_where(&[("year", "2024")], false)?` | `IOBase(root).children_where({"year": "2024"})` | `new IOBase(root).childrenWhere({ year: '2024' })` |
 | private (dot) name | `is_private()` | `is_private()` | `isPrivate()` |
-| local predicates (no network) | `is_local()`, `exists()`, `is_dir()`, `is_file()`, `local_mime_type()` | same | `exists()`, `isDir()`, `isFile()` |
+| local predicates (no network) | `is_local()`, `exists()`, `is_dir()`, `is_file()`, `local_mime_type()` | `is_local()`, `exists()`, `is_dir()`, `is_file()`, `local_mime_type` (property) | `exists()`, `isDir()`, `isFile()` |
 | URN | `namespace()`, `namespace_specific()`, `locator_path()?`, `resolve(&base)?`, `locator()?` | `namespace`, `namespace_specific`, `locator_path()`, `resolve(base)`, `locator()` | `namespace`, `namespaceSpecific`, `locatorPath()`, `resolve(base)`, `locator()` |
 | ARN | `partition()`, `service()`, `region()`, `account()`, `resource()`, `resource_type()`, `resource_id()`, `bucket()`, `key()`, `table()`, `locator()?`, `Arn::from_parts(..)?` | same names as properties, `locator()`, `Arn.from_parts(..)` | `partition`, `service`, ..., `resourceType`, `resourceId`, `table`, `locator()`, `Arn.fromParts(..)` |
 | scheme facts | `scheme()` -> `&Scheme`: `Scheme::S3`, `is_object_store()`, `has_container()`, `default_port()` | `scheme` (str), `default_port`, `is_storage()` | `scheme` (string) |
@@ -66,7 +66,7 @@ Install and conventions are in `yggdryl`.
    parse (`Url::from_str`, `Url.from_str`, `Url.fromString`): relative text is
    refused. A user argument takes the location door (`Url::from_location`,
    Python `Url(...)`, JS `Url.from`), which roots a bare path at the working
-   directory and resolves a URN or an S3 ARN to where it points.
+   directory and resolves a URN or an S3 or S3 Tables ARN to where it points.
 3. **No scheme token means a file path.** `/var/x` is `file:///var/x`,
    `data/x.csv` the relative `file:data/x.csv`; a colon after the first
    separator is data (`/d/2026-08-16T00:00:00/p`), and an invalid token before
@@ -104,13 +104,16 @@ Install and conventions are in `yggdryl`.
 12. **Hive partitions are path segments.** `column=value` directories, in path
     order. Use `hive_partitions_under(root)` / `partitions_under(root)` for the
     table's own columns - `year` is a partition of `/lake`, not of
-    `/lake/year=2024`. `children_where` on a handle selects leaves by path with
-    no call per file.
+    `/lake/year=2024`. `children_where` on a handle keeps the leaves whose path
+    spells every pair - it walks the whole tree (no call per file beyond the
+    listing, but no pruning); to skip other partitions, `glob` from the fixed
+    prefix.
 13. **A name resolves by reading it as a path.** A URN's namespace then its
     `:`-separated parts are the path (`urn:lake:t:2026:p.parquet` ->
     `lake/t/2026/p.parquet`); `resolve(base)` joins it under a store,
-    `locator()` under the working directory. An S3 bucket ARN locates its
-    `s3:` URL; every other ARN service is refused by name.
+    `locator()` under the working directory. An Amazon S3 bucket ARN locates
+    its `s3:` URL and an Amazon S3 Tables `bucket/...` ARN its `s3tables:` one;
+    every other ARN service is refused by name.
 14. **Local predicates never touch the network.** `exists`, `is_dir`, `is_file`
     answer for `file:` URLs and are `false` for every other scheme - they are
     not a remote existence check (and storage code should act, not probe).
@@ -130,7 +133,7 @@ Install and conventions are in `yggdryl`.
 | Python `uri.query` (property) | `uri.query()` is a method; JS `uri.query` is a getter; Rust `query(false)?` answers `Result<Option<Cow<str>>>` |
 | JS `Uri.from("urn:isbn:1").namespace` | JS `Uri.from` answers a `Uri`; narrow with `intoUrn()` (Python's `Uri(...)` already answers `Urn`) |
 | `Url("file:///lake/part-?.parquet").is_glob()` | `?` starts the query in a URL; spell URL globs with `*`, test names with `matches_glob("part-?.parquet")` |
-| listing a lake then filtering names in a loop | `handle.glob("year=2024/**/*.parquet")` or `children_where({"year": "2024"})` |
+| listing a lake then filtering names in a loop | `handle.glob("year=2024/**/*.parquet")` - it descends the fixed `year=2024` prefix; `children_where({"year": "2024"})` is the same full recursive listing filtered by path (no extra call per file, but no pruning) |
 | `s3://my.bucket.com/key` meaning bucket `my.bucket.com` | the `.com` part is a host; build the handle from bucket + key (`S3File(bucket, key, provider="s3")`, `s3::file_at`) |
 | `url.joinpath("100%.csv")` | `joinpath` takes URI text: pass `"100%25.csv"`, or an OS path via `join_path` / `joinpath(PurePath(...))` |
 | JS `url.parameters()` | not bound in JavaScript; read `url.query`, or build the query text yourself |

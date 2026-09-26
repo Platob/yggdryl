@@ -238,7 +238,8 @@ assert Serie.from_scalars(Field("id", "int64"), Serie([1, 2]).rows()).as_py() ==
 
 Nullability of the target field decides absence; `safe` decides only whether
 a present value that fails to convert becomes null, and only where the column
-may hold null. An empty text cell is null before `safe` is asked.
+may hold null. An empty text cell is null before `safe` is asked, except
+in an interval column, which parses `""` and fails like any bad value.
 
 ```python
 import pyarrow as pa

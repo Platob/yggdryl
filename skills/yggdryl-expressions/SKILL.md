@@ -43,7 +43,7 @@ reader, statistics, or media pushdown).
 | shape one batch | `x.apply_arrow_batch(&batch)?` | `x.apply_arrow_batch(batch)`, `apply_arrow(any)` | `x.applyArrowBatch(batch)`, `applyArrow(any)` |
 | filter with a held `Bound` | `bound.filter(&b)?`, `filter_mask`, `filter_reader(r)` | `bound.filter_arrow_batch(b)`, `filter_arrow_reader(r)` | `bound.filterArrowBatch(b)`, `filterArrowReader(r)` |
 | native rows in and out | `x.apply_records(Some(&root), rows)?` | `x.apply_records(rows, root)` | `x.applyRecords(rows, root)` |
-| output schema, no data | `x.apply_field(&root)?`, `apply_datatype` | `x.apply_field(root)` | `x.applyField(root)` |
+| output schema, no data | `x.apply_field(&root)?`, `apply_datatype`; a plan `plan.field_from(&root)?` | `x.apply_field(root)`; a plan `plan.field_from(root)` | `x.applyField(root)`; a plan `plan.fieldFrom(root)` |
 | skip a file by statistics | `bound.statistics_prune(&Bounds::new(..).with_column(..))` | `bound.statistics_prune(Bounds(rows=..).with_column(..))` | not bound |
 | split partition / row halves | `bound.partition_split()` -> `Residual` | `bound.partition_split()` -> `(answerable, remaining)` | `bound.partitionSplit()` -> `{ answerable, remaining }` |
 | push into a record read | `options.with_filter(f)?.with_select(s)?` + `read_arrow_reader(&options)` | `read_arrow_reader(filter=f, select=s)` | `readArrowReader({ filter: f, select: s })` |
@@ -51,10 +51,16 @@ reader, statistics, or media pushdown).
 | resolve a path | `FieldPath::from_str(p)?`, `apply_scalar(&root, &v)` | `FieldPath(p)` | `new FieldPath(p)` |
 | register a function | `register_function(Arc::new(f))?` | `@user_defined_function(namespace=...)` | not bound (parses, bind refuses) |
 | store a derivation on a schema | `sel.into_field(&root)?`, `Selector::from_field(&f)` | `sel.into_field(root)`, `Selector.from_field(f)` | `sel.intoField(root)`, `Selector.fromField(f)` |
+| recompute stored derivations | `stored.apply_arrow_batch(&b, true, true, true, ArrowCastOptions::new())?`, `apply_arrow_reader(r, ..)` | `stored.apply_arrow_batch(b)`, `apply_arrow_reader(r)` | not bound |
 | see what runs | `bound.explain()` | `bound.explain()` | `bound.explain()` |
 | canonical text / document | `to_string()`, `into_json()?`, `from_json(s)?` | `str(x)`, `into_json()`, `from_json(s)` | `toString()`, `intoJson()`, `fromJson(s)` |
 
-`x` is any clause: `Filter`, `Selector`, `Plan` or `Expression`.
+`x` is any clause: `Filter`, `Selector`, `Plan` or `Expression`, with two
+exceptions: a `Plan`'s output schema is `plan.field_from(root)` /
+`plan.fieldFrom(root)` (Rust also `apply_datatype`), never `apply_field`; and
+a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
+`Expression::from(plan)` for `apply_arrow_batch`, `apply_records` or
+`apply_field`.
 
 ## Rules for fast, correct use
 
@@ -96,18 +102,28 @@ reader, statistics, or media pushdown).
    it meets (`i = '1'` on `int64` binds as `i = 1`); operands with no common
    type compare as text (`s > 1` on `utf8` is `s > '1'`); a declared column
    casts safely unless it is `not null`, which refuses naming the column and
-   value. Decimals never become floats - pass exact values.
+   value. Decimals never become floats - pass exact values, and write a
+   fractional literal against a decimal typed (`decimal(9,2) '9.50'`): an
+   untyped `9.5` is `float64`, shares no type with a decimal, and so compares
+   as text.
 9. **Paths are resolved, never split.** A `FieldPath` is parsed once at the
    boundary; quote a dotted name (`"a.b"`); never split a path string on `.`.
 10. **Parameters bind once.** `:name` values go to `bind_with` / `bind(root,
-    params)`; a missing, repeated or unknown parameter is refused.
+    params)`. A missing one is refused naming it; an extra one is silently
+    ignored and a repeated one (Rust slice) takes its first value, so compare
+    against `parameters()` yourself when a misspelt key must fail.
 11. **Canonical text is identity.** Every layer's text re-parses to the same
     tree and `stable_hash` / `stableHash` hashes it - a safe key for a cache of
-    bound plans.
+    parsed clauses; a cache of *bound* plans keys on the clause hash together
+    with the schema's `Field` `stable_hash`, because a `Bound` is resolved
+    against one schema.
 12. **A `Field` is a plan holder.** `into_field` stores each derivation as
     `TRANSFORM:function` + `TRANSFORM:sources` (a call over plain columns) or
-    `TRANSFORM:expression`, and the schema pipeline recomputes them (see
-    `yggdryl-types`).
+    `TRANSFORM:expression`, and `Field::apply_arrow_batch` /
+    `apply_arrow_reader` (Python `field.apply_arrow_batch(batch)`; not bound
+    in JavaScript) recomputes them on a batch - see `yggdryl-arrow` for the
+    cast it runs first. Keep the source columns in the selector: the stored
+    field is what the recompute reads.
 13. **DuckDB names the vocabulary**: `* exclude (...)`, `unnest`/`explode`,
     `in`, `between`, `is null`, `case when`, `asc`/`desc nulls first`. Joins,
     aggregates, windows and regexes are refused, not emulated.
@@ -123,6 +139,11 @@ reader, statistics, or media pushdown).
 | `for b in reader: Filter(text).apply_arrow_batch(b)` | `Filter(text).apply_arrow_reader(reader)`, or `bound = f.bind(root)` once and `bound.filter_arrow_batch(b)` |
 | `read_arrow_reader()` then filtering in pyarrow / Arrow JS | `read_arrow_reader(filter="...", select="...")` / `readArrowReader({ filter, select })` |
 | a Python `float` or JS number against `decimal(9,2)` | `decimal.Decimal("1.50")`, `Scalar.decimal(150n, 2)` |
+| `where price > 9.5` on a `decimal` column - `9.5` is a `float64` literal, which shares no type with a decimal, so it silently compares as text (`cast(price as utf8) > '9.5'`, and 10.00 fails) | `price > decimal(9,2) '9.50'`, an integer literal (`price > 9`), or a `:param` bound to `decimal.Decimal` / `Scalar.decimal` |
+| `a / b` on two integers expecting a fraction (`7 / 2` is 3, truncated toward zero) | `cast(a as float64) / b`, or a decimal operand |
+| `*, upper(name) as name` to replace a column (refused: `name` twice) | `* exclude (name), upper(name) as name` - the column moves to the end |
+| a bound-plan cache keyed on the clause's `stable_hash` alone | key on the clause hash and the schema `Field`'s `stable_hash` |
+| `bind(root, {"lo": 1, "hi": 2})` expecting the unused `hi` to fail | extras are ignored; check the keys against `parameters()` |
 | `where x = null` | `where x is null` (`= null` is unknown for every row) |
 | `a.b` meaning one column named `a.b` | `"a.b"` (quoted); unquoted it is two levels |
 | JS `bound.matches(Scalar.from({ a: 1 }))` | `bound.matches(Scalar.from([1]))` - a row is a sequence in schema order |
@@ -151,6 +172,7 @@ reader, statistics, or media pushdown).
 - Record options and partition pruning: https://platob.github.io/yggdryl/media/#options,
   https://platob.github.io/yggdryl/holder/#pruning-and-filtering
 - Sibling skills: `yggdryl-records` (where the pushed-down read runs),
-  `yggdryl-types` (the `Field` a clause binds against, `TRANSFORM:`),
-  `yggdryl-arrow` (`BatchReader`, `Serie`, casts), `yggdryl-hashing`
+  `yggdryl-types` (the `Field` a clause binds against),
+  `yggdryl-arrow` (`BatchReader`, `Serie`, casts, the cast
+  `Field::apply_arrow_batch` runs before `TRANSFORM:`), `yggdryl-hashing`
   (`stable_hash`).

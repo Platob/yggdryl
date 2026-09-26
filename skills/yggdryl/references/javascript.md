@@ -9,9 +9,10 @@ Iceberg, the object stores.
 
 ## Numbers, bigints, bytes
 
-Width is the type's business. A 64-bit integer reads back as a `number` while
-it is a safe integer and as a `bigint` beyond; pass `bigint` for 64-bit
-values you build, and use `Buffer`/`Uint8Array` for bytes. Plain objects
+Width is the type's business. A 64-bit `Scalar`'s `asJs()` is a `number`
+while it is a safe integer and a `bigint` beyond; an `int64` cell read from
+records or batches is an Arrow JS value and always a `bigint`. Pass `bigint`
+for 64-bit values you build, and use `Buffer`/`Uint8Array` for bytes. Plain objects
 become named records, a `Map` stays a mapping.
 
 ```javascript
@@ -104,6 +105,8 @@ try {
   const rows = [...handle.readRecords()]
   assert.equal(rows.length, 1)
   assert.equal(rows[0].symbol, 'AAPL')
+  // An int64 cell is an Arrow JS value: always a bigint.
+  assert.equal(rows[0].id, 1n)
 } finally {
   fs.rmSync(root, { recursive: true, force: true })
 }
@@ -118,4 +121,4 @@ assert.deepEqual(json.loads(json.dumps({ symbol: 'AAPL' })), { symbol: 'AAPL' })
 - `readArrowReader()` yields Arrow JS `RecordBatch`es one at a time; `readRecords()` yields plain objects whose values are Arrow JS values (a decimal is Arrow's `DecimalBigNum`, not a `number`).
 - JavaScript has no decimal, so `Scalar.decimal(coefficient, scale)` and a decimal-typed `DataType.scalar('12.5')` are the ways in; `asJs()` of a decimal answers the `Scalar` itself.
 - `===` compares references; use `equals`, `compare` and `stableHash()` (a `bigint`) for value semantics.
-- camelCase is the only renaming: `read_arrow_reader` is `readArrowReader`, `merge_by` is `mergeBy` / `withMergeBy`.
+- Names are camelCased (`read_arrow_reader` is `readArrowReader`, `merge_by` is `mergeBy` / `withMergeBy`), with these exceptions: Python `Scalar.from_` is `Scalar.from`, `as_py` is `asJs`, Python `Scalar.from_struct({...})` is `Scalar.from({...})`, and `IOBase.read_arrow`/`write_arrow` are not bound (use `SerieReader.fromArrowReader(handle.readArrowReader())` and `writeArrowReader`).

@@ -128,5 +128,5 @@ the native bridge only through `yggdryl.refresh_logging()`.
 - `IOBase(...)` answers the native class for the location (`LocalPath`, `Parquet`, `Buffer`, ...); all share one surface, so code against `IOBase`.
 - Whole-resource bytes are `read_bytes`/`write_bytes`; ranges are `read_range_bytes(offset, length)`.
 - pyarrow objects cross zero-copy over the Arrow C Data Interface; converting through `to_pylist()` defeats that - keep batches as batches.
-- A `str` given to a structured-text loader (`json.loads`, `toml.load`) is content, never a path: pass `pathlib.Path` for a file.
+- A `str` given to a structured-text loader (`json.loads`, `toml.loads`) is content, never a path: pass `pathlib.Path` for a file.
 - Datatype arguments accept their own expression (`"int64"`, `"decimal(18,4)"`) or a Python type (`int`, `str`, `Decimal`); parse once and reuse the `DataType` in hot code.

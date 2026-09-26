@@ -34,7 +34,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | parse a field | `Field::from_str("px float64 NOT NULL")?` | `Field.from_str(...)` | `Field.from(...)` |
 | a schema | `DataType::from(StructType::from_fields([..])?).required_field("row")` | `yggdryl.struct("row", [..], nullable=False)` | `fields.struct('row', [..], { nullable: false })` |
 | schema from a class | `StructType` + typed leaves (`Int64Field::unit`) | `@scalar` class, `Class.into_field()`, `field(obj)` | `static get intoStructField()`, `intoField(Class)` |
-| check a schema root | `root.validate_struct_root()?` | `root.validate_struct_root()` | validated at every entry point |
+| check a schema root | `root.validate_struct_root()?` | `root.validate_struct_root()` | no `validateStructRoot`: check `f.dtype.id === 'struct' && !f.nullable` (only `intoField(Class)` checks a class's `intoStructField`) |
 | a value under a type | `field.scalar(v)?`, `dtype.scalar(v)?` | `field.scalar(v)`, `dtype.scalar(v)` | `field.scalar(v)`, `dtype.scalar(v)` |
 | infer from a host value | `Scalar::from(7_i64)`, `Scalar::from_struct([..])?` | `Scalar.from_(v)`, `Scalar.from_struct({..})` | `Scalar.from(v)` |
 | back to host | `as_i64()`, `as_str()`, `as_decimal()`, ... | `s.as_py()` | `s.asJs()` |
@@ -49,7 +49,7 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
 | schema as a document | `into_json()?` / `Field::from_json`, YAML, TOML | `into_json()` / `from_json`, `into_dict`, YAML, TOML | `toJSON()` / `Field.fromJSON` (JSON only) |
 | one value as bytes | `into_value_bytes()`, `Scalar::decode_value_bytes(&b)?` | `into_value_bytes()`, `Scalar.from_value_bytes(b)`, `pickle` | `intoValueBytes()`, `Scalar.fromValueBytes(b)` |
-| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`); `DataType.fromArrow(t)` reads a type's text |
+| Arrow schema in and out | `Field::from_arrow_field(&f)?`, `into_arrow_field()?` | `Field.from_arrow(f)`, `Field.from_arrow_schema(s, name=)`, `into_arrow()`, `into_arrow_schema()` | schemas cross with batches (`yggdryl-arrow`): `Serie.fromArrowBatch(batch).field`; `DataType.fromArrow(t)` / `Field.fromArrow(f)` read only Arrow JS's text, so a field loses `nullable: false` and its extension |
 | canonical default | `default_value()?` | `default_scalar()` | `defaultJSValue()` |
 | engine compatibility | `into_scheme_compat(&Scheme::SPARK)?` | `into_scheme_compat("spark")` | `intoSchemeCompat('spark')` |
 
@@ -154,7 +154,10 @@ string and byte leaves, the legacy `list` words - is in
   offset-carrying text into a naive one, is refused.
 - A code is not a string: `ccy` is its own datatype (`kind == "code"`,
   `string_parameters is None`), not `fixed_ascii(3)`; `isin`, `cusip`,
-  `sedol`, `figi` check their digit and have no default value.
+  `sedol`, `figi` check their digit; these four and `bbg`, `ric` have no
+  default value (`default_scalar()` raises), so a record that omits such a
+  required child is refused rather than defaulted - make the child nullable
+  or always supply it.
 - A Python `uuid.UUID` passed to `Scalar.from_` infers as text: declare the
   column `uuid` and read through it. A JavaScript `Date` is
   `datetime64(ms,"UTC")` and a `date32` column refuses it.
@@ -163,6 +166,9 @@ string and byte leaves, the legacy `list` words - is in
 - `DataType.from_arrow(extension_type)` loses the extension name (a bare Arrow
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,
   `decimal`, `version` identity.
+- JavaScript `Field.fromArrow(arrowJsField)` parses the field's `toString()`:
+  `c: Utf8` not-null under `yggdryl.ccy` comes back as a nullable `utf8`.
+  Take the schema from `Serie.fromArrowBatch(batch).field` instead.
 - Python has no `DataType.decimal128`/`DataType.index_of`: exact decimal widths
   are field factories (`yggdryl.decimal128(name, p, s)`) and child positions
   are `Field.index_of`. JavaScript has no `DataType.decimal`.

@@ -9,7 +9,7 @@ how a location is spelled, what configures it, and what each call costs.
 | Spelling | Backend | Rust | Python | JavaScript |
 | --- | --- | --- | --- | --- |
 | no scheme, `/abs`, `C:\x`, `file:` | Local (memory-mapped) | `LocalPath`/`LocalFolder`/`LocalFile`, `Holder::local` | `IOBase(p)`, `LocalPath(p)`, `LocalFolder(p)`, `LocalFile(p)` | `new IOBase(p)` |
-| `mem:` (no location) | Buffer | `holder::Buffer` | `IOBase.from_bytes()` | `IOBase.fromBytes()` |
+| none (a Buffer reports a `mem://...` identity, but that spelling is refused as input) | Buffer | `holder::Buffer::new()` / `Buffer::from_bytes(v)` | `IOBase.from_bytes(b)` | `IOBase.fromBytes(b)` |
 | `s3`, `s3a`, `s3n` | Amazon S3 and S3-compatible (MinIO, ...) | `s3::file/folder/located` (`s3` feature) | `IOBase(url)`, `S3File/S3Folder/S3Path` | `new IOBase(url)` |
 | `gs`, `gcs` | Google Cloud Storage | same | same | same |
 | `az`, `abfs`, `abfss`, `wasb`, `wasbs` | Azure Blob Storage | same | same | same |

@@ -68,6 +68,8 @@ handle.writeBytes(Buffer.from('symbol,price\n'))
 assert.equal(handle.appendBytes(Buffer.from('AAPL,1\n')), 13)
 
 assert.equal(handle.readRangeBytes(13, 4).toString(), 'AAPL')
+// A footer is one ranged read off the size (a getter), never the whole value.
+assert.equal(handle.readRangeBytes(handle.size - 7, 7).toString(), 'AAPL,1\n')
 assert.equal(handle.readRangeBytes(100, 4).length, 0) // past the end is empty
 assert.equal(handle.readRange(0, 6, { text: true }), 'symbol')
 

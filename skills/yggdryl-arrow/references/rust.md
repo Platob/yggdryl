@@ -281,7 +281,8 @@ assert_eq!(Serie::from_scalars(value, run.rows().into_owned())?.len(), 1);
 
 Nullability of the target field decides absence; `safe` decides only whether
 a present value that fails to convert becomes null, and only where the column
-may hold null. An empty text cell is null before `safe` is asked.
+may hold null. An empty text cell is null before `safe` is asked, except
+in an interval column, which parses `""` and fails like any bad value.
 
 ```rust
 use std::sync::Arc;
@@ -375,7 +376,9 @@ writer.push_value(Some(128))?;
 writer.push_value(None)?;
 assert_eq!((prices.len(), prices.null_count()), (5, 2));
 
-// Text lends its bytes where they lie: `as_utf8` covers every UTF-8 string leaf.
+// Text lends its bytes where they lie: `as_utf8` covers every leaf stored as 32-bit-offset
+// UTF-8 (utf8, ascii, sized_utf8(n), codes); `large_utf8`, `utf8_view` and fixed leaves
+// narrow with `as_large_utf8`, `as_utf8_view`, `as_fixed_string`.
 let symbols: ArrayRef = Arc::new(StringArray::from(vec!["AAPL", "MSFT"]));
 let text = Serie::from_arrow_array(Some(&Field::new("symbol", DataType::utf8(), false)), symbols, options)?;
 let leaf = text.as_utf8().ok_or("a utf8 column")?;

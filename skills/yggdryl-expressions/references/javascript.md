@@ -52,6 +52,9 @@ assert.deepEqual(late.parameters, ['floor'])
 const bound = late.bind(schema, { floor: 10 })
 assert.equal(bound.term.toString(), 'size >= 10')
 assert.equal(bound.matches(Scalar.from([null, null, 11])), true)
+// A missing parameter is refused; an extra one is silently ignored.
+assert.throws(() => late.bind(schema, {}), /:floor/)
+assert.equal(late.bind(schema, { floor: 10, typo: 1 }).term.toString(), 'size >= 10')
 
 assert.equal(new Term('a = 1 or a = 2').simplify().toString(), 'a in (1, 2)')
 ```
@@ -242,9 +245,9 @@ assert.equal(built.toString(), 'select id, name from raw where id > 1 limit 10')
 
 ## Address a nested value by path
 
-`FieldPath` parses and renders the path grammar; inside a term the same steps
-are accessors (`child`, `at`, `slice`, `key`), plus predicate segments over a
-serie of structs.
+`FieldPath` parses and renders the path grammar - child, position, key,
+slice `[1:3]` and predicate segment `[ccy = 'EUR']` - and inside a term the
+same steps are accessors (`child`, `at`, `slice`, `key`).
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -257,6 +260,8 @@ assert.equal(path.parent().toString(), 'line[-1]')
 assert.equal(new FieldPath('line').join(0).toString(), 'line[0]')
 assert.equal(new FieldPath('"a.b"').length, 1)
 assert.equal(new FieldPath('a.b').length, 2)
+assert.equal(new FieldPath('line[0:2]').length, 2)
+assert.equal(new FieldPath("line[ccy = 'EUR'][0].price").length, 4)
 
 const root = new Field('orders', 'struct<line:serie<struct<ccy:utf8,price:int64>>>', false)
 const row = Scalar.from([[['EUR', 10n], ['USD', 12n], ['EUR', 14n]]])
@@ -284,6 +289,8 @@ assert.throws(() => term.bind(Field.from('rows: struct<size: int64> not null')),
 
 `intoField` writes a selector as the declaration it is, each computed column
 carrying `TRANSFORM:` metadata; `Selector.fromField` reads it back.
+Recomputing the derivations on a batch (`Field.apply_arrow_batch` in Rust and
+Python) is not bound in JavaScript.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -332,4 +339,10 @@ assert.throws(() => new Expression('price > 1'), /expected `select`, `where`/)
   never the same object. Keep large streams native (`BatchReader`,
   `readArrowReader`, `applyArrowReader`) and convert once at the end.
 - `stableHash()` is a `bigint`; `int64` cells read back as `bigint`.
-- No `Bounds`/statistics pruning and no UDF registration in JavaScript.
+- No `Bounds`/statistics pruning and no UDF registration in JavaScript, and
+  no `Field` recompute of stored `TRANSFORM:` derivations.
+- `Plan` has no `applyField`: its output schema is `plan.fieldFrom(root)`.
+- `bind(root, params)` ignores a key no `:name` reads; compare against
+  `parameters` when a typo must fail.
+- `price > 9.5` on a `decimal` column is a `float64` literal that compares as
+  text; write `price > decimal(9,2) '9.50'` or bind `Scalar.decimal(950n, 2)`.

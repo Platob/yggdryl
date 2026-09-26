@@ -278,7 +278,9 @@ assert_eq!(part.segments_under(&root), Some(vec!["month=01", "part-0.parquet"]))
 
 `column=value` directories are the partition columns, in path order; the
 `_under` form answers only those below a table root. A handle's
-`children_where` selects leaves by path with no call per file.
+`children_where` keeps the leaves whose path spells every pair: it walks the
+whole tree (no call per file beyond the listing, but no pruning); to skip other
+partitions, `glob` from the fixed prefix.
 
 ```rust
 use yggdryl::local::LocalFolder;

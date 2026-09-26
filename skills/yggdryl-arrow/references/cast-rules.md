@@ -20,7 +20,7 @@ references; full detail at https://platob.github.io/yggdryl/types/cast/.
 | Source null | null | refused at that batch: `required Arrow field $.x holds N null values` |
 | Value fails to convert, `safe=true` | null | refused by that value (`not a number`) |
 | Value fails to convert, `safe=false` | refused by that value | refused by that value |
-| Empty text `""` into a non-text column | null (before `safe` is asked) | refused as a null, by path |
+| Empty text `""` into a non-text column | null (before `safe` is asked); an interval column instead parses it and fails, so it follows the `safe` rows | refused as a null, by path; an interval column refuses it by value |
 | Whitespace-only `" "` into a non-text column | not empty: a failed conversion, so null under `safe` and refused under `safe=false` | refused by that value |
 | Column missing from the source | all-null column | refused when the plan is **compiled**: `required Arrow field $.x is missing from the source` |
 | Extra source column | dropped | dropped |
@@ -90,7 +90,7 @@ land in a `Serie`, and the landing proves three things:
 | --- | --- |
 | Layout | the buffers are exactly the field's Arrow projection |
 | Absence | validity words counted against nullability, at every level; a record's children judged only where the record row is present |
-| Values | **not read** where the layout is the datatype's whole contract - null, boolean, every integer and float, `date32`, datetimes, durations, intervals, plain `utf8` and binary leaves, `uuid`, and nestings of these; **read once** otherwise - codes, ASCII / windows-1252 / sized strings, decimals, `date64`, times, URLs, versions, variants - and the first refused row is named |
+| Values | **not read** where the layout is the datatype's whole contract - null, boolean, every integer and float, `date32`, datetimes, `duration64`, intervals, plain `utf8` and binary leaves, `uuid`, and struct, serie, union and encoded nestings of these; **read once** otherwise - codes, ASCII / windows-1252 / sized strings, decimals, `date64`, times, `duration32`, maps (key uniqueness), URLs, versions, variants - and the first refused row is named |
 
 An `ARROW:extension:name` label (for example `yggdryl.url`) is **not** a
 proof: foreign rows under it are read once, under every option. A plan node

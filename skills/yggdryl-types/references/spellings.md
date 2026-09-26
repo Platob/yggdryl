@@ -11,7 +11,7 @@ column below), so compare `DataType` values, never the text you wrote.
 
 | Rule | Detail |
 | --- | --- |
-| Folding | keywords ignore case, `_`, `-` and spaces inside one word: `large_utf8`, `largeutf8`, `LARGE-UTF8` are one type. A keyword must still be **one token**: `unsignedbigint` or `ubigint`, never `unsigned bigint` |
+| Folding | keywords ignore case, `_` and `-`: `large_utf8`, `largeutf8`, `LARGE-UTF8` are one type. A space ends a keyword, so `large utf8` and `unsigned bigint` are refused (write `ubigint`/`unsignedbigint`); only the fixed SQL phrases `double precision`, `character varying`, `timestamp with[out] time zone`, `interval day`/`interval year` contain one |
 | Round trip | `str(t)` / `t.toString()` / `to_string()` re-parses to the same value; `repr` in Python is `DataType.from_str("...")` |
 | Nesting limit | 64 levels (`DataType::PARSE_RECURSION_LIMIT`), in parsing, defaults and compatibility walks alike |
 | Errors | refusal names the byte position and what was expected: `invalid datatype expression at byte 5: ...` |
@@ -74,9 +74,11 @@ may not exceed the precision (`decimal(2,3)` is refused).
 
 Not spellings: `datetime`, `timestamp_tz`. Units: `s`/`second(s)`,
 `ms`/`milli(s)`/`millisecond(s)`, `us`/`µs`/`micro(s)`/`microsecond(s)`,
-`ns`/`nano(s)`/`nanosecond(s)`, `d`/`day(s)` (durations only), and the
-interval layouts `year_month`, `day_time`, `month_day_nano`. `time32` takes
-`s`/`ms`, `time64` takes `us`/`ns`, `datetime64` takes `s`..`ns` (never `d`).
+`ns`/`nano(s)`/`nanosecond(s)`, and the interval layouts `year_month`,
+`day_time`, `month_day_nano`. `d`/`day(s)` is a value unit only
+(`Scalar.duration(n, 'd')`, a date's `unit`): no datatype takes it, so
+`duration64(d)` is refused. `time32` takes `s`/`ms`, `time64` takes `us`/`ns`,
+`datetime64` and `duration32`/`duration64` take `s`..`ns`.
 
 ## Strings: eighteen leaves, one number rule
 

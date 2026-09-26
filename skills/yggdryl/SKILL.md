@@ -1,6 +1,6 @@
 ---
 name: yggdryl
-description: Start here for any code that uses the yggdryl package - the Rust crate, the Python wheel or the npm package - for Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure), record media (Arrow IPC, Parquet, Avro, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill, whose shared conventions (naming, defaults, errors, streaming, zero copy) live here.
+description: Routes yggdryl work to the right layer and states the conventions every yggdryl API shares (install and features, naming, defaults, errors, streaming, zero copy) across the Rust crate, the Python wheel and the npm package - Arrow-native schemas (DataType, Field, Scalar), columns (Serie), storage handles (IOBase over local files, ZIP, S3/GCS/Azure), record media (Arrow IPC, Parquet, Avro, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, xxHash/TxHash, FIX and market data. Use when installing or importing yggdryl, choosing which yggdryl API answers a task, translating yggdryl code between Rust, Python and Node.js, or before any other yggdryl-* skill.
 ---
 
 # Yggdryl
@@ -73,7 +73,7 @@ answers the task.
 | whole bytes | `read_all_bytes()`, `write_all_bytes(..)` | `read_bytes()`, `write_bytes(..)` | `readBytes()`, `writeBytes(..)` |
 | omitted optional | `Option::None` / builder not called | argument left out (`...` default) | `undefined` |
 | clear an optional | a `clear_*`/`remove_*` call | `None` | `null` |
-| 64-bit integers | `i64`/`u64` | `int` | `number` when safe, else `bigint`; pass `bigint` in |
+| 64-bit integers | `i64`/`u64` | `int` | `Scalar.asJs()`: `number` when safe, else `bigint`; record/batch cells: always `bigint`; pass `bigint` in |
 | bytes | `&[u8]`, `Vec<u8>` | `bytes` | `Buffer` / `Uint8Array` |
 | Arrow | `arrow-array` 59 types, shared buffers | pyarrow over the C Data Interface, **zero copy** | apache-arrow over IPC, **copied** |
 | errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with `ERR_YGGDRYL_*` codes |
@@ -92,9 +92,11 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
    the object; compile an `ArrowCastPlan` once per stream; bind an expression
    once. Anything parsed or compiled inside a row or batch loop is a defect.
 2. **Stream; never collect.** Record reads answer a batch reader
-   (`read_arrow_reader`, `read_arrow`); keep it a reader end to end. Nothing
-   streamable should become a list of batches or rows unless the caller asked
-   for one.
+   (`read_arrow_reader`; `read_arrow` for a `SerieReader` in Rust and Python -
+   Node has no `readArrow`, so wrap
+   `SerieReader.fromArrowReader(handle.readArrowReader())`); keep it a reader
+   end to end. Nothing streamable should become a list of batches or rows
+   unless the caller asked for one.
 3. **Values enter through their type.** `DataType.scalar`/`Field.scalar` check
    and canonicalize (width narrowed, decimal rescaled, time at its unit, text
    trimmed). Never shape a value with host-runtime casting (`pyarrow.compute.cast`,
@@ -133,10 +135,11 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
   `struct_field.scalar({...})` is refused: pass a list in field order, a
   `@scalar` instance, or `Scalar.from_struct({...})`. Record writers
   (`overwrite_records`) do take `dict` rows.
-- JavaScript: 64-bit integer columns come back as `bigint` once they pass
-  `Number.MAX_SAFE_INTEGER`; write `1n`, not `1`, into `int64` columns when
-  building Arrow JS vectors. Arrow JS interop copies through IPC - cross the
-  boundary in whole batches, not per row.
+- JavaScript: a 64-bit `Scalar`'s `asJs()` is a `number` while safe and a
+  `bigint` beyond, but `int64` cells read from records or batches
+  (`readRecords`, `readArrowReader`) are Arrow JS values and are always
+  `bigint`; write `1n`, not `1`, into `int64` columns. Arrow JS interop copies
+  through IPC - cross the boundary in whole batches, not per row.
 
 ## Language references
 

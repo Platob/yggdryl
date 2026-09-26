@@ -52,6 +52,12 @@ assert_eq!(late.parameters(), vec!["floor".to_owned()]);
 assert!(late.bind(&schema).is_err(), "a named parameter must be supplied");
 let bound = late.bind_with(&schema, &[("floor", Scalar::from(10_i64))])?;
 assert_eq!(bound.term().to_string(), "size >= 10");
+// An extra entry is ignored and a repeated one takes its first value.
+let loose = late.bind_with(
+    &schema,
+    &[("floor", Scalar::from(10_i64)), ("floor", Scalar::from(99_i64)), ("typo", Scalar::from(1_i64))],
+)?;
+assert_eq!(loose.term().to_string(), "size >= 10");
 
 // Simplification keeps the answer in fewer nodes.
 assert_eq!("a = 1 or a = 2".parse::<Term>()?.simplify().to_string(), "a in (1, 2)");
@@ -324,8 +330,9 @@ std::fs::remove_dir_all(&root)?;
 ## Address a nested value by path
 
 A `FieldPath` is parsed once at its boundary and applied many times; quoting
-makes a dotted name one child. Inside a term the same steps are accessors,
-plus predicate segments over a serie of structs.
+makes a dotted name one child. It holds every step - child, position, key,
+slice `[1:3]` (`FieldSegment::range`) and predicate segment `[ccy = 'EUR']`
+(`FieldSegment::filter`) - and inside a term the same steps are accessors.
 
 ```rust
 use yggdryl::expression::Term;
@@ -345,6 +352,9 @@ let built = FieldPath::new([FieldSegment::field("line"), FieldSegment::index(0)]
 assert_eq!(built.to_string(), "line[0]");
 assert_eq!(FieldPath::from_str("\"a.b\"")?.len(), 1);
 assert_eq!(FieldPath::from_str("a.b")?.len(), 2);
+assert_eq!(FieldPath::from_str("line[0:2]")?.len(), 2);
+let eur = FieldPath::new([FieldSegment::field("line"), FieldSegment::filter("ccy = 'EUR'".parse()?)]);
+assert_eq!(eur.to_string(), "line[ccy = 'EUR']");
 
 let first_eur = "line[ccy = 'EUR'][0].price".parse::<Term>()?.bind(&root)?;
 assert_eq!(first_eur.eval(&row)?, Scalar::from(10_i64));
@@ -406,10 +416,15 @@ assert!("skills.triple(size)".parse::<yggdryl::expression::Term>()?.field(&rows)
 
 `into_field` writes a selector as the declaration it is - each computed
 column carrying `TRANSFORM:` metadata - and `from_field` reads it back, so a
-`Field` is a plan holder.
+`Field` is a plan holder. `Field::apply_arrow_batch` (and
+`apply_arrow_reader`) recomputes the derivations on a batch; keep the source
+columns in the selector, because the stored field is what the recompute reads.
 
 ```rust
-use yggdryl::{DataType, Selector, StructType};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray};
+use yggdryl::{ArrowCastOptions, DataType, Selector, StructType};
 
 let root = DataType::from(StructType::from_fields([
     DataType::utf8().nullable_field("ccy"),
@@ -421,6 +436,16 @@ let stored = selector.into_field(&root)?;
 assert_eq!(stored.fields()[1].get_metadata("TRANSFORM:expression"), Some("size * 2"));
 let declared: Selector = "ccy utf8 null, size * 2 as doubled int32 null".parse()?;
 assert_eq!(Selector::from_field(&stored), declared);
+
+// Recompute: the derived column may arrive absent; the transform fills it.
+let holder = "ccy, size, size * 2 as doubled int32".parse::<Selector>()?.into_field(&root)?;
+let batch = RecordBatch::try_from_iter([
+    ("ccy", Arc::new(StringArray::from(vec!["EUR", "USD"])) as ArrayRef),
+    ("size", Arc::new(Int64Array::from(vec![3_i64, 4])) as ArrayRef),
+])?;
+let applied = holder.apply_arrow_batch(&batch, true, true, true, ArrowCastOptions::new())?;
+let doubled = applied.column(2).as_any().downcast_ref::<Int32Array>().ok_or("int32")?;
+assert_eq!(doubled.values().to_vec(), vec![6, 8]);
 ```
 
 ## Read the plan, the text and the document
@@ -461,3 +486,11 @@ assert!("price > 1".parse::<Expression>().is_err(), "an Expression names its cla
 - `Plan::execute` needs the `parquet` feature to read `.parquet` sources and
   `s3` for object-store URLs.
 - `statistics_prune` returning `true` means "must read", never "matches".
+- A `Plan` answers only `apply_arrow_reader`, `execute`, `field_from` and
+  `apply_datatype`; `Expression::from(plan)` reaches `apply_arrow_batch`,
+  `apply_records` and `apply_field`.
+- `bind_with` ignores an entry no `:name` reads; compare the keys against
+  `parameters()` when a typo must fail.
+- An untyped `9.5` literal against a `decimal` column shares no type with
+  it and compares as text; write `decimal(9,2) '9.50'` or bind a decimal
+  `Scalar`.

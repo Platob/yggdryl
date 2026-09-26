@@ -66,7 +66,7 @@ what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')
 | column | `name`, `"odd name"`, `` `odd name` `` - resolved ASCII case-insensitively |
 | literal | `1` (int64), `1.5` (float64), `'text'` (utf8), `true`, `null` |
 | typed literal | `decimal128(9,2) '1.50'`, `date32 '2024-01-01'`, `int32 '5'`, `utf8 null` |
-| parameter | `:since` - supplied at bind, never later |
+| parameter | `:since` - supplied at bind, never later; a missing one is refused, an extra one ignored |
 | comparison | `=`, `<>` / `!=`, `<`, `<=`, `>`, `>=` |
 | distinctness | `is distinct from`, `is not distinct from` (two-valued: never unknown) |
 | null test | `is null`, `is not null` |
@@ -74,7 +74,7 @@ what a holder reads - `t with (media_type = 'text/csv', batch_row_size = '1024')
 | range | `x between lo and hi`, `x not between lo and hi` (inclusive) |
 | pattern | `like 'a%'`, `ilike 'A%'`, `like 'a!%' escape '!'`, `glob '**/*.parquet'` |
 | logic | `and`, `or`, `not` (Kleene three-valued) |
-| arithmetic | `+`, `-`, `*`, `/`, `%`, unary `-` |
+| arithmetic | `+`, `-`, `*`, `/`, `%`, unary `-`; `/` over two integers is integer division truncating toward zero (`7 / 2` = 3, `-7 / 2` = -3) - cast one operand (`cast(a as float64) / b`, or a decimal) for a fractional quotient |
 | conditional | `case when c then v [when ...] else w end` |
 | conversion | `cast(x as int32)` (refuses), `try_cast(x as int32)` (null on failure) |
 | constructor | `[1, 2]` serie, `{'k': 1}` map, `struct(1 as a)` struct |
@@ -90,8 +90,8 @@ unary `-`, accessor.
 | child | `a.b`, or bare `a` at the start (`.a` same) | a struct child |
 | position | `a[0]`, `a[-1]` | one serie element, 0-based, negative from the end; past the end is null |
 | key | `a['k']` | one map entry; missing key is null; `['7']` is a key, `[7]` a position |
-| slice | `a[1:3]`, `a[:-1]` | `[start:end)` run, either bound optional (terms only) |
-| predicate segment | `legs[ccy = 'EUR']`, `legs[active]`, `legs[ccy = 'EUR'][-1].size` | elements of a serie of structs the predicate answers exactly true for (terms only) |
+| slice | `a[1:3]`, `a[:-1]` | `[start:end)` run, either bound optional, clipped at the ends (`FieldSegment` `Range`) |
+| predicate segment | `legs[ccy = 'EUR']`, `legs[active]`, `legs[ccy = 'EUR'][-1].size` | elements of a serie of structs the predicate answers exactly true for (`FieldSegment` `Where`, `FieldSegment::filter`) |
 | quoted child | `"a.b"` | ONE child named `a.b`; `a.b` is two levels |
 | alias | `order.line[0].price as price` | what to call what the path reached (`column_name`) |
 
@@ -111,6 +111,7 @@ A doubled quote inside a quoted name is that quote: `"say ""hi"""` is `say "hi"`
 | `*` | every column, handed back untouched |
 | `* exclude (secret)` / `* except (secret)` | every column but those |
 | `*, upper(name) as loud` | star first, appended projections after the kept columns |
+| `* exclude (name), upper(name) as name` | replace a column: exclude it and re-project it (it moves to the end); `*, upper(name) as name` is refused as a duplicate name - there is no `* replace (...)` |
 | `unnest(legs) as leg` / `explode(legs)` | one row per element; a struct item becomes `leg.<child>` columns; whole projection only, at most one per select |
 
 Refused: `a, *`, a trailing `*,`, `* exclude ()`, `select` inside a projection
@@ -137,7 +138,7 @@ list, `unnest` inside a term, a `where`, an `order by`, a key or a `create`.
 | `and` / `or` | `false and unknown` = false, `true or unknown` = true, `not unknown` = unknown |
 | constants coerce | `i = '1'` on `int64` binds as `i = 1`; `price > 100` on `decimal(9,2)` binds as `price > decimal32(9,2) '100.00'` |
 | no common type | compares as text: `s > 1` on `utf8` binds as `s > '1'` |
-| decimals | never implicitly a float; division keeps at least six fractional places |
+| decimals | never implicitly a float; division keeps at least six fractional places; an untyped fractional literal (`price > 9.5`) is `float64`, shares no type with a decimal and compares as text - write `decimal(9,2) '9.50'` or an integer |
 | floats | IEEE totalOrder: `nan = nan`, `nan` sorts above everything |
 | text order | code point, no collation |
 | names | ASCII case-insensitive; one name in two cases is an ambiguity error |

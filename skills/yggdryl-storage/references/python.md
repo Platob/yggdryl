@@ -72,6 +72,8 @@ assert handle.append_bytes(b"AAPL,1\n") == 13
 
 assert handle.read_range_bytes(13, 4) == b"AAPL"
 assert handle.read_range_bytes(0, 6) == b"symbol"
+# A footer is one ranged read off the size (a property), never the whole value.
+assert handle.read_range_bytes(handle.size - 7, 7) == b"AAPL,1\n"
 assert handle.read_range_bytes(100, 4) == b""  # past the end is empty
 assert handle.read_range(0, 6, cls=str) == "symbol"
 

@@ -446,7 +446,12 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
 - `DataType.kind` is the family (`DataType.time('ms').kind === 'temporal'`);
   the leaf is `id` (`'time32'`).
 - No `validateStructRoot`, `applyArrowBatch`, `pretty`, YAML/TOML schema
-  writers, `uuidPacked`, `FieldScalar` or `FieldRecord`: JavaScript validates
-  at every entry point, and the rest is Rust (and Python) only.
-- Arrow JS crossing is copied IPC (see `yggdryl-arrow`); Arrow JS rows carry no
-  extension identity, so a code column read through Arrow JS is plain text.
+  writers, `uuidPacked`, `FieldScalar` or `FieldRecord`. A nullable struct
+  root is accepted by `Serie.fromScalars`, `SerieReader` and
+  `intoField(field)`; check `f.dtype.id === 'struct' && !f.nullable` yourself
+  (only `intoField(Class)` checks it).
+- Arrow JS crossing is copied IPC (see `yggdryl-arrow`). The batch schema keeps
+  `ARROW:extension:name`, so `Serie.fromArrowBatch(batch)` reads a `ccy` column
+  back as `ccy`; Arrow JS's own `get()` values are plain strings, and
+  `Field.fromArrow(arrowField)` reads only the field's text (drops
+  `nullable: false` and the extension).

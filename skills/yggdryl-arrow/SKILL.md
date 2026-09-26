@@ -21,8 +21,8 @@ every cast runs through them:
 The **field is the cast target**, never the source. An input already laid
 out as the field's projection is the identity plan: its buffers are shared
 and no row is read (except rows of a leaf whose layout is narrower than its
-datatype - a code, a sized string, a decimal, `date64`, a URL - each read
-once). Any other layout is cast by one plan. Whether a value may be absent is
+datatype - a code, a sized string, a decimal, `date64`, a `duration32`, a
+URL, a map - each read once). Any other layout is cast by one plan. Whether a value may be absent is
 the target field's nullability; `safe` only decides whether a present value
 that fails to convert becomes null.
 
@@ -80,7 +80,10 @@ record `row`.
 2. **Declare the layout you already have.** An exact layout is the identity
    plan: the same buffers come back (`is_identity` says so) and no row is read
    for layout-is-contract leaves (ints, floats, bool, `utf8`, binary,
-   `date32`, datetimes, durations, `uuid`, and nestings of them).
+   `date32`, datetimes, `duration64`, intervals, `uuid`, and struct, serie,
+   union and encoded nestings of them). A `duration32` (Arrow has one
+   duration width) and every map (Arrow proves no key uniqueness) are read
+   once.
 3. **Pick the holder by shape.** Contiguous and held: `Serie`. Chunks or
    batches you want kept apart: `ChunkedSerie` (a clone or slice moves chunk
    pointers, never a row). Larger than memory or read once: `SerieReader`.
@@ -99,7 +102,10 @@ record `row`.
    `safe=false` refuses it everywhere.
 7. **Empty text is no value.** A zero-length text cell entering a non-text
    column is null before `safe` is consulted; a whitespace-only cell is not
-   empty but a failed conversion. String, byte and interval columns keep `""`.
+   empty but a failed conversion. String and byte columns keep `""`. An
+   interval column is not given the null: it parses `""` and fails, so the
+   empty cell is null only under `safe` in a nullable column and refused by
+   value under `safe=false` or `not null`.
 8. **`representation="bits"` is a preference for same-width pairs** (`uint64`
    <-> `int64` <-> `float64` <-> `fixed_size_binary(8)`): the value buffer is
    shared, `u64::MAX` reads `-1`. Different widths or rule-governed targets
@@ -121,7 +127,11 @@ record `row`.
     column unchanged. `from_scalars` / `extend` build in one pass; `push` on a
     schema-free run copies the run (quadratic). A byte-leaf `set` rebuilds
     from that row on. The first write to a shared or foreign buffer copies it
-    once.
+    once. `extend_from_serie(other)` appends a column whose datatype agrees
+    and whose nullability fits buffer to buffer with no row read; any other
+    column is read row by row through `Field::scalar` (no cast options, no
+    `safe`), so cast `other` onto the field first when its layout differs and
+    you want the cast rules.
 13. **`into_serie` concatenates** (new buffers); `into_arrow_batch`,
     `into_arrow_reader` and `SerieReader.from_serie` refuse a record column
     holding a null row, because a batch states no row validity.
@@ -139,7 +149,7 @@ record `row`.
   **Right:** `SerieReader` (one batch held), or
   `ChunkedSerie.from_arrow_reader` when you need random access without a join.
 - **Wrong:** summing `serie.scalar(i)` in a loop. **Right:** Rust
-  `serie.as_int64()?.values()`; Python `pyarrow.compute.sum(serie.into_arrow_array())`
+  `serie.as_int64().ok_or("not an int64 column")?.values()`; Python `pyarrow.compute.sum(serie.into_arrow_array())`
   (zero copy); JavaScript `asJs()` once.
 - **Wrong:** `safe=False` to "keep nulls out" or `safe=True` to "let nulls
   into a required column". **Right:** declare the field nullable or
