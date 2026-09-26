@@ -136,7 +136,7 @@ fn write_element<W: Write>(
         return Err(codec_error("nesting depth limit exceeded while encoding"));
     }
     check_name(name)?;
-    if separated && let Some(unit) = layout.unit {
+    if let Some(unit) = layout.unit.filter(|_| separated) {
         writer.write_all(b"\n")?;
         write_units(writer, unit, depth - 1)?;
     }
@@ -239,10 +239,7 @@ where
         }
         write_child(writer, key, value, layout, depth + 1, separated, max_depth)?;
     }
-    if has_children
-        && separated
-        && let Some(unit) = layout.unit
-    {
+    if let Some(unit) = layout.unit.filter(|_| has_children && separated) {
         writer.write_all(b"\n")?;
         write_units(writer, unit, depth - 1)?;
     }
@@ -603,12 +600,12 @@ pub(super) fn illegal_character(text: &str) -> Option<u32> {
     {
         return Some(u32::from(*byte));
     }
-    if memchr::memchr(0xEF, bytes).is_some()
-        && let Some(character) = text.chars().find(|c| matches!(c, '\u{FFFE}' | '\u{FFFF}'))
-    {
-        return Some(u32::from(character));
-    }
-    None
+    // The two non-characters are three bytes each and both open with 0xEF,
+    // so a text with no such byte is not walked.
+    memchr::memchr(0xEF, bytes)?;
+    text.chars()
+        .find(|c| matches!(c, '\u{FFFE}' | '\u{FFFF}'))
+        .map(u32::from)
 }
 
 fn write_units<W: Write>(writer: &mut W, unit: &[u8], count: usize) -> Result<()> {

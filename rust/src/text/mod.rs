@@ -667,12 +667,13 @@ fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
     }
     // Only XML opens with markup, so nothing else is tried as XML, and only a
     // well-formed document is XML - anything else keeps the reading it had.
-    if input
+    let opens_markup = input
         .trim_start_matches([' ', '\t', '\r', '\n', '\u{FEFF}'])
-        .starts_with('<')
-        && let Ok(value) = crate::xml::from_utf8_with_limits(input, limits)
-    {
-        return Inferred::Decoded(Format::Xml, value);
+        .starts_with('<');
+    if opens_markup {
+        if let Ok(value) = crate::xml::from_utf8_with_limits(input, limits) {
+            return Inferred::Decoded(Format::Xml, value);
+        }
     }
     if is_empty_or_comment_only(input.as_bytes()) {
         return Inferred::Yaml;
