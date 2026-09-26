@@ -123,11 +123,14 @@ mod internal {
     /// `Option<Decimal>` has no niche, so each costs sixteen bytes more
     /// than the zero that used to stand in. It moved again, by sixteen
     /// bytes each, when the market facts began to know which identifiers
-    /// they only derived: one `u64` mask, padded to sixteen bytes. A moved
-    /// number is a design answer, never a number to re-pin from a whole run.
+    /// they only derived: one `u64` mask, padded to sixteen bytes. The two
+    /// dated holders moved back by sixteen bytes when their `State` became
+    /// an `i32` member rather than a twenty-four-byte code string: twenty
+    /// bytes fewer, padded to the sixteen-byte alignment. A moved number is
+    /// a design answer, never a number to re-pin from a whole run.
     #[test]
     fn the_holders_are_the_sizes_the_build_reported_when_first_pinned() {
-        assert_eq!(graph_facts::sizes(), [656, 832, 880, 1056]);
+        assert_eq!(graph_facts::sizes(), [656, 816, 880, 1040]);
     }
 
     /// An undated holder's identity is RFC 9562 UUIDv8 over the code it

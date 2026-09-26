@@ -11,8 +11,8 @@ use crate::budget::{
 use crate::string::is_text_storage;
 use crate::{
     BBG_WIDTH, Bytes, BytesType, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH,
-    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, Str, StringType,
-    TIMEINFORCE_WIDTH, UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
+    ISIN_WIDTH, MIC_WIDTH, RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, Str, StringType, TIMEINFORCE_WIDTH,
+    UNIT_WIDTH, ascii_bytes, code_cell_text, uuid_bytes, uuid_parse,
 };
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
@@ -163,7 +163,11 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         DataType::Ric => code_array::<RIC_WIDTH>(dtype, values)?,
         DataType::Figi => code_array::<FIGI_WIDTH>(dtype, values)?,
         DataType::Side => code_array::<SIDE_WIDTH>(dtype, values)?,
-        DataType::State => code_array::<STATE_WIDTH>(dtype, values)?,
+        // A state is the code of its member.
+        DataType::State => primitive!(Int32Type, |value: &Scalar| match value {
+            Scalar::State(state) => Ok(state.code()),
+            other => Err(invalid_value_kind("a state", other)),
+        }),
         DataType::TimeInForce => code_array::<TIMEINFORCE_WIDTH>(dtype, values)?,
         DataType::Unit => code_array::<UNIT_WIDTH>(dtype, values)?,
         DataType::Uuid => uuid_array(values)?,
@@ -388,6 +392,11 @@ pub(crate) fn read_native<N: Into<Scalar>>(_: &DataType, value: N) -> Result<Sca
     Ok(value.into())
 }
 
+/// A state slot: the code of one member, refused where it names none.
+pub(crate) fn read_state(_: &DataType, code: i32) -> Result<Scalar> {
+    Ok(Scalar::State(crate::State::read_code(i64::from(code))?))
+}
+
 pub(crate) fn read_decimal32(dtype: &DataType, value: i32) -> Result<Scalar> {
     match dtype {
         DataType::Decimal32 { scale, .. } => {
@@ -544,7 +553,6 @@ read_code!(
     read_ric => Ric,
     read_figi => Figi,
     read_side => Side,
-    read_state => State,
     read_time_in_force => TimeInForce,
     read_unit => Unit,
 );
@@ -655,7 +663,6 @@ pub(crate) fn text_reading(dtype: &DataType) -> Result<RunReading<str>> {
         DataType::Ric => read_ric,
         DataType::Figi => read_figi,
         DataType::Side => read_side,
-        DataType::State => read_state,
         DataType::TimeInForce => read_time_in_force,
         DataType::Unit => read_unit,
         DataType::Version => read_version,
@@ -757,6 +764,7 @@ pub(crate) fn value_from_array(
         DataType::Int8 => cell!(Int8Array, read_native),
         DataType::Int16 => cell!(Int16Array, read_native),
         DataType::Int32 => cell!(Int32Array, read_native),
+        DataType::State => cell!(Int32Array, read_state),
         DataType::Int64 => cell!(Int64Array, read_native),
         DataType::UInt8 => cell!(UInt8Array, read_native),
         DataType::UInt16 => cell!(UInt16Array, read_native),
@@ -829,7 +837,6 @@ pub(crate) fn value_from_array(
         | DataType::Ric
         | DataType::Figi
         | DataType::Side
-        | DataType::State
         | DataType::TimeInForce
         | DataType::Unit => cell!(StringArray, text_reading(dtype)?),
         DataType::Serie(child) => {

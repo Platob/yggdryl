@@ -2296,6 +2296,8 @@ pub(crate) fn value_to_transport(
         code if code.is_code() => Ok(JsonValue::String(
             code.as_str().expect("a code borrowed its text").to_owned(),
         )),
+        // A state crosses as its member's name.
+        Scalar::State(state) => Ok(JsonValue::String(state.as_str().to_owned())),
         Scalar::Uuid(value) => Ok(JsonValue::String(value.to_string())),
         Scalar::Version(value) => Ok(marker(
             "version",

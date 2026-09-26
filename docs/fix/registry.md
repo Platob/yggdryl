@@ -619,7 +619,7 @@ A vocabulary belongs to the dictionary rather than to one field. The specificati
 
 The set is stated first, because a registry refuses a field whose `FIX:codeset` names a set it does not hold - at `insert`, `update`, `from_fields`, `from_json` and a [store](store.md) load alike. Taking one away runs the other way: `remove_codeset`, and `set_codeset` with an empty list, refuse while a held field still reads by that name, naming the field.
 
-`msgcatcodeset` is intrinsic rather than an ordinary mutable vocabulary: its symbolic category to stable `int32` market-operation ID mapping is fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in that set.
+`msgcatcodeset` and `statecodeset` are intrinsic rather than ordinary mutable vocabularies: the first maps each symbolic category to its stable `int32` market-operation ID, the second names every [State](../types/enum/state.md) member - its stored name, the `int32` code a `state` column stores as the value, and what it means - and both are fixed by the crate. Reinstalling the same canonical document is idempotent; replacing, widening, removing, or loading a conflicting document is refused. A custom `MsgType` may still select any symbolic category already in `msgcatcodeset`.
 
 === "Rust"
 
@@ -647,7 +647,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
     assert_eq!(set.codes().count(), 2);
     assert_eq!(
         registry.codesets().map(|set| set.name()).collect::<Vec<_>>(),
-        ["msgcatcodeset", "sidecodeset"],
+        ["msgcatcodeset", "sidecodeset", "statecodeset"],
     );
     ```
 
@@ -670,7 +670,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     # The field carries the name; the dictionary answers the members.
     assert registry.field(54).fix.codeset == "sidecodeset"
-    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset"]
+    assert registry.codeset_names() == ["msgcatcodeset", "sidecodeset", "statecodeset"]
     members = registry.codeset_of(registry.field(54))
     assert members == registry.codeset("sidecodeset")
     assert [code["name"] for code in members] == ["Buy", "Sell"]
@@ -697,7 +697,7 @@ The set is stated first, because a registry refuses a field whose `FIX:codeset` 
 
     // The field carries the name; the dictionary answers the members.
     assert.equal(registry.field(54).fix.codeset, 'sidecodeset')
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'statecodeset'])
     const set = registry.codesetOf(registry.field(54))
     assert.equal(set.name, 'sidecodeset')
     assert.equal(registry.codeValue('sidecodeset', 'sold'), '2')
@@ -794,7 +794,7 @@ The committed dictionary folds the FIX 4.0 to 5.0 SP2 listings into each set,
 so a value an older version declared and the newest dropped is a code of the
 set like any other: `ExecType(150)` `1` and `2`, the partial fill and the fill
 FIX 4.3 folded into `Trade`, are `PartiallyFilled` and `Filled`, the names an
-element's [state](../types/codes/state.md) reads. The set states one reading of each and dates
+element's [state](../types/enum/state.md) reads. The set states one reading of each and dates
 none of them.
 
 A legacy name that folds onto a current one takes the suffix `Legacy`, and so
@@ -1307,8 +1307,8 @@ Environment and default-folder resolution happen once, on the first global looku
 
 | Rust | Python | JavaScript |
 | --- | --- | --- |
-| `FixRegistry::global()` | `global_registry()` | `fix.globalRegistry()` |
-| `FixRegistry::install_global(...)` | `install_global_registry(...)` | `fix.installGlobalRegistry(...)` |
+| `FixRegistry::from_env()` | `FixRegistry.from_env()` | `fix.FixRegistry.fromEnv()` |
+| `FixRegistry::install_env(...)` | `FixRegistry.install_env(...)` | `fix.FixRegistry.installEnv(...)` |
 
 ## Classifying a captured line
 

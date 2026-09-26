@@ -33,7 +33,7 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | Task | Rust | Python | JavaScript |
 | --- | --- | --- | --- |
 | load a stored dictionary | `FixRegistry::from_handle(&LocalFolder::new(path)?)?` | `FixRegistry.from_handle(path)` | `fix.FixRegistry.fromHandle(path)` |
-| the process default | `FixRegistry::global()?`, `FixRegistry::install_global(r)?` | `global_registry()`, `install_global_registry(r)` | `fix.globalRegistry()`, `fix.installGlobalRegistry(r)` |
+| the process default | `FixRegistry::from_env()?`, `FixRegistry::install_env(r)?` | `FixRegistry.from_env()`, `FixRegistry.install_env(r)` | `fix.FixRegistry.fromEnv()`, `fix.FixRegistry.installEnv(r)` |
 | a dictionary in memory | `FixRegistry::from_fields([..])?`, `registry.insert(field)?` | `FixRegistry.from_fields([...])`, `registry.insert(field)` | `fix.FixRegistry.fromFields([...])`, `registry.insert(field)` |
 | FIX facts on a field | `field.as_fix().tag()?`, `field.as_fix_mut().set_tag(38)?` | `field.fix.tag`, `field.fix.tag = 38` | `field.fix.tag`, `field.fix.tag = 38` |
 | look a field up | `field(55)`, `field_by_name`, `field_by_path(&FieldPath)`, `field_by_counter(453)`, `field_by_id(FixId)` | `field(55)`, `field_by_name`, `field_by_path("Parties.PartyID")`, `field_by_counter`, `field_by_id(int)` | `field(55)`, `fieldByName`, `fieldByPath`, `fieldByCounter`, `fieldById` |

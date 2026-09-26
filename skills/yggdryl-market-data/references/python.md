@@ -44,7 +44,7 @@ assert order.crossuuid != order.curruuid, "the cross code names a chain"
 assert order.securityids == {"CUSIP": "037833100", "ISIN": "US0378331005"}
 assert order.bid is not None and order.bid.price == order.price
 assert order.lastpx is None, "a price is never a last execution"
-assert order.state.as_py() == "00UNKNOWN"
+assert order.state.as_py().name == "UNKNOWN"
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -118,7 +118,7 @@ assert [source.as_py() for source in merged.srcuuids] == [LINE_1, LINE_2]
 
 `graph.EventIterator` chains a stream by cross identity (and by a live
 element's `altids`), yields a twin as a restatement rather than a successor,
-retires a chain at a terminal state and emits one `95EXPIRED` at a deadline.
+retires a chain at a terminal state and emits one `EXPIRED` at a deadline.
 
 ```python
 from yggdryl import graph
@@ -144,10 +144,10 @@ assert chained[4].prevuuid is None, "the fill ended the chain"
 
 # A 10 ms grid: a view of the living order per tick, then its deadline.
 MS = 1_000_000
-expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-3003", exprtime=T + 70 * MS)
+expiring = graph.OrderEvent(T + 50 * MS, crosscode="O-3003", exprunix=T + 70 * MS)
 timed = [value.as_order_event() for value in graph.EventIterator([expiring], snapshot_ns=10 * MS)]
 assert any(held.snapunix == T + 60 * MS for held in timed)
-assert (timed[-1].currunix, timed[-1].state.as_py()) == (T + 70 * MS, "95EXPIRED")
+assert (timed[-1].currunix, timed[-1].state.as_py().name) == (T + 70 * MS, "EXPIRED")
 ```
 
 ## Build a composite trade

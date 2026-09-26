@@ -85,6 +85,7 @@ impl Scalar {
                     self.as_str().expect("a code borrowed its text").as_bytes(),
                 ));
             }
+            Self::State(value) => return Some(ValueBytes::inline(&value.code().to_le_bytes())),
             Self::Timezone(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             Self::MimeType(value) => return Some(ValueBytes::borrowed(value.as_str().as_bytes())),
             crate::bytes_scalars!(value) => return Some(ValueBytes::borrowed(value.as_bytes())),
@@ -341,6 +342,12 @@ impl Scalar {
             code_scalars!() => {
                 write_tag(sink, self.id());
                 write_text(sink, self.as_str().expect("a code borrowed its text"));
+            }
+            // A state feeds the code it stores, so renaming a member moves no
+            // digest.
+            Self::State(value) => {
+                write_tag(sink, DataTypeId::State);
+                sink.write(&value.code().to_le_bytes());
             }
             Self::Uuid(value) => {
                 write_tag(sink, DataTypeId::Uuid);

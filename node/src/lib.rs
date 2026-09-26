@@ -43,6 +43,9 @@ mod timezone;
 // These private exports are discovered through NAPI's generated registration
 // inventory rather than ordinary Rust call sites.
 mod serie;
+// Discovered through NAPI's generated registration inventory, like `enums`.
+#[allow(dead_code)]
+mod state;
 #[allow(dead_code)]
 mod uri;
 mod value;
@@ -72,9 +75,8 @@ pub use expression::{
 pub use field::{JsField, JsProtocolField, MetadataEntry};
 pub use fix::{
     FixCaptureView, FixCodecOptions, FixEntryView, FixHeaderView, JsFixCodec, JsFixFieldIterator,
-    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_global_registry,
-    fix_install_global_registry, fix_schema, fix_schema_carrying, fix_schema_tags,
-    fix_ulbridge_rowheader_native,
+    JsFixMessages, JsFixMsg, JsFixRegistry, JsMsgType, fix_crate_fields, fix_schema,
+    fix_schema_carrying, fix_schema_tags, fix_ulbridge_rowheader_native,
 };
 pub use graph::{
     BookRefInput, JsBookEvent, JsBookIterator, JsBookRef, JsBookSide, JsEventIterator, JsExecution,

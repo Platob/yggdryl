@@ -20,14 +20,14 @@ const CONFIG_FOLDER: &str = "fix";
 static GLOBAL: OnceLock<Arc<FixRegistry>> = OnceLock::new();
 
 impl FixRegistry {
-    /// Returns the process-wide registry, loading it on the first call.
+    /// The registry the process environment names, loaded on the first call.
     ///
     /// Nothing loads at module init and no thread is spawned: the first call
     /// resolves the default on the calling thread, reading the environment
     /// exactly once, and every later call answers the same `Arc`. The
     /// resolution order is fixed, first match wins:
     ///
-    /// 1. a registry installed by [`Self::install_global`];
+    /// 1. a registry installed by [`Self::install_env`];
     /// 2. the folder `YGGDRYL_FIX_REGISTRY` names - a URL, or a bare path -
     ///    opened through the local backend;
     /// 3. `~/.config/fix`, reached through [`LocalFolder::config`], when that
@@ -46,7 +46,7 @@ impl FixRegistry {
     /// Returns the load failure. The default stays unresolved, so the next
     /// call retries the load rather than answering a registry that was
     /// never there.
-    pub fn global() -> Result<&'static Arc<Self>> {
+    pub fn from_env() -> Result<&'static Arc<Self>> {
         if let Some(registry) = GLOBAL.get() {
             return Ok(registry);
         }
@@ -67,14 +67,15 @@ impl FixRegistry {
         Ok(GLOBAL.get_or_init(|| Arc::new(registry)))
     }
 
-    /// Installs the process-wide registry before anything resolves it.
+    /// Installs the registry every later [`Self::from_env`] answers, before
+    /// anything resolves one.
     ///
     /// # Errors
     ///
     /// Returns a typed conflict when the default has already been resolved
     /// or installed, so the value every caller saw cannot change underneath
     /// them.
-    pub fn install_global(registry: Self) -> Result<()> {
+    pub fn install_env(registry: Self) -> Result<()> {
         GLOBAL.set(Arc::new(registry)).map_err(|_| {
             Error::conflict(
                 "fix registry",
@@ -129,7 +130,7 @@ fn from_location(location: &str) -> Result<FixRegistry> {
 pub mod internals {
     //! What `rust/tests/fix/mod_.rs` pins and a caller cannot reach.
     //!
-    //! [`FixRegistry::global`](crate::FixRegistry::global) resolves once per
+    //! [`FixRegistry::from_env`](crate::FixRegistry::from_env) resolves once per
     //! process and reads the environment, so the order it resolves in is
     //! pinned through the pure step underneath it instead.
     use super::FixRegistry;

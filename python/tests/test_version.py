@@ -177,7 +177,8 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
     assert ids.index("url") == ids.index("version") + 1
     assert ids.index("urn") == ids.index("url") + 1
     assert ids.index("sized_utf8") == ids.index("fixed_utf8") + 1
-    assert ids[-2:] == ["geometry", "geography"]
+    # The enum family closes the list after the geospatial pair.
+    assert ids[-3:] == ["geometry", "geography", "state"]
     assert ids[:2] == ["null", "boolean"]
 
 

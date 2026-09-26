@@ -165,7 +165,7 @@ mod stream {
             text("bbg", "AAPL US Equity"),
             text("ric", "AAPL.OQ"),
             text("side", "BUY"),
-            text("state", "20NEW"),
+            text("state", "NEW"),
             text("timeinforce", "GTC"),
             text("version", "5.0.1"),
             text("url", "https://example.com/a?b=1"),

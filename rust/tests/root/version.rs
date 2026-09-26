@@ -310,7 +310,7 @@ mod ordered {
         // text it is rather than at the end of the enum.
         assert_eq!(DataTypeId::Version.as_u8(), 0x63);
         assert_eq!(DataTypeId::Version.fixed_byte_width(), None);
-        assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::Geography));
+        assert_eq!(DataTypeId::ALL.last(), Some(&DataTypeId::State));
         assert_eq!(DataTypeId::LargeUtf8StringView.as_u8(), 0x54);
         assert!(!DataTypeId::Version.is_parameterized());
         assert!(DataTypeId::Version.is_string());

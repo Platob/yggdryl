@@ -304,7 +304,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             "metadata",
             "srcuuids",
             "state",
-            "exprtime",
+            "exprunix",
             "msgcat",
             "isincode",
             "bloombergcode",
@@ -350,7 +350,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             Some("Metadata"),
             Some("SrcUuids"),
             Some("State"),
-            Some("ExprTime"),
+            Some("ExprUnix"),
             Some("MsgCat"),
             Some("IsinCode"),
             Some("BloombergCode"),
@@ -432,7 +432,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
     }
     // The clocks only a walk fills - the predecessor's instant and the grid
     // instant a snapshot was read as - are null on every row that is not one.
-    for name in ["prevunix", "snapunix", "exprtime"] {
+    for name in ["prevunix", "snapunix", "exprunix"] {
         assert_eq!(typed(name), &clock, "{name}");
         assert!(field(name).is_nullable(), "{name}");
     }
@@ -542,7 +542,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             yggdryl::FIXMSG_TAG_NAME,
             yggdryl::SRCUUIDS_TAG_NAME,
             yggdryl::STATE_TAG_NAME,
-            yggdryl::EXPRTIME_TAG_NAME
+            yggdryl::EXPRUNIX_TAG_NAME
         ],
         [
             (65_048, "crosscode"),
@@ -550,7 +550,7 @@ fn the_crate_carries_fields_of_its_own_from_65000() {
             (65_050, "fixmsg"),
             (65_051, "srcuuids"),
             (65_052, "state"),
-            (65_053, "exprtime")
+            (65_053, "exprunix")
         ]
     );
     // The fixed row's own name is a tag of the block and not a field of it:

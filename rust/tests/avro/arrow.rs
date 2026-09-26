@@ -99,11 +99,32 @@ mod internal {
     }
 
     #[test]
+    fn a_state_column_is_the_avro_int_its_code_is() {
+        // A state stores the `int32` code of its member, so Avro writes the
+        // integer and a declared field reads it back as the member.
+        let root = StructType::from_fields([DataType::State.required_field("state")])
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row");
+        let schema = schema_json_from_field(&root).unwrap();
+        let fields = schema
+            .get_key_str("fields")
+            .and_then(yggdryl::Scalar::as_sequence)
+            .unwrap();
+        assert_eq!(
+            fields[0]
+                .get_key_str("type")
+                .and_then(yggdryl::Scalar::as_str),
+            Some("int")
+        );
+    }
+
+    #[test]
     fn a_code_column_is_an_avro_string_and_a_code_key_is_spellable() {
         // Avro has no fixed-width text, so a code spells `string` with no
         // logical type - the contrast with a UUID, which annotates `uuid`.
         // Every registered code, read from the one listing: this used to name
-        // four of them, and `side`, `state` and `timeinforce` were refused as
+        // four of them, and `side` and `timeinforce` were refused as
         // unspellable by a column spelling that had drifted
         // behind the family.
         let mut fields: Vec<_> = DataType::CODES

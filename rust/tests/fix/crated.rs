@@ -121,7 +121,7 @@ mod table {
                 "crosscode",
                 "currhashcode",
                 "execunix",
-                "exprtime",
+                "exprunix",
                 "recdunix",
                 "srcuuids",
                 "state",

@@ -1163,7 +1163,6 @@ def test_a_prebuilt_vocabulary_names_the_iso_codes_a_column_carries() -> None:
         "mic",
         "exchange",
         "side",
-        "state",
         "timeinforce",
     }
     # `exchange` is FIX's name for the ISO 10383 code, so it is one list.

@@ -87,12 +87,12 @@ pub(crate) fn id_from_js(value: f64) -> Result<CoreFixId> {
 /// Every entry point that resolves against a registry - a message, a reader, a
 /// lifecycle, the fixed row - takes the same optional argument and falls back
 /// the same way, so the fallback is spelled here once.
-fn registry_or_global(
+fn registry_or_env(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
 ) -> Result<Arc<CoreFixRegistry>> {
     match registry {
         Some(held) => Ok(Arc::clone(&held.inner)),
-        None => CoreFixRegistry::global()
+        None => CoreFixRegistry::from_env()
             .map(Arc::clone)
             .map_err(napi_error),
     }
@@ -351,6 +351,31 @@ impl JsFixRegistry {
     #[napi(constructor)]
     pub fn new() -> Self {
         Self::from_arc(Arc::new(CoreFixRegistry::new()))
+    }
+
+    /// The registry the process environment names, loaded on the first call.
+    ///
+    /// The order is the core's: a registry installed by `installEnv`, then the
+    /// folder `YGGDRYL_FIX_REGISTRY` names, then `~/.config/fix` when it
+    /// exists, then a new registry holding the crate's own definitions and the
+    /// two seeded clocks alone. Only the third step treats absence as that
+    /// default; every other failure throws with the native message and the
+    /// default stays unresolved, so the next call retries.
+    #[napi(factory)]
+    pub fn from_env() -> Result<Self> {
+        CoreFixRegistry::from_env()
+            .map(|registry| Self::from_arc(Arc::clone(registry)))
+            .map_err(napi_error)
+    }
+
+    /// Install `registry` as the one every later `fromEnv` answers, before
+    /// anything resolves one.
+    ///
+    /// Throws once the default has resolved or been installed, so the value
+    /// every caller saw cannot change underneath them.
+    #[napi]
+    pub fn install_env(registry: &JsFixRegistry) -> Result<()> {
+        CoreFixRegistry::install_env((*registry.inner).clone()).map_err(napi_error)
     }
 
     /// Build a registry by inserting `fields` in order.
@@ -1244,7 +1269,7 @@ impl JsFixMsg {
         value: &JsScalar,
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
     ) -> Result<Self> {
-        let registry = registry_or_global(registry)?;
+        let registry = registry_or_env(registry)?;
         CoreFixMsg::with_registry(registry, field.inner.clone(), value.inner.clone())
             .map(|inner| Self { inner })
             .map_err(napi_error)
@@ -1273,7 +1298,7 @@ impl JsFixMsg {
         row: &JsScalar,
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
     ) -> Result<Self> {
-        let registry = registry_or_global(registry)?;
+        let registry = registry_or_env(registry)?;
         CoreFixMsg::from_row(registry, &schema.inner, &row.inner)
             .map(Self::from_core)
             .map_err(napi_error)
@@ -1399,7 +1424,7 @@ impl JsFixMsg {
         instant(self.inner.get_currunix())
     }
 
-    /// The order state the message reached, ranked: `00UNKNOWN` where it
+    /// The order state the message reached, ranked: `UNKNOWN` where it
     /// states none.
     #[napi(getter)]
     pub fn state(&self) -> String {
@@ -1438,8 +1463,8 @@ impl JsFixMsg {
 
     /// When the order expires, where it has an expiry.
     #[napi(getter)]
-    pub fn exprtime(&self) -> Option<BigInt> {
-        self.inner.get_exprtime().map(instant)
+    pub fn exprunix(&self) -> Option<BigInt> {
+        self.inner.get_exprunix().map(instant)
     }
 
     /// When the message this one follows happened, where it follows one.
@@ -2206,7 +2231,23 @@ impl JsFixCodec {
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
         options: Option<FixCodecOptions<'_>>,
     ) -> Result<Self> {
-        let registry = registry_or_global(registry)?;
+        Self::open(registry, options)
+    }
+
+    /// A codec over the registry the process environment names,
+    /// `FixRegistry.fromEnv()`, pinned by the options the constructor takes.
+    #[napi(factory)]
+    pub fn from_env(options: Option<FixCodecOptions<'_>>) -> Result<Self> {
+        Self::open(None, options)
+    }
+}
+
+impl JsFixCodec {
+    fn open(
+        registry: Option<ClassInstance<'_, JsFixRegistry>>,
+        options: Option<FixCodecOptions<'_>>,
+    ) -> Result<Self> {
+        let registry = registry_or_env(registry)?;
         let options = options.unwrap_or_default();
         let mut inner = CoreFixCodec::new(Arc::clone(&registry));
         if let Some(held) = options.separator {
@@ -2274,7 +2315,10 @@ impl JsFixCodec {
         }
         Ok(Self { inner, registry })
     }
+}
 
+#[napi]
+impl JsFixCodec {
     /// The dictionary this codec resolves against, sharing it.
     #[napi(getter)]
     pub fn registry(&self) -> JsFixRegistry {
@@ -2934,7 +2978,7 @@ pub fn fix_schema(
     registry: Option<ClassInstance<'_, JsFixRegistry>>,
     name: Option<String>,
 ) -> Result<JsField> {
-    let registry = registry_or_global(registry)?;
+    let registry = registry_or_env(registry)?;
     let name = name.unwrap_or_else(|| "fix".to_owned());
     yggdryl::fix_schema(&registry, name)
         .map(JsField::from_core)
@@ -2988,7 +3032,7 @@ pub fn fix_schema_tags() -> Vec<f64> {
 /// venue publishes.
 ///
 /// The event's instant `currunix` and the chain's `creaunix`, `execunix`,
-/// `recdunix`, `prevunix`, `snapunix` and `exprtime`; the identities
+/// `recdunix`, `prevunix`, `snapunix` and `exprunix`; the identities
 /// `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
 /// the `srcuuids` list of the lines it was read from; the `crosscode`, the
 /// `seqnum` and the `state` reached; the `metadata` Map group; what a
@@ -3011,29 +3055,4 @@ pub fn fix_crate_fields() -> Result<Vec<JsField>> {
     yggdryl::fix_crate_fields()
         .map(|held| held.iter().cloned().map(JsField::from_core).collect())
         .map_err(napi_error)
-}
-
-/// The process-wide registry, loading it on the first call.
-///
-/// The order is the core's: a registry installed by
-/// [`fix_install_global_registry`], then the folder `YGGDRYL_FIX_REGISTRY`
-/// names, then `~/.config/fix` when it exists, then a new registry holding the
-/// crate's own definitions and the two seeded clocks alone. Only the third
-/// step treats absence as that
-/// default; every other failure throws with the native message and the default
-/// stays unresolved, so the next call retries.
-#[napi(js_name = "fixGlobalRegistryNative", skip_typescript)]
-pub fn fix_global_registry() -> Result<JsFixRegistry> {
-    CoreFixRegistry::global()
-        .map(|registry| JsFixRegistry::from_arc(Arc::clone(registry)))
-        .map_err(napi_error)
-}
-
-/// Install the process-wide registry before anything resolves it.
-///
-/// Throws once the default has resolved or been installed, so the value every
-/// caller saw cannot change underneath them.
-#[napi(js_name = "fixInstallGlobalRegistryNative", skip_typescript)]
-pub fn fix_install_global_registry(registry: &JsFixRegistry) -> Result<()> {
-    CoreFixRegistry::install_global((*registry.inner).clone()).map_err(napi_error)
 }

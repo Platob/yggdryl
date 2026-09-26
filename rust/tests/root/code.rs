@@ -29,7 +29,7 @@ mod datatypes {
     }
 
     /// The codes, each with its width and one value its standard names.
-    const CODED: [(&str, DataType, usize, &str); 13] = [
+    const CODED: [(&str, DataType, usize, &str); 12] = [
         ("country", DataType::Country, 2, "US"),
         ("ccy", DataType::Ccy, 3, "USD"),
         ("mic", DataType::Mic, 4, "XPAR"),
@@ -41,7 +41,6 @@ mod datatypes {
         ("bbg", DataType::Bbg, 32, "AAPL US Equity"),
         ("ric", DataType::Ric, 32, "AAPL.OQ"),
         ("side", DataType::Side, 8, "BUY"),
-        ("state", DataType::State, 10, "20NEW"),
         ("timeinforce", DataType::TimeInForce, 8, "0"),
     ];
 
@@ -810,7 +809,7 @@ mod datatypes {
 
     #[test]
     fn a_code_merges_to_the_better_statement() {
-        use yggdryl::{Ccy, Cfi, CodeValue, Isin, Mic, Side, State};
+        use yggdryl::{Ccy, Cfi, CodeValue, Isin, Mic, Side};
 
         // A classification fills what it left unknown from the other, and stands
         // as it is beside another instrument's.
@@ -826,15 +825,6 @@ mod datatypes {
             partial.merge_with(&Cfi::new("DBFNFB").unwrap()).as_str(),
             "ESXXXR"
         );
-
-        // A state that reached none takes the other, and otherwise the further
-        // along stands whichever side it is on.
-        let unknown = State::new("00UNKNOWN").unwrap();
-        let new = State::read("New").unwrap();
-        let filled = State::read("Filled").unwrap();
-        assert_eq!(unknown.merge_with(&new), new);
-        assert_eq!(new.clone().merge_with(&filled), filled);
-        assert_eq!(filled.clone().merge_with(&new), filled);
 
         // A side, a currency and a market stated as none take the other, and
         // anything stated stands.
@@ -900,7 +890,7 @@ mod datatypes {
     #[test]
     fn the_code_family_stands_for_every_registered_code() {
         use yggdryl::{Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol};
-        use yggdryl::{Side, State, TimeInForce};
+        use yggdryl::{Side, TimeInForce};
 
         crate::scalar::assert_family_round_trip(
             vec![
@@ -909,7 +899,6 @@ mod datatypes {
                 crate::family_leaf!(Mic, Mic::new("XPAR").unwrap()),
                 crate::family_leaf!(Cfi, Cfi::new("ESVUFR").unwrap()),
                 crate::family_leaf!(Side, Side::new("BUY").unwrap()),
-                crate::family_leaf!(State, State::new("20NEW").unwrap()),
                 crate::family_leaf!(TimeInForce, TimeInForce::new("0").unwrap()),
                 crate::family_leaf!(Isin, Isin::new("US0378331005").unwrap()),
                 crate::family_leaf!(Cusip, Cusip::new("037833100").unwrap()),

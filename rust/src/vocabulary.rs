@@ -8,8 +8,9 @@
 //! [`DataType`].
 //!
 //! Some names resolve to their own datatype: `ccy`, `country`, `mic`,
-//! `cfi`, `side`, `state`, `timeinforce`, and `unit`. These registered codes
-//! carry an identity as well as their storage width.
+//! `cfi`, `side`, `timeinforce`, and `unit` are registered codes, carrying an
+//! identity as well as their storage width, and `state` is the lifecycle
+//! enum.
 //!
 //! The vocabulary follows the FIX Latest datatype table, plus `mic` -
 //! ISO 10383's name for what FIX calls `Exchange`. The dictionary generator
@@ -131,8 +132,9 @@ impl DataType {
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.
         ("side", DataType::Side),
-        // What state one thing is in, and how long an order stands. Neither
-        // is a word the Arrow or SQL grammar owns.
+        // What state one thing is in - the lifecycle enum rather than a
+        // code - and how long an order stands. Neither is a word the Arrow or
+        // SQL grammar owns.
         ("state", DataType::State),
         ("timeinforce", DataType::TimeInForce),
         // The unit a quantity is stated in: FIX's `UnitOfMeasure(996)`.

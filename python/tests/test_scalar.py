@@ -560,7 +560,7 @@ def test_exact_repr_and_pickle_preserve_every_native_scalar_variant() -> None:
         ("cfi", "ESVUFR"),
         ("isin", "US0378331005"),
         ("side", "BUY"),
-        ("state", "20NEW"),
+        ("state", "NEW"),
         ("timeinforce", "GTC"),
         ("cusip", "037833100"),
         ("sedol", "B0YBKJ7"),

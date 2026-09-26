@@ -297,11 +297,11 @@ impl Event for TradeEvent {
     fn set_recdunix(&mut self, unix: Option<i64>) {
         self.data.set_recdunix(unix);
     }
-    fn get_exprtime(&self) -> Option<i64> {
-        self.data.get_exprtime()
+    fn get_exprunix(&self) -> Option<i64> {
+        self.data.get_exprunix()
     }
-    fn set_exprtime(&mut self, unix: Option<i64>) {
-        self.data.set_exprtime(unix);
+    fn set_exprunix(&mut self, unix: Option<i64>) {
+        self.data.set_exprunix(unix);
     }
     fn get_prevunix(&self) -> Option<i64> {
         self.data.get_prevunix()

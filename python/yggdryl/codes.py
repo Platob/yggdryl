@@ -1,8 +1,8 @@
-"""The registered code field factories: fourteen identities, one width each.
+"""The registered code field factories: thirteen identities, one width each.
 
 The registered codes - ``country``, ``ccy``, ``mic``, ``cfi``, the six
 securities identifiers ``isin``, ``cusip``, ``sedol``, ``bbg``, ``ric`` and
-``figi``, FIX's own ``side``, ``state`` and ``timeinforce``, and ``unit`` - are
+``figi``, FIX's own ``side`` and ``timeinforce``, and ``unit`` - are
 datatypes of their own, each storing as the ASCII text it is and held to the
 width its standard fixes, so a code factory is not a bounded string wearing a
 name: the field it builds carries the code's identity across Arrow under its
@@ -35,13 +35,12 @@ if TYPE_CHECKING:
     RicField: TypeAlias = TypedField[Literal["ric"], str]
     FigiField: TypeAlias = TypedField[Literal["figi"], str]
     SideField: TypeAlias = TypedField[Literal["side"], str]
-    StateField: TypeAlias = TypedField[Literal["state"], str]
     TimeInForceField: TypeAlias = TypedField[Literal["timeinforce"], str]
     UnitField: TypeAlias = TypedField[Literal["unit"], str]
 else:
     CountryField = CcyField = MicField = CfiField = IsinField = CusipField = SedolField = (
         BbgField
-    ) = RicField = FigiField = SideField = StateField = TimeInForceField = UnitField = Field
+    ) = RicField = FigiField = SideField = TimeInForceField = UnitField = Field
 
 _COUNTRY = simple_dtype("country")
 _CCY = simple_dtype("ccy")
@@ -54,7 +53,6 @@ _BBG = simple_dtype("bbg")
 _RIC = simple_dtype("ric")
 _FIGI = simple_dtype("figi")
 _SIDE = simple_dtype("side")
-_STATE = simple_dtype("state")
 _TIMEINFORCE = simple_dtype("timeinforce")
 _UNIT = simple_dtype("unit")
 
@@ -133,12 +131,6 @@ def side(name: str, *, nullable: bool = True, metadata: MetadataInput = None) ->
     return new_field(SideField, name, _SIDE, nullable, metadata)
 
 
-def state(name: str, *, nullable: bool = True, metadata: MetadataInput = None) -> StateField:
-    """What state one thing is in, ranked so the stored bytes sort by lifecycle."""
-
-    return new_field(StateField, name, _STATE, nullable, metadata)
-
-
 def timeinforce(
     name: str,
     *,
@@ -168,7 +160,6 @@ __all__ = [
     "RicField",
     "SedolField",
     "SideField",
-    "StateField",
     "TimeInForceField",
     "UnitField",
     "bbg",
@@ -182,7 +173,6 @@ __all__ = [
     "ric",
     "sedol",
     "side",
-    "state",
     "timeinforce",
     "unit",
 ]

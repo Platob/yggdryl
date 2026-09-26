@@ -24,7 +24,7 @@ EVENT_COLUMNS = [
     "creaunix",
     "execunix",
     "recdunix",
-    "exprtime",
+    "exprunix",
     "prevunix",
     "snapunix",
     "curruuid",

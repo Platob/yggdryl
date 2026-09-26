@@ -397,6 +397,8 @@ fn encode<'value>(value: &'value Scalar, chunk: &mut Vec<u8>, children: &mut Vec
             write_variable(chunk, held.metadata());
             write_variable(chunk, held.value());
         }
+        // A state is the code it stores, under its identifier.
+        Scalar::State(held) => fixed(chunk, DataTypeId::State, &held.code().to_le_bytes()),
         // A registered code is its text under its own identifier.
         code @ crate::code_scalars!() => write_text(
             chunk,
@@ -534,6 +536,9 @@ impl<'a> Reader<'a> {
             DataTypeId::Int8 => Scalar::from(i8::from_le_bytes(self.array()?)),
             DataTypeId::Int16 => Scalar::from(i16::from_le_bytes(self.array()?)),
             DataTypeId::Int32 => Scalar::from(i32::from_le_bytes(self.array()?)),
+            DataTypeId::State => Scalar::State(crate::State::read_code(i64::from(
+                i32::from_le_bytes(self.array()?),
+            ))?),
             DataTypeId::Int64 => Scalar::from(i64::from_le_bytes(self.array()?)),
             DataTypeId::Int128 => Scalar::from(i128::from_le_bytes(self.array()?)),
             DataTypeId::UInt8 => Scalar::from(u8::from_le_bytes(self.array()?)),

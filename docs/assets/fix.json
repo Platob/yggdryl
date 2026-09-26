@@ -1,5 +1,5 @@
 {
-  "version": "0.1.13",
+  "version": "0.1.14",
   "spec": {
     "version": "5.0.2",
     "ep": 309,
@@ -98,9 +98,9 @@
   "kpi": {
     "fields": 6280,
     "groups": 581,
-    "enumFields": 2027,
-    "codesets": 736,
-    "codes": 7751,
+    "enumFields": 2028,
+    "codesets": 737,
+    "codes": 7811,
     "aliases": 47,
     "alternates": 0,
     "messages": 181,
@@ -79666,9 +79666,10 @@
           "type": "state"
         },
         "metadata": {
+          "FIX:codeset": "statecodeset",
           "FIX:tag": "65052",
           "FIX:transient": "false",
-          "description": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed.",
+          "description": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed.",
           "display": "State"
         },
         "name": "state",
@@ -79684,9 +79685,9 @@
           "FIX:tag": "65053",
           "FIX:transient": "false",
           "description": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried.",
-          "display": "ExprTime"
+          "display": "ExprUnix"
         },
-        "name": "exprtime",
+        "name": "exprunix",
         "nullable": true
       },
       {
@@ -282787,6 +282788,311 @@
     {
       "codes": [
         {
+          "doc": "Stated, but not a state anything reached; every other state is further along than it.",
+          "name": "UNKNOWN",
+          "value": "0"
+        },
+        {
+          "doc": "Asked for, with nothing more said.",
+          "name": "PENDING",
+          "value": "1000"
+        },
+        {
+          "doc": "A new order asked for and not yet acknowledged: FIX `PendingNew`, and what a `NewOrderSingle` asks for.",
+          "name": "PENDING_NEW",
+          "value": "1001"
+        },
+        {
+          "doc": "Waiting its turn.",
+          "name": "QUEUED",
+          "value": "1002"
+        },
+        {
+          "doc": "Received, not yet processed: an execution, allocation, confirmation or affirmation the counterparty has and has not yet answered.",
+          "name": "RECEIVED",
+          "value": "1003"
+        },
+        {
+          "doc": "A trade report waiting on its verification.",
+          "name": "PENDING_VERIFICATION",
+          "value": "1004"
+        },
+        {
+          "doc": "An allocation asked for and not yet made.",
+          "name": "PENDING_ALLOCATION",
+          "value": "1005"
+        },
+        {
+          "doc": "A give-up or take-up waiting on its approval.",
+          "name": "PENDING_APPROVAL",
+          "value": "1006"
+        },
+        {
+          "doc": "Accepted, not yet working: FIX `AcceptedForBidding`, an accepted trade report, quote or mass action.",
+          "name": "ACCEPTED",
+          "value": "2000"
+        },
+        {
+          "doc": "Acknowledged by the venue as a new order.",
+          "name": "NEW",
+          "value": "2001"
+        },
+        {
+          "doc": "About to start.",
+          "name": "STARTING",
+          "value": "2002"
+        },
+        {
+          "doc": "Handed over to whoever does it.",
+          "name": "SUBMITTED",
+          "value": "2003"
+        },
+        {
+          "doc": "Acknowledged by the counterparty: an execution it accepted.",
+          "name": "ACKNOWLEDGED",
+          "value": "2004"
+        },
+        {
+          "doc": "Working.",
+          "name": "RUNNING",
+          "value": "3000"
+        },
+        {
+          "doc": "A status report: working, with nothing new to say.",
+          "name": "STATUS",
+          "value": "3001"
+        },
+        {
+          "doc": "Triggered or activated by the system.",
+          "name": "TRIGGERED",
+          "value": "3002"
+        },
+        {
+          "doc": "A quote standing in the market.",
+          "name": "ACTIVE",
+          "value": "3003"
+        },
+        {
+          "doc": "Working, with some of it done.",
+          "name": "IN_PROGRESS",
+          "value": "4000"
+        },
+        {
+          "doc": "Some of the order filled.",
+          "name": "PARTIALLY_FILLED",
+          "value": "4001"
+        },
+        {
+          "doc": "A report of one trade.",
+          "name": "TRADE",
+          "value": "4002"
+        },
+        {
+          "doc": "A correction of a trade reported before.",
+          "name": "TRADE_CORRECT",
+          "value": "4003"
+        },
+        {
+          "doc": "A cancellation of a trade reported before.",
+          "name": "TRADE_CANCEL",
+          "value": "4004"
+        },
+        {
+          "doc": "A trade held before clearing.",
+          "name": "TRADE_IN_CLEARING_HOLD",
+          "value": "4005"
+        },
+        {
+          "doc": "Halted by its owner.",
+          "name": "PAUSED",
+          "value": "5000"
+        },
+        {
+          "doc": "Stopped, and able to resume.",
+          "name": "STOPPED",
+          "value": "5001"
+        },
+        {
+          "doc": "Suspended by the venue.",
+          "name": "SUSPENDED",
+          "value": "5002"
+        },
+        {
+          "doc": "Locked by the venue: FIX `ExecType` `Locked`.",
+          "name": "LOCKED",
+          "value": "5003"
+        },
+        {
+          "doc": "A trade report its counterparty disputes.",
+          "name": "DISPUTED",
+          "value": "5004"
+        },
+        {
+          "doc": "An allocation missing some of what it needs.",
+          "name": "INCOMPLETE",
+          "value": "5005"
+        },
+        {
+          "doc": "A cancel asked for and not yet answered.",
+          "name": "PENDING_CANCEL",
+          "value": "6000"
+        },
+        {
+          "doc": "A replace asked for and not yet answered.",
+          "name": "PENDING_REPLACE",
+          "value": "6001"
+        },
+        {
+          "doc": "A reversal asked for and not yet made.",
+          "name": "PENDING_REVERSAL",
+          "value": "6002"
+        },
+        {
+          "doc": "Replaced, and the replacement carries on.",
+          "name": "REPLACED",
+          "value": "7000"
+        },
+        {
+          "doc": "Restated by the venue, and carrying on.",
+          "name": "RESTATED",
+          "value": "7001"
+        },
+        {
+          "doc": "Amended, and carrying on.",
+          "name": "AMENDED",
+          "value": "7002"
+        },
+        {
+          "doc": "Released from a lock: FIX `ExecType` `Released`.",
+          "name": "RELEASED",
+          "value": "7003"
+        },
+        {
+          "doc": "Its value calculated.",
+          "name": "CALCULATED",
+          "value": "8000"
+        },
+        {
+          "doc": "Complete.",
+          "name": "COMPLETE",
+          "value": "8001"
+        },
+        {
+          "doc": "Done for the day.",
+          "name": "DONE_FOR_DAY",
+          "value": "8002"
+        },
+        {
+          "doc": "All of the order filled.",
+          "name": "FILLED",
+          "value": "8003"
+        },
+        {
+          "doc": "Succeeded.",
+          "name": "SUCCEEDED",
+          "value": "8004"
+        },
+        {
+          "doc": "A trade released to clearing.",
+          "name": "TRADE_RELEASED_TO_CLEARING",
+          "value": "8005"
+        },
+        {
+          "doc": "An allocation accepted and made.",
+          "name": "ALLOCATED",
+          "value": "8006"
+        },
+        {
+          "doc": "A trade confirmed.",
+          "name": "CONFIRMED",
+          "value": "8007"
+        },
+        {
+          "doc": "A confirmation affirmed.",
+          "name": "AFFIRMED",
+          "value": "8008"
+        },
+        {
+          "doc": "A trade report verified, or deemed verified.",
+          "name": "VERIFIED",
+          "value": "8009"
+        },
+        {
+          "doc": "Cleared.",
+          "name": "CLEARED",
+          "value": "8010"
+        },
+        {
+          "doc": "Settled.",
+          "name": "SETTLED",
+          "value": "8011"
+        },
+        {
+          "doc": "An allocation claimed.",
+          "name": "CLAIMED",
+          "value": "8012"
+        },
+        {
+          "doc": "Cancelled by someone.",
+          "name": "CANCELED",
+          "value": "9000"
+        },
+        {
+          "doc": "An allocation reversed.",
+          "name": "REVERSED",
+          "value": "9001"
+        },
+        {
+          "doc": "A quote removed from the market.",
+          "name": "REMOVED",
+          "value": "9002"
+        },
+        {
+          "doc": "A trade report terminated, or a contract terminated under a quote.",
+          "name": "TERMINATED",
+          "value": "9003"
+        },
+        {
+          "doc": "Its time ran out.",
+          "name": "EXPIRED",
+          "value": "9500"
+        },
+        {
+          "doc": "Failed.",
+          "name": "FAILED",
+          "value": "9501"
+        },
+        {
+          "doc": "Refused.",
+          "name": "REJECTED",
+          "value": "9502"
+        },
+        {
+          "doc": "Took too long.",
+          "name": "TIMED_OUT",
+          "value": "9503"
+        },
+        {
+          "doc": "An execution the counterparty does not know: FIX's DK.",
+          "name": "DONT_KNOW",
+          "value": "9504"
+        },
+        {
+          "doc": "A confirmation whose account or settlement instructions do not match.",
+          "name": "MISMATCHED",
+          "value": "9505"
+        },
+        {
+          "doc": "A quote the venue does not know.",
+          "name": "NOT_FOUND",
+          "value": "9506"
+        }
+      ],
+      "name": "statecodeset"
+    },
+    {
+      "codes": [
+        {
           "doc": "Exchange Last",
           "name": "ExchangeLast",
           "value": "1"
@@ -291591,9 +291897,9 @@
         "x": "The grid instant a walk read this event as the snapshot of; empty on every row no snapshot was taken of."
       },
       {
-        "c": "exprtime",
+        "c": "exprunix",
         "t": 65053,
-        "n": "ExprTime",
+        "n": "ExprUnix",
         "y": "datetime64(ns,\"UTC\")",
         "x": "When the message stops being good: ExpireTime, else ValidUntilTime, ExpireDate or MaturityDate; a newer explicit deadline replaces the one its chain carried."
       },
@@ -292204,7 +292510,7 @@
         "t": 65052,
         "n": "State",
         "y": "state",
-        "x": "The state the message reached, ranked so the column sorts by lifecycle: OrdStatus, else ExecType, 00UNKNOWN where neither states one; the furthest its chain knows once followed."
+        "x": "The state the message reached, as the code of a lifecycle-sorted enum: the first of OrdStatus, ExecType, ExecAckStatus, TrdRptStatus, QuoteStatus, AllocStatus, ConfirmStatus, AffirmStatus, MassActionResponse or MassCancelResponse that states one, else what its message type asks for, UNKNOWN where none does; the furthest its chain knows once followed."
       },
       {
         "c": "ordstatus",
@@ -292663,18 +292969,18 @@
         "creaunix": "1706790896123000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-41fb-7000-b5a0-2dd0450542f5",
+        "curruuid": "018d64aa-41fb-7000-ba17-bf8a358a9e51",
         "crossuuid": "00000000-0000-8000-a343-26b3b448dbed",
         "crosscode": "ORDER-1",
-        "currhashcode": "8271875879188171932",
+        "currhashcode": "12847862336424854472",
         "crosshashcode": "16375975223314930669",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": "10.5",
         "currency": "XXX",
         "quantity": "100",
@@ -293000,18 +293306,18 @@
         "creaunix": "1706790897900000000",
         "execunix": "1706790897900000000",
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-48ec-7000-ac53-c2bf29b5be7d",
+        "curruuid": "018d64aa-48ec-7000-8f6f-ce37e1fe077f",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "3251788042527680580",
+        "currhashcode": "4616921700614614818",
         "crosshashcode": "15690705969207961054",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "80FILLED",
+        "state": "FILLED",
         "price": null,
         "currency": "XXX",
         "quantity": "100",
@@ -293446,18 +293752,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-92f9-d9717c625dac",
+        "curruuid": "018cc9ab-d1d0-7000-b4ba-def060f81dea",
         "crossuuid": "00000000-0000-8000-aed9-a4c54eea99f9",
         "crosscode": "ORDER-2",
-        "currhashcode": "1052799685060876345",
+        "currhashcode": "9413275736616751156",
         "crosshashcode": "7987596581457795577",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": "41.25",
         "currency": "XXX",
         "quantity": "50",
@@ -296564,18 +296870,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b5fb-61d5d2a2521a",
-        "crossuuid": "018cc9ab-d1d0-7000-b5fb-61d5d2a2521a",
+        "curruuid": "018cc9ab-d1d0-7000-837f-623e4864b556",
+        "crossuuid": "018cc9ab-d1d0-7000-837f-623e4864b556",
         "crosscode": "",
-        "currhashcode": "10882375343426412268",
+        "currhashcode": "5697186797658864978",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -296864,18 +297170,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-ab05-bdcf315f6f12",
-        "crossuuid": "018cc9ab-d1d0-7000-ab05-bdcf315f6f12",
+        "curruuid": "018cc9ab-d1d0-7000-a4d9-ca21f170975e",
+        "crossuuid": "018cc9ab-d1d0-7000-a4d9-ca21f170975e",
         "crosscode": "",
-        "currhashcode": "12145694549879713580",
+        "currhashcode": "16332818835337448445",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "ACTIVE",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -297109,18 +297415,18 @@
         "creaunix": "1706788800000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d648a-4600-7000-b514-0377529dbf89",
-        "crossuuid": "018d648a-4600-7000-b514-0377529dbf89",
+        "curruuid": "018d648a-4600-7000-8eca-676cc4343b12",
+        "crossuuid": "018d648a-4600-7000-8eca-676cc4343b12",
         "crosscode": "",
-        "currhashcode": "14334419292297887460",
+        "currhashcode": "4494112702825590386",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -297273,18 +297579,18 @@
         "creaunix": "1706790901000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018d64aa-5508-7000-b3d3-221ecf555537",
-        "crossuuid": "018d64aa-5508-7000-b3d3-221ecf555537",
+        "curruuid": "018d64aa-5508-7000-8d49-d91aecfa0d37",
+        "crossuuid": "018d64aa-5508-7000-8d49-d91aecfa0d37",
         "crosscode": "",
-        "currhashcode": "17855387864844002379",
+        "currhashcode": "6303168600965387197",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -297467,18 +297773,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-84af-ff51b84abe66",
-        "crossuuid": "018cc9ab-d1d0-7000-84af-ff51b84abe66",
+        "curruuid": "018cc9ab-d1d0-7000-8274-b7114ab246e7",
+        "crossuuid": "018cc9ab-d1d0-7000-8274-b7114ab246e7",
         "crosscode": "",
-        "currhashcode": "14833405603331524372",
+        "currhashcode": "16515606106544075804",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "REJECTED",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -297728,18 +298034,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-acc2-291357c03a4a",
+        "curruuid": "018cc9ab-d1d0-7000-9159-243ba858912e",
         "crossuuid": "00000000-0000-8000-99c0-95f231bde5de",
         "crosscode": "O-9",
-        "currhashcode": "3921516676199052491",
+        "currhashcode": "2619041182138079547",
         "crosshashcode": "15690705969207961054",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_REPLACE",
         "price": "10.75",
         "currency": "XXX",
         "quantity": "150",
@@ -298057,18 +298363,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-ac2f-99f846e5a7d6",
-        "crossuuid": "018cc9ab-d1d0-7000-ac2f-99f846e5a7d6",
+        "curruuid": "018cc9ab-d1d0-7000-9b2e-75cf34824e4e",
+        "crossuuid": "018cc9ab-d1d0-7000-9b2e-75cf34824e4e",
         "crosscode": "",
-        "currhashcode": "16395903705174682042",
+        "currhashcode": "2989483829247471683",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": "10.5",
         "currency": "USD",
         "quantity": "100",
@@ -298370,18 +298676,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9d43-aa56a342cc71",
-        "crossuuid": "018cc9ab-d1d0-7000-9d43-aa56a342cc71",
+        "curruuid": "018cc9ab-d1d0-7000-bf95-73577e570db8",
+        "crossuuid": "018cc9ab-d1d0-7000-bf95-73577e570db8",
         "crosscode": "",
-        "currhashcode": "8149546502507768640",
+        "currhashcode": "16425295358519394697",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": null,
         "currency": "USD",
         "quantity": "100",
@@ -298779,18 +299085,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b26a-983548b7cdbd",
-        "crossuuid": "018cc9ab-d1d0-7000-b26a-983548b7cdbd",
+        "curruuid": "018cc9ab-d1d0-7000-bdd3-ea05f12e9c55",
+        "crossuuid": "018cc9ab-d1d0-7000-bdd3-ea05f12e9c55",
         "crosscode": "",
-        "currhashcode": "2548086238863956385",
+        "currhashcode": "1770577641103672233",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": null,
         "currency": "GBP",
         "quantity": null,
@@ -299104,18 +299410,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-a72f-2557f8a1a650",
-        "crossuuid": "018cc9ab-d1d0-7000-a72f-2557f8a1a650",
+        "curruuid": "018cc9ab-d1d0-7000-b112-5bc0bda27c4b",
+        "crossuuid": "018cc9ab-d1d0-7000-b112-5bc0bda27c4b",
         "crosscode": "",
-        "currhashcode": "12554896926520859798",
+        "currhashcode": "4550513983499655300",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": "41.25",
         "currency": "XXX",
         "quantity": "1200",
@@ -299332,18 +299638,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-bb82-d47410dc40dc",
+        "curruuid": "018cc9ab-d1d0-7000-ab40-31305cbdf003",
         "crossuuid": "00000000-0000-8000-a639-a6636194481b",
         "crosscode": "ORDER-4",
-        "currhashcode": "3401681675450978531",
+        "currhashcode": "9428068077339662714",
         "crosshashcode": "7366101611310237723",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": null,
         "currency": "XXX",
         "quantity": "100",
@@ -299551,18 +299857,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9e7b-401b64bfaea1",
-        "crossuuid": "018cc9ab-d1d0-7000-9e7b-401b64bfaea1",
+        "curruuid": "018cc9ab-d1d0-7000-a6f2-7ffe99b38ddd",
+        "crossuuid": "018cc9ab-d1d0-7000-a6f2-7ffe99b38ddd",
         "crosscode": "",
-        "currhashcode": "8066959481080282367",
+        "currhashcode": "5585517684250511877",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": null,
         "currency": "XXX",
         "quantity": "100",
@@ -299759,18 +300065,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-b211-0663baaed6c4",
-        "crossuuid": "018cc9ab-d1d0-7000-b211-0663baaed6c4",
+        "curruuid": "018cc9ab-d1d0-7000-b5bd-f633f83247f5",
+        "crossuuid": "018cc9ab-d1d0-7000-b5bd-f633f83247f5",
         "crosscode": "",
-        "currhashcode": "17689539441271598566",
+        "currhashcode": "13653598869378297396",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -299984,18 +300290,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-9038-95f3e0119d28",
-        "crossuuid": "018cc9ab-d1d0-7000-9038-95f3e0119d28",
+        "curruuid": "018cc9ab-d1d0-7000-a9c0-d41f59444a86",
+        "crossuuid": "018cc9ab-d1d0-7000-a9c0-d41f59444a86",
         "crosscode": "",
-        "currhashcode": "14132669717197402441",
+        "currhashcode": "18301715672057019001",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "UNKNOWN",
         "price": null,
         "currency": "XXX",
         "quantity": null,
@@ -300213,18 +300519,18 @@
         "creaunix": "1704190530000000000",
         "execunix": null,
         "recdunix": null,
-        "exprtime": null,
+        "exprunix": null,
         "prevunix": null,
         "snapunix": null,
-        "curruuid": "018cc9ab-d1d0-7000-a60e-a5eb40fa2256",
-        "crossuuid": "018cc9ab-d1d0-7000-a60e-a5eb40fa2256",
+        "curruuid": "018cc9ab-d1d0-7000-86f7-463db9454fc3",
+        "crossuuid": "018cc9ab-d1d0-7000-86f7-463db9454fc3",
         "crosscode": "",
-        "currhashcode": "15086527165268785016",
+        "currhashcode": "9421830724567765196",
         "crosshashcode": "0",
         "prevuuid": null,
         "seqnum": 0,
         "srcuuids": [],
-        "state": "00UNKNOWN",
+        "state": "PENDING_NEW",
         "price": "10.5",
         "currency": "XXX",
         "quantity": "100",

@@ -340,6 +340,7 @@ test('typed field factories cover every native datatype variant', () => {
       'bytes',
       'text',
       'code',
+      'enum',
       'nested',
       'geospatial',
       'uuid',

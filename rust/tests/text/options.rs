@@ -30,7 +30,7 @@ mod text {
         "creaunix",
         "execunix",
         "recdunix",
-        "exprtime",
+        "exprunix",
         "prevunix",
         "snapunix",
         "curruuid",

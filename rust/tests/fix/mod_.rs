@@ -3700,8 +3700,8 @@ mod internal {
         assert!(cleared.get_codeset("sidecodeset").is_none());
         assert_eq!(
             cleared.codesets().count(),
-            1,
-            "the crate's MsgCat set remains"
+            2,
+            "the crate's MsgCat and state sets remain"
         );
     }
 
@@ -4393,9 +4393,10 @@ mod internal {
                 set.name()
             );
         }
-        // The crate adds MsgCat's 22 categories to the 735 published sets.
-        assert_eq!(sets, 736, "code sets held");
-        assert_eq!(codes, 7_751, "code records");
+        // The crate adds MsgCat's 22 categories and the 60 states to the 735
+        // published sets.
+        assert_eq!(sets, 737, "code sets held");
+        assert_eq!(codes, 7_811, "code records");
     }
 
     #[test]

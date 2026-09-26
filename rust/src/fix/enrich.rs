@@ -990,12 +990,12 @@ impl Event for LifecycleMessage {
         self.message.set_recdunix(unix);
     }
 
-    fn get_exprtime(&self) -> Option<i64> {
-        self.message.get_exprtime()
+    fn get_exprunix(&self) -> Option<i64> {
+        self.message.get_exprunix()
     }
 
-    fn set_exprtime(&mut self, unix: Option<i64>) {
-        self.message.set_exprtime(unix);
+    fn set_exprunix(&mut self, unix: Option<i64>) {
+        self.message.set_exprunix(unix);
     }
 
     fn get_prevunix(&self) -> Option<i64> {

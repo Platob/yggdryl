@@ -13,7 +13,7 @@ the process default and every `registry=None` door reads it.
 ```python
 from pathlib import Path
 
-from yggdryl.fix import FixCodec, FixRegistry, fix_schema, global_registry, install_global_registry
+from yggdryl.fix import FixCodec, FixRegistry, fix_schema
 
 # `config/fix` of a yggdryl checkout: the dictionary is not shipped in the wheel.
 registry = FixRegistry.from_handle(Path("config/fix"))
@@ -21,8 +21,8 @@ assert registry.msgtype("D").name == "newordersingle"
 assert registry.msgtype("8").name == "executionreport"
 
 # Installed before anything resolves the default, it is what every default reads.
-install_global_registry(registry)
-assert global_registry() == registry
+FixRegistry.install_env(registry)
+assert FixRegistry.from_env() == registry
 orders = FixCodec(include_msgtypes=["D"])  # no registry: the process default
 assert orders.registry == registry
 assert fix_schema().index_of("msgtype") == fix_schema(registry).index_of("msgtype")
@@ -386,7 +386,7 @@ order, ack, fill = codec.lifecycle(parsed)
 assert (order.seqnum, ack.seqnum, fill.seqnum) == (0, 1, 2)
 assert ack.prevuuid == order.curruuid and fill.prevuuid == ack.curruuid
 assert ack.crossuuid == fill.crossuuid == order.crossuuid
-assert fill.state.as_py() == "80FILLED"
+assert fill.state.as_py().name == "FILLED"
 
 # Rows already in Arrow chain in place, under the schema they were read with.
 rows = codec.arrow_reader(fix_schema(registry), codec.parse_lines(lines))

@@ -59,7 +59,7 @@ const EVENT_TIMESTAMP: &str = "eventtimestamp";
 fn row_stated_bit(tag: i32) -> Option<u16> {
     if tag == super::STATE_TAG_NAME.0 {
         Some(ROW_STATED_STATE)
-    } else if tag == super::EXPRTIME_TAG_NAME.0 {
+    } else if tag == super::EXPRUNIX_TAG_NAME.0 {
         Some(ROW_STATED_EXPIRY)
     } else if tag == super::ISINCODE_TAG_NAME.0 {
         Some(ROW_STATED_ISIN)
@@ -111,7 +111,7 @@ fn derived_marketoperationid(registry: &FixRegistry, msgtype: &str) -> i32 {
 /// core Struct [`Field`] and its value, each child typed by the registry's
 /// field for it, and none of the typed facts is in it: every fact is held
 /// once. The registry link is an [`Arc`], cloned from
-/// [`FixRegistry::global`] when the caller names none, so a message carries
+/// [`FixRegistry::from_env`] when the caller names none, so a message carries
 /// the dictionary it was resolved against.
 ///
 /// A value is reached by tag, by identifier, by name, or by path, each
@@ -560,7 +560,7 @@ impl FixMsg {
     /// Returns the default registry's load failure, or the refusal
     /// [`Self::with_registry`] raises.
     pub fn new(field: Field, value: Scalar) -> Result<Self> {
-        Self::with_registry(Arc::clone(FixRegistry::global()?), field, value)
+        Self::with_registry(Arc::clone(FixRegistry::from_env()?), field, value)
     }
 
     /// Builds a message against an explicit registry.
@@ -1163,9 +1163,9 @@ impl FixMsg {
     /// observation. It deliberately keeps the source session-event identity,
     /// but remains a later lifecycle event and must follow instead of merge.
     fn is_synthetic_expiry(&self) -> bool {
-        self.get_state().as_str() == "95EXPIRED"
+        *self.get_state() == State::Expired
             && self.get_recdunix().is_none()
-            && self.get_exprtime() == Some(self.get_currunix())
+            && self.get_exprunix() == Some(self.get_currunix())
     }
 
     /// Whether `with_previous` must treat the two values as observations of
@@ -1456,11 +1456,14 @@ impl FixMsg {
                 "2" | "4" | "5" | "6" | "9" | "11" => Some(false),
                 _ => None,
             });
-        // The state it reached, and when it stops being good.
-        let state = word(39)
-            .or_else(|| word(150))
-            .and_then(|held| State::read(&held).ok());
-        let exprtime = [126, 62, 432, 541].into_iter().find_map(|tag| {
+        // The state it reached - the first status field that states one,
+        // else what the message asks for by being the message it is - and
+        // when it stops being good.
+        let state = State::FIX_STATUS_TAGS
+            .into_iter()
+            .find_map(|tag| word(tag).and_then(|held| State::from_fix_status(tag, &held)))
+            .or_else(|| State::from_fix_msgtype(self.header.msgtype()));
+        let exprunix = [126, 62, 432, 541].into_iter().find_map(|tag| {
             by_tag(tag).and_then(|held| held.temporal_count_at(crate::TimeUnit::Nanosecond))
         });
         // Execution time is not the message time. It is stated directly by
@@ -1533,7 +1536,7 @@ impl FixMsg {
             .stated(),
         );
         if row_stated & ROW_STATED_EXPIRY == 0 {
-            event.set_exprtime(exprtime);
+            event.set_exprunix(exprunix);
         }
         event.set_tradable(tradable);
         event.set_side(side.unwrap_or(Side::Unknown));
@@ -3964,13 +3967,13 @@ impl Event for FixMsg {
         self.event.set_recdunix(unix);
     }
 
-    fn get_exprtime(&self) -> Option<i64> {
-        self.event.get_exprtime()
+    fn get_exprunix(&self) -> Option<i64> {
+        self.event.get_exprunix()
     }
 
-    fn set_exprtime(&mut self, unix: Option<i64>) {
+    fn set_exprunix(&mut self, unix: Option<i64>) {
         self.forced = true;
-        self.event.set_exprtime(unix);
+        self.event.set_exprunix(unix);
     }
 
     fn get_prevunix(&self) -> Option<i64> {

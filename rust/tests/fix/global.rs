@@ -41,7 +41,7 @@ mod from_env {
         unsafe {
             std::env::set_var(LOCATION, &bad);
         }
-        let error = FixRegistry::global().expect_err("a malformed shard is never empty");
+        let error = FixRegistry::from_env().expect_err("a malformed shard is never empty");
         assert!(error.to_string().contains("0.json"), "{error}");
 
         // The default did not settle on the failure, so a valid location now
@@ -57,7 +57,7 @@ mod from_env {
         unsafe {
             std::env::set_var(LOCATION, &good);
         }
-        let global = FixRegistry::global().expect("the located registry");
+        let global = FixRegistry::from_env().expect("the located registry");
         assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
 
         // Settled: the environment is read exactly once.
@@ -66,7 +66,7 @@ mod from_env {
             std::env::set_var(LOCATION, &bad);
         }
         assert!(Arc::ptr_eq(
-            FixRegistry::global().expect("the same registry"),
+            FixRegistry::from_env().expect("the same registry"),
             global
         ));
 
@@ -127,7 +127,7 @@ mod from_home {
             std::env::set_var("USERPROFILE", &home);
             std::env::remove_var(LOCATION);
         }
-        let global = FixRegistry::global().expect("the configured registry");
+        let global = FixRegistry::from_env().expect("the configured registry");
         assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
         assert_eq!(super::scalars(global), 1 + super::seeded_fields());
 
@@ -160,9 +160,9 @@ mod from_install {
         let mut symbol = DataType::utf8().required_field("Symbol");
         symbol.as_fix_mut().set_tag(55).expect("a valid tag");
         let registry = FixRegistry::from_fields([symbol.clone()]).expect("one field");
-        FixRegistry::install_global(registry).expect("nothing has resolved the default yet");
+        FixRegistry::install_env(registry).expect("nothing has resolved the default yet");
 
-        let global = FixRegistry::global().expect("the installed registry");
+        let global = FixRegistry::from_env().expect("the installed registry");
         assert_eq!(global.field_by_tag(55).expect("Symbol").name(), "Symbol");
 
         // A message built without a registry links that very `Arc`.
@@ -176,11 +176,11 @@ mod from_install {
         assert_eq!(msg.by_tag(55).expect("Symbol"), Scalar::from("AAPL"));
 
         // Once resolved, the default cannot change underneath its callers.
-        let error = FixRegistry::install_global(FixRegistry::new()).expect_err("already resolved");
+        let error = FixRegistry::install_env(FixRegistry::new()).expect_err("already resolved");
         assert!(error.is_conflict(), "{error}");
         assert!(error.to_string().contains("already resolved"), "{error}");
         assert!(Arc::ptr_eq(
-            FixRegistry::global().expect("the same registry"),
+            FixRegistry::from_env().expect("the same registry"),
             global
         ));
     }

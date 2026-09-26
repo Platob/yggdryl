@@ -22,8 +22,8 @@ assert.equal(registry.msgtype('D').name, 'newordersingle')
 assert.equal(registry.msgtype('8').name, 'executionreport')
 
 // Installed before anything resolves the default, it is what every default reads.
-fix.installGlobalRegistry(registry)
-assert.ok(fix.globalRegistry().equals(registry))
+fix.FixRegistry.installEnv(registry)
+assert.ok(fix.FixRegistry.fromEnv().equals(registry))
 const orders = new fix.FixCodec(undefined, { includeMsgtypes: ['D'] })
 assert.ok(orders.registry.equals(registry))
 assert.equal(fix.schema().indexOf('msgtype'), fix.schema(registry).indexOf('msgtype'))
@@ -381,7 +381,7 @@ assert.deepEqual([order.seqnum, ack.seqnum, fill.seqnum], [0, 1, 2])
 assert.equal(ack.prevuuid, order.curruuid)
 assert.equal(fill.prevuuid, ack.curruuid)
 assert.ok([ack, fill].every((held) => held.crossuuid === order.crossuuid))
-assert.equal(fill.state, '80FILLED')
+assert.equal(fill.state, 'FILLED')
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 const rows = codec.arrowReader(fix.schema(registry), codec.parseLines(lines))

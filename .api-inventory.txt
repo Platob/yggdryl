@@ -228,11 +228,11 @@ pub enum DataTypeId
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool  (the eighteen string leaves)
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
-  pub const fn code_width(self) -> Option<usize>  (the fourteen registered codes; the most bytes one value may be: cusip 9, sedol 7, bbg, ric and unit 32)
+  pub const fn code_width(self) -> Option<usize>  (the thirteen registered codes; the most bytes one value may be: cusip 9, sedol 7, bbg, ric and unit 32)
 
 ### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
-  pub const ALL: [Self; 12] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];
+  pub const ALL: [Self; 13] = [ Self::Null, Self::Boolean, Self::Integer, Self::Floating, Self::Decimal, Self::Temporal, Self::Text, Self::Code, Self::Enum, Self::Bytes, Self::Nested, Self::Geospatial, Self::Uuid, ];  (Enum, `0xc0`-`0xcf`: a closed vocabulary stored as the `int32` code of its member - `state`)
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn id(self) -> u8  (the family's own number, the start of the range its leaves take and a placeholder no leaf takes - but the null family's, whose one leaf is the null itself)
@@ -636,8 +636,8 @@ pub struct FixIdSources<'field>  (the walk FixField::idmap answers; an absent pr
 
 ### yggdryl::fix::global  [rust/src/fix/global.rs]
 impl FixRegistry
-  pub fn global() -> Result<&'static Arc<Self>>
-  pub fn install_global(registry: Self) -> Result<()>
+  pub fn from_env() -> Result<&'static Arc<Self>>
+  pub fn install_env(registry: Self) -> Result<()>
 
 ### yggdryl::fix  [rust/src/fix/mod.rs]
 pub struct FixId(i32)  (re-exported at the crate root beside FixFieldIter, FixKey, FixMsg, FixRegistry; the signed XXH32 of a field's tag and its folded name, derived on every read and never stored)
@@ -664,6 +664,7 @@ pub struct FixCodec
   pub const DEFAULT_BATCH_ROW_SIZE: usize = 32 * 1024;  (the rows one Arrow batch targets; a batch closes on whichever of the two bounds it reaches first)
   pub const DEFAULT_OFFICIAL_TIME_DELAY_MS: i64 = 1_000;  (how far from SendingTime(52) an official transaction clock may stand and still date the message, when the caller states none)
   pub fn new(registry: Arc<FixRegistry>) -> Self
+  pub fn from_env() -> Result<Self>  (a codec over `FixRegistry::from_env()`)
   pub const fn registry(&self) -> &Arc<FixRegistry>
   pub const fn default_sending_time(&self) -> Option<&Scalar>  (the sending clock of a message stating no SendingTime(52) whose carrier states none either - a row cell reaching tag 52, else the `currunix` of the text line it was read out of; None reads UTC now once; the raw-byte doors have no carrier)
   pub fn set_default_sending_time(&mut self, value: Option<Scalar>) -> Result<()>
@@ -758,8 +759,8 @@ pub const CROSSCODE_TAG_NAME: (i32, &str) = (65_048, "crosscode");  (utf8: the i
 pub const METADATA_TAG_NAME: (i32, &str) = (65_049, "metadata");  (nullable sorted `map<utf8, utf8>` group, self-countered: what a bridge stated under its own namespaces - `TECH.CLIENTID`, `firm.*`, `ullink.*` - each under the key as the bridge spelled it, folded)
 pub const FIXMSG_TAG_NAME: (i32, &str) = (65_050, "fixmsg");  (the fixed row `fix_schema` builds as a store dumps it: `components/fixmsg.json`, every column a reference to the field or group that types it; written by `commit`, passed over on read)
 pub const SRCUUIDS_TAG_NAME: (i32, &str) = (65_051, "srcuuids");  (nullable `serie<uuid>` of required `srcuuid` items, display `SrcUuids`: the identities of the elements the message was read from - the text line it was parsed out of, stated by the line doors as the line's `curruuid` before the message settles, none for raw bytes; provenance, never its chain - no walk moves it - outside the currhashcode and never on the wire; a column of the fixed row, listed by `fix_crate_fields` and registered by no registry)
-pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state` code, written on every row a message writes, display `State`: the state the message reached - `OrdStatus(39)`, else `ExecType(150)`, `00UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
-pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");  (nullable clock, display `ExprTime`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
+pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state`, the `int32` code of a `State` member read by the intrinsic `statecodeset`, written on every row a message writes, display `State`: the state the message reached - the first of `State::FIX_STATUS_TAGS` stated, else what its message type asks for, `UNKNOWN` where neither states one - the furthest its chain knows once the lifecycle followed it; a row stating one is the row's word, which the derivation leaves)
+pub const EXPRUNIX_TAG_NAME: (i32, &str) = (65_053, "exprunix");  (nullable clock, display `ExprUnix`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");  (nullable `int32`: the stable market-operation/business-category ID obtained by resolving the message definition's symbolic `FIX:msgcat` through `msgcatcodeset`)
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");  (nullable `isin`: the `ISIN` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
 pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");  (nullable `bbg`: the `BLOOMBERG` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
@@ -839,7 +840,7 @@ pub struct LiftedFx  (the six FX parts `FixLifted` holds boxed; re-exported besi
 pub struct FixMsg  (a market operation event with a FIX body around it: the crate-private event facts the graph traits answer, the typed `FixHeader` carrying the frame, the typed `FixLifted` carrying the FIX numbers and identifiers the message lifted, the typed `FixCapture` holding the line's own bridge row header, `Text(58)`, a bridge's namespaced metadata, and the content row - every child the message states beyond those typed facts, typed by the registry's field for it; each fact held once. Every market fact the traits answer is *derived* from the lifted facts and the row, so it reaches neither the wire, the residual entry record nor the code the message digests to - only what the message stated does)
   impl From<FixMsg> for Result<FixMsg>  (Ok wrapper; permits infallible and fallible stream intake through one standard conversion)
   pub fn stable_hash(&self) -> u64
-  pub fn new(field: Field, value: Scalar) -> Result<Self>  (links `FixRegistry::global()`)
+  pub fn new(field: Field, value: Scalar) -> Result<Self>  (links `FixRegistry::from_env()`)
   pub fn with_registry(registry: Arc<FixRegistry>, field: Field, value: Scalar) -> Result<Self>  (the value canonicalized under the root; a child stating a typed fact - one of `FIX_TYPED_TAGS` or a crate column - fills its holder and leaves the row; a child named under a namespace, `TECH.CLIENTID`, lands in the metadata; the clocks are settled and the identity derived; runs no derivation)
   pub const fn header(&self) -> &FixHeader  (the standard header and trailer)
   pub const fn capture(&self) -> &FixCapture
@@ -1267,7 +1268,7 @@ pub(crate) fn feed_event_facts<E: Event + ?Sized>(state: &mut Xxh3, this: &E)  (
 pub trait Event: Element  (an element that happened at one instant, stands in one state and sits at one place in its chain)
   fn get_currunix(&self) -> i64  (nanoseconds since the Unix epoch, UTC)
   fn set_currunix(&mut self, unix: i64)
-  fn get_state(&self) -> &State  (the crate's ranked lifecycle code, never absent: `00UNKNOWN` where none was reached)
+  fn get_state(&self) -> &State  (the crate's lifecycle-sorted member, never absent: `UNKNOWN` where none was reached)
   fn set_state(&mut self, state: State)
   fn is_execution(&self) -> bool  (provided: whether this observation itself reports an execution, defaulting to `State::is_execution`; a protocol whose lifecycle state and report kind differ overrides it, as FIX does when an explicit correction or cancellation `ExecType` accompanies a filled `OrdStatus`, and an `OperationEvent` answers its kind)
   fn get_seqnum(&self) -> u64  (how many elements came before it in its chain)
@@ -1278,8 +1279,8 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
   fn set_execunix(&mut self, unix: Option<i64>)
   fn get_recdunix(&self) -> Option<i64>  (the precise recording instant, in the same count, where known)
   fn set_recdunix(&mut self, unix: Option<i64>)
-  fn get_exprtime(&self) -> Option<i64>  (when it expires, where it has an expiry)
-  fn set_exprtime(&mut self, unix: Option<i64>)
+  fn get_exprunix(&self) -> Option<i64>  (when it expires, where it has an expiry)
+  fn set_exprunix(&mut self, unix: Option<i64>)
   fn get_prevunix(&self) -> Option<i64>  (when the element it follows happened, where it follows one)
   fn set_prevunix(&mut self, unix: Option<i64>)
   fn get_prevuuid(&self) -> Option<Uuid>  (the identity of the element it follows, where it follows one)
@@ -1289,7 +1290,7 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
   fn following(self, previous: &Self) -> Option<Self> where Self: Sized  (provided: fills an execution from its own `currunix` where needed, then keeps the later of that precise clock and the predecessor's latest execution clock; records the predecessor's identity and instant, the place after the predecessor's (saturating), forces the predecessor's cross code where this one's differs with the cross codes brought in step, and folds the lifecycle - the predecessor is the one element it names, nothing recording the chain further back; sources and recording instant stay this observation's own; nothing for its own predecessor, one that happened after it, or where nothing moves; finalized)
   fn restating(self, live: &Self) -> Self where Self: Sized  (provided, and overridden by every market event - `OperationEvent`, `TradeEvent`, `BookEvent`, `SnapshotEvent`, `FixMsg` - to take the market's place in the chain too: the step before it, `prevpx` and `prevqty`, what the chain is about where this reading said nothing of it, and for an operation the time in force, whether it trades, the accounts, the users and the followed alternate identifiers. This event as another statement of `live` - the same instant and content read a second time, one message logged at every hop - taking the place `live` holds in its chain: its predecessor, position and snapshot, the chain's cross code - never its sources - the lifecycle folded, the earliest execution and recording instants kept, then finalized, so both statements finalize to one identity and the chain grows by nothing; the caller establishes the twin by the identity `live` arrived under, which `EventIterator` records)
   fn merging(self, other: &Self) -> Option<Self> where Self: Sized  (provided: the element-level merge with the later `recdunix` as reference - stated recording beats absent, ties fall back to later `currunix`, an exact tie keeps this one - then that reference's instant, code, predecessor and snapshot leading; the further place in the chain, folded lifecycle, and earliest execution and recording instants retained, so a merged statement ranks by its earliest recording against a third and the reference among three depends on merge order; nothing for another element or a fold that changes nothing; finalized)
-  fn fold_lifecycle(&mut self, other: &Self) -> bool where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `CodeValue::merge_with` reads two states; whether any moved)
+  fn fold_lifecycle(&mut self, other: &Self) -> bool where Self: Sized  (provided: the earliest creation, the latest expiration, the furthest state as `State::merge_with` reads two states; whether any moved)
   fn finalized(&mut self, hashcode: u64)  (provided: records the code, resets the current identity to `time_uuid` - kept where the instant has no UUIDv7 - and the cross element to `cross_uuid` over it; what an implementor's `Element::finalize` hands its content's digest to)
   fn digest_event(&self) -> Xxh3  (provided: `Element::digest` continued with the state, the place in the chain and the predecessor's identity; no instant)
   fn txhash(&self) -> Result<TxHash>  (provided: `currunix` at nanosecond resolution coupled with `currhashcode` as an XXH3-64 digest; ArithmeticOverflow past signed 64-bit nanoseconds)
@@ -1363,7 +1364,7 @@ pub(crate) fn merge_market_event_into_reference<E: Event + Market>(this: &mut E,
 pub(crate) fn merge_operation_event_into_reference<E: Event + Operation>(this: &mut E, supplement: &E)  (the same, the operation's facts included)
 
 ### yggdryl::graph::column  [rust/src/graph/column.rs]
-pub enum EventColumn { CurrUnix, CreaUnix, ExecUnix, RecdUnix, ExprTime, PrevUnix, SnapUnix, CurrUuid, CrossUuid, CrossCode, CurrHashCode, CrossHashCode, PrevUuid, SeqNum, SrcUuids, State }  (the sixteen columns every generated schema of an event states, one per fact `Element` and `Event` answer - a text line's batch in `ALL` order, a FIX row through the crate's protocol-oriented bands, the lifecycle's rows - one name and one datatype each, so the three join without a mapping)
+pub enum EventColumn { CurrUnix, CreaUnix, ExecUnix, RecdUnix, ExprUnix, PrevUnix, SnapUnix, CurrUuid, CrossUuid, CrossCode, CurrHashCode, CrossHashCode, PrevUuid, SeqNum, SrcUuids, State }  (the sixteen columns every generated schema of an event states, one per fact `Element` and `Event` answer - a text line's batch in `ALL` order, a FIX row through the crate's protocol-oriented bands, the lifecycle's rows - one name and one datatype each, so the three join without a mapping)
   impl Clone, Copy, Debug, Eq, Hash, PartialEq for EventColumn
   pub const ALL: [Self; 16]  (canonical event order: when it happened or was observed, which event it is, the state it reached)
   pub const fn name(self) -> &'static str  (the fact's, as the traits spell it: `currunix` .. `state`)
@@ -1524,7 +1525,7 @@ pub enum MarketData { Order(Order), Quote(Quote), Execution(Execution), BookSide
 pub struct EventIterator<E, I>  (the one walk: operation events read in their order, a missing `execunix` filled from `currunix` only where `Event::is_execution` says that incoming observation reports an execution, then each stated as the one after the live element it follows and yielded so; the live elements are kept under the identity every incarnation of one thing shares - the cross element, the element's own where it states no cross code - and an element arriving under a live identity, or, where its own is alive under nothing, under a name a live element goes by - a `(key, value)` pair of its `get_altids()` - is stated as the one after it by its own `with_previous`; the yielded element stands as the live one where still alive (live state, not past its expiration) and retires the identity where not, so a filled order ends its chain and a later element under its identity starts afresh; one arriving under the identity the live element arrived under - the same instant and content, logged again - is yielded `Event::restating` it, keeping the earliest execution and recording instants, so the chain grows by nothing; one before the live element is yielded as it came and changes nothing, one its reading refuses is yielded as it came and stands; Debug)
   impl<E, I: Iterator<Item = E>> EventIterator<E, I> where E: Walked  (`Walked` is crate-sealed: implemented for every `E: Event + Operation + Clone` and for `MarketData`, whose `OrderEvent`, `QuoteEvent`, `ExecutionEvent` and `TradeEvent` walk and whose every other variant is yielded unchanged, in place)
   pub fn new(elements: impl IntoIterator<IntoIter = I>, sorted: bool) -> Self  (`sorted` takes the caller's word that the elements arrive in their own order and streams them; otherwise they are collected and stably sorted by `is_after` / `is_before` first)
-  pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self  (a grid: a step in nanoseconds aligned on the epoch, and the walk then yields one owned view of every living identity at each crossed tick, changing only `snapunix`; a finite deadline emits one owned `95EXPIRED` event at that instant and retires the identity; zero or less takes the grid away)
+  pub const fn with_snapshot_ns(mut self, snapshot_ns: i64) -> Self  (a grid: a step in nanoseconds aligned on the epoch, and the walk then yields one owned view of every living identity at each crossed tick, changing only `snapunix`; a finite deadline emits one owned `EXPIRED` event at that instant and retires the identity; zero or less takes the grid away)
   pub fn snapshot_ns(&self) -> Option<i64>  (the grid step, where there is one)
   pub fn alive(&self) -> impl Iterator<Item = &E>  (the elements still alive after what was read, one per identity, in no order)
   impl<E: Walked, I: Iterator<Item = E>> Iterator for EventIterator<E, I>  (Item = E; size_hint is the source's)
@@ -3212,8 +3213,8 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn remove_entry_by_path(&mut self, path: &FieldPath) -> Option<TextEntry>
   pub fn mtime(&self) -> Result<Option<i64>>  (the header's `mtime` capture as an instant at the column's clock where it declares one and the line matched, else the handle's modification time, else none; a capture that is not an instant is a refusal naming the row, the object and the column)
   pub fn seqnum(&self) -> Result<u64>  (the row number under `start_rownum`, else the physical index; an explicitly stated event fact wins)
-  pub fn state(&self) -> Result<&State>  (a `state` capture, else `00UNKNOWN`)
-  pub fn creaunix(&self) -> Result<Option<i64>>  // and execunix, recdunix, exprtime, prevunix, snapunix: the capture of that exact name as an instant, else none
+  pub fn state(&self) -> Result<&State>  (a `state` capture, else `UNKNOWN`)
+  pub fn creaunix(&self) -> Result<Option<i64>>  // and execunix, recdunix, exprunix, prevunix, snapunix: the capture of that exact name as an instant, else none
   pub fn prevuuid(&self) -> Result<Option<Uuid>>  (a `prevuuid` capture, else none)
   pub fn named_captures(&self) -> &BTreeMap<String, String>  (the named captures the line matched, each under the capture's name: what a row header states about the line, an element of nothing else - stated once, else resolved from the captures on the first ask)
   pub fn set_named_captures(&mut self, captures: BTreeMap<String, String>)  (replaces what the line matched)
@@ -5448,16 +5449,30 @@ pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids:
   pub type SideField = FieldOf<SideType>;
 
 ### yggdryl::state  [rust/src/state.rs]
-  pub struct State(SmolStr)  (one validated code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`)
-  pub fn unknown() -> Self
-  pub fn rank(&self) -> Option<u8>
-  pub fn is_live(&self) -> bool
-  pub fn is_done(&self) -> bool
-  pub fn is_execution(&self) -> bool  (true only for `40PARTFILL`, `40TRADE` and `80FILLED`; corrections, cancellations and other rank-band members do not invent an execution instant)
-  pub fn is_cancelled(&self) -> bool
-  pub fn is_failed(&self) -> bool
-  pub fn read(spelling: &str) -> Result<Self>
-  pub fn from_spelling(spelling: &str) -> Option<Self>
+  pub enum State  (#[repr(i32)], #[non_exhaustive]; sixty members from Unknown = 0 to NotFound = 9506, each stored as its `int32` code, the hundreds of the code its rank: 0 unknown, 10 pending, 20 acknowledged, 30 working, 40 working with events, 50 halted, 60 change outstanding, 70 changed and carrying on, 80-89 done, 90-94 cancelled, 95-99 failed; Copy, Default (Unknown), total Ord by code; `StateType` marks its field, `StateField` is `FieldOf<StateType>`; Display and serde as the stored name, deserialized from a code or a spelling)
+  pub const ALL: &'static [Self]  (every member in code order)
+  pub const fn as_str(self) -> &'static str  (the stored name: `PARTIALLY_FILLED`)
+  pub const fn description(self) -> &'static str
+  pub const fn from_code(code: i32) -> Option<Self>
+  pub fn from_name(name: &str) -> Option<Self>  (the stored name exactly)
+  pub const fn unknown() -> Self
+  pub const fn code(self) -> i32
+  pub const fn rank(self) -> u8  (the code's hundreds)
+  pub const fn merge_with(self, other: Self) -> Self  (Unknown takes the other; otherwise the further rank stands, this one on a tie)
+  pub const fn is_pending(self) -> bool  (rank 10)
+  pub const fn is_live(self) -> bool  (every rank below 80)
+  pub const fn is_done(self) -> bool  (rank 80-89)
+  pub const fn is_cancelled(self) -> bool  (rank 90-94)
+  pub const fn is_failed(self) -> bool  (rank 95-99)
+  pub const fn is_execution(self) -> bool  (true only for `PARTIALLY_FILLED`, `TRADE` and `FILLED`; corrections, cancellations and other rank-band members do not invent an execution instant)
+  pub fn read(spelling: &str) -> Result<Self>  (`from_spelling` as a refusal naming the spelling)
+  pub fn read_code(code: i64) -> Result<Self>  (`from_code` as a refusal naming the code)
+  pub fn from_spelling(spelling: &str) -> Option<Self>  (the stored name, then a FIX `OrdStatus(39)`/`ExecType(150)` wire code unfolded, then a folded name: the specification's, a scheduler's word or a bridge's short name)
+  pub fn from_fix_status(tag: i32, code: &str) -> Option<Self>  (one status field's code under its own code set: 39, 150, 1036, 939, 297, 87, 665, 940, 1375, 531)
+  pub const FIX_STATUS_TAGS: [i32; 10]  (the order a message's state is read off its status fields, the first stated winning)
+  pub fn from_fix_msgtype(msgtype: &str) -> Option<Self>  (what a message asks for by being the message it is: new orders PendingNew, cancels PendingCancel, replaces PendingReplace, a quote request Pending, a quote Active, a reject Rejected)
+  impl Value for State; From<State> for Scalar; From<State> for i32; TryFrom<i32> for State
+  pub const STATE_EXTENSION_NAME: &str = "yggdryl.state";  (over Arrow Int32; a foreign storage under the name imports as that storage)
   pub type StateField = FieldOf<StateType>;
 
 ### yggdryl::timeinforce  [rust/src/timeinforce.rs]
@@ -5638,13 +5653,12 @@ impl StringEnum
   pub const COUNTRIES: &'static [&'static str]
   pub const MICS: &'static [&'static str]
   pub const SIDES: &'static [&'static str]  (the explicit side values, sorted: ASDEF, BORROW, BUY, BUYMINUS, CROSS, CROSSSH, CROSSSHX, LEND, OPPOSITE, REDEEM, SELL, SELLPLUS, SELLUND, SSHORT, SSHORTEX, SUBSCR, UNDISC, UNKNOWN - one per side FIX's Side(54) names across every version and UNKNOWN; never FIX's one-character codes, which `Side::from_spelling` maps onto them)
-  pub const STATES: &'static [&'static str]
   pub const TIMESINFORCE: &'static [&'static str]
-  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // ccy, country, mic, exchange, side, state, timeinforce
+  pub const PREBUILT: &'static [(&'static str, &'static [&'static str])]  // ccy, country, mic, exchange, side, timeinforce
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
   pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
-pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, SideType, StateType, TimeInForceType, UnitType: the fourteen code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, side, state, timeinforce, unit)
+pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, SideType, TimeInForceType, UnitType: the thirteen code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, side, timeinforce, unit)
   pub type CountryField = FieldOf<CountryType>;
   pub type CcyField = FieldOf<CcyType>;
   pub type MicField = FieldOf<MicType>;
@@ -5656,7 +5670,6 @@ pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, S
   pub type RicField = FieldOf<RicType>;
   pub type FigiField = FieldOf<FigiType>;
   pub type SideField = FieldOf<SideType>;
-  pub type StateField = FieldOf<StateType>;
   pub type TimeInForceField = FieldOf<TimeInForceType>;
 impl Field
   pub fn string_enum(&self) -> Result<Option<StringEnum>>

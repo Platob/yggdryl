@@ -272,7 +272,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes code::securities cusip::securities figi::securities sedol::securities state::coded timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes code::securities cusip::securities figi::securities sedol::securities timeinforce::coded
     ```
 
 === "Python"

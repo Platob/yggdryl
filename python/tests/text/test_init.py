@@ -17,6 +17,7 @@ from yggdryl import (
     Field,
     IOBase,
     RecordOptions,
+    State,
     TextOptions,
     Timezone,
     gzip,
@@ -35,7 +36,7 @@ EVENT_COLUMNS = [
     "creaunix",
     "execunix",
     "recdunix",
-    "exprtime",
+    "exprunix",
     "prevunix",
     "snapunix",
     "curruuid",
@@ -214,7 +215,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "creaunix": None,
             "execunix": None,
             "recdunix": None,
-            "exprtime": None,
+            "exprunix": None,
             "prevunix": None,
             "snapunix": None,
             "curruuid": identity,
@@ -225,7 +226,7 @@ def test_generic_records_have_optional_rownums_regex_types_and_text_body(
             "prevuuid": None,
             "seqnum": seqnum,
             "srcuuids": None,
-            "state": "00UNKNOWN",
+            "state": State.UNKNOWN,
         }
 
     assert list(source.read_records(options=options)) == [

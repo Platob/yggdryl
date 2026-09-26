@@ -110,7 +110,6 @@ from .codes import (
     RicField,
     SedolField,
     SideField,
-    StateField,
     TimeInForceField,
     UnitField,
     bbg,
@@ -124,7 +123,6 @@ from .codes import (
     ric,
     sedol,
     side,
-    state,
     timeinforce,
     unit,
 )
@@ -196,6 +194,7 @@ from .nested import (
 )
 from .boolean import BooleanField, NullField, boolean, null
 from .scalar import Scalar, scalar
+from .state import State, StateField, state
 from .serie import (
     ChunkedSerie,
     FixedSizeSerieField,
@@ -348,6 +347,7 @@ __all__ = [
     "RicField",
     "RunEndEncodedField",
     "Scalar",
+    "State",
     "SedolField",
     "Selector",
     "Serie",

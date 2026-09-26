@@ -199,9 +199,7 @@ pub trait CodeValue: Value {
     ///
     /// What "less" means is each code's own, and the codes that can state
     /// nothing say so: a [`Cfi`](crate::Cfi) fills every `X` position from the other
-    /// where the two describe one instrument; a
-    /// [`State`](crate::State) that reached none, `00UNKNOWN`, takes the other, and
-    /// otherwise the further along stands; a [`Side`](crate::Side) `UNKNOWN`, a
+    /// where the two describe one instrument; a [`Side`](crate::Side) `UNKNOWN`, a
     /// [`Ccy`](crate::Ccy) `XXX` and a [`Mic`](crate::Mic) `XXXX` take the other. Every other
     /// code is an identifier with nothing partial about it, so this one
     /// stands as it is. This is what a graph element folds two statements

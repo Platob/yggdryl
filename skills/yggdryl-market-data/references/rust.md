@@ -36,7 +36,7 @@ assert_ne!(order.get_crossuuid(), order.get_curruuid(), "the cross code names a 
 assert_eq!(order.get_securityids().get("CUSIP"), Some("037833100"));
 assert_eq!(order.get_bid().and_then(|lane| lane.price), Some("189.5".parse()?));
 assert_eq!(order.get_lastpx(), None, "a price is never a last execution");
-assert_eq!(order.get_state().as_str(), "00UNKNOWN");
+assert_eq!(order.get_state().as_str(), "UNKNOWN");
 ```
 
 ## Build undated leaves, quotes and book entries
@@ -130,7 +130,7 @@ assert_eq!(merged.get_srcuuids(), [Uuid::from_v8(1), Uuid::from_v8(2)]);
 
 `EventIterator` chains a stream by cross identity (and by a live element's
 `altids`), yields a twin as a restatement rather than a successor, retires a
-chain at a terminal state and emits one `95EXPIRED` at a deadline.
+chain at a terminal state and emits one `EXPIRED` at a deadline.
 
 ```rust
 use yggdryl::graph::{Element, Event, EventIterator, OrderEvent};
@@ -163,12 +163,12 @@ assert_eq!(chained[4].get_prevuuid(), None, "the fill ended the chain");
 const MS: i64 = 1_000_000;
 let mut expiring = OrderEvent::at(T + 50 * MS);
 expiring.set_crosscode("O-3003".to_owned());
-expiring.set_exprtime(Some(T + 70 * MS));
+expiring.set_exprunix(Some(T + 70 * MS));
 expiring.finalize();
 let timed: Vec<OrderEvent> = EventIterator::new([expiring], true).with_snapshot_ns(10 * MS).collect();
 assert!(timed.iter().any(|held| held.get_snapunix() == Some(T + 60 * MS)));
 let expired = timed.last().expect("the deadline event");
-assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (T + 70 * MS, "95EXPIRED"));
+assert_eq!((expired.get_currunix(), expired.get_state().as_str()), (T + 70 * MS, "EXPIRED"));
 ```
 
 ## Build a composite trade

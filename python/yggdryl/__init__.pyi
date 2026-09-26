@@ -121,7 +121,6 @@ from .codes import (
     RicField as RicField,
     SedolField as SedolField,
     SideField as SideField,
-    StateField as StateField,
     TimeInForceField as TimeInForceField,
     UnitField as UnitField,
     bbg as bbg,
@@ -135,7 +134,6 @@ from .codes import (
     ric as ric,
     sedol as sedol,
     side as side,
-    state as state,
     timeinforce as timeinforce,
     unit as unit,
 )
@@ -298,6 +296,11 @@ from .urn import (
 from .url import (
     UrlField as UrlField,
     url as url,
+)
+from .state import (
+    State as State,
+    StateField as StateField,
+    state as state,
 )
 from .version import (
     Version as Version,

@@ -336,7 +336,7 @@ impl Column {
                 | EventColumn::CreaUnix
                 | EventColumn::ExecUnix
                 | EventColumn::RecdUnix
-                | EventColumn::ExprTime
+                | EventColumn::ExprUnix
                 | EventColumn::PrevUnix
                 | EventColumn::SnapUnix => Storage::Clock,
                 EventColumn::CurrUuid | EventColumn::CrossUuid | EventColumn::PrevUuid => {
@@ -347,7 +347,7 @@ impl Column {
                     Storage::UInt64
                 }
                 EventColumn::SrcUuids => Storage::Uuids,
-                EventColumn::State => Storage::Code(Code::State),
+                EventColumn::State => Storage::State,
             },
             Self::Market(column) => {
                 if is_decimal(column) {
@@ -724,7 +724,7 @@ impl<'a> Row<'a> {
             EventColumn::CreaUnix => event.get_creaunix(),
             EventColumn::ExecUnix => event.get_execunix(),
             EventColumn::RecdUnix => event.get_recdunix(),
-            EventColumn::ExprTime => event.get_exprtime(),
+            EventColumn::ExprUnix => event.get_exprunix(),
             EventColumn::PrevUnix => event.get_prevunix(),
             EventColumn::SnapUnix => event.get_snapunix(),
             _ => None,
@@ -774,6 +774,7 @@ impl<'a> Row<'a> {
             Column::Operation(OperationColumn::MarketOperationId) => {
                 self.operation?.get_marketoperationid()
             }
+            Column::Event(EventColumn::State) => Some(self.event?.get_state().code()),
             _ => None,
         }
     }
@@ -806,10 +807,6 @@ impl<'a> Row<'a> {
             Column::Kind => Some(self.kind.as_str()),
             Column::Event(EventColumn::CrossCode) => {
                 Some(element.get_crosscode()).filter(|code| !code.is_empty())
-            }
-            Column::Event(EventColumn::State) => {
-                let event: &'a dyn Event = self.event?;
-                Some(event.get_state().as_str())
             }
             Column::Market(MarketColumn::Currency) => Some(market.get_currency().as_str()),
             Column::Market(MarketColumn::Unit) => Some(market.get_unit().as_str()),
@@ -1168,7 +1165,7 @@ impl Slot {
                     .map(|row| row.u32(column))
                     .collect::<UInt32Array>(),
             ),
-            Storage::Int32 => Arc::new(
+            Storage::Int32 | Storage::State => Arc::new(
                 rows.iter()
                     .map(|row| row.i32(column))
                     .collect::<Int32Array>(),
@@ -1706,6 +1703,8 @@ enum Storage {
     UInt64,
     UInt32,
     Int32,
+    /// A state: the `int32` code of its member.
+    State,
     Boolean,
     Decimal,
     Text,
@@ -1723,7 +1722,6 @@ enum Storage {
 /// The registered codes a row states, each riding its own code storage.
 #[derive(Clone, Copy, Debug)]
 enum Code {
-    State,
     Ccy,
     Unit,
     Side,
@@ -1736,8 +1734,7 @@ impl Code {
     /// The text storage a landed column of this code holds.
     fn storage(self, serie: &Serie) -> Option<&Arc<Utf8StringSerie>> {
         match (self, serie) {
-            (Self::State, Serie::State(held))
-            | (Self::Ccy, Serie::Ccy(held))
+            (Self::Ccy, Serie::Ccy(held))
             | (Self::Unit, Serie::Unit(held))
             | (Self::Side, Serie::Side(held))
             | (Self::Cfi, Serie::Cfi(held))
@@ -1758,6 +1755,8 @@ enum Leaf {
     Int32(Arc<Int32Serie>),
     Boolean(Arc<BooleanSerie>),
     Decimal(Arc<Decimal128Serie>),
+    /// A state's member codes, each proven where the column landed.
+    State(Arc<Int32Serie>),
     Text(Arc<Utf8StringSerie>),
     /// A code's text storage.
     Code(Arc<Utf8StringSerie>),
@@ -1784,6 +1783,7 @@ impl Leaf {
             (Storage::UInt64, Serie::UInt64(held)) => Self::UInt64(Arc::clone(held)),
             (Storage::UInt32, Serie::UInt32(held)) => Self::UInt32(Arc::clone(held)),
             (Storage::Int32, Serie::Int32(held)) => Self::Int32(Arc::clone(held)),
+            (Storage::State, Serie::State(held)) => Self::State(Arc::clone(held)),
             (Storage::Boolean, Serie::Boolean(held)) => Self::Boolean(Arc::clone(held)),
             (Storage::Decimal, Serie::Decimal128(held)) => Self::Decimal(Arc::clone(held)),
             (Storage::Text, Serie::Utf8String(held)) => Self::Text(Arc::clone(held)),
@@ -1870,7 +1870,15 @@ impl Leaf {
 
     fn i32(&self, row: usize) -> Option<i32> {
         match self {
-            Self::Int32(held) => held.value(row),
+            Self::Int32(held) | Self::State(held) => held.value(row),
+            _ => None,
+        }
+    }
+
+    /// The state one cell states; `None` for a null.
+    fn state(&self, row: usize) -> Option<State> {
+        match self {
+            Self::State(held) => held.value(row).and_then(State::from_code),
             _ => None,
         }
     }
@@ -2182,7 +2190,7 @@ impl Landed {
     ) -> Result<IdentityClaims> {
         let mut claims = IdentityClaims::default();
         target.set_currunix(self.currunix(row, path)?);
-        self.read_event(row, target, &mut claims, path)?;
+        self.read_event(row, target, &mut claims);
         self.read_market(row, target, path)?;
         self.read_operation(row, target, path)?;
         Ok(claims)
@@ -2220,7 +2228,7 @@ impl Landed {
         let mut event = MarketEventFacts::default();
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
-        self.read_event(row, &mut event, &mut claims, path)?;
+        self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path)?;
         let control = SnapshotEvent::from_control(event, self.control(row).unwrap_or_default());
         claims.validate(&control, path)?;
@@ -2233,7 +2241,7 @@ impl Landed {
         let mut event = MarketEventFacts::default();
         let mut claims = IdentityClaims::default();
         event.set_currunix(self.currunix(row, path)?);
-        self.read_event(row, &mut event, &mut claims, path)?;
+        self.read_event(row, &mut event, &mut claims);
         self.read_market(row, &mut event, path)?;
         let bid = Self::side_of(self.bidside.as_ref(), BIDSIDE, row, path)?;
         let ask = Self::side_of(self.askside.as_ref(), ASKSIDE, row, path)?;
@@ -2507,8 +2515,7 @@ impl Landed {
         row: usize,
         target: &mut E,
         claims: &mut IdentityClaims,
-        path: &Path<'_>,
-    ) -> Result<()> {
+    ) {
         self.read_element(row, target, claims);
         for (column, leaf) in EventColumn::ALL.into_iter().zip(&self.event) {
             let Some(leaf) = leaf else {
@@ -2518,22 +2525,19 @@ impl Landed {
                 EventColumn::CreaUnix => target.set_creaunix(leaf.clock(row)),
                 EventColumn::ExecUnix => target.set_execunix(leaf.clock(row)),
                 EventColumn::RecdUnix => target.set_recdunix(leaf.clock(row)),
-                EventColumn::ExprTime => target.set_exprtime(leaf.clock(row)),
+                EventColumn::ExprUnix => target.set_exprunix(leaf.clock(row)),
                 EventColumn::PrevUnix => target.set_prevunix(leaf.clock(row)),
                 EventColumn::SnapUnix => target.set_snapunix(leaf.clock(row)),
                 EventColumn::PrevUuid => target.set_prevuuid(leaf.uuid(row)),
                 EventColumn::SeqNum => target.set_seqnum(leaf.u64(row).unwrap_or(0)),
                 EventColumn::State => {
-                    if let Some(state) =
-                        leaf.code(row, path, column.name(), |text| State::new(text))?
-                    {
+                    if let Some(state) = leaf.state(row) {
                         target.set_state(state);
                     }
                 }
                 _ => {}
             }
         }
-        Ok(())
     }
 
     fn read_market<E: Market + ?Sized>(
@@ -2718,7 +2722,7 @@ impl Landed {
                 EventColumn::CreaUnix => clock(canonical.get_creaunix())?,
                 EventColumn::ExecUnix => clock(canonical.get_execunix())?,
                 EventColumn::RecdUnix => clock(canonical.get_recdunix())?,
-                EventColumn::ExprTime => clock(canonical.get_exprtime())?,
+                EventColumn::ExprUnix => clock(canonical.get_exprunix())?,
                 EventColumn::PrevUnix => clock(canonical.get_prevunix())?,
                 EventColumn::SnapUnix => clock(canonical.get_snapunix())?,
                 EventColumn::PrevUuid => match leaf.uuid(row) {
@@ -2743,14 +2747,12 @@ impl Landed {
                     }
                     _ => {}
                 },
-                EventColumn::State => check_code(
-                    leaf,
-                    row,
-                    Some(canonical.get_state()),
-                    |text| State::new(text),
-                    path,
-                    column.name(),
-                )?,
+                EventColumn::State => match leaf.state(row) {
+                    Some(stated) if stated != *canonical.get_state() => {
+                        return Err(differs(path, column.name(), canonical.get_state(), &stated));
+                    }
+                    _ => {}
+                },
                 _ => {}
             }
         }

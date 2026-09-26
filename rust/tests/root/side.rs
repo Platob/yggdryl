@@ -187,7 +187,7 @@ mod coded {
     fn there_is_no_member_meaning_no_answer_and_null_is_how_a_row_says_it() {
         // A row whose line does not say a side has none, and the crate already
         // spells "no answer" one way: `UNKNOWN` is what a value that must state
-        // a side states where none was said, as a state's `00UNKNOWN` is, and
+        // a side states where none was said, as a state's `UNKNOWN` is, and
         // never what a column says for an absent one.
         assert!(StringEnum::SIDES.contains(&"UNKNOWN"));
         assert!(!StringEnum::SIDES.contains(&"NONE"));

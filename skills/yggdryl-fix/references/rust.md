@@ -33,9 +33,9 @@ assert_eq!(FixRegistry::from_handle(&LocalFolder::new(&empty)?)?.len(), FixRegis
 assert!(!empty.exists());
 ```
 
-`FixRegistry::global()` answers the process default (an installed registry,
+`FixRegistry::from_env()` answers the process default (an installed registry,
 then `YGGDRYL_FIX_REGISTRY`, then `~/.config/fix`, then the empty registry),
-resolved once; `FixRegistry::install_global(registry)` must run before anything
+resolved once; `FixRegistry::install_env(registry)` must run before anything
 resolves it. `FixMsg::new` links the default; everything else takes the
 registry you pass.
 
@@ -419,7 +419,7 @@ assert_eq!((order.get_seqnum(), ack.get_seqnum(), fill.get_seqnum()), (0, 1, 2))
 assert_eq!(ack.get_prevuuid(), Some(order.get_curruuid()));
 assert_eq!(fill.get_prevuuid(), Some(ack.get_curruuid()));
 assert!([&ack, &fill].iter().all(|held| held.get_crossuuid() == order.get_crossuuid()));
-assert_eq!(fill.get_state().as_str(), "80FILLED");
+assert_eq!(fill.get_state().as_str(), "FILLED");
 
 // Rows already in Arrow chain in place, under the schema they were read with.
 let schema = fix_schema(&registry, "fix")?;
@@ -565,5 +565,5 @@ std::fs::remove_dir_all(&path)?;
   `with_exclude_msgtypes::<[&str; 0], &str>([])`.
 - `FixDedup` (drop an adjacent republication) and `registry.with_default_aliases()`
   are Rust-only.
-- `FixRegistry::install_global` fails once the default is resolved; install at
-  startup, before any `FixRegistry::global()` or `FixMsg::new`.
+- `FixRegistry::install_env` fails once the default is resolved; install at
+  startup, before any `FixRegistry::from_env()` or `FixMsg::new`.

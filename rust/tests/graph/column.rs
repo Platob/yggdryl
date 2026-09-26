@@ -10,7 +10,7 @@ fn every_column_states_back_what_it_read() {
     event.set_creaunix(Some(1_600_000_000_000_000_000));
     event.set_execunix(Some(1_650_000_000_000_000_000));
     event.set_recdunix(Some(1_675_000_000_000_000_000));
-    event.set_exprtime(Some(1_800_000_000_000_000_000));
+    event.set_exprunix(Some(1_800_000_000_000_000_000));
     event.set_prevunix(Some(1_650_000_000_000_000_000));
     event.set_snapunix(Some(1_700_000_000_000_000_001));
     event.set_curruuid(Uuid::from_v8(1));
@@ -36,7 +36,7 @@ fn every_column_states_back_what_it_read() {
     assert_eq!(again.get_creaunix(), event.get_creaunix());
     assert_eq!(again.get_execunix(), event.get_execunix());
     assert_eq!(again.get_recdunix(), event.get_recdunix());
-    assert_eq!(again.get_exprtime(), event.get_exprtime());
+    assert_eq!(again.get_exprunix(), event.get_exprunix());
     assert_eq!(again.get_prevunix(), event.get_prevunix());
     assert_eq!(again.get_snapunix(), event.get_snapunix());
     assert_eq!(again.get_curruuid(), event.get_curruuid());
@@ -86,7 +86,7 @@ fn a_null_clears_and_nothing_stated_is_none() {
             "creaunix",
             "execunix",
             "recdunix",
-            "exprtime",
+            "exprunix",
             "prevunix",
             "snapunix",
             "curruuid",

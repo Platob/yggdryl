@@ -296,7 +296,7 @@ mod dataset {
         assert_eq!(
             direct
                 .iter()
-                .filter(|message| message.get_state().as_str() == "95EXPIRED")
+                .filter(|message| *message.get_state() == yggdryl::State::Expired)
                 .count(),
             1
         );
@@ -820,10 +820,7 @@ mod dataset {
         assert_eq!(fill.by_tag(470).unwrap().as_str(), Some("CH"));
         assert_eq!(fill.by_tag(460).unwrap().as_i128(), Some(5), "Product");
         assert_eq!(fill.get_miccode().map(|held| held.as_str()), Some("XSWX"));
-        assert_eq!(
-            Some(fill.get_state().clone()),
-            yggdryl::State::from_spelling("1"),
-        );
+        assert_eq!(Some(*fill.get_state()), yggdryl::State::from_spelling("1"),);
         // A stated value is never a derived one: the line said 260 remain.
         assert_eq!(fill.by_tag(151).unwrap(), super::decimal("260"));
 
@@ -1122,7 +1119,9 @@ mod dataset {
             yggdryl::graph::Market::get_quantity(&deltas[0]),
             Some(yggdryl::Decimal::from_int(10_000))
         );
-        assert_eq!(last.get_currhashcode(), 4_619_727_780_541_450_139);
+        // The book's code digests its events' states, each fed as the `int32`
+        // code of its member.
+        assert_eq!(last.get_currhashcode(), 7_839_532_806_895_463_521);
 
         // No leaf keys a typed fact.
         for operation in &operations {

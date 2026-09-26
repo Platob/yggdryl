@@ -33,8 +33,8 @@ mod sealed {
         fn walked_state(&self) -> Option<&State>;
         /// [`Event::set_state`].
         fn walked_set_state(&mut self, state: State);
-        /// [`Event::get_exprtime`].
-        fn walked_exprtime(&self) -> Option<i64>;
+        /// [`Event::get_exprunix`].
+        fn walked_exprunix(&self) -> Option<i64>;
         /// [`Event::set_execunix`].
         fn walked_set_execunix(&mut self, unix: Option<i64>);
         /// [`Event::set_recdunix`].
@@ -68,8 +68,8 @@ mod sealed {
         fn walked_set_state(&mut self, state: State) {
             self.set_state(state);
         }
-        fn walked_exprtime(&self) -> Option<i64> {
-            self.get_exprtime()
+        fn walked_exprunix(&self) -> Option<i64> {
+            self.get_exprunix()
         }
         fn walked_set_execunix(&mut self, unix: Option<i64>) {
             self.set_execunix(unix);
@@ -120,8 +120,8 @@ mod sealed {
                 operation.set_state(state);
             }
         }
-        fn walked_exprtime(&self) -> Option<i64> {
-            self.as_event_operation().and_then(Event::get_exprtime)
+        fn walked_exprunix(&self) -> Option<i64> {
+            self.as_event_operation().and_then(Event::get_exprunix)
         }
         fn walked_set_execunix(&mut self, unix: Option<i64>) {
             if let Some(operation) = self.as_event_operation_mut() {
@@ -244,7 +244,7 @@ enum Source<E, I> {
 /// and grid views are owned snapshots and necessarily clone their live event.
 ///
 /// A live element with a finite expiration produces one final owned event at
-/// that exact instant in the `95EXPIRED` state, then retires. Replacing or
+/// that exact instant in the `EXPIRED` state, then retires. Replacing or
 /// ending its generation removes the old scheduled deadline. A deadline at
 /// the same instant as source input is read first; after the source ends,
 /// the finite deadlines still live are drained in their own order.
@@ -430,7 +430,7 @@ where
         if let Some(deadline) = self
             .alive
             .get(&identity)
-            .and_then(|live| live.element.walked_exprtime())
+            .and_then(|live| live.element.walked_exprunix())
         {
             self.expirations.remove(&(deadline, identity));
         }
@@ -461,7 +461,7 @@ where
                     arrived,
                 },
             );
-            if let Some(deadline) = element.walked_exprtime() {
+            if let Some(deadline) = element.walked_exprunix() {
                 self.expirations.insert((deadline, identity));
             }
         } else {
@@ -472,7 +472,7 @@ where
     /// Retires the live identity and every index and deadline it owns.
     fn retire(&mut self, identity: Uuid) -> Option<Live<E>> {
         let live = self.alive.remove(&identity)?;
-        if let Some(deadline) = live.element.walked_exprtime() {
+        if let Some(deadline) = live.element.walked_exprunix() {
             self.expirations.remove(&(deadline, identity));
         }
         for (scheme, name) in self.names_of.remove(&identity).unwrap_or_default() {
@@ -548,7 +548,7 @@ where
         if self
             .alive
             .get(&identity)
-            .and_then(|live| live.element.walked_exprtime())
+            .and_then(|live| live.element.walked_exprunix())
             != Some(deadline)
         {
             return None;
@@ -557,7 +557,7 @@ where
         self.watermark = Some(self.watermark.map_or(deadline, |held| held.max(deadline)));
         let mut expired = previous.clone();
         expired.walked_set_currunix(deadline);
-        expired.walked_set_state(State::read("expired").expect("the shipped expired state"));
+        expired.walked_set_state(State::Expired);
         expired.walked_set_execunix(None);
         expired.walked_set_recdunix(None);
         expired.walked_set_snapunix(None);
@@ -726,8 +726,8 @@ where
 /// Whether an element can still be followed: its state can still change,
 /// and it is not past its expiration.
 fn is_alive<E: Walked>(element: &E) -> bool {
-    element.walked_state().is_some_and(State::is_live)
-        && element.walked_exprtime().is_none_or(|expiration| {
+    element.walked_state().is_some_and(|state| state.is_live())
+        && element.walked_exprunix().is_none_or(|expiration| {
             element
                 .walked_currunix()
                 .is_none_or(|unix| expiration > unix)

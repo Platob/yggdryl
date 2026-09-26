@@ -7,7 +7,7 @@
 // bid and three ask quotes, limit orders, executions stating `lastpx` and
 // `lastqty`; `ALPHA` adds a market order stating no price and one composite
 // trade over two sided fills, `BETA` an order that expires - its later
-// statement `95EXPIRED`, following the first by `prevuuid` - and a full
+// statement `EXPIRED`, following the first by `prevuuid` - and a full
 // snapshot control that replaces its book. Two `ALPHA` statements stand one
 // nanosecond apart, so a consumer can prove two such instants stay distinct.
 
@@ -51,7 +51,7 @@ function ladder(at, ticker, bids, asks) {
  */
 function synthetic() {
   const expiring = order(T0 + 2n * MS, 'BETA', 'BETA-O-1', 'SELL', '41.5', 60, { state: 'NEW' })
-  const expired = order(T0 + 4n * MS, 'BETA', 'BETA-O-1', 'SELL', '41.5', 60, { state: '95EXPIRED' }).withPrevious(expiring)
+  const expired = order(T0 + 4n * MS, 'BETA', 'BETA-O-1', 'SELL', '41.5', 60, { state: 'EXPIRED' }).withPrevious(expiring)
   const tradeAt = T0 + 5n * MS
   const trade = graph.TradeEvent.fromParts(
     new graph.ExecutionEvent(tradeAt, { crosscode: 'ALPHA-T-1', ticker: 'ALPHA', lastpx: '82.5', lastqty: 30, currency: 'USD' }),

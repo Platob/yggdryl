@@ -528,8 +528,8 @@ pub enum Serie {
     Isin(Arc<Utf8StringSerie>),
     /// A column of `Side` values, stored as their UTF-8 text.
     Side(Arc<Utf8StringSerie>),
-    /// A column of `State` values, stored as their UTF-8 text.
-    State(Arc<Utf8StringSerie>),
+    /// A column of `State` values, stored as their `int32` codes.
+    State(Arc<Int32Serie>),
     /// A column of `TimeInForce` values, stored as their UTF-8 text.
     TimeInForce(Arc<Utf8StringSerie>),
     /// A column of `Version` values, stored as their UTF-8 text.
@@ -1123,19 +1123,22 @@ impl Leaf for Int16Serie {
 
 impl Leaf for Int32Serie {
     fn root(self) -> Serie {
-        Serie::Int32(Arc::new(self))
+        match SerieValue::field(&self).dtype() {
+            DataType::State => Serie::State(Arc::new(self)),
+            _ => Serie::Int32(Arc::new(self)),
+        }
     }
 
     fn narrow(serie: &Serie) -> Option<&Self> {
         match serie {
-            Serie::Int32(held) => Some(held.as_ref()),
+            Serie::Int32(held) | Serie::State(held) => Some(held.as_ref()),
             _ => None,
         }
     }
 
     fn narrow_mut(serie: &mut Serie) -> Option<&mut Self> {
         match serie {
-            Serie::Int32(held) => Some(Arc::make_mut(held)),
+            Serie::Int32(held) | Serie::State(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
     }
@@ -1350,7 +1353,6 @@ impl Leaf for Utf8StringSerie {
             DataType::Cfi => Serie::Cfi(Arc::new(self)),
             DataType::Isin => Serie::Isin(Arc::new(self)),
             DataType::Side => Serie::Side(Arc::new(self)),
-            DataType::State => Serie::State(Arc::new(self)),
             DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
             DataType::Version => Serie::Version(Arc::new(self)),
             DataType::Url => Serie::Url(Arc::new(self)),
@@ -1377,7 +1379,6 @@ impl Leaf for Utf8StringSerie {
             | Serie::Cfi(held)
             | Serie::Isin(held)
             | Serie::Side(held)
-            | Serie::State(held)
             | Serie::TimeInForce(held)
             | Serie::Version(held)
             | Serie::Url(held)
@@ -1404,7 +1405,6 @@ impl Leaf for Utf8StringSerie {
             | Serie::Cfi(held)
             | Serie::Isin(held)
             | Serie::Side(held)
-            | Serie::State(held)
             | Serie::TimeInForce(held)
             | Serie::Version(held)
             | Serie::Url(held)

@@ -66,8 +66,8 @@ let committedRegistry
   // The scalar fields the committed dictionary stores.
   const STORED = 6241
   // The named code sets it stores beside them, one per vocabulary however many
-  // fields read by it.
-  const CODESETS = 736
+  // fields read by it: the 735 published and the crate's MsgCat and state sets.
+  const CODESETS = 737
 
   /**
  * The scalar fields a registry holds, and the definitions behind them.
@@ -323,7 +323,7 @@ let committedRegistry
 
   test('a field names the code set it reads by, and the dictionary holds it', () => {
     const registry = new fix.FixRegistry()
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
 
     // The set is stated first: a dictionary refuses a field naming a
     // vocabulary nothing states, so the members exist before a field points
@@ -332,7 +332,7 @@ let committedRegistry
       { value: '1', name: 'Buy' },
       { value: '2', name: 'Sell', aliases: ['Sold'], doc: 'Sell side', group: 'Outright' },
     ])
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'statecodeset'])
 
     const side = fixField('Side', 'utf8', 54)
     assert.equal(side.fix.codeset, null)
@@ -378,7 +378,7 @@ let committedRegistry
     assert.equal(held.has('FIX:codeset'), false)
     registry.insert(held)
     assert.deepEqual(registry.removeCodeset('sidecodeset'), set.codes)
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
     assert.equal(registry.removeCodeset('sidecodeset'), null)
 
     // The committed dictionary is the same shape at scale: one set per
@@ -406,7 +406,7 @@ let committedRegistry
     const registry = new fix.FixRegistry()
     assert.throws(() => registry.insert(stray), refused)
     assert.equal(registry.getFieldByTag(54), null)
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'statecodeset'])
 
     // With the set stated the same field arrives, and a held field sent to a
     // set nothing states is refused on update, the dictionary unchanged.
@@ -481,7 +481,7 @@ let committedRegistry
       { value: '1', name: 'Buy' },
       { value: '2', name: 'Sell' },
     ])
-    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'venuesidecodeset'])
+    assert.deepEqual(registry.codesetNames(), ['msgcatcodeset', 'sidecodeset', 'statecodeset', 'venuesidecodeset'])
   })
 
   test('a tag crosses as a number and is never narrowed', () => {
@@ -1135,7 +1135,7 @@ let committedRegistry
     // categories, because a code set is the dictionary's and not a field's.
     const document = registry.toJSON()
     assert.deepEqual(Object.keys(document).sort(), ['codesets', 'components', 'fields', 'groups'])
-    assert.deepEqual(document.codesets.map((codeset) => codeset.name), ['msgcatcodeset'])
+    assert.deepEqual(document.codesets.map((codeset) => codeset.name), ['msgcatcodeset', 'statecodeset'])
     assert.equal(document.fields.find((field) => field.name === 'TradeID').metadata['FIX:branches'], 'cme')
   })
 
@@ -1351,7 +1351,8 @@ let committedRegistry
     assert.equal(message.crosscode, 'C-1')
     assert.equal(message.currunix, SENDING_NS)
     assert.equal(message.creaunix, SENDING_NS)
-    assert.equal(message.state, '00UNKNOWN')
+    // A new order stating no status asks for a new order.
+    assert.equal(message.state, 'PENDING_NEW')
     assert.equal(message.seqnum, 0)
     assert.equal(message.prevuuid, null)
     assert.deepEqual(message.srcuuids, [])
@@ -1619,7 +1620,7 @@ let committedRegistry
       assert.equal(event[code], null, code)
     }
     assert.equal(event.unit, '')
-    assert.equal(event.exprtime, null)
+    assert.equal(event.exprunix, null)
     assert.equal(event.prevunix, null)
     assert.equal(event.snapunix, null)
     // No cross code names no chain: the chain identity is the message's own.
@@ -1883,11 +1884,11 @@ let committedRegistry
     const registry = fix.FixRegistry.fromFields([fixField('Symbol', 'utf8', 55)])
     const root = fields.struct('row', [registry.fieldByTag(55)], { nullable: false })
 
-    const global = fix.globalRegistry()
-    assert.ok(global instanceof fix.FixRegistry)
+    const held = fix.FixRegistry.fromEnv()
+    assert.ok(held instanceof fix.FixRegistry)
     // Whatever this machine has installed, the two calls answer one dictionary.
-    assert.ok(global.equals(fix.globalRegistry()))
-    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(global))
+    assert.ok(held.equals(fix.FixRegistry.fromEnv()))
+    assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }).registry.equals(held))
     // An explicit registry is kept instead.
     assert.ok(new fix.FixMsg(root, { Symbol: 'AAPL' }, registry).registry.equals(registry))
   })
@@ -1942,8 +1943,6 @@ let committedRegistry
         'MsgType',
         'ULBRIDGE_ROWHEADER',
         'crateFields',
-        'globalRegistry',
-        'installGlobalRegistry',
         'schema',
         'schemaCarrying',
         'schemaTags',
@@ -1971,7 +1970,9 @@ let committedRegistry
     ]) {
       assert.equal(name in yggdryl, false, name)
     }
-    assert.equal(typeof fix.installGlobalRegistry, 'function')
+    assert.equal(typeof fix.FixRegistry.installEnv, 'function')
+    assert.equal(typeof fix.FixRegistry.fromEnv, 'function')
+    assert.equal(typeof fix.FixCodec.fromEnv, 'function')
   })
 
   test('installing the process default wins before anything resolves it', () => {
@@ -1980,13 +1981,14 @@ let committedRegistry
     const assert = require('node:assert/strict')
     const { Field, fields, fix } = require(process.argv[1])
     const seed = fix.FixRegistry.fromHandle(process.argv[2])
-    fix.installGlobalRegistry(seed)
-    assert.ok(fix.globalRegistry().equals(seed))
-    assert.equal(fix.globalRegistry().fieldByTag(55).name, 'symbol')
-    assert.equal(fix.globalRegistry().fieldByName('SYMBOL').name, 'symbol')
-    const root = fields.struct('row', [fix.globalRegistry().fieldByTag(55)], { nullable: false })
+    fix.FixRegistry.installEnv(seed)
+    assert.ok(fix.FixRegistry.fromEnv().equals(seed))
+    assert.equal(fix.FixRegistry.fromEnv().fieldByTag(55).name, 'symbol')
+    assert.equal(fix.FixRegistry.fromEnv().fieldByName('SYMBOL').name, 'symbol')
+    const root = fields.struct('row', [fix.FixRegistry.fromEnv().fieldByTag(55)], { nullable: false })
     assert.ok(new fix.FixMsg(root, { symbol: 'AAPL' }).registry.equals(seed))
-    assert.throws(() => fix.installGlobalRegistry(new fix.FixRegistry()), /already resolved/)
+    assert.ok(fix.FixCodec.fromEnv().registry.equals(seed))
+    assert.throws(() => fix.FixRegistry.installEnv(new fix.FixRegistry()), /already resolved/)
     console.log('ok')
   `
     const { execFileSync } = require('node:child_process')
@@ -2298,11 +2300,11 @@ let committedRegistry
 
     const expiring = snapshots.parseFixLine(Buffer.from('8=FIX.4.4|35=D|49=S|56=T|34=1|52=20260102-10:15:30|126=20260102-10:15:32|11=EXP-1|55=AAPL|10=0|'))
     const entries = expiring.entries()
-    const deadline = expiring.exprtime
+    const deadline = expiring.exprunix
     const walked = [...snapshots.lifecycle([expiring])]
     assert.deepEqual(expiring.entries(), entries)
     assert.equal(expiring.snapunix, null)
-    assert.ok(walked.some((message) => message.currunix === deadline && message.state === '95EXPIRED'))
+    assert.ok(walked.some((message) => message.currunix === deadline && message.state === 'EXPIRED'))
     const emittedSnapshots = walked.filter((message) => message.snapunix !== null)
     assert.ok(emittedSnapshots.length > 0)
     assert.ok(emittedSnapshots.every((message) => message.currunix <= message.snapunix && message.snapunix < deadline))
@@ -2372,7 +2374,7 @@ let committedRegistry
     assert.equal(latest.header().beginstring, 'FIX.4.2')
     // The state the report reached is the event's, ranked; the row keeps the
     // code the wire spelled, restated to the latest alias where one applies.
-    assert.equal(latest.state, '40PARTFILL')
+    assert.equal(latest.state, 'PARTIALLY_FILLED')
     assert.equal(latest.byTag(150).asJs(), 'F')
     assert.equal(latest.byTag(39).asJs(), '1')
 
@@ -4115,8 +4117,8 @@ let committedRegistry
     // microseconds, so those lines arrived with no session, context or
     // sequence and could not be folded onto the deliveries they repeat.
     const walked = [...codec.lifecycle(messages)]
-    const expired = walked.filter((message) => message.state === '95EXPIRED')
-    const retained = walked.filter((message) => message.state !== '95EXPIRED')
+    const expired = walked.filter((message) => message.state === 'EXPIRED')
+    const retained = walked.filter((message) => message.state !== 'EXPIRED')
     assert.equal(retained.length, 27)
     assert.equal(expired.length, 1)
     assert.equal(walked.length, 28)
@@ -4159,7 +4161,7 @@ let committedRegistry
     const [expiry] = expired
     const predecessor = retained.find((message) => message.curruuid === expiry.prevuuid)
     assert.ok(predecessor)
-    assert.equal(expiry.currunix, predecessor.exprtime)
+    assert.equal(expiry.currunix, predecessor.exprunix)
     assert.equal(expiry.seqnum, predecessor.seqnum + 1)
     assert.deepEqual(expiry.srcuuids, predecessor.srcuuids)
 
@@ -4201,7 +4203,7 @@ let committedRegistry
           state: event.state,
           seqnum: event.seqnum,
           creaunix: event.creaunix,
-          exprtime: event.exprtime,
+          exprunix: event.exprunix,
           prevunix: event.prevunix,
           snapunix: event.snapunix,
         },
@@ -4267,7 +4269,7 @@ let committedRegistry
     assert.equal(last.ticker, '2454')
     assert.ok(last.bid.isEmpty && last.ask.isEmpty)
     assert.deepEqual(last.ask.deltas.map((delta) => delta.price), [null, null])
-    assert.equal(last.currhashcode, 4_619_727_780_541_450_139n)
+    assert.equal(last.currhashcode, 7_839_532_806_895_463_521n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

@@ -20,7 +20,7 @@ every leaf, and the lifted **`marketdata` Arrow row** (59 columns, one
 Hold four facts:
 
 - **Instants are `i64` nanoseconds since the Unix epoch, UTC** - `currunix`,
-  `creaunix`, `execunix`, `recdunix`, `exprtime`, `prevunix`, `snapunix`.
+  `creaunix`, `execunix`, `recdunix`, `exprunix`, `prevunix`, `snapunix`.
   Python ints, JavaScript `bigint`s, Arrow `datetime64(ns, UTC)`.
 - **Identity is derived, not assigned.** A leaf is finalized on construction:
   `currhashcode` is the XXH3-64 of its content, `curruuid` a UUIDv7 of

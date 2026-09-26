@@ -174,8 +174,6 @@ pub enum DataTypeId {
     Cfi = 0x74,
     /// FIX's side of a trade, four ASCII bytes.
     Side = 0x75,
-    /// What state one thing is in.
-    State = 0x76,
     /// How long an order stands.
     TimeInForce = 0x77,
     /// ISO 6166: a securities identification number, twelve ASCII bytes.
@@ -229,6 +227,10 @@ pub enum DataTypeId {
     Geometry = 0xb1,
     /// Geospatial features on the surface of a sphere or spheroid.
     Geography = 0xb2,
+    // Enum: 0xc0..0xcf
+    /// What state one thing is in: a lifecycle-sorted enum, stored as the
+    /// `int32` code of its member.
+    State = 0xc1,
 }
 
 impl DataTypeId {
@@ -298,7 +300,6 @@ impl DataTypeId {
         Self::Mic,
         Self::Cfi,
         Self::Side,
-        Self::State,
         Self::TimeInForce,
         Self::Isin,
         Self::Cusip,
@@ -322,6 +323,7 @@ impl DataTypeId {
         Self::Variant,
         Self::Geometry,
         Self::Geography,
+        Self::State,
     ];
 
     /// Parse a canonical lowercase datatype name.
@@ -659,7 +661,7 @@ impl DataTypeId {
     /// The number each standard fixes: two for a country, three for a
     /// currency, four for a market identifier or a side, six for a
     /// classification, seven for a SEDOL, eight for a time in force, nine
-    /// for a CUSIP, ten for a state, twelve for an ISIN, and thirty-two for
+    /// for a CUSIP, twelve for an ISIN, and thirty-two for
     /// a Bloomberg identifier - the one whose width is only a bound, because
     /// a ticker, a market and a yellow key have no fixed length between
     /// them - and for a unit, which takes the same bound. It is a
@@ -677,7 +679,6 @@ impl DataTypeId {
             Self::Sedol => Some(7),
             Self::Side | Self::TimeInForce => Some(8),
             Self::Cusip => Some(9),
-            Self::State => Some(10),
             Self::Isin | Self::Figi => Some(12),
             Self::Bbg | Self::Unit | Self::Ric => Some(32),
             _ => None,

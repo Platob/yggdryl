@@ -145,8 +145,8 @@ macro_rules! event_getters {
 
             /// When this expires, where it has an expiry.
             #[napi(getter)]
-            pub fn exprtime(&self) -> Option<::napi::bindgen_prelude::BigInt> {
-                ::yggdryl::graph::Event::get_exprtime(&self.inner)
+            pub fn exprunix(&self) -> Option<::napi::bindgen_prelude::BigInt> {
+                ::yggdryl::graph::Event::get_exprunix(&self.inner)
                     .map(::napi::bindgen_prelude::BigInt::from)
             }
 

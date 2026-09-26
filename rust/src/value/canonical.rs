@@ -988,7 +988,6 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => {
             if value.is_code() && value.id() == dtype.id() {
@@ -997,12 +996,12 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let Some(bytes) = ascii_bytes(value) else {
                 return canonicalization_failure(dtype);
             };
-            // A side and a state are read by their spelling, and a name is
-            // longer than the value it names - `SellShortExempt` for
-            // `SSHORTEX` - so the width holds the value read, never the
-            // spelling; every other code is the text it is, at its width.
+            // A side is read by its spelling, and a name is longer than the
+            // value it names - `SellShortExempt` for `SSHORTEX` - so the width
+            // holds the value read, never the spelling; every other code is
+            // the text it is, at its width.
             let text = match dtype {
-                D::Side | D::State => ascii_text_sized(None, bytes)?,
+                D::Side => ascii_text_sized(None, bytes)?,
                 _ => code_cell_text(dtype, bytes)?,
             };
             let canonical = match dtype {
@@ -1016,17 +1015,32 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 D::Bbg => Scalar::Bbg(crate::Bbg::new(text)?),
                 D::Ric => Scalar::Ric(crate::Ric::new(text)?),
                 D::Figi => Scalar::Figi(crate::Figi::new(text)?),
-                // A side and a state are read by their spelling: the wire
-                // code, the specification's name or a stored value all reach
-                // the one explicit value, and a spelling that names none is
-                // refused rather than stored unread.
+                // A side is read by its spelling: the wire code, the
+                // specification's name or a stored value all reach the one
+                // explicit value, and a spelling that names none is refused
+                // rather than stored unread.
                 D::Side => Scalar::Side(crate::Side::read(text)?),
-                D::State => Scalar::State(crate::State::read(text)?),
                 D::TimeInForce => Scalar::TimeInForce(crate::TimeInForce::new(text)?),
                 D::Unit => Scalar::Unit(crate::Unit::new(text)?),
                 _ => unreachable!("registered code matched above"),
             };
             Ok((canonical, true))
+        }
+        // A state is its member: an integer is read as the code it is and
+        // text as the spelling it is, and one that names no member is
+        // refused rather than stored unread.
+        D::State => {
+            if let Scalar::State(_) = value {
+                return Ok((value.clone(), false));
+            }
+            let state = match (value.as_i128(), value.as_str()) {
+                (Some(code), _) => crate::State::read_code(
+                    i64::try_from(code).map_err(|_| state_code_refusal(code))?,
+                )?,
+                (None, Some(text)) => crate::State::read(text)?,
+                (None, None) => return canonicalization_failure(dtype),
+            };
+            Ok((Scalar::State(state), true))
         }
         // The canonical UUID spelling is the hyphenated text; the sixteen
         // stored bytes and the bare-hex spelling are rewritten here.
@@ -1639,6 +1653,14 @@ fn check_string_bound(parameters: StringType, text: &str) -> Result<()> {
     Ok(())
 }
 
+/// The refusal an integer too wide to be a state's code answers with.
+fn state_code_refusal(code: i128) -> Error {
+    Error::InvalidDataType {
+        kind: "state",
+        reason: format_smolstr!("expected the code of a state, got {code}"),
+    }
+}
+
 fn canonicalization_failure<T>(dtype: &DataType) -> Result<T> {
     Err(Error::InvalidRecord {
         path: SmolStr::new_static("$"),
@@ -1842,18 +1864,29 @@ fn validate_dtype_value(
         | D::Ric
         | D::Figi
         | D::Side
-        | D::State
         | D::TimeInForce
         | D::Unit => match ascii_bytes(value) {
-            // A side and a state are read by their spelling, which may be
-            // longer than the value it names; the width holds the value.
-            Some(bytes) if matches!(dtype, D::Side | D::State) => ascii_text_sized(None, bytes)
+            // A side is read by its spelling, which may be longer than the
+            // value it names; the width holds the value.
+            Some(bytes) if matches!(dtype, D::Side) => ascii_text_sized(None, bytes)
                 .map(|_| ())
                 .map_err(ascii_failure),
             Some(bytes) => code_cell_text(dtype, bytes)
                 .map(|_| ())
                 .map_err(ascii_failure),
             None => Err(expected(dtype.name(), value)),
+        },
+        D::State => match value {
+            Scalar::State(_) => Ok(()),
+            other => match (other.as_i128(), other.as_str()) {
+                (Some(code), _) => i64::try_from(code)
+                    .map_err(|_| state_code_refusal(code))
+                    .and_then(crate::State::read_code)
+                    .map(|_| ())
+                    .map_err(ascii_failure),
+                (None, Some(text)) => crate::State::read(text).map(|_| ()).map_err(ascii_failure),
+                (None, None) => Err(expected(dtype.name(), value)),
+            },
         },
         D::Uuid => match value {
             Scalar::Uuid(_) => Ok(()),

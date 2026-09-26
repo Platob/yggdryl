@@ -12,7 +12,7 @@
 //! slim holder and convert to its view by a move, never a copy.
 //!
 //! `Default` states nothing: a price and a quantity of nothing in no currency
-//! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `00UNKNOWN`
+//! (`XXX`), no unit, a side of `UNKNOWN`, no identifiers, a `UNKNOWN`
 //! state at the epoch, and the nil identity until [`Element::finalize`]
 //! derives one from the facts.
 
@@ -456,7 +456,7 @@ pub(crate) struct MarketEventFacts {
     creaunix: Option<i64>,
     execunix: Option<i64>,
     recdunix: Option<i64>,
-    exprtime: Option<i64>,
+    exprunix: Option<i64>,
     prevunix: Option<i64>,
     prevuuid: Option<Uuid>,
     snapunix: Option<i64>,
@@ -476,7 +476,7 @@ impl MarketEventFacts {
             creaunix: None,
             execunix: None,
             recdunix: None,
-            exprtime: None,
+            exprunix: None,
             prevunix: None,
             prevuuid: None,
             snapunix: None,
@@ -641,12 +641,12 @@ impl Event for MarketEventFacts {
         self.recdunix = unix;
     }
 
-    fn get_exprtime(&self) -> Option<i64> {
-        self.exprtime
+    fn get_exprunix(&self) -> Option<i64> {
+        self.exprunix
     }
 
-    fn set_exprtime(&mut self, unix: Option<i64>) {
-        self.exprtime = unix;
+    fn set_exprunix(&mut self, unix: Option<i64>) {
+        self.exprunix = unix;
     }
 
     fn get_prevunix(&self) -> Option<i64> {
@@ -1033,12 +1033,12 @@ fn copy_element<T: Element + ?Sized, E: Element + ?Sized>(this: &mut T, other: &
 
 fn copy_event<T: Event + ?Sized, E: Event + ?Sized>(this: &mut T, other: &E) {
     this.set_currunix(other.get_currunix());
-    this.set_state(other.get_state().clone());
+    this.set_state(*other.get_state());
     this.set_seqnum(other.get_seqnum());
     this.set_creaunix(other.get_creaunix());
     this.set_execunix(other.get_execunix());
     this.set_recdunix(other.get_recdunix());
-    this.set_exprtime(other.get_exprtime());
+    this.set_exprunix(other.get_exprunix());
     this.set_prevunix(other.get_prevunix());
     this.set_prevuuid(other.get_prevuuid());
     this.set_snapunix(other.get_snapunix());

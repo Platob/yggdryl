@@ -2510,7 +2510,6 @@ mod typed {
                 DataType::Ric,
                 DataType::Figi,
                 DataType::Side,
-                DataType::State,
                 DataType::TimeInForce,
             ]
         }

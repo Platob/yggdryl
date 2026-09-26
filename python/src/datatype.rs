@@ -330,12 +330,15 @@ pub(crate) fn is_fixed_decimal(dtype: &CoreDataType) -> bool {
     matches!(dtype, CoreDataType::Decimal | CoreDataType::BigDecimal)
 }
 
-/// Whether a string or code datatype holds value rules `PyArrow` cannot check.
+/// Whether a string, code or state datatype holds value rules `PyArrow`
+/// cannot check.
 ///
 /// Plain UTF-8 text is what Arrow's own string layouts already guarantee;
-/// a charset, a bound, a fixed width, or a code's vocabulary is not.
+/// a charset, a bound, a fixed width, a code's vocabulary or a state's
+/// members are not.
 pub(crate) fn needs_core_value_rules(dtype: &CoreDataType) -> bool {
     dtype.is_code()
+        || matches!(dtype, CoreDataType::State)
         || dtype
             .string_parameters()
             .is_some_and(|parameters| !parameters.charset().is_utf8() || parameters.is_bounded())

@@ -310,7 +310,7 @@ export declare class BookEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -1554,7 +1554,7 @@ export declare class ExecutionEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -2371,6 +2371,11 @@ export declare class FixCodec {
    * operation carries its message's unmapped fields, on when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
+  /**
+   * A codec over the registry the process environment names,
+   * `FixRegistry.fromEnv()`, pinned by the options the constructor takes.
+   */
+  static fromEnv(options?: FixCodecOptions | undefined | null): FixCodec
   /** The dictionary this codec resolves against, sharing it. */
   get registry(): FixRegistry
   /** The byte a numeric frame splits on, or `null` where the line decides. */
@@ -2732,7 +2737,7 @@ export declare class FixMsg {
   /** When the event happened, nanoseconds since the Unix epoch, UTC. */
   get currunix(): bigint
   /**
-   * The order state the message reached, ranked: `00UNKNOWN` where it
+   * The order state the message reached, ranked: `UNKNOWN` where it
    * states none.
    */
   get state(): string
@@ -2747,7 +2752,7 @@ export declare class FixMsg {
   /** When the message was recorded, where stated. */
   get recdunix(): bigint | null
   /** When the order expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /** When the message this one follows happened, where it follows one. */
   get prevunix(): bigint | null
   /**
@@ -3096,6 +3101,25 @@ export declare class FixRegistry {
    * and `size` counts every one of them beside the dictionary's own.
    */
   constructor()
+  /**
+   * The registry the process environment names, loaded on the first call.
+   *
+   * The order is the core's: a registry installed by `installEnv`, then the
+   * folder `YGGDRYL_FIX_REGISTRY` names, then `~/.config/fix` when it
+   * exists, then a new registry holding the crate's own definitions and the
+   * two seeded clocks alone. Only the third step treats absence as that
+   * default; every other failure throws with the native message and the
+   * default stays unresolved, so the next call retries.
+   */
+  static fromEnv(): FixRegistry
+  /**
+   * Install `registry` as the one every later `fromEnv` answers, before
+   * anything resolves one.
+   *
+   * Throws once the default has resolved or been installed, so the value
+   * every caller saw cannot change underneath them.
+   */
+  static installEnv(registry: FixRegistry): void
   /**
    * Build a registry by inserting `fields` in order.
    *
@@ -4966,7 +4990,7 @@ export declare class OrderEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -5760,7 +5784,7 @@ export declare class QuoteEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -6893,7 +6917,7 @@ export declare class SnapshotEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -8140,7 +8164,7 @@ export declare class TradeEvent {
   /** When this was recorded, where stated. */
   get recdunix(): bigint | null
   /** When this expires, where it has an expiry. */
-  get exprtime(): bigint | null
+  get exprunix(): bigint | null
   /**
    * When the element this one follows happened, where it follows
    * one.
@@ -9302,7 +9326,7 @@ export interface FixCommitReport {
  * venue publishes.
  *
  * The event's instant `currunix` and the chain's `creaunix`, `execunix`,
- * `recdunix`, `prevunix`, `snapunix` and `exprtime`; the identities
+ * `recdunix`, `prevunix`, `snapunix` and `exprunix`; the identities
  * `currhashcode`, `crosshashcode`, `curruuid`, `crossuuid` and `prevuuid`;
  * the `srcuuids` list of the lines it was read from; the `crosscode`, the
  * `seqnum` and the `state` reached; the `metadata` Map group; what a
@@ -9831,6 +9855,17 @@ export interface SnapshotPartitionInput {
   scope: string
   /** The symbol this partition is for; `null` in global mode. */
   symbol?: string | null
+}
+
+/**
+ * One member of the core's state enum: its stored name, the code a `state`
+ * column stores, what it means, and the rank the code's hundreds state.
+ */
+export interface StateMember {
+  name: string
+  code: number
+  description: string
+  rank: number
 }
 
 /**

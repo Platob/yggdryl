@@ -48,6 +48,7 @@ mod parameters;
 mod protocol;
 mod scalar;
 mod serie;
+mod state;
 mod text;
 mod timezone;
 mod uri;
@@ -585,6 +586,10 @@ fn register_expression(module: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Register the native value and iterator classes.
 fn register_classes(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_class::<PyDataType>()?;
+    module.add_function(wrap_pyfunction!(state::state_members, module)?)?;
+    module.add_function(wrap_pyfunction!(state::state_from_spelling, module)?)?;
+    module.add_function(wrap_pyfunction!(state::state_from_fix_status, module)?)?;
+    module.add_function(wrap_pyfunction!(state::state_from_fix_msgtype, module)?)?;
     module.add_class::<PyStringEnum>()?;
     module.add_class::<parameters::PyStringParameters>()?;
     module.add_class::<parameters::PyBytesParameters>()?;
@@ -691,8 +696,6 @@ fn register_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add_function(wrap_pyfunction!(coding::zlib_dumps_raw, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_loads, module)?)?;
     module.add_function(wrap_pyfunction!(coding::zstd_dumps, module)?)?;
-    module.add_function(wrap_pyfunction!(fix::fix_global_registry, module)?)?;
-    module.add_function(wrap_pyfunction!(fix::fix_install_global_registry, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_carrying, module)?)?;
     module.add_function(wrap_pyfunction!(fix::fix_schema_tags, module)?)?;

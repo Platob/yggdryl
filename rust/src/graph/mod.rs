@@ -95,11 +95,11 @@ macro_rules! delegate_event {
             fn set_recdunix(&mut self, unix: Option<i64>) {
                 $crate::graph::Event::set_recdunix(&mut self.$($field).+, unix);
             }
-            fn get_exprtime(&self) -> Option<i64> {
-                $crate::graph::Event::get_exprtime(&self.$($field).+)
+            fn get_exprunix(&self) -> Option<i64> {
+                $crate::graph::Event::get_exprunix(&self.$($field).+)
             }
-            fn set_exprtime(&mut self, unix: Option<i64>) {
-                $crate::graph::Event::set_exprtime(&mut self.$($field).+, unix);
+            fn set_exprunix(&mut self, unix: Option<i64>) {
+                $crate::graph::Event::set_exprunix(&mut self.$($field).+, unix);
             }
             fn get_prevunix(&self) -> Option<i64> {
                 $crate::graph::Event::get_prevunix(&self.$($field).+)

@@ -316,7 +316,7 @@ assert!(Mic::from_reuters_exchange_code("TH").is_err());
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes string::listings timeinforce::coded
     ```
 
 === "Python"

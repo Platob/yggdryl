@@ -575,7 +575,7 @@ impl BookSide {
     ///     order.set_side(Side::read("Buy").unwrap());
     ///     order.set_price(price.map(Decimal::from_int));
     ///     order.set_quantity(Some(Decimal::from_int(quantity)));
-    ///     order.set_state(State::read("New").unwrap());
+    ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
@@ -626,7 +626,7 @@ impl BookSide {
     ///     order.set_side(Side::read("Sell").unwrap());
     ///     order.set_price(price.map(Decimal::from_int));
     ///     order.set_quantity(Some(Decimal::from_int(quantity)));
-    ///     order.set_state(State::read("New").unwrap());
+    ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
@@ -921,7 +921,7 @@ impl BookSide {
         if operation.operation_event().get_state().is_live()
             && operation
                 .operation_event()
-                .get_exprtime()
+                .get_exprunix()
                 .is_none_or(|expiration| expiration > operation.operation_event().get_currunix())
         {
             let identity = LiveKey::of(&operation);
@@ -1417,7 +1417,7 @@ impl BookEvent {
         let mut event = MarketEventFacts::at(unix);
         event.set_ticker((!symbol.is_empty()).then(|| SmolStr::new(&symbol)));
         event.set_crosscode(symbol);
-        event.set_state(State::from_spelling("New").expect("the shipped New state"));
+        event.set_state(State::New);
         let mut book = Self {
             event,
             bid: BookSide::new(Side::read("Buy").expect("the shipped Buy side"))
@@ -1539,7 +1539,7 @@ impl BookEvent {
     ///     order.set_side(Side::read(side).unwrap());
     ///     order.set_price(Some(Decimal::from_int(price)));
     ///     order.set_quantity(Some(Decimal::from_int(1)));
-    ///     order.set_state(State::read("New").unwrap());
+    ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
@@ -1573,7 +1573,7 @@ impl BookEvent {
     ///     order.set_side(Side::read(side).unwrap());
     ///     order.set_price(Some(price.parse().unwrap()));
     ///     order.set_quantity(Some(Decimal::from_int(1)));
-    ///     order.set_state(State::read("New").unwrap());
+    ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
@@ -1611,7 +1611,7 @@ impl BookEvent {
     ///     order.set_side(Side::read(side).unwrap());
     ///     order.set_price(Some(Decimal::from_int(price)));
     ///     order.set_quantity(Some(Decimal::from_int(quantity)));
-    ///     order.set_state(State::read("New").unwrap());
+    ///     order.set_state(State::New);
     ///     order.finalize();
     ///     MarketData::from(order)
     /// };
@@ -2320,7 +2320,7 @@ where
             (BookSideKind::Ask, book.ask.live()),
         ] {
             for operation in operations {
-                let Some(unix) = operation.operation_event().get_exprtime() else {
+                let Some(unix) = operation.operation_event().get_exprunix() else {
                     continue;
                 };
                 if unix <= book.get_currunix() {
@@ -2360,16 +2360,14 @@ where
                 continue;
             };
             if operation.get_curruuid() != expiration.generation
-                || operation.operation_event().get_exprtime() != Some(unix)
+                || operation.operation_event().get_exprunix() != Some(unix)
                 || !operation.operation_event().get_state().is_live()
             {
                 continue;
             }
             let mut operation = operation.clone();
             operation.operation_event_mut().set_currunix(unix);
-            operation
-                .operation_event_mut()
-                .set_state(State::read("expired").expect("the shipped expired state"));
+            operation.operation_event_mut().set_state(State::Expired);
             let mut book = operation
                 .operation_event()
                 .control()
@@ -2855,14 +2853,14 @@ where
         }
         if live
             && operation
-                .get_exprtime()
+                .get_exprunix()
                 .is_some_and(|expiration| expiration <= book_unix)
         {
             return Err(invalid(
-                path("exprtime"),
+                path("exprunix"),
                 format_smolstr!(
                     "expected a live expiration after {book_unix}, got {:?}",
-                    operation.get_exprtime()
+                    operation.get_exprunix()
                 ),
             ));
         }
