@@ -1004,3 +1004,149 @@
     flex: 1 1 100%;
   }
 }
+
+/* The replay: docs/assets/replay.js runs the package's own application in a
+ * frame, which carries the component theme, and renders the recorded view and
+ * scenario into these containers with Material's own custom properties. */
+.ygg-rp {
+  margin: 1em 0 1.6em;
+}
+
+.ygg-rp__frame {
+  display: block;
+  width: 100%;
+  height: min(calc(100vh - 6rem), 56rem);
+  min-height: 32rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  background-color: var(--md-default-bg-color);
+}
+
+.ygg-rp__view + .ygg-rp__view {
+  margin-top: 1.4em;
+}
+
+.ygg-rp h3 {
+  margin: 0 0 0.6em;
+  font-size: 0.8rem;
+}
+
+.ygg-rp__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6em;
+  margin: 1em 0 0.6em;
+  font-size: 0.75rem;
+}
+
+.ygg-rp__select {
+  font: inherit;
+  color: var(--md-default-fg-color);
+  background-color: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  padding: 0.3em 0.6em;
+}
+
+.ygg-rp__select:focus-visible,
+.ygg-rp__all summary:focus-visible {
+  outline: 2px solid var(--md-accent-fg-color);
+  outline-offset: 1px;
+}
+
+/* The tables carry a class, so Material's own table rules do not reach them;
+ * a wide one scrolls inside itself rather than widening the page. */
+.ygg-rp__table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  margin: 0 0 0.8em;
+}
+
+.ygg-rp__table th,
+.ygg-rp__table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35em 0.8em 0.35em 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ygg-rp__table thead th {
+  border-bottom: 2px solid var(--yggdryl-red);
+  font-weight: 650;
+}
+
+.ygg-rp__diff td:last-child {
+  white-space: normal;
+  min-width: 24em;
+  overflow-wrap: anywhere;
+}
+
+.ygg-rp__scroll {
+  overflow-x: auto;
+}
+
+/* A disclosure, not an admonition: Material styles every `details` in the
+ * content as a callout, so this one outranks `.md-typeset details`. */
+.md-typeset details.ygg-rp__all {
+  margin: 0 0 0.8em;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  font-size: 0.75rem;
+}
+
+.md-typeset details.ygg-rp__all > summary {
+  display: list-item;
+  list-style: disclosure-closed inside;
+  margin: 0 0 0.4em;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: 500;
+  color: var(--md-default-fg-color--light);
+  cursor: pointer;
+}
+
+.md-typeset details.ygg-rp__all[open] > summary {
+  list-style-type: disclosure-open;
+}
+
+.md-typeset details.ygg-rp__all > summary::before,
+.md-typeset details.ygg-rp__all > summary::after {
+  display: none;
+}
+
+.ygg-rp__note {
+  margin: 0 0 0.6em;
+  font-size: 0.75rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.ygg-rp__call {
+  margin: 0 0 0.8em;
+  padding: 0.5em 0.7em;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--md-code-fg-color);
+  background-color: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.3rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ygg-rp__error {
+  padding: 0.5em 0.8em;
+  font-size: 0.75rem;
+  border-left: 3px solid var(--md-accent-fg-color);
+  background-color: var(--md-accent-fg-color--transparent);
+  border-radius: 0.3rem;
+}

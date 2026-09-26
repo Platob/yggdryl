@@ -293,6 +293,26 @@ impl FixCodec {
         self.arrow_reader(schema, walked)
     }
 
+    /// A stream of batches of FIX rows as the market operations its
+    /// messages are, in [`MarketData::field`](crate::graph::MarketData::field)
+    /// rows.
+    ///
+    /// [`Self::messages`] into [`Self::market_arrow_reader`]: each row becomes
+    /// the message it holds, and the capture is expanded, sorted and
+    /// batched as that door does it - so a row that is not a FIX row, or a
+    /// failure of the source reader, is the reader's only item. A caller
+    /// wanting the walk first passes [`Self::lifecycle_arrow_reader`]'s
+    /// batches as the source.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema grammar's refusal when the source's schema does not
+    /// make a root field, before a row is read.
+    pub fn market_operations_arrow_reader(&self, source: BatchReader) -> Result<BatchReader> {
+        Self::row_field(source.schema().as_ref())?;
+        self.market_arrow_reader(self.messages(source))
+    }
+
     /// A stream of batches of FIX rows as the stream of messages it holds.
     ///
     /// Each row is one message through [`FixMsg::from_row`] under the

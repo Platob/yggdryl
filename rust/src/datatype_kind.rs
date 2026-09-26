@@ -28,7 +28,8 @@ pub enum DataTypeKind {
     Integer,
     /// IEEE binary floating point.
     Floating,
-    /// Exact base-10 decimals with a precision and scale.
+    /// Exact base-10 decimals: four widths with a precision and scale, and
+    /// the two fixed leaves `decimal` and `bigdecimal`.
     Decimal,
     /// Dates, times, timestamps, durations, and calendar intervals.
     Temporal,

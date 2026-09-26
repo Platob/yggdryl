@@ -149,7 +149,7 @@ Term ──bind(schema)──▶ Bound ──▶ Scalar | ArrayRef | certainty
 | --- | --- | --- |
 | `Term` | one tree: a column, a constant, a comparison, a function | `price > 100` |
 | `Filter` | one predicate over rows | `where price > 100` (the keyword optional on its own) |
-| `Selector` | the columns published, computed, declared, or excluded | `select id, price * 2 as doubled int64` |
+| `Selector` | the columns published, computed, declared, excluded or [unnested](grammar.md#unnest) | `select id, price * 2 as doubled int64`, `select * exclude (secret), unnest(legs) as leg` |
 | `Plan` | the sections of one read or write | `upsert into t by (id) select id from s where price > 0 limit 10` |
 | `Expression` | whichever of those the text is, or a `;`-separated sequence | `where id > 1; select name` |
 | `Records` | native rows streaming out of any of them | `selector.apply_records(schema, rows)` |
@@ -179,7 +179,7 @@ The rule every layer follows: do what the text asks whenever one reading does it
 | `n as small int8 not null` over the same value | refused, naming `small` and the value |
 | `select *` over a stream, or a cast to the type a column already has | the batch is handed back unchanged |
 
-The grammar itself accepts every common spelling - `insert into`, `append to`, `merge into ... on (...)`, `upsert into ... by (...)`, `* exclude (...)` and `* except (...)`, `limit` before or after `offset` - and prints one canonical text.
+The grammar itself accepts every common spelling - `insert into`, `append to`, `merge into ... on (...)`, `upsert into ... by (...)`, `* exclude (...)` and `* except (...)` with projections appended after them, `unnest` and `explode`, `limit` before or after `offset` - and prints one canonical text.
 
 ## Text round-trips
 
@@ -215,6 +215,8 @@ for text in [
 for text in [
     "select a, b as c",
     "select * exclude (secret)",
+    "select * exclude (secret), upper(name) as name",
+    "select id, unnest(legs) as leg",
     "where a > 1",
     "upsert into t by (id) select id from s where a > 1 order by id desc limit 10 offset 5",
     "create t (id int64 not null); insert into t from s; select id from t",

@@ -23,7 +23,7 @@ use super::element::Staged;
 use super::facts::{OperationEventFacts, OperationFacts};
 use super::kind::MarketKind;
 use super::{Element, Event, Market, Operation};
-use crate::{Decimal18, Uuid};
+use crate::{Decimal, Uuid};
 
 mod sealed {
     pub trait Sealed {}
@@ -163,10 +163,10 @@ pub struct BookRef {
     pub position: Option<u32>,
     /// `MDEntryPx(270)` as the entry stated it; a partial update stating
     /// none inherits the live entry's price.
-    pub entry_px: Option<Decimal18>,
+    pub entry_px: Option<Decimal>,
     /// `MDEntrySize(271)` as the entry stated it; a partial update stating
     /// none inherits the live entry's size.
-    pub entry_size: Option<Decimal18>,
+    pub entry_size: Option<Decimal>,
 }
 
 impl BookRef {
@@ -332,10 +332,10 @@ impl<K: OperationKind> Element for OperationElement<K> {
 }
 
 impl<K: OperationKind> Market for OperationElement<K> {
-    fn get_price(&self) -> Option<Decimal18> {
+    fn get_price(&self) -> Option<Decimal> {
         self.data.get_price()
     }
-    fn set_price(&mut self, price: Option<Decimal18>) {
+    fn set_price(&mut self, price: Option<Decimal>) {
         self.data.set_price(price);
     }
     fn get_currency(&self) -> &crate::Ccy {
@@ -344,10 +344,10 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_currency(&mut self, currency: crate::Ccy) {
         self.data.set_currency(currency);
     }
-    fn get_quantity(&self) -> Option<Decimal18> {
+    fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()
     }
-    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
+    fn set_quantity(&mut self, quantity: Option<Decimal>) {
         self.data.set_quantity(quantity);
     }
     fn get_unit(&self) -> &crate::Unit {
@@ -389,58 +389,58 @@ impl<K: OperationKind> Market for OperationElement<K> {
     fn set_miccode(&mut self, code: Option<crate::MicCode>) {
         self.data.set_miccode(code);
     }
-    fn get_lastpx(&self) -> Option<Decimal18> {
+    fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
     }
-    fn set_lastpx(&mut self, px: Option<Decimal18>) {
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
         self.data.set_lastpx(px);
     }
-    fn get_lastqty(&self) -> Option<Decimal18> {
+    fn get_lastqty(&self) -> Option<Decimal> {
         self.data.get_lastqty()
     }
-    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.data.set_lastqty(qty);
     }
-    fn get_avgpx(&self) -> Option<Decimal18> {
+    fn get_avgpx(&self) -> Option<Decimal> {
         self.data.get_avgpx()
     }
-    fn set_avgpx(&mut self, px: Option<Decimal18>) {
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
         self.data.set_avgpx(px);
     }
-    fn get_cumqty(&self) -> Option<Decimal18> {
+    fn get_cumqty(&self) -> Option<Decimal> {
         self.data.get_cumqty()
     }
-    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
         self.data.set_cumqty(qty);
     }
-    fn get_leavesqty(&self) -> Option<Decimal18> {
+    fn get_leavesqty(&self) -> Option<Decimal> {
         self.data.get_leavesqty()
     }
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
         self.data.set_leavesqty(qty);
     }
-    fn get_prevpx(&self) -> Option<Decimal18> {
+    fn get_prevpx(&self) -> Option<Decimal> {
         self.data.get_prevpx()
     }
-    fn set_prevpx(&mut self, px: Option<Decimal18>) {
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
         self.data.set_prevpx(px);
     }
-    fn get_prevqty(&self) -> Option<Decimal18> {
+    fn get_prevqty(&self) -> Option<Decimal> {
         self.data.get_prevqty()
     }
-    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
         self.data.set_prevqty(qty);
     }
-    fn get_spotrate(&self) -> Option<Decimal18> {
+    fn get_spotrate(&self) -> Option<Decimal> {
         self.data.get_spotrate()
     }
-    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+    fn set_spotrate(&mut self, rate: Option<Decimal>) {
         self.data.set_spotrate(rate);
     }
-    fn get_forwardpoints(&self) -> Option<Decimal18> {
+    fn get_forwardpoints(&self) -> Option<Decimal> {
         self.data.get_forwardpoints()
     }
-    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
         self.data.set_forwardpoints(points);
     }
     fn get_ticker(&self) -> Option<&str> {
@@ -829,10 +829,10 @@ impl<K: OperationKind> Event for OperationEvent<K> {
 }
 
 impl<K: OperationKind> Market for OperationEvent<K> {
-    fn get_price(&self) -> Option<Decimal18> {
+    fn get_price(&self) -> Option<Decimal> {
         self.data.get_price()
     }
-    fn set_price(&mut self, price: Option<Decimal18>) {
+    fn set_price(&mut self, price: Option<Decimal>) {
         self.data.set_price(price);
     }
     fn get_currency(&self) -> &crate::Ccy {
@@ -841,10 +841,10 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn set_currency(&mut self, currency: crate::Ccy) {
         self.data.set_currency(currency);
     }
-    fn get_quantity(&self) -> Option<Decimal18> {
+    fn get_quantity(&self) -> Option<Decimal> {
         self.data.get_quantity()
     }
-    fn set_quantity(&mut self, quantity: Option<Decimal18>) {
+    fn set_quantity(&mut self, quantity: Option<Decimal>) {
         self.data.set_quantity(quantity);
     }
     fn get_unit(&self) -> &crate::Unit {
@@ -886,58 +886,58 @@ impl<K: OperationKind> Market for OperationEvent<K> {
     fn set_miccode(&mut self, code: Option<crate::MicCode>) {
         self.data.set_miccode(code);
     }
-    fn get_lastpx(&self) -> Option<Decimal18> {
+    fn get_lastpx(&self) -> Option<Decimal> {
         self.data.get_lastpx()
     }
-    fn set_lastpx(&mut self, px: Option<Decimal18>) {
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
         self.data.set_lastpx(px);
     }
-    fn get_lastqty(&self) -> Option<Decimal18> {
+    fn get_lastqty(&self) -> Option<Decimal> {
         self.data.get_lastqty()
     }
-    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.data.set_lastqty(qty);
     }
-    fn get_avgpx(&self) -> Option<Decimal18> {
+    fn get_avgpx(&self) -> Option<Decimal> {
         self.data.get_avgpx()
     }
-    fn set_avgpx(&mut self, px: Option<Decimal18>) {
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
         self.data.set_avgpx(px);
     }
-    fn get_cumqty(&self) -> Option<Decimal18> {
+    fn get_cumqty(&self) -> Option<Decimal> {
         self.data.get_cumqty()
     }
-    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
         self.data.set_cumqty(qty);
     }
-    fn get_leavesqty(&self) -> Option<Decimal18> {
+    fn get_leavesqty(&self) -> Option<Decimal> {
         self.data.get_leavesqty()
     }
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
         self.data.set_leavesqty(qty);
     }
-    fn get_prevpx(&self) -> Option<Decimal18> {
+    fn get_prevpx(&self) -> Option<Decimal> {
         self.data.get_prevpx()
     }
-    fn set_prevpx(&mut self, px: Option<Decimal18>) {
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
         self.data.set_prevpx(px);
     }
-    fn get_prevqty(&self) -> Option<Decimal18> {
+    fn get_prevqty(&self) -> Option<Decimal> {
         self.data.get_prevqty()
     }
-    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
         self.data.set_prevqty(qty);
     }
-    fn get_spotrate(&self) -> Option<Decimal18> {
+    fn get_spotrate(&self) -> Option<Decimal> {
         self.data.get_spotrate()
     }
-    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+    fn set_spotrate(&mut self, rate: Option<Decimal>) {
         self.data.set_spotrate(rate);
     }
-    fn get_forwardpoints(&self) -> Option<Decimal18> {
+    fn get_forwardpoints(&self) -> Option<Decimal> {
         self.data.get_forwardpoints()
     }
-    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
         self.data.set_forwardpoints(points);
     }
     fn get_ticker(&self) -> Option<&str> {

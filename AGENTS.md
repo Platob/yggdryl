@@ -114,7 +114,7 @@ step is run, never which step is skipped.
   workspace shares one target directory and parallel cargo invocations wait
   on each other. The chain's order is the layer order, each step reading
   what the one before wrote: the whole run, clippy, the rustdoc examples,
-  §3's pre-push block, §4's, the two docs manifests, the example runner per
+  §3's pre-push block, §4's, the three docs manifests, the example runner per
   language; the whole run leads because its pins are the foreground's next
   edit, and a clippy warning or a broken example is an edit that moves no
   pin.
@@ -322,7 +322,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `value/` | what a datatype, a field and a value each owe the root that holds them, and what the leaves of one family share: the `Value` contract, `DataTypeValue` (its `kind` the family whose range its `id` is in), `FieldValue`, `FieldSidecar` and the payload datatypes `GeometryType`, `GeographyType`, `UnionType`, `RunEndType`, the leaf contracts `IntegerValue`, `FloatingValue`, `DecimalValue`, `TemporalValue`, `GeospatialValue`, `CodeValue` and `NestedValue` - declared here, implemented beside each leaf - and `SerieValue`, what every column leaf of `Serie` owes, its `id` and `kind` its field's, with `Children::Column`/`ColumnRows` walking a column's rows as `Cow`; a family is no type - it is the `DataTypeId` byte range its `DataTypeKind` owns, and a value is its leaf; `canonical.rs` the schema-directed validation and canonicalization of row values. The module is private, and every name is `yggdryl::<Name>` at the crate root |
 | `typed.rs` | the typed markers and the field-borrowing values: `TypedField<K>`, `FieldScalar<'_>`, `UncheckedFieldScalar<'_>`, `FieldRecord<'_>` and the prebuilt shared fields |
 | `cast.rs` | the one recursive cast engine, and it is `Serie`'s: the crate-private `ArrayCastPlan` node tree - exact, bit, kernel, byte bridge, the ingest and render kinds, and the nested and encoded arms - with the kernels it calls; the public `ArrowCastPlan`, one `Field`-to-`Field` cast compiled once, applied to a `Serie` - or, by `apply_chunked`, to every chunk of a `ChunkedSerie` - certifying per node which leaves it proved, with a transport face (`reconcile_batch`, `reconcile_array`) for batches that are only moved; `ArrowCastOptions`; and the crate's `PlanCache`, one plan per distinct source schema for a loop whose batches can change schema. `budget.rs` holds the bounded scratch and output reservations it draws on. Nothing reaches the engine except `Serie::cast`, the `Serie` and `ChunkedSerie` Arrow doors, `ChunkedSerie::cast`, `SerieReader`, a held `ArrowCastPlan`, and the crate's stage plans (`AppliedPlan` and the write session's shaping) |
-| `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
+| `integer.rs`, `floating.rs`, `decimal.rs`, `boolean.rs`, `bytes.rs`, `uuid.rs`, `geospatial.rs`, `enums.rs`, `structure.rs`, `mapping.rs`, `union.rs`, `runend.rs`, `version.rs` | one family per file, each the whole of its datatype, field and scalar; `decimal.rs` holds the four parameterized widths and, beside them, the two fixed leaves at scale eighteen - `Decimal` over `decimal128(38, 18)` and `BigDecimal` over `decimal256(76, 18)`, each a datatype, field and scalar of its own under its `yggdryl.` extension name; `int256.rs` holds the `i256`/`u256` pair the exact decimals compute in, the one type file not named for its type because a module and a struct share one namespace at the root; `wkb.rs` the Well-Known Binary reader three types need; `regex.rs` the Struct inference from named captures |
 | `serie.rs` + `serie/` | `Serie`, the fourth side of the value model: many values, as a schema-free `Run` or as a column - the Arrow buffers of one `Field`, holding no `Scalar`, nested as `Serie` children all the way down - with the collection verbs (`scalar`, `get`, `rows`, `iter`, `slice`, `splice` and the writes spelled over it: `set`, `push`, `insert`, `remove`, `pop`, `truncate`, `clear`, `extend`, `extend_from_serie`, `resize`, `set_child`, `set_cell`), identity over the rows alone, serde, a flat root of one variant per storage layout named as the leaf that holds it (`Utf8String`, `DurationMillisecond`, `IntervalDayTime`) - a variant names the layout, never the datatype, because one layout serves several (`Utf8String` every string leaf laid out as UTF-8, `DurationSecond` both widths), so a column's datatype is its field's, `SerieValue::id`; the five serie layouts each serve one datatype and are named as it is - `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView` - each holding its `<Variant>Serie` leaf (`SerieSerie`, `SerieViewSerie`, `FixedSizeSerieSerie`, `LargeSerieSerie`, `LargeSerieViewSerie`, over the `OffsetSerie<O>`/`OffsetViewSerie<O>` shapes whose offset width is an `OffsetLeaf`), so `Serie::as_serie` narrows a column to `SerieSerie` where `Scalar::as_serie` borrows the whole `Serie` a value holds; the codes, `Version`, `Url`, `Urn`, `Timezone`, `MimeType`, `MediaType`, `Uuid`, `Geometry`, `Geography` and `SortedMap` keep variants of their own - and the `as_<leaf>`/`get_<leaf>_mut` narrowings, and, crate-private, the `is_string_storage`/`is_byte_storage` predicates the text body readers and the FIX payload guard on, and the `value_bytes` those readers and the digest feed - which matches the same storage variants by name - read per row; `serie/datatype.rs` is the family's datatype and field - `SerieType`, the five serie layouts over one item field, and `SerieField` - and `Run`, the schema-free ordered run a row canonicalizes to: one shared `Arc<[Scalar]>`, one allocation to build, and the one leaf of `Serie` that declares no field; `serie/` otherwise holds one leaf per Arrow layout - `primitive.rs`, `boolean.rs`, `null.rs`, `bytes.rs` with its `string.rs` aliases, `structure.rs`, `sequence.rs` (the five serie layouts), `mapping.rs`, `variant.rs`, `enums.rs`, `runend.rs`, `union.rs` - each lending its buffers and writing them in place through prove-check-write - a primitive, boolean or byte leaf reading its own typed buffer through the reading its field resolved where it landed, and a string or byte leaf's `value(i)` lending a run's bytes where they lie across offsets, views and fixed widths with no value built - `layout.rs` the buffer edits they share, `value.rs` the one codec between a row and an Arrow slot (named by nothing outside `serie/`, `cast.rs` and `temporal.rs`), and `arrow.rs` the one door buffers take in and out (`from_arrow_array`, `from_scalars`, `empty`, `with_capacity`, the batch and reader pairs, `SerieReader::from_serie` and `SerieReader::from_chunked`), proving the layout against the field's projection, absence on the validity words, and - only where the layout is not the datatype's whole contract (`DataType::layout_is_contract`) - each row once, a refusal naming the landed row and the path below it (`$[3].bid.live[0].miccode`). `SerieValue`, the contract every column leaf owes, is in `value/` |
 | `chunked_serie.rs` | `ChunkedSerie`: many `Serie` columns under one field, held apart - the chunked array and the table - each chunk a column of exactly that field, proven at its own door, with the chunk ends kept beside the chunks so a row is a binary search and the length a read; the row verbs read across the chunks, a child is the child of every chunk, identity is the rows alone; `from_arrow_arrays`/`into_arrow_arrays` cross a chunked array one array per chunk, `from_arrow_reader`/`into_arrow_reader` a table one batch per chunk, `cast` is one plan over every chunk and `into_serie` the one join; `SerieReader::from_chunked`, beside `from_serie` in `serie/arrow.rs`, streams its chunks |
 | `code.rs` | the contract every registered code answers - the trait and the two builders; the twelve codes are one file each: `ccy.rs`, `country.rs`, `mic_code.rs`, `cfi_code.rs`, `isin_code.rs`, `cusip_code.rs`, `sedol_code.rs`, `bloomberg_code.rs`, `figi_code.rs`, `side.rs`, `state.rs`, `timeinforce.rs` |
@@ -340,7 +340,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
 | `auth/` | what every identity provider shares, private and under the `aws` feature: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
 | `aws/` | who this process is to AWS, and where AWS is, for every consumer that signs an AWS request: `session.rs` the one door - `Session`, what a caller states, the rest resolved lazily once and cached, the credential chain walked in botocore's order with every configured-but-broken source recorded and passed over rather than failing the walk, a temporary set refreshed before it lapses and kept while a refresh fails until it has - `credentials.rs` the `Credentials` value and the JSON document the metadata services and a `credential_process` answer, `environment.rs` (under `s3`) the variables the session reads for itself and the S3 sweep leaves to it, `profile.rs` the `~/.aws/config` and `~/.aws/credentials` reading (`[profile x]`, `[sso-session x]`, `[services x]`, indented tables, the credentials file winning) and `Profile`, `sts.rs` `AssumedRole` with `AssumeRole`, `AssumeRoleWithWebIdentity` and the `~/.aws/cli/cache` the CLI shares, `sso.rs` the IAM Identity Center token cache, its refresh, the device sign-in and the portal exchange, `process.rs`, `container.rs` and `metadata.rs` the three remaining sources, `sigv4.rs` Signature Version 4 for every service; under the non-default `aws` feature, which `s3` implies |
-| `xml.rs` | the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element; each reader names its own vocabulary over it; private, under the `aws` feature with its first reader |
+| `xml/` | the XML structured codec over `Scalar` - a document is the record naming its root element, `@name` an attribute, `#text` an element's own text beside attributes or children, a repeated element a sequence, a self-closed element null and an emptied one the empty text, every leaf text - `mod.rs` the doors, `parser.rs` the quick-xml event fold, `wire.rs` the writer and the field-directed reshaping (a repeated element read once is one item, absent is the empty sequence, text trimmed and empty text null under a non-text leaf); `scanner.rs` beside them, private and under the `aws` feature, the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element, each reader naming its own vocabulary over it |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -348,11 +348,12 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `ipc/`, `parquet/`, `avro/` | one root folder per record medium; each owns free functions over `IOBase` plus a stateful wrapper |
 | `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
 | `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - `TextLine` an `Event` of the graph holding the whole line, row header included, and the `Arc<TextOptions>` it reads itself by, every reading resolved once on its first ask and a `set_` stated over it - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
-| `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
+| `json/`, `toml/`, `yaml/`, `xml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
 | `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop: stream combinators, schema projections, the IPC dictionary sidecar, and `rows.rs`, the bounded row-to-batch reader that lays each batch out through `Serie`; every value crossing is `Serie`'s and every cast `cast.rs`'s, reached through `Serie`, `SerieReader` and `ArrowCastPlan` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
-| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes and its canonically sorted source UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - and `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants, a state and a place in its chain, the predecessor named by `prevuuid` alone; `market.rs` holds `Market` - nineteen facts and no supertrait: the price, the currency, the quantity, the `Unit` and the `Side` by value, the `SecurityIds` set behind the fallible `insert_`/`remove_`/`derive_` verbs, the CFI, the MIC, the ticker, the last-trade, average, progress, previous-step and FX numbers, the `Metadata` - `Operation: Market` - eight more: the category, the `TimeInForce`, whether it trades, the `IdMap`s `accountids`/`userids`/`altids` behind the same verbs, the `bid` and `ask` `Lane`s - each providing, `where Self: Event`, what an event that is one of them answers (`digest_market_event`, `following_market`, `merging_market_event`, and the `_operation_event` three), and `FOLLOWED_ALTIDS`; `facts.rs` the crate-private `MarketFacts`, `MarketEventFacts`, `OperationFacts` and `OperationEventFacts` holders, one per role, each leaf holding its role's; `operation.rs` the operation leaves - `OperationElement<K>` (`Order`, `Quote`, `Execution`) and `OperationEvent<K>` (`OrderEvent`, `QuoteEvent`, `ExecutionEvent`) over the sealed `OperationKind` markers - a boxed `BookRef` book control and `MdUpdateAction`; `trade.rs` the composite `TradeEvent`; `book.rs` `BookSide`, `BookEvent`, `SnapshotEvent`, `SnapshotPartition` and `BookIterator`; `market_data.rs` `MarketData`, the one enum over every leaf, and `kind.rs` its `MarketKind`; `arrow.rs` the one lifted `marketdata` row and its two doors; `iterator.rs` the one walk over any `Event + Operation` and over `MarketData`, naming live identities by `altids`; `column.rs` the sixteen event columns (`EventColumn`), `market_column.rs` the nineteen market columns and `operation_column.rs` the eight operation columns, every generated schema stating them under one name and one datatype each - a text line's batch opens with the event columns in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; the lifecycle-local `SecurityIdRegistry` is `securityid.rs`'s at the root: a conservative 32 MiB reserve charges 2 KiB per valid ISIN, admits at most 16,384 under that reserve and 65,536 in all, learns at most eight keys per instrument, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
+| `graph/` | the graph vocabulary: `element.rs` holds `Element` - an element's `Uuid`, its cross identity and code, its codes and its canonically sorted source UUIDs (the elements it was read from: provenance, never carried along a chain), read and written - and `Event`, an element with an instant (`currunix`, `i64` nanoseconds since the epoch, UTC), precise optional execution and recording instants, a state and a place in its chain, the predecessor named by `prevuuid` alone; `market.rs` holds `Market` - nineteen facts and no supertrait: the price, the currency, the quantity, the `Unit` and the `Side` by value, the `SecurityIds` set behind the fallible `insert_`/`remove_`/`derive_` verbs, the CFI, the MIC, the ticker, the last-trade, average, progress, previous-step and FX numbers, the `Metadata` - `Operation: Market` - eight more: the category, the `TimeInForce`, whether it trades, the `IdMap`s `accountids`/`userids`/`altids` behind the same verbs, the `bid` and `ask` `Lane`s - each providing, `where Self: Event`, what an event that is one of them answers (`digest_market_event`, `following_market`, `merging_market_event`, and the `_operation_event` three), and `FOLLOWED_ALTIDS`; `facts.rs` the crate-private `MarketFacts`, `MarketEventFacts`, `OperationFacts` and `OperationEventFacts` holders, one per role, each leaf holding its role's; `operation.rs` the operation leaves - `OperationElement<K>` (`Order`, `Quote`, `Execution`) and `OperationEvent<K>` (`OrderEvent`, `QuoteEvent`, `ExecutionEvent`) over the sealed `OperationKind` markers - a boxed `BookRef` book control and `MdUpdateAction`; `trade.rs` the composite `TradeEvent`; `book.rs` `BookSide`, `BookEvent`, `SnapshotEvent`, `SnapshotPartition` and `BookIterator`; `market_data.rs` `MarketData`, the one enum over every leaf, and `kind.rs` its `MarketKind`; `arrow.rs` the one lifted `marketdata` row and its two doors; `view.rs` `MarketView` and the seven plans over the `marketdata` row, each one `Plan` built structurally and applied by the expression engine; `iterator.rs` the one walk over any `Event + Operation` and over `MarketData`, naming live identities by `altids`; `column.rs` the sixteen event columns (`EventColumn`), `market_column.rs` the nineteen market columns and `operation_column.rs` the eight operation columns, every generated schema stating them under one name and one datatype each - a text line's batch opens with the event columns in `EventColumn::ALL` order, while a FIX row contains the same fields through the crate's protocol-oriented bands and lifecycle rows retain them; the lifecycle-local `SecurityIdRegistry` is `securityid.rs`'s at the root: a conservative 32 MiB reserve charges 2 KiB per valid ISIN, admits at most 16,384 under that reserve and 65,536 in all, learns at most eight keys per instrument, keeps learning known entries at the cap, and has no global mapper; signatures and provided readings, no storage |
+| `limit.rs` | one price limit of a book side - price, quantity, uuids - a root value type over `struct<price: decimal?, quantity: decimal, uuids: serie<uuid>>`: `Limit` with its `dtype`, `field`, `into_scalar` and `from_scalar`, never a `DataType` variant, answered by `BookSide::limits` and written as a side row's `limits` |
 | `hashing/` | the private structural/display stable-hash adapters the digests share; shared dispatch vocabulary is `digest.rs` |
 | `xxhash/` | one-shot digests, four resumable states, `reader`/`writer`, `Hashed<H>`, the canonical `Scalar` byte feed, Arrow row digests |
 | `variant.rs` | the Apache Parquet Variant binary encoding, version 1: `Variant` - one metadata dictionary and one value payload - `Scalar::Variant`, the encode and decode doors, the canonical `arrow.parquet.variant` projection, and what every medium writes for a `variant` column |
@@ -362,6 +363,8 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `fix/` | FIX protocol behavior |
 | binding `lib.rs` | boundary helpers, exports, registration - nothing else |
 | binding `src/` | the crate layout above, one layer thinner: one type per root file (`datatype.rs`, `field.rs`, `scalar.rs`, `cast.rs`, `parameters.rs`, `timezone.rs`, `protocol.rs`, `value.rs`, `version.rs`), one root file per implementation (`avro.rs`, `iceberg.rs`), `text/` holding `codec.rs`, `line.rs` and Node's `options.rs`, and `media/` holding only what every medium shares - Python's `handles.rs` and `partition.rs`, Node's `options.rs` |
+| `node/replay.js` + `node/replay/` | `yggdryl/replay`, the trading replay service (CommonJS) and its command line: `sources.js` the loaders - a `marketdata` Arrow or Parquet file, a FIX capture read from its bytes, the synthetic scenario of `synthetic.js`; `walk.js` the native `BookIterator` walk, its index by symbol and instant, the merge and the re-run; `json.js` the one renderer between a native stream and JSON, and back for an inserted event through its own constructor; `scenarios.js` named scenarios kept as files; `server.js` the routes, the server-sent book streams and the static files; `web.js` the browser modules the service shares, loaded once |
+| `node/web/` | `yggdryl/web/*`, the browser component library: ES modules with no dependency, bundler or CDN (`web/package.json` is `{"type":"module"}`) - the pure modules `instant.js`, `decimal.js`, `scales.js`, `candles.js`, `diff.js`, `scenario.js`, `shortcuts.js`, `store.js`; one file per component over `component.js`, with `virtual.js` and `canvas.js` what the lists and the charts share; `theme.css` the tokens and every `ygg-ui` class; and `app/`, the one-page application - `index.html`, `app.js` the composition (`mountApp`), `api.js` the wire (`createApi`), `app.css` its layout - which the service serves and the docs Replay page mounts over recorded answers. Everything shown is what the package answered: no fold, aggregation, reading, identity, digest or ordering of its own |
 
 Parquet is feature-gated; Avro's scalar codec is unconditional and its record
 surface uses Arrow; Iceberg sits on these codecs. `Text<H>` keeps only options
@@ -788,7 +791,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   `into_bytes`, `into_writer`), mirrored by JSON/YAML/TOML with no format
   argument. Each format and direction adds exactly one inferring entry point
   naming the `Scalar` it answers (`from_json_scalar`, `into_json_scalar`,
-  field-directed `from_json_scalar_with_field`, the YAML/TOML counterparts),
+  field-directed `from_json_scalar_with_field`, the YAML/TOML/XML counterparts),
   re-exported beside `Scalar`; it only coerces and redirects, byte-like input and
   strings are content rather than paths, and it parses, renders, validates, and
   bounds nothing.
@@ -812,7 +815,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   retired alias.
 - Variants are spelled as their datatype is: `Int8`..`Int64`, `UInt8`..`UInt64`,
   `Int128`, `UInt128`; `Float16`, `Float32`, `Float64`; `Decimal32`,
-  `Decimal64`, `Decimal128`, `Decimal256`; `Date32`, `Date64`;
+  `Decimal64`, `Decimal128`, `Decimal256` and the fixed `Decimal`, `BigDecimal`; `Date32`, `Date64`;
   `Time32`, `Time64`; `Duration32`, `Duration64`; one `DateTime64`; `Interval`;
   `Geometry`, `Geography`; `Serie`, `SerieView`, `FixedSizeSerie`, `LargeSerie`, `LargeSerieView`, `Map`, `SortedMap`, `Struct`. Temporals keep the `TimeUnit`/`TimeZone` their datatype needs;
   `DateTime64` always has a non-null `TimeZone`, naive spelled `TimeZone::Naive`.
@@ -1015,7 +1018,7 @@ sealed by `with_environment(false)`; the client reads the region, the endpoint
 style, the FIPS and dual-stack hosts and the payload-signing policy off it, and
 walks its chain once more when a store answers `ExpiredToken`. The S3 backend's
 `xml.rs` holds the `<Error>` document both XML stores answer with over the
-crate's root scanner; `answer.rs` holds what an answer *says* in shapes no store
+crate's `xml/scanner.rs`; `answer.rs` holds what an answer *says* in shapes no store
 owns, so the transport, the retry, the staging model, the listing pipeline and
 the three roles are written once.
 
@@ -1450,8 +1453,8 @@ declares.
 
 ## Structured codecs
 
-The JSON, YAML, and TOML sections of `docs/media/index.md` document the
-surface; these bind a change to `json/`, `toml/`, `yaml/` and the codec
+The JSON, YAML, TOML, and XML sections of `docs/media/index.md` document the
+surface; these bind a change to `json/`, `toml/`, `yaml/`, `xml/` and the codec
 machinery they share in `text/`.
 
 - Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
@@ -1467,7 +1470,8 @@ machinery they share in `text/`.
   backpressure.
 - Inference is deterministic: explicit format, then path suffix; byte-like is
   content, a string is a path only when it names an existing file; content parse
-  order is JSON, TOML when complete and non-empty, then YAML. Never infer JSONL
+  order is JSON, XML when well-formed and opening with `<`, TOML when
+  complete and non-empty, then YAML. Never infer JSONL
   from content.
 - Placeholder substitution walks parsed `Scalar` under a closed grammar and needs
   separate opt-ins for substitution and environment access. Benchmark slice,
@@ -1560,7 +1564,7 @@ Python, §4 for Node, §5 for docs - and nothing at all for a layer it did not.
 A file that is generated and was not regenerated is the cheapest CI failure to
 prevent and the most common one. Each is regenerated by its own tool once its
 input has settled, in this order, because some read an earlier one: the dump
-and the hash read the dictionary, and the two manifests read the addon and the
+and the hash read the dictionary, and the three manifests read the addon and the
 dictionary:
 
 | Generated | Regenerated by | Once |
@@ -1571,6 +1575,7 @@ dictionary:
 | the dictionary hash in `rust/tests/fix/store.rs` | the `left` value `cargo test -p yggdryl --test fix the_committed_dictionary_hashes_to_one_pinned_value` reports, pinned in that test with the reason as the newest `It last moved when` sentence of its rustdoc, every earlier one kept; the census counts beside it move in the same edit | the dump is written |
 | `node/index.js`, `node/index.d.ts` | `npm run --prefix node build:debug` | any Node binding or its doc comments change |
 | `docs/assets/fix.json`, `docs/assets/playground.json` | `node scripts/build_docs_fix.js`, `node scripts/build_docs_playground.js` | the dictionary, the crate dump or the addon changes, the addon rebuilt first: `build_docs_fix.js` runs the addon over `config/fix` |
+| `docs/assets/replay.json` and the copies under `docs/assets/web/` | `node scripts/build_docs_replay.js` | `node/web/`, `node/replay.js` or `node/replay/`, the addon, the dictionary or `rust/tests/fix/ulbridge.log` changes, the addon rebuilt first: it runs `yggdryl/replay` over the synthetic scenario and over the capture under `config/fix`, and copies what the package ships under `web/` |
 | `.api-inventory.txt`, `.api-bindings.txt` | by hand, in the same change; the inventories row of the [smoke loop](#smoke-loop) proves it | a public name is added or retired |
 
 ## What CI proves
@@ -1590,7 +1595,7 @@ and not a silent update.
 | Spark interop | Iceberg against the format's reference implementation, behind its own marker | §3, and only for that boundary |
 | Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
-| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the two docs manifests | §4 |
+| Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the three docs manifests | §4 |
 | Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
 
@@ -1768,7 +1773,7 @@ JavaScript-only:
 - Arrow JS interop is copied IPC with bounded cursors and a validated cached
   schema - never claim zero-copy; public IDs are transport-local while native
   records keep canonical IDs.
-- JSON/YAML/TOML facades are byte-first over native `Scalar`, preserving
+- JSON/YAML/TOML/XML facades are byte-first over native `Scalar`, preserving
   `bigint`, bytes, `Date`, arrays, plain objects, maps, sets, class targets.
 - Before N-API recursive conversion, build one bounded detached plain-data
   snapshot and reject cycles, proxies, accessors, symbols, depth, node overflow.
@@ -1794,6 +1799,7 @@ git diff --exit-code -- node/index.js node/index.d.ts    # generated loader and 
 npm test --prefix node                                   # node --test plus tsc --noEmit
 node scripts/build_docs_playground.js --check            # generated docs manifests not stale
 node scripts/build_docs_fix.js --check
+node scripts/build_docs_replay.js --check                # and the component copies beside it
 ```
 
 `npm run --prefix node bench:<...>` measures the release addon and has no CI
@@ -1823,7 +1829,7 @@ section change together. What binds every page:
   `docs/media/index.md` is the one page for every media type, content coding
   and charset: a Read and write overview (native rows, then Arrow batches, then
   `RecordOptions`), then one short section per media type - IPC, Parquet, Avro,
-  plain text, JSON, YAML, TOML, Iceberg - then Compression (gzip, zlib, zstd)
+  plain text, JSON, YAML, TOML, XML, Iceberg - then Compression (gzip, zlib, zstd)
   and Charsets. Each section is a sentence or two and a tabbed example; the
   example carries the detail, not the prose. A section's benchmarks sit in its
   own `<section> performance` subsection, never in a shared one.
@@ -1851,7 +1857,9 @@ section change together. What binds every page:
   comes from it, the addon job checks it for drift, page scripts add no
   framework, CDN, or build step and reimplement nothing, an ungeneratable page
   stays an ordinary example block, and a page reading reader input against the
-  manifest says which answers are the package's and which are the reading.
+  manifest says which answers are the package's and which are the reading. A
+  page that runs the package's own browser modules runs the copies its manifest's
+  builder writes beside it, over the recorded answers.
 - A benchmark table lives in the Performance section of the page owning the
   measured method, names machine/runtime/build, compares a trusted baseline, and
   ends with its regenerate command; `docs/benchmarks.md` only indexes them.
@@ -1913,10 +1921,10 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
   publishes no version to name, so the report reads the tree instead.
 - Root Cargo, Python, and Node versions match exactly. Publish crates.io, PyPI,
   npm only after platform smoke tests import and exercise the artifacts.
-- A bump moves seven files together, and `preflight` reads three of them:
+- A bump moves eight files together, and `preflight` reads three of them:
   `Cargo.toml` and `Cargo.lock`, `python/pyproject.toml`, `node/package.json`
-  and `node/package-lock.json`, and the two generated documentation manifests
-  `docs/assets/fix.json` and `docs/assets/playground.json`, which stamp
-  `node/package.json`'s version.
+  and `node/package-lock.json`, and the three generated documentation manifests
+  `docs/assets/fix.json`, `docs/assets/playground.json` and
+  `docs/assets/replay.json`, which stamp `node/package.json`'s version.
 - Credentials stay in repository configuration: Cargo and npm secrets, PyPI
   trusted publishing. No stored PyPI password, no fourth registry.

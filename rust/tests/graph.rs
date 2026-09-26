@@ -26,3 +26,5 @@ mod operation;
 mod operation_column;
 #[path = "graph/trade.rs"]
 mod trade;
+#[path = "graph/view.rs"]
+mod view;

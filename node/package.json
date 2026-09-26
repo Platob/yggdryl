@@ -16,7 +16,13 @@
       "types": "./binding.d.ts",
       "require": "./binding.js",
       "default": "./binding.js"
-    }
+    },
+    "./replay": {
+      "types": "./replay.d.ts",
+      "require": "./replay.js",
+      "default": "./replay.js"
+    },
+    "./web/*": "./web/*"
   },
   "files": [
     "index.js",
@@ -28,6 +34,13 @@
     "*.node",
     "records.js",
     "values.js",
+    "replay.js",
+    "replay.d.ts",
+    "replay/*.js",
+    "web/*.js",
+    "web/*.css",
+    "web/package.json",
+    "web/app/*",
     "benchmarks"
   ],
   "engines": {

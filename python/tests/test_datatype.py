@@ -91,7 +91,7 @@ def test_dtype_infers_python_types_without_stringifying_objects() -> None:
     assert DataType(int) == DataType("int64")
     assert DataType(float) == DataType("float64")
     assert DataType(bytes) == DataType("binary")
-    assert DataType(decimal.Decimal) == DataType("decimal128(38,18)")
+    assert DataType(decimal.Decimal) == DataType("decimal")
     assert DataType(list[str]) == DataType.from_pyhint(list[str])
     assert DataType(Optional[int]) == DataType("int64")
 
@@ -1412,6 +1412,8 @@ def test_every_native_datatype_variant_has_a_typed_field_factory() -> None:
         "decimal64": yggdryl.decimal64("value", 18, 2),
         "decimal128": yggdryl.decimal128("value", 38, 2),
         "decimal256": yggdryl.decimal256("value", 76, 2),
+        "decimal": yggdryl.decimal("value"),
+        "bigdecimal": yggdryl.bigdecimal("value"),
         "map": yggdryl.map("value", entries),
         "sorted_map": yggdryl.map("value", entries, keys_sorted=True),
         "run_end_encoded": yggdryl.run_end_encoded(

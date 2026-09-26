@@ -80,6 +80,10 @@ pub enum DataTypeId {
     Decimal128 = 0x2b,
     /// Exact decimal backed by 256 bits.
     Decimal256 = 0x2c,
+    /// The fixed `decimal128(38, 18)` leaf: eighteen fractional digits, always.
+    Decimal = 0x2d,
+    /// The fixed `decimal256(76, 18)` leaf: the wide twin of `decimal`.
+    BigDecimal = 0x2e,
     // Temporal: 0x30..0x3f
     /// A 64-bit datetime with a resolution and explicit timezone marker.
     DateTime64 = 0x31,
@@ -226,7 +230,7 @@ pub enum DataTypeId {
 
 impl DataTypeId {
     /// Every identifier in canonical declaration order.
-    pub const ALL: [Self; 85] = [
+    pub const ALL: [Self; 87] = [
         Self::Null,
         Self::Boolean,
         Self::Int8,
@@ -246,6 +250,8 @@ impl DataTypeId {
         Self::Decimal64,
         Self::Decimal128,
         Self::Decimal256,
+        Self::Decimal,
+        Self::BigDecimal,
         Self::DateTime64,
         Self::Date32,
         Self::Date64,
@@ -386,6 +392,8 @@ impl DataTypeId {
             Self::Decimal64 => "decimal64",
             Self::Decimal128 => "decimal128",
             Self::Decimal256 => "decimal256",
+            Self::Decimal => "decimal",
+            Self::BigDecimal => "bigdecimal",
             Self::Map => "map",
             Self::SortedMap => "sorted_map",
             Self::RunEndEncoded => "run_end_encoded",
@@ -633,8 +641,10 @@ impl DataTypeId {
             | Self::DateTime64
             | Self::Decimal64 => Some(8),
             Self::Duration32 => Some(4),
-            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Uuid => Some(16),
-            Self::Decimal256 => Some(32),
+            Self::Int128 | Self::UInt128 | Self::Decimal128 | Self::Decimal | Self::Uuid => {
+                Some(16)
+            }
+            Self::Decimal256 | Self::BigDecimal => Some(32),
             _ => None,
         }
     }

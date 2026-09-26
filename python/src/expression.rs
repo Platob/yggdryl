@@ -1493,7 +1493,8 @@ impl PySelector {
             .collect()
     }
 
-    /// The names this selector publishes, in output order; empty for `*`.
+    /// The names this selector's projections publish, in output order: the
+    /// columns a `*` keeps are the schema's to name, so `*` alone has none.
     #[getter]
     fn names(&self) -> Vec<String> {
         self.inner
@@ -1513,10 +1514,17 @@ impl PySelector {
             .collect()
     }
 
-    /// Whether this is `select *` with nothing excluded.
+    /// Whether this is `select *` excluding nothing and appending nothing.
     #[getter]
     fn is_all(&self) -> bool {
         self.inner.is_all()
+    }
+
+    /// Whether this selector opens with `*`: it reads every stored column it
+    /// does not exclude, whatever projections it appends after.
+    #[getter]
+    fn has_star(&self) -> bool {
+        self.inner.has_star()
     }
 
     /// Whether every projection is a bare column.

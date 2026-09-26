@@ -1,0 +1,364 @@
+{
+  "kind": "book_event",
+  "currunix": "1700000002000000000",
+  "snapunix": null,
+  "curruuid": "0192f0a0-0000-7000-8000-d00000000001",
+  "crossuuid": "0192f0a0-0000-7000-8000-d00000000002",
+  "crosscode": "ALPHA",
+  "ticker": "ALPHA",
+  "stableHash": "9876543210123456789",
+  "isTick": false,
+  "price": "100.75",
+  "quantity": "6",
+  "lastpx": null,
+  "lastqty": null,
+  "spread": "0.5",
+  "crossed": false,
+  "locked": false,
+  "bboMidpoint": "100.75",
+  "medianQuantity": "6",
+  "imbalance": {
+    "1": "0.333333333333333333",
+    "5": "0.737804878048780487",
+    "10": "0.737804878048780487"
+  },
+  "bid": {
+    "side": "BUY",
+    "price": "100.5",
+    "quantity": "8",
+    "length": 5,
+    "depth": {
+      "1": "8",
+      "5": "28.5",
+      "10": "28.5"
+    },
+    "limits": [
+      {
+        "price": "100.5",
+        "quantity": "8",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-b00000000001",
+          "0192f0a0-0000-7000-8000-b00000000002"
+        ]
+      },
+      {
+        "price": "100.25",
+        "quantity": "3",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-b00000000003"
+        ]
+      },
+      {
+        "price": "100",
+        "quantity": "12.5",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-b00000000004"
+        ]
+      },
+      {
+        "price": null,
+        "quantity": "5",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-b00000000005"
+        ]
+      }
+    ],
+    "live": [
+      {
+        "kind": "order_event",
+        "currunix": "1700000001000000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000001",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000001",
+        "crosscode": "ALPHA-O-1",
+        "currhashcode": "1000000000001",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "BUY",
+        "price": "100.5",
+        "quantity": "5",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "quote_event",
+        "currunix": "1700000001000000001",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000002",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000002",
+        "crosscode": "ALPHA-Q-1",
+        "currhashcode": "1000000000002",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "00UNKNOWN",
+        "currency": "USD",
+        "side": "BUY",
+        "price": "100.5",
+        "quantity": "3",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "order_event",
+        "currunix": "1700000001200000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000003",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000003",
+        "crosscode": "ALPHA-O-2",
+        "currhashcode": "1000000000003",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "BUY",
+        "price": "100.25",
+        "quantity": "3",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "order_event",
+        "currunix": "1700000001400000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000004",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000004",
+        "crosscode": "ALPHA-O-3",
+        "currhashcode": "1000000000004",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "BUY",
+        "price": "100",
+        "quantity": "12.5",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "order_event",
+        "currunix": "1700000002000000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000005",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000005",
+        "crosscode": "ALPHA-MKT-1",
+        "currhashcode": "1000000000005",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "BUY",
+        "price": null,
+        "quantity": "5",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      }
+    ],
+    "deltas": [
+      {
+        "kind": "order_event",
+        "currunix": "1700000002000000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-b00000000005",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000005",
+        "crosscode": "ALPHA-MKT-1",
+        "currhashcode": "1000000000005",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "BUY",
+        "price": null,
+        "quantity": "5",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      }
+    ]
+  },
+  "ask": {
+    "side": "SELL",
+    "price": "101",
+    "quantity": "4",
+    "length": 4,
+    "depth": {
+      "1": "4",
+      "5": "4.3",
+      "10": "4.3"
+    },
+    "limits": [
+      {
+        "price": "101",
+        "quantity": "4",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-a00000000001"
+        ]
+      },
+      {
+        "price": "101.5",
+        "quantity": "0.1",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-a00000000002"
+        ]
+      },
+      {
+        "price": "102",
+        "quantity": "0.2",
+        "uuids": [
+          "0192f0a0-0000-7000-8000-a00000000003",
+          "0192f0a0-0000-7000-8000-a00000000004"
+        ]
+      }
+    ],
+    "live": [
+      {
+        "kind": "order_event",
+        "currunix": "1700000001000000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-a00000000001",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000001",
+        "crosscode": "ALPHA-O-4",
+        "currhashcode": "1000000000001",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "SELL",
+        "price": "101",
+        "quantity": "4",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "order_event",
+        "currunix": "1700000001100000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-a00000000002",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000002",
+        "crosscode": "ALPHA-O-5",
+        "currhashcode": "1000000000002",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "SELL",
+        "price": "101.5",
+        "quantity": "0.1",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "quote_event",
+        "currunix": "1700000001300000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-a00000000003",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000003",
+        "crosscode": "ALPHA-Q-2",
+        "currhashcode": "1000000000003",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "00UNKNOWN",
+        "currency": "USD",
+        "side": "SELL",
+        "price": "102",
+        "quantity": "0.1",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      },
+      {
+        "kind": "order_event",
+        "currunix": "1700000001300000000",
+        "snapunix": null,
+        "curruuid": "0192f0a0-0000-7000-8000-a00000000004",
+        "crossuuid": "0192f0a0-0000-7000-8000-c00000000004",
+        "crosscode": "ALPHA-O-6",
+        "currhashcode": "1000000000004",
+        "prevuuid": null,
+        "seqnum": null,
+        "state": "20NEW",
+        "currency": "USD",
+        "side": "SELL",
+        "price": "102",
+        "quantity": "0.1",
+        "lastpx": null,
+        "lastqty": null,
+        "ticker": "ALPHA",
+        "securityids": [],
+        "metadata": []
+      }
+    ],
+    "deltas": []
+  },
+  "executions": [
+    {
+      "kind": "execution_event",
+      "currunix": "1700000002000000000",
+      "snapunix": null,
+      "curruuid": "0192f0a0-0000-7000-8000-e00000000001",
+      "crossuuid": "0192f0a0-0000-7000-8000-c00000000001",
+      "crosscode": "ALPHA-O-7",
+      "currhashcode": "1000000000001",
+      "prevuuid": null,
+      "seqnum": null,
+      "state": "80FILLED",
+      "currency": "USD",
+      "side": "BUY",
+      "price": "101",
+      "quantity": "2",
+      "lastpx": "101",
+      "lastqty": "2",
+      "ticker": "ALPHA",
+      "securityids": [],
+      "metadata": []
+    },
+    {
+      "kind": "execution_event",
+      "currunix": "1700000002000000000",
+      "snapunix": null,
+      "curruuid": "0192f0a0-0000-7000-8000-e00000000002",
+      "crossuuid": "0192f0a0-0000-7000-8000-c00000000002",
+      "crosscode": "ALPHA-O-4",
+      "currhashcode": "1000000000002",
+      "prevuuid": null,
+      "seqnum": null,
+      "state": "40PARTFILL",
+      "currency": "USD",
+      "side": "SELL",
+      "price": "101",
+      "quantity": "4",
+      "lastpx": "101",
+      "lastqty": "2",
+      "ticker": "ALPHA",
+      "securityids": [],
+      "metadata": []
+    }
+  ],
+  "snapshotpartitions": []
+}

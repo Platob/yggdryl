@@ -621,7 +621,7 @@ pub trait IOBase: Send + IOMedia {
 
     /// Decode one structured [`Scalar`](crate::Scalar) from this handle.
     ///
-    /// The media type selects JSON, YAML, or TOML and its content coding. A
+    /// The media type selects JSON, YAML, TOML, or XML and its content coding. A
     /// `field` directs parsing and casting; without one the value is inferred.
     /// Reading stays streamed through [`Self::pstream_bytes`], including for a
     /// compressed handle.
@@ -658,7 +658,7 @@ pub trait IOBase: Send + IOMedia {
 
     /// Encode one structured [`Scalar`](crate::Scalar), replacing this handle.
     ///
-    /// The media type selects JSON, YAML, or TOML and its content coding.
+    /// The media type selects JSON, YAML, TOML, or XML and its content coding.
     ///
     /// # Errors
     ///

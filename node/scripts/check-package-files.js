@@ -52,6 +52,8 @@ for (const required of [
   'index.js',
   'records.js',
   'values.js',
+  'replay.js',
+  'replay.d.ts',
 ]) {
   if (!files.has(required)) {
     throw new Error(`npm package is missing required runtime file ${required}`)
@@ -68,6 +70,35 @@ for (const nativeFile of nativeFiles) {
   }
 }
 
+// The replay service's modules, the component library and the page ship
+// whole, like the native modules: every file those folders hold that the
+// `files` globs name is in the package, so a module added beside the others
+// cannot be left out by a glob that no longer reaches it.
+const swept = [
+  ['replay', (name) => name.endsWith('.js')],
+  ['web', (name) => name.endsWith('.js') || name.endsWith('.css') || name === 'package.json'],
+  ['web/app', () => true],
+]
+let sweptFiles = 0
+for (const [folder, shipped] of swept) {
+  let entries
+  try {
+    entries = readdirSync(join(root, folder), { withFileTypes: true })
+  } catch (error) {
+    if (error.code === 'ENOENT') continue
+    throw error
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !shipped(entry.name)) continue
+    const packed = `${folder}/${entry.name}`
+    if (!files.has(packed)) {
+      throw new Error(`npm package excludes ${packed}`)
+    }
+    sweptFiles += 1
+  }
+}
+
 console.log(
-  `package dry-run: ${report.files.length} files, ${nativeFiles.length} native module(s), shasum ${report.shasum}`,
+  `package dry-run: ${report.files.length} files, ${nativeFiles.length} native module(s), ` +
+    `${sweptFiles} replay and web file(s), shasum ${report.shasum}`,
 )

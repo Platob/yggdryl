@@ -169,6 +169,14 @@ name = "fix"
 path = "benchmarks/fix.rs"
 harness = false
 
+# The market graph: a book side's limits, depth and bests, the book's
+# spread and imbalance, and one update on a deep side - the fix pipeline's
+# dense book holds one price level, so it measures none of these.
+[[bench]]
+name = "graph"
+path = "benchmarks/graph.rs"
+harness = false
+
 [[bench]]
 name = "fix_allocations"
 path = "benchmarks/fix_allocations.rs"

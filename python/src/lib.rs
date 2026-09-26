@@ -459,12 +459,15 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 /// listing: kept out of that function's own body so it stays under the
 /// crate's line-count lint.
 fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()> {
-    use yggdryl::graph::{EventColumn, MarketColumn, MarketKind, MdUpdateAction, OperationColumn};
+    use yggdryl::graph::{
+        EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
+    };
 
     listing.set_item(
         "market_kinds",
         MarketKind::ALL.map(MarketKind::as_str).to_vec(),
     )?;
+    listing.set_item("market_views", MarketView::ALL.to_vec())?;
     listing.set_item(
         "md_update_actions",
         MdUpdateAction::ALL.map(MdUpdateAction::as_str).to_vec(),

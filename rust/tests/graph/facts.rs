@@ -28,7 +28,7 @@ mod internal {
     /// landed: the nineteen market facts, then the clocks, then the boxed
     /// lanes and the three identifier maps each operation adds. It moved
     /// when price and quantity became what the element states:
-    /// `Option<Decimal18>` has no niche, so each costs sixteen bytes more
+    /// `Option<Decimal>` has no niche, so each costs sixteen bytes more
     /// than the zero that used to stand in. A moved number is a design
     /// answer, never a number to re-pin from a whole run.
     #[test]

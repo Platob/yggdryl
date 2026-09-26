@@ -5,7 +5,10 @@ import {
   type AsciiField,
   type BytesDataTypeId,
   type BytesField,
+  type BigDecimalField,
   type CcyField,
+  type DecimalField,
+  type DecimalWidthField,
   type FIGICodeField,
   type FixedAsciiField,
   type FixedCp1252Field,
@@ -57,6 +60,14 @@ const longDuration: Duration64Field = fields.duration64('long', 'us', {
 })
 const payload: VariantField = fields.variant('payload', { nullable: false })
 const release: VersionField = fields.version('release', { nullable: false })
+// Bare `decimal` is the fixed leaf; a precision names a width.
+const price: DecimalField = fields.decimal('price', { nullable: false })
+const priceId: 'decimal' = price.dtype.id
+const notional: BigDecimalField = fields.bigdecimal('notional', { nullable: false })
+const notionalId: 'bigdecimal' = notional.dtype.id
+const amount: DecimalWidthField = fields.decimal('amount', 18, 2, { nullable: false })
+// @ts-expect-error a precision answers a width, never the fixed leaf
+const amountLeaf: DecimalField = fields.decimal('amount', 18, 2, { nullable: false })
 // A location column is text, and its values are the canonical URL spelling.
 const source: UrlField = fields.url('source', { nullable: false })
 const sourceId: 'url' = source.dtype.id
@@ -145,6 +156,10 @@ void blobId
 void blobValue
 void payloadId
 void release
+void priceId
+void notionalId
+void amount
+void amountLeaf
 void source
 void sourceId
 void sourceKind

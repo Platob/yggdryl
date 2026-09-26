@@ -1471,7 +1471,10 @@ let committedRegistry
     assert.equal(event.miccode, null)
     assert.equal(event.spotrate, null)
     assert.equal(event.forwardpoints, null)
-    assert.deepEqual(event.metadata, {})
+    // The metadata is what the message states that no typed column reads:
+    // here the two fields the dictionary derived from the ISIN and the
+    // currency, keyed by name as canonical text.
+    assert.deepEqual(event.metadata, { countryofissue: 'US', currencycodesource: '6' })
     // The operation facts: each map built from the fields that state it,
     // upper-cased keys in key order, and the lane a buy at a price fills
     // for itself - the other lane is the other party's.
@@ -1488,11 +1491,14 @@ let committedRegistry
     assert.equal(event.ask, null)
     // The message answers the same facts as getters.
     for (const name of [
-      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints', 'metadata',
+      'ticker', 'unit', 'securityids', 'spotrate', 'forwardpoints',
       'accountids', 'userids', 'altids',
     ]) {
       assert.deepEqual(message[name], event[name], name)
     }
+    // Except the metadata: the leaf's is computed where the leaf is built,
+    // never stored on the message, whose own map feeds its code.
+    assert.deepEqual(message.metadata, {})
     assert.equal(message.ask, event.ask)
     assert.ok(message.bid.equals(event.bid))
     // The retired spellings are gone rather than aliased.
@@ -3267,6 +3273,129 @@ let committedRegistry
     )
   })
 
+  // One book snapshot, one incremental update a second later, and session
+  // traffic no book takes.
+  function bookCapture(codec) {
+    return {
+      snapshot: codec.parseFixLine(Buffer.from(
+        '8=FIX.4.4|35=W|52=20260921-10:00:00|55=AAPL|268=2|269=0|278=B1|270=100|271=10|269=1|278=A1|270=102|271=12|10=0|',
+      )),
+      update: codec.parseFixLine(Buffer.from(
+        '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
+      )),
+      heartbeat: codec.parseFixLine(Buffer.from('8=FIX.4.4|35=0|52=20260921-10:00:02|10=0|')),
+    }
+  }
+
+  test('marketOperations is the sorted door over a capture read out of order', () => {
+    const codec = reading(seed())
+    const { snapshot, update, heartbeat } = bookCapture(codec)
+    assert.throws(() => codec.marketOperations(42), /messages must be an iterable/)
+
+    // The later message first: the door collects the capture and places
+    // each operation by the instant a book folds it at, so the snapshot's
+    // leaves lead; the heartbeat is no book's and contributes nothing.
+    const stream = codec.marketOperations([update, heartbeat, snapshot])
+    assert.equal(stream[Symbol.iterator](), stream)
+    const operations = [...stream]
+    assert.deepEqual(stream.next(), { value: undefined, done: true })
+    assert.ok(operations.every((operation) => operation instanceof graph.MarketData))
+    const expected = [snapshot, update].flatMap((message) => message.marketOperations())
+    assert.deepEqual(operations.map((operation) => operation.kind), expected.map((operation) => operation.kind))
+    assert.deepEqual(operations.map((operation) => operation.curruuid), expected.map((operation) => operation.curruuid))
+    const clocks = operations.map((operation) => {
+      const leaf = operation.intoLeaf()
+      return leaf.snapunix ?? leaf.currunix
+    })
+    assert.ok(clocks.every((clock, at) => at === 0 || clocks[at - 1] <= clock), 'sorted by the fold instant')
+    assert.deepEqual(clocks, [...clocks].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0)))
+
+    // The rows the batch door writes are those operations, and the Arrow
+    // twin over FIX rows answers the same.
+    const rows = [...graph.MarketData.fromArrowReader(codec.marketArrowReader([update, heartbeat, snapshot]))]
+    assert.deepEqual(rows.map((row) => row.stableHash()), operations.map((operation) => operation.stableHash()))
+    const table = codec.marketArrowReader([update, heartbeat, snapshot]).intoTable()
+    assert.ok(codec.marketArrowReader([]).field.equals(graph.MarketData.field()))
+    assert.deepEqual([...table.getChild('kind')], operations.map((operation) => operation.kind))
+    const schema = fix.schema(seed())
+    const twin = [...graph.MarketData.fromArrowReader(
+      codec.marketOperationsArrowReader(codec.arrowReader(schema, [update, heartbeat, snapshot])),
+    )]
+    assert.deepEqual(twin.map((row) => row.kind), operations.map((operation) => operation.kind))
+    assert.deepEqual(twin.map((row) => row.curruuid), operations.map((operation) => operation.curruuid))
+    // A schema that makes no root is refused before a row is read, as the
+    // lifecycle twin refuses it, and whatever `BatchReader.from` takes -
+    // an Apache Arrow JS table here - is a source.
+    const column = new arrow.Field('a', new arrow.Int64(), true)
+    const foreign = () => new arrow.Table(new arrow.Schema([column, column]))
+    assert.throws(() => codec.marketOperationsArrowReader(foreign()), /duplicate field name "a"/)
+    assert.throws(() => codec.lifecycleArrowReader(foreign()), /duplicate field name "a"/)
+    const source = codec.arrowReader(schema, [snapshot])
+    codec.marketOperationsArrowReader(source)
+    assert.ok(source.consumed)
+  })
+
+  test('marketMetadata carries what a message states that no column reads', () => {
+    const line = Buffer.from(
+      '8=FIX.4.4|35=D|52=20240102-10:15:30|11=A1|55=AAPL|22=4|48=US0378331005|54=1|15=USD|38=100|44=10.5|60=20240102-10:15:31|10=0|',
+    )
+    const on = reading(seed())
+    const off = reading(seed(), { marketMetadata: false })
+    assert.equal(on.marketMetadata, true)
+    assert.equal(off.marketMetadata, false)
+    assert.equal(reading(seed(), { marketMetadata: undefined }).marketMetadata, true)
+    const [kept] = [...on.marketOperations([on.parseFixLine(line)])]
+    const [dropped] = [...off.marketOperations([off.parseFixLine(line)])]
+    assert.deepEqual(kept.metadata, { countryofissue: 'US', currencycodesource: '6' })
+    assert.deepEqual(dropped.metadata, {})
+    // The map is part of the leaf's identity, and nothing else moves.
+    assert.notEqual(kept.curruuid, dropped.curruuid)
+    assert.equal(kept.crosscode, dropped.crosscode)
+    assert.equal(kept.price, dropped.price)
+    // The batch door honours the same switch.
+    const [row] = [...graph.MarketData.fromArrowReader(off.marketArrowReader([off.parseFixLine(line)]))]
+    assert.equal(row.curruuid, dropped.curruuid)
+    assert.deepEqual(row.metadata, {})
+  })
+
+  test('a failure behind the capture surfaces where each market door ends', () => {
+    const codec = reading(seed())
+    const { snapshot, update } = bookCapture(codec)
+    function* failing() {
+      yield update
+      yield snapshot
+      throw new RangeError('the source broke')
+    }
+    // The sorted door collected what came before the failure and answers it,
+    // then throws the failure itself, once, in place of its end.
+    const stream = codec.marketOperations(failing())
+    const expected = [snapshot, update].flatMap((message) => message.marketOperations())
+    for (const operation of expected) {
+      assert.equal(stream.next().value.curruuid, operation.curruuid)
+    }
+    assert.throws(() => stream.next(), RangeError)
+    assert.deepEqual(stream.next(), { value: undefined, done: true })
+    // An item that is not a message is the same failure.
+    const mixed = codec.marketOperations([snapshot, 'not a message'])
+    assert.equal(mixed.next().done, false)
+    assert.throws(() => { for (;;) if (mixed.next().done) break }, TypeError)
+    // A refused expansion is thrown by its own `next`, before every
+    // operation, and the stream continues past it.
+    const missing = codec.parseFixLine(Buffer.from(
+      '8=FIX.4.4|35=AE|52=20260921-10:00:00|571=T1|150=F|55=AAPL|' +
+      '32=4|31=101.25|60=20260921-10:00:00|552=1|' +
+      '1427=NO-SIDE|1009=4|37=ORDER-1|11=CLIENT-1|10=0|',
+    ))
+    const refusing = codec.marketOperations([snapshot, missing])
+    assert.throws(() => refusing.next(), /\$\.NoSides\(552\)\[0\]\.Side\(54\)/)
+    assert.equal([...refusing].length, snapshot.marketOperations().length)
+    // The batch door meets every failure before its first row: the failure
+    // is the reader's only item.
+    assert.throws(() => codec.marketArrowReader(failing()).intoTable(), /the source broke/)
+    assert.throws(() => codec.marketArrowReader([snapshot, missing]).intoTable(), /\$\.NoSides\(552\)\[0\]\.Side\(54\)/)
+    assert.throws(() => codec.marketArrowReader(5), /messages must be an iterable/)
+  })
+
   test('a parse fills what the dictionary derives, through both doors', () => {
     const codec = reading(seed())
     const rows = codec.parseTextArrowReader(capture([REPORT], 1)).intoTable()
@@ -3789,10 +3918,11 @@ let committedRegistry
   // time, the facts each walked message carries, and the batch twin.
 
   const assert = require('node:assert/strict')
+  const fs = require('node:fs')
   const path = require('node:path')
   const test = require('node:test')
 
-  const { BatchReader, DataType, IOBase, Scalar, TextLine, TextOptions, fields, fix } = require('yggdryl')
+  const { BatchReader, DataType, IOBase, Scalar, TextLine, TextOptions, fields, fix, graph } = require('yggdryl')
 
   const SEED = path.join(__dirname, '..', '..', 'config', 'fix')
   // A second of a ULBridge's own capture, anonymized: the corpus
@@ -4090,6 +4220,54 @@ let committedRegistry
       }))
     }
     assert.deepEqual(topology(chained), topology(walked))
+  })
+
+  test('a bridge capture reads as sorted market operations that fold into books', () => {
+    const registry = seed()
+    const codec = reading(registry, {
+      captureNames: ['timestamp', 'msgthreadid', 'msgsessionid', 'msgctxid', 'msgseqnum', 'msgpluginid', 'level'],
+      defaultSendingTime: SENDING,
+      threads: 1,
+    })
+    // The capture read off its bytes, as `rust/tests/fix/ulbridge.rs` reads
+    // it: nothing has a modification time, so an undated line takes the
+    // codec's clock rather than the file's `mtime` - which is what makes the
+    // book identity below the same in every language.
+    const options = new TextOptions()
+    options.rowheader = ROWHEADER
+    options.startRownum = 1n
+    options.timezone = 'UTC'
+    const messages = []
+    for (const line of IOBase.fromBytes(fs.readFileSync(CAPTURE)).readTextLines(options)) {
+      for (const message of codec.parseTextLine(line)) messages.push(message)
+    }
+    assert.equal(messages.length, 94)
+    const walked = [...codec.lifecycle(messages)]
+    assert.equal(walked.length, 28)
+
+    // Eleven deliveries reach a book - eight fills and three orders - and
+    // the one admitted message refused is the trade capture whose side
+    // states no `Side(54)`, thrown first, before every operation.
+    const stream = codec.marketOperations(walked)
+    assert.throws(
+      () => stream.next(),
+      /invalid record value at \$\.NoSides\(552\)\[0\]\.Side\(54\): expected a bid or ask side, got no value/,
+    )
+    const operations = [...stream]
+    assert.equal(operations.length, 11)
+    const census = {}
+    for (const operation of operations) census[operation.kind] = (census[operation.kind] ?? 0) + 1
+    assert.deepEqual(census, { execution_event: 8, order_event: 3 })
+
+    // Every operation folds into a book: seven, the last holding nothing,
+    // its unpriced order having rested and left at one instant.
+    const books = [...new graph.BookIterator(operations, 0, false)]
+    assert.equal(books.length, 7)
+    const last = books[books.length - 1]
+    assert.equal(last.ticker, '2454')
+    assert.ok(last.bid.isEmpty && last.ask.isEmpty)
+    assert.deepEqual(last.ask.deltas.map((delta) => delta.price), [null, null])
+    assert.equal(last.currhashcode, 4_619_727_780_541_450_139n)
   })
 
   test('a transaction time stating only a day leaves the sending clock standing', () => {

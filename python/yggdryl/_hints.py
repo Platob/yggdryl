@@ -550,7 +550,7 @@ class _Inference:
         if issubclass(hint, datetime_module.timedelta):
             return _native_datatype("duration64(microsecond)")
         if issubclass(hint, decimal.Decimal):
-            return _native_datatype("decimal128(38,18)")
+            return _native_datatype("decimal")
         if issubclass(hint, uuid.UUID):
             return _native_datatype("uuid")
         if issubclass(hint, pathlib.PurePath) or issubclass(hint, os.PathLike):
@@ -1869,7 +1869,7 @@ _DIRECT_CLASS_TYPES: dict[type[Any], str] = {
     datetime_module.date: "date32",
     datetime_module.time: "time64(microsecond)",
     datetime_module.timedelta: "duration64(microsecond)",
-    decimal.Decimal: "decimal128(38,18)",
+    decimal.Decimal: "decimal",
     uuid.UUID: "uuid",
     pathlib.Path: "utf8",
     pathlib.PurePath: "utf8",

@@ -46,7 +46,7 @@ use crate::boolean::Boolean;
 use crate::bytes::Bytes;
 use crate::date::{Date32, Date64};
 use crate::datetime::DateTime64;
-use crate::decimal::{Decimal32, Decimal64, Decimal128, Decimal256};
+use crate::decimal::{BigDecimal, Decimal, Decimal32, Decimal64, Decimal128, Decimal256};
 use crate::duration::{Duration32, Duration64};
 use crate::floating::{Float16, Float32, Float64};
 use crate::geospatial::{Geography, Geometry};
@@ -151,6 +151,10 @@ pub enum Scalar {
     Decimal128(Decimal128),
     /// A 256-bit coefficient-and-scale decimal.
     Decimal256(Decimal256),
+    /// The fixed `decimal128(38, 18)` leaf: eighteen fractional digits, always.
+    Decimal(Decimal),
+    /// The fixed `decimal256(76, 18)` leaf.
+    BigDecimal(BigDecimal),
     /// A 32-bit day-count date.
     Date32(Date32),
     /// A 64-bit millisecond-count date.
@@ -397,6 +401,9 @@ impl Serialize for Scalar {
                 "d256",
                 &Pair(&value.coefficient(), &value.scale()),
             ),
+            // The fixed leaves write their units: the scale is the datatype's.
+            Self::Decimal(value) => tagged(serializer, "decimal", &value.units()),
+            Self::BigDecimal(value) => tagged(serializer, "bigdecimal", &value.units()),
             // One tag for every string. The ordinary value - the `utf8`
             // leaf - writes its characters and nothing else, which is what
             // it always wrote; any other leaf writes the whole declaration.
@@ -679,6 +686,8 @@ impl<'de> Deserialize<'de> for Scalar {
             D64(i64, i8),
             D128(i128, i8),
             D256(i256, i8),
+            Decimal(i128),
+            Bigdecimal(i256),
             String(crate::string::StringDocument),
             Country(SmolStr),
             Ccy(SmolStr),
@@ -765,6 +774,12 @@ impl<'de> Deserialize<'de> for Scalar {
             )),
             StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
             StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
+            StructuralWire::Decimal(units) => Decimal::from_units(units)
+                .map(Self::Decimal)
+                .ok_or_else(|| serde::de::Error::custom("decimal units exceed 38 digits")),
+            StructuralWire::Bigdecimal(units) => BigDecimal::from_units(units)
+                .map(Self::BigDecimal)
+                .ok_or_else(|| serde::de::Error::custom("bigdecimal units exceed 76 digits")),
             StructuralWire::String(value) => Ok(value.0),
             StructuralWire::Country(value) => crate::Country::new(value)
                 .map(Self::Country)
@@ -1017,7 +1032,12 @@ impl Ord for Scalar {
             Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("all float widths returned above")
             }
-            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+            Self::Decimal32(_)
+            | Self::Decimal64(_)
+            | Self::Decimal128(_)
+            | Self::Decimal256(_)
+            | Self::Decimal(_)
+            | Self::BigDecimal(_) => {
                 unreachable!("all decimal widths returned above")
             }
             // Two temporals of one family returned above, and two families
@@ -1114,7 +1134,12 @@ impl Hash for Scalar {
             Self::Float16(_) | Self::Float32(_) | Self::Float64(_) => {
                 unreachable!("float values returned above")
             }
-            Self::Decimal32(_) | Self::Decimal64(_) | Self::Decimal128(_) | Self::Decimal256(_) => {
+            Self::Decimal32(_)
+            | Self::Decimal64(_)
+            | Self::Decimal128(_)
+            | Self::Decimal256(_)
+            | Self::Decimal(_)
+            | Self::BigDecimal(_) => {
                 unreachable!("decimal values returned above")
             }
             Self::Date32(_)
@@ -1315,7 +1340,9 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => 4,
+        | Scalar::Decimal256(_)
+        | Scalar::Decimal(_)
+        | Scalar::BigDecimal(_) => 4,
         string_scalars!(_) => 5,
         bytes_scalars!(_) => 6,
         Scalar::Date32(_) | Scalar::Date64(_) => 7,
@@ -1392,6 +1419,8 @@ impl Scalar {
             Self::Decimal64(_) => DataTypeId::Decimal64,
             Self::Decimal128(_) => DataTypeId::Decimal128,
             Self::Decimal256(_) => DataTypeId::Decimal256,
+            Self::Decimal(_) => DataTypeId::Decimal,
+            Self::BigDecimal(_) => DataTypeId::BigDecimal,
             Self::Date32(_) => DataTypeId::Date32,
             Self::Date64(_) => DataTypeId::Date64,
             Self::Time32(_) => DataTypeId::Time32,
@@ -1491,6 +1520,8 @@ impl Scalar {
             Self::Decimal64(_) => "d64",
             Self::Decimal128(_) => "d128",
             Self::Decimal256(_) => "d256",
+            Self::Decimal(_) => "decimal",
+            Self::BigDecimal(_) => "bigdecimal",
             // The plain leaf keeps the family's own word; every other leaf
             // is its name.
             string_scalars!(_) => match self {
@@ -2041,6 +2072,8 @@ impl Scalar {
             Self::Decimal64(value) => value,
             Self::Decimal128(value) => value,
             Self::Decimal256(value) => value,
+            Self::Decimal(value) => value,
+            Self::BigDecimal(value) => value,
             Self::Date32(value) => value,
             Self::Date64(value) => value,
             Self::Time32(value) => value,

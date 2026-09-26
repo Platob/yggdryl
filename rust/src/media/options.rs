@@ -383,7 +383,7 @@ pub trait IORecordOptions: Sized {
     /// is the read that already happens. This is projection pushdown without
     /// a declared field.
     fn apply_columns(&self) -> Option<Vec<String>> {
-        if self.select().is_all() {
+        if self.select().has_star() {
             return None;
         }
         let mut columns = self.filter().columns();

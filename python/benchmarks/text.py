@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from yggdryl import IOBase, Scalar, scalar
 from yggdryl import avro
-from yggdryl import json, toml, yaml
+from yggdryl import json, toml, xml, yaml
 from yggdryl.text import codec
 
 
@@ -34,15 +34,21 @@ VALUE = Order(42, tuple(Leg(f"S{index}", Decimal("12.50")) for index in range(8)
 JSON = json.dumps(VALUE)
 TOML = toml.dumps(VALUE)
 YAML = yaml.dumps(VALUE)
+# An XML document is one element, so the record travels under one root name.
+XML_VALUE = {"order": VALUE}
+XML = xml.dumps(XML_VALUE)
 JSON_TEXT = JSON.decode("utf-8")
 TOML_TEXT = TOML.decode("utf-8")
 YAML_TEXT = YAML.decode("utf-8")
+XML_TEXT = XML.decode("utf-8")
 JSON_READER = io.BytesIO(JSON)
 TOML_READER = io.BytesIO(TOML)
 YAML_READER = io.BytesIO(YAML)
+XML_READER = io.BytesIO(XML)
 JSON_WRITER = io.BytesIO()
 TOML_WRITER = io.BytesIO()
 YAML_WRITER = io.BytesIO()
+XML_WRITER = io.BytesIO()
 
 JSON_HANDLE = IOBase.from_bytes(JSON)
 JSON_HANDLE.media_type = "application/json"
@@ -102,6 +108,11 @@ def _decode_toml_reader() -> object:
     return toml.loads(TOML_READER)
 
 
+def _decode_xml_reader() -> object:
+    XML_READER.seek(0)
+    return xml.loads(XML_READER)
+
+
 def _decode_json_lines_reader() -> object:
     JSON_LINES_READER.seek(0)
     return list(json.load_all(JSON_LINES_READER))
@@ -128,6 +139,12 @@ def _write_toml_stream() -> None:
     TOML_WRITER.seek(0)
     TOML_WRITER.truncate()
     toml.dump(VALUE, TOML_WRITER)
+
+
+def _write_xml_stream() -> None:
+    XML_WRITER.seek(0)
+    XML_WRITER.truncate()
+    xml.dump(XML_VALUE, XML_WRITER)
 
 
 def _write_json_handle() -> None:
@@ -172,6 +189,12 @@ def main() -> None:
             lambda: yaml.loads(YAML, cls=Order),
             args.iterations,
         )
+        _measure("field class into XML", lambda: xml.dumps(XML_VALUE), args.iterations)
+        _measure(
+            "field class from XML",
+            lambda: xml.loads(XML, cls=Order),
+            args.iterations,
+        )
         _measure(
             "JSON borrowed str decode",
             lambda: json.loads(JSON_TEXT),
@@ -187,9 +210,15 @@ def main() -> None:
             lambda: yaml.loads(YAML_TEXT),
             args.iterations,
         )
+        _measure(
+            "XML borrowed str decode",
+            lambda: xml.loads(XML_TEXT),
+            args.iterations,
+        )
         _measure("JSON bytes decode", lambda: json.loads(JSON), args.iterations)
         _measure("TOML bytes decode", lambda: toml.loads(TOML), args.iterations)
         _measure("YAML bytes decode", lambda: yaml.loads(YAML), args.iterations)
+        _measure("XML bytes decode", lambda: xml.loads(XML), args.iterations)
         _measure("generic inferred decode", lambda: codec.from_io(JSON), args.iterations)
         _measure(
             "JSON bounded decode",
@@ -217,9 +246,15 @@ def main() -> None:
             lambda: yaml.loads(YAML, cls=Scalar),
             args.iterations,
         )
+        _measure(
+            "XML exact Scalar decode",
+            lambda: xml.loads(XML, cls=Scalar),
+            args.iterations,
+        )
         _measure("JSON reader redirect", _decode_json_reader, args.iterations)
         _measure("TOML reader redirect", _decode_toml_reader, args.iterations)
         _measure("YAML reader redirect", _decode_yaml_reader, args.iterations)
+        _measure("XML reader redirect", _decode_xml_reader, args.iterations)
         _measure(
             "JSON buffered bytes dump",
             lambda: json.dumps(VALUE),
@@ -233,6 +268,11 @@ def main() -> None:
         _measure(
             "YAML buffered bytes dump",
             lambda: yaml.dumps(VALUE),
+            args.iterations,
+        )
+        _measure(
+            "XML buffered bytes dump",
+            lambda: xml.dumps(XML_VALUE),
             args.iterations,
         )
         _measure(
@@ -255,12 +295,19 @@ def main() -> None:
             lambda: toml.dumps(VALUE, indent=2),
             args.iterations,
         )
+        _measure(
+            "XML indent=2 dump",
+            lambda: xml.dumps(XML_VALUE, indent=2),
+            args.iterations,
+        )
         _measure("JSON writer redirect", _write_json_stream, args.iterations)
         _measure("TOML writer redirect", _write_toml_stream, args.iterations)
         _measure("YAML writer redirect", _write_yaml_stream, args.iterations)
+        _measure("XML writer redirect", _write_xml_stream, args.iterations)
         _measure("deep JSON encode", lambda: json.dumps(DEEP), args.iterations)
         _measure("deep TOML encode", lambda: toml.dumps(DEEP), args.iterations)
         _measure("deep YAML encode", lambda: yaml.dumps(DEEP), args.iterations)
+        _measure("deep XML encode", lambda: xml.dumps(DEEP), args.iterations)
         _measure(
             "JSON Lines decode",
             lambda: list(json.loads_all(JSON_LINES)),

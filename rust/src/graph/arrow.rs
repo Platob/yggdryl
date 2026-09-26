@@ -4,21 +4,30 @@
 //! A row is `kind` - the [`MarketKind`] spelling of its leaf - then the
 //! sixteen [`EventColumn`]s, the nineteen [`MarketColumn`]s, the eight
 //! [`OperationColumn`]s, the five book-control columns a market-data entry
-//! states, and the nested columns a composite leaf fills: `executions` (a
-//! trade's or a book's), `bidside` and `askside` (a book's), the
-//! `snapshotpartitions` a book's last replacement covered, and `live` and
-//! `deltas` (a book side's). Every fact is its own typed column; a leaf
-//! leaves null what it does not state. A nested operation row is `kind`,
-//! the event, market, operation and book-control columns; a side row is the
-//! six element facts, the market columns, and its `live` and `deltas`
-//! operation rows.
+//! states, the three facts a book derives from its two bests - `spread`
+//! (the best ask less the best bid, negative when crossed), `crossed` and
+//! `locked` - and the nested columns a composite leaf fills: `executions`
+//! (a trade's or a book's), `bidside` and `askside` (a book's), the
+//! `snapshotpartitions` a book's last replacement covered, and `live`,
+//! `deltas` and `limits` (a book side's). Every fact is its own typed
+//! column; a leaf leaves null what it does not state. A book's `bid` and
+//! `ask` lanes state its two bests - the best price and the aggregate
+//! quantity there - and nothing else. A nested operation row is `kind`, the
+//! event, market, operation and book-control columns; a side row is the six
+//! element facts, the market columns - its `price` and `quantity` are the
+//! best price and the aggregate best quantity, so no column repeats them -
+//! and its `live` and `deltas` operation rows and its `limits`, one
+//! [`Limit`] per price best first and the unpriced one last.
 //!
 //! Written column by column from the typed leaves, and read back
 //! tolerantly: the reader's columns are resolved by name once per stream,
 //! any subset in any order, a foreign column ignored and a column of
 //! another castable type cast through one plan. Every stated identity and
-//! every stated fact must be the one the rebuilt leaf derives.
+//! every stated fact - a book's lanes, its three facts and a side's limits
+//! included - must be the one the rebuilt leaf derives, and a null cell
+//! states nothing.
 
+use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::iter::FusedIterator;
 use std::sync::Arc;
@@ -51,20 +60,23 @@ use crate::serie::{
     SerieSerie, UInt32Serie, UInt64Serie, Utf8StringSerie,
 };
 use crate::{
-    ArrowCastOptions, Ccy, CfiCode, CodeValue, DataType, Decimal18, Error, Field, MicCode, Result,
-    Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
+    ArrowCastOptions, Ccy, CfiCode, CodeValue, DataType, Decimal, Error, Field, Limit, MicCode,
+    Result, Serie, SerieReader, Side, State, StructType, TimeInForce, Unit, Uuid,
 };
 
-const ROOT: &str = "marketdata";
-const KIND: &str = "kind";
+// The column names the graph module shares: the root and its nested columns,
+// which a view names to exclude them.
+pub(super) const ROOT: &str = "marketdata";
+pub(super) const KIND: &str = "kind";
 const OPERATION_ROW: &str = "operationevent";
 const PARTITION_ROW: &str = "snapshotpartition";
-const EXECUTIONS: &str = "executions";
-const BIDSIDE: &str = "bidside";
-const ASKSIDE: &str = "askside";
-const SNAPSHOT_PARTITIONS: &str = "snapshotpartitions";
-const LIVE: &str = "live";
-const DELTAS: &str = "deltas";
+pub(super) const EXECUTIONS: &str = "executions";
+pub(super) const BIDSIDE: &str = "bidside";
+pub(super) const ASKSIDE: &str = "askside";
+pub(super) const SNAPSHOT_PARTITIONS: &str = "snapshotpartitions";
+pub(super) const LIVE: &str = "live";
+pub(super) const DELTAS: &str = "deltas";
+pub(super) const LIMITS: &str = "limits";
 /// Every kind a row may state, as a refusal lists them.
 const KINDS: &str = "order, quote, execution, book_side, order_event, quote_event, \
                      execution_event, trade_event, book_event or snapshot_event";
@@ -90,10 +102,12 @@ impl MarketData {
     /// then [`EventColumn::ALL`] - every one nullable, since an undated leaf
     /// states no clock - [`MarketColumn::ALL`], [`OperationColumn::ALL`],
     /// the five book-control columns (`mdupdateaction`, `bookscope`,
-    /// `mdentrypositionno`, `mdentrypx`, `mdentrysize`), then the nullable
-    /// nested columns: `executions` (a trade's or a book's operation rows),
-    /// `bidside` and `askside` (a book's sides), `snapshotpartitions` (a
-    /// book's) and `live` and `deltas` (a book side's operation rows).
+    /// `mdentrypositionno`, `mdentrypx`, `mdentrysize`), the three nullable
+    /// facts a book derives from its bests (`spread`, `crossed`, `locked`),
+    /// then the nullable nested columns: `executions` (a trade's or a book's
+    /// operation rows), `bidside` and `askside` (a book's sides),
+    /// `snapshotpartitions` (a book's) and `live`, `deltas` and `limits` (a
+    /// book side's operation rows and its [`Limit`]s).
     ///
     /// ```
     /// use yggdryl::graph::MarketData;
@@ -104,7 +118,7 @@ impl MarketData {
     /// assert_eq!(field.fields()[0].name(), "kind");
     /// assert_eq!(field.fields()[1].name(), "currunix");
     /// assert!(field.fields()[1].is_nullable());
-    /// assert_eq!(field.field_len(), 1 + 16 + 19 + 8 + 5 + 6);
+    /// assert_eq!(field.field_len(), 1 + 16 + 19 + 8 + 5 + 3 + 7);
     /// # Ok(())
     /// # }
     /// ```
@@ -228,12 +242,14 @@ enum Column {
     Market(MarketColumn),
     Operation(OperationColumn),
     Control(Control),
+    Book(BookFact),
     Executions,
     BidSide,
     AskSide,
     SnapshotPartitions,
     Live,
     Deltas,
+    Limits,
 }
 
 /// Which struct a column's field is built for.
@@ -258,12 +274,14 @@ impl Column {
             Self::Market(column) => column.name(),
             Self::Operation(column) => column.name(),
             Self::Control(column) => column.name(),
+            Self::Book(fact) => fact.name(),
             Self::Executions => EXECUTIONS,
             Self::BidSide => BIDSIDE,
             Self::AskSide => ASKSIDE,
             Self::SnapshotPartitions => SNAPSHOT_PARTITIONS,
             Self::Live => LIVE,
             Self::Deltas => DELTAS,
+            Self::Limits => LIMITS,
         }
     }
 
@@ -286,6 +304,7 @@ impl Column {
             Self::Market(column) => column.field()?,
             Self::Operation(column) => column.field()?,
             Self::Control(column) => column.field()?,
+            Self::Book(fact) => fact.field()?,
             Self::Executions | Self::Live | Self::Deltas => {
                 DataType::serie(operation_row_field()?).nullable_field(self.name())
             }
@@ -293,11 +312,14 @@ impl Column {
                 struct_field(self.name(), &side_columns(), Role::Side, true)?
             }
             Self::SnapshotPartitions => snapshot_partitions_field()?,
+            Self::Limits => DataType::serie(Limit::field()).nullable_field(LIMITS),
         };
         // A root states only what its leaf does, so every clock and nested
         // column may be null there; a nested row's own columns keep the
         // nullability its fact has. A side's operation lists are always
-        // stated.
+        // stated. Its limits are nullable in every role, so a batch written
+        // before the column casts with nulls, and a null states nothing;
+        // a side row always writes them.
         Ok(match (role, self) {
             (Role::Read, _) | (Role::Root, Self::Event(_)) => field.with_nullable(true),
             (Role::Side, Self::Live | Self::Deltas) => field.with_nullable(false),
@@ -356,12 +378,15 @@ impl Column {
                 Control::Position => Storage::UInt32,
                 Control::EntryPx | Control::EntrySize => Storage::Decimal,
             },
+            Self::Book(BookFact::Spread) => Storage::Decimal,
+            Self::Book(BookFact::Crossed | BookFact::Locked) => Storage::Boolean,
             Self::Executions
             | Self::BidSide
             | Self::AskSide
             | Self::SnapshotPartitions
             | Self::Live
-            | Self::Deltas => Storage::Nested,
+            | Self::Deltas
+            | Self::Limits => Storage::Nested,
         }
     }
 }
@@ -369,6 +394,7 @@ impl Column {
 /// Every root column, in canonical row order.
 fn root_columns() -> Vec<Column> {
     let mut columns = operation_columns();
+    columns.extend(BookFact::ALL.map(Column::Book));
     columns.extend([
         Column::Executions,
         Column::BidSide,
@@ -376,6 +402,7 @@ fn root_columns() -> Vec<Column> {
         Column::SnapshotPartitions,
         Column::Live,
         Column::Deltas,
+        Column::Limits,
     ]);
     columns
 }
@@ -396,7 +423,7 @@ fn side_columns() -> Vec<Column> {
         .map(Column::Event)
         .into_iter()
         .chain(MarketColumn::ALL.map(Column::Market))
-        .chain([Column::Live, Column::Deltas])
+        .chain([Column::Live, Column::Deltas, Column::Limits])
         .collect()
 }
 
@@ -460,13 +487,57 @@ impl Control {
             Self::Action => (DataType::utf8(), "MD Update Action"),
             Self::Scope => (DataType::utf8(), "Book Scope"),
             Self::Position => (DataType::UInt32, "MD Entry Position"),
-            Self::EntryPx => (DataType::DECIMAL, "MD Entry Price"),
-            Self::EntrySize => (DataType::DECIMAL, "MD Entry Size"),
+            Self::EntryPx => (DataType::Decimal, "MD Entry Price"),
+            Self::EntrySize => (DataType::Decimal, "MD Entry Size"),
         };
         let mut field = datatype.nullable_field(self.name());
         field.set_display(display)?;
         Ok(field)
     }
+}
+
+/// One of the three facts a book derives from its two bests, stated on
+/// its root row: [`BookEvent::spread`], [`BookEvent::is_crossed`] and
+/// [`BookEvent::is_locked`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BookFact {
+    Spread,
+    Crossed,
+    Locked,
+}
+
+impl BookFact {
+    const ALL: [Self; 3] = [Self::Spread, Self::Crossed, Self::Locked];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Spread => "spread",
+            Self::Crossed => "crossed",
+            Self::Locked => "locked",
+        }
+    }
+
+    fn field(self) -> Result<Field> {
+        let (datatype, display) = match self {
+            Self::Spread => (DataType::Decimal, "Spread"),
+            Self::Crossed => (DataType::Boolean, "Crossed"),
+            Self::Locked => (DataType::Boolean, "Locked"),
+        };
+        let mut field = datatype.nullable_field(self.name());
+        field.set_display(display)?;
+        Ok(field)
+    }
+}
+
+/// The lane a book states for one side: its best price and the aggregate
+/// quantity there, and nothing else; none where the side states no best.
+fn book_lane(side: &BookSide) -> Option<Lane> {
+    Lane {
+        price: side.best_price(),
+        quantity: side.best_quantity(),
+        ..Lane::default()
+    }
+    .stated()
 }
 
 /// Whether a market column holds a decimal: every price and quantity.
@@ -488,7 +559,7 @@ const fn is_decimal(column: MarketColumn) -> bool {
 }
 
 /// The decimal a market states under a decimal column.
-fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Option<Decimal18> {
+fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Option<Decimal> {
     match column {
         MarketColumn::Price => market.get_price(),
         MarketColumn::Quantity => market.get_quantity(),
@@ -509,7 +580,7 @@ fn market_decimal<E: Market + ?Sized>(column: MarketColumn, market: &E) -> Optio
 fn set_market_decimal<E: Market + ?Sized>(
     column: MarketColumn,
     market: &mut E,
-    value: Option<Decimal18>,
+    value: Option<Decimal>,
 ) {
     match column {
         MarketColumn::Price => market.set_price(value),
@@ -710,15 +781,18 @@ impl<'a> Row<'a> {
     fn boolean(&self, column: Column) -> Option<bool> {
         match column {
             Column::Operation(OperationColumn::Tradable) => self.operation?.get_tradable(),
+            Column::Book(BookFact::Crossed) => Some(self.book?.is_crossed()),
+            Column::Book(BookFact::Locked) => Some(self.book?.is_locked()),
             _ => None,
         }
     }
 
-    fn decimal(&self, column: Column) -> Option<Decimal18> {
+    fn decimal(&self, column: Column) -> Option<Decimal> {
         match column {
             Column::Market(column) => market_decimal(column, self.market),
             Column::Control(Control::EntryPx) => self.control?.entry_px,
             Column::Control(Control::EntrySize) => self.control?.entry_size,
+            Column::Book(BookFact::Spread) => self.book?.spread(),
             _ => None,
         }
     }
@@ -794,18 +868,31 @@ impl<'a> Row<'a> {
         }
     }
 
-    fn lane(&self, column: Column) -> Option<&'a Lane> {
-        let operation: &'a dyn Operation = self.operation?;
+    /// The lane a row states: an operation's own, borrowed, or the one a
+    /// book states for its side's best.
+    fn lane(&self, column: Column) -> Option<Cow<'a, Lane>> {
+        if let Some(operation) = self.operation {
+            return match column {
+                Column::Operation(OperationColumn::Bid) => operation.get_bid(),
+                Column::Operation(OperationColumn::Ask) => operation.get_ask(),
+                _ => None,
+            }
+            .map(Cow::Borrowed);
+        }
+        let book = self.book?;
         match column {
-            Column::Operation(OperationColumn::Bid) => operation.get_bid(),
-            Column::Operation(OperationColumn::Ask) => operation.get_ask(),
+            Column::Operation(OperationColumn::Bid) => book_lane(book.bid()),
+            Column::Operation(OperationColumn::Ask) => book_lane(book.ask()),
             _ => None,
         }
+        .map(Cow::Owned)
     }
 }
 
 /// What one value charges a batch's byte bound: a fixed width per
-/// operation row it lays out, nested rows included.
+/// operation row it lays out, nested rows included. A side's limits are
+/// not charged: they are at most one per entry already charged, and far
+/// narrower than its row.
 fn charge(value: &MarketData) -> u64 {
     let side = |side: &BookSide| side.len() + side.deltas().len();
     let nested = match value {
@@ -843,6 +930,8 @@ enum Nested {
     /// The snapshot partitions: the item field and the entries' Arrow
     /// children.
     Partitions(FieldRef, Fields),
+    /// A side's limits: the item field and the limits' Arrow children.
+    Limits(FieldRef, Fields),
 }
 
 impl Shape {
@@ -863,6 +952,9 @@ impl Shape {
                     }
                     (Column::SnapshotPartitions, ArrowType::List(item)) => {
                         Nested::Partitions(Arc::clone(item), struct_children(item)?.clone())
+                    }
+                    (Column::Limits, ArrowType::List(item)) => {
+                        Nested::Limits(Arc::clone(item), struct_children(item)?.clone())
                     }
                     _ => Nested::None,
                 };
@@ -969,6 +1061,63 @@ impl Slot {
                 )?);
                 list(item, offsets, values, &valid)
             }
+            Nested::Limits(item, fields) => {
+                // A side row - nested in a book, or a root book side -
+                // always states its limits, empty for an empty side; every
+                // other row states none.
+                let mut offsets = Vec::with_capacity(rows.len() + 1);
+                offsets.push(0_i32);
+                let mut valid = Vec::with_capacity(rows.len());
+                let mut limits: Vec<Limit> = Vec::new();
+                for row in rows {
+                    let held = row.side.map(BookSide::limits);
+                    valid.push(held.is_some());
+                    limits.extend(held.into_iter().flatten());
+                    offsets.push(offset(limits.len())?);
+                }
+                let ArrowType::List(uuid) = fields[2].data_type() else {
+                    return Err(unlanded(self.column, Storage::Nested));
+                };
+                let decimal = |at: usize, read: fn(&Limit) -> Option<Decimal>| -> ArrayRef {
+                    Arc::new(
+                        limits
+                            .iter()
+                            .map(|limit| read(limit).map(Decimal::units))
+                            .collect::<Decimal128Array>()
+                            .with_data_type(fields[at].data_type().clone()),
+                    )
+                };
+                let mut uuid_offsets = Vec::with_capacity(limits.len() + 1);
+                uuid_offsets.push(0_i32);
+                let mut held = 0;
+                for limit in &limits {
+                    held += limit.uuids.len();
+                    uuid_offsets.push(offset(held)?);
+                }
+                let uuids = FixedSizeBinaryArray::try_from_sparse_iter_with_size(
+                    limits
+                        .iter()
+                        .flat_map(|limit| &limit.uuids)
+                        .map(|uuid| Some(uuid.into_bytes())),
+                    UUID_WIDTH,
+                )?;
+                let uuids: ArrayRef = Arc::new(ListArray::try_new(
+                    Arc::clone(uuid),
+                    OffsetBuffer::new(ScalarBuffer::from(uuid_offsets)),
+                    Arc::new(uuids),
+                    None,
+                )?);
+                let values: ArrayRef = Arc::new(StructArray::try_new(
+                    fields.clone(),
+                    vec![
+                        decimal(0, |limit| limit.price),
+                        decimal(1, |limit| Some(limit.quantity)),
+                        uuids,
+                    ],
+                    None,
+                )?);
+                list(item, offsets, values, &valid)
+            }
         }
     }
 
@@ -1031,7 +1180,7 @@ impl Slot {
             ),
             Storage::Decimal => Arc::new(
                 rows.iter()
-                    .map(|row| row.decimal(column).map(Decimal18::units))
+                    .map(|row| row.decimal(column).map(Decimal::units))
                     .collect::<Decimal128Array>()
                     .with_data_type(datatype.clone()),
             ),
@@ -1073,12 +1222,13 @@ impl Slot {
                 let ArrowType::Struct(children) = datatype else {
                     return Err(unlanded(column, Storage::Lane));
                 };
-                let lanes: Vec<Option<&Lane>> = rows.iter().map(|row| row.lane(column)).collect();
-                let decimal = |at: usize, read: fn(&Lane) -> Option<Decimal18>| -> ArrayRef {
+                let lanes: Vec<Option<Cow<'_, Lane>>> =
+                    rows.iter().map(|row| row.lane(column)).collect();
+                let decimal = |at: usize, read: fn(&Lane) -> Option<Decimal>| -> ArrayRef {
                     Arc::new(
                         lanes
                             .iter()
-                            .map(|lane| lane.and_then(read).map(Decimal18::units))
+                            .map(|lane| lane.as_deref().and_then(read).map(Decimal::units))
                             .collect::<Decimal128Array>()
                             .with_data_type(children[at].data_type().clone()),
                     )
@@ -1086,13 +1236,18 @@ impl Slot {
                 let currency: StringArray = lanes
                     .iter()
                     .map(|lane| {
-                        lane.and_then(|lane| lane.currency.as_ref())
+                        lane.as_deref()
+                            .and_then(|lane| lane.currency.as_ref())
                             .map(Ccy::as_str)
                     })
                     .collect();
                 let unit: StringArray = lanes
                     .iter()
-                    .map(|lane| lane.and_then(|lane| lane.unit.as_ref()).map(Unit::as_str))
+                    .map(|lane| {
+                        lane.as_deref()
+                            .and_then(|lane| lane.unit.as_ref())
+                            .map(Unit::as_str)
+                    })
                     .collect();
                 let valid: Vec<bool> = lanes.iter().map(Option::is_some).collect();
                 Arc::new(StructArray::try_new(
@@ -1727,9 +1882,9 @@ impl Leaf {
         }
     }
 
-    fn decimal(&self, row: usize) -> Option<Decimal18> {
+    fn decimal(&self, row: usize) -> Option<Decimal> {
         match self {
-            Self::Decimal(held) => held.value(row).and_then(Decimal18::from_units),
+            Self::Decimal(held) => held.value(row).and_then(Decimal::from_units),
             _ => None,
         }
     }
@@ -1777,7 +1932,7 @@ impl Leaf {
         if lane.is_null(row).unwrap_or(true) {
             return Ok(None);
         }
-        let decimal = |held: &Decimal128Serie| held.value(row).and_then(Decimal18::from_units);
+        let decimal = |held: &Decimal128Serie| held.value(row).and_then(Decimal::from_units);
         let located = |error: Error| invalid(at(path, name), format_smolstr!("{error}"));
         Ok(Lane {
             price: decimal(price),
@@ -1838,12 +1993,14 @@ struct Landed {
     market: [Option<Leaf>; 19],
     operation: [Option<Leaf>; 8],
     control: [Option<Leaf>; 5],
+    book: [Option<Leaf>; 3],
     executions: Option<Operations>,
     live: Option<Operations>,
     deltas: Option<Operations>,
     bidside: Option<LandedSide>,
     askside: Option<LandedSide>,
     partitions: Option<Partitions>,
+    limits: Option<Limits>,
 }
 
 /// A landed list of operation rows.
@@ -1865,6 +2022,15 @@ struct Partitions {
     scope: Leaf,
 }
 
+/// A side's landed limits: the list, its items' price and quantity, and
+/// the lists of the entries' identities with their items.
+struct Limits {
+    list: Arc<SerieSerie>,
+    price: Leaf,
+    quantity: Leaf,
+    uuids: (Arc<SerieSerie>, Arc<FixedBytesSerie>),
+}
+
 impl Landed {
     fn new(children: &[Serie], layout: &[(Column, usize)], layouts: &Layouts) -> Result<Self> {
         let mut landed = Self {
@@ -1873,12 +2039,14 @@ impl Landed {
             market: std::array::from_fn(|_| None),
             operation: std::array::from_fn(|_| None),
             control: std::array::from_fn(|_| None),
+            book: std::array::from_fn(|_| None),
             executions: None,
             live: None,
             deltas: None,
             bidside: None,
             askside: None,
             partitions: None,
+            limits: None,
         };
         for (column, at) in layout {
             let serie = &children[*at];
@@ -1899,6 +2067,9 @@ impl Landed {
                 Column::Control(held) => {
                     landed.control[position(&Control::ALL, held)] = Some(Leaf::of(*column, serie)?);
                 }
+                Column::Book(held) => {
+                    landed.book[position(&BookFact::ALL, held)] = Some(Leaf::of(*column, serie)?);
+                }
                 Column::Executions => {
                     landed.executions = Some(Operations::new(*column, serie, layouts)?)
                 }
@@ -1909,6 +2080,7 @@ impl Landed {
                 Column::SnapshotPartitions => {
                     landed.partitions = Some(Partitions::new(*column, serie)?);
                 }
+                Column::Limits => landed.limits = Some(Limits::new(*column, serie)?),
             }
         }
         Ok(landed)
@@ -2072,7 +2244,47 @@ impl Landed {
         claims.validate(&book, path)?;
         self.check_event(row, &book, path)?;
         self.check_market(row, &book, path)?;
+        self.check_book(row, &book, path)?;
         Ok(book)
+    }
+
+    /// The lanes a book row states must be its two bests, and its three
+    /// facts the ones its bests derive; a null cell states nothing.
+    fn check_book(&self, row: usize, book: &BookEvent, path: &Path<'_>) -> Result<()> {
+        for (column, side) in [
+            (OperationColumn::Bid, book.bid()),
+            (OperationColumn::Ask, book.ask()),
+        ] {
+            let Some(leaf) = &self.operation[position(&OperationColumn::ALL, &column)] else {
+                continue;
+            };
+            let Some(stated) = leaf.lane(row, path, column.name())? else {
+                continue;
+            };
+            let derived = book_lane(side);
+            if derived.as_ref() != Some(&stated) {
+                return Err(differs(path, column.name(), &derived, &stated));
+            }
+        }
+        let [spread, crossed, locked] = &self.book;
+        if let Some(stated) = spread.as_ref().and_then(|leaf| leaf.decimal(row)) {
+            let derived = book.spread();
+            if derived != Some(stated) {
+                return Err(differs(path, BookFact::Spread.name(), &derived, &stated));
+            }
+        }
+        for (fact, leaf, derived) in [
+            (BookFact::Crossed, crossed, book.is_crossed()),
+            (BookFact::Locked, locked, book.is_locked()),
+        ] {
+            match leaf.as_ref().and_then(|leaf| leaf.boolean(row)) {
+                Some(stated) if stated != derived => {
+                    return Err(differs(path, fact.name(), &derived, &stated));
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 
     fn side_of(
@@ -2106,6 +2318,18 @@ impl Landed {
         claims.validate(&side, path)?;
         self.check_element(row, &side, path)?;
         self.check_market(row, &side, path)?;
+        if let Some(stated) = self
+            .limits
+            .as_ref()
+            .map(|limits| limits.read(row, path))
+            .transpose()?
+            .flatten()
+        {
+            let derived: Vec<Limit> = side.limits().collect();
+            if stated != derived {
+                return Err(differs(path, LIMITS, &derived, &stated));
+            }
+        }
         Ok(side)
     }
 
@@ -2817,6 +3041,81 @@ impl Partitions {
             symbol: text(0)?,
             scope: text(1)?,
         })
+    }
+}
+
+impl Limits {
+    fn new(column: Column, serie: &Serie) -> Result<Self> {
+        let Serie::Serie(list) = serie else {
+            return Err(unlanded(column, Storage::Nested));
+        };
+        let [
+            Serie::Decimal128(price),
+            Serie::Decimal128(quantity),
+            Serie::Serie(uuids),
+        ] = list.items().children()
+        else {
+            return Err(unlanded(column, Storage::Nested));
+        };
+        let Serie::Uuid(items) = uuids.items() else {
+            return Err(unlanded(column, Storage::Uuids));
+        };
+        Ok(Self {
+            list: Arc::clone(list),
+            price: Leaf::Decimal(Arc::clone(price)),
+            quantity: Leaf::Decimal(Arc::clone(quantity)),
+            uuids: (Arc::clone(uuids), Arc::clone(items)),
+        })
+    }
+
+    /// The limits one cell states, in their stated order; `None` for a
+    /// null cell, which states nothing. A limit stating no quantity or no
+    /// entries, or an entry that is no uuid, is refused where it stands.
+    fn read(&self, row: usize, path: &Path<'_>) -> Result<Option<Vec<Limit>>> {
+        let Some(range) = self.list.range(row) else {
+            return Ok(None);
+        };
+        let here = path.field(LIMITS);
+        let (lists, items) = &self.uuids;
+        range
+            .enumerate()
+            .map(|(index, at)| {
+                let item = here.child(Segment::Index(index));
+                let Some(quantity) = self.quantity.decimal(at) else {
+                    return Err(invalid(
+                        self::at(&item, "quantity"),
+                        "expected a decimal, got null",
+                    ));
+                };
+                let Some(entries) = lists.range(at) else {
+                    return Err(invalid(
+                        self::at(&item, "uuids"),
+                        "expected a serie of uuids, got null",
+                    ));
+                };
+                let entries_path = item.field("uuids");
+                let uuids = entries
+                    .enumerate()
+                    .map(|(entry, held)| {
+                        items
+                            .value(held)
+                            .and_then(|bytes| Uuid::from_bytes(bytes).ok())
+                            .ok_or_else(|| {
+                                invalid(
+                                    entries_path.child(Segment::Index(entry)).render(),
+                                    "expected a uuid, got null",
+                                )
+                            })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                Ok(Limit {
+                    price: self.price.decimal(at),
+                    quantity,
+                    uuids,
+                })
+            })
+            .collect::<Result<Vec<_>>>()
+            .map(Some)
     }
 }
 

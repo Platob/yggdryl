@@ -126,7 +126,7 @@ impl Derivation {
         // column, an integer, text - as the exact decimal it restates, which
         // is what every crate price and quantity is.
         let value = if self.field.dtype() == &DataType::DECIMAL {
-            Scalar::from(crate::Decimal18::from_scalar(&value)?)
+            Scalar::from(crate::Decimal::from_scalar(&value)?)
         } else {
             value
         };

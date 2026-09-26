@@ -34,7 +34,7 @@ use yggdryl::graph::{
 };
 use yggdryl::idmap::IdMap as CoreIdMap;
 use yggdryl::securityid::SecurityIds as CoreSecurityIds;
-use yggdryl::{Decimal18, Scalar, graph};
+use yggdryl::{Decimal, Scalar, graph};
 
 use crate::text::codec::JsScalar;
 use crate::{exact_i64, napi_error};
@@ -595,7 +595,7 @@ pub(crate) fn instant_of(value: Either<BigInt, f64>, name: &str) -> Result<i64> 
 
 /// One of the market's numbers, exact, as decimal text; `None` where the
 /// market states none.
-pub(crate) fn decimal_text(held: Option<Decimal18>) -> Option<String> {
+pub(crate) fn decimal_text(held: Option<Decimal>) -> Option<String> {
     held.map(|value| value.to_string())
 }
 

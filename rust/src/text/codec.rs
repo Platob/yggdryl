@@ -6,7 +6,7 @@ use super::{Format, Formatting, Limits, Scalar};
 use crate::IOBase;
 use crate::{Field, Level, MimeType, Result};
 
-/// The read and write surface shared by JSON, JSON Lines, YAML, and TOML.
+/// The read and write surface shared by JSON, JSON Lines, YAML, TOML, and XML.
 // The receiver selects the codec; these names intentionally describe the
 // conversion direction at the public format boundary.
 #[allow(clippy::wrong_self_convention)]
@@ -264,4 +264,5 @@ text_format!(
     "Newline-delimited JSON: one value per line."
 );
 text_format!(Toml, Format::Toml, "One TOML document.");
+text_format!(Xml, Format::Xml, "One XML document.");
 text_format!(Yaml, Format::Yaml, "One or more YAML documents.");

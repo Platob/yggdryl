@@ -312,6 +312,7 @@ names:
 | `float16`, `float32` | `float` | `float32` |
 | `float64` | `double` | `float64` |
 | `decimal32/64/128/256` | `decimal4`/`decimal8`/`decimal16` | `decimal32/64/128` |
+| `decimal`, `bigdecimal` | `decimal16` at scale eighteen; a `bigdecimal` past 128 bits of units is refused | `decimal128` |
 | `date32`, `date64` | `date` | `date32` |
 | `time32`, `time64` | `time`, microseconds, no zone | `time64` |
 | `datetime64` | `timestamp`, zoned or not, microseconds or nanoseconds | `datetime64` |

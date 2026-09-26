@@ -1,4 +1,4 @@
-//! Native Node.js views over Yggdryl schema, URI, JSON, YAML, and TOML values.
+//! Native Node.js views over Yggdryl schema, URI, JSON, YAML, TOML, and XML values.
 
 // JavaScript owns its arguments and observes Rust failures as exceptions.
 // These signatures intentionally model the Node-API boundary. NAPI reads
@@ -99,7 +99,8 @@ pub use text::codec::{
     codec_normalize_format, json_dump_path_native, json_dumps_native, json_lines_dump_all_native,
     json_lines_dump_path_native, json_lines_load_path_native, json_lines_loads_native,
     json_load_path_native, json_loads_native, toml_dump_path_native, toml_dumps_native,
-    toml_load_path_native, toml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
+    toml_load_path_native, toml_loads_native, xml_dump_path_native, xml_dumps_native,
+    xml_load_path_native, xml_loads_native, yaml_dump_all_native, yaml_dump_all_path_native,
     yaml_dump_path_native, yaml_dumps_native, yaml_load_all_path_native, yaml_load_path_native,
     yaml_loads_all_native, yaml_loads_native,
 };
@@ -149,6 +150,17 @@ pub(crate) fn cast_options(
 
 pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
+}
+
+/// One fact answered, or `null` where the core holds nothing.
+///
+/// A plain object states every fact it declares: an absent one is `null`,
+/// as every absence at this boundary is, rather than a property left out.
+pub(crate) fn or_null<T>(
+    value: Option<T>,
+) -> napi::bindgen_prelude::Either<T, napi::bindgen_prelude::Null> {
+    use napi::bindgen_prelude::{Either, Null};
+    value.map_or(Either::B(Null), Either::A)
 }
 
 /// Throw a real JavaScript `TypeError`, then report the pending exception.

@@ -57,11 +57,37 @@ mod grammar {
                 // A serie of structs holding a serie of structs, so a predicate
                 // segment and one nested in another are compared on both tiers.
                 Field::new("legs", DataType::serie(leg_field()), true),
+                // A sorted and an unsorted text-keyed map, so a key is found
+                // by search and by walk, and missed, on both tiers.
+                Field::new("sm", text_map(true), true),
+                Field::new("um", text_map(false), true),
             ])
             .map(DataType::from)
             .unwrap(),
             false,
         )
+    }
+
+    /// A map of text keys to whole numbers.
+    fn text_map(sorted: bool) -> DataType {
+        let entries = StructType::from_fields([
+            DataType::utf8().required_field("key"),
+            DataType::Int64.nullable_field("value"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("entries");
+        DataType::map(entries, sorted).unwrap()
+    }
+
+    /// One map value, its entries in the order given.
+    fn map(entries: &[(&str, Option<i64>)]) -> Scalar {
+        Scalar::from_mapping(
+            entries
+                .iter()
+                .map(|(key, value)| (Scalar::from(*key), value.map_or(Scalar::Null, Scalar::from))),
+        )
+        .unwrap()
     }
 
     /// One leg: a currency, a size, and notes that are themselves a serie of
@@ -125,6 +151,8 @@ mod grammar {
                     leg(Some("USD"), Some(2), Some(&[])),
                     leg(Some("EUR"), Some(3), None),
                 ]),
+                map(&[("other", Some(1)), ("present", Some(2))]),
+                map(&[("present", Some(3)), ("other", Some(4))]),
             ]),
             Scalar::from_sequence([
                 Scalar::from(-3),
@@ -139,6 +167,9 @@ mod grammar {
                 serie(&[]),
                 // An empty serie keeps nothing and is not null.
                 Scalar::from_sequence([]),
+                // An empty map holds no key.
+                map(&[]),
+                map(&[("other", Some(5))]),
             ]),
             Scalar::from_sequence([
                 Scalar::Null,
@@ -152,6 +183,9 @@ mod grammar {
                 Scalar::Null,
                 Scalar::Null,
                 // A null serie stays null through every predicate.
+                Scalar::Null,
+                // A null map reaches nothing.
+                Scalar::Null,
                 Scalar::Null,
             ]),
             Scalar::from_sequence([
@@ -167,6 +201,9 @@ mod grammar {
                 serie(&[7]),
                 // A null element is dropped; a null size makes a size test unknown.
                 Scalar::from_sequence([Scalar::Null, leg(Some("EUR"), None, Some(&[("a", 5)]))]),
+                // A key held with a null value reads as null, as a missing one.
+                map(&[("present", None)]),
+                map(&[("z", Some(7)), ("present", Some(8))]),
             ]),
             Scalar::from_sequence([
                 Scalar::from(0),
@@ -183,12 +220,16 @@ mod grammar {
                     leg(Some("eur"), Some(10), Some(&[("c", 3)])),
                     leg(Some("GBP"), Some(0), Some(&[("z", 0)])),
                 ]),
+                map(&[("a", Some(1)), ("present", Some(9)), ("z", Some(3))]),
+                // A key that differs in case is another key; the field-segment
+                // spelling reads it case-insensitively.
+                map(&[("z", Some(1)), ("Present", Some(10))]),
             ]),
         ]
     }
 
     /// The predicates the two tiers are compared on, all evaluable per row.
-    const AGREEMENT: [&str; 33] = [
+    const AGREEMENT: [&str; 38] = [
         "i = 1",
         "i <> 1",
         "i < 0",
@@ -227,6 +268,13 @@ mod grammar {
         "legs[size > 1][-1].ccy = 'EUR'",
         "legs[notes[v > 1][0].k = 'b'][0].size = 1",
         "size(legs[true]) = size(legs)",
+        // A map key: found by search in a sorted map and by walk in an
+        // unsorted one, missed, and read through a null map.
+        "sm['present'] = 2",
+        "um['present'] > 3",
+        "sm['absent'] is null",
+        "um['absent'] is not null",
+        "um.present = 10",
     ];
 
     /// Evaluate one term on both tiers and assert they agree on every row.
@@ -339,9 +387,62 @@ mod grammar {
             "legs[size between 1 and 2]",
             "legs[ccy = 'JPY'][0]",
             "size(legs[ccy = 'EUR'])",
+            // The serie constructor over columns: a serie of N elements per
+            // row, never null itself, a null element kept as the null it is;
+            // a constant beside a column, a struct and a serie as elements,
+            // and elements that meet at a common type.
+            "[i, i]",
+            "[i, 1]",
+            "[s, 'x', s]",
+            "[nested, nested]",
+            "[xs, xs]",
+            "[legs, legs[ccy = 'EUR']]",
+            "[n, i]",
+            "size([i, i])",
+            "[i, i][1]",
+            // The map key, both layouts, the functional spelling, and the
+            // case-insensitive field-segment spelling beside it.
+            "sm['present']",
+            "sm['absent']",
+            "um['present']",
+            "um['absent']",
+            "sm['z']",
+            "get(um, 'other')",
+            "sm.present",
+            "um.present",
         ] {
             assert_tiers_agree(text, &schema, &rows);
         }
+    }
+
+    #[test]
+    fn a_serie_of_columns_is_one_row_of_n_elements_whatever_they_hold() {
+        use arrow_array::{Array, ListArray};
+
+        let schema = rows_schema();
+        let rows = rows();
+        let batch = batch_of(&schema, &rows);
+        let bound = "[i, f]".parse::<Term>().unwrap().bind(&schema).unwrap();
+        let answered = bound.evaluate(&batch).unwrap();
+        let list = answered.as_any().downcast_ref::<ListArray>().unwrap();
+        assert_eq!(list.null_count(), 0, "a serie of nulls is not a null serie");
+        assert_eq!(list.value_offsets(), [0, 2, 4, 6, 8, 10]);
+        // The row of nulls holds two null elements.
+        assert_eq!(list.value(2).null_count(), 2);
+        assert_eq!(
+            bound.eval(&rows[2]).unwrap(),
+            Scalar::from_sequence([Scalar::Null, Scalar::Null])
+        );
+        // Stacked row-major: row 0's elements, then row 1's.
+        let values = list
+            .values()
+            .as_any()
+            .downcast_ref::<arrow_array::Float64Array>()
+            .unwrap();
+        assert_eq!(values.value(0), 1.0);
+        assert_eq!(values.value(1), 1.5);
+        assert_eq!(values.value(2), -3.0);
+        assert!(values.value(3).is_nan());
     }
 
     #[test]

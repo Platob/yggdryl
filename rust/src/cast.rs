@@ -2796,6 +2796,9 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
+        // A fixed decimal source is its decimal storage with the scale
+        // already fixed: every target reads it as it reads that storage.
+        (_, RecognizedExtension::Decimal | RecognizedExtension::BigDecimal) => Ok(()),
         // A bounded byte source is its storage with a rule already checked:
         // another byte target re-measures it, and every other target reads
         // the bytes as it reads bare storage.
@@ -5064,6 +5067,7 @@ pub(crate) mod columns {
             | DataType::Float32
             | DataType::Float64
             | DataType::Decimal256 { .. }
+            | DataType::BigDecimal
             | DataType::Union(..)
             | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
@@ -5241,7 +5245,7 @@ pub(crate) mod columns {
                         .cmp(&crate::Float64::from_f64(right_values[right]))
                 })
             }
-            DataType::Decimal256 { .. } => {
+            DataType::Decimal256 { .. } | DataType::BigDecimal => {
                 let left_values = downcast::<Decimal256Array>(left.as_ref())?.values().clone();
                 let right_values = downcast::<Decimal256Array>(right.as_ref())?
                     .values()

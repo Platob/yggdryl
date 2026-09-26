@@ -1,4 +1,4 @@
-//! Byte-first JSON, YAML, and TOML adapters for JavaScript values.
+//! Byte-first JSON, YAML, TOML, and XML adapters for JavaScript values.
 
 use std::borrow::Cow;
 use std::fs::File;
@@ -21,7 +21,7 @@ use yggdryl::{
     DataType as CoreDataType, DataTypeId, DecimalValue, Field as CoreField, MapType as CoreMapType,
     TemporalValue, TimeUnit, Timezone, Vocabulary, i256,
 };
-use yggdryl::{json, text, toml, yaml};
+use yggdryl::{json, text, toml, xml, yaml};
 
 use crate::timezone::{TimezoneInput, timezone_from_input};
 use crate::{JsArn, JsDataType, JsField, JsUri, JsUrl, JsUrn, JsVersion, napi_error};
@@ -238,6 +238,27 @@ impl JsScalar {
                 scale,
             ),
             DataTypeId::Decimal256 => Scalar::d256(unscaled, scale),
+            // The fixed leaves carry their units at their one scale.
+            DataTypeId::Decimal => {
+                if scale != yggdryl::Decimal::SCALE {
+                    return Err(napi_error("decimal parts carry scale 18"));
+                }
+                Scalar::Decimal(
+                    unscaled
+                        .as_i128()
+                        .and_then(yggdryl::Decimal::from_units)
+                        .ok_or_else(|| napi_error("decimal units must fit 38 digits"))?,
+                )
+            }
+            DataTypeId::BigDecimal => {
+                if scale != yggdryl::BigDecimal::SCALE {
+                    return Err(napi_error("bigdecimal parts carry scale 18"));
+                }
+                Scalar::BigDecimal(
+                    yggdryl::BigDecimal::from_units(unscaled)
+                        .ok_or_else(|| napi_error("bigdecimal units must fit 76 digits"))?,
+                )
+            }
             _ => return Err(napi_error(format!("{id:?} is not an exact decimal id"))),
         };
         Ok(Self::from_core(inner))
@@ -812,6 +833,39 @@ pub fn toml_loads_native(
     )
 }
 
+/// Decode one XML document without generic format parsing or dispatch.
+///
+/// The document is the record naming its root element; a `field` types the
+/// root element's value, and placeholders resolve in its text.
+#[napi(js_name = "xmlLoadsNative", skip_typescript)]
+pub fn xml_loads_native(
+    input: Either<Buffer, String>,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value = match &input {
+        Either::A(bytes) => text::from_bytes_with(bytes.as_ref(), Format::Xml, &loading),
+        Either::B(value) => text::from_utf8_with(value, Format::Xml, &loading),
+    }
+    .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
 /// Decode strict JSON Lines without generic format parsing or dispatch.
 #[napi(js_name = "jsonLinesLoadsNative", skip_typescript)]
 pub fn json_lines_loads_native(
@@ -1011,6 +1065,32 @@ pub fn toml_dumps_native(
         .map_err(napi_error)
 }
 
+/// Encode one JavaScript value directly to XML bytes.
+#[napi(js_name = "xmlDumpsNative", skip_typescript)]
+pub fn xml_dumps_native(
+    env: Env,
+    value: Unknown<'_>,
+    max_depth: Option<u32>,
+    indent: String,
+    native_wrapper_prototypes: Array<'_>,
+    native_intrinsics: Array<'_>,
+) -> Result<Buffer> {
+    let formatting = checked_formatting(&indent)?;
+    let max_depth = checked_depth(max_depth)?;
+    let value = encode_js_value(
+        env,
+        value,
+        max_depth,
+        &native_wrapper_prototypes,
+        &native_intrinsics,
+    )?;
+    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
+        .map_err(napi_error)?;
+    xml::into_bytes_with_formatting(&value, formatting)
+        .map(Buffer::from)
+        .map_err(napi_error)
+}
+
 /// Encode JavaScript values directly as JSON Lines.
 #[napi(js_name = "jsonLinesDumpAllNative", skip_typescript)]
 pub fn json_lines_dump_all_native(
@@ -1147,6 +1227,37 @@ pub fn toml_load_path_native(
     )
 }
 
+/// Decode one XML document from a path through the native reader boundary.
+#[napi(js_name = "xmlLoadPathNative", skip_typescript)]
+pub fn xml_load_path_native(
+    path: String,
+    limits: Option<CodecLimitsInput>,
+    field: Option<ClassInstance<'_, JsField>>,
+    placeholders: Option<ClassInstance<'_, JsScalar>>,
+    environment: Option<bool>,
+    native_scalar: Option<bool>,
+) -> Result<Either<JsScalar, JsonValue>> {
+    let limits = checked_limits(limits)?;
+    let loading = loading_from(
+        limits,
+        field.as_ref(),
+        placeholders,
+        environment.unwrap_or(false),
+    )?;
+    let value = text::from_reader_with(
+        open_path(&path, limits.max_input_bytes())?,
+        Format::Xml,
+        &loading,
+    )
+    .map_err(napi_error)?;
+    decoded_value_for_field(
+        value,
+        field.as_ref().map(|field| &field.inner),
+        limits.max_depth(),
+        native_scalar.unwrap_or(false),
+    )
+}
+
 /// Decode strict JSON Lines from a path through the native reader boundary.
 #[napi(js_name = "jsonLinesLoadPathNative", skip_typescript)]
 pub fn json_lines_load_path_native(
@@ -1270,6 +1381,33 @@ pub fn toml_dump_path_native(
         .map_err(napi_error)?;
     let mut writer = create_path(&path)?;
     toml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
+    writer.flush().map_err(napi_error)
+}
+
+/// Encode one JavaScript value directly to an XML file writer.
+#[napi(js_name = "xmlDumpPathNative", skip_typescript)]
+pub fn xml_dump_path_native(
+    env: Env,
+    value: Unknown<'_>,
+    path: String,
+    max_depth: Option<u32>,
+    indent: String,
+    native_wrapper_prototypes: Array<'_>,
+    native_intrinsics: Array<'_>,
+) -> Result<()> {
+    let formatting = checked_formatting(&indent)?;
+    let max_depth = checked_depth(max_depth)?;
+    let value = encode_js_value(
+        env,
+        value,
+        max_depth,
+        &native_wrapper_prototypes,
+        &native_intrinsics,
+    )?;
+    xml::validate_for_write_with_limits(&value, limits_with_depth(max_depth))
+        .map_err(napi_error)?;
+    let mut writer = create_path(&path)?;
+    xml::into_writer_with_formatting(&value, &mut writer, formatting).map_err(napi_error)?;
     writer.flush().map_err(napi_error)
 }
 
@@ -2202,6 +2340,8 @@ pub(crate) fn value_to_transport(
         Scalar::Decimal64(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Decimal128(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Decimal256(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::Decimal(leaf) => Ok(decimal_transport(value, leaf)),
+        Scalar::BigDecimal(leaf) => Ok(decimal_transport(value, leaf)),
         Scalar::Interval(interval) => match interval.unit() {
             TimeUnit::YearMonth => integer_transport(i128::from(interval.months())),
             TimeUnit::DayTime => Ok(JsonValue::Array(vec![

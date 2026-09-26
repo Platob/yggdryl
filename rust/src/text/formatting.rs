@@ -1,4 +1,4 @@
-//! How a dump is laid out - the one formatting value all three formats share.
+//! How a dump is laid out - the one formatting value all four formats share.
 //!
 //! Formatting changes *bytes*, never meaning. Parsing any formatting of the
 //! same value yields an equal value, in every format, and dumping the same
@@ -109,7 +109,7 @@ const fn spaces(width: u8) -> &'static [u8] {
     SPACES.split_at(width).0
 }
 
-/// How a dump is laid out, shared by JSON, YAML, and TOML.
+/// How a dump is laid out, shared by JSON, YAML, TOML, and XML.
 ///
 /// One options value rather than a naming cross-product: two orthogonal knobs
 /// today become three tomorrow, and `dump_with_level_and_formatting` is not a
@@ -143,7 +143,7 @@ impl Formatting {
         Self::new().with_indent(Indent::Spaces(width))
     }
 
-    /// Ask for no layout: compact JSON, flow-style YAML, flat TOML.
+    /// Ask for no layout: compact JSON, flow-style YAML, flat TOML, one-line XML.
     #[must_use]
     pub fn compact() -> Self {
         Self::new().with_indent(Indent::None)

@@ -283,6 +283,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['decimal64', fields.decimal64('value', 18, 2)],
     ['decimal128', fields.decimal128('value', 38, 2)],
     ['decimal256', fields.decimal256('value', 76, 2)],
+    ['decimal', fields.decimal('value')],
+    ['bigdecimal', fields.bigdecimal('value')],
     ['map', fields.map('value', entries)],
     ['sorted_map', fields.map('value', entries, true)],
     ['run_end_encoded', fields.runEndEncoded('value', runEnds, values)],
@@ -651,6 +653,45 @@ test('typed factory parameters delegate native validation', () => {
       fields.utf8('values'),
     ),
   )
+})
+
+test('the fixed decimal leaves are one datatype each over one Arrow storage', () => {
+  // Bare `decimal(name)` is the registered leaf - thirty-eight digits at
+  // scale eighteen - and a precision still names the narrowest width.
+  const price = fields.decimal('price', { nullable: false })
+  const notional = fields.bigdecimal('notional', { nullable: false })
+  assert.equal(price.dtype.id, 'decimal')
+  assert.equal(price.dtype.toString(), 'decimal')
+  assert.equal(price.dtype.kind, 'decimal')
+  assert.equal(price.nullable, false)
+  assert.equal(notional.dtype.id, 'bigdecimal')
+  assert.equal(notional.dtype.toString(), 'bigdecimal')
+  assert.ok(price.dtype.equals(DataType.from('decimal')))
+  assert.equal(fields.decimal('small', 38, 18).dtype.toString(), 'decimal128(38,18)')
+
+  // A value projects as the bigint of its units, as every exact decimal
+  // does, so a record of both is two bigints.
+  assert.equal(price.dtype.defaultJSValue(), 0n)
+  assert.equal(price.dtype.defaultJSHint().constructor, BigInt)
+  assert.deepEqual(fields.struct('row', [price, notional]).dtype.defaultJSValue(), [0n, 0n])
+
+  // Each rides Arrow's decimal at its width and scale, named by its own
+  // extension so a reader tells it from a bare `decimal128(38,18)`.
+  for (const [field, text, width, precision] of [
+    [price, '1.5', 128, 38],
+    [notional, '2.25', 256, 76],
+  ]) {
+    const value = field.dtype.scalar(text)
+    assert.equal(value.id, field.dtype.id)
+    assert.equal(value.toString(), JSON.stringify(text))
+    const batch = Serie.fromScalars(field, [value]).intoArrowBatch()
+    const [column] = batch.schema.fields
+    assert.equal(column.type.bitWidth, width)
+    assert.equal(column.type.precision, precision)
+    assert.equal(column.type.scale, 18)
+    assert.equal(column.metadata.get('ARROW:extension:name'), `yggdryl.${field.dtype.id}`)
+    assert.ok(Serie.fromArrowBatch(batch).scalar(0).get(0).equals(value))
+  }
 })
 
 test('defaulted temporal and decimal overloads share exact option handling', () => {

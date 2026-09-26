@@ -10,7 +10,7 @@ use smol_str::SmolStr;
 use super::Market;
 use crate::securityid::SecurityIds;
 use crate::{
-    Ccy, CfiCode, DataType, Decimal18, Field, MicCode, Result, Scalar, Side, TimeInForce, Unit,
+    Ccy, CfiCode, DataType, Decimal, Field, MicCode, Result, Scalar, Side, TimeInForce, Unit,
 };
 
 /// One column of the market facts every market element answers.
@@ -149,7 +149,7 @@ impl MarketColumn {
             | Self::PrevPx
             | Self::PrevQty
             | Self::SpotRate
-            | Self::ForwardPoints => DataType::DECIMAL,
+            | Self::ForwardPoints => DataType::Decimal,
             Self::Currency => DataType::Ccy,
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
@@ -238,7 +238,7 @@ impl MarketColumn {
     /// Records a cell on `element`, leniently: a null clears an optional
     /// fact, and an incompatible value is ignored.
     pub fn record<E: Market + ?Sized>(self, element: &mut E, value: &Scalar) {
-        let decimal = || Decimal18::from_scalar(value);
+        let decimal = || Decimal::from_scalar(value);
         match self {
             Self::Price => match value {
                 Scalar::Null => element.set_price(None),
