@@ -613,8 +613,15 @@ fn owned_decoded_reader<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Box<dyn
         if let Some(parent) = handle.parent() {
             if let Some(name) = handle.url().and_then(crate::Url::file_name) {
                 let mut child = parent.child_by_path(name)?;
-                child.set_media_type(handle.media_type().clone());
-                return decoded_prefix_reader(codec, crate::Cursor::new(child));
+                // The path's file name is the resource only where the URL
+                // addresses one by its path: a member of an archive is
+                // addressed in the fragment, and the child of that name is
+                // another member. Only a handle at the same location is the
+                // same resource reopened; anything else is snapshotted below.
+                if child.url() == handle.url() {
+                    child.set_media_type(handle.media_type().clone());
+                    return decoded_prefix_reader(codec, crate::Cursor::new(child));
+                }
             }
         }
     }

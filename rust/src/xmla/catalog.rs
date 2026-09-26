@@ -99,7 +99,7 @@ impl Catalog {
             }
         }
         for schema in schemas {
-            let Some(schema_name) = schema.url().and_then(entry_name) else {
+            let Some(schema_name) = entry_name(&schema) else {
                 continue;
             };
             for child in schema.ls(false, false) {
@@ -123,7 +123,7 @@ impl Catalog {
         for child in self.holder.ls(false, false) {
             let child = child?;
             if Entry::under_root(&child) == Entry::Schema {
-                if let Some(name) = child.url().and_then(entry_name) {
+                if let Some(name) = entry_name(&child) {
                     schemas.push(name);
                 }
             }
@@ -147,7 +147,11 @@ impl Catalog {
         match found.len() {
             1 => Ok(found.remove(0)),
             0 => Err(Error::absent("table", self.path(schema, name))),
-            _ => Err(Error::conflict("table", "several leaves of that name", self.path(schema, name))),
+            _ => Err(Error::conflict(
+                "table",
+                "several leaves of that name",
+                self.path(schema, name),
+            )),
         }
     }
 
@@ -216,10 +220,10 @@ pub struct Table {
 
 impl Table {
     fn new(catalog: &SmolStr, schema: Option<SmolStr>, holder: Holder) -> Self {
-        let name = holder
-            .url()
-            .and_then(entry_name)
-            .map_or_else(|| SmolStr::new_static("table"), |file| table_name(&file, &holder));
+        let name = entry_name(&holder).map_or_else(
+            || SmolStr::new_static("table"),
+            |file| table_name(&file, &holder),
+        );
         Self {
             catalog: catalog.clone(),
             schema,
@@ -291,8 +295,24 @@ impl Table {
     ///
     /// # Errors
     ///
-    /// Returns an error when no encoding in this build covers the table.
+    /// Returns an error when no encoding in this build covers the table: a
+    /// folder laid out as an Iceberg table is refused by name in a build
+    /// without the `iceberg` feature, never read as the leaves it holds.
     pub fn record_options(&self) -> Result<RecordOptions> {
+        if !reads_table_format()
+            && self.holder.is_container()
+            && self.holder.kind() != IOKind::Table
+            && is_table_format(&self.holder)
+        {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.encoding"),
+                reason: format_smolstr!(
+                    "`{}` is laid out as an Iceberg table, which this build does not read; \
+                     the `iceberg` feature is not enabled",
+                    self.path()
+                ),
+            });
+        }
         self.holder.record_options()
     }
 
@@ -316,6 +336,20 @@ impl Table {
     }
 }
 
+/// Whether this build reads a folder laid out as a table format: the one
+/// format this crate implements is Iceberg, under its own feature.
+#[cfg(feature = "iceberg")]
+const fn reads_table_format() -> bool {
+    true
+}
+
+/// Whether this build reads a folder laid out as a table format: the one
+/// format this crate implements is Iceberg, under its own feature.
+#[cfg(not(feature = "iceberg"))]
+const fn reads_table_format() -> bool {
+    false
+}
+
 /// Whether a folder is laid out as an Iceberg table: its `metadata/` holds
 /// the `version-hint.text` a catalog-less table keeps, or a metadata
 /// document. A store that answers [`IOKind::Table`] for such a folder is
@@ -328,21 +362,30 @@ fn is_table_format(folder: &Holder) -> bool {
         return false;
     };
     metadata.ls(false, false).any(|entry| {
-        entry.ok().and_then(|entry| entry.url().and_then(entry_name)).is_some_and(|name| {
-            name == "version-hint.text" || name.ends_with(".metadata.json")
-        })
+        entry
+            .ok()
+            .and_then(|entry| entry_name(&entry))
+            .is_some_and(|name| name == "version-hint.text" || name.ends_with(".metadata.json"))
     })
 }
 
-/// The last segment of a location as the store spells it - the file or
-/// folder name, its URI escapes decoded (`order%20book` is `order book`) -
-/// which is what a catalog names its schemas and tables by.
-fn entry_name(url: &Url) -> Option<SmolStr> {
-    let name = url.file_name()?;
-    Some(match crate::uri::percent_decode(name, "a catalog entry's name") {
-        Ok(decoded) => SmolStr::new(decoded),
-        Err(_) => SmolStr::new(name),
-    })
+/// The name of an entry as its store spells it - the last segment of a
+/// member's name inside an archive, never the archive's file name, else the
+/// location's file or folder name with its URI escapes decoded
+/// (`order%20book` is `order book`) - which is what a catalog names its
+/// schemas and tables by.
+fn entry_name(holder: &Holder) -> Option<SmolStr> {
+    if let Some(member) = crate::zip::member_name(holder) {
+        let member = member.trim_end_matches('/');
+        return Some(SmolStr::new(member.rsplit('/').next().unwrap_or(member)));
+    }
+    let name = holder.url()?.file_name()?;
+    Some(
+        match crate::uri::percent_decode(name, "a catalog entry's name") {
+            Ok(decoded) => SmolStr::new(decoded),
+            Err(_) => SmolStr::new(name),
+        },
+    )
 }
 
 /// A file name less the extensions a media type claims: `trades.arrows.gz`

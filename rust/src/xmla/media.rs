@@ -55,9 +55,7 @@ fn read_document<H: IOBase + ?Sized>(
             )),
         };
     }
-    if root.local_name() == "root"
-        && matches!(root.namespace(), Some(ROWSET_NAMESPACE) | None)
-    {
+    if root.local_name() == "root" && matches!(root.namespace(), Some(ROWSET_NAMESPACE) | None) {
         return Rowset::read_root_with(&root, field, cast).map(Some);
     }
     Err(invalid(smol_str::format_smolstr!(
@@ -323,9 +321,19 @@ impl<H: IOBase> IOMedia for Xmla<H> {
             }
         }
         // One read answers both an empty document (no columns) and a held
-        // one, so no size probe precedes it.
-        Ok(read_document(&self.handle, None, cast_of(&self.options))?
-            .map_or(0, |(rowset, _)| rowset.field().field_len()))
+        // one, so no size probe precedes it; while open, what it read is what
+        // the field and the width are answered from until close.
+        let field = read_document(&self.handle, None, cast_of(&self.options))?
+            .map(|(rowset, _)| rowset.field().clone());
+        match field {
+            Some(field) => {
+                if self.opened {
+                    let _ = self.cached_schema.set(field.clone());
+                }
+                Ok(field.field_len())
+            }
+            None => Ok(0),
+        }
     }
 
     fn record_options(&self) -> Result<RecordOptions> {
@@ -349,7 +357,11 @@ impl<H: IOBase> IOMedia for Xmla<H> {
         Ok(field)
     }
 
-    fn overwrite_arrow_reader(&mut self, batches: BatchReader, options: &RecordOptions) -> Result<()> {
+    fn overwrite_arrow_reader(
+        &mut self,
+        batches: BatchReader,
+        options: &RecordOptions,
+    ) -> Result<()> {
         self.require_options(options)?;
         self.invalidate();
         crate::iobase::overwrite_arrow_reader_default(self, batches, options)

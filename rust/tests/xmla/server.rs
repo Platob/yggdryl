@@ -20,7 +20,10 @@ fn catalog_root(label: &str) -> PathBuf {
         .expect("a temporary directory")
         .path()
         .expect("a path");
-    root.push(format!("yggdryl-xmla-server-{label}-{}", std::process::id()));
+    root.push(format!(
+        "yggdryl-xmla-server-{label}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("the folder is created");
     let field = StructType::from_fields([
@@ -52,8 +55,10 @@ fn catalog_root(label: &str) -> PathBuf {
 
 fn running(label: &str) -> yggdryl::xmla::Running {
     let root = catalog_root(label);
-    let service = Service::new(ServiceOptions::new())
-        .with_catalog(Catalog::new("market", Holder::folder(&root).expect("holds")));
+    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+        "market",
+        Holder::folder(&root).expect("holds"),
+    ));
     Server::bind(service, "127.0.0.1:0")
         .expect("a loopback port")
         .with_options(ServerOptions::new().with_path("/xmla"))
@@ -186,7 +191,8 @@ fn the_binding_refuses_what_is_not_a_soap_post_by_status() {
 
     let (status, _, _) = exchange(
         &address,
-        format!("GET /elsewhere HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
+        format!("GET /elsewhere HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
+            .as_bytes(),
     );
     assert_eq!(status, 404);
 
@@ -211,9 +217,15 @@ fn the_binding_refuses_what_is_not_a_soap_post_by_status() {
     assert_eq!(status, 200, "a body that is no XML is a fault at 200");
 
     let (status, body) = post(&address, "/xmla", b"<not-soap/>", "");
-    assert_eq!(status, 200, "a message that is no request is a fault at 200");
+    assert_eq!(
+        status, 200,
+        "a message that is no request is a fault at 200"
+    );
     let body = String::from_utf8_lossy(&body);
-    assert!(body.contains("Fault") && body.contains("ErrorCode=\"1\""), "{body}");
+    assert!(
+        body.contains("Fault") && body.contains("ErrorCode=\"1\""),
+        "{body}"
+    );
 
     let (status, _, _) = exchange(
         &address,
@@ -234,10 +246,9 @@ fn a_connection_carries_several_requests_and_a_chunked_body() {
     for round in 0..2 {
         // The second request arrives chunked, the way a client streaming its
         // message would send it.
-        let mut wire = format!(
-            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n"
-        )
-        .into_bytes();
+        let mut wire =
+            format!("POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n")
+                .into_bytes();
         if round == 0 {
             wire.extend_from_slice(format!("Content-Length: {}\r\n\r\n", request.len()).as_bytes());
             wire.extend_from_slice(&request);

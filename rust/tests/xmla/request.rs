@@ -1298,7 +1298,10 @@ fn a_discover_is_written_as_the_xmla_discover_element_in_its_namespace() {
     assert_eq!(payload.element().namespace(), Some(NAMESPACE));
     // The natural envelope is a record, sorted by name; the bytes keep the
     // order the XMLA schema declares, and read back as the same request.
-    let position = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("{needle} in {text}"));
+    let position = |needle: &str| {
+        text.find(needle)
+            .unwrap_or_else(|| panic!("{needle} in {text}"))
+    };
     assert!(
         position("<RequestType>") < position("<Restrictions>")
             && position("<Restrictions>") < position("<Properties>"),
@@ -1529,34 +1532,885 @@ fn a_command_under_a_prefix_declared_above_it_keeps_that_namespace() {
     );
 }
 
+// Session answers ---------------------------------------------------------
+
 #[test]
-fn zz_probe() {
-    let show = |label: &str, message: &str| match Request::from_bytes(message.as_bytes()) {
-        Ok(request) => println!("{label}: OK {:?}", request.method()),
-        Err(error) => println!("{label}: ERR {error:?}"),
-    };
-    // 1. unqualified command inside a prefixed Execute
+fn a_session_answer_block_is_the_request_block_without_must_understand() {
+    for (session, id) in [
+        (Session::Continue("581".into()), Some("581")),
+        (Session::End("581".into()), Some("581")),
+        (Session::Begin, None),
+    ] {
+        let block = session.into_answer_fragment().expect("an answer block");
+        assert_eq!(block.name(), session.name());
+        let element = block.element();
+        assert_eq!(element.namespace(), Some(NAMESPACE), "{session:?}");
+        assert_eq!(element.attribute_in(None, "SessionId"), id, "{session:?}");
+        assert_eq!(element.attribute("mustUnderstand"), None, "{session:?}");
+        assert_eq!(
+            element.attribute_in(Some(ENVELOPE_NAMESPACE), "mustUnderstand"),
+            None,
+            "{session:?}"
+        );
+        assert_eq!(element.children().count(), 0, "a header block is empty");
+        assert_ne!(
+            block,
+            session.into_fragment().expect("a request block"),
+            "the request's block is marked, the answer's is not: {session:?}"
+        );
+        assert_eq!(
+            Session::read(std::slice::from_ref(&block)).expect("read"),
+            Some(session.clone()),
+            "an answer block reads as the session it answers"
+        );
+    }
+
+    let answer = Session::Continue("581".into())
+        .into_answer_fragment()
+        .expect("an answer block");
+    let request = Request::from(Execute::statement("select 1")).with_header(answer);
+    let text = written(&request);
+    assert!(
+        text.contains(
+            "<SOAP-ENV:Header><Session SessionId=\"581\" \
+             xmlns=\"urn:schemas-microsoft-com:xml-analysis\"/></SOAP-ENV:Header>"
+        ),
+        "{text}"
+    );
+    assert!(!text.contains("mustUnderstand"), "{text}");
+    assert_eq!(
+        round_trip(&request).session().expect("one session"),
+        Some(Session::Continue("581".into()))
+    );
+}
+
+#[test]
+fn a_session_identifier_is_written_escaped_as_an_attribute_and_reads_back_exactly() {
+    let session = Session::Continue("sé \"7\" <&> '→'\t\r\n".into());
+    let request = Request::from(Discover::new(RequestType::DiscoverDatasources))
+        .with_session(&session)
+        .expect("a session header");
+    let text = written(&request);
+    assert!(
+        text.contains(
+            "<Session SessionId=\"sé &quot;7&quot; &lt;&amp;&gt; '→'&#9;&#13;&#10;\" \
+             mustUnderstand=\"1\" xmlns=\"urn:schemas-microsoft-com:xml-analysis\"/>"
+        ),
+        "a quote, markup and the whitespace attribute normalization would fold are escaped: {text}"
+    );
+    assert_eq!(
+        round_trip(&request).session().expect("one session"),
+        Some(session)
+    );
+}
+
+#[test]
+fn a_session_identifier_the_block_does_not_carry_unqualified_is_none() {
+    let prefixed = Fragment::in_namespace(
+        "Session",
+        NAMESPACE,
+        attributes([("@xmla:SessionId", "581"), ("@xmlns:xmla", NAMESPACE)]),
+    )
+    .expect("a block");
+    assert_eq!(
+        xmla_reason(&Session::read(&[prefixed]).expect_err("a qualified identifier")),
+        "the Session header names no SessionId",
+        "XMLA's SessionId is an unqualified attribute, and a qualified one is another"
+    );
+
+    let unqualified = Fragment::new("EndSession", Scalar::Null);
+    assert_eq!(
+        xmla_reason(&Session::read(&[unqualified]).expect_err("no identifier")),
+        "the EndSession header names no SessionId",
+        "a block in no namespace is read as XMLA's, and refused as XMLA's"
+    );
+
+    let request = read(&envelope(
+        "<Session xmlns=\"urn:schemas-microsoft-com:xml-analysis\" sessionid=\"581\"/>",
+        &discover_body("<RequestType>DISCOVER_DATASOURCES</RequestType>"),
+    ));
+    assert_eq!(
+        xmla_reason(&request.session().expect_err("an attribute of another name")),
+        "the Session header names no SessionId",
+        "attribute names are case-sensitive"
+    );
+}
+
+// Writer refusals ----------------------------------------------------------
+
+#[test]
+fn the_writer_refuses_a_name_with_no_xml_spelling_naming_it() {
+    let statement = || Execute::statement("select 1");
+    for (request, name) in [
+        (
+            Request::from(statement().with_properties(PropertyList::new().with("bad name", "x"))),
+            "bad name",
+        ),
+        (
+            Request::from(statement().with_properties(PropertyList::new().with("@xmlns", "urn:x"))),
+            "@xmlns",
+        ),
+        (
+            Request::from(statement().with_properties(PropertyList::new().with("#text", "x"))),
+            "#text",
+        ),
+        (
+            Request::from(
+                Discover::new(RequestType::DbschemaTables)
+                    .with_restrictions(Restrictions::new().with("1st", "x")),
+            ),
+            "1st",
+        ),
+        (
+            Request::from(statement()).with_header(Fragment::new("bad name", Scalar::Null)),
+            "bad name",
+        ),
+        (
+            Request::from(Execute::new(Command::Other(Fragment::new(
+                "bad name",
+                Scalar::Null,
+            )))),
+            "bad name",
+        ),
+    ] {
+        let error = request.into_bytes().expect_err("a name XML cannot spell");
+        assert_eq!(
+            codec_reason(&error, "xml"),
+            format!("expected an XML name, got {name:?}"),
+            "{request:?}"
+        );
+        let error = request
+            .into_writer(Vec::new())
+            .expect_err("the same refusal from any sink");
+        assert_eq!(
+            codec_reason(&error, "xml"),
+            format!("expected an XML name, got {name:?}")
+        );
+    }
+}
+
+#[test]
+fn the_writer_refuses_a_character_xml_cannot_carry_naming_it() {
+    let statement = |text: &str| Execute::statement(text);
+    for (request, code_point) in [
+        (Request::from(statement("select \u{0}")), "U+0000"),
+        (Request::from(statement("select \u{FFFE}")), "U+FFFE"),
+        (
+            Request::from(Discover::new(RequestType::Other("ROWSET\u{1}".into()))),
+            "U+0001",
+        ),
+        (
+            Request::from(
+                Discover::new(RequestType::DbschemaTables)
+                    .with_restrictions(Restrictions::new().with("TABLE_NAME", "\u{b}")),
+            ),
+            "U+000B",
+        ),
+        (
+            Request::from(
+                statement("select 1")
+                    .with_properties(PropertyList::new().with("Catalog", "\u{1f}")),
+            ),
+            "U+001F",
+        ),
+        (
+            Request::from(statement("select 1").with_parameter("a\u{0}", Scalar::from("1"))),
+            "U+0000",
+        ),
+        (
+            Request::from(statement("select 1").with_parameter("a", Scalar::from("\u{2}"))),
+            "U+0002",
+        ),
+        (
+            Request::from(statement("select 1"))
+                .with_session(&Session::Continue("58\u{7}1".into()))
+                .expect("a session header"),
+            "U+0007",
+        ),
+    ] {
+        let error = request
+            .into_bytes()
+            .expect_err("a character XML 1.0 cannot carry");
+        assert_eq!(
+            codec_reason(&error, "xml"),
+            format!("text carries {code_point}, which XML 1.0 cannot spell"),
+            "{request:?}"
+        );
+    }
+}
+
+#[test]
+fn a_parameter_value_that_is_a_sequence_is_refused_by_the_writer() {
+    let request = Request::from(Execute::statement("select 1").with_parameter(
+        "symbols",
+        Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("MSFT")]),
+    ));
+    let error = request
+        .into_bytes()
+        .expect_err("one Value cannot hold several");
+    assert_eq!(
+        xmla_reason(&error),
+        "parameter `symbols` holds a sequence, and a parameter's Value is one value"
+    );
+}
+
+/// A sink that takes `0` more bytes and then fails.
+#[derive(Debug)]
+struct Budget(usize);
+
+impl std::io::Write for Budget {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if self.0 == 0 {
+            return Err(std::io::Error::other("the sink is full"));
+        }
+        let taken = bytes.len().min(self.0);
+        self.0 -= taken;
+        Ok(taken)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_sink_that_fails_is_refused_with_its_own_failure() {
+    let request = Request::from(trades_execute())
+        .with_session(&Session::Continue("581".into()))
+        .expect("a session header");
+    let length = request.into_bytes().expect("written").len();
+    for budget in [0, 10, 200, length / 2, length - 1] {
+        match request.into_writer(Budget(budget)) {
+            Err(Error::Io(error)) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::Other, "{budget}");
+                assert_eq!(error.to_string(), "the sink is full", "{budget}");
+            }
+            other => panic!("expected the sink's failure after {budget} bytes, got {other:?}"),
+        }
+    }
+    let Budget(left) = request
+        .into_writer(Budget(length))
+        .expect("a sink that holds the message");
+    assert_eq!(left, 0, "the whole message and nothing more is written");
+}
+
+#[test]
+fn the_writer_writes_after_what_the_sink_holds_and_hands_it_back() {
+    let request = Request::from(tables_discover());
+    let sink = request
+        .into_writer(b"already here".to_vec())
+        .expect("written");
+    let (held, message) = sink.split_at(b"already here".len());
+    assert_eq!(held, b"already here");
+    assert_eq!(message, request.into_bytes().expect("written").as_slice());
+}
+
+// Writing, literally -------------------------------------------------------
+
+#[test]
+fn a_written_discover_keeps_restrictions_and_properties_in_the_order_given_escaped() {
+    let request = Request::from(
+        Discover::new(RequestType::Other("A&B<c>".into()))
+            .with_restrictions(
+                Restrictions::new()
+                    .with("TABLE_TYPE", "q\"'<&>")
+                    .with("CATALOG_NAME", "marché")
+                    .with("table_type", "VIEW"),
+            )
+            .with_properties(
+                PropertyList::new()
+                    .with("Format", "x>y")
+                    .with("Catalog", "c"),
+            ),
+    );
+    let text = written(&request);
+    assert!(
+        text.contains(
+            "<SOAP-ENV:Body><Discover xmlns=\"urn:schemas-microsoft-com:xml-analysis\">\
+             <RequestType>A&amp;B&lt;c&gt;</RequestType>\
+             <Restrictions><RestrictionList>\
+             <TABLE_TYPE>q\"'&lt;&amp;&gt;</TABLE_TYPE><TABLE_TYPE>VIEW</TABLE_TYPE>\
+             <CATALOG_NAME>marché</CATALOG_NAME>\
+             </RestrictionList></Restrictions>\
+             <Properties><PropertyList><Format>x&gt;y</Format><Catalog>c</Catalog></PropertyList></Properties>\
+             </Discover></SOAP-ENV:Body>"
+        ),
+        "each restriction's values together, restrictions and properties as given, \
+         a name as first written: {text}"
+    );
+}
+
+#[test]
+fn a_written_execute_orders_command_properties_parameters_and_escapes_its_text() {
+    let row = Scalar::from_struct([("symbol", Scalar::from("AAPL"))]).expect("a record");
+    let execute = Execute::statement("select * from t where a < 1 & b > \"x\"\r\n")
+        .with_properties(
+            PropertyList::new()
+                .with("Timeout", "30")
+                .with("Catalog", "market"),
+        )
+        .with_parameter("a<b", Scalar::from("x & y"))
+        .with_parameter("absent", Scalar::Null)
+        .with_parameter("flag", Scalar::from(true))
+        .with_parameter("row", row.clone());
+    let request = Request::from(execute);
+    let text = written(&request);
+    assert!(
+        text.contains(
+            "<SOAP-ENV:Body><Execute xmlns=\"urn:schemas-microsoft-com:xml-analysis\">\
+             <Command><Statement>select * from t where a &lt; 1 &amp; b &gt; \"x\"&#13;\n</Statement></Command>\
+             <Properties><PropertyList><Timeout>30</Timeout><Catalog>market</Catalog></PropertyList></Properties>\
+             <Parameters>\
+             <Parameter><Name>a&lt;b</Name><Value>x &amp; y</Value></Parameter>\
+             <Parameter><Name>absent</Name><Value/></Parameter>\
+             <Parameter><Name>flag</Name><Value>true</Value></Parameter>\
+             <Parameter><Name>row</Name><Value><symbol>AAPL</symbol></Value></Parameter>\
+             </Parameters></Execute></SOAP-ENV:Body>"
+        ),
+        "{text}"
+    );
+
+    let read = round_trip(&request);
+    let execute = read.execute().expect("an Execute");
+    assert_eq!(
+        execute.command().statement(),
+        Some("select * from t where a < 1 & b > \"x\"\r\n"),
+        "an escaped carriage return survives the line-end normalization a parser does"
+    );
+    assert_eq!(
+        parameters(execute),
+        [
+            ("a<b", Scalar::from("x & y")),
+            ("absent", Scalar::Null),
+            ("flag", Scalar::from("true")),
+            ("row", row),
+        ]
+    );
+    assert_eq!(execute.properties().get("Timeout"), Some("30"));
+    assert_eq!(execute.properties().get("Catalog"), Some("market"));
+
+    let text = written(&Request::from(Execute::statement("select 1")));
+    assert!(
+        text.contains(
+            "<Execute xmlns=\"urn:schemas-microsoft-com:xml-analysis\">\
+             <Command><Statement>select 1</Statement></Command>\
+             <Properties><PropertyList/></Properties></Execute>"
+        ),
+        "the properties are written even when empty, the parameters only when there are some: {text}"
+    );
+}
+
+// Reading, edges ------------------------------------------------------------
+
+#[test]
+fn a_restriction_spelled_as_value_children_admits_each_value() {
+    for (restriction_list, expected) in [
+        (
+            "<TABLE_TYPE><Value>TABLE</Value><Value>VIEW</Value></TABLE_TYPE>",
+            vec!["TABLE", "VIEW"],
+        ),
+        (
+            "<TABLE_TYPE><Value>TABLE</Value></TABLE_TYPE><TABLE_TYPE>VIEW</TABLE_TYPE>",
+            vec!["TABLE", "VIEW"],
+        ),
+        (
+            "<TABLE_TYPE><Value/><x:Value xmlns:x=\"urn:example:other\">VIEW</x:Value></TABLE_TYPE>",
+            vec!["", "VIEW"],
+        ),
+    ] {
+        let request = read(&envelope(
+            "",
+            &discover_body(&format!(
+                "<RequestType>DBSCHEMA_TABLES</RequestType>\
+                 <Restrictions><RestrictionList>{restriction_list}</RestrictionList></Restrictions>"
+            )),
+        ));
+        let restrictions = request.discover().expect("a Discover").restrictions();
+        assert_eq!(
+            admitted(restrictions, "TABLE_TYPE"),
+            expected,
+            "{restriction_list}"
+        );
+        assert_eq!(restrictions.len(), 1, "{restriction_list}");
+    }
+
     let request = read(
-        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\">\
-         <soap:Body><xmla:Execute xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+        "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>\
+         <x:Discover xmlns:x=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <x:RequestType>DBSCHEMA_TABLES</x:RequestType><x:Restrictions><x:RestrictionList>\
+         <x:TABLE_TYPE><x:Value>TABLE</x:Value><x:Value>VIEW</x:Value></x:TABLE_TYPE>\
+         </x:RestrictionList></x:Restrictions></x:Discover></s:Body></s:Envelope>",
+    );
+    assert_eq!(
+        admitted(
+            request.discover().expect("a Discover").restrictions(),
+            "TABLE_TYPE"
+        ),
+        ["TABLE", "VIEW"],
+        "the restriction and its values are named by their local names"
+    );
+}
+
+#[test]
+fn argument_text_is_kept_exactly_as_written() {
+    let request = read(&envelope(
+        "",
+        &discover_body(
+            "<RequestType>DBSCHEMA_TABLES</RequestType>\
+             <Restrictions><RestrictionList><SCHEMA_NAME>  </SCHEMA_NAME><TABLE_NAME> b </TABLE_NAME>\
+             </RestrictionList></Restrictions>\
+             <Properties><PropertyList><Catalog/><DataSourceInfo>  </DataSourceInfo>\
+             <Format> Tabular </Format><UserName>march&#xE9; &amp; co</UserName>\
+             </PropertyList></Properties>",
+        ),
+    ));
+    let discover = request.discover().expect("a Discover");
+    assert_eq!(admitted(discover.restrictions(), "SCHEMA_NAME"), ["  "]);
+    assert_eq!(admitted(discover.restrictions(), "TABLE_NAME"), [" b "]);
+    let properties = discover.properties();
+    assert_eq!(
+        properties.get("Catalog"),
+        Some(""),
+        "a self-closed property is set, and empty"
+    );
+    assert_eq!(properties.catalog(), None, "an empty Catalog names none");
+    assert_eq!(properties.get("DataSourceInfo"), Some("  "));
+    assert_eq!(properties.get("Format"), Some(" Tabular "));
+    assert_eq!(properties.get("UserName"), Some("marché & co"));
+
+    let request = read(&envelope(
+        "",
+        &execute_body(
+            "<Command><Statement>   </Statement></Command><Parameters>\
+             <Parameter><Name> symbol </Name><Value>   </Value></Parameter>\
+             </Parameters>",
+        ),
+    ));
+    let execute = request.execute().expect("an Execute");
+    assert_eq!(
+        execute.command().statement(),
+        Some("   "),
+        "a statement of spaces is its spaces"
+    );
+    assert_eq!(parameters(execute), [(" symbol ", Scalar::from("   "))]);
+
+    let spaced = Request::from(
+        Execute::statement("   ")
+            .with_properties(PropertyList::new().with("Catalog", "  "))
+            .with_parameter("w", Scalar::from("  ")),
+    );
+    assert_eq!(round_trip(&spaced), spaced);
+}
+
+#[test]
+fn a_parameter_is_read_in_the_xmla_namespace_or_in_none_and_passed_over_in_another() {
+    let request = read(
+        "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body>\
+         <xmla:Execute xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <xmla:Command><Statement>select 1</Statement></xmla:Command>\
+         <xmla:Parameters><Parameter><Name>symbol</Name><Value>AAPL</Value></Parameter>\
+         </xmla:Parameters></xmla:Execute></s:Body></s:Envelope>",
+    );
+    let execute = request.execute().expect("an Execute");
+    assert_eq!(
+        execute.command().statement(),
+        Some("select 1"),
+        "an unqualified Statement under a prefixed Command is XMLA's"
+    );
+    assert_eq!(
+        parameters(execute),
+        [("symbol", Scalar::from("AAPL"))],
+        "an unqualified Parameter is XMLA's"
+    );
+
+    let request = read(&envelope(
+        "",
+        &execute_body(
+            "<Command><Statement>select 1</Statement></Command><Parameters>\
+             <Parameter xmlns=\"urn:example:other\"><Name>foreign</Name><Value>1</Value></Parameter>\
+             <Parameter><Name>symbol</Name><Value>AAPL</Value></Parameter>\
+             </Parameters>",
+        ),
+    ));
+    assert_eq!(
+        parameters(request.execute().expect("an Execute")),
+        [("symbol", Scalar::from("AAPL"))],
+        "a Parameter in another namespace is another protocol's"
+    );
+}
+
+#[test]
+fn an_argument_in_another_namespace_is_not_the_requests() {
+    let request = read(&envelope(
+        "",
+        &discover_body(
+            "<RequestType>DBSCHEMA_TABLES</RequestType>\
+             <Restrictions xmlns=\"urn:example:other\"><RestrictionList><TABLE_NAME>t</TABLE_NAME>\
+             </RestrictionList></Restrictions>\
+             <Properties xmlns=\"urn:example:other\"><PropertyList><Format>Tabular</Format>\
+             </PropertyList></Properties>",
+        ),
+    ));
+    assert_eq!(
+        request.discover(),
+        Some(&Discover::new(RequestType::DbschemaTables))
+    );
+
+    let request = read(&envelope(
+        "",
+        &execute_body(
+            "<Command><Statement>select 1</Statement></Command>\
+             <Properties><PropertyList xmlns=\"urn:example:other\"><Format>Tabular</Format>\
+             </PropertyList></Properties>\
+             <Parameters xmlns=\"urn:example:other\"><Parameter><Name>a</Name><Value>1</Value>\
+             </Parameter></Parameters>",
+        ),
+    ));
+    assert_eq!(request.execute(), Some(&Execute::statement("select 1")));
+
+    let error = refused(&envelope(
+        "",
+        &execute_body(
+            "<o:Command xmlns:o=\"urn:example:other\"><Statement>select 1</Statement></o:Command>",
+        ),
+    ));
+    assert_eq!(
+        codec_reason(&error, "xml"),
+        "expected one `Command` element under `Execute`, found none",
+        "a Command in another namespace is not the one XMLA names"
+    );
+}
+
+#[test]
+fn a_statement_carrying_attributes_or_a_prefix_is_the_statement() {
+    let request = read(&envelope(
+        "",
+        &execute_body(
+            "<Command><Statement xml:space=\"preserve\" Language=\"SQL\">  select 1 </Statement>\
+             </Command>",
+        ),
+    ));
+    let command = request.execute().expect("an Execute").command();
+    assert_eq!(command.statement(), Some("  select 1 "));
+    assert_eq!(command.name(), "Statement");
+
+    let command = read(EXECUTE_TRADES_PREFIXED)
+        .execute()
+        .expect("an Execute")
+        .command()
+        .clone();
+    assert_eq!(
+        command.name(),
+        "Statement",
+        "a Statement is named by what it is, not as spelled"
+    );
+}
+
+#[test]
+fn a_request_keeps_every_header_block_it_was_sent_with() {
+    let request = read(&envelope(
+        "",
+        &discover_body("<RequestType>DISCOVER_DATASOURCES</RequestType>"),
+    ));
+    assert!(request.header().is_empty(), "no Header, no block");
+
+    let request = read(
+        &envelope(
+            "",
+            &discover_body("<RequestType>DISCOVER_DATASOURCES</RequestType>"),
+        )
+        .replace("<SOAP-ENV:Body>", "<SOAP-ENV:Header/><SOAP-ENV:Body>"),
+    );
+    assert!(
+        request.header().is_empty(),
+        "an empty Header holds no block"
+    );
+    assert_eq!(request.session().expect("no session"), None);
+
+    let request = read(&envelope(
+        "<Session xmlns=\"urn:schemas-microsoft-com:xml-analysis\" SessionId=\"581\"/>\
+         <Security xmlns=\"urn:example:security\"><Token>t</Token></Security>",
+        &discover_body("<RequestType>DISCOVER_DATASOURCES</RequestType>"),
+    ));
+    let blocks: Vec<(&str, Option<String>)> = request
+        .header()
+        .iter()
+        .map(|block| (block.name(), block.element().namespace().map(str::to_owned)))
+        .collect();
+    assert_eq!(
+        blocks,
+        [
+            ("Security", Some("urn:example:security".to_owned())),
+            ("Session", Some(NAMESPACE.to_owned())),
+        ],
+        "a block the request does not read is kept beside the session, in name order"
+    );
+    let security = request.header()[0].element();
+    assert_eq!(
+        security
+            .one_child_in("urn:example:security", "Token")
+            .expect("a Token")
+            .text(),
+        Some("t")
+    );
+    assert_eq!(
+        request.session().expect("one session"),
+        Some(Session::Continue("581".into()))
+    );
+}
+
+#[test]
+fn a_name_beyond_ascii_reads_and_writes_as_spelled() {
+    let request = read(&envelope(
+        "",
+        &discover_body(
+            "<RequestType>DBSCHEMA_TABLES</RequestType>\
+             <Restrictions><RestrictionList><SCHÉMA>marché</SCHÉMA></RestrictionList></Restrictions>\
+             <Properties><PropertyList><Catégorie>données</Catégorie></PropertyList></Properties>",
+        ),
+    ));
+    let discover = request.discover().expect("a Discover");
+    assert_eq!(admitted(discover.restrictions(), "SCHÉMA"), ["marché"]);
+    assert_eq!(
+        properties(discover.properties()),
+        [("Catégorie", "données")]
+    );
+
+    let text = written(&request);
+    assert!(
+        text.contains("<RestrictionList><SCHÉMA>marché</SCHÉMA></RestrictionList>")
+            && text.contains("<PropertyList><Catégorie>données</Catégorie></PropertyList>"),
+        "{text}"
+    );
+    assert_eq!(round_trip(&request), request);
+}
+
+// The natural envelope --------------------------------------------------------
+
+#[test]
+fn the_natural_envelope_holds_the_arguments_in_name_order() {
+    let discover = Request::from(
+        Discover::new(RequestType::DbschemaTables).with_restrictions(
+            Restrictions::new()
+                .with("TABLE_TYPE", "TABLE")
+                .with("TABLE_TYPE", "VIEW")
+                .with("TABLE_CATALOG", "market"),
+        ),
+    );
+    let natural = discover.into_envelope().expect("an envelope");
+    let payload = natural.payload().expect("a payload").element();
+    assert_eq!(payload.name(), "Discover");
+    assert_eq!(
+        payload
+            .children()
+            .map(|child| child.name().to_owned())
+            .collect::<Vec<_>>(),
+        ["Properties", "RequestType", "Restrictions"]
+    );
+    assert_eq!(
+        payload
+            .one_child_in(NAMESPACE, "RequestType")
+            .expect("a RequestType")
+            .text(),
+        Some("DBSCHEMA_TABLES")
+    );
+    let restrictions = payload
+        .one_child_in(NAMESPACE, "Restrictions")
+        .expect("Restrictions");
+    let list = restrictions
+        .one_child_in(NAMESPACE, "RestrictionList")
+        .expect("a RestrictionList");
+    assert_eq!(
+        list.children()
+            .map(|child| (child.name().to_owned(), child.text().map(str::to_owned)))
+            .collect::<Vec<_>>(),
+        [
+            ("TABLE_CATALOG".to_owned(), Some("market".to_owned())),
+            ("TABLE_TYPE".to_owned(), Some("TABLE".to_owned())),
+            ("TABLE_TYPE".to_owned(), Some("VIEW".to_owned())),
+        ],
+        "a restriction of several values is one element per value"
+    );
+    assert!(
+        list.children()
+            .all(|child| child.namespace() == Some(NAMESPACE)),
+        "every argument is in the namespace the payload declares"
+    );
+
+    let execute = Request::from(trades_execute());
+    let natural = execute.into_envelope().expect("an envelope");
+    let payload = natural.payload().expect("a payload").element();
+    assert_eq!(
+        payload
+            .children()
+            .map(|child| child.name().to_owned())
+            .collect::<Vec<_>>(),
+        ["Command", "Parameters", "Properties"]
+    );
+    let parameters = payload
+        .one_child_in(NAMESPACE, "Parameters")
+        .expect("Parameters");
+    assert_eq!(
+        parameters
+            .children_in(Some(NAMESPACE), "Parameter")
+            .iter()
+            .map(|parameter| {
+                let name = parameter.one_child_in(NAMESPACE, "Name").expect("a Name");
+                name.text().map(str::to_owned)
+            })
+            .collect::<Vec<_>>(),
+        [Some("symbol".to_owned()), Some("limit".to_owned())],
+        "parameters keep the order given"
+    );
+
+    let natural = Request::from(Execute::statement("select 1"))
+        .into_envelope()
+        .expect("an envelope");
+    assert_eq!(
+        natural
+            .payload()
+            .expect("a payload")
+            .element()
+            .children()
+            .map(|child| child.name().to_owned())
+            .collect::<Vec<_>>(),
+        ["Command", "Properties"],
+        "no parameter, no Parameters"
+    );
+}
+
+#[test]
+fn the_natural_envelope_and_the_bytes_read_as_one_request() {
+    let requests = [
+        Request::from(tables_discover()),
+        Request::from(
+            Discover::new(RequestType::DbschemaColumns)
+                .with_restrictions(
+                    Restrictions::new()
+                        .with("TABLE_TYPE", "TABLE")
+                        .with("TABLE_CATALOG", "marché <&>")
+                        .with("TABLE_TYPE", "VIEW"),
+                )
+                .with_properties(
+                    PropertyList::new()
+                        .with("Format", "Tabular")
+                        .with("Catalog", "market"),
+                ),
+        ),
+        Request::from(trades_execute())
+            .with_session(&Session::Continue("581".into()))
+            .expect("a session header"),
+        Request::from(
+            Execute::statement("select 1")
+                .with_parameter("absent", Scalar::Null)
+                .with_parameter("limit", Scalar::from(10_i64))
+                .with_parameter(
+                    "row",
+                    Scalar::from_struct([("symbol", Scalar::from("AAPL"))]).expect("a record"),
+                ),
+        )
+        .with_header(
+            Session::Begin
+                .into_answer_fragment()
+                .expect("an answer block"),
+        ),
+        Request::from(Execute::new(Command::Other(Fragment::new(
+            "Cancel",
+            Scalar::Null,
+        )))),
+    ];
+    for request in requests {
+        let from_bytes = Request::from_bytes(&request.into_bytes().expect("written"))
+            .expect("the bytes read back");
+        let natural = request.into_envelope().expect("an envelope");
+        let from_natural_bytes = Request::from_bytes(&natural.into_bytes().expect("written"))
+            .expect("the natural envelope's bytes read back");
+        assert_eq!(from_natural_bytes, from_bytes, "{request:?}");
+        assert_eq!(natural.header(), request.header());
+
+        let from_natural = Request::from_envelope(&natural).expect("the natural envelope reads");
+        assert_eq!(from_natural.kind(), request.kind());
+        assert_eq!(from_natural.header(), request.header());
+        assert_eq!(
+            from_natural.properties().len(),
+            request.properties().len(),
+            "{request:?}"
+        );
+        for (name, value) in request.properties().entries() {
+            assert_eq!(from_natural.properties().get(name), Some(value.as_str()));
+        }
+        if let Some(execute) = request.execute() {
+            assert_eq!(
+                from_natural.execute().expect("an Execute").parameters(),
+                execute.parameters(),
+                "in memory, a parameter keeps its type"
+            );
+            assert_eq!(
+                from_natural.execute().expect("an Execute").command(),
+                execute.command()
+            );
+        }
+    }
+}
+
+// Contracts the source does not keep ----------------------------------------
+
+#[test]
+fn a_request_read_under_prefixes_declared_above_is_the_same_request_written_back() {
+    let mut failures = Vec::new();
+
+    // A header block and a command whose prefixes the envelope declares.
+    for message in [
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" \
+         xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <soap:Header><xmla:Session soap:mustUnderstand=\"1\" SessionId=\"581\"/></soap:Header>\
+         <soap:Body><xmla:Discover><xmla:RequestType>DISCOVER_DATASOURCES</xmla:RequestType>\
+         </xmla:Discover></soap:Body></soap:Envelope>",
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" \
+         xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
+         <soap:Body><xmla:Execute><xmla:Command><xmla:Cancel/></xmla:Command></xmla:Execute>\
+         </soap:Body></soap:Envelope>",
+    ] {
+        let request = read(message);
+        let again = round_trip(&request);
+        if again != request {
+            failures.push(format!(
+                "read {request:?}\n  written back and read, {again:?}\n  from {}",
+                written(&request)
+            ));
+        }
+    }
+
+    // A command in no namespace, under an Execute that declares XMLA's by a
+    // prefix: written under a default namespace, it must still be in none.
+    let request = read(
+        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>\
+         <xmla:Execute xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
          <xmla:Command><Cancel/></xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
     );
-    let Command::Other(cancel) = request.execute().unwrap().command() else { panic!() };
-    println!("1 read ns {:?}", cancel.element().namespace());
-    let again = round_trip(&request);
-    let Command::Other(cancel2) = again.execute().unwrap().command() else { panic!() };
-    println!("1 again ns {:?} eq {}", cancel2.element().namespace(), again == request);
-    println!("1 written {}", written(&request));
-    // 2. prefixed xmla:Cancel in prefixed envelope
-    let request = read(
-        "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\">\
-         <soap:Body><xmla:Execute>\
-         <xmla:Command><xmla:Cancel/></xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
+    let namespace = |request: &Request| match request.execute().map(Execute::command) {
+        Some(Command::Other(command)) => command.element().namespace().map(str::to_owned),
+        other => panic!("expected another command, got {other:?}"),
+    };
+    assert_eq!(
+        namespace(&request),
+        None,
+        "the command is read in no namespace"
     );
     let again = round_trip(&request);
-    println!("2 eq {} written {}", again == request, written(&request));
-    println!("2 {:?}\n2 {:?}", request.execute().unwrap().command(), again.execute().unwrap().command());
-    // 3. as:Batch into_envelope
+    if namespace(&again).is_some() {
+        failures.push(format!(
+            "a command in no namespace reads back in {:?} from {}",
+            namespace(&again),
+            written(&request)
+        ));
+    }
+
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn the_natural_envelope_keeps_the_namespace_of_a_command_read_under_a_prefix() {
     let request = read(
         "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" \
          xmlns:xmla=\"urn:schemas-microsoft-com:xml-analysis\" \
@@ -1564,89 +2418,269 @@ fn zz_probe() {
          <soap:Body><xmla:Execute><xmla:Command><as:Batch><as:Process/></as:Batch>\
          </xmla:Command></xmla:Execute></soap:Body></soap:Envelope>",
     );
-    let natural = request.into_envelope().unwrap();
-    let from = Request::from_envelope(&natural).unwrap();
-    let Command::Other(batch) = from.execute().unwrap().command() else { panic!() };
-    println!("3 from_envelope ns {:?} eq {}", batch.element().namespace(), from == request);
-    match natural.into_bytes() {
-        Ok(bytes) => { println!("3 env bytes {}", String::from_utf8_lossy(&bytes)); show("3 reread", &String::from_utf8_lossy(&bytes)); }
-        Err(e) => println!("3 env bytes ERR {e:?}"),
+    let natural = request.into_envelope().expect("an envelope");
+    let from_natural = Request::from_envelope(&natural).expect("the natural envelope reads");
+    let Command::Other(batch) = from_natural.execute().expect("an Execute").command() else {
+        panic!("expected another command");
+    };
+    let bytes = String::from_utf8(natural.into_bytes().expect("written")).expect("UTF-8");
+    assert_eq!(
+        batch.element().namespace(),
+        Some(ENGINE),
+        "the natural envelope is the message the request is sent as, and in it the command is \
+         in {ENGINE:?}; its bytes are {bytes}"
+    );
+    assert!(
+        bytes.contains(
+            "<as:Batch xmlns:as=\"http://schemas.microsoft.com/analysisservices/2003/engine\">"
+        ),
+        "the natural envelope's bytes declare the prefix they spell: {bytes}"
+    );
+}
+
+#[test]
+fn a_repeated_argument_element_is_refused_naming_it() {
+    let statement = "<Command><Statement>select 1</Statement></Command>";
+    let cases = [
+        (
+            "Properties",
+            execute_body(&format!(
+                "{statement}<Properties><PropertyList><Format>Tabular</Format></PropertyList></Properties>\
+                 <Properties><PropertyList><Format>Multidimensional</Format></PropertyList></Properties>"
+            )),
+        ),
+        (
+            "PropertyList",
+            execute_body(&format!(
+                "{statement}<Properties><PropertyList><Catalog>a</Catalog></PropertyList>\
+                 <PropertyList><Catalog>b</Catalog></PropertyList></Properties>"
+            )),
+        ),
+        (
+            "Format",
+            execute_body(&format!(
+                "{statement}<Properties><PropertyList><Format>Tabular</Format>\
+                 <Format>Multidimensional</Format></PropertyList></Properties>"
+            )),
+        ),
+        (
+            "Format",
+            execute_body(&format!(
+                "{statement}<Properties><PropertyList><format>Multidimensional</format>\
+                 <Format>Tabular</Format></PropertyList></Properties>"
+            )),
+        ),
+        (
+            "Parameters",
+            execute_body(&format!(
+                "{statement}<Parameters><Parameter><Name>a</Name><Value>1</Value></Parameter></Parameters>\
+                 <Parameters><Parameter><Name>b</Name><Value>2</Value></Parameter></Parameters>"
+            )),
+        ),
+        (
+            "Name",
+            execute_body(&format!(
+                "{statement}<Parameters><Parameter><Name>a</Name><Name>b</Name><Value>1</Value>\
+                 </Parameter></Parameters>"
+            )),
+        ),
+        (
+            "Value",
+            execute_body(&format!(
+                "{statement}<Parameters><Parameter><Name>a</Name><Value>1</Value><Value>2</Value>\
+                 </Parameter></Parameters>"
+            )),
+        ),
+        (
+            "Restrictions",
+            discover_body(
+                "<RequestType>DBSCHEMA_TABLES</RequestType>\
+                 <Restrictions><RestrictionList><TABLE_NAME>a</TABLE_NAME></RestrictionList></Restrictions>\
+                 <Restrictions><RestrictionList><TABLE_NAME>b</TABLE_NAME></RestrictionList></Restrictions>",
+            ),
+        ),
+        (
+            "RestrictionList",
+            discover_body(
+                "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions>\
+                 <RestrictionList><TABLE_NAME>a</TABLE_NAME></RestrictionList>\
+                 <RestrictionList><TABLE_SCHEMA>b</TABLE_SCHEMA></RestrictionList></Restrictions>",
+            ),
+        ),
+    ];
+    let mut accepted = Vec::new();
+    for (repeated, body) in &cases {
+        match Request::from_bytes(envelope("", body).as_bytes()) {
+            Ok(request) => {
+                accepted.push(format!("`{repeated}` twice read as {:?}", request.method()))
+            }
+            Err(error) => assert!(
+                error.to_string().contains(repeated),
+                "the refusal names `{repeated}`: {error}"
+            ),
+        }
     }
-    // 4. whitespace-only
-    for (label, children) in [
-        ("4 stmt ws", "<Command><Statement>   </Statement></Command>"),
-        ("4 value ws", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>   </Value></Parameter></Parameters>"),
-        ("4 name ws", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>  </Name><Value>1</Value></Parameter></Parameters>"),
-        ("4 prop ws", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Catalog>  </Catalog><Format> Tabular </Format></PropertyList></Properties>"),
-        ("4 dup prop", "<Command><Statement>s</Statement></Command><Properties><PropertyList><format>Multidimensional</format><Format>Tabular</Format></PropertyList></Properties>"),
-        ("4 dup prop same", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Format>Tabular</Format><Format>Multidimensional</Format></PropertyList></Properties>"),
-        ("4 two props", "<Command><Statement>s</Statement></Command><Properties><PropertyList><Format>Tabular</Format></PropertyList></Properties><Properties><PropertyList><Catalog>x</Catalog></PropertyList></Properties>"),
-        ("4 two params", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>1</Value></Parameter></Parameters><Parameters><Parameter><Name>b</Name><Value>2</Value></Parameter></Parameters>"),
-        ("4 two names", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Name>b</Name><Value>1</Value></Parameter></Parameters>"),
-        ("4 two values", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value>1</Value><Value>2</Value></Parameter></Parameters>"),
-        ("4 xsi type", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:type=\"xsd:int\">10</Value></Parameter></Parameters>"),
-        ("4 xsi nil", "<Command><Statement>s</Statement></Command><Parameters><Parameter><Name>a</Name><Value xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:nil=\"true\"/></Parameter></Parameters>"),
-        ("4 foreign param", "<Command><Statement>s</Statement></Command><Parameters><Parameter xmlns=\"urn:other\"><Name>a</Name><Value>1</Value></Parameter></Parameters>"),
-        ("4 stmt attr", "<Command><Statement xml:space=\"preserve\">select 1</Statement></Command>"),
-        ("4 stmt child", "<Command><Statement><b>x</b></Statement></Command>"),
-        ("4 stmt mixed", "<Command><Statement>select <b/> 1</Statement></Command>"),
-        ("4 foreign command", "<o:Command xmlns:o=\"urn:other\"><Statement>s</Statement></o:Command>"),
-        ("4 foreign props", "<Command><Statement>s</Statement></Command><Properties xmlns=\"urn:other\"><PropertyList><Format>Tabular</Format></PropertyList></Properties>"),
-    ] {
-        show(label, &envelope("", &execute_body(children)));
-    }
-    for (label, children) in [
-        ("5 value children", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value>TABLE</Value><Value>VIEW</Value></TABLE_TYPE></RestrictionList></Restrictions>"),
-        ("5 value one", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value>TABLE</Value></TABLE_TYPE><TABLE_TYPE>VIEW</TABLE_TYPE></RestrictionList></Restrictions>"),
-        ("5 value empty", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Value/><x:Value xmlns:x=\"urn:o\">V</x:Value></TABLE_TYPE></RestrictionList></Restrictions>"),
-        ("5 other child", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><TABLE_TYPE><Other>x</Other></TABLE_TYPE></RestrictionList></Restrictions>"),
-        ("5 no list", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><CATALOG_NAME>x</CATALOG_NAME></Restrictions>"),
-        ("5 two restrictions", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><A>1</A></RestrictionList></Restrictions><Restrictions><RestrictionList><B>2</B></RestrictionList></Restrictions>"),
-        ("5 ws restriction", "<RequestType>DBSCHEMA_TABLES</RequestType><Restrictions><RestrictionList><A>  </A><B> b </B></RestrictionList></Restrictions>"),
-        ("5 prop empty", "<RequestType>DBSCHEMA_TABLES</RequestType><Properties><PropertyList><Catalog/></PropertyList></Properties>"),
-    ] {
-        show(label, &envelope("", &discover_body(children)));
-    }
-    // 6 writer errors
-    for request in [
-        Request::from(Execute::statement("select \u{0}")),
-        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("bad name", "x"))),
-        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("@xmlns", "urn:evil"))),
-        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("#text", "x"))),
-        Request::from(Execute::statement("s").with_properties(PropertyList::new().with("Catalog", "\u{1}"))),
-        Request::from(Discover::new(RequestType::DbschemaTables).with_restrictions(Restrictions::new().with("1st", "x"))),
-        Request::from(Discover::new(RequestType::DbschemaTables).with_restrictions(Restrictions::new().with("A", "\u{b}"))),
-        Request::from(Discover::new(RequestType::Other("\u{1}".into()))),
-        Request::from(Execute::statement("s").with_parameter("a\u{0}", Scalar::from("1"))),
-        Request::from(Execute::statement("s").with_parameter("a", Scalar::from_sequence([Scalar::from("x"), Scalar::from("y")]))),
-        Request::from(Execute::statement("s").with_parameter("a", Scalar::from("\u{2}"))),
-        Request::from(Execute::statement("s")).with_header(Fragment::new("bad name", Scalar::Null)),
-        Request::from(Execute::statement("s")).with_header(Fragment::new("Security", Scalar::Null)).with_header(Fragment::new("Security", Scalar::Null)),
-        Request::from(Execute::new(Command::Other(Fragment::new("bad name", Scalar::Null)))),
-    ] {
+    assert!(
+        accepted.is_empty(),
+        "XMLA 1.1 states each argument once, and two disagreeing ones are two readings: \
+         one is chosen rather than refused\n{}",
+        accepted.join("\n")
+    );
+}
+
+#[test]
+fn the_natural_envelope_refuses_what_the_bytes_refuse_and_nothing_else() {
+    let statement = || Execute::statement("select 1");
+    let cases = [
+        (
+            "a property named as an attribute",
+            Request::from(statement().with_properties(PropertyList::new().with("@xmlns", "urn:x"))),
+        ),
+        (
+            "a property named as text",
+            Request::from(statement().with_properties(PropertyList::new().with("#text", "x"))),
+        ),
+        (
+            "a restriction named as an attribute",
+            Request::from(
+                Discover::new(RequestType::DbschemaTables)
+                    .with_restrictions(Restrictions::new().with("@TABLE_NAME", "x")),
+            ),
+        ),
+        (
+            "a parameter value of several items",
+            Request::from(statement().with_parameter(
+                "symbols",
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from("MSFT")]),
+            )),
+        ),
+        (
+            "a header block written twice",
+            Request::from(statement())
+                .with_header(
+                    Fragment::in_namespace("Security", "urn:example:security", Scalar::Null)
+                        .expect("a block"),
+                )
+                .with_header(
+                    Fragment::in_namespace("Security", "urn:example:security", Scalar::Null)
+                        .expect("a block"),
+                ),
+        ),
+        // Both refuse these, which is the agreement the others lack.
+        (
+            "a property name XML cannot spell",
+            Request::from(statement().with_properties(PropertyList::new().with("bad name", "x"))),
+        ),
+        (
+            "a statement XML cannot carry",
+            Request::from(Execute::statement("select \u{0}")),
+        ),
+    ];
+    let mut disagreements = Vec::new();
+    for (what, request) in &cases {
         let bytes = request.into_bytes();
-        let env = request.into_envelope();
-        let env_bytes = env.as_ref().map(|e| e.into_bytes());
-        println!("6 {:?}\n   bytes {:?}\n   env {:?}\n   env_bytes {:?}", request.method(), bytes.map(|b| String::from_utf8_lossy(&b).into_owned()), env.as_ref().map(|_| ()), env_bytes.map(|r| r.map(|b| String::from_utf8_lossy(&b).into_owned())));
+        let natural = request
+            .into_envelope()
+            .and_then(|natural| natural.into_bytes());
+        if bytes.is_ok() != natural.is_ok() {
+            disagreements.push(format!(
+                "{what}: into_bytes answers {:?}, into_envelope then into_bytes answers {:?}",
+                bytes.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+                natural.map(|bytes| String::from_utf8_lossy(&bytes).into_owned()),
+            ));
+        }
     }
-    // 7 session answer
-    let answer = Session::Continue("581".into()).into_answer_fragment().unwrap();
-    println!("7 {:?}", answer);
-    let bytes = Request::from(Execute::statement("s")).with_header(answer).into_bytes().unwrap();
-    println!("7 {}", String::from_utf8_lossy(&bytes));
-    let s = Request::from(Execute::statement("s")).with_session(&Session::Continue("sé \"7\" <&> '→'\t\n".into())).unwrap();
-    println!("8 {}", written(&s));
-    println!("8 {:?}", round_trip(&s).session());
-    let d = Request::from(Discover::new(RequestType::Other("A&B<c>".into())).with_restrictions(Restrictions::new().with("Z", "q\"'<&>").with("A", "1")).with_properties(PropertyList::new().with("Format", "x").with("Catalog", "c")));
-    println!("9 {}", written(&d));
-    let e = d.into_envelope().unwrap();
-    println!("9 natural children {:?}", e.payload().unwrap().element().children().map(|c| c.name().to_owned()).collect::<Vec<_>>());
-    println!("9 from_envelope eq {}", Request::from_envelope(&e).unwrap() == d);
-    let x = Request::from(trades_execute().with_parameter("n", Scalar::Null));
-    let e = x.into_envelope().unwrap();
-    println!("10 natural children {:?}", e.payload().unwrap().element().children().map(|c| c.name().to_owned()).collect::<Vec<_>>());
-    println!("10 from_envelope eq {}", Request::from_envelope(&e).unwrap() == x);
-    println!("10 env bytes eq {}", Request::from_bytes(&e.into_bytes().unwrap()).unwrap() == x);
-    let ws = Request::from(Execute::statement("   ").with_parameter("w", Scalar::from("  ")).with_properties(PropertyList::new().with("Catalog", "  ")));
-    println!("11 {:?}", round_trip(&ws).method());
+    assert!(
+        disagreements.is_empty(),
+        "the natural envelope is the message the request is sent as, so the two writers agree \
+         on what a request is:\n{}",
+        disagreements.join("\n")
+    );
+}
+
+#[test]
+fn a_parameter_value_marked_nil_reads_as_null() {
+    for value in [
+        "<Value xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:nil=\"true\"/>",
+        "<Value xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\" i:nil=\"1\"></Value>",
+    ] {
+        let request = read(&envelope(
+            "",
+            &execute_body(&format!(
+                "<Command><Statement>select 1</Statement></Command><Parameters>\
+                 <Parameter><Name>absent</Name>{value}</Parameter></Parameters>"
+            )),
+        ));
+        assert_eq!(
+            parameters(request.execute().expect("an Execute")),
+            [("absent", Scalar::Null)],
+            "xsi:nil is how XML Schema spells an absent value, the reading \
+             `Element::is_nil` and the rowset reader give it: {value}"
+        );
+    }
+}
+
+#[test]
+fn properties_and_restrictions_read_by_name_and_round_trip() {
+    let request = read(&envelope(
+        "",
+        &discover_body(
+            "<RequestType>DBSCHEMA_TABLES</RequestType>\
+             <Restrictions><RestrictionList><TABLE_NAME>trades</TABLE_NAME>\
+             <TABLE_CATALOG>market</TABLE_CATALOG></RestrictionList></Restrictions>\
+             <Properties><PropertyList><Format>Tabular</Format><Catalog>market</Catalog>\
+             </PropertyList></Properties>",
+        ),
+    ));
+    let discover = request.discover().expect("a Discover");
+    let mut failures = Vec::new();
+    let restrictions: Vec<&str> = discover
+        .restrictions()
+        .entries()
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect();
+    // The element view holds a list's children by name, so a list read from
+    // a document is in name order whatever order the document wrote.
+    if restrictions != ["TABLE_CATALOG", "TABLE_NAME"] {
+        failures.push(format!(
+            "`Restrictions::entries` is name order for restrictions read from a document, \
+             read as {restrictions:?}"
+        ));
+    }
+    let names: Vec<&str> = properties(discover.properties())
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    if names != ["Catalog", "Format"] {
+        failures.push(format!(
+            "`PropertyList::entries` is name order for a list read from a document, \
+             read as {names:?}"
+        ));
+    }
+
+    // The ordinary way to build a request, and the module's own example's
+    // promise that it reads back as itself.
+    let built = Request::from(
+        Discover::new(RequestType::DbschemaTables)
+            .with_restrictions(
+                Restrictions::new()
+                    .with("TABLE_NAME", "trades")
+                    .with("TABLE_CATALOG", "market"),
+            )
+            .with_properties(
+                PropertyList::new()
+                    .with("Format", "Tabular")
+                    .with("Catalog", "market"),
+            ),
+    );
+    let again = round_trip(&built);
+    if again != built {
+        failures.push(format!(
+            "built {:?}\n  written and read back as {:?}",
+            built.discover(),
+            again.discover()
+        ));
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

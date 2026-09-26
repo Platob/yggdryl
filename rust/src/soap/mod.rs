@@ -41,16 +41,17 @@
 
 pub mod http;
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io::Write;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use crate::text::Limits;
 use crate::xml::{
     ATTRIBUTE_PREFIX, Element, Scope, TEXT_KEY, from_bytes_with_limits, write_element_text,
     write_fragment,
 };
-use crate::text::Limits;
 use crate::{Error, Result, Scalar};
 
 /// The SOAP 1.1 envelope namespace.
@@ -84,18 +85,54 @@ pub struct Fragment {
     name: SmolStr,
     value: Scalar,
     scope: Scope,
+    /// Whether the scope is a message's: read out of one, the fragment's
+    /// namespaces are facts of the document; built, they are whatever the
+    /// message it is written into declares around it.
+    read: bool,
 }
 
 /// Two fragments are one element when they spell the same name over the
-/// same value: a fragment built for a message and the same one read back out
-/// of it are equal, though the read one remembers the declarations the
-/// envelope made above it. Where a fragment was read is provenance, not
-/// identity, exactly as the natural value of a document keeps names as
-/// spelled.
+/// same content: a fragment built for a message, the same one read back out
+/// of it, and that one written and read again are all equal, though each
+/// reading remembers the declarations made above it and a rewrite declares
+/// them on the element. Declarations bind names rather than carry content,
+/// so they are no part of what is compared - where a fragment was read is
+/// provenance, not identity.
 impl PartialEq for Fragment {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.value == other.value
+        self.name == other.name && content_of(&self.value) == content_of(&other.value)
     }
+}
+
+/// `value` less its namespace declarations: the entries a record keeps once
+/// `@xmlns` and `@xmlns:p` come off, a record left with nothing being null
+/// and one left with its text alone being that text - the value the element
+/// would have had, written where its names were already bound.
+fn content_of(value: &Scalar) -> Cow<'_, Scalar> {
+    let Scalar::Struct(entries) = value else {
+        return Cow::Borrowed(value);
+    };
+    let declares = entries.as_map().keys().any(|key| {
+        key.strip_prefix(ATTRIBUTE_PREFIX)
+            .is_some_and(|attribute| attribute == "xmlns" || attribute.starts_with("xmlns:"))
+    });
+    if !declares {
+        return Cow::Borrowed(value);
+    }
+    let kept: Vec<(SmolStr, Scalar)> = entries
+        .as_map()
+        .iter()
+        .filter(|(key, _)| {
+            !key.strip_prefix(ATTRIBUTE_PREFIX)
+                .is_some_and(|attribute| attribute == "xmlns" || attribute.starts_with("xmlns:"))
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    Cow::Owned(match kept.as_slice() {
+        [] => Scalar::Null,
+        [(key, text)] if key == TEXT_KEY => text.clone(),
+        _ => Scalar::from_struct(kept).unwrap_or_else(|_| value.clone()),
+    })
 }
 
 impl Fragment {
@@ -105,6 +142,7 @@ impl Fragment {
             name: name.into(),
             value,
             scope: Scope::new(),
+            read: false,
         }
     }
 
@@ -115,11 +153,7 @@ impl Fragment {
     ///
     /// Returns an error when `value` is a record already declaring a default
     /// namespace, or is a leaf that cannot carry an attribute.
-    pub fn in_namespace(
-        name: impl Into<SmolStr>,
-        namespace: &str,
-        value: Scalar,
-    ) -> Result<Self> {
+    pub fn in_namespace(name: impl Into<SmolStr>, namespace: &str, value: Scalar) -> Result<Self> {
         let name = name.into();
         // A prefixed name is in the namespace its prefix names, which a
         // default declaration never reaches: the prefix is declared instead.
@@ -139,7 +173,9 @@ impl Fragment {
                         Some((prefix, _)) => {
                             format_smolstr!("the element already declares `xmlns:{prefix}`")
                         }
-                        None => SmolStr::new_static("the element already declares a default namespace"),
+                        None => {
+                            SmolStr::new_static("the element already declares a default namespace")
+                        }
                     }));
                 }
                 entries.push((key, Scalar::from(namespace)));
@@ -168,6 +204,7 @@ impl Fragment {
             name: SmolStr::new(element.name()),
             value: element.value().clone(),
             scope: element.scope().clone(),
+            read: true,
         }
     }
 
@@ -184,23 +221,40 @@ impl Fragment {
     /// Returns the XML writer's refusal for a name or a value with no XML
     /// spelling, or the sink's failure.
     pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
-        let declared = self.declared_value()?;
+        self.write_under(writer, None)
+    }
+
+    /// [`Self::write`] where the element around it declares `default` as the
+    /// default namespace: a fragment read out of a message keeps the
+    /// namespace its unprefixed name was in - declaring its own default, or
+    /// undeclaring one (`xmlns=""`) it never had - while a fragment built
+    /// for the message takes the default it is written under.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::write`].
+    pub fn write_under<W: Write>(&self, writer: &mut W, default: Option<&str>) -> Result<()> {
+        let declared = self.declared_value(default)?;
         write_fragment(writer, &self.name, declared.as_ref().unwrap_or(&self.value))
     }
 
     /// The value as the natural document carries it: with the scope's
     /// bindings the element spells declared on it, so a message's natural
     /// value and its bytes describe one message.
-    fn natural_value(&self) -> Result<Scalar> {
-        Ok(self.declared_value()?.unwrap_or_else(|| self.value.clone()))
+    pub(crate) fn natural_value(&self) -> Result<Scalar> {
+        Ok(self
+            .declared_value(None)?
+            .unwrap_or_else(|| self.value.clone()))
     }
 
-    /// The value with the bindings the element spells declared on it, `None`
-    /// when the scope adds nothing the value does not already say.
-    fn declared_value(&self) -> Result<Option<Scalar>> {
+    /// The value with the bindings the element spells declared on it -
+    /// its default namespace reconciled against `default`, the one in force
+    /// where it is written, when the fragment was read - `None` when the
+    /// scope adds nothing the value does not already say.
+    fn declared_value(&self, default: Option<&str>) -> Result<Option<Scalar>> {
         let mut prefixes: Vec<&str> = Vec::new();
         used_prefixes(&self.name, &self.value, &mut prefixes);
-        let missing: Vec<(SmolStr, Scalar)> = prefixes
+        let mut missing: Vec<(SmolStr, Scalar)> = prefixes
             .into_iter()
             .filter(|prefix| !self.declares(prefix))
             .filter_map(|prefix| {
@@ -214,6 +268,15 @@ impl Fragment {
                 })
             })
             .collect();
+        if self.read && !self.name.contains(':') && !self.declares("") {
+            let own = self.scope.resolve("");
+            if own != default {
+                missing.push((
+                    format_smolstr!("{ATTRIBUTE_PREFIX}xmlns"),
+                    Scalar::from(own.unwrap_or("")),
+                ));
+            }
+        }
         if missing.is_empty() {
             return Ok(None);
         }
@@ -454,7 +517,10 @@ impl Fault {
             Scalar::from(self.string.as_str()),
         ));
         if let Some(actor) = &self.actor {
-            entries.push((SmolStr::new_static("faultactor"), Scalar::from(actor.as_str())));
+            entries.push((
+                SmolStr::new_static("faultactor"),
+                Scalar::from(actor.as_str()),
+            ));
         }
         if !self.detail.is_empty() {
             let detail = record(
@@ -512,8 +578,8 @@ impl Fault {
         let string = at_most_one(fault, "faultstring")?
             .and_then(|string| string.text().map(str::to_owned))
             .unwrap_or_default();
-        let actor = at_most_one(fault, "faultactor")?
-            .and_then(|actor| actor.text().map(str::to_owned));
+        let actor =
+            at_most_one(fault, "faultactor")?.and_then(|actor| actor.text().map(str::to_owned));
         let detail = at_most_one(fault, "detail")?
             .map(|detail| {
                 detail
@@ -677,7 +743,12 @@ impl Envelope {
             .filter(|child| child.is(Some(ENVELOPE_NAMESPACE), "Header"));
         let header = headers
             .next()
-            .map(|header| header.children().map(|block| Fragment::from_element(&block)).collect())
+            .map(|header| {
+                header
+                    .children()
+                    .map(|block| Fragment::from_element(&block))
+                    .collect()
+            })
             .unwrap_or_default();
         if headers.next().is_some() {
             return Err(codec_error(
@@ -902,9 +973,12 @@ fn record(entries: impl IntoIterator<Item = (SmolStr, Scalar)>) -> Result<Scalar
 }
 
 /// Refuse a name two of `fragments` share, naming it as `what`.
-fn distinct(fragments: &[Fragment], what: &str) -> Result<()> {
+pub(crate) fn distinct(fragments: &[Fragment], what: &str) -> Result<()> {
     for (index, fragment) in fragments.iter().enumerate() {
-        if fragments[..index].iter().any(|earlier| earlier.name == fragment.name) {
+        if fragments[..index]
+            .iter()
+            .any(|earlier| earlier.name == fragment.name)
+        {
             return Err(codec_error(format_smolstr!(
                 "{what} `{}` repeats; one element per name",
                 fragment.name

@@ -32,8 +32,8 @@ use super::request::{Command, Discover, Execute, Request, RequestMethod, Session
 use super::response::{ACTOR, XmlaError, fault};
 use super::rowset::{Rowset, XsdType};
 use super::vocabulary::{
-    Access, AuthenticationMode, AxisFormat, Content, Format, Method, PropertyList,
-    ProviderType, RequestType, StateSupport, property,
+    Access, AuthenticationMode, AxisFormat, Content, Format, Method, PropertyList, ProviderType,
+    RequestType, StateSupport, property,
 };
 
 /// The error codes this provider's faults carry.
@@ -295,7 +295,10 @@ impl Service {
     /// Returns the fault the request earns: an unsupported request type, a
     /// restriction naming no column, a format other than tabular, a catalog
     /// that cannot be listed.
-    pub fn discover(&self, discover: &Discover) -> std::result::Result<(&'static Definition, Serie), Fault> {
+    pub fn discover(
+        &self,
+        discover: &Discover,
+    ) -> std::result::Result<(&'static Definition, Serie), Fault> {
         let format = discover
             .properties()
             .format()
@@ -355,7 +358,10 @@ impl Service {
                     "DataSourceDescription",
                     text(&self.options.data_source_description),
                 ),
-                ("URL", self.options.url.as_deref().map_or(Scalar::Null, text)),
+                (
+                    "URL",
+                    self.options.url.as_deref().map_or(Scalar::Null, text),
+                ),
                 (
                     "DataSourceInfo",
                     text(&format!(
@@ -466,9 +472,13 @@ impl Service {
                     for table in catalog.tables()? {
                         // A table the restrictions exclude is never read: its
                         // schema is the one answer that costs a read.
-                        if !wanted.get("TABLE_NAME").is_none_or(|names| names.iter().any(|name| name == table.name()))
+                        if !wanted
+                            .get("TABLE_NAME")
+                            .is_none_or(|names| names.iter().any(|name| name == table.name()))
                             || !wanted.get("TABLE_SCHEMA").is_none_or(|schemas| {
-                                schemas.iter().any(|schema| Some(schema.as_str()) == table.schema())
+                                schemas
+                                    .iter()
+                                    .any(|schema| Some(schema.as_str()) == table.schema())
                             })
                         {
                             continue;
@@ -482,7 +492,10 @@ impl Service {
                 Ok(rows)
             }
             RequestType::DbschemaProviderTypes => provider_type_rows(),
-            other => Err(Error::unsupported("answering this request type", other.as_str())),
+            other => Err(Error::unsupported(
+                "answering this request type",
+                other.as_str(),
+            )),
         }
     }
 
@@ -498,28 +511,151 @@ impl Service {
     /// itself sets where it sets one.
     fn property_rows(&self, current: &PropertyList) -> Result<Vec<Scalar>> {
         let value = |name: &str, default: &str| -> Scalar {
-            current
-                .get(name)
-                .map_or_else(|| text(default), text)
+            current.get(name).map_or_else(|| text(default), text)
         };
         let rows: Vec<(&str, &str, XsdType, Access, bool, Scalar)> = vec![
-            (property::AXIS_FORMAT, "How an MDDataSet spells its axes; a tabular provider answers rowsets.", XsdType::String, Access::Write, false, value(property::AXIS_FORMAT, AxisFormat::TupleFormat.as_str())),
-            (property::BEGIN_RANGE, "The first cell ordinal an MDDataSet answers; -1 is unbounded.", XsdType::Int, Access::Write, false, value(property::BEGIN_RANGE, "-1")),
-            (property::CATALOG, "The catalog a request addresses: a table's first path part.", XsdType::String, Access::ReadWrite, false, value(property::CATALOG, "")),
-            (property::CONTENT, "Which of the schema and the rows a result carries.", XsdType::String, Access::Write, false, value(property::CONTENT, Content::DEFAULT.as_str())),
-            (property::CUBE, "The cube a command runs against; this provider has tables, not cubes.", XsdType::String, Access::ReadWrite, false, value(property::CUBE, "")),
-            (property::DATA_SOURCE_INFO, "The connection text DISCOVER_DATASOURCES states.", XsdType::String, Access::ReadWrite, false, value(property::DATA_SOURCE_INFO, &format!("Provider={};Data Source={}", self.options.provider_name, self.options.data_source_name))),
-            (property::DBMS_VERSION, "The version of the engine behind the provider.", XsdType::String, Access::Read, false, text(&self.options.provider_version)),
-            (property::END_RANGE, "The last cell ordinal an MDDataSet answers; -1 is unbounded.", XsdType::Int, Access::Write, false, value(property::END_RANGE, "-1")),
-            (property::FORMAT, "The shape a result takes: Tabular or Native, both a rowset here.", XsdType::String, Access::Write, false, value(property::FORMAT, Format::Tabular.as_str())),
-            (property::LOCALE_IDENTIFIER, "The numeric locale of the request; unread.", XsdType::UnsignedInt, Access::ReadWrite, false, value(property::LOCALE_IDENTIFIER, "")),
-            (property::PASSWORD, "Deprecated in XMLA 1.1; accepted and ignored.", XsdType::String, Access::Write, false, text("")),
-            (property::PROVIDER_NAME, "The provider's name.", XsdType::String, Access::Read, false, text(&self.options.provider_name)),
-            (property::PROVIDER_VERSION, "The provider's version.", XsdType::String, Access::Read, false, text(&self.options.provider_version)),
-            (property::STATE_SUPPORT, "Session headers are honoured; no state is kept between requests.", XsdType::String, Access::Read, false, text(StateSupport::Sessions.as_str())),
-            (property::TIMEOUT, "Seconds to wait for a request to succeed; unread.", XsdType::UnsignedInt, Access::ReadWrite, false, value(property::TIMEOUT, "")),
-            (property::USER_NAME, "The user name the provider associates with the request; none.", XsdType::String, Access::Read, false, text("")),
-            (property::VISUAL_MODE, "How visual totals behave; a tabular provider has none.", XsdType::Int, Access::Write, false, value(property::VISUAL_MODE, "0")),
+            (
+                property::AXIS_FORMAT,
+                "How an MDDataSet spells its axes; a tabular provider answers rowsets.",
+                XsdType::String,
+                Access::Write,
+                false,
+                value(property::AXIS_FORMAT, AxisFormat::TupleFormat.as_str()),
+            ),
+            (
+                property::BEGIN_RANGE,
+                "The first cell ordinal an MDDataSet answers; -1 is unbounded.",
+                XsdType::Int,
+                Access::Write,
+                false,
+                value(property::BEGIN_RANGE, "-1"),
+            ),
+            (
+                property::CATALOG,
+                "The catalog a request addresses: a table's first path part.",
+                XsdType::String,
+                Access::ReadWrite,
+                false,
+                value(property::CATALOG, ""),
+            ),
+            (
+                property::CONTENT,
+                "Which of the schema and the rows a result carries.",
+                XsdType::String,
+                Access::Write,
+                false,
+                value(property::CONTENT, Content::DEFAULT.as_str()),
+            ),
+            (
+                property::CUBE,
+                "The cube a command runs against; this provider has tables, not cubes.",
+                XsdType::String,
+                Access::ReadWrite,
+                false,
+                value(property::CUBE, ""),
+            ),
+            (
+                property::DATA_SOURCE_INFO,
+                "The connection text DISCOVER_DATASOURCES states.",
+                XsdType::String,
+                Access::ReadWrite,
+                false,
+                value(
+                    property::DATA_SOURCE_INFO,
+                    &format!(
+                        "Provider={};Data Source={}",
+                        self.options.provider_name, self.options.data_source_name
+                    ),
+                ),
+            ),
+            (
+                property::DBMS_VERSION,
+                "The version of the engine behind the provider.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(&self.options.provider_version),
+            ),
+            (
+                property::END_RANGE,
+                "The last cell ordinal an MDDataSet answers; -1 is unbounded.",
+                XsdType::Int,
+                Access::Write,
+                false,
+                value(property::END_RANGE, "-1"),
+            ),
+            (
+                property::FORMAT,
+                "The shape a result takes: Tabular or Native, both a rowset here.",
+                XsdType::String,
+                Access::Write,
+                false,
+                value(property::FORMAT, Format::Tabular.as_str()),
+            ),
+            (
+                property::LOCALE_IDENTIFIER,
+                "The numeric locale of the request; unread.",
+                XsdType::UnsignedInt,
+                Access::ReadWrite,
+                false,
+                value(property::LOCALE_IDENTIFIER, ""),
+            ),
+            (
+                property::PASSWORD,
+                "Deprecated in XMLA 1.1; accepted and ignored.",
+                XsdType::String,
+                Access::Write,
+                false,
+                text(""),
+            ),
+            (
+                property::PROVIDER_NAME,
+                "The provider's name.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(&self.options.provider_name),
+            ),
+            (
+                property::PROVIDER_VERSION,
+                "The provider's version.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(&self.options.provider_version),
+            ),
+            (
+                property::STATE_SUPPORT,
+                "Session headers are honoured; no state is kept between requests.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(StateSupport::Sessions.as_str()),
+            ),
+            (
+                property::TIMEOUT,
+                "Seconds to wait for a request to succeed; unread.",
+                XsdType::UnsignedInt,
+                Access::ReadWrite,
+                false,
+                value(property::TIMEOUT, ""),
+            ),
+            (
+                property::USER_NAME,
+                "The user name the provider associates with the request; none.",
+                XsdType::String,
+                Access::Read,
+                false,
+                text(""),
+            ),
+            (
+                property::VISUAL_MODE,
+                "How visual totals behave; a tabular provider has none.",
+                XsdType::Int,
+                Access::Write,
+                false,
+                value(property::VISUAL_MODE, "0"),
+            ),
         ];
         rows.into_iter()
             .map(|(name, description, xsd, access, required, value)| {
@@ -587,7 +723,9 @@ impl Service {
                 }
                 client_fault_or_server(code::BAD_STATEMENT, error)
             })?;
-        if !self.options.writable && (plan.write_section().is_some() || plan.create_target().is_some()) {
+        if !self.options.writable
+            && (plan.write_section().is_some() || plan.create_target().is_some())
+        {
             return Err(client_fault(
                 code::READ_ONLY,
                 "this provider is read-only: a statement may select, never create or write",
@@ -619,7 +757,9 @@ impl Service {
     /// catalog part.
     fn resolved(&self, plan: Plan, default: Option<&str>) -> Result<Plan> {
         let source = match plan.source() {
-            Some(Source::Target(target)) => Some(Source::Target(self.resolve_target(target, default)?)),
+            Some(Source::Target(target)) => {
+                Some(Source::Target(self.resolve_target(target, default)?))
+            }
             Some(Source::Plan(inner)) => Some(Source::Plan(Box::new(
                 self.resolved(inner.as_ref().clone(), default)?,
             ))),
@@ -639,9 +779,9 @@ impl Service {
             Location::Url(url) => {
                 let text = url.to_string();
                 let inside = self.catalogs.iter().any(|catalog| {
-                    catalog
-                        .url()
-                        .is_some_and(|root| text.starts_with(root.to_string().trim_end_matches('/')))
+                    catalog.url().is_some_and(|root| {
+                        text.starts_with(root.to_string().trim_end_matches('/'))
+                    })
                 });
                 if !inside {
                     return Err(Error::absent("table", format_smolstr!("{url}")));
@@ -667,7 +807,9 @@ impl Service {
     fn table_of(&self, parts: &[SmolStr], default: Option<&str>) -> Result<Table> {
         let default_catalog = || -> Result<&Catalog> {
             match default {
-                Some(name) => self.catalog(name).ok_or_else(|| super::catalog::no_catalog(name)),
+                Some(name) => self
+                    .catalog(name)
+                    .ok_or_else(|| super::catalog::no_catalog(name)),
                 None => match self.catalogs.as_slice() {
                     [only] => Ok(only),
                     [] => Err(Error::absent("catalog", "the provider serves none")),
@@ -711,11 +853,56 @@ impl Service {
 /// The words the statement grammar reserves, as `DISCOVER_KEYWORDS` lists
 /// them.
 pub const KEYWORDS: &[&str] = &[
-    "and", "append", "as", "asc", "between", "by", "case", "cast", "create", "delete", "desc",
-    "distinct", "else", "end", "except", "exclude", "false", "first", "from", "glob", "ilike",
-    "in", "insert", "into", "is", "last", "like", "limit", "merge", "not", "null", "nulls",
-    "offset", "on", "or", "order", "overwrite", "replace", "select", "struct", "table", "then",
-    "to", "true", "try_cast", "upsert", "view", "when", "where", "with",
+    "and",
+    "append",
+    "as",
+    "asc",
+    "between",
+    "by",
+    "case",
+    "cast",
+    "create",
+    "delete",
+    "desc",
+    "distinct",
+    "else",
+    "end",
+    "except",
+    "exclude",
+    "false",
+    "first",
+    "from",
+    "glob",
+    "ilike",
+    "in",
+    "insert",
+    "into",
+    "is",
+    "last",
+    "like",
+    "limit",
+    "merge",
+    "not",
+    "null",
+    "nulls",
+    "offset",
+    "on",
+    "or",
+    "order",
+    "overwrite",
+    "replace",
+    "select",
+    "struct",
+    "table",
+    "then",
+    "to",
+    "true",
+    "try_cast",
+    "upsert",
+    "view",
+    "when",
+    "where",
+    "with",
 ];
 
 /// Whether `row` passes every restriction: each restricted column's value -
@@ -784,53 +971,101 @@ fn enumerator_rows() -> Result<Vec<Scalar>> {
     push(
         "ProviderType",
         "The types of data a provider supports.",
-        ProviderType::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        ProviderType::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "AuthenticationMode",
         "How a data source authenticates.",
-        AuthenticationMode::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        AuthenticationMode::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "Access",
         "How a property may be used.",
-        Access::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        Access::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "Format",
         "The shape a result takes.",
-        Format::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        Format::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "Content",
         "Which of the schema and the rows a result carries.",
-        Content::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        Content::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "AxisFormat",
         "How an MDDataSet spells its axes.",
-        AxisFormat::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        AxisFormat::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     push(
         "StateSupport",
         "Whether sessions are kept.",
-        StateSupport::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
+        StateSupport::ALL
+            .iter()
+            .map(|member| (member.as_str(), member.description()))
+            .collect(),
     )?;
     Ok(rows)
 }
 
 /// Whether a statement the grammar refused reads as MDX: bracketed members
-/// (`[Measures].[Sales]`), an axis clause, a `WITH MEMBER` or `WITH SET`
-/// opening - the spellings no expression of the grammar carries, so the
-/// refusal can say which language the client spoke.
+/// (`[Measures].[Sales]`), the `.MEMBERS` and `.CHILDREN` functions, an axis
+/// clause - `ON` and the axis it names, `COLUMNS`, `ROWS`, `PAGES`,
+/// `SECTIONS`, `CHAPTERS`, `AXIS(n)` or the bare ordinal `n`, on one line or
+/// the next - a `WITH MEMBER` or `WITH SET` opening: the spellings no
+/// expression of the grammar carries, so the refusal can say which language
+/// the client spoke.
 fn looks_like_mdx(statement: &str) -> bool {
     let folded = statement.to_ascii_uppercase();
-    folded.contains("].[")
-        || folded.contains(" ON COLUMNS")
-        || folded.contains(" ON ROWS")
-        || folded.contains(" ON AXIS(")
-        || folded.trim_start().starts_with("WITH MEMBER")
-        || folded.trim_start().starts_with("WITH SET")
+    if folded.contains("].[")
+        || folded.contains("[MEASURES]")
+        || folded.contains(".MEMBERS")
+        || folded.contains(".CHILDREN")
+    {
+        return true;
+    }
+    let mut tokens = folded.split_whitespace();
+    if matches!(
+        (tokens.next(), tokens.next()),
+        (Some("WITH"), Some("MEMBER" | "SET"))
+    ) {
+        return true;
+    }
+    let mut tokens = folded.split_whitespace().peekable();
+    while let Some(token) = tokens.next() {
+        if token != "ON" {
+            continue;
+        }
+        if let Some(next) = tokens.peek() {
+            let axis = next.trim_end_matches(',');
+            if matches!(axis, "COLUMNS" | "ROWS" | "PAGES" | "SECTIONS" | "CHAPTERS")
+                || axis.starts_with("AXIS(")
+                || axis.starts_with(|character: char| character.is_ascii_digit())
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// `DISCOVER_LITERALS`: how the statement grammar spells its identifiers, as
@@ -848,15 +1083,50 @@ fn literal_rows() -> Result<Vec<Scalar>> {
         i32,
     );
     let literals: &[Literal] = &[
-        ("DBLITERAL_CATALOG_NAME", None, Some("."), Some("0123456789"), -1, 2),
+        (
+            "DBLITERAL_CATALOG_NAME",
+            None,
+            Some("."),
+            Some("0123456789"),
+            -1,
+            2,
+        ),
         ("DBLITERAL_CATALOG_SEPARATOR", Some("."), None, None, 1, 3),
-        ("DBLITERAL_COLUMN_ALIAS", None, Some("."), Some("0123456789"), -1, 5),
-        ("DBLITERAL_COLUMN_NAME", None, Some("."), Some("0123456789"), -1, 6),
+        (
+            "DBLITERAL_COLUMN_ALIAS",
+            None,
+            Some("."),
+            Some("0123456789"),
+            -1,
+            5,
+        ),
+        (
+            "DBLITERAL_COLUMN_NAME",
+            None,
+            Some("."),
+            Some("0123456789"),
+            -1,
+            6,
+        ),
         ("DBLITERAL_QUOTE_PREFIX", Some("\""), None, None, 1, 15),
         ("DBLITERAL_QUOTE_SUFFIX", Some("\""), None, None, 1, 28),
-        ("DBLITERAL_SCHEMA_NAME", None, Some("."), Some("0123456789"), -1, 16),
+        (
+            "DBLITERAL_SCHEMA_NAME",
+            None,
+            Some("."),
+            Some("0123456789"),
+            -1,
+            16,
+        ),
         ("DBLITERAL_SCHEMA_SEPARATOR", Some("."), None, None, 1, 27),
-        ("DBLITERAL_TABLE_NAME", None, Some("."), Some("0123456789"), -1, 17),
+        (
+            "DBLITERAL_TABLE_NAME",
+            None,
+            Some("."),
+            Some("0123456789"),
+            -1,
+            17,
+        ),
         ("DBLITERAL_TEXT_COMMAND", None, None, None, -1, 18),
         ("DBLITERAL_USER_NAME", None, None, None, 0, 19),
     ];
@@ -867,7 +1137,10 @@ fn literal_rows() -> Result<Vec<Scalar>> {
                 ("LiteralName", text(name)),
                 ("LiteralValue", value.map_or(Scalar::Null, text)),
                 ("LiteralInvalidChars", invalid.map_or(Scalar::Null, text)),
-                ("LiteralInvalidStartingChars", starting.map_or(Scalar::Null, text)),
+                (
+                    "LiteralInvalidStartingChars",
+                    starting.map_or(Scalar::Null, text),
+                ),
                 ("LiteralMaxLength", Scalar::from(*max)),
                 ("LiteralNameEnumValue", Scalar::from(*ordinal)),
             ])
@@ -892,7 +1165,10 @@ fn provider_type_rows() -> Result<Vec<Scalar>> {
         ("float64", DataType::Float64),
         ("decimal128(38,10)", DataType::decimal128(38, 10)?),
         ("date32", DataType::Date32),
-        ("time64(us)", DataType::time64(crate::TimeUnit::Microsecond)?),
+        (
+            "time64(us)",
+            DataType::time64(crate::TimeUnit::Microsecond)?,
+        ),
         (
             "datetime64(us, UTC)",
             DataType::DateTime64 {
@@ -916,8 +1192,14 @@ fn provider_type_rows() -> Result<Vec<Scalar>> {
                     "COLUMN_SIZE",
                     Scalar::from(indicator.column_size().unwrap_or(u32::MAX)),
                 ),
-                ("LITERAL_PREFIX", if textual { text("'") } else { Scalar::Null }),
-                ("LITERAL_SUFFIX", if textual { text("'") } else { Scalar::Null }),
+                (
+                    "LITERAL_PREFIX",
+                    if textual { text("'") } else { Scalar::Null },
+                ),
+                (
+                    "LITERAL_SUFFIX",
+                    if textual { text("'") } else { Scalar::Null },
+                ),
                 ("CREATE_PARAMS", Scalar::Null),
                 ("IS_NULLABLE", Scalar::from(true)),
                 ("CASE_SENSITIVE", Scalar::from(textual)),
@@ -927,7 +1209,10 @@ fn provider_type_rows() -> Result<Vec<Scalar>> {
                     "UNSIGNED_ATTRIBUTE",
                     indicator.is_unsigned().map_or(Scalar::Null, Scalar::from),
                 ),
-                ("FIXED_PREC_SCALE", Scalar::from(indicator.is_fixed_precision())),
+                (
+                    "FIXED_PREC_SCALE",
+                    Scalar::from(indicator.is_fixed_precision()),
+                ),
                 ("AUTO_UNIQUE_VALUE", Scalar::from(false)),
                 ("LOCAL_TYPE_NAME", text(name)),
                 ("MINIMUM_SCALE", Scalar::Null),
@@ -1002,8 +1287,14 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
         ("COLUMN_FLAGS", Scalar::from(flags)),
         ("IS_NULLABLE", Scalar::from(column.is_nullable())),
         ("DATA_TYPE", Scalar::from(indicator.code())),
-        ("CHARACTER_MAXIMUM_LENGTH", bound.map_or(Scalar::Null, Scalar::from)),
-        ("CHARACTER_OCTET_LENGTH", bound.map_or(Scalar::Null, Scalar::from)),
+        (
+            "CHARACTER_MAXIMUM_LENGTH",
+            bound.map_or(Scalar::Null, Scalar::from),
+        ),
+        (
+            "CHARACTER_OCTET_LENGTH",
+            bound.map_or(Scalar::Null, Scalar::from),
+        ),
         ("NUMERIC_PRECISION", precision),
         ("NUMERIC_SCALE", scale),
         ("DESCRIPTION", text(&dtype.to_string())),

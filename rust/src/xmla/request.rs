@@ -29,8 +29,8 @@ use crate::soap::{Body, Envelope, EnvelopeWriter, Fragment};
 use crate::xml::{ATTRIBUTE_PREFIX, Element};
 use crate::{Error, Result, Scalar};
 
-use super::vocabulary::{Method, PropertyList, RequestType, Restrictions};
 use super::NAMESPACE;
+use super::vocabulary::{Method, PropertyList, RequestType, Restrictions};
 
 /// A Discover: what to describe, narrowed how, answered in what shape.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -94,8 +94,8 @@ impl Discover {
             .text()
             .unwrap_or_default()
             .parse()?;
-        let restrictions = match element.child_in(NAMESPACE, "Restrictions") {
-            Some(restrictions) => match restrictions.child_in(NAMESPACE, "RestrictionList") {
+        let restrictions = match at_most_one(element, "Restrictions")? {
+            Some(restrictions) => match at_most_one(&restrictions, "RestrictionList")? {
                 Some(list) => {
                     let mut restrictions = Restrictions::new();
                     for entry in list.children() {
@@ -106,16 +106,11 @@ impl Discover {
                             .filter(|child| child.local_name() == "Value")
                             .collect();
                         if values.is_empty() {
-                            restrictions.push(
-                                entry.local_name(),
-                                entry.text().unwrap_or_default(),
-                            );
+                            restrictions.push(entry.local_name(), entry.text().unwrap_or_default());
                         } else {
                             for value in values {
-                                restrictions.push(
-                                    entry.local_name(),
-                                    value.text().unwrap_or_default(),
-                                );
+                                restrictions
+                                    .push(entry.local_name(), value.text().unwrap_or_default());
                             }
                         }
                     }
@@ -144,13 +139,22 @@ impl Discover {
                 Scalar::from(self.request_type.as_str()),
             ),
         ];
-        let list = record(self.restrictions.entries().iter().map(|(name, values)| {
-            let value = match values.as_slice() {
-                [one] => Scalar::from(one.as_str()),
-                many => Scalar::from_sequence(many.iter().map(|value| Scalar::from(value.as_str()))),
-            };
-            (name.clone(), value)
-        }))?;
+        let list = record(
+            self.restrictions
+                .entries()
+                .iter()
+                .map(|(name, values)| {
+                    element_name(name)?;
+                    let value = match values.as_slice() {
+                        [one] => Scalar::from(one.as_str()),
+                        many => Scalar::from_sequence(
+                            many.iter().map(|value| Scalar::from(value.as_str())),
+                        ),
+                    };
+                    Ok((name.clone(), value))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        )?;
         entries.push((
             SmolStr::new_static("Restrictions"),
             record([(SmolStr::new_static("RestrictionList"), list)])?,
@@ -278,19 +282,23 @@ impl Execute {
             }
         };
         let properties = read_properties(element)?;
-        let parameters = match element.child_in(NAMESPACE, "Parameters") {
+        let parameters = match at_most_one(element, "Parameters")? {
             Some(parameters) => parameters
                 .children_in(Some(NAMESPACE), "Parameter")
                 .into_iter()
                 .chain(parameters.children_in(None, "Parameter"))
                 .map(|parameter| {
-                    let name = parameter
-                        .child_in(NAMESPACE, "Name")
+                    let name = at_most_one(&parameter, "Name")?
                         .and_then(|name| name.text().map(SmolStr::new))
                         .ok_or_else(|| invalid("a Parameter without a Name"))?;
-                    let value = parameter
-                        .child_in(NAMESPACE, "Value")
-                        .map_or(Scalar::Null, |value| value.value().clone());
+                    // A nil-marked value is null, as a cell marked nil is.
+                    let value = at_most_one(&parameter, "Value")?.map_or(Scalar::Null, |value| {
+                        if value.is_nil() {
+                            Scalar::Null
+                        } else {
+                            value.value().clone()
+                        }
+                    });
                     Ok((name, value))
                 })
                 .collect::<Result<Vec<_>>>()?,
@@ -309,10 +317,12 @@ impl Execute {
                 SmolStr::new_static("Statement"),
                 Scalar::from(text.as_str()),
             )])?,
-            Command::Other(fragment) => record([(
-                SmolStr::new(fragment.name()),
-                fragment.value().clone(),
-            )])?,
+            // The natural value carries the declarations the fragment
+            // resolves by, so the natural envelope and the bytes describe
+            // one message.
+            Command::Other(fragment) => {
+                record([(SmolStr::new(fragment.name()), fragment.natural_value()?)])?
+            }
         };
         let mut entries: Vec<(SmolStr, Scalar)> = vec![
             (
@@ -330,6 +340,7 @@ impl Execute {
                 self.parameters
                     .iter()
                     .map(|(name, value)| {
+                        one_value(name, value)?;
                         record([
                             (SmolStr::new_static("Name"), Scalar::from(name.as_str())),
                             (SmolStr::new_static("Value"), value.clone()),
@@ -661,6 +672,7 @@ impl Request {
     /// Returns the XML writer's refusal for a name or a value with no XML
     /// spelling, or the sink's failure.
     pub fn into_writer<W: Write>(&self, writer: W) -> Result<W> {
+        crate::soap::distinct(&self.header, "header block")?;
         let mut envelope = EnvelopeWriter::begin(writer, &self.header)?;
         let body = envelope.body();
         match &self.method {
@@ -699,13 +711,16 @@ impl Request {
                         crate::xml::write_element_text(body, text)?;
                         write!(body, "</Statement>")?;
                     }
-                    Command::Other(fragment) => fragment.write(body)?,
+                    // Under the Execute's default namespace: a command read
+                    // in no namespace undeclares it, one built here takes it.
+                    Command::Other(fragment) => fragment.write_under(body, Some(NAMESPACE))?,
                 }
                 write!(body, "</Command>")?;
                 write_properties(body, &execute.properties)?;
                 if !execute.parameters.is_empty() {
                     write!(body, "<Parameters>")?;
                     for (name, value) in &execute.parameters {
+                        one_value(name, value)?;
                         write!(body, "<Parameter><Name>")?;
                         crate::xml::write_element_text(body, name)?;
                         write!(body, "</Name>")?;
@@ -749,21 +764,33 @@ impl From<Execute> for Request {
 
 /// The `Properties/PropertyList` of either method; absent is empty.
 fn read_properties(element: &Element<'_>) -> Result<PropertyList> {
-    let Some(properties) = element.child_in(NAMESPACE, "Properties") else {
+    let Some(properties) = at_most_one(element, "Properties")? else {
         return Ok(PropertyList::new());
     };
-    let Some(list) = properties.child_in(NAMESPACE, "PropertyList") else {
+    let Some(list) = at_most_one(&properties, "PropertyList")? else {
         return Ok(PropertyList::new());
     };
-    Ok(list
-        .children()
-        .map(|entry| {
-            (
-                SmolStr::new(entry.local_name()),
-                entry.text().unwrap_or_default().to_owned(),
-            )
-        })
-        .collect())
+    let mut read = PropertyList::new();
+    for entry in list.children() {
+        // One value per property: two spellings of one name, in whatever
+        // case, disagree rather than one winning.
+        let name = entry.local_name();
+        if let Some((held, _)) = read
+            .entries()
+            .iter()
+            .find(|(held, _)| held.eq_ignore_ascii_case(name))
+        {
+            return Err(invalid(if held == name {
+                format_smolstr!("the property `{name}` appears twice in the PropertyList")
+            } else {
+                format_smolstr!(
+                    "the property `{name}` appears twice in the PropertyList, as `{held}` and `{name}`"
+                )
+            }));
+        }
+        read.set(name, entry.text().unwrap_or_default());
+    }
+    Ok(read)
 }
 
 /// `<Properties><PropertyList>...</PropertyList></Properties>`.
@@ -772,9 +799,58 @@ fn properties_natural(properties: &PropertyList) -> Result<Scalar> {
         properties
             .entries()
             .iter()
-            .map(|(name, value)| (name.clone(), Scalar::from(value.as_str()))),
+            .map(|(name, value)| {
+                element_name(name)?;
+                Ok((name.clone(), Scalar::from(value.as_str())))
+            })
+            .collect::<Result<Vec<_>>>()?,
     )?;
     record([(SmolStr::new_static("PropertyList"), list)])
+}
+
+/// Refuse a property, restriction or parameter name that is no XML element
+/// name - `@xmlns`, `#text`, `a b` - before the natural value would read it
+/// as an attribute, a text or nothing, the way the bytes refuse it.
+fn element_name(name: &str) -> Result<&str> {
+    let mut characters = name.chars();
+    let starts = characters
+        .next()
+        .is_some_and(|first| crate::xml::is_name_start(first) && first != ':');
+    if !starts
+        || !characters.all(|character| crate::xml::is_name_char(character) && character != ':')
+    {
+        return Err(invalid(format_smolstr!(
+            "`{name}` is not an XML element name, so no XMLA argument spells it"
+        )));
+    }
+    Ok(name)
+}
+
+/// Refuse a parameter value that is a sequence: XMLA's `Value` carries one
+/// value, and repeated `Value` elements would read as several parameters'.
+fn one_value(name: &str, value: &Scalar) -> Result<()> {
+    if value.as_sequence().is_some() {
+        return Err(invalid(format_smolstr!(
+            "parameter `{name}` holds a sequence, and a parameter's Value is one value"
+        )));
+    }
+    Ok(())
+}
+
+/// The one child of `parent` that is `local` in the XMLA namespace or in
+/// none, refused when it appears twice: every argument of a request is
+/// declared once, and two disagreeing ones name two requests.
+fn at_most_one<'a>(parent: &'a Element<'_>, local: &str) -> Result<Option<Element<'a>>> {
+    let mut found = parent
+        .children()
+        .filter(|child| child.is_in(NAMESPACE, local));
+    let first = found.next();
+    if found.next().is_some() {
+        return Err(invalid(format_smolstr!(
+            "`{local}` appears twice; a request carries it once"
+        )));
+    }
+    Ok(first)
 }
 
 /// A record over entries that name distinct elements.

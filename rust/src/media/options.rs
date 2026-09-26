@@ -993,7 +993,6 @@ fn distinct_merge_key(merge_by: &Selector) -> Result<()> {
     Ok(())
 }
 
-
 /// The `(column, value)` equalities one filter spells, in conjunct order.
 ///
 /// A conjunct comparing a column to a constant for equality is one pair, the
@@ -1308,12 +1307,14 @@ impl RecordOptions {
         let media_type = self.mime_type();
         match self {
             Self::Parquet(options) => Ok(options),
-            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => Err(Error::InvalidRecord {
-                path: SmolStr::new_static(path),
-                reason: smol_str::format_smolstr!(
-                    "expected Parquet options to set {setting}, got {media_type} options"
-                ),
-            }),
+            Self::Ipc(_) | Self::Avro(_) | Self::Text(_) | Self::Xmla(_) => {
+                Err(Error::InvalidRecord {
+                    path: SmolStr::new_static(path),
+                    reason: smol_str::format_smolstr!(
+                        "expected Parquet options to set {setting}, got {media_type} options"
+                    ),
+                })
+            }
         }
     }
 

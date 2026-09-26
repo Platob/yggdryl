@@ -169,7 +169,8 @@ fn an_empty_or_blank_member_is_refused_rather_than_defaulted() {
     );
     let (_, reason) = refused(" \t\n".parse::<Content>());
     assert_eq!(
-        reason, r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#,
+        reason,
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#,
         "the refusal names the trimmed spelling"
     );
 }
@@ -426,7 +427,10 @@ fn an_empty_enumeration_property_is_set_and_refused_rather_than_defaulted() {
         r#"expected Tabular, Multidimensional, Native, got """#
     );
     let (_, reason) = refused(list.content());
-    assert_eq!(reason, r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#);
+    assert_eq!(
+        reason,
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#
+    );
 }
 
 // Methods.
@@ -533,7 +537,10 @@ fn the_content_enumeration_is_the_specifications() {
             (Content::Data, "Data"),
             (Content::SchemaData, "SchemaData"),
             (Content::DataOmitDefaultSlicer, "DataOmitDefaultSlicer"),
-            (Content::DataIncludeDefaultSlicer, "DataIncludeDefaultSlicer"),
+            (
+                Content::DataIncludeDefaultSlicer,
+                "DataIncludeDefaultSlicer",
+            ),
         ],
         Content::as_str,
         Content::description,
@@ -1381,12 +1388,12 @@ fn a_property_list_equals_one_written_alike() {
             .into_iter()
             .collect::<PropertyList>()
     );
-    assert_ne!(
+    assert_eq!(
         written,
         PropertyList::new()
             .with("Format", "Tabular")
             .with("Catalog", "market"),
-        "the order written is part of the list"
+        "the order is not part of the list: a document's element view holds children by name"
     );
     assert_ne!(
         written,

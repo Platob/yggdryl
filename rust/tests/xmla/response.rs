@@ -1,8 +1,11 @@
 //! `rust/src/xmla/response.rs`: what a request is answered with - the actor
-//! every fault names, the XMLA `Error` a fault's detail carries and the fault
-//! built around one, a response read out of literal SOAP 1.1 messages (a
-//! rowset, nothing, a dataset, or a fault refused as the error it is), and the
-//! streaming writers whose bytes read back to the same response.
+//! every fault names, the XMLA `Error` a fault's detail carries (read from a
+//! fault, an element or olap4j's and Mondrian's `error`, written as its four
+//! attributes) and the fault built around one, a response read out of literal
+//! SOAP 1.1 messages and built envelopes (a rowset - strictly or under a safe
+//! cast onto a declared field - nothing, a dataset, or a fault refused as the
+//! error it is), and the streaming writers - the reporting one included -
+//! whose bytes read back to the same response.
 //!
 //! `invalid` is crate-private and pinned only through the refusals it spells,
 //! whose path is `$.xmla`.
@@ -12,6 +15,7 @@ use std::io::Write;
 use yggdryl::soap::{Envelope, Fault, FaultCode, Fragment};
 use yggdryl::xml::Element;
 use yggdryl::xmla::response::{ACTOR, write_rowset_reporting};
+use yggdryl::xmla::service::code::EXECUTION_FAILED;
 use yggdryl::xmla::{
     Answer, Content, Method, Response, Rowset, Session, XmlaError, fault, write_empty, write_fault,
     write_rowset,
@@ -873,6 +877,8 @@ fn a_response_with_two_returns_is_refused() {
 fn a_return_without_a_root_is_refused() {
     for returned in [
         format!("<DiscoverResponse xmlns=\"{XMLA}\"><return/></DiscoverResponse>"),
+        response("DiscoverResponse", "   "),
+        response("DiscoverResponse", "just text"),
         response("DiscoverResponse", "<rows><row/></rows>"),
     ] {
         let xml = envelope("", &returned);
@@ -970,6 +976,14 @@ fn bytes_that_are_not_a_soap_envelope_are_refused_by_the_envelope() {
 
     let (format, _) = codec(refused("<unclosed", None));
     assert_eq!(format, "xml");
+
+    // A missing document - no bytes, blanks, a declaration alone - is no
+    // envelope either.
+    for missing in ["", "   ", "<?xml version=\"1.0\"?>"] {
+        let (format, reason) = codec(refused(missing, None));
+        assert_eq!(format, "xml");
+        assert_eq!(reason, "expected the root element", "{missing:?}");
+    }
 
     let empty_body = envelope("", "");
     let (format, reason) = codec(refused(&empty_body, None));
@@ -1618,7 +1632,9 @@ fn write_rowset_streams_each_batch_as_it_is_pulled() {
         &[],
         Method::Execute,
         &orders_rowset(),
-        [Ok(orders([order(7, Some("AAPL"))])), Err(failure)],
+        [Ok(orders([order(7, Some("AAPL"))])), Err(failure)]
+            .into_iter()
+            .chain(never_pulled()),
         Content::SchemaData,
     );
     let (path, reason) = invalid_record(result.expect_err("the failing batch is refused"));
@@ -1914,7 +1930,7 @@ fn write_rowset_reporting_reports_a_failing_batch_inside_the_root_and_closes_the
     )
     .expect("the failure is reported, not raised");
     let failed = failed.expect("the failure is handed back");
-    assert_eq!(failed.code(), 0x000A);
+    assert_eq!(failed.code(), EXECUTION_FAILED);
     assert_eq!(failed.source(), ACTOR);
     assert_eq!(failed.help_file(), "");
     assert!(

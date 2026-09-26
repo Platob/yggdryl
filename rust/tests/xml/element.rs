@@ -1285,9 +1285,8 @@ fn children_in_answers_spellings_in_name_order_and_one_spelling_in_document_orde
     // Two spellings of one name in one namespace are two entries of the
     // natural record, so they come in name order; a parsed document keeps no
     // other order across names.
-    let document = parsed(
-        "<r xmlns=\"urn:x\" xmlns:p=\"urn:x\"><p:k>1</p:k><k>2</k><p:k>3</p:k></r>",
-    );
+    let document =
+        parsed("<r xmlns=\"urn:x\" xmlns:p=\"urn:x\"><p:k>1</p:k><k>2</k><p:k>3</p:k></r>");
     let r = root(&document);
     let found: Vec<_> = r
         .children_in(Some("urn:x"), "k")

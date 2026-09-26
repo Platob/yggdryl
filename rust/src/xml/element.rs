@@ -334,10 +334,7 @@ impl<'a> Element<'a> {
             .as_struct()
             .into_iter()
             .flat_map(|entries| entries.iter())
-            .filter_map(|(key, value)| {
-                key.strip_prefix(ATTRIBUTE_PREFIX)
-                    .map(|name| (name, value))
-            })
+            .filter_map(|(key, value)| key.strip_prefix(ATTRIBUTE_PREFIX).map(|name| (name, value)))
     }
 
     /// Every child element, each under this element's scope.
@@ -390,7 +387,9 @@ impl<'a> Element<'a> {
     ///
     /// Returns [`Error::Codec`] naming the element and the count found.
     pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>> {
-        let mut found = self.children().filter(|child| child.is_in(namespace, local));
+        let mut found = self
+            .children()
+            .filter(|child| child.is_in(namespace, local));
         match (found.next(), found.next()) {
             (Some(child), None) => Ok(child),
             (None, _) => Err(codec_error(format_smolstr!(

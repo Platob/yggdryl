@@ -23,7 +23,10 @@ fn catalog_root(label: &str) -> PathBuf {
     root.push(format!(
         "yggdryl-xmla-{label}-{}-{}",
         std::process::id(),
-        std::thread::current().name().unwrap_or("main").replace("::", "-")
+        std::thread::current()
+            .name()
+            .unwrap_or("main")
+            .replace("::", "-")
     ));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).expect("the folder is created");
@@ -135,7 +138,10 @@ fn discover_datasources_states_one_tabular_data_source() {
     let rows = cells(&response);
     assert_eq!(rows.len(), 1);
     assert_eq!(cell(&rows[0], "DataSourceName"), &Scalar::from("yggdryl"));
-    assert_eq!(cell(&rows[0], "URL"), &Scalar::from("http://localhost:8080/xmla"));
+    assert_eq!(
+        cell(&rows[0], "URL"),
+        &Scalar::from("http://localhost:8080/xmla")
+    );
     assert_eq!(
         cell(&rows[0], "ProviderType"),
         &Scalar::from_sequence([Scalar::from("TDP")])
@@ -158,7 +164,10 @@ fn discover_schema_rowsets_lists_every_definition_with_its_restrictions() {
     assert!(names.contains(&"DISCOVER_DATASOURCES"));
     assert!(names.contains(&"DBSCHEMA_TABLES"));
     assert!(names.contains(&"DBSCHEMA_COLUMNS"));
-    assert!(!names.contains(&"MDSCHEMA_CUBES"), "a tabular provider answers no cubes");
+    assert!(
+        !names.contains(&"MDSCHEMA_CUBES"),
+        "a tabular provider answers no cubes"
+    );
     let tables = rows
         .iter()
         .find(|row| cell(row, "SchemaName").as_str() == Some("DBSCHEMA_TABLES"))
@@ -235,7 +244,11 @@ fn a_restriction_narrows_the_rowset_and_an_unknown_one_is_a_client_fault() {
                 .with("TABLE_NAME", "trades"),
         ),
     );
-    assert_eq!(cells(&several).len(), 2, "a repeated restriction admits either");
+    assert_eq!(
+        cells(&several).len(),
+        2,
+        "a repeated restriction admits either"
+    );
 
     let refused = fault(
         &service,
@@ -243,7 +256,11 @@ fn a_restriction_narrows_the_rowset_and_an_unknown_one_is_a_client_fault() {
             .with_restrictions(Restrictions::new().with("CUBE_NAME", "x")),
     );
     assert_eq!(refused.code(), &FaultCode::Client);
-    assert!(refused.string().contains("CUBE_NAME"), "{}", refused.string());
+    assert!(
+        refused.string().contains("CUBE_NAME"),
+        "{}",
+        refused.string()
+    );
 }
 
 #[test]
@@ -259,7 +276,10 @@ fn dbschema_columns_types_a_table_as_ole_db_does() {
         .iter()
         .map(|row| {
             (
-                cell(row, "COLUMN_NAME").as_str().expect("a name").to_owned(),
+                cell(row, "COLUMN_NAME")
+                    .as_str()
+                    .expect("a name")
+                    .to_owned(),
                 cell(row, "DATA_TYPE").clone(),
                 cell(row, "IS_NULLABLE").clone(),
                 cell(row, "ORDINAL_POSITION").clone(),
@@ -296,7 +316,11 @@ fn an_unsupported_request_type_is_a_client_fault_naming_the_rowset() {
     let service = service("unsupported");
     let refused = fault(&service, Discover::new(RequestType::MdschemaCubes));
     assert_eq!(refused.code(), &FaultCode::Client);
-    assert!(refused.string().contains("MDSCHEMA_CUBES"), "{}", refused.string());
+    assert!(
+        refused.string().contains("MDSCHEMA_CUBES"),
+        "{}",
+        refused.string()
+    );
     let errors = yggdryl::xmla::XmlaError::from_fault(&refused);
     assert_eq!(errors.len(), 1);
     assert_eq!(errors[0].source(), "yggdryl");
@@ -307,8 +331,10 @@ fn execute_runs_a_statement_against_a_catalog_table() {
     let service = service("execute");
     let response = answer(
         &service,
-        Execute::statement("select symbol, price from trades where price > 150 order by price desc")
-            .with_properties(PropertyList::new().with("Catalog", "market")),
+        Execute::statement(
+            "select symbol, price from trades where price > 150 order by price desc",
+        )
+        .with_properties(PropertyList::new().with("Catalog", "market")),
     );
     let rows = cells(&response);
     assert_eq!(rows.len(), 2);
@@ -329,18 +355,25 @@ fn execute_refuses_what_it_cannot_run_by_name() {
     let service = service("refusals");
     let unknown = fault(
         &service,
-        Execute::statement("select * from nowhere").with_properties(PropertyList::new().with("Catalog", "market")),
+        Execute::statement("select * from nowhere")
+            .with_properties(PropertyList::new().with("Catalog", "market")),
     );
     assert_eq!(unknown.code(), &FaultCode::Client);
     assert!(unknown.string().contains("nowhere"), "{}", unknown.string());
 
-    let write = fault(&service, Execute::statement("insert into trades select * from trades"));
+    let write = fault(
+        &service,
+        Execute::statement("insert into trades select * from trades"),
+    );
     assert!(write.string().contains("read-only"), "{}", write.string());
 
     let parse = fault(&service, Execute::statement("selec * frm trades"));
     assert_eq!(parse.code(), &FaultCode::Client);
 
-    let outside = fault(&service, Execute::statement("select * from 'file:///etc/passwd'"));
+    let outside = fault(
+        &service,
+        Execute::statement("select * from 'file:///etc/passwd'"),
+    );
     assert!(outside.string().contains("passwd"), "{}", outside.string());
 
     let multidimensional = fault(
@@ -348,7 +381,11 @@ fn execute_refuses_what_it_cannot_run_by_name() {
         Execute::statement("select * from trades")
             .with_properties(PropertyList::new().with("Format", "Multidimensional")),
     );
-    assert!(multidimensional.string().contains("Tabular"), "{}", multidimensional.string());
+    assert!(
+        multidimensional.string().contains("Tabular"),
+        "{}",
+        multidimensional.string()
+    );
 }
 
 #[test]

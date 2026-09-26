@@ -22,7 +22,9 @@ use crate::{Error, Field, Result, Scalar, Serie};
 
 use super::rowset::Rowset;
 use super::vocabulary::{Content, Method};
-use super::{EMPTY_NAMESPACE, EXCEPTION_NAMESPACE, MDDATASET_NAMESPACE, NAMESPACE, ROWSET_NAMESPACE};
+use super::{
+    EMPTY_NAMESPACE, EXCEPTION_NAMESPACE, MDDATASET_NAMESPACE, NAMESPACE, ROWSET_NAMESPACE,
+};
 
 /// The actor every fault this crate raises names.
 pub const ACTOR: &str = "yggdryl";
@@ -367,9 +369,7 @@ impl Response {
                 Answer::Rowset { rowset, rows }
             }
             Some(EMPTY_NAMESPACE) => Answer::Empty,
-            Some(MDDATASET_NAMESPACE) => {
-                Answer::Dataset(Fragment::from_element(&root))
-            }
+            Some(MDDATASET_NAMESPACE) => Answer::Dataset(Fragment::from_element(&root)),
             Some(other) => {
                 return Err(invalid(format_smolstr!(
                     "the response's `root` is in {other:?}, which names no result this crate reads"
@@ -421,17 +421,19 @@ pub fn write_rowset<W: Write>(
 }
 
 /// Write a rowset response as a provider streams one: like
-/// [`write_rowset`], except that a batch failing after the answer has begun
-/// is reported inside the `root` - `<Messages><Error .../></Messages>` in
-/// the exception namespace, the shape the reference providers report an
-/// error with once the response has started - and the document is closed,
-/// so the client reads a complete answer naming the failure rather than a
-/// cut stream. The error is handed back beside the sink.
+/// [`write_rowset`], except that a batch failing after the answer has begun -
+/// a batch its source refuses, a cell with no XML spelling - is reported
+/// inside the `root` - `<Messages><Error .../></Messages>` in the exception
+/// namespace, the shape the reference providers report an error with once
+/// the response has started - and the document is closed, so the client
+/// reads a complete answer naming the failure rather than a cut stream. A
+/// row is written whole or not at all, so the document stays well formed at
+/// the row before the failure. The error is handed back beside the sink.
 ///
 /// # Errors
 ///
-/// Returns the sink's failure, or a cell with no XML spelling before any row
-/// of a batch is written.
+/// Returns the sink's failure, or the envelope's refusal of `header`: two
+/// blocks of one name, or a block the XML writer cannot spell.
 pub fn write_rowset_reporting<W: Write>(
     writer: W,
     header: &[Fragment],
@@ -457,7 +459,8 @@ pub fn write_rowset_reporting<W: Write>(
 ///
 /// # Errors
 ///
-/// Returns the sink's failure.
+/// Returns the sink's failure, or the envelope's refusal of `header`: two
+/// blocks of one name, or a block the XML writer cannot spell.
 pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W> {
     let mut envelope = EnvelopeWriter::begin(writer, header)?;
     open_response(envelope.body(), method)?;
@@ -474,7 +477,9 @@ pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> 
 ///
 /// # Errors
 ///
-/// Returns the sink's failure.
+/// Returns the sink's failure, or the XML writer's refusal of a fault whose
+/// text or detail it cannot spell - a control character XML 1.0 has no
+/// escape for.
 pub fn write_fault<W: Write>(writer: W, fault: &Fault) -> Result<W> {
     EnvelopeWriter::begin(writer, &[])?.fault(fault)
 }

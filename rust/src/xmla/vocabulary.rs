@@ -185,7 +185,10 @@ impl Content {
     pub const fn has_data(self) -> bool {
         matches!(
             self,
-            Self::Data | Self::SchemaData | Self::DataOmitDefaultSlicer | Self::DataIncludeDefaultSlicer
+            Self::Data
+                | Self::SchemaData
+                | Self::DataOmitDefaultSlicer
+                | Self::DataIncludeDefaultSlicer
         )
     }
 }
@@ -472,13 +475,15 @@ pub mod property {
     pub const VISUAL_MODE: &str = "VisualMode";
 }
 
-/// The `PropertyList` of a request: each property once, by name, in the order
-/// it was written.
+/// The `PropertyList` of a request: each property once, by name.
 ///
 /// Names are the specification's, matched case-insensitively on the way in
 /// and kept as written; a property the specification does not define
-/// travels too, because a provider may define its own.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// travels too, because a provider may define its own. The entries keep the
+/// order they were set in, which for a list read from a document is name
+/// order, because the element view holds a list's children by name; two
+/// lists holding the same properties are equal whatever that order.
+#[derive(Clone, Debug, Default, Eq)]
 pub struct PropertyList {
     entries: Vec<(SmolStr, String)>,
 }
@@ -531,7 +536,8 @@ impl PropertyList {
         Some(self.entries.remove(index).1)
     }
 
-    /// Every property, in the order written.
+    /// Every property, in the order set: the order `with` and `set` added
+    /// them, name order for a list read from a document.
     #[must_use]
     pub fn entries(&self) -> &[(SmolStr, String)] {
         &self.entries
@@ -582,7 +588,8 @@ impl PropertyList {
     /// The `Catalog` property, `None` when unset or empty.
     #[must_use]
     pub fn catalog(&self) -> Option<&str> {
-        self.get(property::CATALOG).filter(|value| !value.is_empty())
+        self.get(property::CATALOG)
+            .filter(|value| !value.is_empty())
     }
 
     /// The `DataSourceInfo` property, `None` when unset or empty.
@@ -611,6 +618,21 @@ impl PropertyList {
     }
 }
 
+/// Two lists are equal when they set the same properties to the same
+/// values, names folded as [`PropertyList::get`] folds them, whatever order
+/// they were written in: XMLA gives the order no meaning, and a parsed
+/// document answers its elements in name order.
+impl PartialEq for PropertyList {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries.len() == other.entries.len()
+            && self.entries.iter().all(|(name, value)| {
+                other.entries.iter().any(|(held, other_value)| {
+                    held.eq_ignore_ascii_case(name) && other_value == value
+                })
+            })
+    }
+}
+
 impl<K: Into<SmolStr>, V: Into<String>> FromIterator<(K, V)> for PropertyList {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(entries: I) -> Self {
         let mut list = Self::new();
@@ -622,12 +644,15 @@ impl<K: Into<SmolStr>, V: Into<String>> FromIterator<(K, V)> for PropertyList {
 }
 
 /// The `RestrictionList` of a Discover: each restriction column with the
-/// values it admits, in the order written.
+/// values it admits.
 ///
 /// A restriction written once admits one value; one written several times
 /// admits any of them, which is how a client asks for several rows of one
-/// rowset in one request.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// rowset in one request. The columns keep the order they were set in,
+/// which for restrictions read from a document is name order, because the
+/// element view holds a list's children by name; two lists restricting the
+/// same columns to the same values are equal whatever that order.
+#[derive(Clone, Debug, Default, Eq)]
 pub struct Restrictions {
     entries: Vec<(SmolStr, Vec<String>)>,
 }
@@ -672,7 +697,8 @@ impl Restrictions {
         self
     }
 
-    /// Every restriction, in the order written.
+    /// Every restriction, in the order set: the order `with` and `push`
+    /// added them, name order for restrictions read from a document.
     #[must_use]
     pub fn entries(&self) -> &[(SmolStr, Vec<String>)] {
         &self.entries
@@ -688,6 +714,20 @@ impl Restrictions {
     #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+}
+
+/// Two restrictions are equal when they restrict the same columns to the
+/// same values in the same order, names folded as [`Restrictions::get`]
+/// folds them, whatever order the columns were written in.
+impl PartialEq for Restrictions {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries.len() == other.entries.len()
+            && self.entries.iter().all(|(name, values)| {
+                other.entries.iter().any(|(held, other_values)| {
+                    held.eq_ignore_ascii_case(name) && other_values == values
+                })
+            })
     }
 }
 

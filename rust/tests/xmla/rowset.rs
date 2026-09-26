@@ -145,6 +145,45 @@ fn utc_datetime() -> DataType {
     DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).expect("a UTC datetime")
 }
 
+/// Read a literal `root` document under `field` with a safe or a strict cast.
+fn read_root_with(document: &str, field: &Field, safe: bool) -> yggdryl::Result<(Rowset, Serie)> {
+    let value = yggdryl::from_xml_scalar(document)?;
+    let root = Element::root(&value)?;
+    Rowset::read_root_with(
+        &root,
+        Some(field),
+        yggdryl::ArrowCastOptions::new().with_safe(safe),
+    )
+}
+
+/// The opening tag of every `root` a rowset writes.
+fn open_root() -> String {
+    format!(
+        "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsi=\"{XSI_NAMESPACE}\" \
+         xmlns:xsd=\"{XSD_NAMESPACE}\" xmlns:EX=\"{EXCEPTION_NAMESPACE}\">"
+    )
+}
+
+/// A batch that failed at its source.
+fn gone() -> yggdryl::arrow::Error {
+    yggdryl::arrow::Error::Unsupported {
+        kind: "stream",
+        reason: "the source went away".to_owned(),
+    }
+}
+
+/// A sink that refuses every byte.
+struct Full;
+
+impl std::io::Write for Full {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("the sink is full"))
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 const ID: u128 = 0x0123_4567_89ab_cdef_0123_4567_89ab_cdef;
 const ID_TEXT: &str = "01234567-89ab-cdef-0123-456789abcdef";
 
@@ -943,15 +982,6 @@ fn a_failing_batch_is_refused_at_the_rows() {
 
 #[test]
 fn a_failing_sink_is_refused() {
-    struct Full;
-    impl std::io::Write for Full {
-        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
-            Err(std::io::Error::other("the sink is full"))
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
     let field = record([DataType::Int32.required_field("n")]);
     let rowset = Rowset::new(field.clone()).unwrap();
     let batch = rows(&field, [row([("n", Scalar::from(1))])]);
@@ -1301,10 +1331,9 @@ fn a_null_item_of_a_sequence_keeps_its_place() {
 }
 
 #[test]
-fn a_sequence_of_one_null_item_is_refused_or_reads_back_as_itself() {
-    // One `<sizes/>` cannot say whether it is a null item or a null column:
-    // the XML codec refuses to write it, and a rowset may not write what it
-    // then reads back as something else.
+fn a_sequence_of_one_null_item_is_one_self_closed_element_and_reads_back() {
+    // One `<sizes/>` is the one null item of a present sequence: an absent
+    // sequence is spelled by no element at all.
     let field =
         record(
             [DataType::serie(Field::new("item", DataType::Int64, true)).required_field("sizes")],
@@ -1314,21 +1343,73 @@ fn a_sequence_of_one_null_item_is_refused_or_reads_back_as_itself() {
         &field,
         [row([("sizes", Scalar::from_sequence([Scalar::Null]))])],
     );
-    let mut document = Vec::new();
-    match rowset.write_rows(&mut document, &batch) {
-        Err(error) => assert!(
-            error.to_string().contains("sizes"),
-            "the refusal names its column: {error}"
-        ),
-        Ok(()) => {
-            let text = String::from_utf8(document).unwrap();
-            assert_eq!(
-                read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
-                Ok(batch),
-                "{text}"
-            );
-        }
-    }
+    let text = rows_text(&rowset, &batch);
+    assert_eq!(text, "<row><sizes/></row>");
+    assert_eq!(
+        read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+        Ok(batch)
+    );
+}
+
+#[test]
+fn a_null_sequence_and_an_empty_one_are_no_element_and_read_back_empty() {
+    // A sequence occurring no time is the empty sequence, and a null one is
+    // spelled the same: the document cannot tell them apart.
+    let field =
+        record([DataType::serie(Field::new("item", DataType::Int64, true)).nullable_field("xs")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [
+            row([("xs", Scalar::Null)]),
+            row([("xs", Scalar::from_sequence([Scalar::Null]))]),
+            row([("xs", Scalar::from_sequence([]))]),
+        ],
+    );
+    let text = rows_text(&rowset, &batch);
+    assert_eq!(text, "<row></row><row><xs/></row><row></row>");
+    assert_eq!(
+        read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+        Ok(rows(
+            &field,
+            [
+                row([("xs", Scalar::from_sequence([]))]),
+                row([("xs", Scalar::from_sequence([Scalar::Null]))]),
+                row([("xs", Scalar::from_sequence([]))]),
+            ]
+        ))
+    );
+}
+
+#[test]
+fn a_sequence_of_structs_keeps_a_null_item_apart_from_an_item_of_null_children() {
+    let field = record([DataType::serie(Field::new(
+        "item",
+        structure([DataType::Int64.nullable_field("qty")]),
+        true,
+    ))
+    .required_field("fills")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [row([(
+            "fills",
+            Scalar::from_sequence([
+                Scalar::Null,
+                row([("qty", Scalar::Null)]),
+                row([("qty", Scalar::from(3_i64))]),
+            ]),
+        )])],
+    );
+    let text = rows_text(&rowset, &batch);
+    assert_eq!(
+        text,
+        "<row><fills/><fills></fills><fills><qty>3</qty></fills></row>"
+    );
+    assert_eq!(
+        read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+        Ok(batch)
+    );
 }
 
 #[test]
@@ -2872,6 +2953,1204 @@ fn a_date_time_in_a_named_zone_reads_back_as_the_instant_it_is() {
     assert_eq!(
         back,
         rows(&utc, [row([("at", utc_at("09:30:00"))])]),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_lone_high_half_before_another_escape_decodes_as_the_replacement_character() {
+    // As it does before plain text or at the end of the name: a half that
+    // spells no character is U+FFFD, never dropped.
+    assert_eq!(decode_name("_xD800__x0041_"), "\u{FFFD}A");
+    assert_eq!(decode_name("_xD800__xD83D__xDE00_"), "\u{FFFD}\u{1F600}");
+}
+
+#[test]
+fn an_element_name_differing_only_in_case_names_no_column() {
+    let field = record([DataType::utf8().nullable_field("Symbol")]);
+    let rowset = Rowset::new(field).unwrap();
+    let message = read_rows(&rowset, &schemaless("<row><SYMBOL>AAPL</SYMBOL></row>"))
+        .expect_err("XML names are case sensitive")
+        .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(message.contains("SYMBOL"), "{message}");
+}
+
+// Writing: every storage layout.
+
+#[test]
+fn every_text_layout_writes_its_text_and_every_byte_layout_its_base64() {
+    for dtype in [
+        DataType::large_utf8(),
+        DataType::utf8_view(),
+        DataType::large_utf8_view(),
+        DataType::sized_utf8(4).unwrap(),
+        DataType::ascii(),
+        DataType::sized_ascii(4).unwrap(),
+        DataType::fixed_cp1252(4).unwrap(),
+        DataType::sized_cp1252(4).unwrap(),
+    ] {
+        let field = record([dtype.clone().required_field("c")]);
+        let rowset = Rowset::new(field.clone()).unwrap();
+        let batch = rows(&field, [row([("c", Scalar::from("ab"))])]);
+        let text = rows_text(&rowset, &batch);
+        assert_eq!(text, "<row><c>ab</c></row>", "{dtype}");
+        assert_eq!(
+            read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+            Ok(batch),
+            "{dtype}"
+        );
+    }
+    for dtype in [
+        DataType::large_binary(),
+        DataType::binary_view(),
+        DataType::large_binary_view(),
+        DataType::fixed_binary(2).unwrap(),
+        DataType::sized_binary(4).unwrap(),
+    ] {
+        let field = record([dtype.clone().required_field("c")]);
+        let rowset = Rowset::new(field.clone()).unwrap();
+        let batch = rows(&field, [row([("c", Scalar::from(vec![0_u8, 0xFF]))])]);
+        let text = rows_text(&rowset, &batch);
+        assert_eq!(text, "<row><c>AP8=</c></row>", "{dtype}");
+        assert_eq!(
+            read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+            Ok(batch),
+            "{dtype}"
+        );
+    }
+}
+
+#[test]
+fn a_fixed_width_text_cell_writes_its_text_without_the_slot_padding() {
+    // The NUL padding of a fixed slot belongs to the storage, never to the
+    // value: `ab` in a four-byte slot is the text `ab`, which XML spells.
+    for dtype in [
+        DataType::fixed_utf8(4).unwrap(),
+        DataType::fixed_ascii(4).unwrap(),
+    ] {
+        let field = record([dtype.clone().required_field("c")]);
+        let rowset = Rowset::new(field.clone()).unwrap();
+        let batch = rows(
+            &field,
+            [
+                row([("c", Scalar::from("abcd"))]),
+                row([("c", Scalar::from("ab"))]),
+            ],
+        );
+        let mut document = Vec::new();
+        let written = rowset
+            .write_rows(&mut document, &batch)
+            .map(|()| String::from_utf8(document).unwrap())
+            .map_err(|error| error.to_string());
+        assert_eq!(
+            written,
+            Ok("<row><c>abcd</c></row><row><c>ab</c></row>".to_owned()),
+            "{dtype}"
+        );
+    }
+}
+
+#[test]
+fn a_dictionary_or_a_run_end_column_writes_its_values() {
+    let field = record([
+        DataType::dictionary(DataType::Int32, DataType::utf8())
+            .unwrap()
+            .nullable_field("d"),
+        DataType::run_end_encoded(
+            Field::new("run_ends", DataType::Int32, false),
+            Field::new("values", DataType::Int64, true),
+        )
+        .unwrap()
+        .nullable_field("r"),
+    ]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [
+            row([("d", Scalar::from("x")), ("r", Scalar::from(5_i64))]),
+            row([("d", Scalar::from("y")), ("r", Scalar::from(5_i64))]),
+            row([("d", Scalar::Null), ("r", Scalar::Null)]),
+        ],
+    );
+    let text = root_text(&rowset, vec![batch.clone()], true, true);
+    assert!(
+        text.contains(
+            "<xsd:element sql:field=\"d\" name=\"d\" type=\"xsd:string\" minOccurs=\"0\"/>\
+             <xsd:element sql:field=\"r\" name=\"r\" type=\"xsd:long\" minOccurs=\"0\"/>"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.ends_with("<row><d>x</d><r>5</r></row><row><d>y</d><r>5</r></row><row></row></root>"),
+        "{text}"
+    );
+    let (_, back) = read_root(&text, Some(&field)).expect("the declared field reads it");
+    assert_eq!(back, batch);
+    let (stated, _) = read_root(&text, None).expect("the schema reads it");
+    assert_eq!(
+        stated.field(),
+        &record([
+            DataType::utf8().nullable_field("d"),
+            DataType::Int64.nullable_field("r"),
+        ])
+    );
+}
+
+#[test]
+fn a_geometry_writes_its_well_known_binary_as_base64_and_reads_back() {
+    // POINT (1 2), little-endian.
+    let wkb: Vec<u8> = vec![
+        1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xF0, 0x3F, 0, 0, 0, 0, 0, 0, 0, 0x40,
+    ];
+    let column = DataType::geometry(None).unwrap().nullable_field("g");
+    let value = column.scalar(Scalar::from(wkb)).expect("a point");
+    let field = record([column]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(&field, [row([("g", value)])]);
+    let text = rows_text(&rowset, &batch);
+    assert_eq!(text, "<row><g>AQEAAAAAAAAAAADwPwAAAAAAAABA</g></row>");
+    assert_eq!(
+        read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string()),
+        Ok(batch)
+    );
+}
+
+#[test]
+fn an_instant_with_no_iso_spelling_is_refused_naming_its_column() {
+    let field = record([utc_datetime().required_field("at")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [row([(
+            "at",
+            Scalar::datetime64(i64::MAX, TimeUnit::Microsecond, Timezone::UTC).unwrap(),
+        )])],
+    );
+    let message = rows_refusal(&rowset, &batch);
+    assert!(
+        message.contains(
+            "column `at` holds the datetime count 9223372036854775807, which has no ISO 8601 spelling"
+        ),
+        "{message}"
+    );
+    assert!(message.contains("$[0].at"), "{message}");
+}
+
+#[test]
+fn a_batch_of_no_rows_writes_no_row() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    assert_eq!(rows_text(&rowset, &rows(&field, [])), "");
+}
+
+#[test]
+fn write_rows_refuses_a_batch_whose_column_is_named_otherwise() {
+    // `write_rows`: "Returns an error when `batch` is not a record of this
+    // rowset's field"; `write_root`: such a batch "is refused by name".
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    let renamed = record([DataType::Int32.required_field("x")]);
+    let mut document = Vec::new();
+    let written = rowset.write_rows(
+        &mut document,
+        &rows(&renamed, [row([("x", Scalar::from(1))])]),
+    );
+    assert!(
+        written.is_err(),
+        "a column named `x` is written as `n`: {}",
+        String::from_utf8_lossy(&document)
+    );
+}
+
+#[test]
+fn a_null_under_a_column_the_rowset_requires_is_refused_or_reads_back() {
+    // A null under a column the rowset declares required must not be written
+    // as a row its own schema - and its own reader - refuses.
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    let nullable = record([DataType::Int32.nullable_field("n")]);
+    let mut document = Vec::new();
+    match rowset.write_rows(
+        &mut document,
+        &rows(&nullable, [row([("n", Scalar::Null)])]),
+    ) {
+        Err(error) => assert!(error.to_string().contains("`n`"), "{error}"),
+        Ok(()) => {
+            let text = String::from_utf8(document).unwrap();
+            let read = read_rows(&rowset, &schemaless(&text)).map_err(|error| error.to_string());
+            assert!(
+                read.is_ok(),
+                "the rowset writes {text}, which it refuses to read: {read:?}"
+            );
+        }
+    }
+}
+
+// Streaming a rowset that reports its failure.
+
+#[test]
+fn write_root_reporting_hands_back_nothing_when_every_batch_is_written() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batches = vec![
+        rows(&field, [row([("n", Scalar::from(1))])]),
+        rows(&field, [row([("n", Scalar::from(2))])]),
+    ];
+    let mut document = Vec::new();
+    let failed = rowset
+        .write_root_reporting(
+            &mut document,
+            batches.clone().into_iter().map(Ok),
+            true,
+            true,
+        )
+        .expect("the sink takes every byte");
+    assert_eq!(failed, None);
+    assert_eq!(
+        String::from_utf8(document).unwrap(),
+        root_text(&rowset, batches, true, true)
+    );
+}
+
+#[test]
+fn a_batch_failing_once_rows_are_written_is_reported_inside_the_root() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let first = rows(&field, [row([("n", Scalar::from(1))])]);
+    let mut pulled = 0;
+    let batches = std::iter::from_fn(move || {
+        pulled += 1;
+        match pulled {
+            1 => Some(Ok(first.clone())),
+            2 => Some(Err(gone())),
+            _ => panic!("no batch is pulled past the failure"),
+        }
+    });
+    let mut document = Vec::new();
+    let failed = rowset
+        .write_root_reporting(&mut document, batches, false, true)
+        .expect("the failure is handed back, never raised")
+        .expect("the failure");
+    assert_eq!(
+        failed.code(),
+        yggdryl::xmla::service::code::EXECUTION_FAILED
+    );
+    assert_eq!(failed.source(), yggdryl::xmla::response::ACTOR);
+    assert!(failed.description().contains("$.rows"), "{failed:?}");
+    assert!(
+        failed.description().contains("the source went away"),
+        "{failed:?}"
+    );
+    let text = String::from_utf8(document).unwrap();
+    assert_eq!(
+        text,
+        format!(
+            "{}<row><n>1</n></row><Messages xmlns=\"{EXCEPTION_NAMESPACE}\">\
+             <Error ErrorCode=\"10\" Description=\"{}\" Source=\"yggdryl\" HelpFile=\"\"/>\
+             </Messages></root>",
+            open_root(),
+            failed.description()
+        )
+    );
+    // A client reads the failure, never a shorter rowset.
+    let message = read_rows(&rowset, &text)
+        .expect_err("the reported failure")
+        .to_string();
+    assert!(
+        message.contains(&format!(
+            "the provider reported an error inside the rowset: {} (10)",
+            failed.description()
+        )),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_first_batch_failing_is_reported_after_the_schema() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    let mut document = Vec::new();
+    let failed = rowset
+        .write_root_reporting(&mut document, vec![Err(gone())], true, true)
+        .expect("the failure is handed back")
+        .expect("the failure");
+    let text = String::from_utf8(document).unwrap();
+    assert!(
+        text.starts_with(&format!(
+            "{}{}<Messages xmlns=\"{EXCEPTION_NAMESPACE}\"><Error ErrorCode=\"10\"",
+            open_root(),
+            schema_text(&rowset)
+        )),
+        "{text}"
+    );
+    assert!(text.ends_with("</Messages></root>"), "{text}");
+    let message = read_root(&text, None)
+        .expect_err("the reported failure")
+        .to_string();
+    assert!(message.contains(failed.description()), "{message}");
+}
+
+#[test]
+fn a_batch_of_another_field_is_reported_naming_its_column() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let other = record([DataType::Int64.required_field("n")]);
+    let batches = vec![
+        Ok(rows(&field, [row([("n", Scalar::from(1))])])),
+        Ok(rows(&other, [row([("n", Scalar::from(2_i64))])])),
+    ];
+    let mut document = Vec::new();
+    let failed = rowset
+        .write_root_reporting(&mut document, batches, false, true)
+        .expect("the failure is handed back")
+        .expect("the failure");
+    assert!(
+        failed
+            .description()
+            .contains("column `n` holds int64, the rowset declares int32"),
+        "{failed:?}"
+    );
+    let text = String::from_utf8(document).unwrap();
+    assert!(
+        text.contains("<row><n>1</n></row><Messages"),
+        "the refused batch writes none of its rows: {text}"
+    );
+}
+
+#[test]
+fn a_cell_failing_mid_batch_is_reported_in_a_well_formed_document() {
+    // `write_root_reporting`: "the root is closed, so the document a client
+    // reads is complete and names the failure" - whichever cell of a batch
+    // fails, including one past the batch's first row.
+    let field = record([
+        DataType::Int32.required_field("n"),
+        DataType::Date32.required_field("booked"),
+    ]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [
+            row([("n", Scalar::from(1)), ("booked", Scalar::date32(1))]),
+            // Day 3,000,000 falls in the year 10183, past what ISO 8601 spells.
+            row([
+                ("n", Scalar::from(2)),
+                ("booked", Scalar::date32(3_000_000)),
+            ]),
+        ],
+    );
+    let mut document = Vec::new();
+    let failed = rowset
+        .write_root_reporting(&mut document, [Ok(batch)], true, true)
+        .expect("the failure is handed back")
+        .expect("the failure");
+    assert!(failed.description().contains("`booked`"), "{failed:?}");
+    let text = String::from_utf8(document).unwrap();
+    let message = read_root(&text, None)
+        .expect_err("the reported failure")
+        .to_string();
+    assert!(
+        message.contains("the provider reported an error inside the rowset"),
+        "{message}\n{text}"
+    );
+}
+
+#[test]
+fn write_root_reporting_raises_a_failing_sink() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let error = rowset
+        .write_root_reporting(
+            &mut Full,
+            std::iter::once(Ok(rows(&field, [row([("n", Scalar::from(1))])]))),
+            true,
+            true,
+        )
+        .expect_err("the sink's failure is raised");
+    assert!(error.to_string().contains("the sink is full"), "{error}");
+}
+
+// Reading a failure the provider reported.
+
+#[test]
+fn an_error_the_provider_reported_inside_the_rowset_is_refused_naming_it() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    for (text, expected) in [
+        (
+            schemaless(
+                "<row><n>1</n></row>\
+                 <Error ErrorCode=\"42\" Description=\"boom\" Source=\"p\" HelpFile=\"\"/>",
+            ),
+            "boom (42)",
+        ),
+        (
+            schemaless("<row><n>1</n></row><Messages><Error>it broke</Error></Messages>"),
+            "it broke (0)",
+        ),
+        (
+            format!(
+                "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:EX=\"{EXCEPTION_NAMESPACE}\">\
+                 <row><n>1</n></row><EX:Messages>\
+                 <EX:Error ErrorCode=\"7\" Description=\"late &amp; lost\"/>\
+                 </EX:Messages></root>"
+            ),
+            "late & lost (7)",
+        ),
+        (
+            schemaless(
+                "<Messages><Error ErrorCode=\" 3 \" Description=\"first\"/></Messages>\
+                 <row><n>1</n></row>",
+            ),
+            "first (3)",
+        ),
+    ] {
+        let message = read_rows(&rowset, &text)
+            .expect_err("a reported failure is the answer's")
+            .to_string();
+        assert!(
+            message.contains(&format!(
+                "the provider reported an error inside the rowset: {expected}"
+            )),
+            "{message}"
+        );
+        assert!(message.contains("$.rowset"), "{message}");
+    }
+
+    let message = read_root(
+        &document(
+            "<xsd:element sql:field=\"n\" name=\"n\" type=\"xsd:int\"/>",
+            "<row><n>1</n></row><Messages><Error ErrorCode=\"9\" Description=\"cut\"/></Messages>",
+        ),
+        None,
+    )
+    .expect_err("read_root reads the failure too")
+    .to_string();
+    assert!(
+        message.contains("the provider reported an error inside the rowset: cut (9)"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_messages_element_holding_no_error_is_not_a_failure() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let back = read_rows(
+        &rowset,
+        &schemaless("<row><n>1</n></row><Messages><Warning>slow</Warning></Messages>"),
+    )
+    .expect("a warning fails nothing");
+    assert_eq!(back, rows(&field, [row([("n", Scalar::from(1))])]));
+}
+
+// olap4j's `null`.
+
+#[test]
+fn an_xsi_typed_null_is_absence_under_a_column_that_is_not_text() {
+    let field = record([
+        DataType::Int32.nullable_field("n"),
+        DataType::Date32.nullable_field("d"),
+        DataType::Uuid.nullable_field("u"),
+        DataType::Boolean.nullable_field("b"),
+        DataType::utf8().nullable_field("s"),
+        DataType::cp1252().nullable_field("legacy"),
+    ]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let back = read_rows(
+        &rowset,
+        &format!(
+            "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsi=\"{XSI_NAMESPACE}\" \
+             xmlns:i=\"{XSI_NAMESPACE}\"><row>\
+             <n xsi:type=\"xsd:int\">null</n><d i:type=\"xsd:date\"> null </d>\
+             <u xsi:type=\"uuid\">null</u><b xsi:type=\"xsd:boolean\">null</b>\
+             <s xsi:type=\"xsd:string\">null</s><legacy xsi:type=\"xsd:string\">null</legacy>\
+             </row></root>"
+        ),
+    )
+    .expect("the rows read");
+    assert_eq!(
+        back,
+        rows(
+            &field,
+            [row([
+                ("n", Scalar::Null),
+                ("d", Scalar::Null),
+                ("u", Scalar::Null),
+                ("b", Scalar::Null),
+                ("s", Scalar::from("null")),
+                ("legacy", Scalar::from("null")),
+            ])]
+        )
+    );
+}
+
+#[test]
+fn a_null_spelled_without_an_xsi_type_is_a_malformed_cell() {
+    let field = record([DataType::Int32.nullable_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    for text in [
+        schemaless("<row><n>null</n></row>"),
+        format!(
+            "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:o=\"urn:other\">\
+             <row><n o:type=\"xsd:int\">null</n></row></root>"
+        ),
+    ] {
+        let message = read_rows(&rowset, &text)
+            .expect_err("the text `null`")
+            .to_string();
+        assert!(message.contains("$[0]"), "{message}");
+        assert!(message.contains("expected int32, got string"), "{message}");
+    }
+}
+
+#[test]
+fn an_xsi_typed_null_under_a_required_column_is_refused() {
+    let field = record([DataType::Int32.required_field("n")]);
+    let rowset = Rowset::new(field).unwrap();
+    let message = read_rows(
+        &rowset,
+        &schemaless("<row><n xsi:type=\"xsd:int\">null</n></row>"),
+    )
+    .expect_err("an absent required cell")
+    .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(
+        message.contains("non-nullable field received null"),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_xsi_typed_null_under_a_byte_column_is_absence() {
+    // "under a column that is not text, that spelling can be nothing but
+    // absence": a byte column is not text, although `null` is also four
+    // base64 digits.
+    let field = record([DataType::binary().nullable_field("b")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let back = read_rows(
+        &rowset,
+        &schemaless("<row><b xsi:type=\"xsd:base64Binary\">null</b></row>"),
+    );
+    assert_eq!(
+        back.and_then(|back| back.scalar(0))
+            .map_err(|error| error.to_string()),
+        Ok(rows(&field, [row([("b", Scalar::Null)])])
+            .scalar(0)
+            .unwrap())
+    );
+}
+
+// A self-closed row or struct.
+
+#[test]
+fn a_self_closed_row_is_refused_where_a_column_is_required() {
+    let field = record([
+        DataType::Int32.required_field("n"),
+        DataType::utf8().nullable_field("s"),
+    ]);
+    let rowset = Rowset::new(field).unwrap();
+    let message = read_rows(&rowset, &schemaless("<row><n>1</n></row><row/>"))
+        .expect_err("the second row has no `n`")
+        .to_string();
+    assert!(message.contains("$[1]"), "{message}");
+    assert!(
+        message.contains("`n` is missing from the row, and the rowset declares it required"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_self_closed_required_struct_cell_is_a_struct_of_absent_children() {
+    let field = record([structure([DataType::Int32.nullable_field("a")]).required_field("leg")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    assert_eq!(
+        read_rows(&rowset, &schemaless("<row><leg/></row>")).map_err(|error| error.to_string()),
+        Ok(rows(&field, [row([("leg", row([("a", Scalar::Null)]))])]))
+    );
+    let message = read_rows(&rowset, &schemaless("<row></row>"))
+        .expect_err("the struct itself is required")
+        .to_string();
+    assert!(
+        message.contains("`leg` is missing from the row, and the rowset declares it required"),
+        "{message}"
+    );
+
+    let field = record([structure([
+        DataType::Int32.nullable_field("a"),
+        DataType::utf8().required_field("b"),
+    ])
+    .required_field("leg")]);
+    let rowset = Rowset::new(field).unwrap();
+    let message = read_rows(&rowset, &schemaless("<row><leg/></row>"))
+        .expect_err("each child is judged by its own column")
+        .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(
+        message.contains("`b` is missing from the row, and the rowset declares it required"),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_element_a_struct_column_does_not_declare_is_refused_naming_it() {
+    let field = record([structure([DataType::Int32.nullable_field("a")]).nullable_field("leg")]);
+    let rowset = Rowset::new(field).unwrap();
+    let message = read_rows(
+        &rowset,
+        &schemaless("<row><leg><a>1</a><extra>x</extra></leg></row>"),
+    )
+    .expect_err("an undeclared child")
+    .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(message.contains("leg"), "{message}");
+    assert!(message.contains("extra"), "{message}");
+}
+
+#[test]
+fn text_between_the_cells_of_a_struct_is_refused_and_blank_text_is_not() {
+    // A struct column's cell and a row hold elements, not text: `junk` is a
+    // cell the column's datatype cannot read, never a struct of absent
+    // children.
+    let field = record([
+        structure([DataType::Int32.nullable_field("a")]).nullable_field("leg"),
+        DataType::Int32.nullable_field("n"),
+    ]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    assert_eq!(
+        read_rows(&rowset, &schemaless("<row><leg> </leg></row>"))
+            .map_err(|error| error.to_string()),
+        Ok(rows(
+            &field,
+            [row([
+                ("leg", row([("a", Scalar::Null)])),
+                ("n", Scalar::Null)
+            ])]
+        ))
+    );
+    let results: Vec<(&str, Result<Serie, String>)> =
+        ["<row><leg>junk</leg></row>", "<row>junk</row>"]
+            .into_iter()
+            .map(|cells| {
+                (
+                    cells,
+                    read_rows(&rowset, &schemaless(cells)).map_err(|error| error.to_string()),
+                )
+            })
+            .collect();
+    for (cells, read) in &results {
+        assert!(
+            read.as_ref().is_err_and(|message| message.contains("$[0]")),
+            "{cells} reads as {:?}",
+            read.as_ref().map(|rows| rows.scalar(0))
+        );
+    }
+}
+
+#[test]
+fn a_nil_element_of_a_sequence_column_is_one_null_item() {
+    let field =
+        record([DataType::serie(Field::new("item", DataType::Int64, true)).required_field("xs")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let back = read_rows(
+        &rowset,
+        &schemaless("<row><xs xsi:nil=\"true\">5</xs><xs>6</xs><xs/></row>"),
+    )
+    .expect("the rows read");
+    assert_eq!(
+        back,
+        rows(
+            &field,
+            [row([(
+                "xs",
+                Scalar::from_sequence([Scalar::Null, Scalar::from(6_i64), Scalar::Null])
+            )])]
+        )
+    );
+}
+
+// Reading under a declared field.
+
+#[test]
+fn a_strict_declared_read_refuses_a_cell_the_declared_type_cannot_hold_naming_it() {
+    let declared = record([DataType::Int64.nullable_field("n")]);
+    let text = document(
+        "<xsd:element sql:field=\"n\" name=\"n\" type=\"xsd:string\"/>",
+        "<row><n>7</n></row><row><n>seven</n></row>",
+    );
+    for result in [
+        read_root(&text, Some(&declared)),
+        read_root_with(&text, &declared, false),
+    ] {
+        let message = result.expect_err("a strict read").to_string();
+        assert!(message.contains("$[1]"), "{message}");
+        assert!(message.contains(".n"), "{message}");
+        assert!(message.contains("expected int64, got string"), "{message}");
+    }
+}
+
+#[test]
+fn a_safe_declared_read_nulls_a_cell_the_declared_type_cannot_hold() {
+    let declared = record([DataType::Int64.nullable_field("n")]);
+    let (rowset, back) = read_root_with(
+        &document(
+            "<xsd:element sql:field=\"n\" name=\"n\" type=\"xsd:string\"/>",
+            "<row><n>7</n></row><row><n>seven</n></row>",
+        ),
+        &declared,
+        true,
+    )
+    .expect("a safe read");
+    assert_eq!(rowset.field(), &declared);
+    assert_eq!(
+        back,
+        rows(
+            &declared,
+            [
+                row([("n", Scalar::from(7_i64))]),
+                row([("n", Scalar::Null)])
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_declared_field_reorders_drops_and_completes_the_stated_columns() {
+    let declared = record([
+        DataType::Int64.nullable_field("c"),
+        DataType::Int32.required_field("a"),
+        DataType::utf8().nullable_field("z"),
+    ]);
+    let (rowset, back) = read_root(
+        &document(
+            "<xsd:element name=\"a\" type=\"xsd:int\"/><xsd:element name=\"b\" type=\"xsd:string\"/>\
+             <xsd:element name=\"c\" type=\"xsd:string\"/>",
+            "<row><a>1</a><b>x</b><c>3</c></row>",
+        ),
+        Some(&declared),
+    )
+    .expect("the rows read under the declared field");
+    assert_eq!(rowset.field(), &declared);
+    assert_eq!(
+        back,
+        rows(
+            &declared,
+            [row([
+                ("c", Scalar::from(3_i64)),
+                ("a", Scalar::from(1)),
+                ("z", Scalar::Null),
+            ])]
+        )
+    );
+}
+
+#[test]
+fn a_declared_field_reads_the_element_the_schema_names_in_sql_field() {
+    let declared = record([DataType::Int64.required_field("Order Id")]);
+    let (_, back) = read_root(
+        &document(
+            "<xsd:element sql:field=\"Order Id\" name=\"C0\" type=\"xsd:int\"/>",
+            "<row><C0>7</C0></row>",
+        ),
+        Some(&declared),
+    )
+    .expect("another writer's element names");
+    assert_eq!(
+        back,
+        rows(&declared, [row([("Order Id", Scalar::from(7_i64))])])
+    );
+}
+
+#[test]
+fn a_declared_struct_column_reads_its_children_as_declared() {
+    let declared =
+        record([structure([DataType::Float64.required_field("price")]).nullable_field("leg")]);
+    let (_, back) = read_root(
+        &document(
+            "<xsd:element sql:field=\"leg\" name=\"leg\" minOccurs=\"0\"><xsd:complexType><xsd:sequence>\
+             <xsd:element sql:field=\"price\" name=\"price\" type=\"xsd:string\"/>\
+             <xsd:element sql:field=\"venue\" name=\"venue\" type=\"xsd:string\" minOccurs=\"0\"/>\
+             </xsd:sequence></xsd:complexType></xsd:element>",
+            "<row><leg><price>1.5</price><venue>XPAR</venue></leg></row><row/>",
+        ),
+        Some(&declared),
+    )
+    .map_err(|error| error.to_string())
+    .expect("the struct reads under the declared field");
+    assert_eq!(
+        back,
+        rows(
+            &declared,
+            [
+                row([("leg", row([("price", Scalar::from(1.5))]))]),
+                row([("leg", Scalar::Null)]),
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_declared_date_time_is_read_as_declared_under_a_safe_and_a_strict_cast() {
+    let text = |value: &str| {
+        document(
+            "<xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\"/>",
+            &format!("<row><at>{value}</at></row>"),
+        )
+    };
+    for safe in [false, true] {
+        let instants = record([utc_datetime().nullable_field("at")]);
+        let (_, back) = read_root_with(&text("2024-01-01T09:30:00Z"), &instants, safe)
+            .unwrap_or_else(|error| panic!("safe={safe}: {error}"));
+        assert_eq!(
+            back,
+            rows(&instants, [row([("at", utc_at("09:30:00"))])]),
+            "safe={safe}"
+        );
+
+        // Whether an `xsd:dateTime` is an instant or a wall reading is the
+        // caller's to say, so a value that is the other is refused rather
+        // than nulled.
+        let message = read_root_with(&text("2024-01-01T09:30:00"), &instants, safe)
+            .expect_err("a wall reading under an instant column")
+            .to_string();
+        assert!(message.contains("$[0]"), "safe={safe}: {message}");
+        assert!(
+            message.contains("a timestamp needs Z or a zone offset"),
+            "safe={safe}: {message}"
+        );
+
+        let walls = record([naive_datetime().nullable_field("at")]);
+        let message = read_root_with(&text("2024-01-01T09:30:00Z"), &walls, safe)
+            .expect_err("an instant under a wall-reading column")
+            .to_string();
+        assert!(message.contains("$[0]"), "safe={safe}: {message}");
+        assert!(
+            message.contains("a naive datetime carries no zone"),
+            "safe={safe}: {message}"
+        );
+    }
+}
+
+#[test]
+fn whether_a_declared_cell_may_be_absent_is_the_document_s_to_say() {
+    // The schema declares `a` required; the declared field lets it be null.
+    let declared = record([
+        DataType::Int32.nullable_field("a"),
+        DataType::Int32.nullable_field("b"),
+    ]);
+    let message = read_root(
+        &document(
+            "<xsd:element name=\"a\" type=\"xsd:int\"/><xsd:element name=\"b\" type=\"xsd:int\"/>",
+            "<row><b>1</b></row>",
+        ),
+        Some(&declared),
+    )
+    .expect_err("the document requires `a`")
+    .to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(
+        message.contains("`a` is missing from the row, and the rowset declares it required"),
+        "{message}"
+    );
+}
+
+#[test]
+fn an_absent_cell_under_a_declared_required_column_is_refused_with_or_without_a_schema() {
+    // A strict read "refuses [a cell] it cannot hold, naming its row and
+    // column", and a required `int32` holds no absence: the same rows are
+    // refused whether or not the root states its own schema.
+    let declared = record([
+        DataType::Int32.required_field("n"),
+        DataType::utf8().nullable_field("s"),
+    ]);
+    let declarations = "<xsd:element sql:field=\"n\" name=\"n\" type=\"xsd:int\" minOccurs=\"0\"/>\
+         <xsd:element sql:field=\"s\" name=\"s\" type=\"xsd:string\" minOccurs=\"0\"/>";
+    let results: Vec<(String, Result<Serie, String>)> = [
+        schemaless("<row><s>a</s></row>"),
+        document(declarations, "<row><s>a</s></row>"),
+        document(declarations, "<row><n xsi:nil=\"true\"/><s>a</s></row>"),
+    ]
+    .into_iter()
+    .map(|text| {
+        let read = read_root(&text, Some(&declared))
+            .map(|(_, rows)| rows)
+            .map_err(|error| error.to_string());
+        (text, read)
+    })
+    .collect();
+    for (text, read) in &results {
+        assert!(
+            read.as_ref().is_err_and(|message| message.contains("$[0]")
+                && (message.contains("`n`") || message.contains(".n"))),
+            "{text}\nreads as {:?}",
+            read.as_ref().map(|rows| rows.scalar(0))
+        );
+    }
+}
+
+#[test]
+fn a_declared_read_refuses_a_schema_it_cannot_read() {
+    let message = read_root(
+        &format!(
+            "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsd=\"{XSD_NAMESPACE}\">\
+             <xsd:schema/><row><a>1</a></row></root>"
+        ),
+        Some(&record([DataType::Int32.required_field("a")])),
+    )
+    .expect_err("the root's schema is read even under a declared field")
+    .to_string();
+    assert!(
+        message.contains("the rowset schema declares no `row` type"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_declared_field_that_is_not_a_record_is_refused_under_a_schema_as_well() {
+    assert!(
+        read_root(
+            &document(
+                "<xsd:element name=\"a\" type=\"xsd:int\"/>",
+                "<row><a>1</a></row>"
+            ),
+            Some(&DataType::Int32.required_field("row")),
+        )
+        .is_err()
+    );
+}
+
+// The field a root states.
+
+#[test]
+fn stated_field_is_the_field_a_root_s_schema_declares_and_none_without_one() {
+    let stated = |text: &str| {
+        let value = yggdryl::from_xml_scalar(text).expect("XML");
+        let root = Element::root(&value).expect("a root");
+        Rowset::stated_field(&root).map_err(|error| error.to_string())
+    };
+    // What the schema states, each `xsd:dateTime` an instant where the rows
+    // spell a zone: the field a write completes its rows onto is the one a
+    // read answers.
+    assert_eq!(
+        stated(&document(
+            "<xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\"/>\
+             <xsd:element sql:field=\"Order Id\" name=\"C0\" type=\"xsd:int\" minOccurs=\"0\"/>",
+            "<row><at>2024-01-01T09:30:00Z</at></row>",
+        )),
+        Ok(Some(record([
+            utc_datetime().required_field("at"),
+            DataType::Int32.nullable_field("Order Id"),
+        ])))
+    );
+    assert_eq!(
+        stated(&document(
+            "<xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\"/>",
+            "<row><at>2024-01-01T09:30:00</at></row>",
+        )),
+        Ok(Some(record([naive_datetime().required_field("at")])))
+    );
+    assert_eq!(stated(&schemaless("<row><n>1</n></row>")), Ok(None));
+    let message = stated(&format!(
+        "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsd=\"{XSD_NAMESPACE}\"><xsd:schema/></root>"
+    ))
+    .expect_err("a schema with no row type");
+    assert!(
+        message.contains("the rowset schema declares no `row` type"),
+        "{message}"
+    );
+}
+
+// Reading a schema: the edges.
+
+#[test]
+fn a_type_prefix_is_resolved_where_the_declaration_binds_it() {
+    let rowset = from_schema(&schema_document(&format!(
+        "<xsd:element name=\"a\" type=\"t:int\" xmlns:t=\"{XSD_NAMESPACE}\"/>\
+         <xsd:element name=\"b\" type=\"xsd:uuid\"/>\
+         <xsd:element name=\"c\" type=\"xsd:int\" maxOccurs=\" 1 \"/>\
+         <xsd:element name=\"d\" type=\"xsd:int\" maxOccurs=\"2\"/>"
+    )))
+    .expect("the schema reads");
+    assert_eq!(
+        rowset.field(),
+        &record([
+            DataType::Int32.required_field("a"),
+            // The rowset's own `uuid` is in no namespace.
+            DataType::utf8().required_field("b"),
+            DataType::Int32.required_field("c"),
+            DataType::serie(Field::new("item", DataType::Int32, true)).required_field("d"),
+        ])
+    );
+}
+
+#[test]
+fn a_repeated_struct_declaration_is_a_sequence_of_structs() {
+    let declarations = "<xsd:element sql:field=\"fills\" name=\"fills\" minOccurs=\"0\" \
+         maxOccurs=\"unbounded\"><xsd:complexType><xsd:sequence>\
+         <xsd:element sql:field=\"qty\" name=\"qty\" type=\"xsd:long\"/>\
+         </xsd:sequence></xsd:complexType></xsd:element>\
+         <xsd:element name=\"other\"><xsd:complexType><xsd:all/></xsd:complexType></xsd:element>";
+    let (rowset, back) = read_root(
+        &document(
+            declarations,
+            "<row><fills><qty>3</qty></fills><fills><qty>4</qty></fills><other>x</other></row>",
+        ),
+        None,
+    )
+    .expect("the rowset reads");
+    let field = record([
+        DataType::serie(Field::new(
+            "item",
+            structure([DataType::Int64.required_field("qty")]),
+            true,
+        ))
+        .nullable_field("fills"),
+        // A content model with no sequence states no columns: text.
+        DataType::utf8().required_field("other"),
+    ]);
+    assert_eq!(rowset.field(), &field);
+    let fill = |qty: i64| row([("qty", Scalar::from(qty))]);
+    assert_eq!(
+        back,
+        rows(
+            &field,
+            [row([
+                ("fills", Scalar::from_sequence([fill(3), fill(4)])),
+                ("other", Scalar::from("x")),
+            ])]
+        )
+    );
+}
+
+#[test]
+fn a_struct_declaring_one_child_twice_is_refused() {
+    let message = from_schema(&schema_document(
+        "<xsd:element name=\"leg\"><xsd:complexType><xsd:sequence>\
+         <xsd:element name=\"a\" type=\"xsd:int\"/><xsd:element name=\"a\" type=\"xsd:string\"/>\
+         </xsd:sequence></xsd:complexType></xsd:element>",
+    ))
+    .expect_err("a duplicated child")
+    .to_string();
+    assert!(message.contains("duplicate"), "{message}");
+}
+
+#[test]
+fn a_nested_child_is_read_under_the_element_its_schema_declares() {
+    // The schema says the child of `leg` holding `venue code` is spelled
+    // `VC`; a document valid against its own schema reads.
+    let result = read_root(
+        &document(
+            "<xsd:element sql:field=\"leg\" name=\"leg\"><xsd:complexType><xsd:sequence>\
+             <xsd:element sql:field=\"venue code\" name=\"VC\" type=\"xsd:string\"/>\
+             </xsd:sequence></xsd:complexType></xsd:element>",
+            "<row><leg><VC>XPAR</VC></leg></row>",
+        ),
+        None,
+    )
+    .map_err(|error| error.to_string());
+    let field =
+        record([structure([DataType::utf8().required_field("venue code")]).required_field("leg")]);
+    assert_eq!(
+        result.map(|(_, back)| back),
+        Ok(rows(
+            &field,
+            [row([("leg", row([("venue code", Scalar::from("XPAR"))]))])]
+        ))
+    );
+}
+
+// Which `xsd:dateTime` columns are instants: the edges.
+
+#[test]
+fn a_nil_self_closed_or_blank_first_date_time_does_not_decide_the_column() {
+    let (rowset, back) = read_root(
+        &document(
+            "<xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\" minOccurs=\"0\"/>",
+            "<row><at xsi:nil=\"true\"/></row><row><at>  </at></row><row><at/></row>\
+             <row><at>2024-01-01T09:30:00Z</at></row>",
+        ),
+        None,
+    )
+    .expect("the rowset reads");
+    let field = record([utc_datetime().nullable_field("at")]);
+    assert_eq!(rowset.field(), &field);
+    assert_eq!(
+        back,
+        rows(
+            &field,
+            [
+                row([("at", Scalar::Null)]),
+                row([("at", Scalar::Null)]),
+                row([("at", Scalar::Null)]),
+                row([("at", utc_at("09:30:00"))]),
+            ]
+        )
+    );
+}
+
+#[test]
+fn a_row_in_another_namespace_does_not_decide_a_date_time_column() {
+    let (rowset, back) = read_root(
+        &format!(
+            "<root xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsd=\"{XSD_NAMESPACE}\" xmlns:o=\"urn:other\">\
+             <xsd:schema xmlns:sql=\"{SQL_NAMESPACE}\"><xsd:complexType name=\"row\"><xsd:sequence>\
+             <xsd:element sql:field=\"at\" name=\"at\" type=\"xsd:dateTime\"/>\
+             </xsd:sequence></xsd:complexType></xsd:schema>\
+             <o:row><at>2024-01-01T09:30:00Z</at></o:row><row><at>2024-01-01T09:30:00</at></row></root>"
+        ),
+        None,
+    )
+    .expect("the rowset reads");
+    let field = record([naive_datetime().required_field("at")]);
+    assert_eq!(rowset.field(), &field);
+    assert_eq!(back, rows(&field, [row([("at", naive_at("09:30:00"))])]));
+}
+
+#[test]
+fn a_sequence_of_instants_written_by_the_rowset_reads_back_as_instants() {
+    // `read_root`: with no field declared, "each `xsd:dateTime` column an
+    // instant where its rows spell a zone" - a repeated one included.
+    let field =
+        record([DataType::serie(Field::new("item", utc_datetime(), true)).required_field("ats")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(
+        &field,
+        [row([(
+            "ats",
+            Scalar::from_sequence([utc_at("09:30:00"), utc_at("10:00:00")]),
+        )])],
+    );
+    let text = root_text(&rowset, vec![batch.clone()], true, true);
+    assert!(
+        text.contains(
+            "<ats>2024-01-01T09:30:00.000000Z</ats><ats>2024-01-01T10:00:00.000000Z</ats>"
+        ),
+        "{text}"
+    );
+    assert_eq!(
+        read_root(&text, None)
+            .and_then(|(_, back)| back.scalar(0))
+            .map_err(|error| error.to_string()),
+        Ok(batch.scalar(0).unwrap()),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_struct_child_instant_written_by_the_rowset_reads_back_as_an_instant() {
+    let field = record([structure([utc_datetime().required_field("at")]).required_field("leg")]);
+    let rowset = Rowset::new(field.clone()).unwrap();
+    let batch = rows(&field, [row([("leg", row([("at", utc_at("09:30:00"))]))])]);
+    let text = root_text(&rowset, vec![batch.clone()], true, true);
+    assert!(
+        text.contains("<leg><at>2024-01-01T09:30:00.000000Z</at></leg>"),
+        "{text}"
+    );
+    assert_eq!(
+        read_root(&text, None)
+            .and_then(|(_, back)| back.scalar(0))
+            .map_err(|error| error.to_string()),
+        Ok(batch.scalar(0).unwrap()),
         "{text}"
     );
 }

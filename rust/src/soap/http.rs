@@ -139,7 +139,10 @@ impl std::error::Error for HttpError {}
 
 impl From<io::Error> for HttpError {
     fn from(error: io::Error) -> Self {
-        Self::new(Status::BadRequest, format!("reading the request failed: {error}"))
+        Self::new(
+            Status::BadRequest,
+            format!("reading the request failed: {error}"),
+        )
     }
 }
 
@@ -190,19 +193,22 @@ impl Request {
             line
         };
         let mut parts = line.split(' ');
-        let (method, target, version) = match (parts.next(), parts.next(), parts.next(), parts.next()) {
-            (Some(method), Some(target), Some(version), None)
-                if !method.is_empty() && !target.is_empty() =>
-            {
-                (method, target, version)
-            }
-            _ => {
-                return Err(HttpError::new(
-                    Status::BadRequest,
-                    format!("expected `METHOD target HTTP/1.x` as the request line, got {line:?}"),
-                ));
-            }
-        };
+        let (method, target, version) =
+            match (parts.next(), parts.next(), parts.next(), parts.next()) {
+                (Some(method), Some(target), Some(version), None)
+                    if !method.is_empty() && !target.is_empty() =>
+                {
+                    (method, target, version)
+                }
+                _ => {
+                    return Err(HttpError::new(
+                        Status::BadRequest,
+                        format!(
+                            "expected `METHOD target HTTP/1.x` as the request line, got {line:?}"
+                        ),
+                    ));
+                }
+            };
         let version = match version {
             "HTTP/1.1" => Version::Http11,
             "HTTP/1.0" => Version::Http10,
