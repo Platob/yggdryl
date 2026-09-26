@@ -65,6 +65,8 @@ extra_css:
 extra_javascript:
   - assets/playground.js
   - assets/fix-explorer.js
+  - path: assets/replay.js
+    type: module
 
 extra:
   social:
@@ -214,7 +216,10 @@ nav:
     - Plans: expression/plans.md
     - Evaluate: expression/evaluate.md
   - Hashing: hashing.md
-  - Graph: graph.md
+  - Graph:
+    - graph/index.md
+    - Replay: graph/replay.md
+    - Components: graph/components.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md
