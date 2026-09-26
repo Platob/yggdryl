@@ -624,8 +624,10 @@ impl MimeType {
             MimeTypeWire::JsonLines => Some(Format::JsonLines),
             MimeTypeWire::Yaml => Some(Format::Yaml),
             MimeTypeWire::Toml => Some(Format::Toml),
+            MimeTypeWire::Xml => Some(Format::Xml),
             _ => match self.structured_suffix() {
                 Some("json") => Some(Format::Json),
+                Some("xml") => Some(Format::Xml),
                 Some("yaml") => Some(Format::Yaml),
                 _ => None,
             },

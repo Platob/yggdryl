@@ -1,4 +1,5 @@
-//! `rust/src/xml.rs`: the scanner every XML answer is read through.
+//! `rust/src/xml/scanner.rs`: the scanner every object-store XML answer is
+//! read through.
 //!
 //! S3, Azure Blob Storage and STS each read their own vocabulary on top of
 //! this scanner, and those readers are pinned beside their owners. What is
@@ -6,7 +7,7 @@
 //! root, what it decodes, what it answers for a child, and what it refuses -
 //! every malformed document naming the byte where the scan stopped.
 
-use yggdryl::internals::xml::{Element, XmlError, parse_document, parse_root};
+use yggdryl::internals::xml_scanner::{Element, XmlError, parse_document, parse_root};
 
 /// The root of a document the test expects to be well formed.
 fn document(xml: &str) -> Element {

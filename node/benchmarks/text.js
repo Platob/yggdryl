@@ -7,7 +7,7 @@ const { performance } = require('node:perf_hooks')
 const { Readable, Writable } = require('node:stream')
 const { pathToFileURL } = require('node:url')
 const arrow = require('apache-arrow')
-const { DataType, Field, Scalar, Serie, avro, codec, json, toml, yaml } = require('yggdryl')
+const { DataType, Field, Scalar, Serie, avro, codec, json, toml, xml, yaml } = require('yggdryl')
 
 const value = {
   trades: Array.from({ length: 1_000 }, (_, index) => ({
@@ -100,8 +100,12 @@ async function main() {
     for (const [name, format, extension] of [
       ['json', json, 'json'],
       ['toml', toml, 'toml'],
+      ['xml', xml, 'xml'],
       ['yaml', yaml, 'yaml'],
     ]) {
+      // An XML document is one root element, so a record of several entries
+      // travels under one name there and as itself everywhere else.
+      const rooted = (fixture) => (name === 'xml' ? { data: fixture } : fixture)
       const encoded = format.dumps(value)
       const text = encoded.toString('utf8')
       const padded = Buffer.concat([Buffer.from('xx'), encoded, Buffer.from('yy')])
@@ -146,11 +150,11 @@ async function main() {
         ),
       )
 
-      const exoticEncoded = format.dumps(exotic)
+      const exoticEncoded = format.dumps(rooted(exotic))
       measure(`${name}/exotic_values`, exoticEncoded.length, 50, () =>
         format.loads(exoticEncoded),
       )
-      const temporalEncoded = format.dumps(temporal)
+      const temporalEncoded = format.dumps(rooted(temporal))
       measure(`${name}/temporal_values`, temporalEncoded.length, 50, () =>
         format.loads(temporalEncoded),
       )

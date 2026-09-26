@@ -153,7 +153,7 @@ urn: Urn = Uri("urn:isbn:9780131103627").into_urn()
 uri_again: Uri = urn.into_uri()
 mime_type: MimeType = file_uri.mime_type
 media_type: MediaType = file_uri.media_type
-mime_format: Literal["json", "json_lines", "yaml", "toml"] | None = mime_type.format
+mime_format: Literal["json", "json_lines", "yaml", "toml", "xml"] | None = mime_type.format
 content_coding: Literal["gzip", "compress", "deflate", "br", "zstd"] | None = (
     MimeType.GZIP.content_coding
 )

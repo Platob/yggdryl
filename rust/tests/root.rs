@@ -170,9 +170,6 @@ mod version;
 mod vocabulary;
 #[path = "root/wkb.rs"]
 mod wkb;
-#[cfg(all(feature = "aws", feature = "internals"))]
-#[path = "root/xml.rs"]
-mod xml;
 #[path = "root/zlib.rs"]
 mod zlib;
 #[path = "root/zstd.rs"]

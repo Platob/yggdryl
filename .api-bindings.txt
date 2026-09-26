@@ -107,7 +107,7 @@
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
   media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
   media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
-  text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml and yaml are modules of their own at the root
+  text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml, yaml and xml are modules of their own at the root
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name
   root types: ArrowCastPlan, BloombergCodeField, FIGICodeField, BooleanField, BytesField, BytesParameters, CfiCodeField, ChunkedSerie, CountryField, CcyField, CusipCodeField, DataType, Date32Field, Date64Field, DateTime64Field, Decimal128Field, Decimal256Field, Decimal32Field, Decimal64Field, DecimalField, DenseUnionField, DictionaryField, Duration32Field, Duration64Field, Field, FieldPath, FixedSizeSerieField, FixedSizeSerieSerie, Float16Field, Float32Field, Float64Field, GeographyField, GeometryField, Int16Field, Int32Field, Int64Field, Int8Field, IntervalField, IsinCodeField, LargeSerieField, LargeSerieSerie, LargeSerieViewField, LargeSerieViewSerie, MapField, MapSerie, MicCodeField, NullField, ProtocolField, PythonMetadata, RunEndEncodedField, Scalar, SedolCodeField, Serie, SerieField, SerieReader, SerieSerie, SerieViewField, SerieViewSerie, SideField, StateField, StringEnum, StringField, StringParameters, StructField, StructSerie, Time32Field, Time64Field, TimeField, TimeInForceField, Timezone, UnitField, TypedDataType, TypedField, UInt16Field, UInt32Field, UInt64Field, UInt8Field, UnionField, UrlField, UrnField, UuidField, VariantField, Version, VersionField, ascii, ascii_view, binary, binary_view, bloomberg, boolean, bytes, cfi, country, cp1252, cp1252_view, ccy, cusip, date32, date64, datetime64, decimal, decimal128, decimal256, decimal32, decimal64, dense_union, dictionary, duration32, duration64, field, fixed_ascii, fixed_cp1252, fixed_size_binary, fixed_size_serie, fixed_utf8, figi, float16, float32, float64, geography, geometry, int16, int32, int64, int8, interval, isin, large_ascii, large_ascii_view, large_binary, large_binary_view, large_cp1252, large_cp1252_view, large_serie, large_serie_view, large_utf8, large_utf8_view, map, map_of, mic, null, run_end_encoded, scalar, sedol, serie, serie_view, side, sized_ascii, sized_binary, sized_cp1252, sized_utf8, state, string, struct, time, time32, time64, timeinforce, uint16, unit, uint32, uint64, uint8, union, url, urn, utf8, utf8_view, uuid, variant, version; re-exported from `yggdryl` itself, and each type is also a module of its own at the root - yggdryl.integer, yggdryl.string, yggdryl.temporal and the rest
@@ -282,6 +282,10 @@
     exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, load, loads
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes
     parse: load/loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None)
+  xml
+    exports: Buffer, Destination, Readable, Source, Writable, dump, dumps, loads
+    output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; the value is the record naming the document element, `@name` an attribute, `#text` the element's own text, a list a repeated element, None the empty element
+    parse: loads(source, *, cls=None, field=None, safe=True, errors="raise", placeholders=None, environment=False, max_depth=None, max_input_bytes=None, max_nodes=None, max_documents=None); a field types the root element's value, and a dataclass cls is that field when none is given
   yaml
     exports: Buffer, Destination, Readable, Source, Writable, dump, dump_all, dumps, dumps_all, load, load_all, loads, loads_all
     output: dump(value, destination=None, *, utf8=False, indent=<format default>) -> bytes | str | None; dumps(value, *, indent=<format default>) -> bytes; dump_all requires a destination
@@ -639,6 +643,8 @@
   json
     statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream
   toml
+    statics: loads, load, dumps, dump, loadStream, dumpStream
+  xml
     statics: loads, load, dumps, dump, loadStream, dumpStream
   yaml
     statics: loads, load, dumps, dump, loadStream, dumpStream, loadsAll, loadAll, dumpAll, loadAllStream, dumpAllStream

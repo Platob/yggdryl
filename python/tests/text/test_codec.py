@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from yggdryl import Field, IOBase, Scalar, json, scalar, toml, yaml
+from yggdryl import Field, IOBase, Scalar, json, scalar, toml, xml, yaml
 from yggdryl.text import _codec, codec
 
 def test_from_io_infers_content_once_and_keeps_exact_field_casting() -> None:
@@ -127,6 +127,11 @@ def test_explicit_field_restores_natural_scalars() -> None:
             "amount = '12.500000000000000000'\npayload = 'AP8='\n"
             "at = '2026-08-15T10:30:00.000000Z'\n",
         ),
+        (
+            xml,
+            "<trade><amount>12.500000000000000000</amount><payload>AP8=</payload>"
+            "<at>2026-08-15T10:30:00.000000Z</at></trade>",
+        ),
     ],
 )
 def test_dataclass_target_and_explicit_field_share_one_decode(codec: object, source: str) -> None:
@@ -149,7 +154,7 @@ def test_placeholders_resolve_before_field_interpretation() -> None:
     assert value == Decimal("12.50")
 
 
-@pytest.mark.parametrize("codec", [json, yaml, toml])
+@pytest.mark.parametrize("codec", [json, yaml, toml, xml])
 def test_dump_returns_bytes_or_utf8_and_still_writes(codec: object) -> None:
     binary = codec.dump({"id": 1})  # type: ignore[attr-defined]
     text = codec.dump({"id": 1}, utf8=True)  # type: ignore[attr-defined]
@@ -267,7 +272,7 @@ def test_formatting_is_core_routed_for_bytes_utf8_and_writers(codec: object) -> 
     assert destination.getvalue() == dumps(value, indent=2)
 
 
-@pytest.mark.parametrize("codec", [json, yaml, toml])
+@pytest.mark.parametrize("codec", [json, yaml, toml, xml])
 @pytest.mark.parametrize("indent", [True, -1, 256, "spaces"])
 def test_formatting_rejects_values_the_core_indent_cannot_represent(
     codec: object, indent: object

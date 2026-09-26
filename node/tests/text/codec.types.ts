@@ -7,12 +7,14 @@ import {
   codec,
   json,
   toml,
+  xml,
   yaml,
   type CodecOptions,
   type CodecTimeUnit,
   type SingleDocumentCodec,
   type TimezoneInput,
   type TomlCodecFormat,
+  type XmlCodecFormat,
 } from '../..'
 import { Buffer } from 'node:buffer'
 import { Int32, vectorFromArray, tableFromArrays } from 'apache-arrow'
@@ -164,6 +166,11 @@ const tomlFormat: TomlCodecFormat = 'toml'
 const tomlFacade: SingleDocumentCodec = toml
 const tomlBytes: Buffer = toml.dumps(new Order(), { format: tomlFormat })
 const tomlOrder: Order = toml.loads<Order>(tomlBytes)
+const xmlFormat: XmlCodecFormat = 'xml'
+const xmlFacade: SingleDocumentCodec = xml
+const xmlBytes: Buffer = xml.dumps({ order: new Order() }, { format: xmlFormat })
+const xmlOrder: Order = xml.loads<Order>(xmlBytes, { field: new Field('order', 'struct<id: int64>', false) })
+const inferredXml: Order = codec.from<Order>('order.xml', { format: 'xml' })
 const order: Order = yaml.loads<Order>(bytes, options)
 const inferred: Order = codec.from<Order>('order.yml', options)
 const inferredToml: Order = codec.from<Order>('order.toml', { format: 'toml' })
@@ -249,6 +256,14 @@ const sharedOrder: Order = yaml.loads<Order>(new SharedArrayBuffer(2))
 toml.loadsAll(tomlBytes)
 // @ts-expect-error no TOML multi-document encode API
 toml.dumpAll([order])
+// So is XML: a document is one root element.
+// @ts-expect-error no XML multi-document decode API
+xml.loadsAll(xmlBytes)
+// @ts-expect-error no XML multi-document encode API
+xml.dumpAll([order])
+void xmlFacade
+void xmlOrder
+void inferredXml
 
 void order
 void inferred

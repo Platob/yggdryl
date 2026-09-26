@@ -3,11 +3,11 @@
 //! Amazon S3 and Azure Blob Storage spell a failure the same way - an `<Error>`
 //! with a `<Code>` and a `<Message>` - so it is read once here rather than in
 //! each dialect, beside the escaping every rendered body needs. The scanner
-//! itself is [`crate::xml`], and each dialect reads its own vocabulary on top
+//! itself is [`crate::xml::scanner`], and each dialect reads its own vocabulary on top
 //! of it: `aws::xml` reads `ListBucketResult`, `azure::xml` reads
 //! `EnumerationResults`.
 
-pub(crate) use crate::xml::{Element, XmlError, parse_document, parse_root};
+pub(crate) use crate::xml::scanner::{Element, XmlError, parse_document, parse_root};
 
 use super::answer::ErrorBody;
 

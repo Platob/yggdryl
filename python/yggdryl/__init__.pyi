@@ -21,6 +21,7 @@ from . import (
     toml as toml,
     txhash as txhash,
     uri as uri,
+    xml as xml,
     xxhash as xxhash,
     yaml as yaml,
     zlib as zlib,

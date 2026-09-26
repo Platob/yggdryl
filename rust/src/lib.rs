@@ -134,8 +134,7 @@ mod variant;
 pub mod version;
 mod vocabulary;
 pub mod wkb;
-#[cfg(feature = "aws")]
-mod xml;
+pub mod xml;
 pub mod xxhash;
 pub mod yaml;
 pub mod zip;
@@ -144,6 +143,7 @@ pub mod zstd;
 
 pub use crate::json::{from_json_scalar, from_json_scalar_with_field, into_json_scalar};
 pub use crate::toml::{from_toml_scalar, from_toml_scalar_with_field, into_toml_scalar};
+pub use crate::xml::{from_xml_scalar, from_xml_scalar_with_field, into_xml_scalar};
 pub use crate::yaml::{from_yaml_scalar, from_yaml_scalar_with_field, into_yaml_scalar};
 pub use bytestream::ByteStream;
 pub use cast::{ArrowCastOptions, ArrowCastPlan, Nullability, Representation};
@@ -439,7 +439,7 @@ pub mod internals {
     pub use crate::variant::internals as variant;
     pub use crate::version::internals as version;
     #[cfg(feature = "aws")]
-    pub use crate::xml::internals as xml;
+    pub use crate::xml::scanner::internals as xml_scanner;
     pub use crate::xxhash::internals as xxhash;
     pub use crate::zip::archive::internals as zip_archive;
     pub use crate::zip::entry::internals as zip_entry;

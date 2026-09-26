@@ -617,6 +617,12 @@ const nativeCodec = Object.freeze({
     loadPath: binding.tomlLoadPathNative,
     loads: binding.tomlLoadsNative,
   }),
+  xml: Object.freeze({
+    dumpPath: binding.xmlDumpPathNative,
+    dumps: binding.xmlDumpsNative,
+    loadPath: binding.xmlLoadPathNative,
+    loads: binding.xmlLoadsNative,
+  }),
   yaml: Object.freeze({
     dumpAll: binding.yamlDumpAllNative,
     dumpAllPath: binding.yamlDumpAllPathNative,
@@ -644,6 +650,10 @@ for (const name of [
   'tomlDumpsNative',
   'tomlLoadPathNative',
   'tomlLoadsNative',
+  'xmlDumpPathNative',
+  'xmlDumpsNative',
+  'xmlLoadPathNative',
+  'xmlLoadsNative',
   'yamlDumpAllNative',
   'yamlDumpAllPathNative',
   'yamlDumpPathNative',
@@ -660,6 +670,7 @@ const TRANSPORT_KEY = '__yggdryl_codec__'
 const FORMAT_JSON = 'json'
 const FORMAT_JSON_LINES = 'json_lines'
 const FORMAT_TOML = 'toml'
+const FORMAT_XML = 'xml'
 const FORMAT_YAML = 'yaml'
 const MAX_DEPTH = 48
 const DEFAULT_MAX_STREAM_BYTES = 64 * 1024 * 1024
@@ -822,19 +833,19 @@ function fillingArguments(options) {
   ]
 }
 
-// `{{ }}` substitution is a YAML and TOML feature: JSON is a data
+// `{{ }}` substitution is a YAML, TOML and XML feature: JSON is a data
 // interchange format, and the core refuses the pair for it by name. The
 // refusal happens here too, so a JS caller learns at the call site rather
 // than from a native error.
 function refuseFillingForJson(format, options) {
   if (options.placeholders !== undefined && options.placeholders !== null) {
     throw new TypeError(
-      `placeholders are a yaml/toml feature, not a ${format} one`,
+      `placeholders are a yaml/toml/xml feature, not a ${format} one`,
     )
   }
   if (options.environment !== undefined && options.environment !== false) {
     throw new TypeError(
-      `environment resolution is a yaml/toml feature, not a ${format} one`,
+      `environment resolution is a yaml/toml/xml feature, not a ${format} one`,
     )
   }
 }
@@ -2363,6 +2374,8 @@ function nativeFormat(format) {
       return nativeCodec.json
     case FORMAT_TOML:
       return nativeCodec.toml
+    case FORMAT_XML:
+      return nativeCodec.xml
     case FORMAT_YAML:
       return nativeCodec.yaml
     default:
@@ -3053,6 +3066,7 @@ function fixedCodec(format, multiFormat) {
 
 const json = fixedCodec(FORMAT_JSON, FORMAT_JSON_LINES)
 const toml = Object.freeze(singleDocumentMethods(FORMAT_TOML))
+const xml = Object.freeze(singleDocumentMethods(FORMAT_XML))
 const yaml = fixedCodec(FORMAT_YAML, FORMAT_YAML)
 
 const codec = Object.freeze({
@@ -5049,6 +5063,7 @@ binding.graph = graph
 binding.iceberg = iceberg
 binding.json = json
 binding.toml = toml
+binding.xml = xml
 binding.yaml = yaml
 
 // The core's static enum vocabularies, frozen: pure enums cross the boundary

@@ -340,7 +340,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `holder/` | what every backend shares: `Holder`, the one concrete handle unifying every backend, `Buffer`, `Buffered<H>`, `Counted<H>`. The root traits follow no backend: `IOPath`/`IOFolder`/`IOFile` and their `path_*`/`folder_*`/`file_*` methods are the same on every one |
 | `auth/` | what every identity provider shares, private and under the `aws` feature: `secret.rs` `Secret`, text that renders as `<redacted>` so a holder derives `Debug`; `lease.rs` `Lease<T: Expiring>`, one expiring value obtained on demand under a lock, refreshed a window before it lapses, kept while obtaining another fails and it still stands, its failure held for a pause rather than repeated per request, with `Bearer` (a token and its expiry, under `s3` for the two dialects that hand one) and the expiry spellings (`instant`, `instant_from_millis`, `iso8601`); `environment.rs` `Environment`, the process environment or the pairs a caller handed over; `report.rs` `Report`, the failures and absences one walk of the sources recorded and the refusal that names them - or none, when nothing was configured. `aws/`, `s3/google/` and `s3/azure/` carry only where their answer comes from and how it is spelled on the wire |
 | `aws/` | who this process is to AWS, and where AWS is, for every consumer that signs an AWS request: `session.rs` the one door - `Session`, what a caller states, the rest resolved lazily once and cached, the credential chain walked in botocore's order with every configured-but-broken source recorded and passed over rather than failing the walk, a temporary set refreshed before it lapses and kept while a refresh fails until it has - `credentials.rs` the `Credentials` value and the JSON document the metadata services and a `credential_process` answer, `environment.rs` (under `s3`) the variables the session reads for itself and the S3 sweep leaves to it, `profile.rs` the `~/.aws/config` and `~/.aws/credentials` reading (`[profile x]`, `[sso-session x]`, `[services x]`, indented tables, the credentials file winning) and `Profile`, `sts.rs` `AssumedRole` with `AssumeRole`, `AssumeRoleWithWebIdentity` and the `~/.aws/cli/cache` the CLI shares, `sso.rs` the IAM Identity Center token cache, its refresh, the device sign-in and the portal exchange, `process.rs`, `container.rs` and `metadata.rs` the three remaining sources, `sigv4.rs` Signature Version 4 for every service; under the non-default `aws` feature, which `s3` implies |
-| `xml.rs` | the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element; each reader names its own vocabulary over it; private, under the `aws` feature with its first reader |
+| `xml/` | the XML structured codec over `Scalar` - a document is the record naming its root element, `@name` an attribute, `#text` an element's own text beside attributes or children, a repeated element a sequence, a self-closed element null and an emptied one the empty text, every leaf text - `mod.rs` the doors, `parser.rs` the quick-xml event fold, `wire.rs` the writer and the field-directed reshaping (a repeated element read once is one item, absent is the empty sequence, text trimmed and empty text null under a non-text leaf); `scanner.rs` beside them, private and under the `aws` feature, the deterministic scanner for the small fixed-shape XML documents S3, Azure Blob Storage and STS answer, knowing the name of no element, each reader naming its own vocabulary over it |
 | `local/`, `fs/`, `zip/`, `s3/` | one root folder per storage backend, each a location/container/leaf trio over the root traits: `LocalPath`, `LocalFolder`, `LocalFile`, `FsPath`, `FsFolder`, `FsFile` and `S3Path`, `S3Folder`, `S3File` in `local/`, `fs/` and `s3/`; `ZipPath`, `ZipNode`, `ZipLeaf` in `zip/`, which indexes names and has no directories or files to name after. `local/` is memory-mapped local storage, and remote backends change neither it nor the root traits; `fs::FileSystem` is Arrow's seven-method shape for interop, while the core contract and variants keep generic `FileSystem`/`Fs*` names; `s3/` holds Amazon S3, Google Cloud Storage and Azure Blob Storage inside it, since all three answer that dialect, under the non-default `s3` feature |
 | `coding/` | what every codec shares: the transparent `Coded<H>` handle and the `Codec` dispatch helpers |
 | `gzip.rs`, `zlib.rs`, `zstd.rs` | one root file per codec; each owns `load`, `dump`, `reader`, `writer`, an `IOBase` wrapper |
@@ -348,7 +348,7 @@ Paths below are under `rust/src/` unless stated otherwise.
 | `ipc/`, `parquet/`, `avro/` | one root folder per record medium; each owns free functions over `IOBase` plus a stateful wrapper |
 | `iceberg/` | separate modules: types, schema, partition, snapshots, metadata, manifests, statistics, scalar rendering, scan, table, options, catalog, evolution, inspection |
 | `text/` | the plain-text medium - `Text<H>`, flat `TextOptions`, bounded physical-line splitting, row-header capture, body rendering, `TextBytes`/`TextLine`/`TextEntries` - `TextLine` an `Event` of the graph holding the whole line, row header included, and the `Arc<TextOptions>` it reads itself by, every reading resolved once on its first ask and a `set_` stated over it - beside what the structured codecs share: `Format`, `Limits`, `Formatting`, `Loading`, placeholders, `TextCodec`, io, wire, typed |
-| `json/`, `toml/`, `yaml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
+| `json/`, `toml/`, `yaml/`, `xml/` | one root folder per structured codec over `Scalar`, each its own parser over the machinery in `text/` |
 | `uri/` | the URI, URL, URN and ARN values and, in `datatype.rs`, the `uri` family - `UriType` with its `url` and `urn` leaves - and the fields and scalars over them |
 | `arrow/` | Arrow interop: stream combinators, schema projections, the IPC dictionary sidecar, and `rows.rs`, the bounded row-to-batch reader that lays each batch out through `Serie`; every value crossing is `Serie`'s and every cast `cast.rs`'s, reached through `Serie`, `SerieReader` and `ArrowCastPlan` |
 | `expression/` | one term grammar and one plan grammar: `Term`/`Bound`, `Filter`, `Selector`/`BoundSelector`, `Plan` (create, write verbs, `select`, `from`, `where`, `order by`, `limit`, `offset`), `Expression` (clause, plan, or `;` sequence), `Records`, `Bounds`, `explain`, `FieldPath`/`FieldSegment`, `user` (registered `namespace.name` functions, `FunctionSignature` as a struct field, `Function::User`), `transform` (`TRANSFORM:function`/`TRANSFORM:sources`, else `TRANSFORM:expression`); every application (`apply_datatype` first and `apply_field` derived from it, `apply_scalar`, `apply_arrow_reader` first and `apply_arrow_batch` derived from it, `apply_records`, `from_scalar` readers) lives here and nowhere else |
@@ -788,7 +788,7 @@ coherent; bindings redirect through stable inherent methods. Exceptions:
   `into_bytes`, `into_writer`), mirrored by JSON/YAML/TOML with no format
   argument. Each format and direction adds exactly one inferring entry point
   naming the `Scalar` it answers (`from_json_scalar`, `into_json_scalar`,
-  field-directed `from_json_scalar_with_field`, the YAML/TOML counterparts),
+  field-directed `from_json_scalar_with_field`, the YAML/TOML/XML counterparts),
   re-exported beside `Scalar`; it only coerces and redirects, byte-like input and
   strings are content rather than paths, and it parses, renders, validates, and
   bounds nothing.
@@ -1015,7 +1015,7 @@ sealed by `with_environment(false)`; the client reads the region, the endpoint
 style, the FIPS and dual-stack hosts and the payload-signing policy off it, and
 walks its chain once more when a store answers `ExpiredToken`. The S3 backend's
 `xml.rs` holds the `<Error>` document both XML stores answer with over the
-crate's root scanner; `answer.rs` holds what an answer *says* in shapes no store
+crate's `xml/scanner.rs`; `answer.rs` holds what an answer *says* in shapes no store
 owns, so the transport, the retry, the staging model, the listing pipeline and
 the three roles are written once.
 
@@ -1450,8 +1450,8 @@ declares.
 
 ## Structured codecs
 
-The JSON, YAML, and TOML sections of `docs/media/index.md` document the
-surface; these bind a change to `json/`, `toml/`, `yaml/` and the codec
+The JSON, YAML, TOML, and XML sections of `docs/media/index.md` document the
+surface; these bind a change to `json/`, `toml/`, `yaml/`, `xml/` and the codec
 machinery they share in `text/`.
 
 - Parse bytes, slices, readers and emit bytes, writers over `Scalar`; string
@@ -1467,7 +1467,8 @@ machinery they share in `text/`.
   backpressure.
 - Inference is deterministic: explicit format, then path suffix; byte-like is
   content, a string is a path only when it names an existing file; content parse
-  order is JSON, TOML when complete and non-empty, then YAML. Never infer JSONL
+  order is JSON, XML when well-formed and opening with `<`, TOML when
+  complete and non-empty, then YAML. Never infer JSONL
   from content.
 - Placeholder substitution walks parsed `Scalar` under a closed grammar and needs
   separate opt-ins for substitution and environment access. Benchmark slice,
@@ -1768,7 +1769,7 @@ JavaScript-only:
 - Arrow JS interop is copied IPC with bounded cursors and a validated cached
   schema - never claim zero-copy; public IDs are transport-local while native
   records keep canonical IDs.
-- JSON/YAML/TOML facades are byte-first over native `Scalar`, preserving
+- JSON/YAML/TOML/XML facades are byte-first over native `Scalar`, preserving
   `bigint`, bytes, `Date`, arrays, plain objects, maps, sets, class targets.
 - Before N-API recursive conversion, build one bounded detached plain-data
   snapshot and reject cycles, proxies, accessors, symbols, depth, node overflow.
@@ -1823,7 +1824,7 @@ section change together. What binds every page:
   `docs/media/index.md` is the one page for every media type, content coding
   and charset: a Read and write overview (native rows, then Arrow batches, then
   `RecordOptions`), then one short section per media type - IPC, Parquet, Avro,
-  plain text, JSON, YAML, TOML, Iceberg - then Compression (gzip, zlib, zstd)
+  plain text, JSON, YAML, TOML, XML, Iceberg - then Compression (gzip, zlib, zstd)
   and Charsets. Each section is a sentence or two and a tabbed example; the
   example carries the detail, not the prose. A section's benchmarks sit in its
   own `<section> performance` subsection, never in a shared one.

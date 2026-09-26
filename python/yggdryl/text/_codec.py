@@ -1,4 +1,4 @@
-"""Shared byte-oriented helpers for the public JSON, TOML, and YAML modules."""
+"""Shared byte-oriented helpers for the public JSON, TOML, YAML, and XML modules."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Any, Literal, Protocol, TypeAlias, TypeVar, cast
 
 from .. import _native
 
-Format = Literal["json", "json_lines", "toml", "yaml"]
+Format = Literal["json", "json_lines", "toml", "yaml", "xml"]
 CodecFormat: TypeAlias = Literal[
     "json",
     "json_lines",
@@ -22,6 +22,10 @@ CodecFormat: TypeAlias = Literal[
     "application/toml",
     "yaml",
     "yml",
+    "xml",
+    ".xml",
+    "application/xml",
+    "text/xml",
 ]
 ErrorPolicy = Literal["raise", "default"]
 Buffer: TypeAlias = bytes | bytearray | memoryview
@@ -107,12 +111,14 @@ def _limit_values(
 
 def _normalize_format(format: str) -> Format:
     if not isinstance(format, str):
-        raise TypeError("format must be 'json', 'json_lines', 'toml', or 'yaml'")
+        raise TypeError(
+            "format must be 'json', 'json_lines', 'toml', 'yaml', or 'xml'"
+        )
     try:
         return cast(Format, _native._codec_normalize_format(format))
     except ValueError as error:
         raise ValueError(
-            "format must be 'json', 'json_lines', 'toml', or 'yaml'"
+            "format must be 'json', 'json_lines', 'toml', 'yaml', or 'xml'"
         ) from error
 
 
@@ -407,6 +413,16 @@ def loads(
     max_documents: int | None = None,
 ) -> _T | Any:
     _check_decode_options(cls, safe, errors)
+    if (
+        field is None
+        and cls is not None
+        and dataclasses.is_dataclass(cls)
+        and _normalize_format(format) == "xml"
+    ):
+        # XML proves no type of its own, so the dataclass a document is read
+        # into is also the field that types its text; every other format
+        # proves its leaves and keeps `field` and `cls` apart.
+        field = cls
     decoded = _decode_source(
         source,
         format,
@@ -467,8 +483,8 @@ def dumps_all(
     indent: int | str | None | object = _DEFAULT_INDENT,
 ) -> bytes:
     selected = _normalize_format(format)
-    if selected == "toml":
-        raise ValueError("TOML supports exactly one document; use dumps()")
+    if selected in ("toml", "xml"):
+        raise ValueError(f"{selected.upper()} supports exactly one document; use dumps()")
     return _native._codec_encode_all(values, selected, _indent_code(indent))
 
 
@@ -486,8 +502,8 @@ def loads_all(
     max_documents: int | None = None,
 ) -> Iterator[_T | Any]:
     selected = _normalize_format(format)
-    if selected == "toml":
-        raise ValueError("TOML supports exactly one document; use loads()")
+    if selected in ("toml", "xml"):
+        raise ValueError(f"{selected.upper()} supports exactly one document; use loads()")
     _check_decode_options(cls, safe, errors)
     decoded = _decode_all_source(
         source,
@@ -599,8 +615,8 @@ def load_all_stream(
     """Lazily frame and decode documents from a path or readable stream."""
 
     selected = _normalize_format(format)
-    if selected == "toml":
-        raise ValueError("TOML supports exactly one document; use loads()")
+    if selected in ("toml", "xml"):
+        raise ValueError(f"{selected.upper()} supports exactly one document; use loads()")
     if _is_content_source(source):
         return loads_all(
             source,
@@ -657,8 +673,8 @@ def dump_all_stream(
     """Encode and write one stream item at a time."""
 
     selected = _normalize_format(format)
-    if selected == "toml":
-        raise ValueError("TOML supports exactly one document; use dump()")
+    if selected in ("toml", "xml"):
+        raise ValueError(f"{selected.upper()} supports exactly one document; use dump()")
 
     if isinstance(destination, (str, os.PathLike)):
         with open(destination, "wb") as stream:

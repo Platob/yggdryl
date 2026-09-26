@@ -13,6 +13,8 @@ mod placeholder;
 mod toml;
 #[path = "text/value.rs"]
 mod value;
+#[path = "text/xml.rs"]
+mod xml;
 #[path = "text/yaml.rs"]
 mod yaml;
 
@@ -28,6 +30,7 @@ criterion_group!(
     line::text_scan_benchmarks,
     json::format::json_benchmarks,
     toml::format::toml_benchmarks,
+    xml::format::xml_benchmarks,
     yaml::format::yaml_benchmarks,
 );
 criterion_main!(text);

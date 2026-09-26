@@ -1,6 +1,6 @@
 //! Natural structured-text I/O over Yggdryl handles.
 
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 
 use crate::text::{Format, Formatting, Limits, Loading, Scalar};
 use crate::{Charset, Codec, Error, Field, Level, MediaType, MimeType, Result};
@@ -80,6 +80,29 @@ impl Plan {
     pub const fn charset(self) -> Charset {
         self.charset
     }
+
+    /// Write what a reader of these bytes needs before the document.
+    ///
+    /// XML assumes UTF-8, so a document written in any other charset opens
+    /// with the declaration naming it - and, in a UTF-16 form, with the byte
+    /// order mark XML 1.0 requires of one, written through the charset writer
+    /// so it is the mark of that form; every other format, and UTF-8, writes
+    /// nothing. This is the write half of the mark and the declaration read in
+    /// [`from_io`], and it sits with the charset because the charset is the
+    /// transport's decision.
+    pub(crate) fn write_prolog<W: Write>(self, writer: &mut W) -> Result<()> {
+        if self.format == Format::Xml && !self.charset.is_utf8() {
+            if self.charset.is_unicode() {
+                write!(writer, "\u{FEFF}")?;
+            }
+            write!(
+                writer,
+                "<?xml version=\"1.0\" encoding=\"{}\"?>",
+                self.charset.as_str()
+            )?;
+        }
+        Ok(())
+    }
 }
 
 /// Recover a content coding from the probed representation, including media
@@ -102,7 +125,7 @@ fn unknown_format(media_type: &MediaType) -> Error {
         format: "text",
         position: 0,
         reason: smol_str::format_smolstr!(
-            "expected json, jsonl, yaml, or toml, got {}",
+            "expected json, jsonl, yaml, toml, or xml, got {}",
             crate::text::elide_display(media_type)
         ),
     }
@@ -184,6 +207,7 @@ pub fn into_io_with_formatting<H: IOBase + ?Sized>(
             // Rendered text is encoded in the declared charset, and only then
             // compressed: the coding applies to the bytes a reader will meet.
             let mut writer = plan.charset().writer(&mut coded);
+            plan.write_prolog(&mut writer)?;
             crate::text::into_writer_with_formatting(
                 value,
                 &mut writer,
@@ -216,6 +240,7 @@ pub fn into_io_all_with_formatting<H: IOBase + ?Sized>(
             .writer_with_level(&mut encoded, formatting.level());
         {
             let mut writer = plan.charset().writer(&mut coded);
+            plan.write_prolog(&mut writer)?;
             crate::text::into_writer_all_with_formatting(
                 values.iter(),
                 &mut writer,
@@ -271,22 +296,42 @@ fn decoded_with_format<H: IOBase + ?Sized>(
 
     // The mark sits under the coding, so it is looked for here rather than in
     // the probe above, which is still compressed. Precedence is the one every
-    // intake follows: what the handle declared first, then this content read.
-    // Either way the mark itself is framing and comes off the stream - a
-    // parser that met `U+FEFF` before the first token would refuse it.
-    let mut marked = [0_u8; MARK_LEN];
-    let filled = fill(&mut decompressed, &mut marked)?;
+    // intake follows: what the handle declared first, then this content read -
+    // the mark, and for XML the declaration, which is the one document that
+    // states its own charset. Either way the framing comes off the stream: a
+    // parser that met `U+FEFF` before the first token would refuse it, and the
+    // declaration is read as any other processing instruction is.
+    let mut head = vec![0_u8; MARK_LEN];
+    let mut filled = fill(&mut decompressed, &mut head)?;
     let declared = source.media_type().charset();
-    let (charset, mark) = match Charset::from_bom(&marked[..filled]) {
+    let (charset, mark) = match Charset::from_bom(&head[..filled]) {
         Some((found, length)) => (declared.unwrap_or(found), length),
-        None => (declared.unwrap_or_default(), 0),
+        None => match declared {
+            Some(declared) => (declared, 0),
+            None if plan.format() == Format::Xml => {
+                head.resize(DECLARATION_PROBE_LEN, 0);
+                filled += fill(&mut decompressed, &mut head[filled..])?;
+                (
+                    crate::xml::declared_charset(&head[..filled])?.unwrap_or_default(),
+                    0,
+                )
+            }
+            None => (Charset::default(), 0),
+        },
     };
-    let replayed = Cursor::new(marked[mark..filled].to_vec()).chain(decompressed);
+    head.truncate(filled);
+    head.drain(..mark);
+    let replayed = Cursor::new(head).chain(decompressed);
     Ok((charset.reader(replayed), plan.with_charset(charset)))
 }
 
 /// The longest byte-order mark, which bounds the replayed prefix.
 const MARK_LEN: usize = crate::charset::MARK_LEN;
+
+/// How far into an XML document its declaration can reach: `<?xml`, a
+/// version, an encoding name and a standalone flag, quoted and spaced, fit
+/// well within it.
+const DECLARATION_PROBE_LEN: usize = 128;
 
 /// Read until `target` is full or the source ends, answering what was filled.
 ///
