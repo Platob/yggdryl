@@ -210,24 +210,9 @@ fn collapse(value: &str) -> String {
 /// Azure states its own clock in `x-ms-date` and refuses a request more than
 /// fifteen minutes from it, so this is the one rendering that matters.
 pub(crate) fn http_date(now: std::time::SystemTime) -> String {
-    const DAYS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let seconds = now
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let days = seconds / 86_400;
-    let (year, month, day) =
-        crate::timezone::civil_from_days(i64::try_from(days).unwrap_or(i64::MAX));
-    // 1970-01-01 was a Thursday, which is index 4.
-    let weekday = DAYS[usize::try_from((days + 4) % 7).unwrap_or(0)];
-    let month_name = MONTHS[usize::try_from(month.saturating_sub(1))
-        .unwrap_or(0)
-        .min(11)];
-    let (hour, minute, second) = (seconds / 3600 % 24, seconds / 60 % 60, seconds % 60);
-    format!("{weekday}, {day:02} {month_name} {year:04} {hour:02}:{minute:02}:{second:02} GMT")
+    // A clock before the epoch is not a date a request can state; the epoch
+    // itself is what such a reading renders as.
+    crate::http::render_http_date(crate::holder::system_time_ns(now).unwrap_or(0))
 }
 
 #[cfg(feature = "internals")]

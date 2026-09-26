@@ -57,6 +57,7 @@
     "bench:hashing:xxhash": "node benchmarks/hashing/xxhash.js",
     "bench:holder": "node benchmarks/holder.js",
     "bench:holder:io": "node benchmarks/holder/io.js",
+    "bench:http": "node benchmarks/http.js",
     "bench:media": "node benchmarks/media.js",
     "bench:media:text": "node benchmarks/media/text.js",
     "bench:text": "node benchmarks/text.js",

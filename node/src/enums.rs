@@ -108,6 +108,7 @@ impl JsMimeType {
             "CSS" => CoreMimeType::CSS,
             "JAVASCRIPT" => CoreMimeType::JAVASCRIPT,
             "XML" => CoreMimeType::XML,
+            "HTTP" => CoreMimeType::HTTP,
             "PDF" => CoreMimeType::PDF,
             "CBOR" => CoreMimeType::CBOR,
             "MESSAGE_PACK" => CoreMimeType::MESSAGE_PACK,

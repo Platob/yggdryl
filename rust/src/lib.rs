@@ -25,7 +25,7 @@ mod fix_category;
 pub use fix_category::FixCategory;
 mod arithmetic;
 pub mod ascii;
-#[cfg(feature = "aws")]
+#[cfg(feature = "http")]
 mod auth;
 pub mod avro;
 #[cfg(feature = "aws")]
@@ -63,6 +63,8 @@ pub mod graph;
 pub mod gzip;
 pub mod hashing;
 pub mod holder;
+#[cfg(feature = "http")]
+pub mod http;
 #[cfg(feature = "iceberg")]
 pub mod iceberg;
 #[cfg(not(feature = "iceberg"))]
@@ -316,13 +318,15 @@ pub use version::*;
 pub mod internals {
     pub use crate::arithmetic::internals as arithmetic;
     pub use crate::arrow::rows::internals as arrow_rows;
-    #[cfg(feature = "aws")]
+    #[cfg(feature = "http")]
     pub use crate::auth::environment::internals as auth_environment;
+    #[cfg(feature = "http")]
     #[cfg(feature = "aws")]
     pub use crate::auth::lease::internals as auth_lease;
+    #[cfg(feature = "http")]
     #[cfg(feature = "aws")]
     pub use crate::auth::report::internals as auth_report;
-    #[cfg(feature = "aws")]
+    #[cfg(feature = "http")]
     pub use crate::auth::secret::internals as auth_secret;
     pub use crate::avro::arrow::internals as avro_arrow;
     pub use crate::avro::batch::internals as avro_batch;
@@ -372,6 +376,20 @@ pub mod internals {
     pub use crate::graph::iterator::internals as graph_iterator;
     pub use crate::hashing::stable::internals as hashing_stable;
     pub use crate::holder::buffered::internals as holder_buffered;
+    #[cfg(feature = "http")]
+    #[cfg(feature = "http3")]
+    pub use crate::http::alt_svc::internals as http_alt_svc;
+    #[cfg(feature = "http")]
+    pub use crate::http::netrc::internals as http_netrc;
+    #[cfg(feature = "http")]
+    pub use crate::http::proxy::internals as http_proxy;
+    #[cfg(feature = "http")]
+    pub use crate::http::retry::internals as http_retry;
+    #[cfg(feature = "http")]
+    #[cfg(feature = "http2")]
+    pub use crate::http::runtime::internals as http_runtime;
+    #[cfg(feature = "http")]
+    pub use crate::http::stream::internals as http_stream;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::manifest::internals as iceberg_manifest;
     #[cfg(feature = "iceberg")]

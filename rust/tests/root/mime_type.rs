@@ -23,6 +23,7 @@ mod mime {
             ("TEXT/FIX", MimeType::FIX, "text/fix"),
             ("TEXT/FIXUL", MimeType::FIXUL, "text/fixul"),
             ("TEXT/FIXML", MimeType::FIXML, "text/fixml"),
+            ("Message/HTTP", MimeType::HTTP, "message/http"),
             ("IMAGE/JPEG", MimeType::JPEG, "image/jpeg"),
             (
                 "Acme/X.Custom+JSON",
@@ -113,6 +114,20 @@ mod mime {
         assert!(MimeType::PUFFIN.is_binary());
         assert!(MimeType::PUFFIN.is_structured());
         assert!(!MimeType::PUFFIN.is_tabular());
+        // An HTTP message is its own family: the head is text and the body is
+        // whatever the head says, so it is neither textual nor binary, and it
+        // is no document.
+        assert!(MimeType::HTTP.is_message());
+        assert!(!MimeType::HTTP.is_text());
+        assert!(!MimeType::HTTP.is_textual());
+        assert!(!MimeType::HTTP.is_binary());
+        assert!(!MimeType::HTTP.is_structured());
+        assert!(!MimeType::HTTP.is_tabular());
+        assert_eq!(MimeType::HTTP.top_level(), "message");
+        assert_eq!(MimeType::HTTP.subtype(), "http");
+        assert_eq!(MimeType::HTTP.extension(), Some("http"));
+        assert_eq!(MimeType::HTTP.format(), None);
+        assert!(MimeType::HTTP.is_known());
         assert!(MimeType::JSON.is_textual());
         assert!(MimeType::JSON.is_structured());
         assert!(!MimeType::JSON.is_binary());

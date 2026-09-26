@@ -14,6 +14,8 @@ mod mime {
             ("csv", MimeType::CSV),
             ("parquet", MimeType::PARQUET),
             ("puffin", MimeType::PUFFIN),
+            ("http", MimeType::HTTP),
+            (".HTTP", MimeType::HTTP),
             ("arrow", MimeType::ARROW_FILE),
             ("md", MimeType::MARKDOWN),
             ("css", MimeType::CSS),

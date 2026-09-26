@@ -33,6 +33,7 @@ mod graph;
 #[allow(dead_code)]
 mod hashing;
 mod holder;
+mod http;
 mod iceberg;
 mod iobase;
 mod iomedia;
@@ -83,6 +84,11 @@ pub use graph::{
     graph_followed_altids_native, graph_global_symbol_native,
 };
 pub use holder::fs::{ArrowFileInfo, FileSelector};
+pub use http::{
+    HttpAuth, HttpContentRange, HttpCookie, HttpETag, HttpFault, HttpHop, HttpLink, HttpRecorded,
+    HttpRequestInit, HttpServerOptions, HttpSessionInit, HttpStats, JsHeaders, JsPages, JsRequest,
+    JsResponse, JsServer, JsSession,
+};
 pub use iceberg::{
     FieldBound, FieldCount, FieldSummaryView, IcebergOptionsInput, JsCatalog, JsCompaction,
     JsDataFile, JsIcebergOptions, JsManifestFile, JsNamespace, JsNamespaces, JsPartitionField,

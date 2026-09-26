@@ -475,6 +475,34 @@ content.media_type = "application/json"
 assert content.read_scalar() == {"symbol": "AAPL"}
 ```
 
+## Talk HTTP
+
+`yggdryl.http` speaks the `requests` vocabulary over the core client and
+releases the interpreter for the whole exchange; `http.Server.bind()` is an
+origin in this process for tests.
+
+```python
+from yggdryl import IOBase, http
+
+with http.Server.bind() as server:
+    server.respond("/quote.json", 200, {"content-type": "application/json"}, b'{"px": 42}')
+    session = http.Session(server.url)
+    assert session.get("quote.json").json() == {"px": 42}
+
+    # Many requests: a lazy, ordered walk on native threads over one pool.
+    answers = session.send_all(["quote.json"] * 16, concurrency=4)
+    assert [answer.status_code for answer in answers] == [200] * 16
+
+    # An http URL is a handle like any other.
+    handle = IOBase(str(server.url_of("quote.json")))
+    assert isinstance(handle, http.Request)
+    assert handle.read_scalar() == {"px": 42}
+
+    # HTTP/2 by prior knowledge on a plain origin.
+    h2 = http.Session(server.url, http_version=2)
+    assert h2.get("quote.json").version == "HTTP/2"
+```
+
 ## Rust only
 
 Not bound in Python - reach for the Rust crate, never an invented name:

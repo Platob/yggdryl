@@ -459,6 +459,34 @@ source.copyInto(target)
 assert.equal(Buffer.from(target.readBytes()).toString(), 'trades')
 ```
 
+## Talk HTTP
+
+The `http` namespace speaks the `requests` vocabulary over the core client;
+`http.Server.bind()` is an origin in this process for tests.
+
+```javascript
+const assert = require('node:assert/strict')
+const { IOBase, http } = require('yggdryl')
+
+const server = http.Server.bind()
+server.respond('/quote.json', 200, { 'content-type': 'application/json' }, '{"px":42}')
+const session = new http.Session(server.url.toString())
+assert.deepEqual(session.get('quote.json').json(), { px: 42 })
+
+// Many requests: a lazy, ordered walk on native threads over one pool.
+const answers = [...session.sendAll(Array(16).fill('quote.json'), 4)]
+assert.deepEqual(answers.map((answer) => answer.statusCode), Array(16).fill(200))
+
+// An http URL is a handle like any other.
+const handle = new IOBase(new URL('quote.json', server.url.toString()).toString())
+assert.equal(handle.readText(), '{"px":42}')
+
+// HTTP/2 by prior knowledge on a plain origin.
+const h2 = new http.Session(server.url.toString(), { httpVersion: 2 })
+assert.equal(h2.get('quote.json').version, 'HTTP/2')
+server.shutdown()
+```
+
 ## Rust only
 
 Not bound in JavaScript - never invent these: a decoded-view handle

@@ -48,7 +48,7 @@ answers the task.
 | --- | --- |
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata | `yggdryl-types` |
 | Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts | `yggdryl-arrow` |
-| open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
+| open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, HTTP(S) resources and requests-style sessions, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
 | parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
 | read or write rows/batches in Arrow IPC, Parquet, Avro, text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |

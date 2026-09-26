@@ -5,9 +5,17 @@
 //! test's - and so every reading trims and treats an empty variable as unset
 //! the same way, which is what every cloud's own tools do.
 
+#[cfg(feature = "aws")]
 use std::collections::BTreeMap;
 
+/// A non-empty value, trimmed; an empty one is unset.
+fn present(value: String) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
+
 /// Where variables are read from.
+#[cfg(feature = "aws")]
 #[derive(Clone, Debug)]
 pub enum Environment {
     /// The process's own environment.
@@ -16,6 +24,7 @@ pub enum Environment {
     Given(BTreeMap<String, String>),
 }
 
+#[cfg(feature = "aws")]
 impl Environment {
     /// A non-empty variable, trimmed.
     pub fn get(&self, name: &str) -> Option<String> {
@@ -23,8 +32,7 @@ impl Environment {
             Self::Process => std::env::var(name).ok()?,
             Self::Given(pairs) => pairs.get(name)?.clone(),
         };
-        let trimmed = value.trim();
-        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+        present(value)
     }
 
     /// A boolean variable, in the spellings the cloud tools accept.
@@ -34,6 +42,7 @@ impl Environment {
 }
 
 /// Whether `value` spells true the way the cloud tools read one.
+#[cfg(feature = "aws")]
 pub fn is_true(value: &str) -> bool {
     matches!(
         value.trim().to_ascii_lowercase().as_str(),
@@ -41,20 +50,22 @@ pub fn is_true(value: &str) -> bool {
     )
 }
 
-/// A non-empty process environment variable, trimmed: what the Google and
-/// Azure dialects read their own names by.
-#[cfg(feature = "s3")]
+/// A non-empty process environment variable, trimmed: what the HTTP client
+/// reads its proxy and certificate names by, and the Google and Azure
+/// dialects their own.
 pub fn variable(name: &str) -> Option<String> {
-    Environment::Process.get(name)
+    present(std::env::var(name).ok()?)
 }
 
 #[cfg(feature = "internals")]
 #[doc(hidden)]
 pub mod internals {
     //! What `rust/tests/auth/environment.rs` pins and a caller cannot reach.
+    #[cfg(feature = "aws")]
     pub use super::Environment;
 
     /// Whether `value` spells true the way the cloud tools read one.
+    #[cfg(feature = "aws")]
     pub fn is_true(value: &str) -> bool {
         super::is_true(value)
     }

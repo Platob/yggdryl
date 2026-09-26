@@ -1,0 +1,94 @@
+//! One test file per file under `rust/src/http/`, mirrored file for file.
+//!
+//! The whole module is behind the `http` feature, so every module here
+//! carries that cfg; the ones that pin something a caller cannot reach - the
+//! retry schedule and its budget, the proxy and the `.netrc` credential the
+//! environment names - carry
+//! the `internals` cfg beside it and
+//! reach the crate through `yggdryl::internals`. `headers` declares the four
+//! helper suites under `http/headers/` itself, and `server` the two under
+//! `http/server/`.
+//!
+//! [`http_server`] is not a suite: it is the in-process HTTP/1.1 server every
+//! suite over a socket runs against, declared here once so they share one
+//! fixture.
+
+#[cfg(feature = "http")]
+#[path = "support/http_server.rs"]
+mod http_server;
+
+#[cfg(all(feature = "http3", feature = "internals"))]
+#[path = "http/alt_svc.rs"]
+mod alt_svc;
+#[cfg(feature = "http")]
+#[path = "http/authorization.rs"]
+mod authorization;
+#[cfg(feature = "http")]
+#[path = "http/client.rs"]
+mod client;
+#[cfg(feature = "http")]
+#[path = "http/cookie.rs"]
+mod cookie;
+#[cfg(feature = "http2")]
+#[path = "http/framed.rs"]
+mod framed;
+#[cfg(feature = "http2")]
+#[path = "http/h2.rs"]
+mod h2;
+#[cfg(feature = "http3")]
+#[path = "http/h3.rs"]
+mod h3;
+#[cfg(feature = "http")]
+#[path = "http/headers.rs"]
+mod headers;
+#[cfg(feature = "http")]
+#[path = "http/method.rs"]
+mod method;
+#[cfg(feature = "http")]
+#[path = "http/mod_.rs"]
+mod mod_;
+#[cfg(all(feature = "http", feature = "internals"))]
+#[path = "http/netrc.rs"]
+mod netrc;
+#[cfg(feature = "http")]
+#[path = "http/options.rs"]
+mod options;
+#[cfg(feature = "http")]
+#[path = "http/pages.rs"]
+mod pages;
+#[cfg(feature = "http")]
+#[path = "http/pagination.rs"]
+mod pagination;
+#[cfg(all(feature = "http", feature = "internals"))]
+#[path = "http/proxy.rs"]
+mod proxy;
+#[cfg(feature = "http")]
+#[path = "http/request.rs"]
+mod request;
+#[cfg(feature = "http")]
+#[path = "http/response.rs"]
+mod response;
+#[cfg(all(feature = "http", feature = "internals"))]
+#[path = "http/retry.rs"]
+mod retry;
+#[cfg(all(feature = "http2", feature = "internals"))]
+#[path = "http/runtime.rs"]
+mod runtime;
+#[cfg(feature = "http")]
+#[path = "http/server.rs"]
+mod server;
+#[cfg(feature = "http")]
+#[path = "http/session.rs"]
+mod session;
+#[cfg(feature = "http")]
+#[path = "http/status.rs"]
+mod status;
+#[cfg(feature = "http")]
+#[path = "http/stream.rs"]
+mod stream;
+#[cfg(feature = "http")]
+#[path = "http/tls.rs"]
+mod tls;
+#[cfg(feature = "http")]
+#[path = "http/wire.rs"]
+mod wire;
