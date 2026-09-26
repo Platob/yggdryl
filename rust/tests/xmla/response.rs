@@ -466,20 +466,20 @@ fn a_code_is_read_trimmed_and_one_that_is_no_unsigned_integer_reads_as_zero() {
         "",
         "4294967296",
     ]
-        .iter()
-        .map(|code| {
-            let xml = envelope(
-                "",
-                &fault_body(&format!(
-                    "<detail><Error xmlns=\"{EXCEPTION}\" ErrorCode=\"{code}\" \
+    .iter()
+    .map(|code| {
+        let xml = envelope(
+            "",
+            &fault_body(&format!(
+                "<detail><Error xmlns=\"{EXCEPTION}\" ErrorCode=\"{code}\" \
                      Description=\"d\"/></detail>"
-                )),
-            );
-            let errors = XmlaError::from_fault(&read_fault(xml.as_bytes()));
-            assert_eq!(errors.len(), 1, "{code:?}");
-            errors[0].code()
-        })
-        .collect();
+            )),
+        );
+        let errors = XmlaError::from_fault(&read_fault(xml.as_bytes()));
+        assert_eq!(errors.len(), 1, "{code:?}");
+        errors[0].code()
+    })
+    .collect();
     assert_eq!(codes, [42, u32::MAX, 0, 0, 0, 0]);
 }
 
@@ -498,6 +498,205 @@ fn an_error_element_under_a_prefix_reads_the_same() {
     assert_eq!(errors[0].description(), "prefixed");
     assert_eq!(errors[0].source(), "s");
     assert_eq!(errors[0].help_file(), "h");
+}
+
+#[test]
+fn an_error_s_escaped_and_unicode_attributes_read_decoded() {
+    let xml = envelope(
+        "",
+        &fault_body(&format!(
+            "<detail><Error xmlns=\"{EXCEPTION}\" ErrorCode=\"12\" \
+             Description=\"a &amp; &lt;b&gt; &quot;c&quot; &#233; – 東京\" \
+             Source=\"Zürich\" HelpFile=\"\"/></detail>"
+        )),
+    );
+    let errors = XmlaError::from_fault(&read_fault(xml.as_bytes()));
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].description(), "a & <b> \"c\" é – 東京");
+    assert_eq!(errors[0].source(), "Zürich");
+}
+
+#[test]
+fn from_fault_keeps_the_order_of_a_fault_built_here() {
+    // A fault built here answers its detail as given, so a `Messages` added
+    // before a direct `Error` is read first - unlike a read fault, whose
+    // detail comes in name order.
+    let document = yggdryl::from_xml_scalar(format!(
+        "<Messages xmlns=\"{EXCEPTION}\"><Error ErrorCode=\"1\" Description=\"first\"/></Messages>"
+    ))
+    .expect("the messages parse");
+    let messages = Fragment::from_element(&Element::root(&document).expect("one element"));
+    let direct = XmlaError::new(2, "second");
+    let built = Fault::client("x")
+        .with_detail(messages)
+        .with_detail(direct.into_fragment().expect("an Error element"));
+    let codes: Vec<u32> = XmlaError::from_fault(&built)
+        .iter()
+        .map(XmlaError::code)
+        .collect();
+    assert_eq!(codes, [1, 2]);
+}
+
+#[test]
+fn from_fault_reads_a_mondrian_error_by_its_hexadecimal_code_and_its_desc() {
+    // olap4j and Mondrian answer `<XA:error><code/><desc/></XA:error>` in
+    // their own namespace; the code is hexadecimal, `0x` or not, and one
+    // that is not reads as zero.
+    let xml = envelope(
+        "",
+        &fault_body(&format!(
+            "<detail>\
+             <XA:error xmlns:XA=\"{MONDRIAN}\"><code>00HSBE02</code>\
+             <desc>The Mondrian XML: Mondrian Error:Internal error</desc></XA:error>\
+             <XA:error xmlns:XA=\"{MONDRIAN}\"><code>1F</code><desc>hex</desc></XA:error>\
+             <XA:error xmlns:XA=\"{MONDRIAN}\"><desc>no code</desc>\
+             <code> 0xC10A0004 </code></XA:error>\
+             </detail>"
+        )),
+    );
+    let errors = XmlaError::from_fault(&read_fault(xml.as_bytes()));
+    let read: Vec<(u32, &str, &str, &str)> = errors
+        .iter()
+        .map(|error| {
+            (
+                error.code(),
+                error.description(),
+                error.source(),
+                error.help_file(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        read,
+        [
+            (
+                0,
+                "The Mondrian XML: Mondrian Error:Internal error",
+                "Mondrian",
+                ""
+            ),
+            (31, "hex", "Mondrian", ""),
+            (3_238_658_052, "no code", "Mondrian", ""),
+        ]
+    );
+}
+
+#[test]
+fn a_mondrian_error_is_read_only_in_its_namespace_and_with_a_desc() {
+    let xml = envelope(
+        "",
+        &fault_body(&format!(
+            "<detail>\
+             <error><code>1</code><desc>in no namespace</desc></error>\
+             <o:error xmlns:o=\"urn:example:other\"><code>2</code><desc>elsewhere</desc></o:error>\
+             <XA:error xmlns:XA=\"{MONDRIAN}\"><code>3</code><desc/></XA:error>\
+             <XA:error xmlns:XA=\"{MONDRIAN}\"><code>4</code></XA:error>\
+             </detail>"
+        )),
+    );
+    assert!(XmlaError::from_fault(&read_fault(xml.as_bytes())).is_empty());
+
+    // An emptied `desc` is the empty text, which is a description.
+    let emptied = envelope(
+        "",
+        &fault_body(&format!(
+            "<detail><XA:error xmlns:XA=\"{MONDRIAN}\"><code>A</code><desc></desc>\
+             </XA:error></detail>"
+        )),
+    );
+    let errors = XmlaError::from_fault(&read_fault(emptied.as_bytes()));
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0].code(), 10);
+    assert_eq!(errors[0].description(), "");
+    assert_eq!(errors[0].source(), "Mondrian");
+}
+
+#[test]
+fn from_element_reads_the_attributes_and_olap4j_s_help_spelling() {
+    let document = yggdryl::from_xml_scalar(format!(
+        "<Messages xmlns=\"{EXCEPTION}\">\
+         <EX:Error xmlns:EX=\"{EXCEPTION}\" ErrorCode=\"9\" Source=\"olap4j\" Help=\"h.chm\">\
+         from the text</EX:Error>\
+         </Messages>"
+    ))
+    .expect("the messages parse");
+    let messages = Element::root(&document).expect("one element");
+    let error = messages
+        .child(Some(EXCEPTION), "Error")
+        .expect("the Error element");
+    let read = XmlaError::from_element(&error).expect("an error");
+    assert_eq!(read.code(), 9);
+    assert_eq!(read.description(), "from the text");
+    assert_eq!(read.source(), "olap4j");
+    assert_eq!(read.help_file(), "h.chm");
+
+    // `HelpFile` is the specification's spelling and wins over `Help`.
+    let document = yggdryl::from_xml_scalar(format!(
+        "<Error xmlns=\"{EXCEPTION}\" ErrorCode=\"1\" Description=\"d\" \
+         HelpFile=\"spec.chm\" Help=\"olap4j.chm\"/>"
+    ))
+    .expect("the error parses");
+    let read =
+        XmlaError::from_element(&Element::root(&document).expect("one element")).expect("an error");
+    assert_eq!(read.help_file(), "spec.chm");
+    assert_eq!(read.description(), "d");
+}
+
+#[test]
+fn write_spells_the_four_attributes_escaped_and_declares_no_namespace() {
+    let mut written = Vec::new();
+    XmlaError::new(7, "a \"b\" <c> & d\ne\tf – 東京")
+        .with_source("s'rc")
+        .write(&mut written)
+        .expect("the error is written");
+    assert_eq!(
+        text(&written),
+        "<Error ErrorCode=\"7\" Description=\"a &quot;b&quot; &lt;c&gt; &amp; d&#10;e&#9;f – 東京\" \
+         Source=\"s'rc\" HelpFile=\"\"/>"
+    );
+}
+
+#[test]
+fn write_reads_back_through_from_element_in_the_enclosing_exception_namespace() {
+    let error = XmlaError::new(u32::MAX, "Le « cube » n'existe pas & <rien>\n– 東京")
+        .with_source("catalog");
+    let mut written = format!("<Messages xmlns=\"{EXCEPTION}\">").into_bytes();
+    error.write(&mut written).expect("the error is written");
+    written.extend_from_slice(b"</Messages>");
+    let document = yggdryl::from_xml_scalar(&written)
+        .unwrap_or_else(|failure| panic!("{failure}\n{}", text(&written)));
+    let messages = Element::root(&document).expect("one element");
+    let element = messages
+        .child(Some(EXCEPTION), "Error")
+        .expect("the Error element is in the exception namespace");
+    assert_eq!(XmlaError::from_element(&element), Some(error));
+}
+
+#[test]
+fn write_refuses_text_xml_cannot_carry_naming_the_code_point() {
+    let (format, reason) = codec(
+        XmlaError::new(7, "bell \u{7}")
+            .write(&mut Vec::new())
+            .expect_err("a control character has no XML spelling"),
+    );
+    assert_eq!(format, "xml");
+    assert_eq!(reason, "text carries U+0007, which XML 1.0 cannot spell");
+
+    let (_, reason) = codec(
+        XmlaError::new(7, "fine")
+            .with_source("\u{FFFE}")
+            .write(&mut Vec::new())
+            .expect_err("a noncharacter has no XML spelling"),
+    );
+    assert_eq!(reason, "text carries U+FFFE, which XML 1.0 cannot spell");
+}
+
+#[test]
+fn write_refuses_a_failing_sink() {
+    assert_eq!(
+        sink_failure(XmlaError::new(1, "x").write(&mut FullSink)),
+        "the sink is full"
+    );
 }
 
 // `fault`.
@@ -869,7 +1068,8 @@ fn a_declared_field_casts_a_rowset_that_carries_its_own_schema() {
     assert_eq!(ids.scalar(0).expect("the first row"), Scalar::from(7_i64));
     assert_eq!(ids.scalar(1).expect("the second row"), Scalar::from(8_i64));
     assert_eq!(
-        rows.child("Symbol").and_then(|symbols| symbols.scalar(1).ok()),
+        rows.child("Symbol")
+            .and_then(|symbols| symbols.scalar(1).ok()),
         Some(Scalar::Null),
         "the null cell survives the cast"
     );
@@ -971,6 +1171,279 @@ fn the_header_blocks_are_read_beside_the_answer() {
         Session::read(response.header()).expect("a session header"),
         Some(Session::Continue("42".into()))
     );
+}
+
+#[test]
+fn a_fault_carrying_a_mondrian_error_is_refused_naming_it() {
+    let xml = envelope(
+        "",
+        &fault_body(&format!(
+            "<detail><XA:error xmlns:XA=\"{MONDRIAN}\"><code>1F</code>\
+             <desc>The Mondrian XML: no cube</desc></XA:error></detail>"
+        )),
+    );
+    let (path, reason) = invalid_record(refused(&xml, None));
+    assert_eq!(path, "$.xmla");
+    assert_eq!(
+        reason,
+        "SOAP fault SOAP-ENV:Client: The syntax is incorrect. (31 The Mondrian XML: no cube)"
+    );
+}
+
+#[test]
+fn from_envelope_refuses_a_fault_built_here_naming_its_error() {
+    let message = Envelope::from_fault(
+        fault(FaultCode::Server, XmlaError::new(10, "the table is gone")).expect("a fault"),
+    );
+    for result in [
+        Response::from_envelope(&message, None),
+        Response::from_envelope_with(&message, Some(&orders_field()), ArrowCastOptions::default()),
+    ] {
+        let (path, reason) = invalid_record(result.expect_err("a fault is refused"));
+        assert_eq!(path, "$.xmla");
+        assert_eq!(
+            reason,
+            "SOAP fault SOAP-ENV:Server: the table is gone (10 the table is gone)"
+        );
+    }
+}
+
+#[test]
+fn from_envelope_reads_a_message_built_in_memory() {
+    let document = yggdryl::from_xml_scalar(response(
+        "DiscoverResponse",
+        &rowset_root(&format!("{SCHEMA}{ROWS}")),
+    ))
+    .expect("the response parses");
+    let payload = Fragment::from_element(&Element::root(&document).expect("one element"));
+    let message = Envelope::from_payload(payload).with_header(session());
+    let response = Response::from_envelope(&message, None).expect("a response");
+    assert_eq!(response.method(), Method::Discover);
+    assert_eq!(
+        Session::read(response.header()).expect("a session header"),
+        Some(Session::Continue("sess-1".into()))
+    );
+    assert_eq!(response.rowset().map(Rowset::field), Some(&orders_field()));
+    assert_eq!(response.rows(), Some(&two_orders()));
+    assert_eq!(
+        Response::from_envelope_with(&message, None, ArrowCastOptions::default())
+            .expect("a response"),
+        response
+    );
+}
+
+/// The orders table with `Symbol` declared as a number, which `AAPL` is not.
+fn numeric_symbols() -> Field {
+    StructType::from_fields([
+        DataType::Int32.required_field("Order Id"),
+        DataType::Int32.nullable_field("Symbol"),
+    ])
+    .map(DataType::from)
+    .expect("a valid root")
+    .required_field("row")
+}
+
+/// A rowset stating `Symbol` as `xsd:string`, its first symbol `AAPL` and
+/// its second `42`.
+fn stated_symbols() -> String {
+    let rows = "<row><Order_x0020_Id>7</Order_x0020_Id><Symbol>AAPL</Symbol></row>\
+                <row><Order_x0020_Id>8</Order_x0020_Id><Symbol>42</Symbol></row>";
+    envelope(
+        "",
+        &response("ExecuteResponse", &rowset_root(&format!("{SCHEMA}{rows}"))),
+    )
+}
+
+#[test]
+fn a_declared_field_reads_a_stated_column_strictly_naming_the_cell_it_cannot_hold() {
+    let xml = stated_symbols();
+    let (path, reason) = invalid_record(refused(&xml, Some(&numeric_symbols())));
+    assert_eq!(path, "$[0]");
+    assert!(reason.contains("Symbol"), "{reason}");
+    assert!(reason.contains("expected int32, got string"), "{reason}");
+
+    let message = Envelope::from_bytes(xml.as_bytes()).expect("an envelope");
+    let strict = Response::from_envelope_with(
+        &message,
+        Some(&numeric_symbols()),
+        ArrowCastOptions::default().with_safe(false),
+    );
+    let (path, _) = invalid_record(strict.expect_err("a strict cast refuses `AAPL`"));
+    assert_eq!(path, "$[0]");
+}
+
+#[test]
+fn from_envelope_with_a_safe_cast_nulls_what_the_declared_field_cannot_hold() {
+    let message = Envelope::from_bytes(stated_symbols().as_bytes()).expect("an envelope");
+    let response = Response::from_envelope_with(
+        &message,
+        Some(&numeric_symbols()),
+        ArrowCastOptions::default(),
+    )
+    .expect("a safe cast reads every row");
+    assert_eq!(response.method(), Method::Execute);
+    assert_eq!(
+        response.rowset().map(Rowset::field),
+        Some(&numeric_symbols())
+    );
+    let symbols = response
+        .rows()
+        .and_then(|rows| rows.child("Symbol"))
+        .expect("the symbol column");
+    assert_eq!(symbols.scalar(0).expect("the first row"), Scalar::Null);
+    assert_eq!(
+        symbols.scalar(1).expect("the second row"),
+        Scalar::from(42_i32)
+    );
+}
+
+#[test]
+fn an_unqualified_return_and_root_under_a_prefixed_response_read_as_the_xmla_ones() {
+    let xml = envelope(
+        "",
+        &format!(
+            "<m:ExecuteResponse xmlns:m=\"{XMLA}\"><return>\
+             <root xmlns:xsd=\"{XSD}\">{SCHEMA}{ROWS}</root></return></m:ExecuteResponse>"
+        ),
+    );
+    let response = read(&xml, None);
+    assert_eq!(response.method(), Method::Execute);
+    assert_eq!(response.rowset().map(Rowset::field), Some(&orders_field()));
+    assert_eq!(response.rows(), Some(&two_orders()));
+}
+
+#[test]
+fn a_return_in_another_namespace_is_refused_as_missing() {
+    let xml = envelope(
+        "",
+        &format!(
+            "<DiscoverResponse xmlns=\"{XMLA}\"><o:return xmlns:o=\"urn:example:other\">{}\
+             </o:return></DiscoverResponse>",
+            rowset_root(SCHEMA)
+        ),
+    );
+    let (format, reason) = codec(refused(&xml, None));
+    assert_eq!(format, "xml");
+    assert_eq!(
+        reason,
+        "expected one `return` element under `DiscoverResponse`, found none"
+    );
+}
+
+#[test]
+fn a_response_name_is_matched_case_sensitively() {
+    for name in ["discoverResponse", "EXECUTERESPONSE", "Executeresponse"] {
+        let xml = envelope("", &response(name, &rowset_root(SCHEMA)));
+        let (path, reason) = invalid_record(refused(&xml, None));
+        assert_eq!(path, "$.xmla");
+        assert_eq!(
+            reason,
+            format!(
+                "expected `DiscoverResponse` or `ExecuteResponse` in \
+                 \"urn:schemas-microsoft-com:xml-analysis\", got `{name}`"
+            )
+        );
+    }
+}
+
+#[test]
+fn a_prefixed_root_in_the_empty_namespace_answers_nothing_whatever_it_holds() {
+    let xml = envelope(
+        "",
+        &response(
+            "ExecuteResponse",
+            &format!("<e:root xmlns:e=\"{EMPTY}\" note=\"done\"><e:note>3 rows</e:note></e:root>"),
+        ),
+    );
+    let response = read(&xml, None);
+    assert_eq!(response.method(), Method::Execute);
+    assert_eq!(response.answer(), &Answer::Empty);
+}
+
+#[test]
+fn an_empty_dataset_root_is_kept_as_a_dataset() {
+    let xml = envelope(
+        "",
+        &response("ExecuteResponse", &format!("<root xmlns=\"{MDDATASET}\"/>")),
+    );
+    let response = read(&xml, Some(&orders_field()));
+    let Answer::Dataset(fragment) = response.answer() else {
+        panic!("expected a dataset, got {:?}", response.answer());
+    };
+    assert_eq!(fragment.name(), "root");
+    assert_eq!(fragment.element().namespace(), Some(MDDATASET));
+    assert_eq!(fragment.element().children().count(), 0);
+    assert!(response.rows().is_none());
+}
+
+#[test]
+fn cells_marked_nil_self_closed_or_emptied_read_as_null_null_and_the_empty_text() {
+    let rows = format!(
+        "<row><Order_x0020_Id>1</Order_x0020_Id><Symbol xsi:nil=\"true\"/></row>\
+         <row><Order_x0020_Id>2</Order_x0020_Id><Symbol i:nil=\"1\" xmlns:i=\"{XSI}\"/></row>\
+         <row><Order_x0020_Id>3</Order_x0020_Id><Symbol/></row>\
+         <row><Order_x0020_Id>4</Order_x0020_Id><Symbol></Symbol></row>\
+         <row><Order_x0020_Id> 5 </Order_x0020_Id><Symbol>  </Symbol></row>\
+         <row><Order_x0020_Id>6</Order_x0020_Id><Symbol>a &amp; &lt;b&gt; &#x1F680;</Symbol></row>"
+    );
+    let xml = envelope(
+        "",
+        &response("ExecuteResponse", &rowset_root(&format!("{SCHEMA}{rows}"))),
+    );
+    assert_eq!(
+        read(&xml, None).rows(),
+        Some(&orders([
+            order(1, None),
+            order(2, None),
+            order(3, None),
+            order(4, Some("")),
+            order(5, Some("  ")),
+            order(6, Some("a & <b> 🚀")),
+        ]))
+    );
+}
+
+#[test]
+fn a_row_missing_a_required_column_is_refused_naming_the_row() {
+    let rows = "<row><Order_x0020_Id>7</Order_x0020_Id></row><row><Symbol>X</Symbol></row>";
+    let xml = envelope(
+        "",
+        &response("ExecuteResponse", &rowset_root(&format!("{SCHEMA}{rows}"))),
+    );
+    let (path, reason) = invalid_record(refused(&xml, None));
+    assert_eq!(path, "$[1]");
+    assert!(
+        reason.contains("`Order Id` is missing from the row"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn an_error_the_provider_reported_inside_the_rowset_is_refused_naming_it() {
+    for reported in [
+        format!(
+            "<Messages xmlns=\"{EXCEPTION}\"><Error ErrorCode=\"3238658057\" \
+             Description=\"the query was cancelled\" Source=\"engine\" HelpFile=\"\"/></Messages>"
+        ),
+        format!(
+            "<EX:Error xmlns:EX=\"{EXCEPTION}\" ErrorCode=\"3238658057\">the query was cancelled\
+             </EX:Error>"
+        ),
+    ] {
+        let xml = envelope(
+            "",
+            &response(
+                "ExecuteResponse",
+                &rowset_root(&format!("{SCHEMA}{ROWS}{reported}")),
+            ),
+        );
+        let (path, reason) = invalid_record(refused(&xml, None));
+        assert_eq!(path, "$.rowset");
+        assert_eq!(
+            reason,
+            "the provider reported an error inside the rowset: the query was cancelled (3238658057)"
+        );
+    }
 }
 
 // Writing.
@@ -1311,5 +1784,251 @@ fn write_fault_keeps_a_subcode_and_several_errors_in_order() {
 fn write_fault_refuses_a_failing_sink() {
     let built = fault(FaultCode::Server, XmlaError::new(1, "x")).expect("a fault");
     let result = write_fault(FullSink, &built);
+    assert_eq!(sink_failure(result.map(|_| ())), "the sink is full");
+}
+
+#[test]
+fn write_rowset_refuses_a_cell_xml_cannot_carry_naming_its_row_and_column() {
+    let result = write_rowset(
+        Vec::new(),
+        &[],
+        Method::Execute,
+        &orders_rowset(),
+        [Ok(orders([
+            order(7, Some("AAPL")),
+            order(8, Some("bell \u{7}")),
+        ]))],
+        Content::SchemaData,
+    );
+    let (path, reason) = invalid_record(result.expect_err("the cell is refused"));
+    assert_eq!(path, "$[1].Symbol");
+    assert!(
+        reason.ends_with("text carries U+0007, which XML 1.0 cannot spell"),
+        "{reason}"
+    );
+}
+
+#[test]
+fn write_empty_refuses_a_header_block_xml_cannot_carry() {
+    let block = Fragment::in_namespace("Trace", "urn:example:trace", Scalar::from("bell \u{7}"))
+        .expect("a header block");
+    let (format, reason) = codec(
+        write_empty(Vec::new(), &[block], Method::Execute)
+            .expect_err("the header block has no XML spelling"),
+    );
+    assert_eq!(format, "xml");
+    assert!(reason.contains("U+0007"), "{reason}");
+}
+
+#[test]
+fn write_fault_spells_the_fault_in_the_envelope_schema_s_order() {
+    let built = fault(FaultCode::Client, XmlaError::new(3, "desc & <x>")).expect("a fault");
+    let bytes = write_fault(Vec::new(), &built).expect("the fault is written");
+    let written = text(&bytes);
+    assert!(
+        written.starts_with(&format!(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><SOAP-ENV:Envelope xmlns:SOAP-ENV=\"{SOAP}\">\
+             <SOAP-ENV:Body><SOAP-ENV:Fault><faultcode>SOAP-ENV:Client</faultcode>\
+             <faultstring>desc &amp; &lt;x&gt;</faultstring><faultactor>yggdryl</faultactor>\
+             <detail><Error "
+        )),
+        "{written}"
+    );
+    assert!(
+        written.contains(&format!("xmlns=\"{EXCEPTION}\"")),
+        "{written}"
+    );
+    assert!(
+        written.ends_with("/></detail></SOAP-ENV:Fault></SOAP-ENV:Body></SOAP-ENV:Envelope>"),
+        "{written}"
+    );
+}
+
+#[test]
+fn write_fault_refuses_a_description_xml_cannot_carry() {
+    // `fault` builds a fault of any text; the text XML 1.0 cannot spell is
+    // refused where it is written, naming the code point.
+    let built = fault(FaultCode::Client, XmlaError::new(3, "bell \u{7}")).expect("a fault");
+    let (format, reason) =
+        codec(write_fault(Vec::new(), &built).expect_err("the fault string has no XML spelling"));
+    assert_eq!(format, "xml");
+    assert_eq!(reason, "text carries U+0007, which XML 1.0 cannot spell");
+}
+
+// `write_rowset_reporting`.
+
+#[test]
+fn write_rowset_reporting_writes_what_write_rowset_writes_when_nothing_fails() {
+    for content in [Content::SchemaData, Content::Data] {
+        let expected = write_rowset(
+            Vec::new(),
+            &[session()],
+            Method::Discover,
+            &orders_rowset(),
+            [Ok(two_orders())],
+            content,
+        )
+        .expect("the response is written");
+        let (bytes, failed) = write_rowset_reporting(
+            Vec::new(),
+            &[session()],
+            Method::Discover,
+            &orders_rowset(),
+            [Ok(two_orders())],
+            content,
+        )
+        .expect("the response is written");
+        assert_eq!(failed, None);
+        assert_eq!(text(&bytes), text(&expected));
+    }
+
+    let (bytes, failed) = write_rowset_reporting(
+        Vec::new(),
+        &[],
+        Method::Execute,
+        &orders_rowset(),
+        never_pulled(),
+        Content::Schema,
+    )
+    .expect("the response is written");
+    assert_eq!(failed, None);
+    assert_eq!(read(text(&bytes), None).rows().map(Serie::len), Some(0));
+}
+
+#[test]
+fn write_rowset_reporting_reports_a_failing_batch_inside_the_root_and_closes_the_document() {
+    let failure = yggdryl::arrow::Error::Unsupported {
+        kind: "feed",
+        reason: "the feed dropped".to_owned(),
+    };
+    let batches = [Ok(orders([order(7, Some("AAPL"))])), Err(failure)]
+        .into_iter()
+        .chain(never_pulled());
+    let (bytes, failed) = write_rowset_reporting(
+        Vec::new(),
+        &[],
+        Method::Execute,
+        &orders_rowset(),
+        batches,
+        Content::SchemaData,
+    )
+    .expect("the failure is reported, not raised");
+    let failed = failed.expect("the failure is handed back");
+    assert_eq!(failed.code(), 0x000A);
+    assert_eq!(failed.source(), ACTOR);
+    assert_eq!(failed.help_file(), "");
+    assert!(
+        failed
+            .description()
+            .starts_with("invalid record value at $.rows: ")
+    );
+    assert!(failed.description().ends_with("the feed dropped"));
+
+    let written = text(&bytes);
+    assert!(
+        written.ends_with(&format!(
+            "<row><Order_x0020_Id>7</Order_x0020_Id><Symbol>AAPL</Symbol></row>\
+             <Messages xmlns=\"{EXCEPTION}\"><Error ErrorCode=\"10\" Description=\"{}\" \
+             Source=\"yggdryl\" HelpFile=\"\"/></Messages>\
+             </root></return></ExecuteResponse></SOAP-ENV:Body></SOAP-ENV:Envelope>",
+            failed.description()
+        )),
+        "{written}"
+    );
+    // The document is whole, and a client reading it is told what failed.
+    let (path, reason) = invalid_record(refused(written, None));
+    assert_eq!(path, "$.rowset");
+    assert_eq!(
+        reason,
+        format!(
+            "the provider reported an error inside the rowset: {} (10)",
+            failed.description()
+        )
+    );
+}
+
+#[test]
+fn write_rowset_reporting_reports_a_batch_of_another_field_before_any_of_its_rows() {
+    let other = StructType::from_fields([
+        DataType::Int64.required_field("Order Id"),
+        DataType::utf8().nullable_field("Symbol"),
+    ])
+    .map(DataType::from)
+    .expect("a valid root")
+    .required_field("row");
+    let foreign = Serie::from_scalars(
+        other,
+        [
+            Scalar::from_struct([("Order Id", Scalar::from(9_i64)), ("Symbol", Scalar::Null)])
+                .expect("distinct names"),
+        ],
+    )
+    .expect("a batch");
+    let (bytes, failed) = write_rowset_reporting(
+        Vec::new(),
+        &[],
+        Method::Execute,
+        &orders_rowset(),
+        [Ok(two_orders()), Ok(foreign)],
+        Content::SchemaData,
+    )
+    .expect("the failure is reported, not raised");
+    let failed = failed.expect("the failure is handed back");
+    assert!(
+        failed.description().contains("column `Order Id`"),
+        "{failed:?}"
+    );
+    let written = text(&bytes);
+    assert!(written.contains(ROWS), "{written}");
+    assert!(
+        !written.contains("<Order_x0020_Id>9</Order_x0020_Id>"),
+        "{written}"
+    );
+    let (path, _) = invalid_record(refused(written, None));
+    assert_eq!(path, "$.rowset");
+}
+
+#[test]
+fn write_rowset_reporting_never_leaves_a_cell_xml_cannot_carry_in_an_ill_formed_document() {
+    // The rustdoc: a failure after the answer has begun is reported and "the
+    // document is closed, so the client reads a complete answer naming the
+    // failure", and a cell with no XML spelling is an error "before any row
+    // of a batch is written". Either way, what reaches the sink is never a
+    // row cut open in the middle.
+    let result = write_rowset_reporting(
+        Vec::new(),
+        &[],
+        Method::Execute,
+        &orders_rowset(),
+        [Ok(orders([
+            order(7, Some("AAPL")),
+            order(8, Some("bell \u{7}")),
+        ]))],
+        Content::SchemaData,
+    );
+    match result {
+        Err(error) => {
+            let (path, _) = invalid_record(error);
+            assert_eq!(path, "$[1].Symbol");
+        }
+        Ok((bytes, failed)) => {
+            assert!(failed.is_some(), "the failure is handed back");
+            let message = Envelope::from_bytes(&bytes)
+                .unwrap_or_else(|error| panic!("{error}\n{}", text(&bytes)));
+            assert!(message.payload().is_some(), "{}", text(&bytes));
+        }
+    }
+}
+
+#[test]
+fn write_rowset_reporting_refuses_a_failing_sink() {
+    let result = write_rowset_reporting(
+        FullSink,
+        &[],
+        Method::Discover,
+        &orders_rowset(),
+        [Ok(two_orders())],
+        Content::SchemaData,
+    );
     assert_eq!(sink_failure(result.map(|_| ())), "the sink is full");
 }
