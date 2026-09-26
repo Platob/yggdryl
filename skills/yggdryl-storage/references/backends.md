@@ -13,6 +13,7 @@ how a location is spelled, what configures it, and what each call costs.
 | `s3`, `s3a`, `s3n` | Amazon S3 and S3-compatible (MinIO, ...) | `s3::file/folder/located` (`s3` feature) | `IOBase(url)`, `S3File/S3Folder/S3Path` | `new IOBase(url)` |
 | `gs`, `gcs` | Google Cloud Storage | same | same | same |
 | `az`, `abfs`, `abfss`, `wasb`, `wasbs` | Azure Blob Storage | same | same | same |
+| `http`, `https` | HTTP (the `http` feature in Rust) | `http::located(url)`, `Holder::from_url` -> `Holder::HttpRequest`; `Session` a container over a base URL | `IOBase(url)` (a `Request`), `http.Session(base) / "child"` | `new IOBase(url)`, `new http.Request('GET', url).intoIOBase()` |
 | an Arrow filesystem + opaque path | Filesystems | `FsPath/FsFolder/FsFile::from_path(Arc<dyn FileSystem>, path, uri)` | `IOBase.from_fs(pyarrow_fs, path, uri=)` | `IOBase.fromFs(handler, path, uri?)` |
 | `file:///x.zip#member/path` | ZIP member | `zip::from_url(&url)`, `zip::mount(holder)` | Rust only | Rust only |
 | `urn:ns:a:b` | the path the name spells, under the working directory | `Uri::locator` then a backend | `IOBase(Urn(...))` | `new IOBase(new Urn(...))` |
@@ -177,6 +178,38 @@ retried; a stream cut part way resumes at the byte it stopped at. Absence and
 conflict stay typed (`is_absent()`, `is_conflict()`); everything else is
 `Error::Remote` with the store's own code. `stats()` answers the requests
 that actually went out (`StatsSnapshot`).
+
+## HTTP
+
+Rust: the non-default `http` feature (implied by `aws` and `s3`), HTTP/2 under
+`http2`, HTTP/3 under `http3`. Python and Node.js: built in, all three
+versions. One synchronous client: a caller brings no async runtime.
+
+| Fact | Rule |
+| --- | --- |
+| roles | `Session` (defaults, credential, cookie jar, pool; a container over its base URL), `Request` (the leaf a URL names), `Response` (one answer's body, reopenable), `Stream` (a body on the wire) |
+| state | a `Response`/`Stream` carries its request and session: `close` lets go of the transfer and keeps the cursor, the next read re-opens there with one ranged `GET` under `If-Range` |
+| pool | a `Client` is the pool and its knobs; sessions over one client share it, and a session stating another pool knob than its client's is refused |
+| versions | `http_version`: `auto` (ALPN `h2` over TLS, HTTP/3 once `Alt-Svc` advertises it, else HTTP/1.1), `1.1`, `2` (`h2c` by prior knowledge on `http://`), `3`; a refusal falls back in the same attempt and is remembered per origin; a proxied request is HTTP/1.1 |
+| multiplexing | HTTP/2 and HTTP/3 hold one connection per origin for every thread; HTTP/1.1 keeps up to 64 idle connections per host |
+| retries | a `408`/`425`/`429`/`5xx` only for `GET`/`HEAD`/`OPTIONS`/`PUT`/`DELETE`; a transport failure for those, or for any method no connection took; `Retry-After` waited up to `max_pause`; one token budget per client |
+| redirects | up to `max_redirects`; `303` (and `301`/`302` answering a `POST`) become a `GET`; a credential the caller stated never crosses to another origin |
+| resume | a cut body of a successful uncoded `GET` resumes from its cursor with `Range` + `If-Range`, at most `Stream::MAX_RESUMES` times; a changed resource is `Error::Conflict`, never spliced |
+| environment | `http_proxy`/`https_proxy`/`all_proxy`/`no_proxy` read per request as curl reads them (upper-case `HTTP_PROXY` ignored under CGI; SOCKS refused); `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`; `.netrc` for a request naming no credential; `read_environment=false` reads none |
+| properties | `timeout`, `connect_timeout`, `max_attempts`, `max_redirects`, `max_pause`, `max_body_size`, `concurrency`, `http_version`, `proxy`, `ca_bundle`, `bearer_token`, `basic_auth`, `header.<name>`, `pagination`, `page_limit`, `base_url`; unknown names are ignored, so a catalog's property bag can be handed over |
+| test origin | `Server::bind("127.0.0.1:0")` in process: `respond`, `route`, `mount(prefix, holder)` with ranges and validators, `inject(Fault)` (cut, close, refuse, delay), `requests()` the log; `with_http3(true)` adds QUIC and TLS under a self-signed `certificate()` |
+
+| Operation | Requests |
+| --- | --- |
+| build a session, a request, a child | 0 |
+| `pread`, `read_range_bytes`, `read_range_digest` | 1 ranged `GET` |
+| `read_all_bytes`, `read_digest`, a `pstream_bytes` drain | 1 `GET`, + 1 per resume |
+| `size`, `mtime`, `kind` closed | 1 `HEAD`; 0 inside `open()` |
+| `write_all_bytes`, `clear` | 1 `PUT` |
+| `append_bytes`; `pwrite` then `flush` | 1 `GET` + 1 `PUT` |
+| `remove` | 1 `DELETE`; a `404` is success |
+| `send`, `stream` | 1 per attempt + 1 per redirect hop |
+| `pages`, a paginated `read_arrow_reader` | 1 `GET` per page |
 
 ## Buffered (page cache)
 

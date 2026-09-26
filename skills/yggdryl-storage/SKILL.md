@@ -1,6 +1,6 @@
 ---
 name: yggdryl-storage
-description: Read and write bytes through yggdryl's one positional handle (IOBase / Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, page caches and ZIP archives, with gzip/zlib/zstd codings and charsets. Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, listing or globbing a folder (ls, glob, rglob), clear/remove, open/close scopes, compress_into / decompressInto, gzip.dumps / zstd.loads, Charset / charset.decode, digests or read_scalar on a handle, S3Options / S3File, AWS credentials (aws::Session, profiles, SSO, assume role) or a MinIO / S3-compatible endpoint, Buffered caches, Counted call budgets. Covers Rust, Python and Node.js.
+description: Read and write bytes through yggdryl's one positional handle (IOBase / Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, HTTP(S) URLs, page caches and ZIP archives, with gzip/zlib/zstd codings and charsets; talk HTTP like requests (http.Session, get/post, send_all fan-outs, resumable streams, HTTP/2 and HTTP/3, an in-process test Server). Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, listing or globbing a folder (ls, glob, rglob), clear/remove, open/close scopes, compress_into / decompressInto, gzip.dumps / zstd.loads, Charset / charset.decode, digests or read_scalar on a handle, S3Options / S3File, AWS credentials (aws::Session, profiles, SSO, assume role) or a MinIO / S3-compatible endpoint, Buffered caches, Counted call budgets. Covers Rust, Python and Node.js.
 ---
 
 # Storage: handles, bytes, codings, charsets
@@ -53,6 +53,10 @@ Install and cross-language conventions are in `yggdryl`.
 | page cache | `h.buffered(BufferedOptions::default())` | `h.buffered(page_size=, max_bytes=, ttl=)` (spends `h`) | `h.buffered({ pageSize, maxBytes, ttlMs })` (returns `h`) |
 | count calls | `Counted::new(h)`, `calls().get(Call::Pread)`, `counts()` | Rust only | Rust only |
 | object store (`s3` feature) | `s3::file(url)?`, `s3::file_with(url, S3Options)?`, `s3::file_at(Provider::Aws, bucket, key)?` | `IOBase("gs://b/k")`, `S3File(url)`, `S3File(bucket, key, provider="s3", options={...})` | `new IOBase('az://c@acct.blob.core.windows.net/k')` |
+| HTTP resource (`http` feature) | `Session::new().get(url)?.send()?`, `http::get(url)?`, `Holder::from_url(&url, props)?` (a leaf) | `http.Session(base).get(path)`, `http.get(url)`, `IOBase(url)` | `new http.Session(base).get(path)`, `http.get(url)`, `new IOBase(url)` |
+| many HTTP requests | `session.send_all(requests, Some(n))` (lazy, ordered) | `session.send_all(items, concurrency=n)` | `session.sendAll(items, n)` |
+| HTTP version | `HttpOptions::with_http_version(Some(HttpVersion::Http2))` (`http2`, `http3` features) | `http.Session(base, http_version=2)` | `new http.Session(base, { httpVersion: 2 })` |
+| an origin for tests, in process | `Server::bind("127.0.0.1:0")?` + `respond`, `route`, `mount`, `inject(Fault)` | `with http.Server.bind() as server:` | `http.Server.bind()` ... `server.shutdown()` |
 | foreign Arrow filesystem | `FsFile::from_path(Arc<dyn FileSystem>, path, uri)?` | `IOBase.from_fs(pyarrow_fs, path, uri=None)`, `IOBase.from_uri(uri, options=)` | `IOBase.fromFs(handler, path, uri?)` |
 | ZIP archive | `zip::mount(holder)`, `zip::from_url(&url)?`, `ZipArchive::new(h).mount()` | Rust only | Rust only |
 | from an open file | n/a | `IOBase(open_file)` (path), `IOBase(io.BytesIO(b))` (content) | n/a |
@@ -126,6 +130,19 @@ Install and cross-language conventions are in `yggdryl`.
     files, then defaults; the AWS identity is botocore's chain through
     `aws::Session`. `with_environment(false)` seals everything but explicit
     values - see `references/backends.md`.
+16. **HTTP is a handle and a client.** An `http`/`https` URL is a leaf: a
+    whole read is one `GET`, a range one ranged `GET`, `size` one `HEAD`
+    (none inside `open()`). A body read whole or streamed resumes a cut
+    transfer from its cursor (`Range` + `If-Range`), for a successful uncoded
+    `GET` only. Retries touch only what cannot act twice: an idempotent
+    method, or a request no connection took; a `POST` answered `503` is
+    handed back. Fan out with `send_all` on one session - one pool, answers
+    in order, nothing held past the requests in flight - never a thread pool
+    of `get`s. HTTP/2 and HTTP/3 are negotiated (ALPN `h2`, then HTTP/3 once
+    `Alt-Svc` advertises it) and multiplex one connection per origin; a plain
+    `http://` origin speaks `h2c` only when asked, and a proxied request
+    HTTP/1.1. Proxies, CA bundles and `.netrc` come from the environment as
+    curl and `requests` read them.
 
 ## Pitfalls
 
@@ -148,13 +165,18 @@ Install and cross-language conventions are in `yggdryl`.
 | a `str` of document content passed to `IOBase(...)` | a `str` is a path; content is `IOBase.from_bytes(b)` or `IOBase(io.BytesIO(b))` |
 | `s3://my.bucket.com/key` | a first part ending `.com`/`.io` is a host; use `s3::file_at(Provider::Aws, bucket, key)` / `S3File(bucket, key, provider="s3")` |
 | logging `bound_uri` | it may carry credentials; log `masked_uri` |
+| a thread pool calling `session.get(url)` per URL | `session.send_all(urls, concurrency)`: one pool, ordered, lazy, the interpreter released |
+| expecting a `POST` retried after a `503` or a reset | a non-idempotent request is sent once unless no connection took it; retry it yourself when it is safe |
+| `Client(...).session(http_version=2)` on a client built without it | refused by name: the pool's knobs are the client's - `Client({"http_version": "2"}).session(...)` |
+| `http_version=3` against a plain `http://` origin | QUIC needs TLS: it answers as `2` (`h2c`); HTTP/3 is an `https` origin |
+| `session.get(url).content` on a large download | `get(url, stream=True)` and `iter_content(n)` / Rust `stream()?`: the body stays on the wire and resumes |
 
 ## Language references
 
 - `references/rust.md` - read when writing Rust (`Holder`, `Buffer`, `Coded`, `Transcoded`, `Counted`, `s3`, `zip`).
 - `references/python.md` - read when writing Python (`IOBase`, role classes, `yggdryl.gzip`, `yggdryl.charset`).
 - `references/javascript.md` - read when writing Node.js (`IOBase`, `gzip`/`zlib`/`zstd`/`charset` namespaces, handler protocol).
-- `references/backends.md` - configuration and cost tables for Local, Filesystems, S3 / GCS / Azure, Buffered and ZIP.
+- `references/backends.md` - configuration and cost tables for Local, Filesystems, S3 / GCS / Azure, HTTP, Buffered and ZIP.
 
 ## Deeper
 
@@ -162,6 +184,7 @@ Install and cross-language conventions are in `yggdryl`.
 - Laziness and kinds: https://platob.github.io/yggdryl/holder/#laziness-and-kinds
 - Media type and codings: https://platob.github.io/yggdryl/holder/#media-type-and-codings
 - Object stores: https://platob.github.io/yggdryl/holder/#object-stores
+- HTTP, HTTP/2 and HTTP/3: https://platob.github.io/yggdryl/holder/#http
 - ZIP: https://platob.github.io/yggdryl/holder/#zip
 - Compression (gzip, zlib, zstd): https://platob.github.io/yggdryl/media/#compression
 - Charsets: https://platob.github.io/yggdryl/media/#charsets

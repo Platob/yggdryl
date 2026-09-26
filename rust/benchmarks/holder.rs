@@ -14,6 +14,11 @@ mod buffered;
 mod calls;
 #[path = "holder/fs/mod.rs"]
 mod fs;
+// HTTP against the crate's own server on loopback. The module is a
+// non-default feature, so the group compiles in only when it is.
+#[cfg(feature = "http")]
+#[path = "holder/http.rs"]
+mod http;
 #[path = "holder/listing.rs"]
 mod listing;
 // The object stores against `object_store` on one in-process store. The
@@ -51,6 +56,12 @@ mod aws {
     pub(crate) fn identity_benchmarks(_: &mut criterion::Criterion) {}
 }
 
+/// The HTTP group when the module is not compiled in: nothing to register.
+#[cfg(not(feature = "http"))]
+mod http {
+    pub(crate) fn http_benchmarks(_: &mut criterion::Criterion) {}
+}
+
 criterion_group!(
     holder,
     aws::identity_benchmarks,
@@ -58,6 +69,7 @@ criterion_group!(
     fs::bytes::byte_benchmarks,
     fs::record::record_benchmarks,
     fs::listing::listing_benchmarks,
+    http::http_benchmarks,
     buffered::buffered_benchmarks,
     calls::call_benchmarks,
     listing::listing_benchmarks,

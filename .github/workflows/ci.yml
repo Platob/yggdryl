@@ -345,11 +345,13 @@ jobs:
       # skipping. `xxhash` is the outside C binding the digest parity suite
       # measures this implementation against: `python/tests/test_xxhash.py`
       # opens with `pytest.importorskip("xxhash")`, so without it every parity
-      # test in that suite silently skipped, in both matrix legs.
+      # test in that suite silently skipped, in both matrix legs. `requests`
+      # is the reference client `yggdryl.http` is held to: the interop suite
+      # in `python/tests/test_http.py` skips without it.
       - name: Install test tools
         run: >-
           python -m pip install "${{ matrix.pyarrow }}"
-          "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata xxhash
+          "pytest>=8" "mypy>=1.15" "pandas>=2" "polars>=1" tzdata xxhash "requests>=2.32"
       - name: Install wheel
         run: python -m pip install --force-reinstall --no-deps python/dist/*.whl
       # The script the release runs against every wheel it publishes. It lived

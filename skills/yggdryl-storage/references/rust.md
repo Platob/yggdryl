@@ -535,6 +535,46 @@ assert!(entry.compressed_size() < entry.size());
 assert_eq!(archive.as_leaf("blob.bin")?.read_range_bytes(40_000, 8)?, payload[40_000..40_008]);
 ```
 
+## Talk HTTP
+
+`Session` sends, `Request` is the leaf a URL names, and a `Server` bound on
+loopback answers in the same process, so a test never leaves the machine.
+The `http` feature; `http2` and `http3` add the multiplexed versions.
+
+```rust
+use yggdryl::holder::Holder;
+use yggdryl::http::{HttpOptions, HttpVersion, Method, Response, Server, Session, Status};
+use yggdryl::{IOBase, Url};
+
+let server = Server::bind("127.0.0.1:0")?;
+server.respond(Some(Method::Get), "/quote", Response::new(Status::OK).with_text("42"));
+let url = server.url_of("/quote")?.to_string();
+
+// One session: defaults, a cookie jar, one pool; the body read whole.
+let session = Session::new();
+assert_eq!(session.get(&url)?.send()?.text()?, "42");
+
+// Many requests: a lazy walk on up to four threads, answered in order.
+let requests = (0..8).map(|_| session.get(&url)).collect::<yggdryl::Result<Vec<_>>>()?;
+let bodies = session
+    .send_all(requests, Some(4))
+    .map(|answer| answer?.text())
+    .collect::<yggdryl::Result<Vec<_>>>()?;
+assert_eq!(bodies, vec!["42"; 8]);
+assert_eq!(session.stats().gets, 9);
+
+// An http URL is a handle: one GET for the whole value, a property bag's
+// http knobs picked out and the rest ignored.
+let handle = Holder::from_url(&Url::from_str(&url)?, [("header.X-Desk", "power"), ("warehouse", "s3://lake")])?;
+assert!(matches!(handle, Holder::HttpRequest(_)));
+assert_eq!(handle.read_all_bytes()?, b"42");
+assert_eq!(server.requests().last().unwrap().headers.get("x-desk"), Some("power"));
+
+// HTTP/2 by prior knowledge on a plain origin.
+let h2 = Session::with_options(HttpOptions::default().with_http_version(Some(HttpVersion::Http2)))?;
+assert_eq!(h2.get(&url)?.send()?.version(), HttpVersion::Http2);
+```
+
 ## Gotchas in Rust
 
 - `IOBase` must be in scope (`use yggdryl::IOBase;`) for any byte method,
@@ -556,3 +596,8 @@ assert_eq!(archive.as_leaf("blob.bin")?.read_range_bytes(40_000, 8)?, payload[40
   (`glob`, `copy_into`, `read_scalar`), so the tally shows what those decompose
   into; a child from `child_by_path` is the backend's own, not another `Counted`.
 - ZIP counts itself: `ZipArchive::handle_reads()`/`handle_writes()`.
+- `Session::with_client(client, options)` refuses `options` stating a pool
+  knob (proxy, CA bundle, HTTP version, attempts) otherwise than the client
+  was built with; build the client with it (`Client::with_options`).
+- `request.send()` holds the body (up to `max_body_size`); `request.stream()`
+  leaves it on the wire as a `Response` whose reads resume a cut transfer.
