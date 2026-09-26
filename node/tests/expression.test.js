@@ -11,6 +11,7 @@ const arrow = require('apache-arrow')
 
 const {
   BatchReader,
+  DataType,
   Expression,
   Field,
   Filter,
@@ -18,6 +19,7 @@ const {
   Records,
   Selector,
   Scalar,
+  Serie,
   Term,
   fields,
   iceberg,
@@ -282,6 +284,92 @@ test('a selector is a select clause', () => {
   assert.equal(held.length, 2)
   assert.ok(held[1].equals(Scalar.from(['B', 2n, 4n])))
   assert.ok(rows.intoArrowReader === undefined || true)
+})
+
+test('arithmetic over the fixed decimal leaves types as the leaf', () => {
+  // A fixed leaf on either side keeps the leaf at scale eighteen rather than
+  // the family's `decimal128(38, s)`; a bigdecimal or a decimal256 beside it
+  // widens the answer to a bigdecimal.
+  const root = new Field(
+    'row',
+    'struct<px:decimal, qty:decimal, size:int64, big:bigdecimal, wide:decimal256(40,2)>',
+    false,
+  )
+  const typed = new Selector(
+    'px * qty as notional, px / qty as ratio, px % qty as rest, px + size as moved, ' +
+      'px * big as widened, big / qty as narrowed, px - wide as spread',
+  ).applyField(root)
+  assert.deepEqual(
+    typed.dtype.values().map((field) => [field.name, field.dtype.toString()]),
+    [
+      ['notional', 'decimal'],
+      ['ratio', 'decimal'],
+      ['rest', 'decimal'],
+      ['moved', 'decimal'],
+      ['widened', 'bigdecimal'],
+      ['narrowed', 'bigdecimal'],
+      ['spread', 'bigdecimal'],
+    ],
+  )
+})
+
+// One row of a record `Serie` as the text of each of its cells.
+function cellTexts(row) {
+  return [...row].map((cell) => cell.toJSON())
+}
+
+test('a float cast into a decimal rounds half away from zero on both tiers', () => {
+  // A float reads as its shortest text, rounded half away from zero at the
+  // declared scale, a row as a column: 0.125 is 0.13, never the truncated
+  // 0.12, and 1.15 is 1.15, never its binary fraction.
+  const root = new Field('row', 'struct<v:float64>', false)
+  const cast = new Selector('cast(v as decimal(10,2)) as cents, cast(v as decimal(10,0)) as whole')
+  const values = [0.125, -0.125, 1.15, 2.5, 0.005]
+  const expected = [
+    ['0.13', '0'],
+    ['-0.13', '0'],
+    ['1.15', '1'],
+    ['2.50', '3'],
+    ['0.01', '0'],
+  ]
+  const bound = cast.bind(root)
+  assert.deepEqual(values.map((value) => cellTexts(bound.applyRow(Scalar.from([value])))), expected)
+  const source = Serie.fromScalars(root, values.map((value) => [value]))
+  const table = cast.applyArrowReader(source.intoArrowReader()).intoTable()
+  assert.deepEqual(Serie.fromArrowBatch(table).rows().map(cellTexts), expected)
+})
+
+test('a fixed decimal leaf cast to text is its trimmed text on both tiers', () => {
+  const root = new Field('row', 'struct<px:decimal, n:bigdecimal>', false)
+  const text = new Selector('cast(px as utf8) as px, cast(n as utf8) as n')
+  const row = Scalar.from([new DataType('decimal').scalar('1.125'), new DataType('bigdecimal').scalar('-2')])
+  assert.deepEqual(text.bind(root).applyRow(row).asJs(), ['1.125', '-2'])
+  const table = text.applyArrowReader(Serie.fromScalars(root, [row]).intoArrowReader()).intoTable()
+  assert.deepEqual([...table.getChild('px')], ['1.125'])
+  assert.deepEqual([...table.getChild('n')], ['-2'])
+})
+
+test('a star may carry appended projections, and hasStar says it stands', () => {
+  // `*` reads every stored column it does not exclude, whatever it appends:
+  // the question a projection pushdown asks.
+  const starred = new Selector("* exclude (size), upper(ccy) as code")
+  assert.equal(starred.toString(), '* exclude (size), upper(ccy) as code')
+  assert.equal(starred.hasStar, true)
+  assert.equal(starred.isAll, false)
+  assert.deepEqual(starred.excluded, ['size'])
+  assert.deepEqual(starred.names, ['code'])
+  assert.equal(starred.length, 1)
+  assert.equal(Selector.all().hasStar, true)
+  assert.equal(Selector.all().withProjection('size as quantity').toString(), '*, size as quantity')
+  assert.equal(Selector.all().withProjection('size as quantity').hasStar, true)
+  assert.equal(Selector.allExcept(['size']).hasStar, true)
+  assert.equal(new Selector('ccy, size').hasStar, false)
+  assert.equal(Selector.fromColumns(['ccy']).hasStar, false)
+  // A star appending a projection publishes every kept column, then it.
+  assert.deepEqual(
+    starred.applyField(ROWS).dtype.values().map((field) => field.name),
+    ['ccy', 'code'],
+  )
 })
 
 test('a selector declares columns like a create table', () => {

@@ -1849,3 +1849,35 @@ def test_a_field_materializes_its_default_as_a_one_row_array() -> None:
         Field("id", "int64", nullable=False)
     ).into_arrow_array().to_pylist() == [0]
     assert Serie.from_default(Field("id", "int64")).into_arrow_array().to_pylist() == [None]
+
+
+def test_a_field_exports_its_arrow_c_schema_with_every_nested_flag() -> None:
+    mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+    field = Field("lookup", DataType.from_arrow(mapping), nullable=False)
+    field.metadata["owner"] = "lookup"
+    expected = pa.field("lookup", mapping, nullable=False, metadata={"owner": "lookup"})
+    assert pa.field(field).equals(expected, check_metadata=True)
+    assert pa.field(field).type.keys_sorted
+    imported = pa.Field._import_from_c_capsule(field.__arrow_c_schema__())
+    assert imported.equals(expected, check_metadata=True)
+
+
+def test_a_record_root_imports_as_one_schema_with_its_metadata() -> None:
+    root = Field("row", "struct<id: int64 not null, lookup: map<utf8, int64>>", nullable=False)
+    root.metadata["owner"] = "root"
+    schema = root.into_arrow_schema()
+    assert schema.metadata == {b"owner": b"root"}
+    assert schema.field("id").nullable is False
+    assert Field.from_arrow_schema(schema) == root
+
+
+@pytest.mark.parametrize(
+    "value",
+    [DataType("int64"), Serie.from_(pa.array([1, 2]))],
+    ids=["DataType", "Serie"],
+)
+def test_a_native_capsule_exporter_is_no_spelling_of_a_field(value: object) -> None:
+    # Both export a capsule for Arrow consumers; a datatype names no field,
+    # and a column's is `serie.field`, never read through that capsule.
+    with pytest.raises(TypeError, match="expected a yggdryl.Field"):
+        Field.from_value(value)

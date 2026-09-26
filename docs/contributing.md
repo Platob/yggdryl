@@ -51,7 +51,8 @@ test file at the matching path.
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |
 | `rust/src/expression/` | [Expression](expression/index.md) |
-| `rust/src/graph/` | [Graph](graph.md) |
+| `rust/src/graph/`, `rust/src/limit.rs` | [Graph](graph/index.md) |
+| `node/replay.js`, `node/replay/`, `node/web/` | [Graph: replay](graph/replay.md) and [components](graph/components.md) |
 | `rust/src/digest.rs`, `rust/src/hashing/`, `rust/src/xxhash/`, `rust/src/txhash/` | [Hashing](hashing.md) |
 | `rust/src/fix/` | [FIX](fix/index.md) |
 

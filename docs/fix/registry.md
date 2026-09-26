@@ -1077,7 +1077,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
 
     use yggdryl::expression::Term;
     use yggdryl::local::LocalFolder;
-    use yggdryl::{Decimal18, FixCodec, FixRegistry, Scalar};
+    use yggdryl::{Decimal, FixCodec, FixRegistry, Scalar};
 
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
     let mut registry = FixRegistry::from_handle(&LocalFolder::new(root)?)?;
@@ -1099,7 +1099,7 @@ A derivation is metadata on the field, so it is configured the way any field fac
     let reader = FixCodec::new(Arc::new(registry));
     let filled = reader.parse_line(b"8=FIX.4.4|35=8|37=A|39=0|38=100|14=20|10=0|")?.next().expect("one frame")?;
     // A quantity is exact, so the remainder reads back as the number it is.
-    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal18::parse("8")?));
+    assert_eq!(filled.by_tag(151)?, Scalar::from(Decimal::parse("8")?));
     ```
 
 === "Python"

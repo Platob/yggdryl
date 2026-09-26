@@ -183,6 +183,8 @@ impl Scalar {
             Self::Decimal256(value) => {
                 decimal_dtype(value.coefficient(), value.scale(), DecimalWidth::Decimal256)
             }
+            Self::Decimal(_) => Ok(DataType::Decimal),
+            Self::BigDecimal(_) => Ok(DataType::BigDecimal),
             // A string value already declares its leaf - its layout, its
             // charset and its number - so the inferred datatype is what the
             // value says it is rather than a guess over its characters; the

@@ -1,13 +1,25 @@
 //! The `select` block: which columns a read or write publishes, computed how,
 //! typed as what.
 //!
-//! A [`Selector`] is a list of [`Projection`]s, and a projection is one output
-//! column: a [`Term`] that computes it, the name it is published under, and -
-//! the way a `create table` column definition says it - the datatype and
-//! nullability it is published as. `select *` is the empty list, which
-//! publishes the rows unchanged. One selector therefore spells everything from
-//! `id, price` through `cast(price as float64) * size as notional` to the
-//! column list a table is created with, `id int64 not null, price decimal(9,2)`.
+//! A [`Selector`] is an optional `*` - every column, less the ones it
+//! excludes - followed by a list of [`Projection`]s, and a projection is one
+//! output column: a [`Term`] that computes it, the name it is published under,
+//! and - the way a `create table` column definition says it - the datatype and
+//! nullability it is published as. `select *` publishes the rows unchanged,
+//! and `select * exclude (a), upper(b) as c` every column but `a` with `c`
+//! appended. One selector therefore spells everything from `id, price` through
+//! `cast(price as float64) * size as notional` to the column list a table is
+//! created with, `id int64 not null, price decimal(9,2)`.
+//!
+//! # One projection may multiply rows
+//!
+//! `unnest(<serie>) [as name]` is the one select-list form that does: each
+//! parent row becomes one row per element of its serie, the other columns
+//! repeated beside it, and a null or empty serie drops the row. A struct item
+//! publishes one column per child, named `<name>.<child>`; any other item one
+//! column named `name`. It stands only as the whole term of a projection, at
+//! most once per selector, and a filter or an ordering that names what it
+//! publishes runs after it.
 //!
 //! # One application, four targets
 //!
@@ -166,18 +178,23 @@ impl Projection {
     /// The name this projection publishes.
     ///
     /// An aliased projection uses its alias; a path keeps the name of what it
-    /// reaches; anything else is named by its canonical text, so a selector
-    /// never produces two columns that are impossible to tell apart.
+    /// reaches, and so does an `unnest` of one; anything else is named by its
+    /// canonical text, so a selector never produces two columns that are
+    /// impossible to tell apart.
     #[must_use]
     pub fn name(&self) -> SmolStr {
         if let Some(alias) = &self.alias {
             return alias.clone();
         }
-        match &self.term {
+        let named = match self.term.as_unnest() {
+            Some([argument]) => argument,
+            _ => &self.term,
+        };
+        match named {
             Term::Path(steps) => FieldPath::from_shared(Arc::clone(steps), None)
                 .column_name()
                 .map_or_else(|| SmolStr::new(self.term.to_string()), SmolStr::new),
-            other => SmolStr::new(other.to_string()),
+            _ => SmolStr::new(self.term.to_string()),
         }
     }
 
@@ -197,13 +214,20 @@ impl Projection {
     /// The field this projection publishes against a struct root schema.
     ///
     /// The term is typed by [`Term::field`], named by [`Self::name`], and then
-    /// restated as whatever the projection declares.
+    /// restated as whatever the projection declares. An `unnest` publishes
+    /// its serie's item, declared the same way: a struct item is the
+    /// children a [`Selector`] expands it into, each `<name>.<child>`.
     ///
     /// # Errors
     ///
-    /// Returns an error when the term cannot be typed against the schema.
+    /// Returns an error when the term cannot be typed against the schema, or
+    /// an `unnest` is not of one serie.
     pub fn field(&self, schema: &Field) -> Result<Field> {
-        let mut field = self.term.field(schema)?.with_name(self.name());
+        let typed = match self.term.as_unnest() {
+            Some(arguments) => self.unnested_item(arguments, schema)?,
+            None => self.term.field(schema)?,
+        };
+        let mut field = typed.with_name(self.name());
         if let Some(dtype) = &self.dtype {
             field = field.try_with_dtype(dtype.clone())?;
         }
@@ -214,6 +238,32 @@ impl Projection {
             field = field.try_with_metadata_entries(self.metadata.iter())?;
         }
         Ok(field)
+    }
+
+    /// The item of the one serie an `unnest` projection's arguments read.
+    fn unnested_item(&self, arguments: &[Term], schema: &Field) -> Result<Field> {
+        let [argument] = arguments else {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{}", self.name()),
+                reason: format_smolstr!(
+                    "expected unnest to take one serie, got {} arguments in `{}`",
+                    arguments.len(),
+                    self.term
+                ),
+            });
+        };
+        let serie = argument.field(schema)?;
+        super::typing::unwrap_dictionary(serie.dtype())
+            .serie_item()
+            .cloned()
+            .ok_or_else(|| Error::InvalidRecord {
+                path: format_smolstr!("$.{}", self.name()),
+                reason: format_smolstr!(
+                    "expected a serie to unnest, got {} in `{}`",
+                    serie.dtype(),
+                    self.term
+                ),
+            })
     }
 
     /// The same projection over a simplified term.
@@ -264,7 +314,8 @@ impl FromStr for Projection {
     }
 }
 
-/// The `select` block: the columns published, in order. Empty is `*`.
+/// The `select` block: an optional `*` - every column, less the ones it
+/// excludes - then the projections appended after it, in order.
 ///
 /// ```
 /// use yggdryl::expression::Selector;
@@ -278,57 +329,124 @@ impl FromStr for Projection {
 /// assert_eq!(projected.fields()[1].name(), "notional");
 /// assert_eq!(selector.to_string(), "ccy, price * size as notional");
 /// assert_eq!(Selector::all().to_string(), "*");
+///
+/// // A `*` keeps every column it does not exclude, the appended ones last.
+/// let starred: Selector = "* exclude (price), price * size as notional".parse()?;
+/// let names: Vec<String> = starred
+///     .apply_field(&schema)?
+///     .fields()
+///     .iter()
+///     .map(|field| field.name().to_owned())
+///     .collect();
+/// assert_eq!(names, ["ccy", "size", "notional"]);
+/// assert_eq!(starred.to_string(), "* exclude (price), price * size as notional");
 /// # Ok(())
 /// # }
 /// ```
 #[derive(
-    Clone,
-    Debug,
-    Default,
-    Eq,
-    PartialEq,
-    Ord,
-    PartialOrd,
-    Hash,
-    ::serde::Serialize,
-    ::serde::Deserialize,
+    Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
 )]
+#[serde(try_from = "SelectorWire", into = "SelectorWire")]
 pub struct Selector {
-    #[serde(default, skip_serializing_if = "<[Projection]>::is_empty")]
+    /// Whether the selector opens with `*`. A selector with no `*` holds at
+    /// least one projection: the empty list is `*`, and nothing else spells
+    /// it.
+    star: bool,
+    /// The columns `*` leaves out; empty without a `*`.
+    exclude: Arc<[SmolStr]>,
+    /// The projections, after the `*` when there is one.
     projections: Arc<[Projection]>,
+}
+
+/// The structural document of a [`Selector`]: its three parts, each written
+/// only when it says something.
+#[derive(::serde::Serialize, ::serde::Deserialize)]
+struct SelectorWire {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    star: bool,
     #[serde(default, skip_serializing_if = "<[SmolStr]>::is_empty")]
     exclude: Arc<[SmolStr]>,
+    #[serde(default, skip_serializing_if = "<[Projection]>::is_empty")]
+    projections: Arc<[Projection]>,
+}
+
+impl From<Selector> for SelectorWire {
+    fn from(selector: Selector) -> Self {
+        Self {
+            star: selector.star,
+            exclude: selector.exclude,
+            projections: selector.projections,
+        }
+    }
+}
+
+impl TryFrom<SelectorWire> for Selector {
+    type Error = Error;
+
+    fn try_from(wire: SelectorWire) -> Result<Self> {
+        if !wire.star && !wire.exclude.is_empty() {
+            return Err(Error::InvalidRecord {
+                path: SmolStr::new_static("$.exclude"),
+                reason: SmolStr::new_static(
+                    "expected `exclude` only beside `star`, which it narrows",
+                ),
+            });
+        }
+        Ok(Self::from_parts(wire.star, wire.exclude, wire.projections))
+    }
+}
+
+impl Default for Selector {
+    fn default() -> Self {
+        Self::from_parts(true, Arc::from([]), Arc::from([]))
+    }
 }
 
 impl Selector {
+    /// The one assembly of the three parts: a list with no `*` and nothing
+    /// in it is `*`.
+    fn from_parts(star: bool, exclude: Arc<[SmolStr]>, projections: Arc<[Projection]>) -> Self {
+        let star = star || projections.is_empty();
+        Self {
+            star,
+            exclude,
+            projections,
+        }
+    }
+
     /// Select every column unchanged: `select *`.
     #[must_use]
     pub fn all() -> Self {
         Self::default()
     }
 
-    /// Select the given projections, in order.
+    /// Select the given projections, in order; none at all is `*`.
     pub fn new(projections: impl IntoIterator<Item = Projection>) -> Self {
-        Self {
-            projections: projections.into_iter().collect(),
-            exclude: Arc::from([]),
-        }
+        Self::from_parts(false, Arc::from([]), projections.into_iter().collect())
     }
 
     /// Select every column but the named ones: `select * exclude (a, b)`.
     ///
     /// The columns are named exactly and matched ASCII case-insensitively
     /// against the schema the selector is applied to; a name the schema does
-    /// not hold excludes nothing.
+    /// not hold excludes nothing. Projections appended with
+    /// [`Self::with_projection`] follow the columns the `*` keeps.
     pub fn all_except<I, S>(names: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<SmolStr>,
     {
-        Self {
-            projections: Arc::from([]),
-            exclude: names.into_iter().map(Into::into).collect(),
-        }
+        Self::from_parts(
+            true,
+            names.into_iter().map(Into::into).collect(),
+            Arc::from([]),
+        )
+    }
+
+    /// The selector a parsed `*`, its exclusions and the projections after
+    /// it spell.
+    pub(crate) fn starred(exclude: Vec<SmolStr>, projections: Vec<Projection>) -> Self {
+        Self::from_parts(true, Arc::from(exclude), Arc::from(projections))
     }
 
     /// The columns `*` leaves out; empty unless the selector excludes.
@@ -337,10 +455,22 @@ impl Selector {
         &self.exclude
     }
 
+    /// Return whether this selector opens with `*`, so it publishes every
+    /// stored column it does not exclude - whatever it appends after.
+    ///
+    /// This is the question a projection pushdown asks: a `*` reads every
+    /// column, since the ones it keeps are named by the schema and not by the
+    /// selector.
+    #[must_use]
+    pub const fn has_star(&self) -> bool {
+        self.star
+    }
+
     /// The explicit projections this selector amounts to over `schema`: a
-    /// `*` becomes every column, minus what it excludes.
+    /// `*` becomes every column, minus what it excludes, and the appended
+    /// projections follow.
     fn expanded(&self, schema: &Field) -> Vec<Projection> {
-        if !self.projections.is_empty() {
+        if !self.star {
             return self.projections.to_vec();
         }
         schema
@@ -353,6 +483,7 @@ impl Selector {
                     .any(|name| name.eq_ignore_ascii_case(field.name()))
             })
             .map(|field| Projection::column(field.name()))
+            .chain(self.projections.iter().cloned())
             .collect()
     }
 
@@ -423,16 +554,18 @@ impl Selector {
         crate::hashing::stable_hash_display(self)
     }
 
-    /// The projections, in output order. Empty means every column.
+    /// The projections, in output order after the `*` when there is one.
+    /// Empty means every column.
     #[must_use]
     pub fn projections(&self) -> &[Projection] {
         &self.projections
     }
 
-    /// Return whether this selector publishes every column unchanged.
+    /// Return whether this selector publishes every column unchanged: a `*`
+    /// that excludes nothing and appends nothing.
     #[must_use]
     pub fn is_all(&self) -> bool {
-        self.projections.is_empty() && self.exclude.is_empty()
+        self.star && self.exclude.is_empty() && self.projections.is_empty()
     }
 
     /// Return whether this selector names nothing - the same empty list read
@@ -442,36 +575,87 @@ impl Selector {
         self.projections.is_empty()
     }
 
-    /// How many columns this selector publishes; zero for `*`.
+    /// How many projections this selector names; zero for `*`, and the
+    /// appended ones for a `*` that appends.
     #[must_use]
     pub fn len(&self) -> usize {
         self.projections.len()
     }
 
-    /// The names this selector publishes, in order.
+    /// The names this selector's projections publish, in order: the ones a
+    /// `*` keeps are the schema's to name.
     #[must_use]
     pub fn names(&self) -> Vec<SmolStr> {
         self.projections.iter().map(Projection::name).collect()
     }
 
-    /// Return this selector with one more projection.
+    /// Return whether a column this selector publishes answers to `name`
+    /// whatever the schema: a projection's name, or a column an `unnest`
+    /// publishes - its name, or `<name>.<child>` for a struct item.
+    pub(crate) fn publishes(&self, name: &str) -> bool {
+        self.projections.iter().any(|projection| {
+            let published = projection.name();
+            if published.eq_ignore_ascii_case(name) {
+                return true;
+            }
+            let prefix = published.len();
+            projection.term.as_unnest().is_some()
+                && name.len() > prefix + 1
+                && name.as_bytes()[prefix] == b'.'
+                && name
+                    .get(..prefix)
+                    .is_some_and(|head| head.eq_ignore_ascii_case(&published))
+        })
+    }
+
+    /// Return whether a projection of this selector is an `unnest`, so it
+    /// publishes as many rows as the serie holds elements rather than one
+    /// per row.
+    pub(crate) fn unnests(&self) -> bool {
+        self.projections
+            .iter()
+            .any(|projection| projection.term.as_unnest().is_some())
+    }
+
+    /// Refuse an `unnest` among this selector's projections, naming the
+    /// call and `place`, where it stood: a key or a column declaration is one
+    /// value of one row, and an unnest publishes one row per element.
+    pub(crate) fn refuse_unnest(&self, place: &str) -> Result<()> {
+        match self
+            .projections
+            .iter()
+            .find(|projection| projection.term.as_unnest().is_some())
+        {
+            Some(projection) => Err(super::typing::unnest_misplaced(&projection.term, place)),
+            None => Ok(()),
+        }
+    }
+
+    /// Return this selector with one more projection, appended after
+    /// everything it already publishes - a `*` and its exclusions included.
     #[must_use]
     pub fn with_projection(&self, projection: Projection) -> Self {
-        Self::new(
+        Self::from_parts(
+            self.star,
+            Arc::clone(&self.exclude),
             self.projections
                 .iter()
                 .cloned()
-                .chain(std::iter::once(projection)),
+                .chain(std::iter::once(projection))
+                .collect(),
         )
     }
 
     /// Return this selector without the named columns.
     ///
     /// Only a projection publishing one bare column can be named by a column
-    /// name; a computed projection stays whatever the list says.
+    /// name; a computed projection stays whatever the list says, and a `*`
+    /// keeps what it keeps.
     #[must_use]
     pub fn without_columns(&self, names: &[&str]) -> Self {
-        Self::new(
+        Self::from_parts(
+            self.star,
+            Arc::clone(&self.exclude),
             self.projections
                 .iter()
                 .filter(|projection| {
@@ -479,14 +663,17 @@ impl Selector {
                         names.iter().any(|name| name.eq_ignore_ascii_case(column))
                     })
                 })
-                .cloned(),
+                .cloned()
+                .collect(),
         )
     }
 
-    /// Every top-level column this selector reads, in first-seen order.
+    /// Every top-level column this selector's projections read, in
+    /// first-seen order.
     ///
     /// The source side of the projection - what an encoding has to decode -
-    /// as opposed to [`Self::names`], the published side.
+    /// as opposed to [`Self::names`], the published side. A `*` reads every
+    /// column besides, which [`Self::has_star`] says.
     #[must_use]
     pub fn columns(&self) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
@@ -523,10 +710,11 @@ impl Selector {
     /// The same selector over simplified terms.
     #[must_use]
     pub fn simplify(&self) -> Self {
-        Self {
-            projections: self.projections.iter().map(Projection::simplify).collect(),
-            exclude: Arc::clone(&self.exclude),
-        }
+        Self::from_parts(
+            self.star,
+            Arc::clone(&self.exclude),
+            self.projections.iter().map(Projection::simplify).collect(),
+        )
     }
 
     /// Refuse a selector holding a term past the depth or node budget.
@@ -545,40 +733,84 @@ impl Selector {
     ///
     /// `*` publishes the datatype itself. Otherwise the result holds one
     /// child per projection, typed by [`Projection::field`] against a root of
-    /// that datatype. Two projections publishing one name are refused,
-    /// because a batch cannot carry them. This is the schema question every
-    /// other schema application - [`apply_field`](Self::apply_field), a
-    /// plan's `create` section, a reader's declared shape - is answered by.
+    /// that datatype - an `unnest` of struct items one per child of the item.
+    /// Two columns publishing one name are refused, because a batch cannot
+    /// carry them. This is the schema question every other schema
+    /// application - [`apply_field`](Self::apply_field), a plan's `create`
+    /// section, a reader's declared shape - is answered by.
     ///
     /// # Errors
     ///
     /// Returns an error when `dtype` is not a struct, when a term cannot be
-    /// typed against it, or when two projections share a name.
+    /// typed against it, when two columns share a name, or when an `unnest`
+    /// is not the only one or not of a serie.
     pub fn apply_datatype(&self, dtype: &DataType) -> Result<DataType> {
         if self.is_all() {
             return Ok(dtype.clone());
         }
         let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
+        let (_, children, _) = self.published(&root)?;
+        StructType::from_fields(children).map(DataType::from)
+    }
+
+    /// Everything this selector publishes from `root`: the projections it
+    /// amounts to, the columns they publish, and the `unnest` among them.
+    ///
+    /// The one place a selector's output is decided, so the schema a
+    /// selector answers and the batches its bound form produces agree.
+    fn published(&self, root: &Field) -> Result<(Vec<Projection>, Vec<Field>, Option<Unnested>)> {
         root.require_struct()?;
-        let projections = self.expanded(&root);
-        let mut children = Vec::with_capacity(projections.len());
-        for projection in &projections {
-            let child = projection.field(&root)?;
-            if children
-                .iter()
-                .any(|held: &Field| held.name().eq_ignore_ascii_case(child.name()))
-            {
+        let projections = self.expanded(root);
+        let mut children: Vec<Field> = Vec::with_capacity(projections.len());
+        let mut unnested: Option<Unnested> = None;
+        for (position, projection) in projections.iter().enumerate() {
+            let child = projection.field(root)?;
+            if projection.term.as_unnest().is_none() {
+                push_published(&mut children, child)?;
+                continue;
+            }
+            if let Some(held) = &unnested {
                 return Err(Error::InvalidRecord {
                     path: format_smolstr!("$.{}", child.name()),
                     reason: format_smolstr!(
-                        "expected every projection to publish its own name, got {:?} twice",
-                        child.name()
+                        "expected at most one unnest in a select, got `{}` and `{}`",
+                        projections[held.position].term,
+                        projection.term
                     ),
                 });
             }
-            children.push(child);
+            let expand = child.is_struct();
+            if expand && !projection.metadata.is_empty() {
+                return Err(Error::InvalidRecord {
+                    path: format_smolstr!("$.{}", child.name()),
+                    reason: format_smolstr!(
+                        "expected no `with (...)` on `{}`, which publishes its struct item as \
+                         one column per child",
+                        projection.term
+                    ),
+                });
+            }
+            if expand {
+                // One column per child, named under the projection: a child of
+                // a null item is null.
+                for member in child.fields() {
+                    let nullable = child.is_nullable() || member.is_nullable();
+                    let name = format_smolstr!("{}.{}", child.name(), member.name());
+                    push_published(
+                        &mut children,
+                        member.clone().with_name(name).with_nullable(nullable),
+                    )?;
+                }
+            } else {
+                push_published(&mut children, child.clone())?;
+            }
+            unnested = Some(Unnested {
+                position,
+                item: child,
+                expand,
+            });
         }
-        StructType::from_fields(children).map(DataType::from)
+        Ok((projections, children, unnested))
     }
 
     /// The struct root this selector publishes from `root`.
@@ -628,12 +860,23 @@ impl Selector {
         schema: &Field,
         parameters: &[(&str, Scalar)],
     ) -> Result<BoundSelector> {
-        schema.require_struct()?;
-        let output = self.apply_field(schema)?;
-        let expanded = self.expanded(schema);
+        let (expanded, children, unnested) = self.published(schema)?;
+        let output = if self.is_all() {
+            schema.clone()
+        } else {
+            schema
+                .clone()
+                .try_with_dtype(StructType::from_fields(children).map(DataType::from)?)?
+        };
         let mut projections = Vec::with_capacity(expanded.len());
         for projection in &expanded {
-            projections.push(projection.term.bind_with(schema, parameters)?);
+            // An unnest binds the serie it reads; the rows it publishes are
+            // the selector's to lay out.
+            let term = match projection.term.as_unnest() {
+                Some([argument]) => argument,
+                _ => &projection.term,
+            };
+            projections.push(term.bind_with(schema, parameters)?);
         }
         // A selector that republishes every stored column, in order, as it is
         // stored has nothing to do per batch: the plan is the identity and is
@@ -649,6 +892,7 @@ impl Selector {
             output,
             casts: projections.iter().map(|_| ColumnCast::default()).collect(),
             projections,
+            unnested,
             identity,
         })
     }
@@ -722,9 +966,14 @@ impl Selector {
     /// root to type it against, when a projection cannot be typed against
     /// the root, or when two columns share a name.
     pub fn declared_field(&self, root: Option<&Field>, name: &str) -> Result<Field> {
+        // With no root to expand it against, a `*` declares nothing and the
+        // projections after it declare themselves.
+        // A declared column is one column of one row; the rows an unnest
+        // publishes are a select's alone.
+        self.refuse_unnest("in a column declaration")?;
         let projections = match root {
-            Some(root) if self.projections.is_empty() => self.expanded(root),
-            _ => self.projections.to_vec(),
+            Some(root) => self.expanded(root),
+            None => self.projections.to_vec(),
         };
         let mut children: Vec<Field> = Vec::with_capacity(projections.len());
         for projection in &projections {
@@ -926,6 +1175,47 @@ impl IntoSelector for &super::Expression {
     }
 }
 
+/// Add one published column, refusing a second of the same name.
+fn push_published(children: &mut Vec<Field>, child: Field) -> Result<()> {
+    if children
+        .iter()
+        .any(|held| held.name().eq_ignore_ascii_case(child.name()))
+    {
+        return Err(Error::InvalidRecord {
+            path: format_smolstr!("$.{}", child.name()),
+            reason: format_smolstr!(
+                "expected every projection to publish its own name, got {:?} twice",
+                child.name()
+            ),
+        });
+    }
+    children.push(child);
+    Ok(())
+}
+
+/// The one `unnest` a selector holds: which projection it is, and the item
+/// it publishes.
+#[derive(Clone, Debug)]
+pub(crate) struct Unnested {
+    /// Its place among the projections.
+    pub(crate) position: usize,
+    /// The item, named and declared as the projection says.
+    pub(crate) item: Field,
+    /// Whether the item is a struct published as one column per child.
+    pub(crate) expand: bool,
+}
+
+impl Unnested {
+    /// How many columns the item publishes.
+    fn width(&self) -> usize {
+        if self.expand {
+            self.item.field_len()
+        } else {
+            1
+        }
+    }
+}
+
 /// A [`Selector`] resolved against one schema.
 ///
 /// Built once per stream, so a projection over a thousand batches types its
@@ -934,9 +1224,13 @@ impl IntoSelector for &super::Expression {
 pub struct BoundSelector {
     schema: Field,
     output: Field,
+    /// One bound term per projection; an `unnest` binds the serie it reads.
     projections: Vec<Bound>,
-    /// One held cast per projection, into the column it declares.
+    /// One held cast per projection, into the column it declares - an
+    /// `unnest`'s into its item.
     casts: Arc<[ColumnCast]>,
+    /// The projection that multiplies rows, when one does.
+    unnested: Option<Unnested>,
     identity: bool,
 }
 
@@ -953,10 +1247,16 @@ impl BoundSelector {
         &self.output
     }
 
-    /// The bound terms, in output order. Empty means every column.
+    /// The bound terms, one per projection in output order - an `unnest`'s
+    /// the serie it reads. Empty means every column.
     #[must_use]
     pub fn projections(&self) -> &[Bound] {
         &self.projections
+    }
+
+    /// The projection that multiplies rows, when one does.
+    pub(crate) const fn unnested(&self) -> Option<&Unnested> {
+        self.unnested.as_ref()
     }
 
     /// Return whether this selector publishes every column unchanged.
@@ -987,6 +1287,16 @@ impl BoundSelector {
     pub fn apply_scalar(&self, row: &Scalar) -> Result<Scalar> {
         if self.is_identity() {
             return Ok(row.clone());
+        }
+        if let Some(unnested) = &self.unnested {
+            return Err(Error::InvalidRecord {
+                path: format_smolstr!("$.{}", unnested.item.name()),
+                reason: format_smolstr!(
+                    "expected a select that publishes one row per row, got an unnest of {:?}, \
+                     which publishes one per element; apply it to records, a batch or a stream",
+                    unnested.item.name()
+                ),
+            });
         }
         let mut values = Vec::with_capacity(self.projections.len());
         for (bound, field) in self.projections.iter().zip(self.output.fields()) {
@@ -1023,11 +1333,13 @@ mod arrow {
     use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchReader, StructArray};
     use arrow_schema::{ArrowError, SchemaRef};
 
-    use super::{BoundSelector, Selector};
+    use super::{BoundSelector, ColumnCast, Selector};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
     use crate::cast::ArrowCastOptions;
-    use crate::expression::arrow::{collected, one_batch, struct_batch};
-    use crate::{Error, Result};
+    use crate::expression::arrow::{
+        StructRows, collected, one_batch, scattered, struct_children, struct_rows, unnest,
+    };
+    use crate::{Error, Field, Result};
 
     impl Selector {
         /// Wrap a reader so every batch it yields is what this selector
@@ -1072,7 +1384,11 @@ mod arrow {
         /// The struct array this selector publishes from one struct array.
         ///
         /// The array's own null mask is kept: a struct that was null stays
-        /// null whatever its projections compute.
+        /// null whatever its projections compute, and none of its children
+        /// is read. An `unnest` publishes exactly the rows
+        /// [`Self::apply_arrow_batch`] does for the struct's rows that are
+        /// not null - one per element, however many that is - and they are
+        /// rows of their own, which the struct's mask does not describe.
         ///
         /// # Errors
         ///
@@ -1082,9 +1398,9 @@ mod arrow {
             if self.is_all() {
                 return Ok(Arc::clone(array));
             }
-            let (held, batch) = struct_batch(array, "select from")?;
-            let projected = self.apply_arrow_batch(&batch)?;
-            rebuilt_struct(held, &projected)
+            let rows = struct_rows(array, "select from")?;
+            let projected = self.apply_arrow_batch(&rows.batch)?;
+            rebuilt_struct(&rows, &projected, self.unnests())
         }
     }
 
@@ -1112,32 +1428,48 @@ mod arrow {
             batch: &RecordBatch,
             schema: Option<&SchemaRef>,
         ) -> Result<RecordBatch> {
-            let mut columns = Vec::with_capacity(self.projections.len());
-            let fields = self.output.fields().iter().zip(self.casts.iter());
-            for (bound, (field, cast)) in self.projections.iter().zip(fields) {
-                let evaluated = bound.evaluate(batch)?;
-                let array = if evaluated.data_type() == field.as_arrow_field_ref()?.data_type() {
-                    evaluated
-                } else {
-                    // The projection declared a datatype the term does not
-                    // produce. A value the column cannot hold becomes null,
-                    // the best-effort reading of a cast - unless the column
-                    // is declared `not null`, where a null is refused anyway
-                    // and the cast says which value could not be held.
-                    cast.reconcile(
-                        field,
-                        None,
-                        evaluated,
-                        ArrowCastOptions::new().with_safe(field.is_nullable()),
-                    )
-                    .map_err(|error| Error::InvalidRecord {
-                        path: smol_str::format_smolstr!("$.{}", field.name()),
-                        reason: smol_str::format_smolstr!(
-                            "expected every value to fit the required column {:?}, got {error}",
-                            field.name()
-                        ),
-                    })?
+            // An unnest lays its serie's elements out first: the parent row
+            // of every element is the take every other column is read by.
+            let unnested = match &self.unnested {
+                Some(unnested) => {
+                    let serie = &self.projections[unnested.position];
+                    let (parents, items) = unnest(serie.field(), &serie.evaluate(batch)?)?;
+                    Some((unnested, parents, items))
+                }
+                None => None,
+            };
+            let rows = unnested
+                .as_ref()
+                .map_or(batch.num_rows(), |(_, parents, _)| parents.len());
+            let mut columns = Vec::with_capacity(self.output.field_len());
+            let mut fields = self.output.fields().iter();
+            for (position, (bound, cast)) in
+                self.projections.iter().zip(self.casts.iter()).enumerate()
+            {
+                if let Some((unnested, _, items)) = unnested
+                    .as_ref()
+                    .filter(|(unnested, ..)| unnested.position == position)
+                {
+                    let items = declared(&unnested.item, cast, Arc::clone(items))?;
+                    let published = if unnested.expand {
+                        struct_children(&items)?
+                    } else {
+                        vec![items]
+                    };
+                    for (field, array) in fields.by_ref().take(unnested.width()).zip(published) {
+                        super::require_present(field, array.null_count() > 0)?;
+                        columns.push(array);
+                    }
+                    continue;
+                }
+                let Some(field) = fields.next() else {
+                    break;
                 };
+                let mut array = declared(field, cast, bound.evaluate(batch)?)?;
+                if let Some((_, parents, _)) = &unnested {
+                    array = arrow_select::take::take(array.as_ref(), parents, None)
+                        .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?;
+                }
                 super::require_present(field, array.null_count() > 0)?;
                 columns.push(array);
             }
@@ -1145,8 +1477,7 @@ mod arrow {
                 Some(schema) => Arc::clone(schema),
                 None => arrow_schema_from_field(&self.output)?,
             };
-            let options =
-                arrow_array::RecordBatchOptions::new().with_row_count(Some(batch.num_rows()));
+            let options = arrow_array::RecordBatchOptions::new().with_row_count(Some(rows));
             RecordBatch::try_new_with_options(schema, columns, &options)
                 .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))
         }
@@ -1160,9 +1491,9 @@ mod arrow {
             if self.is_identity() {
                 return Ok(Arc::clone(array));
             }
-            let (held, batch) = struct_batch(array, "select from")?;
-            let projected = self.apply_arrow_batch(&batch)?;
-            rebuilt_struct(held, &projected)
+            let rows = struct_rows(array, "select from")?;
+            let projected = self.apply_arrow_batch(&rows.batch)?;
+            rebuilt_struct(&rows, &projected, self.unnested.is_some())
         }
 
         /// Wrap a reader so every batch it yields is what this selector
@@ -1184,14 +1515,58 @@ mod arrow {
         }
     }
 
-    /// One struct's projected columns under the struct's own null mask.
-    fn rebuilt_struct(held: &StructArray, projected: &RecordBatch) -> Result<ArrayRef> {
-        let rebuilt = StructArray::try_new_with_length(
-            projected.schema().fields().clone(),
-            projected.columns().to_vec(),
-            held.nulls().cloned(),
-            held.len(),
-        )
+    /// One evaluated column as the column its projection declares.
+    fn declared(field: &Field, cast: &ColumnCast, evaluated: ArrayRef) -> Result<ArrayRef> {
+        if evaluated.data_type() == field.as_arrow_field_ref()?.data_type() {
+            return Ok(evaluated);
+        }
+        // The projection declared a datatype the term does not produce, so it
+        // casts by the column's own rule: a value a nullable column cannot
+        // hold becomes null, and a `not null` column refuses that value or a
+        // null by name.
+        cast.reconcile(field, None, evaluated, ArrowCastOptions::new())
+            .map_err(|error| Error::InvalidRecord {
+                path: smol_str::format_smolstr!("$.{}", field.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected every value to fit the required column {:?}, got {error}",
+                    field.name()
+                ),
+            })
+    }
+
+    /// One struct's projected columns, laid back out at the struct's own
+    /// positions under its own null mask where the rows are the struct's. An
+    /// unnest's rows are one per element, never the held rows even where
+    /// they number as many, so no held mask describes them.
+    fn rebuilt_struct(
+        rows: &StructRows<'_>,
+        projected: &RecordBatch,
+        unnests: bool,
+    ) -> Result<ArrayRef> {
+        let fields = projected.schema().fields().clone();
+        let rebuilt = if unnests {
+            StructArray::try_new_with_length(
+                fields,
+                projected.columns().to_vec(),
+                None,
+                projected.num_rows(),
+            )
+        } else {
+            let columns = match &rows.scatter {
+                Some(scatter) => projected
+                    .columns()
+                    .iter()
+                    .map(|column| scattered(column, scatter))
+                    .collect::<Result<Vec<_>>>()?,
+                None => projected.columns().to_vec(),
+            };
+            StructArray::try_new_with_length(
+                fields,
+                columns,
+                rows.held.nulls().cloned(),
+                rows.held.len(),
+            )
+        }
         .map_err(|error| Error::from(crate::arrow::Error::Arrow(error)))?;
         Ok(Arc::new(rebuilt))
     }

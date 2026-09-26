@@ -3,19 +3,19 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use arrow_array::RecordBatch as ArrowRecordBatch;
 use arrow_pyarrow::FromPyArrow;
 use arrow_schema::{Field as ArrowField, Schema as ArrowSchema};
 use pyo3::class::basic::CompareOp;
 use pyo3::exceptions::{PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyDict, PyList, PyString};
+use pyo3::types::{PyAny, PyBool, PyCapsule, PyDict, PyString};
 use yggdryl::expression::Function as CoreFunction;
 use yggdryl::{Field as CoreField, PythonKind as CorePythonKind, Scheme as CoreScheme};
 
 use crate::datatype::{
     PyDataType, PyDataTypeIterator, PyStringEnum, arrow_scalar_to_pyarrow_type, core_arrow_scalar,
-    core_dtype_from_value, core_field_to_pyarrow,
+    core_dtype_from_value, core_field_to_pyarrow, import_ffi_schema, pyarrow,
+    record_batch_from_pyarrow, schema_capsule,
 };
 use crate::enums::{
     PyMediaType, PyMimeType, core_media_type_from_value, core_mime_type_from_value,
@@ -23,7 +23,7 @@ use crate::enums::{
 use crate::fix::FixTag;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::protocol::{PyPythonMetadata, core_python_metadata_from_value};
-use crate::scalar::{PyScalar, from_py as scalar_from_py};
+use crate::scalar::{PyScalar, from_py as scalar_from_py, from_py_under};
 use crate::uri::{PyUrl, core_url_from_value, url_object};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
@@ -33,6 +33,12 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
     }
     if let Ok(value) = value.extract::<&str>() {
         return CoreField::from_str(value).map_err(value_error);
+    }
+    // A native datatype or column exports a capsule for Arrow consumers; it
+    // is not a spelling of a field - a datatype names no field, a column's
+    // is `serie.field` - which neither ever was here.
+    if value.is_instance_of::<PyDataType>() || crate::serie::is_native_columnar(value) {
+        return Err(field_type_error());
     }
 
     if value
@@ -51,13 +57,16 @@ pub(crate) fn core_field_from_value(value: &Bound<'_, PyAny>) -> PyResult<CoreFi
         .and_then(|field| CoreField::try_from(field).map_err(value_error));
     imported.map_err(|error| {
         if error.is_instance_of::<PyTypeError>(value.py()) {
-            PyTypeError::new_err(
-                "expected a yggdryl.Field, dataclass, field string, or PyArrow Field",
-            )
+            field_type_error()
         } else {
             error
         }
     })
+}
+
+/// The refusal of a value that spells no field.
+fn field_type_error() -> PyErr {
+    PyTypeError::new_err("expected a yggdryl.Field, dataclass, field string, or PyArrow Field")
 }
 
 /// Return the exact native `Field` object cached for a dataclass class or instance.
@@ -73,30 +82,19 @@ fn python_field<'py>(value: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyAny>> {
     Ok(field)
 }
 
-/// Export a complete `PyArrow` Schema from exact standalone native Fields.
-/// The aggregate Arrow C Schema path drops nested datatype flags, so it is
-/// used only to calculate transport metadata (including reserved sidecars).
+/// Import a complete `pyarrow.Schema` from a non-null Struct root through
+/// the core's one exchange projection: the exact nested flags - which the
+/// aggregate Arrow C Schema exporter drops - and the root's metadata beside
+/// the transport-only dictionary-ID sidecar, in one C schema.
 pub(crate) fn core_schema_to_pyarrow<'py>(
     py: Python<'py>,
     root: &CoreField,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let transported = root
+    let schema = root
         .clone()
-        .into_arrow_exchange_schema()
+        .into_arrow_exchange_ffi()
         .map_err(value_error)?;
-    let fields = PyList::empty(py);
-    for field in root.fields() {
-        fields.append(core_field_to_pyarrow(py, field)?)?;
-    }
-    let metadata = PyDict::new(py);
-    for (key, value) in transported.metadata() {
-        metadata.set_item(key, value)?;
-    }
-    let kwargs = PyDict::new(py);
-    kwargs.set_item("metadata", metadata)?;
-    py.import("pyarrow")?
-        .getattr("schema")?
-        .call((fields,), Some(&kwargs))
+    import_ffi_schema(pyarrow::schema(py)?, schema)
 }
 
 /// Resolve an Arrow root once and use the same exact native schema exporter.
@@ -366,7 +364,7 @@ impl PyField {
     /// through here, never through `PyArrow`.
     fn scalar(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .scalar(scalar_from_py(value)?)
+            .scalar(from_py_under(&self.inner, value)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
@@ -377,7 +375,7 @@ impl PyField {
     /// nullability.
     fn validate_value(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
-            .validate_value(&scalar_from_py(value)?)
+            .validate_value(&from_py_under(&self.inner, value)?)
             .map_err(value_error)
     }
 
@@ -387,7 +385,7 @@ impl PyField {
     /// at the width and unit its own field declares.
     fn canonicalize_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .canonicalize_value(scalar_from_py(value)?)
+            .canonicalize_value(from_py_under(&self.inner, value)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
@@ -466,7 +464,7 @@ impl PyField {
     /// over the rows as they finally stand. Each protocol walks the declared Structs beneath this
     /// root and leaves a column holding anything but its canonical default
     /// alone, so applying twice writes nothing the first pass already did.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -478,11 +476,10 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
-        let batch = ArrowRecordBatch::from_pyarrow_bound(value)?;
+        let options = cast_options(safe, representation)?;
+        let batch = record_batch_from_pyarrow(value)?;
         let applied = self
             .inner
             .apply_arrow_batch(&batch, digest, transform, cast, options)
@@ -495,7 +492,7 @@ impl PyField {
     /// The declarations name every column they add, so the applied shape is a
     /// property of two schemas: nothing is decoded, and a declaration that
     /// cannot be satisfied fails here rather than on the first batch.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -507,10 +504,9 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let schema = Arc::new(ArrowSchema::from_pyarrow_bound(value)?);
         let applied = self
             .inner
@@ -523,7 +519,7 @@ impl PyField {
     ///
     /// The applied schema is derived once, so the returned reader answers it
     /// before the first batch is pulled and can be handed straight to a write.
-    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, nullability="default", representation="value"))]
+    #[pyo3(signature = (value, *, digest=true, transform=true, cast=true, safe=true, representation="value"))]
     // The signature is the Python keyword surface: one parameter per keyword,
     // so it is as wide as the contract is and cannot be narrowed here.
     #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
@@ -535,10 +531,9 @@ impl PyField {
         transform: bool,
         cast: bool,
         safe: bool,
-        nullability: &str,
         representation: &str,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let options = cast_options(safe, nullability, representation)?;
+        let options = cast_options(safe, representation)?;
         let reader = batch_reader_from_arrow_reader(value)?;
         let applied = self
             .inner
@@ -550,6 +545,17 @@ impl PyField {
     #[allow(clippy::wrong_self_convention)]
     fn into_arrow<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         core_field_to_pyarrow(py, &self.inner)
+    }
+
+    /// This field as the Arrow `PyCapsule` Interface's `arrow_schema`
+    /// capsule, projected by the core's exporter with every nested flag.
+    fn __arrow_c_schema__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyCapsule>> {
+        let schema = self
+            .inner
+            .clone()
+            .into_arrow_field_ffi()
+            .map_err(value_error)?;
+        schema_capsule(py, schema)
     }
 
     /// Serialize as deterministic structural JSON.
@@ -3120,7 +3126,7 @@ impl PyProtocolField {
         py: Python<'py>,
         batch: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let batch = record_batch_from_pyarrow(batch)?;
         let field = self.borrow_field(py)?;
         let applied = if self.scheme == CoreScheme::PARTITION
             || self.scheme == CoreScheme::TRANSFORM

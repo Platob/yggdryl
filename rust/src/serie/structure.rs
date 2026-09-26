@@ -415,28 +415,28 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     if !matches!(array.data_type(), ArrowDataType::Struct(_)) {
         return Ok(None);
     }
-    let records = super::arrow::held::<StructArray>(&array)?;
+    let records = super::arrow::held_ref::<StructArray>(&array)?;
     let hidden = super::arrow::parent_nulls(parent, records.nulls(), budget)?;
-    let children = field
-        .fields()
-        .iter()
-        .zip(records.columns())
-        .enumerate()
-        .map(|(index, (child, column))| {
-            super::arrow::child_of(
-                Arc::new(child.clone()),
-                Arc::clone(column),
-                hidden.as_ref(),
-                proof.child(index),
-                budget,
-            )
-        })
-        .collect::<crate::arrow::Result<Vec<Serie>>>()?;
+    let fields = field.fields();
+    let mut children = Vec::with_capacity(fields.len());
+    for (index, (child, column)) in fields.iter().zip(records.columns()).enumerate() {
+        let (child, below) = super::arrow::resolved_child(resolved, index, child);
+        children.push(super::arrow::child_of(
+            child,
+            Arc::clone(column),
+            hidden.as_ref(),
+            proof.child(index),
+            budget,
+            below,
+        )?);
+    }
+    let (nulls, rows) = (records.nulls().cloned(), records.len());
     Ok(Some(
-        StructSerie::new(field, children, records.nulls().cloned(), records.len()).into_serie(),
+        StructSerie::new(field, children, nulls, rows).into_serie(),
     ))
 }

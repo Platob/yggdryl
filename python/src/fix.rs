@@ -32,7 +32,7 @@ use yggdryl::{
 };
 
 use crate::field::{PyField, core_field_from_value};
-use crate::graph::market_data::PyMarketData;
+use crate::graph::market_data::{PyMarketData, PyMarketDataRowIterator};
 use crate::graph::operation::PyLane;
 use crate::graph::{code_scalar, decimal_scalar, idmap_dict, securityids_dict, uuid_scalar};
 use crate::iceberg::folder_holder_from_value;
@@ -2397,7 +2397,10 @@ impl PyFixCodec {
     /// `official_time_delay_ms` is how far from `SendingTime(52)` an
     /// official transaction clock may stand and still date the message, the
     /// core's one second when unstated, and a nonpositive delay admits only
-    /// a transaction clock equal to the sending clock.
+    /// a transaction clock equal to the sending clock; `market_metadata`
+    /// is whether a market operation the codec builds carries, in its
+    /// metadata, what its message states that no typed column reads - on by
+    /// default, and part of the leaf's identity.
     #[new]
     #[pyo3(signature = (
         registry=None,
@@ -2415,6 +2418,7 @@ impl PyFixCodec {
         threads=None,
         snapshot_ns=None,
         official_time_delay_ms=None,
+        market_metadata=true,
     ))]
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -2432,6 +2436,7 @@ impl PyFixCodec {
         threads: Option<usize>,
         snapshot_ns: Option<i64>,
         official_time_delay_ms: Option<i64>,
+        market_metadata: bool,
     ) -> PyResult<Self> {
         let registry = registry_or_global(registry)?;
         let mut inner =
@@ -2474,6 +2479,7 @@ impl PyFixCodec {
         if let Some(held) = official_time_delay_ms {
             inner = inner.with_official_time_delay_ms(held);
         }
+        inner = inner.with_market_metadata(market_metadata);
         Ok(Self { inner, registry })
     }
 
@@ -2550,6 +2556,13 @@ impl PyFixCodec {
     #[getter]
     fn official_time_delay_ms(&self) -> i64 {
         self.inner.official_time_delay_ms()
+    }
+
+    /// Whether a market operation this codec builds carries its message's
+    /// unmapped fields in its metadata.
+    #[getter]
+    fn market_metadata(&self) -> bool {
+        self.inner.market_metadata()
     }
 
     /// The message types a parse keeps, empty where it keeps every type
@@ -2798,7 +2811,9 @@ impl PyFixCodec {
     ///
     /// `snapshot_millis` enables epoch-aligned book snapshots; `global_`
     /// consolidates symbols into the `GLOBAL` book. Lifecycle enrichment is
-    /// explicit: pass `codec.lifecycle(messages)` when it is wanted.
+    /// explicit: pass `codec.lifecycle(messages)` when it is wanted. Each
+    /// leaf carries its message's unmapped fields where `market_metadata`
+    /// says so.
     #[pyo3(signature = (messages, snapshot_millis=0, global_=false))]
     fn book_arrow_reader<'py>(
         &self,
@@ -2817,6 +2832,67 @@ impl PyFixCodec {
             self.inner
                 .book_arrow_reader(messages, snapshot_millis, global_),
         )
+    }
+
+    /// A capture of messages as the market operations a book folds, in the
+    /// order it folds them: each a `MarketData`.
+    ///
+    /// Admits what `book_arrow_reader` admits and expands each admitted
+    /// message as `FixMsg.market_operations` does, each leaf carrying its
+    /// message's unmapped fields where `market_metadata` says so. Neither
+    /// the lifecycle nor a message-type filter runs here: pass
+    /// `codec.lifecycle(messages)` for the walk. `messages` is any iterable
+    /// of `FixMsg`, collected when this is called; the operations are then
+    /// sorted, stably, by the instant a book folds them at - `snapunix`,
+    /// else `currunix` - so a book message's entry clock standing before an
+    /// earlier message's cannot regress. An admitted message whose
+    /// expansion is refused raises `ValueError` first, in source order, and
+    /// drops only its own leaves; a failure of the iterable itself raises
+    /// as itself once the operations it reached are read.
+    fn market_operations(&self, messages: &Bound<'_, PyAny>) -> PyResult<PyMarketDataRowIterator> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        Ok(PyMarketDataRowIterator::pulling(
+            self.inner.market_operations(pulled),
+            failed,
+        ))
+    }
+
+    /// `market_operations` as a `pyarrow.RecordBatchReader` of lifted
+    /// `marketdata` rows, batches closing on `batch_row_size` and
+    /// `batch_byte_size`. Every refusal is met before the first operation,
+    /// so one - an expansion refused, a bad item, the iterable's own
+    /// failure - is the reader's only item, raised by its first batch.
+    fn market_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        messages: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let pulled = Pulled::new(messages, message_of)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled.map(Ok).chain(std::iter::from_fn(move || {
+            failed.take().map(|error| Err(python_failure(error)))
+        }));
+        Self::reader_to_pyarrow(py, self.inner.market_arrow_reader(messages))
+    }
+
+    /// The Arrow twin of `market_arrow_reader`: batches of FIX rows in -
+    /// each row read as its own message, as `messages` reads it - and lifted
+    /// `marketdata` rows out, as a `pyarrow.RecordBatchReader`. Over rows no
+    /// walk wrote it answers what `market_arrow_reader` answers for their
+    /// messages. A walked capture reaches the sorted door as messages -
+    /// `market_arrow_reader(codec.lifecycle(messages))` - never as the rows
+    /// `lifecycle_arrow_reader` writes: what a walk settles from a message's
+    /// predecessors (its `prevpx` and `prevqty`, a side or a ticker carried
+    /// forward, an execution instant) is no cell of the row. A schema making
+    /// no FIX row is refused before a row is read.
+    fn market_operations_arrow_reader<'py>(
+        &self,
+        py: Python<'py>,
+        source: &Bound<'py, PyAny>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let source = batch_reader_from_value(source)?;
+        Self::reader_to_pyarrow(py, self.inner.market_operations_arrow_reader(source))
     }
 
     /// A stream of messages as the rows one message field holds them.

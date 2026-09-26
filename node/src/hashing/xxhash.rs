@@ -28,8 +28,10 @@ pub(crate) fn apply_arrow_batch_ipc(
     use arrow_ipc::reader::StreamReader;
     use arrow_ipc::writer::StreamWriter;
 
+    // The one batch is decoded before this returns, so the decoder reads the
+    // caller's bytes in place rather than a whole copy of them.
     let mut reader =
-        StreamReader::try_new(std::io::Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+        StreamReader::try_new(std::io::Cursor::new(&bytes[..]), None).map_err(napi_error)?;
     let batch = reader
         .next()
         .transpose()

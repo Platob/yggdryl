@@ -78,9 +78,6 @@ PYTHON_KINDS: tuple[str, ...] = tuple(_LISTING["python_kinds"])
 #: The compatibility targets ``into_scheme_compat`` accepts, e.g. ``"arrow"``.
 COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"])
 
-#: What a cast does with a declared value the source cannot fill.
-NULLABILITIES: tuple[str, ...] = tuple(_LISTING["nullabilities"])
-
 #: What a cast makes a same-width pair carry.
 REPRESENTATIONS: tuple[str, ...] = tuple(_LISTING["representations"])
 
@@ -103,6 +100,11 @@ MARKET_COLUMNS: tuple[str, ...] = tuple(_LISTING["market_columns"])
 
 #: The eight columns a market operation states, in schema order.
 OPERATION_COLUMNS: tuple[str, ...] = tuple(_LISTING["operation_columns"])
+
+#: Every named reading of a ``marketdata`` stream ``graph.MarketData.plan``
+#: and ``apply_view`` take, e.g. ``"orders"``, ``"book_sides"``, in
+#: declaration order.
+MARKET_VIEWS: tuple[str, ...] = tuple(_LISTING["market_views"])
 
 __all__ = [
     "AsciiCode",
@@ -127,8 +129,8 @@ __all__ = [
     "LEVELS",
     "MARKET_COLUMNS",
     "MARKET_KINDS",
+    "MARKET_VIEWS",
     "MD_UPDATE_ACTIONS",
-    "NULLABILITIES",
     "OPERATION_COLUMNS",
     "REPRESENTATIONS",
     "TIME_UNITS",

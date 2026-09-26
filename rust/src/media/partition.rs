@@ -154,7 +154,7 @@ impl Constant {
                 let plan = ArrowCastPlan::compile_arrow(
                     &text,
                     child,
-                    ArrowCastOptions::new().with_safe(child.is_nullable()),
+                    ArrowCastOptions::new(),
                     Deferred::default(),
                 )?;
                 (child.clone().into_arrow_field()?, Some(plan))

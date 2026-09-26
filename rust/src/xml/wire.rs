@@ -194,9 +194,11 @@ fn write_element<W: Write>(
         return Err(codec_error("nesting depth limit exceeded while encoding"));
     }
     check_name(name)?;
-    if let Some(unit) = layout.unit.filter(|_| separated) {
-        writer.write_all(b"\n")?;
-        write_units(writer, unit, depth - 1)?;
+    if separated {
+        if let Some(unit) = layout.unit {
+            writer.write_all(b"\n")?;
+            write_units(writer, unit, depth - 1)?;
+        }
     }
     match value {
         // A variant is the value its bytes hold, written as that value.
@@ -297,9 +299,12 @@ where
         }
         write_child(writer, key, value, layout, depth + 1, separated, max_depth)?;
     }
-    if let Some(unit) = layout.unit.filter(|_| has_children && separated) {
-        writer.write_all(b"\n")?;
-        write_units(writer, unit, depth - 1)?;
+    // Two `if`s rather than a `let` chain: the declared MSRV, Rust 1.85, has none.
+    if has_children && separated {
+        if let Some(unit) = layout.unit {
+            writer.write_all(b"\n")?;
+            write_units(writer, unit, depth - 1)?;
+        }
     }
     write!(writer, "</{name}>")?;
     Ok(())
@@ -434,6 +439,8 @@ fn write_leaf<W: Write>(
         Scalar::Decimal64(value) => write_display(writer, value),
         Scalar::Decimal128(value) => write_display(writer, value),
         Scalar::Decimal256(value) => write_display(writer, value),
+        Scalar::Decimal(value) => write_display(writer, value),
+        Scalar::BigDecimal(value) => write_display(writer, value),
         string_scalars!(value) => write_escaped(writer, value.as_str(), escape),
         code_scalars!() => write_escaped(
             writer,
@@ -659,12 +666,13 @@ pub(super) fn illegal_character(text: &str) -> Option<u32> {
     {
         return Some(u32::from(*byte));
     }
-    // The two non-characters are three bytes each and both open with 0xEF,
-    // so a text with no such byte is not walked.
-    memchr::memchr(0xEF, bytes)?;
-    text.chars()
-        .find(|c| matches!(c, '\u{FFFE}' | '\u{FFFF}'))
-        .map(u32::from)
+    if memchr::memchr(0xEF, bytes).is_some() {
+        return text
+            .chars()
+            .find(|c| matches!(c, '\u{FFFE}' | '\u{FFFF}'))
+            .map(u32::from);
+    }
+    None
 }
 
 fn write_units<W: Write>(writer: &mut W, unit: &[u8], count: usize) -> Result<()> {

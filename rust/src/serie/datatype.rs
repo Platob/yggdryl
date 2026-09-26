@@ -364,25 +364,22 @@ mod arrow {
         /// Returns an error when the fixed length is negative or the item field
         /// has no Arrow projection.
         pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
+            // The item is a shared box, so its projection is borrowed and
+            // cached where every holder of the box finds it.
             Ok(match self {
-                Self::Serie(item) => {
-                    ArrowDataType::List(item.as_ref().clone().into_arrow_field_ref()?)
-                }
+                Self::Serie(item) => ArrowDataType::List(Arc::clone(item.as_arrow_field_ref()?)),
                 Self::SerieView(item) => {
-                    ArrowDataType::ListView(item.as_ref().clone().into_arrow_field_ref()?)
+                    ArrowDataType::ListView(Arc::clone(item.as_arrow_field_ref()?))
                 }
                 Self::FixedSizeSerie(item, length) => {
                     validate_non_negative("FixedSizeSerie", "length", *length)?;
-                    ArrowDataType::FixedSizeList(
-                        item.as_ref().clone().into_arrow_field_ref()?,
-                        *length,
-                    )
+                    ArrowDataType::FixedSizeList(Arc::clone(item.as_arrow_field_ref()?), *length)
                 }
                 Self::LargeSerie(item) => {
-                    ArrowDataType::LargeList(item.as_ref().clone().into_arrow_field_ref()?)
+                    ArrowDataType::LargeList(Arc::clone(item.as_arrow_field_ref()?))
                 }
                 Self::LargeSerieView(item) => {
-                    ArrowDataType::LargeListView(item.as_ref().clone().into_arrow_field_ref()?)
+                    ArrowDataType::LargeListView(Arc::clone(item.as_arrow_field_ref()?))
                 }
             })
         }

@@ -64,18 +64,17 @@ pub(crate) fn value_error(error: impl std::fmt::Display) -> PyErr {
 
 /// Coerce the two cast answers Python spells separately into one native value.
 ///
-/// `safe` decides whether a present value may be converted; `nullability`
-/// names the policy for a declared value that is absent; `representation` names
-/// what a same-width pair carries. All three cross explicitly on every cast
-/// entry point, so none is inferred from another.
+/// `safe` decides whether a present value may be converted; `representation`
+/// names what a same-width pair carries. Whether a value may be absent is the
+/// target field's own nullability, answered one way everywhere. Both answers
+/// cross explicitly on every cast entry point, so neither is inferred from the
+/// other.
 pub(crate) fn cast_options(
     safe: bool,
-    nullability: &str,
     representation: &str,
 ) -> PyResult<yggdryl::ArrowCastOptions> {
     Ok(yggdryl::ArrowCastOptions::new()
         .with_safe(safe)
-        .with_nullability(yggdryl::Nullability::from_str(nullability).map_err(value_error)?)
         .with_representation(
             yggdryl::Representation::from_str(representation).map_err(value_error)?,
         ))
@@ -419,12 +418,6 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
             .to_vec(),
     )?;
     listing.set_item(
-        "nullabilities",
-        yggdryl::Nullability::ALL
-            .map(yggdryl::Nullability::as_str)
-            .to_vec(),
-    )?;
-    listing.set_item(
         "representations",
         yggdryl::Representation::ALL
             .map(yggdryl::Representation::as_str)
@@ -459,12 +452,15 @@ fn enum_values(py: Python<'_>) -> PyResult<Py<pyo3::types::PyDict>> {
 /// listing: kept out of that function's own body so it stays under the
 /// crate's line-count lint.
 fn graph_enum_listings(listing: &Bound<'_, pyo3::types::PyDict>) -> PyResult<()> {
-    use yggdryl::graph::{EventColumn, MarketColumn, MarketKind, MdUpdateAction, OperationColumn};
+    use yggdryl::graph::{
+        EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
+    };
 
     listing.set_item(
         "market_kinds",
         MarketKind::ALL.map(MarketKind::as_str).to_vec(),
     )?;
+    listing.set_item("market_views", MarketView::ALL.to_vec())?;
     listing.set_item(
         "md_update_actions",
         MdUpdateAction::ALL.map(MdUpdateAction::as_str).to_vec(),

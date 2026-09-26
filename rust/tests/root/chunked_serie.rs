@@ -15,8 +15,8 @@ use arrow_buffer::{Buffer, NullBuffer, OffsetBuffer};
 use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, Schema};
 use yggdryl::arrow::{BatchReader, batch_reader};
 use yggdryl::{
-    ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, Nullability, Scalar, Serie,
-    SerieReader, StructType, UnionFields, UnionMode,
+    ArrowCastOptions, ChunkedSerie, DataType, Field, FieldPath, Scalar, Serie, SerieReader,
+    StructType, UnionFields, UnionMode,
 };
 
 fn price() -> Field {
@@ -30,12 +30,9 @@ fn prices() -> ChunkedSerie {
         .expect("two int64 chunks")
 }
 
-/// The options a refusal is pinned under: a present value is never nulled
-/// and an absent one never repaired.
+/// The options a refusal is pinned under: a present value is never nulled.
 fn strict() -> ArrowCastOptions {
-    ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict)
+    ArrowCastOptions::new().with_safe(false)
 }
 
 /// The int64 column of `values` under `field`, straight off an Arrow array.

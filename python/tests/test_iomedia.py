@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import enum
 import gc
 import pathlib
+import struct
 import sys
 import unittest.mock
 import weakref
@@ -15,7 +17,7 @@ import pyarrow as pa
 import pyarrow.dataset as pads
 import pytest
 
-from yggdryl import DataType, Field, IOBase, scalar
+from yggdryl import ChunkedSerie, DataType, Field, IOBase, Serie, SerieReader, scalar
 
 SCHEMA = pa.schema(
     [
@@ -443,6 +445,83 @@ class TradeId:
     id: int
 
 
+class Color(enum.Enum):
+    RED = "r"
+    BLUE = "b"
+
+
+class Level(enum.IntEnum):
+    LOW = 1
+    HIGH = 3
+
+
+@scalar
+class Painted:
+    color: Color
+    level: Level
+
+
+@scalar
+class Variant:
+    value: int | str
+
+
+@scalar
+class ListOrInt:
+    value: list[int] | int
+
+
+@scalar
+class MaybeVariant:
+    value: int | str | None
+
+
+@scalar
+class Tagged:
+    code: str
+
+
+@scalar
+class Quoted:
+    price: float
+
+
+@scalar
+class Choice:
+    value: Tagged | Quoted | None
+
+
+@scalar
+class MaybeItems:
+    values: list[int | str | None]
+
+
+class Side(enum.Enum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+@scalar(frozen=True)
+class Leg:
+    symbol: str
+    quantity: int
+    side: Side
+
+
+@scalar
+class Order:
+    id: int
+    side: Side
+    legs: list[Leg]
+    parent: Leg | None
+    note: str | None
+
+
+@scalar
+class Numeric:
+    value: int | float
+
+
 class TestDataclassRecords:
     def test_decorated_dataclass_infers_its_cached_struct_field(
         self, tmp_path: pathlib.Path
@@ -459,6 +538,203 @@ class TestDataclassRecords:
         assert list(handle.read_records()) == [
             {"id": 1, "venue": "XNAS"},
             {"id": 2, "venue": None},
+        ]
+
+    def test_class_rows_land_under_the_field_their_class_declares(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "painted.parquet")
+
+        # Each instance crosses the core's value contract: an enum member is
+        # the value it names, which a runtime cast of the member refused.
+        handle.overwrite_records([Painted(Color.RED, Level.HIGH), Painted(Color.BLUE, Level.LOW)])
+
+        assert handle.read_arrow_field().dtype == Painted.into_field().dtype
+        assert list(handle.read_records(Painted)) == [
+            Painted(Color.RED, Level.HIGH),
+            Painted(Color.BLUE, Level.LOW),
+        ]
+
+    def test_a_mapping_row_among_class_rows_is_read_by_its_names(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "mixed.parquet")
+
+        handle.overwrite_records([Trade(1, "XNAS"), {"venue": None, "id": 2}])
+
+        assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
+
+    def test_union_members_land_bare_and_read_back_as_written(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # A member holds a bare value: a list stays the list, never a pair.
+        rows = [Variant(1), Variant("a")]
+        lists = [ListOrInt([1, 5]), ListOrInt(7)]
+
+        variants = IOBase(tmp_path / "variant.arrows")
+        variants.overwrite_records(rows)
+        assert list(variants.read_records(Variant)) == rows
+        members = IOBase(tmp_path / "lists.arrows")
+        members.overwrite_records(lists)
+        assert list(members.read_records(ListOrInt)) == lists
+        # Parquet has no union layout, and says so by the column's name.
+        with pytest.raises(ValueError, match='union column "value"'):
+            IOBase(tmp_path / "variant.parquet").overwrite_records(rows)
+
+    def test_none_among_union_members_is_the_null_member(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # `None` beside several value types is a member of its own, so it
+        # crosses as that member's absence and reads back as `None`.
+        cases = [
+            (MaybeVariant, [MaybeVariant(1), MaybeVariant("a"), MaybeVariant(None)]),
+            (Choice, [Choice(Tagged("x")), Choice(Quoted(1.5)), Choice(None)]),
+            (MaybeItems, [MaybeItems([1, "a", None]), MaybeItems([])]),
+        ]
+        for cls, rows in cases:
+            handle = IOBase(tmp_path / f"{cls.__name__}.arrows")
+            handle.overwrite_records(rows)
+            assert list(handle.read_records(cls)) == rows
+        assert MaybeVariant.into_field().scalar(MaybeVariant(None)).as_py() == [[2, None]]
+
+    def test_a_union_member_no_branch_takes_is_refused_naming_its_path(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "numeric.parquet")
+
+        with pytest.raises(ValueError, match=r"\.value: expected a value one union member accepts"):
+            handle.overwrite_records([Numeric("x")])
+
+    def test_a_declared_field_reads_instances_by_name(self, tmp_path: pathlib.Path) -> None:
+        wider = IOBase(tmp_path / "wider.parquet")
+        options = wider.record_options()
+        options.field = Field(
+            "row", "struct<venue: utf8, id: int64 not null, note: utf8>", nullable=False
+        )
+
+        # A column the class does not declare is null; order is the field's.
+        wider.overwrite_records([Trade(1, "XNAS"), Trade(2, None)], options=options)
+        assert list(wider.read_records()) == [
+            {"venue": "XNAS", "id": 1, "note": None},
+            {"venue": None, "id": 2, "note": None},
+        ]
+
+        # A member the field does not declare is not read.
+        narrower = IOBase(tmp_path / "narrower.parquet")
+        options = narrower.record_options()
+        options.field = Field("row", "struct<id: int64 not null>", nullable=False)
+        narrower.overwrite_records([Trade(1, "XNAS")], options=options)
+        assert list(narrower.read_records()) == [{"id": 1}]
+
+    def test_a_class_read_by_columns_answers_what_a_row_read_answers(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # More rows than one window, nested records, a list of records, an
+        # enum, and null parents: the columnar read and the mapping read of
+        # the same rows answer the same instances.
+        rows = [
+            Order(
+                index,
+                Side.BUY if index % 2 else Side.SELL,
+                [Leg(f"L{index}", leg, Side.BUY) for leg in range(index % 3)],
+                None if index % 5 else Leg("P", index, Side.SELL),
+                None if index % 7 else f"n{index}",
+            )
+            for index in range(2500)
+        ]
+        handle = IOBase(tmp_path / "orders.arrows")
+        handle.overwrite_records(rows)
+
+        assert list(handle.read_records(Order)) == rows
+        from yggdryl._classes import from_dict
+
+        assert [from_dict(Order, row) for row in handle.read_records()] == rows
+
+    def test_a_class_read_by_columns_builds_rows_in_order_and_refuses_at_the_row(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        built: list[int] = []
+
+        @scalar
+        class Counted:
+            id: int
+
+            def __post_init__(self) -> None:
+                if self.id == 1500:
+                    raise ValueError("row 1500 is refused")
+                built.append(self.id)
+
+        handle = IOBase(tmp_path / "counted.arrows")
+        handle.overwrite_records([{"id": index} for index in range(2000)])
+        read = handle.read_records(Counted)
+        instances = [next(read) for _ in range(1500)]
+        assert [instance.id for instance in instances] == list(range(1500))
+        assert built == list(range(1500))
+        with pytest.raises(ValueError, match="row 1500 is refused"):
+            next(read)
+        # Reading on after a refusal continues with the next row, as a read
+        # of one row at a time does.
+        assert next(read).id == 1501
+        assert sum(1 for _ in read) == 498
+
+    def test_a_reordered_constructor_is_called_by_its_names(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        @scalar
+        class Reordered:
+            a: int
+            b: str
+
+            def __init__(self, b: str, a: int) -> None:
+                self.a = a
+                self.b = b
+
+        handle = IOBase(tmp_path / "reordered.arrows")
+        handle.overwrite_records([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+        read = list(handle.read_records(Reordered))
+        assert [(row.a, row.b) for row in read] == [(1, "x"), (2, "y")]
+
+    def test_a_stored_not_null_column_refuses_what_it_cannot_hold(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "stored.arrows")
+        handle.overwrite_records([Trade(1, "XNAS")])
+        # A value the stored `int64 not null` cannot hold, or a null, is
+        # refused by name and never written as the column's default.
+        for rows in ([{"id": "x", "venue": None}], [{"id": None, "venue": None}]):
+            with pytest.raises(ValueError, match="id"):
+                handle.append_records(rows)
+        assert list(handle.read_records(Trade)) == [Trade(1, "XNAS")]
+        # A declared field reads a mapping row through the core's value
+        # contract, as it reads an instance.
+        declared = IOBase(tmp_path / "declared.arrows")
+        options = declared.record_options()
+        options.field = Trade.into_field()
+        declared.overwrite_records([{"id": "7", "venue": "XNAS"}], options=options)
+        assert list(declared.read_records(Trade)) == [Trade(7, "XNAS")]
+        with pytest.raises(ValueError, match="non-nullable"):
+            declared.overwrite_records([{"id": None, "venue": "XNAS"}], options=options)
+
+    def test_a_declared_field_reads_nested_mappings_by_name(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "nested.arrows")
+        options = handle.record_options()
+        options.field = Field(
+            "row",
+            "struct<id: int64 not null, leg: struct<x: int64, s: utf8>, "
+            "legs: serie<struct<x: int64>>, m: map<utf8, int64>>",
+            nullable=False,
+        )
+        # A mapping under a record child is read by name, as the row is: a
+        # missing key is null and a key the record does not declare is not
+        # read, at every depth.
+        handle.overwrite_records(
+            [{"id": 1, "leg": {"x": 1, "s": "a", "extra": 9}, "legs": [{"x": 2}, {}], "m": {"k": 3}}],
+            options=options,
+        )
+        assert list(handle.read_records()) == [
+            {"id": 1, "leg": {"x": 1, "s": "a"}, "legs": [{"x": 2}, {"x": None}], "m": {"k": 3}}
         ]
 
     def test_plain_dataclass_reads_one_row_at_a_time(
@@ -812,3 +1088,45 @@ class TestAsciiRecords:
             handle.overwrite_arrow_table(
                 pa.table({"id": [3], "ccy": ["EURO!"]}), options=options
             )
+
+
+class ChunkedStream:
+    """A foreign exporter whose C stream is a column, not a record."""
+
+    def __init__(self, chunked: pa.ChunkedArray) -> None:
+        self.chunked = chunked
+
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        return self.chunked.__arrow_c_stream__(requested_schema)
+
+
+class TestCStreamIntake:
+    @pytest.mark.parametrize("door", [Serie.from_, ChunkedSerie.from_, SerieReader.from_])
+    def test_a_non_record_stream_is_refused_naming_the_door_that_reads_it(
+        self, door: Any
+    ) -> None:
+        with pytest.raises(ValueError, match=r"non-record column.*pyarrow\.chunked_array"):
+            door(ChunkedStream(pa.chunked_array([[1], [2]])))
+        # The door the refusal names reads it.
+        chunked = pa.chunked_array(ChunkedStream(pa.chunked_array([[1], [2]])))
+        assert ChunkedSerie.from_(chunked).as_py() == [1, 2]
+
+    def test_a_stream_batch_is_proven_before_a_row_is_read(self, tmp_path: pathlib.Path) -> None:
+        offsets = pa.py_buffer(struct.pack("<4i", 0, 4, 1, 4))
+        array = pa.Array.from_buffers(pa.binary(), 3, [None, offsets, pa.py_buffer(b"abcd")])
+        source = pa.table({"payload": array})
+        with pytest.raises(ValueError, match="non-monotonic offset"):
+            Serie.from_arrow_reader(source)
+        with pytest.raises(ValueError, match="non-monotonic offset"):
+            IOBase(tmp_path / "payload.arrows").write_arrow(source)
+
+    def test_a_native_reader_writes_as_the_stream_it_is(self, tmp_path: pathlib.Path) -> None:
+        mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+        source = pa.table({"lookup": pa.array([[("a", 1)], None], mapping)})
+        handle = IOBase(tmp_path / "sorted.arrows")
+        # Taken as the stream it is, never through its own C capsule, so the
+        # sorted keys the capsule's arrow-rs exporter would drop are kept.
+        handle.overwrite_arrow_reader(SerieReader.from_(source))
+        written = handle.read_arrow_reader().read_all()
+        assert written.schema.field("lookup").type.keys_sorted
+        assert written.equals(source)

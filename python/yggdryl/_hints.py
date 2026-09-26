@@ -74,8 +74,11 @@ class _AnnotationOptions:
 def datatype_from_pyhint(hint: object) -> DataType:
     """Return the native Arrow-equivalent datatype for *hint*.
 
-    ``None`` is removed from optional unions because nullability belongs to a
-    field, not a datatype. A union containing only ``None`` maps to ``Null``.
+    ``None`` beside one other alternative is removed, because nullability
+    belongs to a field, not a datatype: ``int | None`` is ``int64``. Beside
+    several it is a ``null`` member of the union, appended last, because an
+    Arrow union carries no validity of its own. A union containing only
+    ``None`` maps to ``Null``.
     """
 
     return _datatype_from_pyhint(hint)
@@ -265,7 +268,8 @@ class _Inference:
                 return self.datatype(
                     members[0], path=path, depth=depth + 1
                 )
-            return self._alternatives(members, path=path, depth=depth + 1)
+            # Several value members: `None` among them is a member too.
+            return self._alternatives(arguments, path=path, depth=depth + 1)
 
         if origin is not None:
             generic = self._generic_datatype(
@@ -546,7 +550,7 @@ class _Inference:
         if issubclass(hint, datetime_module.timedelta):
             return _native_datatype("duration64(microsecond)")
         if issubclass(hint, decimal.Decimal):
-            return _native_datatype("decimal128(38,18)")
+            return _native_datatype("decimal")
         if issubclass(hint, uuid.UUID):
             return _native_datatype("uuid")
         if issubclass(hint, pathlib.PurePath) or issubclass(hint, os.PathLike):
@@ -622,8 +626,10 @@ class _Inference:
         collapse_equivalent: bool = False,
     ) -> DataType:
         unique: list[tuple[object, Field]] = []
+        none_hint: object | None = None
         for hint in hints:
             if _is_none_hint(hint):
+                none_hint = hint
                 continue
             inferred = self.field(
                 "member",
@@ -641,6 +647,14 @@ class _Inference:
             return _native_datatype("null")
         if len(unique) == 1:
             return unique[0][1].dtype
+        if none_hint is not None:
+            # An Arrow union has no validity of its own, so `None` among
+            # several value alternatives is a member: the one the core routes
+            # a bare null to. It comes last, so the value members keep the
+            # type ids they have without it.
+            unique.append(
+                (none_hint, self.field("member", none_hint, path=path, depth=depth + 1))
+            )
         if len(unique) > 128:
             raise TypeError(f"union at {path} exceeds Arrow's 128-member limit")
 
@@ -1368,6 +1382,9 @@ def _class_identity_metadata(hint: object) -> dict[str, str]:
         )
         if len(non_none) == 1:
             return _class_identity_metadata(non_none[0])
+        if non_none:
+            # A union of several alternatives is no class to declare.
+            return {}
 
         if getattr(hint, "__supertype__", None) is not None:
             target = hint
@@ -1852,7 +1869,7 @@ _DIRECT_CLASS_TYPES: dict[type[Any], str] = {
     datetime_module.date: "date32",
     datetime_module.time: "time64(microsecond)",
     datetime_module.timedelta: "duration64(microsecond)",
-    decimal.Decimal: "decimal128(38,18)",
+    decimal.Decimal: "decimal",
     uuid.UUID: "uuid",
     pathlib.Path: "utf8",
     pathlib.PurePath: "utf8",

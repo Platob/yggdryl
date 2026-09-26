@@ -119,8 +119,8 @@ mod arrow {
         pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
             validate_run_ends(&self.run_ends)?;
             Ok(ArrowDataType::RunEndEncoded(
-                self.run_ends.clone().into_arrow_field_ref()?,
-                self.values.clone().into_arrow_field_ref()?,
+                Arc::clone(self.run_ends.as_arrow_field_ref()?),
+                Arc::clone(self.values.as_arrow_field_ref()?),
             ))
         }
 

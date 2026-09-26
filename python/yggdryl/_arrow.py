@@ -24,7 +24,7 @@ from ._native import (
     Urn,
     Version,
 )
-from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
+from ._classes import _adopt_materialized_schema
 
 _INTEGER_KINDS = frozenset(
     ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
@@ -33,7 +33,9 @@ _FLOAT_KINDS = frozenset(("float16", "float32", "float64"))
 _SERIE_KINDS = frozenset(
     ("serie", "serie_view", "fixed_size_serie", "large_serie", "large_serie_view")
 )
-_DECIMAL_KINDS = frozenset(("decimal32", "decimal64", "decimal128", "decimal256"))
+_DECIMAL_KINDS = frozenset(
+    ("decimal32", "decimal64", "decimal128", "decimal256", "decimal", "bigdecimal")
+)
 #: The only ordinary name a generated class owns: every other name it carries -
 #: `__slots__`, the schema cache, the decoration markers - is dunder-shaped and
 #: is refused by the `__` rule beside this one.

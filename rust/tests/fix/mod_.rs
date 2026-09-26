@@ -46,7 +46,7 @@ mod internal {
     /// float: `82.5` is a value a `f64` holds approximately and a decimal holds
     /// exactly.
     fn decimal(text: &str) -> Scalar {
-        Scalar::from(yggdryl::Decimal18::parse(text).expect("an exact number"))
+        Scalar::from(yggdryl::Decimal::parse(text).expect("an exact number"))
     }
 
     fn fpath(spelling: &str) -> yggdryl::FieldPath {
@@ -2827,7 +2827,7 @@ mod internal {
         // By tag, through the registry's canonical name. `OrderQty` is the
         // quantity the event holds, so it answers exact whatever the row's own
         // column would have typed it as.
-        let hundred = Scalar::from(yggdryl::Decimal18::from_int(100));
+        let hundred = Scalar::from(yggdryl::Decimal::from_int(100));
         assert_eq!(msg.by_tag(38).unwrap(), hundred);
         // By name, folded through the registry, and by alias.
         assert_eq!(msg.by_name("orderqty").unwrap(), hundred);
@@ -3106,8 +3106,8 @@ mod internal {
         assert_eq!(held.by_tag(44).unwrap(), decimal("82.5"));
         assert_eq!(held.by_tag(38).unwrap(), decimal("300"));
         // And what the message states is what the trait reads off them.
-        assert_eq!(held.get_price(), yggdryl::Decimal18::parse("82.5").ok());
-        assert_eq!(held.get_quantity(), yggdryl::Decimal18::parse("300").ok());
+        assert_eq!(held.get_price(), yggdryl::Decimal::parse("82.5").ok());
+        assert_eq!(held.get_quantity(), yggdryl::Decimal::parse("300").ok());
         // `Quantity(53)` is the newer spelling and its own slot: a line that
         // said `53=` holds it there, and `OrderQty` stays empty.
         assert!(held.get_by_tag(53).is_none());
@@ -3118,11 +3118,11 @@ mod internal {
         assert!(spelled.get_by_tag(38).is_none());
         assert_eq!(
             spelled.get_quantity(),
-            yggdryl::Decimal18::parse("300").ok(),
+            yggdryl::Decimal::parse("300").ok(),
             "and the quantity the message states reads either spelling"
         );
         // The last trade is its own fact beside them, under FIX's own tag.
-        assert_eq!(held.get_lastpx(), yggdryl::Decimal18::parse("82.5").ok());
+        assert_eq!(held.get_lastpx(), yggdryl::Decimal::parse("82.5").ok());
         // How long it stands, as the message spelled it: what `1` names is the
         // dictionary's to say.
         assert_eq!(held.get_tif().map(yggdryl::TimeInForce::as_str), Some("1"));
@@ -5109,7 +5109,7 @@ mod internal {
                 .collect();
             (
                 names,
-                yggdryl::internals::fix_schema::shape_digest(msg.as_field(), false),
+                yggdryl::internals::fix_schema::shape_digest(msg.as_field()),
             )
         };
         let mut compared = 0;

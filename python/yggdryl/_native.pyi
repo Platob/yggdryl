@@ -21,7 +21,6 @@ def refresh_logging() -> None: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
-Nullability = Literal["default", "strict"]
 Representation = Literal["value", "bits"]
 
 # Anything an Iceberg write takes: every Arrow holder the record surface reads,
@@ -455,7 +454,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -464,7 +462,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -473,7 +470,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -490,7 +486,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @property
@@ -534,7 +529,6 @@ class Serie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     def into_arrow_scalar(self) -> pyarrow.Scalar: ...
@@ -545,6 +539,14 @@ class Serie:
     def into_pandas(self) -> Any: ...
     def into_polars(self) -> Any: ...
     def into_numpy(self) -> Any: ...
+    # The Arrow PyCapsule Interface, buffers shared: a record column under
+    # the exchange schema of the root it is a batch of, any other column
+    # under its own field; a `requested_schema` capsule is applied by the one
+    # cast, best effort. A run has no layout and raises.
+    def __arrow_c_schema__(self) -> object: ...
+    def __arrow_c_array__(
+        self, requested_schema: object | None = None
+    ) -> tuple[object, object]: ...
     def __len__(self) -> int: ...
     @overload
     def __getitem__(self, key: SupportsIndex) -> Scalar: ...
@@ -622,6 +624,9 @@ class StructSerie(Serie):
     @property
     def names(self) -> list[str]: ...
     def without_child(self, name: str) -> StructSerie: ...
+    # A record column is also the stream of its one batch - what
+    # `SerieReader.from_serie` reads - as a `pyarrow.RecordBatch` is.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 class SerieReader(Iterator[Serie]):
     """One record ``Serie`` per batch of an Arrow stream, each cast by one plan.
@@ -639,7 +644,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A stream - a reader, a table, a frame, a dataset, rows - is not pulled
@@ -652,7 +656,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A record column is the batch it is; any other column the one child of
@@ -663,11 +666,24 @@ class SerieReader(Iterator[Serie]):
     # copied or read, and no chunk is the empty stream of its root.
     @staticmethod
     def from_chunked(chunked: ChunkedSerie) -> SerieReader: ...
+    # The records not yet pulled, each cast into `field` by one plan, as a
+    # new reader; this one is spent. A refused option or target leaves it.
+    def cast(
+        self,
+        field: object,
+        *,
+        safe: bool = True,
+        representation: Representation = "value",
+    ) -> SerieReader: ...
     @property
     def field(self) -> Field: ...
     def __iter__(self) -> SerieReader: ...
     def __next__(self) -> Serie: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
+    # The batches not yet pulled as the Arrow PyCapsule Interface's stream,
+    # cast into a `requested_schema` capsule by the one cast; the reader is
+    # spent afterwards, as `into_arrow_reader` spends it.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 class ChunkedSerie:
     """Many columns under one field, held apart: a chunked array, or a table.
@@ -696,7 +712,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # A `pyarrow.ChunkedArray` is its chunks, an Arrow array its one chunk,
@@ -708,7 +723,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # One chunk per batch of anything that streams batches, none joined.
@@ -718,7 +732,6 @@ class ChunkedSerie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # `Serie.from_`'s ladder read as chunks: a chunked array is its chunks, a
@@ -731,7 +744,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     @property
@@ -761,7 +773,6 @@ class ChunkedSerie:
         chunk: Serie,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     def into_serie(self) -> Serie: ...
@@ -771,7 +782,6 @@ class ChunkedSerie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     def into_arrow_chunked_array(self) -> pyarrow.ChunkedArray: ...
@@ -779,6 +789,11 @@ class ChunkedSerie:
     # A record chunk holding an absent row is refused.
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
     def into_arrow_table(self) -> pyarrow.Table: ...
+    # The Arrow PyCapsule Interface's stream, one array per chunk: a record's
+    # chunks as batches, any other field's as the column a
+    # `pyarrow.ChunkedArray` streams; a `requested_schema` capsule is applied
+    # by the one cast.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
     def into_pandas(self) -> Any: ...
     def into_polars(self) -> Any: ...
     def into_numpy(self) -> Any: ...
@@ -856,7 +871,7 @@ class Scalar:
     def kind(self) -> Literal[
         "null", "boolean", "i8", "i16", "i32", "i64", "u8", "u16", "u32",
         "u64", "i128", "u128", "f16", "f32", "f64", "d32", "d64", "d128",
-        "d256", "string", "large_utf8", "utf8_view", "large_utf8_view",
+        "d256", "decimal", "bigdecimal", "string", "large_utf8", "utf8_view", "large_utf8_view",
         "fixed_utf8", "sized_utf8", "ascii", "large_ascii", "ascii_view",
         "large_ascii_view", "fixed_ascii", "sized_ascii", "cp1252",
         "large_cp1252", "cp1252_view", "large_cp1252_view", "fixed_cp1252",
@@ -1246,6 +1261,7 @@ class DataType:
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
     def into_arrow(self) -> Any: ...
+    def __arrow_c_schema__(self) -> object: ...
     def with_fields(self, fields: Iterable[Field]) -> DataType: ...
     def into_arrow_schema(self) -> pyarrow.Schema: ...
     # Three formats, one structural model: `into_dict` is the model every
@@ -1652,7 +1668,6 @@ class ArrowCastPlan:
         target: FieldLike,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     @property
@@ -1661,8 +1676,6 @@ class ArrowCastPlan:
     def target(self) -> Field: ...
     @property
     def safe(self) -> bool: ...
-    @property
-    def nullability(self) -> Nullability: ...
     @property
     def representation(self) -> Representation: ...
     @property
@@ -1735,7 +1748,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     # The applied shape, derived from the two schemas without reading a row.
@@ -1747,7 +1759,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.Schema: ...
     def apply_arrow_reader(
@@ -1758,10 +1769,10 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
     def into_arrow(self) -> Any: ...
+    def __arrow_c_schema__(self) -> object: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.
     # `indent=None` means no layout - compact JSON, flow-style YAML; an
@@ -2719,6 +2730,8 @@ class Selector:
     @property
     def is_all(self) -> bool: ...
     @property
+    def has_star(self) -> bool: ...
+    @property
     def is_columns(self) -> bool: ...
     def __len__(self) -> int: ...
     def columns(self) -> list[str]: ...
@@ -3658,7 +3671,10 @@ class RecordOptions:
     @field.setter
     def field(self, field: FieldLike | None) -> None: ...
     @property
-    def safe(self) -> bool: ...
+    def safe(self) -> bool:
+        """Whether a declared or stored nullable column takes a value it cannot
+        convert as null, ``True`` by default; a not-null column refuses it by
+        name either way."""
     @safe.setter
     def safe(self, safe: bool) -> None: ...
     @property
@@ -5645,8 +5661,10 @@ class FixCodec:
     ``lifecycle_arrow_reader(r)`` keeps them - and
     ``book_arrow_reader`` streams sorted messages through native market
     operations and books into lifted ``marketdata`` batches, one
-    ``book_event`` row per book, while ``write_arrow_reader``
-    re-emits the wire. Batches close on raw bytes
+    ``book_event`` row per book, ``market_operations`` answers a capture's
+    operations sorted as a book folds them - ``market_arrow_reader`` as
+    ``marketdata`` rows, ``market_operations_arrow_reader`` from FIX rows -
+    while ``write_arrow_reader`` re-emits the wire. Batches close on raw bytes
     against ``batch_byte_size``. A pin is on the codec; a stage is a call. A
     codec pins no version: a row states one in its ``beginstring`` capture,
     else the line implies it.
@@ -5686,6 +5704,7 @@ class FixCodec:
         threads: int | None = None,
         snapshot_ns: int | None = None,
         official_time_delay_ms: int | None = None,
+        market_metadata: bool = True,
     ) -> None: ...
     @property
     def registry(self) -> FixRegistry: ...
@@ -5709,6 +5728,8 @@ class FixCodec:
     def snapshot_ns(self) -> int | None: ...
     @property
     def official_time_delay_ms(self) -> int: ...
+    @property
+    def market_metadata(self) -> bool: ...
     @property
     def include_msgtypes(self) -> list[str]: ...
     @property
@@ -5748,6 +5769,37 @@ class FixCodec:
         Lifecycle enrichment is explicit: pass ``codec.lifecycle(messages)``
         when needed. Positive ``snapshot_millis`` enables epoch-aligned
         snapshots; ``global_=True`` consolidates symbols into the GLOBAL book.
+        Each leaf carries its message's unmapped fields where
+        ``market_metadata`` says so.
+        """
+        ...
+    def market_operations(self, messages: Iterable[FixMsg]) -> MarketDataRowIterator:
+        """The capture's market operations, in the order a book folds them.
+
+        Admits what ``book_arrow_reader`` admits and expands each message as
+        ``FixMsg.market_operations`` does; ``messages`` is collected when
+        this is called and the operations are sorted, stably, by
+        ``snapunix`` else ``currunix``. An admitted message whose expansion
+        is refused raises ``ValueError`` first, in source order; a failure of
+        the iterable itself raises as itself after the operations it reached.
+        """
+        ...
+    def market_arrow_reader(self, messages: Iterable[FixMsg]) -> pyarrow.RecordBatchReader:
+        """``market_operations`` as lifted ``marketdata`` batches.
+
+        One refusal - an expansion refused, a bad item, the iterable's own
+        failure - is the reader's only item.
+        """
+        ...
+    def market_operations_arrow_reader(
+        self, source: FixArrowSource
+    ) -> pyarrow.RecordBatchReader:
+        """The Arrow twin of ``market_arrow_reader``: FIX rows in, ``marketdata`` rows out.
+
+        Each row is read as its own message. A walked capture reaches the
+        sorted door as messages - ``market_arrow_reader(codec.lifecycle(messages))``
+        - never as the rows ``lifecycle_arrow_reader`` writes, whose walked
+        facts are no cell of the row.
         """
         ...
     def format_messages(
@@ -6793,6 +6845,22 @@ class BookSide:
     def best_price(self) -> Scalar | None: ...
     @property
     def best_quantity(self) -> Scalar | None: ...
+    @property
+    def limits(self) -> list[Scalar]:
+        """One limit per price, best first, the unpriced limit last.
+
+        Each a struct ``Scalar`` of ``price`` (``None`` on the unpriced
+        limit), the exact ``quantity`` resting there and the ``uuids`` of the
+        entries resting there, in live order.
+        """
+        ...
+    def depth(self, levels: int) -> Scalar | None:
+        """The exact sum of the first ``levels`` limits' quantities.
+
+        Zero for an empty side or no level; ``None`` only past what a decimal
+        holds.
+        """
+        ...
     def with_operation(self, operation: OrderEvent | QuoteEvent | MarketData) -> BookSide: ...
     def with_previous(self, previous: BookSide) -> BookSide | None: ...
     def merge_with(self, other: BookSide) -> BookSide | None: ...
@@ -6899,6 +6967,21 @@ class BookEvent:
     def snapshot_partitions(self) -> list[SnapshotPartition]: ...
     @property
     def is_crossed(self) -> bool: ...
+    @property
+    def is_locked(self) -> bool:
+        """Whether both sides state a best price and the two are equal."""
+        ...
+    @property
+    def spread(self) -> Scalar | None:
+        """The best ask less the best bid, negative when crossed; ``None`` one-sided."""
+        ...
+    def imbalance(self, levels: int) -> Scalar | None:
+        """``(bid - ask) / (bid + ask)`` over the sides' ``depth(levels)``.
+
+        One for a bid-only book, minus one for an ask-only one, ``None``
+        where the total is zero.
+        """
+        ...
     @property
     def bbo_midpoint(self) -> Scalar | None: ...
     @property
@@ -7108,6 +7191,33 @@ class MarketData:
     ) -> pyarrow.RecordBatchReader: ...
     @staticmethod
     def from_arrow_reader(reader: FixArrowSource) -> MarketDataRowIterator: ...
+    @staticmethod
+    def plan(
+        view: str,
+        lifts: Sequence[str | FieldPath] | None = (),
+        *,
+        crosscode: str | None = None,
+    ) -> Plan:
+        """The plan one named view is over a ``marketdata`` stream.
+
+        ``view`` is one of ``enums.MARKET_VIEWS``, read ignoring ASCII case;
+        each lift, a ``FieldPath`` or its text such as
+        ``"securityids['ISIN'] as isin"``, is appended after the view's own
+        columns; ``None`` is no lifts. ``crosscode`` is the chain
+        ``lifecycle`` follows: that view needs one and every other view
+        refuses one.
+        """
+        ...
+    @staticmethod
+    def apply_view(
+        view: str,
+        source: FixArrowSource,
+        lifts: Sequence[str | FieldPath] | None = (),
+        *,
+        crosscode: str | None = None,
+    ) -> pyarrow.RecordBatchReader:
+        """``MarketData.plan(view, lifts, crosscode=...)`` applied to ``source``, bound once."""
+        ...
     def with_previous(self, previous: MarketData) -> MarketData | None: ...
     def merge_with(self, other: MarketData) -> MarketData | None: ...
     def is_after(self, other: MarketData) -> bool: ...
@@ -7123,9 +7233,12 @@ class MarketData:
     def __reduce__(self) -> tuple[object, tuple[bytes]]: ...
 
 class MarketDataRowIterator(Iterator[MarketData]):
-    """The lazy row-decode walk ``MarketData.from_arrow_reader`` answers.
+    """A lazy stream of ``MarketData`` a native stage answers.
 
-    Fused after an error, which is raised at the failing row.
+    The rows ``MarketData.from_arrow_reader`` decodes - fused after an
+    error, which is raised at the failing row - or the operations
+    ``FixCodec.market_operations`` sorted out of a capture, a Python source's
+    own failure raised once they are read.
     """
 
     __hash__: ClassVar[None]  # type: ignore[assignment]

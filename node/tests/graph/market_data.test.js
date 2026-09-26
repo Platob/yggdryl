@@ -7,7 +7,7 @@ const test = require('node:test')
 
 const arrow = require('apache-arrow')
 
-const { BatchReader, Field, graph } = require('yggdryl')
+const { BatchReader, Field, FieldPath, Plan, enums, graph } = require('yggdryl')
 
 const CLOCK = 1_700_000_000_000_000_000n
 
@@ -126,9 +126,14 @@ test('the field is the lifted marketdata struct', () => {
   const names = Array.from({ length: field.fieldLen }, (_, at) => field.fieldAt(at).name)
   assert.equal(names[0], 'kind')
   for (const name of ['currunix', 'price', 'altids', 'bid', 'ask', 'mdupdateaction', 'executions',
-    'bidside', 'askside', 'snapshotpartitions', 'live', 'deltas']) {
+    'bidside', 'askside', 'snapshotpartitions', 'live', 'deltas', 'limits']) {
     assert.ok(names.includes(name), name)
   }
+  // The three book facts follow the five book-control columns, and the
+  // seven nested columns close the row.
+  assert.equal(names.length, 59)
+  assert.deepEqual(names.slice(49, 52), ['spread', 'crossed', 'locked'])
+  assert.deepEqual(names.slice(52), NESTED)
 })
 
 test('arrowReader then fromArrowReader round trips every variant', () => {
@@ -239,4 +244,151 @@ test('an undated row needs no clock', () => {
   assert.equal(data.kind, 'order')
   assert.equal(data.crosscode, 'X')
   assert.ok(data.asOrder().equals(new graph.Order({ crosscode: 'X' })))
+})
+
+// The named views over a `marketdata` stream: one plan each.
+const NESTED = ['executions', 'bidside', 'askside', 'snapshotpartitions', 'live', 'deltas', 'limits']
+const ISIN = 'US0378331005'
+
+// The root's children, by name.
+function rootNames() {
+  const root = graph.MarketData.field()
+  return Array.from({ length: root.fieldLen }, (_, at) => root.fieldAt(at).name)
+}
+
+// The children of one nested column's item, each under `prefix`.
+function prefixed(nested, prefix) {
+  const column = graph.MarketData.field().field(nested)
+  const item = column.fieldLen === 1 && column.dtype.id.includes('serie') ? column.fieldAt(0) : column
+  return Array.from({ length: item.fieldLen }, (_, at) => `${prefix}.${item.fieldAt(at).name}`)
+}
+
+// A stream of every leaf, with an order stating an ISIN and a chain of two.
+function viewStream() {
+  const identified = new graph.OrderEvent(CLOCK + 5n, {
+    crosscode: 'O-5', side: 'BUY', price: '100', ticker: 'ACME', securityids: { ISIN },
+  })
+  const first = new graph.OrderEvent(CLOCK + 10n, { crosscode: 'C-1', side: 'BUY', price: '1' })
+  const second = new graph.OrderEvent(CLOCK + 20n, { crosscode: 'C-1', side: 'BUY', price: '2' }).withPrevious(first)
+  return graph.MarketData.arrowReader([second, ...leaves(), identified, first])
+}
+
+function viewed(view, lifts, crosscode) {
+  return graph.MarketData.applyView(view, viewStream(), lifts, crosscode).intoTable()
+}
+
+function names(table) {
+  return table.schema.fields.map((field) => field.name)
+}
+
+test('the market views are the enumeration the core lists', () => {
+  assert.deepEqual([...enums.marketViews], [
+    'orders', 'quotes', 'executions', 'trades', 'book_sides', 'books', 'lifecycle',
+  ])
+  assert.ok(Object.isFrozen(enums.marketViews))
+})
+
+test('every view is one plan whose text reads back', () => {
+  const nested = NESTED.join(', ')
+  const lift = "securityids['ISIN'] as isin"
+  assert.equal(
+    graph.MarketData.plan('orders', [lift]).toString(),
+    `select * exclude (${nested}), ${lift} where kind in ('order', 'order_event')`,
+  )
+  assert.equal(
+    graph.MarketData.plan('trades').toString(),
+    `select * exclude (${nested}), unnest(executions) as execution where kind = 'trade_event'`,
+  )
+  assert.equal(
+    graph.MarketData.plan('BOOK_SIDES').toString(),
+    "select currunix, snapunix, unnest([bidside, askside]) as side where kind = 'book_event'",
+  )
+  assert.equal(
+    graph.MarketData.plan('books').toString(),
+    "select * exclude (executions, live, deltas, limits) where kind = 'book_event'",
+  )
+  assert.equal(
+    graph.MarketData.plan('lifecycle', [], 'C-1').toString(),
+    `select * exclude (${nested}) where crosscode = 'C-1' order by currunix`,
+  )
+  for (const view of enums.marketViews) {
+    const crosscode = view === 'lifecycle' ? 'C-1' : undefined
+    for (const lifts of [undefined, null, [], [lift], [new FieldPath(lift)]]) {
+      const plan = graph.MarketData.plan(view, lifts, crosscode)
+      assert.ok(plan instanceof Plan)
+      const text = plan.toString()
+      assert.equal(Plan.parse(text).toString(), text, view)
+      assert.ok(Plan.parse(text).equals(plan), view)
+    }
+  }
+})
+
+test('a view is read by its spelling and only the lifecycle takes a crosscode', () => {
+  assert.throws(() => graph.MarketData.plan('book-sides'), /\$\.view: expected one of orders, quotes, .*book_sides/)
+  assert.throws(() => graph.MarketData.plan('lifecycle'), /\$\.crosscode: expected the crosscode of the chain/)
+  assert.throws(() => graph.MarketData.plan('orders', [], 'C-1'), /\$\.crosscode: expected a crosscode only for the lifecycle view/)
+  assert.throws(() => graph.MarketData.plan('orders', ['securityids[']), /invalid field path expression at byte 12/)
+  // A refused view leaves the reader it was given unread.
+  const reader = viewStream()
+  assert.throws(() => graph.MarketData.applyView('nope', reader), /\$\.view/)
+  assert.equal(reader.consumed, false)
+})
+
+test('each view keeps its own columns over a small stream', () => {
+  const flat = rootNames().filter((name) => !NESTED.includes(name))
+  for (const [view, kinds, rows] of [
+    ['orders', ['order', 'order_event'], 5],
+    ['quotes', ['quote', 'quote_event'], 2],
+    ['executions', ['execution', 'execution_event'], 2],
+  ]) {
+    const table = viewed(view)
+    assert.deepEqual(names(table), flat, view)
+    assert.equal(table.numRows, rows, view)
+    assert.ok([...table.getChild('kind')].every((kind) => kinds.includes(kind)), view)
+  }
+
+  // A trade is one row per execution, its own columns beside each.
+  const trades = viewed('trades')
+  assert.deepEqual(names(trades), [...flat, ...prefixed('executions', 'execution')])
+  assert.equal(trades.numRows, 2)
+  assert.deepEqual([...trades.getChild('crosscode')], ['T-1', 'T-1'])
+  assert.deepEqual([...trades.getChild('execution.crosscode')], ['E-1', 'E-2'])
+
+  // A book is two side rows beside its clocks, bid then ask.
+  const sides = viewed('book_sides')
+  assert.deepEqual(names(sides), ['currunix', 'snapunix', ...prefixed('bidside', 'side')])
+  assert.equal(sides.numRows, 2)
+  assert.deepEqual([...sides.getChild('side.side')], ['BUY', 'SELL'])
+
+  const books = viewed('books')
+  assert.deepEqual(names(books), rootNames().filter((name) => !['executions', 'live', 'deltas', 'limits'].includes(name)))
+  assert.equal(books.numRows, 1)
+
+  // A lifecycle is one chain in the order it happened, and needs its code.
+  const chain = viewed('lifecycle', [], 'C-1')
+  assert.deepEqual(names(chain), flat)
+  assert.deepEqual([...chain.getChild('crosscode')], ['C-1', 'C-1'])
+  // The stream held the later element first; the view answers the chain's
+  // head, which follows nothing, then the element that follows it.
+  assert.equal(chain.getChild('prevuuid').get(0), null)
+  assert.notEqual(chain.getChild('prevuuid').get(1), null)
+  assert.equal(viewed('lifecycle', undefined, 'NOWHERE').numRows, 0)
+})
+
+test('a lift reads one key of a root column and null where it is missing', () => {
+  const lifts = ["securityids['ISIN'] as isin", "securityids['WKN'] as wkn"]
+  const table = viewed('orders', lifts)
+  assert.deepEqual(names(table).slice(-2), ['isin', 'wkn'])
+  const codes = [...table.getChild('crosscode')]
+  const isins = [...table.getChild('isin')]
+  codes.forEach((code, at) => assert.equal(isins[at], code === 'O-5' ? ISIN : null, code))
+  assert.equal(table.getChild('wkn').nullCount, table.numRows)
+  // The key is read as it is stored: another case is another key.
+  assert.equal(viewed('orders', ["securityids['isin'] as isin"]).getChild('isin').nullCount, 5)
+  // A lift naming a column the root does not hold is refused where the
+  // plan binds.
+  assert.throws(() => viewed('orders', ["nothing['ISIN'] as isin"]), /nothing/)
+  // Whatever `BatchReader.from` takes is a source: an Arrow JS table here.
+  const table2 = graph.MarketData.applyView('quotes', graph.MarketData.arrowReader(leaves()).intoTable()).intoTable()
+  assert.equal(table2.numRows, 2)
 })

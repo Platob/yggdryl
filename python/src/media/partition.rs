@@ -7,10 +7,10 @@
 //! either side of a read or a write.
 
 use arrow_array::RecordBatch;
-use arrow_pyarrow::FromPyArrow;
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyModule};
 
+use crate::datatype::BatchIntake;
 use crate::field::core_field_from_value;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::scalar::from_py;
@@ -55,7 +55,8 @@ pub(crate) fn with_partitions<'py>(
 ) -> PyResult<Bound<'py, PyAny>> {
     let pairs = pairs_from_value(partitions)?;
     let field = field.map(core_field_from_value).transpose()?;
-    if let Ok(batch) = RecordBatch::from_pyarrow_bound(rows) {
+    if let Ok(batch) = BatchIntake::from_value(rows) {
+        let batch = batch.into_batch(py)?;
         let widened = yggdryl::media::partition::with_partitions(&batch, &pairs, field.as_ref())
             .map_err(value_error)?;
         return batch_to_pyarrow(py, widened);
@@ -79,7 +80,8 @@ pub(crate) fn without_partitions<'py>(
     partitions: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
     let pairs = pairs_from_value(partitions)?;
-    if let Ok(batch) = RecordBatch::from_pyarrow_bound(rows) {
+    if let Ok(batch) = BatchIntake::from_value(rows) {
+        let batch = batch.into_batch(py)?;
         let narrowed =
             yggdryl::media::partition::without_partitions(&batch, &pairs).map_err(value_error)?;
         return batch_to_pyarrow(py, narrowed);

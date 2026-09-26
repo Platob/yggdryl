@@ -69,7 +69,9 @@ pub struct AvroOptions {
     pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
-    /// Whether a cast may null a value it cannot convert.
+    /// Whether a declared or stored nullable column takes a value it cannot
+    /// convert as null, `true` by default; a not-null column refuses it by
+    /// name either way.
     pub safe: bool,
     /// Rows per batch a reader yields.
     /// Bytes per batch, whichever of this and `batch_row_size` binds first.
@@ -110,7 +112,7 @@ impl AvroOptions {
             filter: crate::Filter::always_true(),
             select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
-            safe: false,
+            safe: true,
             batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,

@@ -8,6 +8,7 @@ export {
   Digest,
   Expression,
   Field,
+  FieldPath,
   Filter,
   IOBase,
   IOCursor,
@@ -37,6 +38,7 @@ export {
   Xxh128,
   Xxh32,
   Xxh64,
+  type BookLimit,
   type BookRefInput,
   type BytesParameters,
   type BytesParametersInput,
@@ -388,6 +390,8 @@ export type DataTypeId =
   | 'decimal64'
   | 'decimal128'
   | 'decimal256'
+  | 'decimal'
+  | 'bigdecimal'
   | 'map'
   | 'run_end_encoded'
   | 'variant'
@@ -496,6 +500,8 @@ interface DataTypeKindById {
   decimal64: 'decimal'
   decimal128: 'decimal'
   decimal256: 'decimal'
+  decimal: 'decimal'
+  bigdecimal: 'decimal'
   map: 'nested'
   run_end_encoded: 'nested'
   variant: 'nested'
@@ -756,6 +762,19 @@ declare module './index' {
      */
     bookArrowReader(messages: Iterable<FixMsg>, snapshotMillis?: number, global?: boolean): BatchReader
     /**
+     * The sorted door: a capture collected, what `bookArrowReader` admits
+     * expanded into market operations, stably sorted by `snapunix`, else
+     * `currunix`. Source errors and expansion refusals come first, in
+     * source order, each thrown by its own `next`; a failure of the
+     * iterable itself is thrown once, in place of the end.
+     */
+    marketOperations(messages: Iterable<FixMsg>): MarketDataRowIterator
+    /**
+     * `marketOperations` as bounded batches of lifted `marketdata` rows; one
+     * intake failure is the reader's only item.
+     */
+    marketArrowReader(messages: Iterable<FixMsg>): BatchReader
+    /**
      * A stream of messages as the rows one message field holds them.
      *
      * The third verb, and the one a consumer reads by: `parse*` turns a
@@ -770,6 +789,7 @@ declare module './index' {
     /** The batch twins take whatever `BatchReader.from` accepts. */
     parseTextArrowReader(source: BatchSource): BatchReader
     lifecycleArrowReader(source: BatchSource): BatchReader
+    marketOperationsArrowReader(source: BatchSource): BatchReader
     formatArrowReader(source: BatchSource, field: Field): BatchReader
     messages(source: BatchSource): FixMessages
     writeArrowReader(source: BatchSource, sink: { write(chunk: Uint8Array): unknown }): number
@@ -904,6 +924,14 @@ declare module './index' {
   interface SerieReader extends Iterable<Serie> {
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
+    /**
+     * Every record this reader yields cast into `field` by one plan: a
+     * record root, or a column - a DataType as its required `value` field -
+     * as the one child of a record named `row`. This reader's own root
+     * answers it as it stands; held records are cast here, once each, and a
+     * stream's batches as they are pulled. The reader is consumed.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
   }
 
   namespace ChunkedSerie {
@@ -1018,7 +1046,7 @@ declare module './index' {
     apply(serie: Serie): Serie
     /** Cast every chunk of a chunked column laid out as `source`, kept apart. */
     apply(chunked: ChunkedSerie): ChunkedSerie
-    /** The three cast answers this plan was compiled under. */
+    /** The two cast answers this plan was compiled under. */
     readonly options: Readonly<Required<ArrowCastOptions>>
   }
 
@@ -1279,7 +1307,16 @@ export type Decimal32Field = FieldOf<'decimal32', bigint>
 export type Decimal64Field = FieldOf<'decimal64', bigint>
 export type Decimal128Field = FieldOf<'decimal128', bigint>
 export type Decimal256Field = FieldOf<'decimal256', bigint>
-export type DecimalField = Decimal128Field | Decimal256Field
+/** What `fields.decimal(name, precision, scale)` answers: the narrowest width. */
+export type DecimalWidthField =
+  | Decimal32Field
+  | Decimal64Field
+  | Decimal128Field
+  | Decimal256Field
+/** The fixed `decimal` leaf: thirty-eight digits at scale eighteen, as a bigint of units. */
+export type DecimalField = FieldOf<'decimal', bigint>
+/** The fixed `bigdecimal` leaf: seventy-six digits at scale eighteen. */
+export type BigDecimalField = FieldOf<'bigdecimal', bigint>
 export type MapField<K = unknown, V = unknown> = FieldOf<
   'map',
   ReadonlyMap<K, V>
@@ -1525,13 +1562,15 @@ export interface FieldsNamespace {
     value: DataTypeInput,
     options?: FieldOptions,
   ): DictionaryField
+  decimal(name: string, options?: FieldOptions): DecimalField
   decimal(
     name: string,
     precision: number,
     scale?: number,
     options?: FieldOptions,
-  ): DecimalField
-  decimal(name: string, precision: number, options: FieldOptions): DecimalField
+  ): DecimalWidthField
+  decimal(name: string, precision: number, options: FieldOptions): DecimalWidthField
+  bigdecimal(name: string, options?: FieldOptions): BigDecimalField
   decimal32(
     name: string,
     precision: number,
@@ -2853,6 +2892,11 @@ export declare const enums: {
   }
   /** Every `MarketData.kind` spelling, e.g. `'order'`, `'order_event'`, `'book_event'`. */
   readonly marketKinds: readonly string[]
+  /**
+   * Every named view `graph.MarketData.plan` and `applyView` read, e.g.
+   * `'orders'`, `'book_sides'`, `'lifecycle'`.
+   */
+  readonly marketViews: readonly string[]
   /** Every `BookRef.action` spelling. */
   readonly mdUpdateActions: readonly string[]
   /** The sixteen event column names, in schema order. */
@@ -3550,12 +3594,6 @@ declare module './index' {
 export type IcebergSource = BatchSource | RecordSource
 
 /**
- * What a cast does about a non-nullable target field the source cannot fill:
- * `"default"` writes its canonical default, `"strict"` refuses by path.
- */
-export type Nullability = 'default' | 'strict'
-
-/**
  * What a cast carries across two datatypes of the same physical width:
  * `"value"` the number they spell, `"bits"` the bytes under it - so an
  * `int64`, a `uint64`, a `float64` and a `fixed_size_binary(8)` are one buffer
@@ -3564,14 +3602,16 @@ export type Nullability = 'default' | 'strict'
 export type Representation = 'value' | 'bits'
 
 /**
- * The three independent answers every Arrow cast needs: `safe` decides whether
- * a present value may be converted, `nullability` whether a declared value may
- * be absent, `representation` what a same-width pair carries. An absent answer
- * takes the core's default: safe, `"default"`, `"value"`.
+ * The two independent answers every Arrow cast needs: `safe` decides whether
+ * a present value may be converted, `representation` what a same-width pair
+ * carries. Whether a value may be absent is not an option here: it is the
+ * target field's own nullability, answered the same way everywhere - a
+ * nullable column takes a value it cannot convert as null, a required
+ * column refuses one by path. An absent answer takes the core's default:
+ * safe, `"value"`.
  */
 export interface ArrowCastOptions {
   safe?: boolean
-  nullability?: Nullability
   representation?: Representation
 }
 
@@ -3890,6 +3930,20 @@ declare module './index' {
       batchRowSize?: number,
       batchByteSize?: number,
     ): BatchReader
+    /**
+     * One named view over a `marketdata` stream - exactly
+     * `MarketData.plan(view, lifts, crosscode)` applied to `reader`, bound
+     * once against its schema. The reader is whatever `BatchReader.from`
+     * accepts, and a native one is consumed; `lifts` are `FieldPath`s
+     * appended after the view's own columns, and only `lifecycle` takes a
+     * `crosscode`.
+     */
+    function applyView(
+      view: string,
+      reader: BatchSource,
+      lifts?: ReadonlyArray<string | FieldPath> | null,
+      crosscode?: string | null,
+    ): BatchReader
   }
   interface BookEvent {
     /**
@@ -3946,7 +4000,11 @@ export interface Graph {
   readonly SnapshotEvent: typeof SnapshotEvent
   /** One value over every market leaf, with the lifted `marketdata` Arrow doors. */
   readonly MarketData: typeof MarketData
-  /** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+  /**
+   * A stream of `MarketData`: the lazy row-decode walk
+   * `MarketData.fromArrowReader` answers, and the sorted operations
+   * `FixCodec.marketOperations` answers.
+   */
   readonly MarketDataRowIterator: typeof MarketDataRowIterator
   /** Books from a sorted stream of market items, pulling them lazily. */
   readonly BookIterator: BookIteratorConstructor

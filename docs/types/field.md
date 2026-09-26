@@ -646,6 +646,8 @@ No name, `None`/`null`, or the existing name returns the cached native value; an
 
 Python spells the class accessor `into_field` because a `@scalar` class converts only as a struct root and has no leaf form to tell it apart from. On a *value* Python keeps the pair the other two rows have: [`Scalar.into_field`](scalar.md) for the leaf and `Scalar.into_struct_field` for the root.
 
+An instance of such a class - or of any dataclass or named tuple - crosses as the record of its value fields. The class's field names are resolved on its first instance and remembered, so every instance costs one attribute read per field and nothing is re-inferred per value. `Class.into_field().scalar(instance)` is its canonical row, and the Python records writers land a stream of instances through that same value contract. A member holds a bare value, so a union member is spelled as the pair naming the branch [the union's own rule](nested/union.md#scalar) chooses - a `list[int] | str` member's list stays a list - and an enum member is the value it names. `None` beside several value types is a union member of its own - `int | str | None` infers the members `int`, `str` and a `null` member named `NoneType`, appended last - so an instance holding `None` crosses as that member's absence and reads back as `None`; `int | None` stays a nullable `int64`. The writers read each instance, and each mapping or positional row, onto the field the write declares by name, a column the class does not declare being null and a member the field does not declare left unread, or onto the class's own field when none is declared. `read_records(Class)` reads each batch of the class's own layout - proven once per batch, child by child - a window of 1,024 rows at a time: each member's column is converted in one native call, an exact leaf or temporal value passes unchanged, an enum value is looked up once, and nested classes and lists of them are read from their own columns, while instances are built lazily one row at a time in declaration order. `json.loads(..., cls=Class)` and a batch of any other layout read through the plan the class compiles once for a mapping: a value that already is its annotation's exact class - `int`, `float`, `str`, `bool`, `bytes`, `Decimal`, `UUID`, `date`, one of them or `None`, a union member's, or an enum's member or value - reaches the constructor unchanged, a nested class's mapping is read by that class's own plan, and a list item by item. Every other value is cast losslessly or refused as before, naming the path it reached, at the row it was read in.
+
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A
@@ -665,11 +667,12 @@ and never of the data: `apply_arrow_schema` answers it without reading a row, an
 pulled - which is what lets a partitioned read be handed straight to a write. The whole applied
 plan is compiled from those two schemas once, so a stream pays for it once.
 
-`options` carries the [cast policy](cast.md#strict-nullability) the first step runs under, and
-under `strict` nullability it also holds after the protocols have run. A field an enabled protocol
-materializes may arrive absent or holding its canonical default - closing that hole is the
-protocol's job, and it has not run yet - but the applied batch is checked again once every
-protocol is done, so a required column its protocol did not write is still refused by path.
+`options` carries the [conversion](cast.md) the first step runs under. A required column refuses
+a null or a column the source does not carry by path ([Required columns](cast.md#required-columns)),
+and that holds after the protocols have run too. A field an enabled protocol materializes may
+arrive absent or holding its canonical default - closing that hole is the protocol's job, and it
+has not run yet - but the applied batch is checked again once every protocol is done, so a
+required column its protocol did not write is still refused by path.
 
 === "Rust"
 
@@ -760,20 +763,20 @@ protocol is done, so a required column its protocol did not write is still refus
     required_year = Field("year", "int32", nullable=False)
     required_year.partition.sources = ["event"]
     required_year.partition.transform = "year"
-    strict_root = Field(
+    required_root = Field(
         "row",
         DataType.from_fields([Field("event", "date32", nullable=False), required_year]),
         nullable=False,
     )
     # With the partition step on, the column it writes satisfies its own
     # declaration; with it off, nothing is going to write it.
-    assert strict_root.apply_arrow_batch(batch, nullability="strict").num_columns == 2
+    assert required_root.apply_arrow_batch(batch).num_columns == 2
     try:
-        strict_root.apply_arrow_batch(batch, transform=False, nullability="strict")
+        required_root.apply_arrow_batch(batch, transform=False)
     except ValueError as error:
         assert "$.year" in str(error), error
     else:
-        raise AssertionError("a strict apply must refuse the unwritten column")
+        raise AssertionError("an apply must refuse the unwritten required column")
 
     # The same shape, with no rows read and no batch pulled.
     assert root.apply_arrow_schema(batch.schema) == applied.schema
@@ -993,7 +996,7 @@ One `Field` ⇄ `Scalar` mapping (`into_value`/`from_value`, `into_dict`/`from_d
 - `apply_arrow_batch(digest=True, cast=False)` -> the digest step reconciles to the root for itself, because a holder is addressed by position.
 - a column holding anything but its canonical default -> left alone by every step, so applying twice changes nothing.
 - `apply_arrow_schema` -> the empty batch through the same steps; a declaration that cannot be satisfied fails here, not on the first batch.
-- `nullability="strict"` -> a field an enabled protocol materializes may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
+- a required field an enabled protocol materializes -> may arrive absent; every other declared non-null field is refused where it stands, and the applied batch is checked again once the protocols are done.
 - `apply_arrow_reader` with all three off -> the reader itself, unwrapped; otherwise the applied schema is derived once and reported before the first pull.
 - a batch that fails inside `apply_arrow_reader` -> that batch's `Err`; the reader is not fused after it.
 

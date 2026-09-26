@@ -14,7 +14,7 @@ use yggdryl::{Scalar, Side as CoreSide};
 use super::market_data::JsMarketData;
 use super::operation::{JsBookRef, JsExecutionEvent};
 use super::{AnyMarketData, decimal_text, instant_of, market_data_from, market_data_of, optional};
-use crate::{Failed, Pulled, exact_u64, javascript_failure, napi_error, ordering_value};
+use crate::{Failed, Pulled, exact_u64, javascript_failure, napi_error, or_null, ordering_value};
 
 /// The two named slots a snapshot-partition object states.
 #[napi(object)]
@@ -115,6 +115,25 @@ impl JsSnapshotPartition {
     }
 }
 
+/// One price limit of a book side, as the plain object JavaScript reads.
+#[napi(object, object_from_js = false)]
+pub struct BookLimit {
+    /// The limit's price as decimal text; `null` on the one limit folding
+    /// every entry that states no price.
+    #[napi(ts_type = "string | null")]
+    pub price: Either<String, Null>,
+    /// The exact sum of the quantities its entries state, as decimal text;
+    /// an entry stating none adds nothing.
+    pub quantity: String,
+    /// Its entries' `curruuid`s in live order: position, then arrival.
+    pub uuids: Vec<String>,
+}
+
+/// A count of limits, checked once: a whole number of at most 2^53.
+fn levels_of(levels: f64) -> Result<usize> {
+    Ok(usize::try_from(exact_u64(levels, "levels")?).unwrap_or(usize::MAX))
+}
+
 /// One side of a book: persistent live orders and quotes, price ordered,
 /// beside the deltas applied since the last emitted book. Immutable:
 /// `withOperation` and every verb answer a new side.
@@ -176,17 +195,41 @@ impl JsBookSide {
         self.inner.is_empty()
     }
 
-    /// The best live price on this side, as decimal text; `null` where
-    /// empty.
+    /// The best live price on this side, as decimal text: the first priced
+    /// level's price, `null` for an empty side or one holding only unpriced
+    /// entries.
     #[napi(getter)]
     pub fn best_price(&self) -> Option<String> {
         decimal_text(self.inner.best_price())
     }
 
-    /// The aggregate quantity at the exact best price; `null` where empty.
+    /// The exact aggregate quantity at the best price, as decimal text, an
+    /// entry stating none adding nothing; `null` where `bestPrice` is.
     #[napi(getter)]
     pub fn best_quantity(&self) -> Option<String> {
         decimal_text(self.inner.best_quantity())
+    }
+
+    /// One limit per price level, best first and the one unpriced limit
+    /// last, each naming its entries' `curruuid`s in position order.
+    #[napi(getter)]
+    pub fn limits(&self) -> Vec<BookLimit> {
+        self.inner
+            .limits()
+            .map(|limit| BookLimit {
+                price: or_null(decimal_text(limit.price)),
+                quantity: limit.quantity.to_string(),
+                uuids: limit.uuids.iter().map(ToString::to_string).collect(),
+            })
+            .collect()
+    }
+
+    /// The exact quantity resting on the first `levels` limits, the
+    /// unpriced one counted where reached, as decimal text: `'0'` for an
+    /// empty side or no level, `null` only past what a decimal holds.
+    #[napi]
+    pub fn depth(&self, levels: f64) -> Result<Option<String>> {
+        Ok(decimal_text(self.inner.depth(levels_of(levels)?)))
     }
 
     /// This side with one order or quote event - a leaf or a `MarketData` -
@@ -271,6 +314,27 @@ impl JsBookEvent {
     #[napi(getter)]
     pub fn is_crossed(&self) -> bool {
         self.inner.is_crossed()
+    }
+
+    /// Whether both bests are stated and equal.
+    #[napi(getter)]
+    pub fn is_locked(&self) -> bool {
+        self.inner.is_locked()
+    }
+
+    /// The best ask less the best bid, negative when crossed, as decimal
+    /// text; `null` where a side states no best.
+    #[napi(getter)]
+    pub fn spread(&self) -> Option<String> {
+        decimal_text(self.inner.spread())
+    }
+
+    /// `(bid - ask) / (bid + ask)` over the two sides' `depth(levels)`, as
+    /// decimal text: `'1'` bid-only, `'-1'` ask-only; `null` when the total
+    /// is zero - both sides empty, or no level.
+    #[napi]
+    pub fn imbalance(&self, levels: f64) -> Result<Option<String>> {
+        Ok(decimal_text(self.inner.imbalance(levels_of(levels)?)))
     }
 
     /// The arithmetic midpoint of a coherent two-sided best bid and offer,

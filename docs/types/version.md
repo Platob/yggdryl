@@ -386,7 +386,7 @@ fold together, and the canonical text states the fold rather than the tail.
 | Text | one to three decimal components; `5.0.0` renders as `5` |
 | Patch tail | `.250` and `sp250` state 250; any other tail folds to `1..=65535` via XXH3 |
 | Storage | `Utf8` holding the canonical spelling, extension name `yggdryl.version` |
-| Default | `0`, the numeric minimum, which is what a required column fills with |
+| Default | `0`, the numeric minimum; a cast never writes it in place of a null |
 | Merging | only with itself: merging into text would drop the canonicalization |
 | Sorting | Arrow string order stays lexicographic; Rust `Ord`, Python comparisons, and JavaScript `compare` use numeric order |
 
@@ -401,7 +401,7 @@ native Version example corpus.
 - A fourth component, an empty component, a qualifier, or a patch above `65535` -> folded into the patch, never refused.
 - Empty text is no `Version`, and the datatype door reads an empty cell entering a non-text column as absence: a nullable column holds null, a required one refuses it.
 - Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
-- The canonical default is `0` (`Version::MIN`), which is what a [strict-nullability](cast.md) cast writes where a required column holds a null.
+- The canonical default is `0` (`Version::MIN`). A cast never writes it for a null: a required column refuses the null by path ([Required columns](cast.md#required-columns)).
 - A version merges only with itself; merged with `utf8` -> refused naming both, because the canonicalization is what the column is for.
 - An Arrow column under `yggdryl.version` over a storage that is not `Utf8` -> a foreign field wearing our name, imported as its storage.
 - A numeric Arrow source cast into a version column -> refused naming the datatype; text is the only source a version reads.

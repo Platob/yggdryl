@@ -31,17 +31,16 @@ pub struct JsArrowCastPlan {
 
 #[napi]
 impl JsArrowCastPlan {
-    /// Compile the cast from `source` to `target` under the three cast
+    /// Compile the cast from `source` to `target` under the two cast
     /// answers.
     #[napi(factory, js_name = "_compileNative", skip_typescript)]
     pub fn compile(
         source: &JsField,
         target: &JsField,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         ArrowCastPlan::compile(&source.inner, &target.inner, options)
             .map(|inner| Self { inner })
             .map_err(napi_error)
@@ -88,13 +87,12 @@ impl JsArrowCastPlan {
         JsField::from_core(self.inner.as_target().clone())
     }
 
-    /// The three cast answers this plan was compiled under, each spelled.
+    /// The two cast answers this plan was compiled under, each spelled.
     #[napi(getter, skip_typescript)]
     pub fn options(&self) -> JsonValue {
         let options = self.inner.as_options();
         json!({
             "safe": options.is_safe(),
-            "nullability": options.nullability().as_str(),
             "representation": options.representation().as_str(),
         })
     }

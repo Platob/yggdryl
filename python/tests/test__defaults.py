@@ -158,13 +158,14 @@ def test_a_default_is_one_scalar_that_materializes_the_same_value() -> None:
     assert isinstance(default, Scalar)
     assert default.as_py() == [0, None]
     # The materialized default is that same Scalar rather than a second
-    # answer: rendered into Arrow it reproduces `Serie.from_default` exactly,
-    # and a required cast fills its nulls with it.
+    # answer: rendered into Arrow it reproduces `Serie.from_default` exactly.
     assert default.into_arrow_scalar(required).equals(
         Serie.from_default(required).into_arrow_scalar()
     )
-    filled = Serie.from_arrow_array(pa.nulls(2, required.dtype.into_arrow()), required)
-    assert filled.as_py() == [{"count": 0, "label": None}] * 2
+    # A required column never falls back to that default: an absent row is
+    # refused by its path instead.
+    with pytest.raises(ValueError, match=r"required Arrow field \$ holds 2 null values"):
+        Serie.from_arrow_array(pa.nulls(2, required.dtype.into_arrow()), required)
 
     # Nullability is the core's answer over one layout: the datatype answers
     # its canonical value, and a Field that may be absent answers null.

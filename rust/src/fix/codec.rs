@@ -66,6 +66,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use quick_xml::events::Event;
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::graph::Element as _;
@@ -283,14 +284,14 @@ fn cut_at(entry: &TextEntry, rest: &[TextEntry], span: usize) -> bool {
 /// itself said and the only reading that loses nothing.
 fn data_end(
     entry: &TextEntry,
-    stated: Option<&Arrived<'_>>,
+    stated: Option<&[u8]>,
     entries: &[TextEntry],
     after: usize,
     xml: bool,
 ) -> Option<usize> {
     let opens = entry.key_bytes().end() as usize + 1;
     let stated = stated
-        .and_then(|held| std::str::from_utf8(held.value()).ok())
+        .and_then(|value| std::str::from_utf8(value).ok())
         .and_then(|text| text.parse::<usize>().ok());
     if let Some(span) = stated.and_then(|length| opens.checked_add(length)) {
         if cut_at(entry, &entries[after..], span) {
@@ -498,6 +499,9 @@ pub struct FixCodec {
     /// stand and still date the message, in milliseconds; nonpositive
     /// leaves only a clock equal to it.
     official_time_delay_ms: i64,
+    /// Whether a market operation this codec builds carries what its
+    /// message states that no typed column reads.
+    market_metadata: bool,
     /// The `BeginString` child every built message carries, resolved once:
     /// a bridge row states no version, so every one of them would otherwise
     /// look the field up per line.
@@ -638,6 +642,7 @@ impl FixCodec {
             threads: std::thread::available_parallelism().map_or(1, usize::from),
             snapshot_ns: 0,
             official_time_delay_ms: Self::DEFAULT_OFFICIAL_TIME_DELAY_MS,
+            market_metadata: true,
             beginstring,
         }
     }
@@ -936,6 +941,29 @@ impl FixCodec {
     #[must_use]
     pub const fn official_time_delay_ms(&self) -> i64 {
         self.official_time_delay_ms
+    }
+
+    /// Sets whether a market operation this codec builds carries, in its
+    /// metadata, what its message states that no typed column reads.
+    ///
+    /// On by default, and read by [`Self::market_operations`],
+    /// [`Self::market_arrow_reader`] and [`Self::book_arrow_reader`]: every
+    /// field but the ones a column types, the envelope and the identifier
+    /// maps' sources, as [`FixMsg::market_operations`] states them. The map
+    /// is part of what a leaf's identity digests, so turning it off answers
+    /// other identities for any message stating such a field - and nothing
+    /// changes for a message stating none.
+    #[must_use]
+    pub const fn with_market_metadata(mut self, market_metadata: bool) -> Self {
+        self.market_metadata = market_metadata;
+        self
+    }
+
+    /// Whether a market operation this codec builds carries its message's
+    /// unmapped fields.
+    #[must_use]
+    pub const fn market_metadata(&self) -> bool {
+        self.market_metadata
     }
 
     /// The delay as the nanosecond distance a dating compares against: never
@@ -1364,8 +1392,9 @@ impl FixCodec {
         // The field is the codec's own and outlives this call, so a cell
         // borrows it rather than cloning a name, a datatype, a metadata
         // handle and an Arrow cache once per filled capture per line. Only
-        // the value is new, and only it is owned here.
-        let mut cells: Vec<(&Field, i32, Scalar)> = Vec::new();
+        // the value is new, and only it is owned here - on the stack while
+        // the header fills at most eight fields.
+        let mut cells: SmallVec<[(&Field, i32, Scalar); 8]> = SmallVec::new();
         for (at, role) in self.captures.iter().enumerate() {
             match role {
                 CaptureRole::Version => version = text(at).and_then(version_of),
@@ -1376,7 +1405,7 @@ impl FixCodec {
                 CaptureRole::Silent => {}
             }
         }
-        let fills: Vec<Fill<'_>> = cells
+        let fills: SmallVec<[Fill<'_>; 8]> = cells
             .iter()
             .map(|(field, tag, value)| Fill {
                 field,
@@ -1410,7 +1439,8 @@ impl FixCodec {
     /// message rather than the end of the run: one corrupt line must not end
     /// a capture of ten million. Owned and borrowed lines, or their fallible
     /// counterparts, compose directly. Source errors move through unchanged;
-    /// borrowed lines are not cloned, and source exhaustion is fused.
+    /// an owned line is never cloned, a borrowed one only to cross to a
+    /// worker thread, and source exhaustion is fused.
     pub fn parse_text_lines<I, L>(
         &self,
         lines: I,
@@ -1418,7 +1448,7 @@ impl FixCodec {
     where
         I: IntoIterator,
         I::Item: Into<Result<L>>,
-        L: Borrow<TextLine>,
+        L: Borrow<TextLine> + Into<TextLine>,
     {
         let codec = self.clone();
         let lines = lines.into_iter().map(Into::<Result<L>>::into);
@@ -1430,10 +1460,10 @@ impl FixCodec {
                 )
             }));
         }
-        // A line crosses to a thread owned: a borrowed one is made the
-        // door's own first - a reference count per page it is a range of,
-        // never a byte - and read where it lands.
-        let owned = lines.map(|line| line.map(|line: L| line.borrow().clone()));
+        // A line crosses to a thread owned: an owned one moves, and a
+        // borrowed one is made the door's own first - a reference count per
+        // page it is a range of, never a byte - and read where it lands.
+        let owned = lines.map(|line| line.map(Into::<TextLine>::into));
         Spread::Threaded(
             crate::parallel::ordered(
                 owned,
@@ -1744,27 +1774,38 @@ impl FixCodec {
 
     /// One numeric frame, from the entries the line answered for it.
     fn frame_with(&self, entries: &[TextEntry], extras: RowExtras<'_>) -> Result<FixMsg> {
-        let (arrived, nested) = frame_arrivals(entries);
         // A frame that marked no key judges none, and every key of it is
         // then its own: asking for the judgement would build a vector of the
         // row's whole width only to hand each key straight back, and the
         // `filter_map` that read it would drop the width the collect could
         // have reserved from. A wire frame marks nothing, so this is the
-        // shape every captured line takes.
+        // shape every captured line takes, and it is walked straight into
+        // its pairs; an arrival is a subset of the entries, so a frame whose
+        // entries mark nothing holds no marked arrival either.
         let mut conflicts = Vec::new();
-        let pairs: Vec<FixPair> = if arrived.iter().any(|held| held.marked) {
-            self.judged_keys(&arrived, &mut conflicts)
-                .into_iter()
-                .zip(&arrived)
-                .filter_map(|(judged, held)| {
-                    judged.map(|key| key.pair(held.value.as_ref().clone()))
-                })
-                .collect()
+        let (pairs, nested) = if entries.iter().any(TextEntry::marked) {
+            let (arrived, nested) = frame_arrivals(entries, |held| held, Arrived::value);
+            let pairs: Vec<FixPair> = if arrived.iter().any(|held| held.marked) {
+                self.judged_keys(&arrived, &mut conflicts)
+                    .into_iter()
+                    .zip(&arrived)
+                    .filter_map(|(judged, held)| {
+                        judged.map(|key| key.pair(held.value.as_ref().clone()))
+                    })
+                    .collect()
+            } else {
+                arrived
+                    .iter()
+                    .map(|held| FixPair::own(held.key.clone(), held.value.as_ref().clone()))
+                    .collect()
+            };
+            (pairs, nested)
         } else {
-            arrived
-                .iter()
-                .map(|held| FixPair::own(held.key.clone(), held.value.as_ref().clone()))
-                .collect()
+            frame_arrivals(
+                entries,
+                |held| FixPair::own(held.key.clone(), held.value.into_owned()),
+                FixPair::value,
+            )
         };
         let (stated, message) = self.declared_of(&pairs);
         self.build(
@@ -1850,12 +1891,15 @@ impl FixCodec {
         // and one kept verbatim beside a bare type does not. A row with no
         // `#` at all judges nothing.
         let mut conflicts = Vec::new();
-        let kept: Vec<(Judged, &Arrived<'_>)> = self
-            .judged_keys(arrived, &mut conflicts)
-            .into_iter()
-            .zip(arrived)
-            .filter_map(|(judged, held)| judged.map(|key| (key, held)))
-            .collect();
+        // Sized to the row once: a judged key is at most one per arrival,
+        // and a filtered zip states no count of its own.
+        let mut kept: Vec<(Judged, &Arrived<'_>)> = Vec::with_capacity(arrived.len());
+        kept.extend(
+            self.judged_keys(arrived, &mut conflicts)
+                .into_iter()
+                .zip(arrived)
+                .filter_map(|(judged, held)| judged.map(|key| (key, held))),
+        );
         let mut resolved: Vec<FixPair> = Vec::with_capacity(kept.len());
         let msgtype = msgtype_of(
             kept.iter()
@@ -1873,9 +1917,10 @@ impl FixCodec {
                     let mut path = Vec::with_capacity(group.len() + 8);
                     path.extend_from_slice(group);
                     path.extend_from_slice(b"[");
-                    path.extend_from_slice(occurrence.to_string().as_bytes());
+                    // Rendered in place: a byte vector never refuses a write.
+                    let _ = std::io::Write::write_fmt(&mut path, format_args!("{occurrence}"));
                     path.extend_from_slice(b"]");
-                    let segments = members(&held.value, declared);
+                    let segments = members(&held.value, declared, 0);
                     // The bridge closed what it packed inside this occurrence
                     // where it wrote a close anywhere but at the run's own
                     // end; a run carrying none is bounded by the dictionary.
@@ -1932,11 +1977,15 @@ impl FixCodec {
     /// The row's bare spellings: every pair the line did not mark whose value
     /// is not a stated absence, each under the digest of its stem.
     fn bare_spellings<'row>(&self, arrived: &'row [Arrived<'_>]) -> Vec<Twin<'row>> {
-        arrived
-            .iter()
-            .filter(|held| !held.marked && !self.is_absent(held.value()))
-            .map(|held| twin(held.key(), held.value()))
-            .collect()
+        // Sized to the row once: a filter states no count of its own.
+        let mut bare = Vec::with_capacity(arrived.len());
+        bare.extend(
+            arrived
+                .iter()
+                .filter(|held| !held.marked && !self.is_absent(held.value()))
+                .map(|held| twin(held.key(), held.value())),
+        );
+        bare
     }
 
     /// The key one arriving pair builds under, its `#` judged; `None` for a
@@ -2008,7 +2057,8 @@ impl FixCodec {
                 let mut key = Vec::with_capacity(stripped.len() + 4);
                 key.extend_from_slice(stem);
                 key.extend_from_slice(b"[");
-                key.extend_from_slice((offset + index).to_string().as_bytes());
+                // Rendered in place: a byte vector never refuses a write.
+                let _ = std::io::Write::write_fmt(&mut key, format_args!("{}", offset + index));
                 key.extend_from_slice(b"]");
                 Some(Judged::Rendered(key))
             }
@@ -2069,12 +2119,13 @@ impl FixCodec {
                     let sub_declared = self.group_members(sub, message);
                     let mut sub_path = rendered(sub);
                     sub_path.extend_from_slice(b"[");
-                    sub_path.extend_from_slice(index.to_string().as_bytes());
+                    // Rendered in place: a byte vector never refuses a write.
+                    let _ = std::io::Write::write_fmt(&mut sub_path, format_args!("{index}"));
                     sub_path.extend_from_slice(b"]");
                     // What the sub-occurrence packed into its own value,
                     // then every following segment up to where it ends.
                     let end = self.extent(segments, at, sub_declared, message, explicit);
-                    let mut nested = members(held, sub_declared);
+                    let mut nested = members(held, sub_declared, end - at);
                     nested.extend_from_slice(&segments[at..end]);
                     self.render_members(&sub_path, &nested, message, explicit, depth + 1, out);
                     at = end;
@@ -2876,8 +2927,17 @@ fn arrivals(entries: &[TextEntry]) -> Vec<Arrived<'_>> {
 /// the scanner cut the value at the frame's separator because that is all a
 /// frame states, and a data field says how long its value is instead. What the
 /// widened span swallowed was never a field of the frame, so it goes.
-fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
-    let mut arrived: Vec<Arrived<'_>> = Vec::with_capacity(entries.len());
+///
+/// Each arrival is emitted as the caller keeps it - the arrival itself where
+/// a mark is still to be judged, the pair it builds where none is - and
+/// `stated` reads back the value the arrival before a data field stated, so
+/// one walk cuts the frame whatever it is cut into.
+fn frame_arrivals<'entry, T>(
+    entries: &'entry [TextEntry],
+    emit: impl Fn(Arrived<'entry>) -> T,
+    stated: impl Fn(&T) -> &[u8],
+) -> (Vec<T>, Vec<TextBytes>) {
+    let mut arrived: Vec<T> = Vec::with_capacity(entries.len());
     // The data values that are bridge rows, read after the frame's own pairs
     // so the frame's statements come first.
     let mut nested: Vec<TextBytes> = Vec::new();
@@ -2887,7 +2947,7 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
         let mut held = arrival(entry);
         if let Some(tag) = data_tag(held.key()) {
             let xml = tag == XML_DATA_TAG;
-            if let Some(end) = data_end(entry, arrived.last(), entries, at, xml) {
+            if let Some(end) = data_end(entry, arrived.last().map(&stated), entries, at, xml) {
                 if let Some(widened) = entry.key_bytes().page().and_then(|page| {
                     TextBytes::from_page(page, entry.key_bytes().end() as usize + 1, end).ok()
                 }) {
@@ -2913,7 +2973,7 @@ fn frame_arrivals(entries: &[TextEntry]) -> (Vec<Arrived<'_>>, Vec<TextBytes>) {
         // A key the bridge marked is the bridge's own, whatever it spells: a
         // frame ends at the checksum it wrote, not at a restatement of one.
         let checksum = !held.marked && held.key() == b"10";
-        arrived.push(held);
+        arrived.push(emit(held));
         if checksum {
             // Nothing after the checksum is part of the message.
             break;
@@ -3080,17 +3140,19 @@ fn group_index(key: &[u8]) -> Option<(&[u8], usize)> {
 /// another pair. An empty segment - two separators in a row, nothing at all
 /// between them - is a close, kept for the renderer to end a nested
 /// occurrence on; a segment that is neither a pair nor empty is residue and
-/// stays out.
-fn members(value: &TextBytes, declared: &[Field]) -> Vec<Segment> {
-    split_members(value.as_bytes(), declared)
-        .into_iter()
-        .filter_map(|part| {
-            if part.is_empty() {
-                return Some(Segment::Close);
-            }
-            member_pair(value, part).map(|(key, value)| Segment::Pair(key, value))
-        })
-        .collect()
+/// stays out. `spare` is room for the segments a caller appends behind them.
+fn members(value: &TextBytes, declared: &[Field], spare: usize) -> Vec<Segment> {
+    let parts = split_members(value.as_bytes(), declared);
+    // Sized once: a segment is at most one per part, and a filtered collect
+    // states no count of its own.
+    let mut segments = Vec::with_capacity(parts.len() + spare);
+    segments.extend(parts.into_iter().filter_map(|part| {
+        if part.is_empty() {
+            return Some(Segment::Close);
+        }
+        member_pair(value, part).map(|(key, value)| Segment::Pair(key, value))
+    }));
+    segments
 }
 
 /// One packed member - the `part` of `value` - split at its **first** `=`,
@@ -3126,9 +3188,10 @@ fn split_members(held: &[u8], declared: &[Field]) -> Vec<Range<usize>> {
     };
     let mut parts = Vec::new();
     let mut start = 0;
-    while let Some(at) = memchr::memmem::find(&held[start..], separator) {
-        parts.push(start..start + at);
-        start += at + separator.len();
+    // One searcher for the whole run, built for the separator that won.
+    for at in memchr::memmem::Finder::new(separator).find_iter(held) {
+        parts.push(start..at);
+        start = at + separator.len();
     }
     parts.push(start..held.len());
     parts

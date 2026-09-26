@@ -288,6 +288,14 @@ pub enum DataType {
     /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
     /// thirty-two ASCII bytes.
     Unit,
+    /// One exact decimal at a fixed scale: thirty-eight digits, eighteen of
+    /// them fractional - `decimal128(38, 18)` preapplied - what every
+    /// [`Decimal`](crate::Decimal) is and a market's numbers are held as.
+    Decimal,
+    /// The wide twin: seventy-six digits at the same scale of eighteen -
+    /// `decimal256(76, 18)` preapplied - what every
+    /// [`BigDecimal`](crate::BigDecimal) is.
+    BigDecimal,
 }
 
 impl DataType {
@@ -403,6 +411,8 @@ impl DataType {
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Unit => DataTypeId::Unit,
+            Self::Decimal => DataTypeId::Decimal,
+            Self::BigDecimal => DataTypeId::BigDecimal,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::Url => DataTypeId::Url,
@@ -773,6 +783,8 @@ enum Shape<'a> {
     BloombergCode,
     FIGICode,
     Unit,
+    Decimal,
+    BigDecimal,
 }
 
 impl<'a> Shape<'a> {
@@ -846,6 +858,8 @@ impl<'a> Shape<'a> {
             D::BloombergCode => Self::BloombergCode,
             D::FIGICode => Self::FIGICode,
             D::Unit => Self::Unit,
+            D::Decimal => Self::Decimal,
+            D::BigDecimal => Self::BigDecimal,
         }
     }
 }
@@ -974,6 +988,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Urn => 65,
         DataType::FIGICode => 66,
         DataType::Unit => 68,
+        DataType::Decimal => 69,
+        DataType::BigDecimal => 70,
     }
 }
 
@@ -981,6 +997,37 @@ impl DataType {
     /// Whether every value this datatype's Arrow layout can hold is one the
     /// datatype accepts, so a column of it is proven by its layout alone.
     ///
+    /// Whether this datatype is a leaf that carries no parameter and whose
+    /// layout is its whole contract, so a value of exactly this datatype is
+    /// already canonical: there is no spelling to read, no bound or
+    /// repertoire to check and no representation to restate. The value door
+    /// answers such a value untouched without walking it.
+    pub(crate) const fn is_bare_contract_leaf(&self) -> bool {
+        matches!(
+            self,
+            Self::Boolean
+                | Self::Int8
+                | Self::Int16
+                | Self::Int32
+                | Self::Int64
+                | Self::UInt8
+                | Self::UInt16
+                | Self::UInt32
+                | Self::UInt64
+                | Self::Float16
+                | Self::Float32
+                | Self::Float64
+                | Self::Date32
+                | Self::Uuid
+                | Self::Utf8String
+                | Self::LargeUtf8String
+                | Self::Utf8StringView
+                | Self::Binary
+                | Self::LargeBinary
+                | Self::BinaryView
+        )
+    }
+
     /// True for the layouts whose storage is the whole domain - null,
     /// boolean, every integer and float width, `Date32`, every datetime,
     /// duration and interval, the plain unbounded UTF-8 leaves (Arrow's own
@@ -1244,7 +1291,9 @@ mod arrow {
                 R::Decimal32 { .. }
                 | R::Decimal64 { .. }
                 | R::Decimal128 { .. }
-                | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
+                | R::Decimal256 { .. }
+                | R::Decimal
+                | R::BigDecimal => decimal::arrow_storage(self)?,
                 sequence_dtype @ (R::Serie(_)
                 | R::SerieView(_)
                 | R::FixedSizeSerie(..)
@@ -1541,6 +1590,11 @@ mod arrow {
                     .bytes_parameters()
                     .filter(|parameters| bytes::needs_extension(*parameters))
                     .map(|parameters| (crate::BYTES_EXTENSION_NAME, parameters.extension_json())),
+                // A fixed scale is the one fact about a decimal Arrow has
+                // nowhere to put: without the name the storage reads back as
+                // the parameterized `decimal128(38, 18)`.
+                Self::Decimal => Some((crate::DECIMAL_EXTENSION_NAME, String::new())),
+                Self::BigDecimal => Some((crate::BIGDECIMAL_EXTENSION_NAME, String::new())),
                 // Every identifier is Arrow's own sixteen bytes.
                 Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
                 Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),

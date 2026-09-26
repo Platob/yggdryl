@@ -21,7 +21,7 @@ declare const batch: ArrowRecordBatch
 declare const reader: BatchReader
 declare const serie: Serie
 const root: Field = Field.from('row: struct<id: int64> not null')
-const strictly: ArrowCastOptions = { safe: false, nullability: 'strict' }
+const unsafely: ArrowCastOptions = { safe: false }
 
 // Every door answers a chunked serie: of held columns, or of Arrow JS values
 // one chunk per Data or per batch.
@@ -29,12 +29,12 @@ const empty: ChunkedSerie = ChunkedSerie.empty('id: int64')
 const typedEmpty: ChunkedSerie = ChunkedSerie.empty(fields.int64('id'))
 const one: ChunkedSerie = ChunkedSerie.fromSerie(serie)
 const many: ChunkedSerie = ChunkedSerie.fromSeries([serie, serie])
-const cast: ChunkedSerie = ChunkedSerie.fromSeries(new Set([serie]), 'id: int64', strictly)
+const cast: ChunkedSerie = ChunkedSerie.fromSeries(new Set([serie]), 'id: int64', unsafely)
 const arrays: ChunkedSerie = ChunkedSerie.fromArrowArray(vector)
 const wide: ChunkedSerie = ChunkedSerie.fromArrowArray(vector, fields.int64('id'), {
   representation: 'bits',
 })
-const batches: ChunkedSerie = ChunkedSerie.fromArrowBatch(table, root, strictly)
+const batches: ChunkedSerie = ChunkedSerie.fromArrowBatch(table, root, unsafely)
 const single: ChunkedSerie = ChunkedSerie.fromArrowBatch(batch)
 const drained: ChunkedSerie = ChunkedSerie.fromArrowReader(reader, root)
 
@@ -67,9 +67,9 @@ const children: ChunkedSerie[] = batches.children()
 const items: ChunkedSerie | null = batches.items()
 const reached: ChunkedSerie | null = batches.getChildByPath('id')
 batches.pushChunk(serie)
-batches.pushChunk(serie, strictly)
+batches.pushChunk(serie, unsafely)
 const joined: Serie = batches.intoSerie()
-const recast: ChunkedSerie = batches.cast('id: int64', strictly)
+const recast: ChunkedSerie = batches.cast('id: int64', unsafely)
 const typed: ChunkedSerie = batches.cast(DataType.from('int64'))
 const copy: ChunkedSerie = batches.clone()
 
@@ -97,8 +97,8 @@ new ChunkedSerie()
 ChunkedSerie.fromSeries([[1n]])
 // @ts-expect-error an Arrow door takes an Arrow Vector, not a JavaScript array
 ChunkedSerie.fromArrowArray([0])
-// @ts-expect-error `nullability` is a closed vocabulary, not any name
-ChunkedSerie.fromArrowArray(vector, 'id: int64', { nullability: 'lenient' })
+// @ts-expect-error a cast option is `safe` or `representation`
+ChunkedSerie.fromArrowArray(vector, 'id: int64', { strict: true })
 // @ts-expect-error a pushed chunk is a Serie
 batches.pushChunk([1n])
 // @ts-expect-error the chunks are a getter, not a mutable slot

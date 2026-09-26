@@ -1842,12 +1842,10 @@ mod arrow {
         ///
         /// [`Self::arrow_storage`] carries the rule.
         pub(crate) fn into_arrow_storage(self) -> Result<ArrowDataType> {
-            let fields = self
-                .into_fields()
-                .into_iter()
-                .map(Field::into_arrow_field_ref)
-                .collect::<Result<Vec<_>>>()?;
-            Ok(ArrowDataType::Struct(fields.into()))
+            // The children are shared storage whatever holds this value, so
+            // consuming it owns nothing to consume: their projections are
+            // borrowed, and cached where every clone finds them.
+            self.arrow_storage()
         }
 
         /// The C Data Interface node these children write.
@@ -1881,14 +1879,18 @@ mod arrow {
 
     /// Projects one ordered child list as Arrow's own.
     ///
+    /// Each child's projection is borrowed, which builds it once into the
+    /// child's own cache - shared by every clone of the list, since the
+    /// children are one shared storage - so a parent projected once leaves
+    /// every level below it projected too.
+    ///
     /// # Errors
     ///
     /// Returns an error when a child has no Arrow projection.
     pub(crate) fn into_arrow_fields(fields: &[Field]) -> Result<ArrowFields> {
         fields
             .iter()
-            .cloned()
-            .map(Field::into_arrow_field_ref)
+            .map(|field| field.as_arrow_field_ref().map(std::sync::Arc::clone))
             .collect::<Result<Vec<ArrowFieldRef>>>()
             .map(Into::into)
     }

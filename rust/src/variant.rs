@@ -798,6 +798,21 @@ fn write_value(value: &Scalar, keys: &[SmolStr], depth: usize, out: &mut Vec<u8>
             })?;
             write_decimal(out, coefficient, held.scale(), DECIMAL16)?;
         }
+        // The fixed leaves are their units at scale eighteen; the encoding
+        // has no fixed-scale kind, so they cross as the parameterized value
+        // they equal.
+        Scalar::Decimal(held) => {
+            write_decimal(out, held.units(), crate::Decimal::SCALE, DECIMAL16)?;
+        }
+        Scalar::BigDecimal(held) => {
+            let coefficient = held.units().as_i128().ok_or_else(|| {
+                refuse(
+                    out.len(),
+                    "a bigdecimal coefficient past what 128 bits, the widest a variant holds, state",
+                )
+            })?;
+            write_decimal(out, coefficient, crate::BigDecimal::SCALE, DECIMAL16)?;
+        }
         // A date is days since the epoch however the value counts them.
         Scalar::Date32(_) | Scalar::Date64(_) => {
             let days = count_at(value, TimeUnit::Day, out.len())?;

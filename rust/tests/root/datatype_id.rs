@@ -82,7 +82,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 85);
+    assert_eq!(DataTypeId::ALL.len(), 87);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -218,6 +218,8 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::Decimal64, 0x2a),
         (DataTypeId::Decimal128, 0x2b),
         (DataTypeId::Decimal256, 0x2c),
+        (DataTypeId::Decimal, 0x2d),
+        (DataTypeId::BigDecimal, 0x2e),
         (DataTypeId::DateTime64, 0x31),
         (DataTypeId::Date32, 0x32),
         (DataTypeId::Date64, 0x33),
@@ -416,6 +418,8 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
                 DataTypeId::Decimal64,
                 DataTypeId::Decimal128,
                 DataTypeId::Decimal256,
+                DataTypeId::Decimal,
+                DataTypeId::BigDecimal,
             ],
         ),
         (
@@ -571,6 +575,8 @@ fn integer_predicates_partition_the_family() {
 fn fixed_widths_match_their_layout() {
     assert_eq!(DataTypeId::Int32.fixed_byte_width(), Some(4));
     assert_eq!(DataTypeId::Decimal256.fixed_byte_width(), Some(32));
+    assert_eq!(DataTypeId::Decimal.fixed_byte_width(), Some(16));
+    assert_eq!(DataTypeId::BigDecimal.fixed_byte_width(), Some(32));
     assert_eq!(DataTypeId::Uuid.fixed_byte_width(), Some(16));
     // A fixed string's width is a parameter, so the identifier alone has
     // none: `DataType::fixed_byte_width` is what answers for one value.

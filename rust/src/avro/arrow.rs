@@ -252,6 +252,17 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
                 ("size", Scalar::from(i64::from(*width))),
             ])
         }
+        // The fixed leaf is Avro's decimal(38, 18); its wide twin has no Avro
+        // spelling, as the 256-bit widths have none.
+        DataType::Decimal => Scalar::from_struct([
+            ("type", Scalar::from("bytes")),
+            ("logicalType", Scalar::from("decimal")),
+            (
+                "precision",
+                Scalar::from(i64::from(crate::Decimal::PRECISION)),
+            ),
+            ("scale", Scalar::from(i64::from(crate::Decimal::SCALE))),
+        ]),
         DataType::Decimal32 { precision, scale }
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale } => {

@@ -208,7 +208,7 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 84] = [all exact datatype identifiers in canonical declaration order, including FIGICode];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position)
+  pub const ALL: [Self; 87] = [all exact datatype identifiers in canonical declaration order, including FIGICode, Decimal and BigDecimal];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position)
   pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
   pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
   pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
@@ -222,7 +222,8 @@ pub enum DataTypeId
   pub const fn is_signed_integer(self) -> bool
   pub const fn is_unsigned_integer(self) -> bool
   pub const fn is_floating(self) -> bool
-  pub const fn is_decimal(self) -> bool
+  pub const fn is_decimal(self) -> bool  (the four widths and the two fixed leaves)
+  Decimal = 0x2d, BigDecimal = 0x2e  (the fixed `decimal` and `bigdecimal` leaves, the next bytes of the decimal family's range after Decimal256 = 0x2c; `as_str` `decimal` and `bigdecimal`; neither `is_parameterized`; `fixed_byte_width` 16 and 32)
   pub const fn is_temporal(self) -> bool
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool  (the eighteen string leaves)
@@ -332,7 +333,7 @@ pub const RECURSION_LIMIT: usize = 32
   pub const fn is_safe(self) -> bool
   pub const fn as_str(self) -> &'static str
   pub enum Function
-  pub const ALL: [Self; 19] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day,
+  pub const ALL: [Self; 20] = [ Self::Lower, Self::Upper, Self::Length, Self::Substring, Self::Trim, Self::StartsWith, Self::EndsWith, Self::Contains, Self::Concat, Self::Year, Self::Month, Self::Day, Self::Hour, Self::Truncate, Self::Coalesce, Self::IfNull, Self::Size, Self::Get, Self::Slice, Self::Unnest ]  (`Unnest` - `unnest(serie)`, alias `explode` - is the one select-list form that multiplies rows: the whole term of a projection, at most once per select, and refused anywhere a value is read)
   pub fn as_str(&self) -> &str
   pub fn from_name(name: &str) -> Option<Self>
   pub fn arity(&self) -> (usize, usize)
@@ -404,20 +405,21 @@ pub struct Projection
   pub fn is_column(&self) -> bool
   pub fn field(&self, schema: &Field) -> Result<Field>
   pub fn simplify(&self) -> Self
-  pub struct Selector
+  pub struct Selector  (an optional leading `*` - every stored column it does not exclude - then the projections, appended after what the star keeps; no star implies at least one projection, the empty list being `*`; Display `*`, ` exclude (a, b)`, then `, <projection>` each, `except` printing as `exclude`; serde through a private wire of `star`, `exclude` and `projections`, each written only when it says something, `{}` reading as `*` and an `exclude` without `star` refused; Default = `*`)
   pub fn all() -> Self
   pub fn new(projections: impl IntoIterator<Item = Projection>) -> Self
   pub fn all_except<I, S>(names: I) -> Self where
   pub fn excluded(&self) -> &[SmolStr]
+  pub const fn has_star(&self) -> bool  (the selector opens with `*`: it reads every stored column it does not exclude, whatever it appends)
   pub fn from_scalar(value: &Scalar) -> Result<Self>
   pub fn from_columns<I, S>(names: I) -> Self where
   pub fn stable_hash(&self) -> u64
   pub fn projections(&self) -> &[Projection]
-  pub fn is_all(&self) -> bool
-  pub fn is_empty(&self) -> bool
+  pub fn is_all(&self) -> bool  (a star excluding and appending nothing)
+  pub fn is_empty(&self) -> bool  (no projection; `projections`, `len`, `names` and `columns` likewise answer the appended projections alone)
   pub fn len(&self) -> usize
   pub fn names(&self) -> Vec<SmolStr>
-  pub fn with_projection(&self, projection: Projection) -> Self
+  pub fn with_projection(&self, projection: Projection) -> Self  (appended after everything the selector publishes, a star and its exclusions kept: `Selector::all().with_projection(p)` is `*, p`)
   pub fn without_columns(&self, names: &[&str]) -> Self
   pub fn columns(&self) -> Vec<String>
   pub fn parameters(&self) -> Vec<String>
@@ -686,6 +688,8 @@ pub struct FixCodec
   pub const fn snapshot_ns(&self) -> Option<i64>  (the positive grid width, where enabled)
   pub const fn with_official_time_delay_ms(mut self, official_time_delay_ms: i64) -> Self  (how far from SendingTime(52) an official transaction clock may stand and still date the message: the parse takes the TransactTime(60) it states, else the TrdRegTimestamp(769) of the TrdRegTimestamps(768) group whose TrdRegTimestampType(770) stamps the event or a hop, nearest the sending clock; a nonpositive delay admits only a clock equal to it)
   pub const fn official_time_delay_ms(&self) -> i64  (the delay in milliseconds; DEFAULT_OFFICIAL_TIME_DELAY_MS when unstated)
+  pub const fn with_market_metadata(mut self, market_metadata: bool) -> Self  (whether a market operation this codec builds carries, in its metadata, what its message states that no typed column reads; on by default; read by market_operations, market_arrow_reader, book_arrow_reader; the map feeds the leaf identity)
+  pub const fn market_metadata(&self) -> bool
   pub const PARALLEL_CHUNK: usize = 64  (the items in one lane chunk for the line, message-row and write doors; their lane depth is two)
   pub fn with_include_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (only these types are read; naming any clears the default refusals, since a caller saying what it wants has said what it does not; any spelling the dictionary resolves, a code it does not know kept as written, `unknown` naming a row that states no type)
   pub fn with_exclude_msgtypes<I, S>(mut self, spellings: I) -> Self where I: IntoIterator<Item = S>, S: AsRef<str>  (replaces DEFAULT_REFUSED_MSGTYPES; empty reads everything; a type named here is refused whether or not it is included)
@@ -702,7 +706,7 @@ pub struct FixCodec
   pub fn parse_fixml_line(&self, body: &[u8]) -> Result<FixMsg>  (one document; likewise refused, at a second root element, target `fixml`)
   pub fn parse_pairs<'a, I>(&self, pairs: I) -> Result<FixMsg> where I: IntoIterator<Item = (&'a [u8], &'a [u8])>  (one frame; likewise refused, at the second frame's key in the page the pairs were copied into)
   pub fn parse_text_line(&self, line: &TextLine) -> Result<FixMessages>  (takes the page the line already holds; copies nothing; states the line's `curruuid` as each message's one source - `srcuuids` - before it settles; the line's `mtime` - its `currunix` - fills each message's `recdunix` and is the sending clock of one stating no SendingTime(52) that no capture reaching tag 52 dated, ahead of `default_sending_time` and now, never re-emitted nor stated at the row's tag-52 column; none, one or many as `parse_line` answers, so a row opening no frame, stating no bridge pair and carrying no document yields nothing, and an empty payload nothing; malformed syntax may recover as one `unknown` message; mandatory clock/layout/content failures remain error items)
-  pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine>  (owned or borrowed lines and either Result; borrows without cloning, moves errors unchanged, fuses source exhaustion)
+  pub fn parse_text_lines<I, L>(&self, lines: I) -> impl Iterator<Item = Result<FixMsg>> + use<I, L> where I: IntoIterator, I::Item: Into<Result<L>>, L: Borrow<TextLine> + Into<TextLine>  (owned or borrowed lines and either Result; an owned line moves, a borrowed one is read in place on one thread and cloned once to cross to a worker; moves errors unchanged, fuses source exhaustion)
   pub fn lifecycle<I>(&self, messages: I) -> impl Iterator<Item = Result<FixMsg>> + use<I> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (the one walk, `graph::EventIterator`, over the messages: collected first; raw observations with the same complete nonempty capture `(msgtype, msgsessionid, msgctxid, msgseqnum)` - one `FixCapture::msgsesseventid` - ranked once over all of them by latest `recdunix`, a stated one before an unstated one, then `currunix`, and fully merged into the first with the reference leading scalar conflicts, older facts filling absences, and repeating-group occurrences merged recursively at equal indexes in FIX tag order; `execunix` and `recdunix` retain their earliest duplicate-observation values; retained messages stably sorted by instant - a capture's lines are not in their messages' order - then each stated as the one after the live message of its chain, carrying the lifecycle's latest `execunix`; missing `parentorderid` takes a different predecessor `orderid`, missing `clordid` takes the predecessor's, and stated links win; the chain is keyed on the cross identity every incarnation shares with a fallback on a shared identifier; a message arriving under the identity the live one arrived under - the same message logged at another hop - restates it instead; errors move through in source order and never advance the walk; fused; a message whose sending clock the parse supplied is dated by its TransactTime(60) before the walk, `FixMsg::dated_by_transaction`)
   impl Clone for FixCodec
 pub const DEFAULT_PAYLOAD_COLUMN: &str = "body";
@@ -712,6 +716,7 @@ pub const DEFAULT_REFUSED_MSGTYPES: [&str; 3] = ["0", "1", "unknown"];  (the typ
 impl FixCodec
   pub fn parse_text_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (capture rows in, one FIX row per message out - a line carrying two frames is two rows and one carrying none is no row; the capture's columns lead and repeat over every message of a row, and the capture's own cells are read off the source row and carried by every message parsed out of it, stated again at their columns when the messages are written back; the row's `currunix` - the reader's `mtime` - becomes each message's precise `recdunix` and the sending clock of one stating no SendingTime(52), as `parse_text_line` reads the line; a carrier's seventeen event columns are the line each row is: its `curruuid` is every message's one source, `srcuuids`, and the other sixteen fill nothing and are dropped as the row's own twins take their names; batches close as `arrow_reader` closes them, on the bytes each row lands as. With several threads, whole input batches are at most one job per thread in flight and answer in input-batch order)
   pub fn lifecycle_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, chained FIX rows out under the same schema: each row through `FixMsg::from_row`, the ordered walk `lifecycle` runs, each back into a row; no re-parse. Each row's capture cells are read into the message it makes and travel with it through the walk's own ordering, then are stated again at their own columns, so the pairing is by message and never by position)
+  pub fn market_operations_arrow_reader(&self, source: BatchReader) -> Result<BatchReader>  (FIX rows in, MarketData::field rows out: messages into market_arrow_reader; a schema making no root refused before a row is read)
   pub fn parse_arrow_messages(&self, source: BatchReader) -> Result<impl Iterator<Item = Result<FixMsg>> + Send + use<>>  (capture rows in, the messages the rows carry out: each row read cell by cell and parsed through the line funnel - the payload, the beginstring and msgdirection columns, the currunix column - the reader's mtime - dating the row's line and becoming each message's `recdunix` and the sending clock of one stating no SendingTime(52), the carrier's `curruuid` column read as each message's one source where the carrier states one - else the identity the same bytes and instant derive - the other sixteen event columns filling nothing, every other column named after a dictionary field filling it - and the capture's own cells carried by every message parsed out of the row, under their columns; where each column sits is decided once from the schema; refuses a source with no payload column or one holding neither text nor bytes. With several threads, whole input batches are at most one job per thread in flight and answer in input-batch order)
   pub fn messages(&self, source: BatchReader) -> impl Iterator<Item = Result<FixMsg>> + Send + use<>  (each row through `FixMsg::from_row` under the source's schema, the capture's own cells read into the message with it, so a `messages` -> `arrow_reader` round trip over a carrying schema states them again at their columns; one thread holds one batch at a time, while several retain 64-row chunks at lane depth two that can span source batches, in source order)
   pub fn arrow_reader<I>(&self, schema: Field, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (owned messages or results, each through `FixMsg::into_row` on the codec's threads in 64-item chunks at lane depth two; batches close on the bytes each row lands as - the leaves of every column it fills and a per-row width; completed prefix then error and fusion)
@@ -809,14 +814,14 @@ pub struct FixCapture  (what a bridge's own row header stated about the line it 
   pub fn msgsesseventid(&self) -> Option<&str>  (`<MsgType>:<msgsessionid>:<msgctxid>:<MsgSeqNum>` with no length prefixes - `8:e7256476:9effef3e6a:1094` - where all four are stated, else none; derived by the message whenever it settles; the fixed row's `msgsesseventid` column, `by_tag(65065)`)
   impl Clone, Debug, Default, PartialEq, Eq for FixCapture
 pub struct FixLifted  (the FIX fields a message lifted out of its row and holds typed: eight exact numbers - Price(44), OrderQty(38), Quantity(53), LastPx(31), LastQty(32), AvgPx(6), CumQty(14), LeavesQty(151) - and nine identifiers - ClOrdID(11), OrigClOrdID(41), OrderID(37), SecondaryOrderID(198), ExecID(17), QuoteID(117), QuoteReqID(131), MDReqID(262), TradeID(1003). Every slot is an Option, and absent means the message never said: nothing writes here but a tag, so a slot's presence is the whole test of whether the fact reaches the wire, the residual entry record or the code the message digests to. What the message *implies* about its market is the `Market` getters' to answer off these and off the row, and reaches none of the three; re-exported at the crate root; no public constructor)
-  pub const fn price(&self) -> Option<Decimal18>
-  pub const fn orderqty(&self) -> Option<Decimal18>
-  pub const fn quantity(&self) -> Option<Decimal18>  (its own slot rather than a second name for OrderQty: a line that said `53=` re-emits `53=`, and a row keeps one column per tag)
-  pub const fn lastpx(&self) -> Option<Decimal18>
-  pub const fn lastqty(&self) -> Option<Decimal18>
-  pub const fn avgpx(&self) -> Option<Decimal18>
-  pub const fn cumqty(&self) -> Option<Decimal18>
-  pub const fn leavesqty(&self) -> Option<Decimal18>
+  pub const fn price(&self) -> Option<Decimal>
+  pub const fn orderqty(&self) -> Option<Decimal>
+  pub const fn quantity(&self) -> Option<Decimal>  (its own slot rather than a second name for OrderQty: a line that said `53=` re-emits `53=`, and a row keeps one column per tag)
+  pub const fn lastpx(&self) -> Option<Decimal>
+  pub const fn lastqty(&self) -> Option<Decimal>
+  pub const fn avgpx(&self) -> Option<Decimal>
+  pub const fn cumqty(&self) -> Option<Decimal>
+  pub const fn leavesqty(&self) -> Option<Decimal>
   pub fn clordid(&self) -> Option<&str>
   pub fn origclordid(&self) -> Option<&str>
   pub fn orderid(&self) -> Option<&str>
@@ -826,7 +831,7 @@ pub struct FixLifted  (the FIX fields a message lifted out of its row and holds 
   pub fn quotereqid(&self) -> Option<&str>
   pub fn mdreqid(&self) -> Option<&str>
   pub fn tradeid(&self) -> Option<&str>
-  pub fn lastspotrate(&self) -> Option<Decimal18>  (`LastSpotRate(194)`; `lastforwardpoints` (195), `bidspotrate` (188), `bidforwardpoints` (189), `offerspotrate` (190), `offerforwardpoints` (191) the same - the six FX parts of a price, held in one boxed `LiftedFx` allocated on the first stated part)
+  pub fn lastspotrate(&self) -> Option<Decimal>  (`LastSpotRate(194)`; `lastforwardpoints` (195), `bidspotrate` (188), `bidforwardpoints` (189), `offerspotrate` (190), `offerforwardpoints` (191) the same - the six FX parts of a price, held in one boxed `LiftedFx` allocated on the first stated part)
   impl Clone, Debug, Default, PartialEq, Eq for FixLifted
 pub struct LiftedFx  (the six FX parts `FixLifted` holds boxed; re-exported beside it, no public constructor)
 
@@ -880,15 +885,17 @@ pub struct FixAnomaly  (re-exported at the crate root; the field a thing was sta
 
 ### yggdryl::fix::market  [rust/src/fix/market.rs]
 impl FixMsg
-  pub fn market_operations(&self) -> Result<Vec<MarketData>>  (borrowed conversion, cloning the one base event: ORDR, QUOT and an actual EXEC become one generically finalized `OrderEvent`, `QuoteEvent` or `ExecutionEvent`; only an initial TradeCaptureReport `35=AE` whose TradeReportTransType(487) is absent/New and whose ExecType(150) is absent or execution-like becomes one composite `TradeEvent` from the single nonempty NoSides(552) group - non-New/cancel/correct/reverse/status AE and AD/AQ/AR are refused at `$.MsgType(35)`; each side's alternate identifiers are its `SIDEEXECID`, `SIDETRADEREPORTID`, `SIDETRADEID`, `SIDEORIGTRADEID`, `ORDERID`, `SECONDARYORDERID`, `CLORDID`, `SECONDARYCLORDID` and `ORIGCLORDID` where stated, its identity a tag-qualified first stable side/order ID or the canonical 128-bit occurrence-content digest, never the source group index; W/X expands the one NoMDEntries(268) group in source order into operations carrying a `BookRef` - action, scope, position, `entry_px`, `entry_size` - and `MDENTRYID`/`MDENTRYREFID`/`ORDERID` alternate identifiers, an empty W becoming one scoped `SnapshotEvent` and an empty X no operations; typed 272/273 date X operations at their exact entry nanosecond while W stays atomic at message currunix and retains the entry instant as creation/execution)
-  pub fn into_market_operations(self) -> Result<Vec<MarketData>>  (consuming conversion: moves a direct message's held root event without cloning and finalizes its generic identity; an accepted initial AE owns one execution per NoSides occurrence under that root, while W/X owns one event per NoMDEntries occurrence or the empty-W control)
+  pub fn market_operations(&self) -> Result<Vec<MarketData>>  (borrowed conversion, cloning the one base event: ORDR, QUOT and an actual EXEC become one generically finalized `OrderEvent`, `QuoteEvent` or `ExecutionEvent`; only an initial TradeCaptureReport `35=AE` whose TradeReportTransType(487) is absent/New and whose ExecType(150) is absent or execution-like becomes one composite `TradeEvent` from the single nonempty NoSides(552) group - non-New/cancel/correct/reverse/status AE and AD/AQ/AR are refused at `$.MsgType(35)`; each side's alternate identifiers are its `SIDEEXECID`, `SIDETRADEREPORTID`, `SIDETRADEID`, `SIDEORIGTRADEID`, `ORDERID`, `SECONDARYORDERID`, `CLORDID`, `SECONDARYCLORDID` and `ORIGCLORDID` where stated, its identity a tag-qualified first stable side/order ID or the canonical 128-bit occurrence-content digest, never the source group index; W/X expands the one NoMDEntries(268) group in source order into operations carrying a `BookRef` - action, scope, position, `entry_px`, `entry_size` - and `MDENTRYID`/`MDENTRYREFID`/`ORDERID` alternate identifiers, an empty W becoming one scoped `SnapshotEvent` and an empty X no operations; typed 272/273 date X operations at their exact entry nanosecond while W stays atomic at message currunix and retains the entry instant as creation/execution; every leaf carries in its metadata what its message states that no typed column reads - the bridge's namespaced keys, then every other field by name or FieldPath text, `parties[0].partyid`, an expanded entry's or side's own members bare and leading - never the envelope the message code leaves out, a typed tag, an idmap source or the expanded group; the map feeds the leaf's digest, never the message code)
+  pub fn into_market_operations(self) -> Result<Vec<MarketData>>  (consuming conversion: moves a direct message's held root event without cloning and finalizes its generic identity; an accepted initial AE owns one execution per NoSides occurrence under that root, while W/X owns one event per NoMDEntries occurrence or the empty-W control; every leaf carries its message's unmapped fields as `market_operations` does)
   impl TryFrom<FixMsg> for MarketData  (the consuming conversion only where it produces exactly one value; direct messages convert inline without an intermediate Vec; otherwise `InvalidRecord` at `$.NoMDEntries(268)`; malformed composite trades retain their located `$.NoSides(552)` refusal)
 pub struct FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>  (re-exported from `yggdryl::fix`; a lazy projection of sorted FIX messages into book inputs, retaining at most one message's expanded book entries or one composite trade; the first source, conversion or decreasing-effective-time error is yielded once and fuses the iterator)
-  pub fn new(source: I) -> Self
+  pub fn new(source: I) -> Self  (strict over messages already sorted by event time; each leaf carries its message's unmapped fields)
   impl<I> Iterator<Item = Result<MarketData>> for FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>
   impl<I> FusedIterator for FixMarketIterator<I> where I: Iterator, I::Item: Into<Result<FixMsg>>
 impl FixCodec
-  pub fn book_arrow_reader<I>(&self, messages: I, snapshot_millis: u64, global: bool) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (sorted FIX messages admitted by the native book boundary: order/quote categories, actual EXEC, BOOK W/X and every TRAD AE; other records are ignored without advancing book time; admitted messages are lazily expanded through the unchanged strict `FixMarketIterator`, including accepted initial AE reports as one composite `TradeEvent` whose children the book flattens into its execution list, folded by `BookIterator`, then streamed through `MarketData::arrow_reader` as `marketdata` rows of kind `book_event` under the codec's row and byte bounds; a supplied trade snapshot rebases the root and every child `currunix` to its effective instant while retaining each `execunix`; zero disables the epoch-aligned book snapshot grid; source, admitted conversion and ordering errors follow the completed book prefix and fuse; unsupported AE correction/cancel/status reports remain named refusals; lifecycle enrichment is explicit)
+  pub fn book_arrow_reader<I>(&self, messages: I, snapshot_millis: u64, global: bool) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>, I::IntoIter: Send + 'static  (sorted FIX messages admitted by the native book boundary: order/quote categories, actual EXEC, BOOK W/X and every TRAD AE; other records are ignored without advancing book time; admitted messages are lazily expanded through the unchanged strict `FixMarketIterator`, including accepted initial AE reports as one composite `TradeEvent` whose children the book flattens into its execution list, folded by `BookIterator`, then streamed through `MarketData::arrow_reader` as `marketdata` rows of kind `book_event` under the codec's row and byte bounds; each leaf carries its message's unmapped fields where `market_metadata` says so; a supplied trade snapshot rebases the root and every child `currunix` to its effective instant while retaining each `execunix`; zero disables the epoch-aligned book snapshot grid; source, admitted conversion and ordering errors follow the completed book prefix and fuse; unsupported AE correction/cancel/status reports remain named refusals; lifecycle enrichment is explicit)
+  pub fn market_operations<I>(&self, messages: I) -> impl FusedIterator<Item = Result<MarketData>> + Send + 'static where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (collects the capture; admits what book_arrow_reader admits; each admitted message expanded as into_market_operations under the codec's metadata switch; source errors and expansion refusals first, in source order, then the operations stably sorted by snapunix else currunix; no lifecycle, no msgtype filter; fused)
+  pub fn market_arrow_reader<I>(&self, messages: I) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<FixMsg>>  (market_operations as MarketData::field rows under the codec's row and byte bounds; one intake failure is the reader's only item)
 
 ### yggdryl::fix::entry  [rust/src/fix/entry.rs]
 pub struct FixEntry  (one field a message states, beside what is nested under it; re-exported at the crate root)
@@ -1219,6 +1226,7 @@ pub mod market_data;
 pub mod operation;
 pub mod operation_column;
 pub mod trade;
+pub mod view;
   pub use book::{BookEvent, BookIterator, BookSide, GLOBAL_SYMBOL, SnapshotEvent, SnapshotPartition};
   pub use column::EventColumn;
   pub use element::{Element, Event};
@@ -1230,6 +1238,7 @@ pub mod trade;
   pub use operation::{BookRef, Execution, ExecutionEvent, ExecutionKind, MdUpdateAction, Order, OrderEvent, OrderKind, OperationElement, OperationEvent, OperationKind, Quote, QuoteEvent, QuoteKind};
   pub use operation_column::OperationColumn;
   pub use trade::TradeEvent;
+  pub use view::MarketView;
   macro_rules! delegate_event, delegate_market, delegate_operation  (pub(crate): `impl Event`, `impl Market` and `impl Operation` forwarding every accessor to a field that is one; `delegate_event!(Type, field, restating = .., is_execution = .., set_currunix = ..)` takes the readings a wrapper answers itself as closures, the last two optional)
 
 ### yggdryl::graph::element  [rust/src/graph/element.rs]
@@ -1290,16 +1299,16 @@ pub trait Event: Element  (an element that happened at one instant, stands in on
 pub type Metadata = BTreeMap<SmolStr, SmolStr>;  (free-form facts a market element carries beside its typed ones; never an identifier, which has a typed home)
 pub fn empty_metadata() -> &'static Metadata  (the one shared empty map an element holding none answers)
 pub const FOLLOWED_ALTIDS: [&str; 7]  (`ORDERID`, `SECONDARYORDERID`, `PARENTORDERID`, `PARENTCLORDID`, `OMSDEALERPARENTORDERID`, `EXCHANGECLIENTORDERID`, `TRANSVERSALKEY`: the alternate-identifier keys a following operation carries from the one it follows by default - the order's own identities and its parents', never an execution's or a quote's; a FIX message reads its dictionary's `FIX:idmap` follow flags instead, through `Operation::is_followed_altid`)
-pub struct Lane { pub price: Option<Decimal18>, pub spotrate: Option<Decimal18>, pub forwardpoints: Option<Decimal18>, pub currency: Option<Ccy>, pub quantity: Option<Decimal18>, pub unit: Option<Unit> }  (one lane of a quote: what a party is willing to pay or be paid, every slot what the lane states; Clone, Debug, Default, Eq, PartialEq)
+pub struct Lane { pub price: Option<Decimal>, pub spotrate: Option<Decimal>, pub forwardpoints: Option<Decimal>, pub currency: Option<Ccy>, pub quantity: Option<Decimal>, pub unit: Option<Unit> }  (one lane of a quote: what a party is willing to pay or be paid, every slot what the lane states; Clone, Debug, Default, Eq, PartialEq)
   pub fn is_stated(&self) -> bool  (whether any slot is stated)
   pub fn stated(self) -> Option<Self>  (the lane as `Some` where it states anything)
 pub trait Market  (an element that stands in a market, no supertrait: nineteen facts, every accessor `get_` and every mutator `set_` but the security identifiers, which a holder answers as a set and changes through fallible verbs - a holder that is a view of another store, a FIX message over its own fields, writes the store through and may refuse; a plain holder always answers `Ok`)
-  fn get_price(&self) -> Option<Decimal18>  (exact, `decimal128(38, 18)` preapplied; `None` where none)
-  fn set_price(&mut self, price: Option<Decimal18>)
+  fn get_price(&self) -> Option<Decimal>  (exact, `decimal128(38, 18)` preapplied; `None` where none)
+  fn set_price(&mut self, price: Option<Decimal>)
   fn get_currency(&self) -> &Ccy  (`Ccy::none()` where unstated)
   fn set_currency(&mut self, currency: Ccy)
-  fn get_quantity(&self) -> Option<Decimal18>  (`None` where none)
-  fn set_quantity(&mut self, quantity: Option<Decimal18>)
+  fn get_quantity(&self) -> Option<Decimal>  (`None` where none)
+  fn set_quantity(&mut self, quantity: Option<Decimal>)
   fn get_unit(&self) -> &Unit  (`Unit::none()` where unstated)
   fn set_unit(&mut self, unit: Unit)
   fn get_side(&self) -> Side  (by value, one byte; `Side::Unknown` where none)
@@ -1313,10 +1322,10 @@ pub trait Market  (an element that stands in a market, no supertrait: nineteen f
   fn set_cficode(&mut self, code: Option<CfiCode>)
   fn get_miccode(&self) -> Option<&MicCode>  (the market it trades on, ISO 10383, where known)
   fn set_miccode(&mut self, code: Option<MicCode>)
-  fn get_lastpx(&self) -> Option<Decimal18>  (what the element last traded, with `get_lastqty`; each with its `set_`)
-  fn get_avgpx(&self) -> Option<Decimal18>  (what it averaged; `get_cumqty` and `get_leavesqty` how much is done and how much is left; each with its `set_`)
-  fn get_prevpx(&self) -> Option<Decimal18>  (with `get_prevqty`: what the step before this one settled on, which a walk fills; each with its `set_`)
-  fn get_spotrate(&self) -> Option<Decimal18>  (with `get_forwardpoints`: the two FX parts of a price, `None` unless set until FIX lifts them; each with its `set_`)
+  fn get_lastpx(&self) -> Option<Decimal>  (what the element last traded, with `get_lastqty`; each with its `set_`)
+  fn get_avgpx(&self) -> Option<Decimal>  (what it averaged; `get_cumqty` and `get_leavesqty` how much is done and how much is left; each with its `set_`)
+  fn get_prevpx(&self) -> Option<Decimal>  (with `get_prevqty`: what the step before this one settled on, which a walk fills; each with its `set_`)
+  fn get_spotrate(&self) -> Option<Decimal>  (with `get_forwardpoints`: the two FX parts of a price, `None` unless set until FIX lifts them; each with its `set_`)
   fn get_ticker(&self) -> Option<&str>  (the name a person knows the instrument by, beside the codes rather than among them)
   fn set_ticker(&mut self, ticker: Option<SmolStr>)
   fn get_metadata(&self) -> &Metadata  (a shared empty map where the element carries none)
@@ -1414,7 +1423,7 @@ pub enum MdUpdateAction { New = 0, Change = 1, Delete = 2, DeleteThru = 3, Delet
   pub fn read(text: &str) -> Option<Self>  (the code, the code set's name folded, or the legacy `SNAPSHOT`)
   pub const fn is_range_delete(self) -> bool  (delete-through or delete-from)
   pub const fn is_partial(self) -> bool  (a change or an overlay, which inherits what it leaves unstated)
-pub struct BookRef { pub action: Option<MdUpdateAction>, pub scope: Option<SmolStr>, pub position: Option<u32>, pub entry_px: Option<Decimal18>, pub entry_size: Option<Decimal18> }  (the typed book-control facts a market-data entry carries - the update action, the scope, `MDEntryPositionNo(290)`, and `MDEntryPx(270)` and `MDEntrySize(271)` as stated, so a partial update still knows what it stated - never an identifier: the entry's own and referenced identifiers are the operation's `MDENTRYID` and `MDENTRYREFID` alternate identifiers; Clone, Debug, Default, Eq, PartialEq)
+pub struct BookRef { pub action: Option<MdUpdateAction>, pub scope: Option<SmolStr>, pub position: Option<u32>, pub entry_px: Option<Decimal>, pub entry_size: Option<Decimal> }  (the typed book-control facts a market-data entry carries - the update action, the scope, `MDEntryPositionNo(290)`, and `MDEntryPx(270)` and `MDEntrySize(271)` as stated, so a partial update still knows what it stated - never an identifier: the entry's own and referenced identifiers are the operation's `MDENTRYID` and `MDENTRYREFID` alternate identifiers; Clone, Debug, Default, Eq, PartialEq)
   pub fn is_stated(&self) -> bool  (whether any control fact is stated)
 pub struct OperationElement<K: OperationKind>  (one operation with no instant: the element, market and operation facts; Clone, Debug, PartialEq, Default)
   pub fn new() -> Self  (stating nothing, not yet finalized)
@@ -1455,16 +1464,18 @@ pub struct SnapshotEvent  (the full-snapshot control an empty `W` is: an event s
   pub fn book(&self) -> &BookRef  (the action, always `Snapshot`, and the scope)
   impl Element, Event, Market for SnapshotEvent  (`is_execution` is false)
 pub struct SnapshotPartition { pub symbol: Option<SmolStr>, pub scope: SmolStr }  (one scope a full snapshot replaced: a symbol - none in global mode - and the book scope the entries stated; Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
-pub struct BookSide  (one persistent price-ordered bid or ask side holding its live entries as `Arc<MarketData>` - always an `OrderEvent` or a `QuoteEvent` - plus the deltas applied since the last emitted book; a `Market` whose summary is the best level; full ordered live depth and deltas participate in its identity through each list count, each entry's kind and canonical `curruuid`; Clone, Debug, PartialEq; `Default` an empty bid)
+pub struct BookSide  (one persistent price-ordered bid or ask side holding its live entries as `Arc<MarketData>` - always an `OrderEvent` or a `QuoteEvent` - plus the deltas applied since the last emitted book; a `Market` whose summary is the best level - the first priced level; an entry stating no price rests at one unpriced level after every priced one; full ordered live depth and deltas participate in its identity through each list count, each entry's kind and canonical `curruuid`; Clone, Debug, PartialEq; `Default` an empty bid)
   impl Element, Market for BookSide  (`is_after` is always false: a side states no order)
   pub fn new(side: Side) -> Result<Self>  (only a bid or ask)
-  pub fn live(&self) -> impl Iterator<Item = &MarketData>  (best price first; same-price entries by stated `BookRef::position`)
+  pub fn live(&self) -> impl Iterator<Item = &MarketData>  (best price first, every unpriced entry last; same-price entries by stated `BookRef::position`, then arrival)
   pub fn deltas(&self) -> &[MarketData]
   pub fn len(&self) -> usize
   pub fn is_empty(&self) -> bool
-  pub fn best_price(&self) -> Option<Decimal18>
-  pub fn best_quantity(&self) -> Option<Decimal18>  (aggregate quantity at the exact best price)
-  pub fn add_operation(&mut self, operation: MarketData) -> Result<()>  (atomic; an `OrderEvent` or `QuoteEvent` on this side only, any other variant `InvalidRecord` naming its kind; the live key is symbol + scope + cross identity; a stated same-partition `MDENTRYREFID` resolves before the incoming identity or its `MDENTRYID`, and a distinct occupied destination is ambiguous and refused)
+  pub fn best_price(&self) -> Option<Decimal>  (the first priced level's; `None` for an empty side or one of unpriced entries only)
+  pub fn best_quantity(&self) -> Option<Decimal>  (exact aggregate quantity at the best price, an entry stating none adding nothing; `None` where `best_price` is)
+  pub fn limits(&self) -> impl Iterator<Item = Limit>  (one `Limit` per level in held order - best first, the unpriced limit last - its entries' `curruuid`s in position order, ties in arrival order; allocates each limit's `uuids` and nothing else)
+  pub fn depth(&self, levels: usize) -> Option<Decimal>  (checked sum of the first `levels` limits' quantities, the unpriced limit counted where reached; zero for an empty side or no level; `None` only past decimal)
+  pub fn add_operation(&mut self, operation: MarketData) -> Result<()>  (atomic; an `OrderEvent` or `QuoteEvent` on this side only, any other variant `InvalidRecord` naming its kind; the live key is symbol + scope + cross identity; a stated same-partition `MDENTRYREFID` resolves before the incoming identity or its `MDENTRYID`, and a distinct occupied destination is ambiguous and refused; an entry stating no price rests at the unpriced level, reached last by `live`, the digest and range deletes; a level whose aggregate quantity would pass decimal is refused at `$.quantity`, naming its price)
 pub struct BookEvent  (one symbol and instant: persistent bid and ask depth, the executions at this effective timestamp and the scopes its last snapshot replaced; an `Event` and a `Market` and no operation - the sides are its lanes; after its own market-event digest its composite digest feeds bid and ask `curruuid`s, the ordered execution `curruuid`s and the replaced scopes; Clone, Debug, PartialEq; `Default` `new(0, "")`)
   impl Element, Event, Market for BookEvent  (follows only the same cross code at a nondecreasing instant; merges only the same cross code and instant, the later `recdunix` then `currunix` selecting the reference; `is_execution` is false)
   pub fn new(unix: i64, symbol: impl Into<String>) -> Self  (the symbol its ticker and its cross code)
@@ -1472,8 +1483,11 @@ pub struct BookEvent  (one symbol and instant: persistent bid and ask depth, the
   pub const fn ask(&self) -> &BookSide
   pub fn executions(&self) -> &[ExecutionEvent]
   pub fn is_crossed(&self) -> bool  (best bid strictly above best ask; a locked book is coherent)
-  pub fn bbo_midpoint(&self) -> Option<Decimal18>  (overflow-safe arithmetic midpoint of a coherent two-sided BBO)
-  pub fn median_quantity(&self) -> Option<Decimal18>  (overflow-safe two-value median of aggregate best quantities; the one side where one-sided)
+  pub fn is_locked(&self) -> bool  (both bests stated and equal)
+  pub fn spread(&self) -> Option<Decimal>  (best ask less best bid, negative when crossed; `None` where a side states no best or past decimal)
+  pub fn imbalance(&self, levels: usize) -> Option<Decimal>  ((bid - ask) / (bid + ask) over the two sides' `depth(levels)`; 1 bid-only, -1 ask-only; `None` when the total is zero - both sides empty or no level - or past decimal)
+  pub fn bbo_midpoint(&self) -> Option<Decimal>  (overflow-safe arithmetic midpoint of a coherent two-sided BBO)
+  pub fn median_quantity(&self) -> Option<Decimal>  (overflow-safe two-value median of aggregate best quantities; the one side where one-sided)
   pub fn add_operations<I>(&mut self, operations: I) -> Result<()> where I: IntoIterator, I::Item: Into<Result<MarketData>>  (atomic; an `OrderEvent`, `QuoteEvent`, `ExecutionEvent`, `TradeEvent` or `SnapshotEvent` folds and any other variant is `InvalidRecord` at `$.operations[index].kind`; one nonregressing `currunix` across the group; advancing clears old deltas, executions and the snapshot stamp but retains live depth; a full-snapshot order, quote or `SnapshotEvent` clears only its symbol + scope partition first)
   pub fn snapshot_partitions(&self) -> &BTreeSet<SnapshotPartition>  (the scopes the last snapshot replaced, empty once an ordinary update follows)
 pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>>  (books from an already sorted infallible or fallible stream of `MarketData`, one per symbol and effective timestamp, or one consolidated `GLOBAL` book; a variant a book does not fold is `InvalidRecord` naming its kind; each timestamp/symbol commits ordinary deltas, expirations and explicit scope-membership snapshots atomically; an input error follows the completed prefix once and fuses)
@@ -1484,9 +1498,9 @@ pub struct BookIterator<I> where I: Iterator, I::Item: Into<Result<MarketData>> 
 
 ### yggdryl::graph::arrow  [rust/src/graph/arrow.rs]
 impl MarketData
-  pub fn field() -> Result<Field>  (the required `marketdata` struct: `kind` - a `MarketKind` spelling - then `EventColumn::ALL`, every one nullable because an undated leaf states no clock, `MarketColumn::ALL`, `OperationColumn::ALL`, the five book-control columns `mdupdateaction`, `bookscope`, `mdentrypositionno`, `mdentrypx`, `mdentrysize`, then the nullable nested `executions` (a trade's or a book's operation rows), `bidside` and `askside` (a book's sides: six element columns, `MarketColumn::ALL`, `live` and `deltas` operation rows), `snapshotpartitions` (a book's) and `live` and `deltas` (a book side's); every fact its own typed column)
+  pub fn field() -> Result<Field>  (the required `marketdata` struct: `kind` - a `MarketKind` spelling - then `EventColumn::ALL`, every one nullable because an undated leaf states no clock, `MarketColumn::ALL`, `OperationColumn::ALL`, the five book-control columns `mdupdateaction`, `bookscope`, `mdentrypositionno`, `mdentrypx`, `mdentrysize`, the three nullable book facts `spread` (decimal), `crossed`, `locked` (boolean), then the nullable nested `executions` (a trade's or a book's operation rows), `bidside` and `askside` (a book's sides: six element columns, `MarketColumn::ALL`, `live` and `deltas` operation rows and nullable `limits`, a serie of `Limit::field()`), `snapshotpartitions` (a book's) and `live`, `deltas` and `limits` (a book side's); 59 columns; a book's `bid`/`ask` lanes state its best price and aggregate best quantity; every fact its own typed column, every decimal the registered `decimal`)
   pub fn arrow_reader<I>(elements: I, batch_row_size: Option<usize>, batch_byte_size: Option<u64>) -> Result<BatchReader> where I: IntoIterator, I::Item: Into<Result<MarketData>>, I::IntoIter: Send + 'static  (lazy: the source is not pulled until the reader is; laid out column by column from the typed leaves with no per-row `Scalar`; a `None` row size uses the crate default and zero normalizes to one; a byte bound closes a nonempty batch once the rows held reach it; a value is written only as its canonical self - a stale identity or fact is refused on its row; a source or refusal error follows the completed prefix and fuses)
-  pub fn from_arrow_reader(batches: BatchReader) -> Result<impl FusedIterator<Item = Result<MarketData>> + Send + 'static>  (tolerant: the root columns are resolved by name once per stream, whatever their case, any subset in any order, a foreign column ignored and a column of another castable type cast through one plan compiled before the first batch; each column's storage proven once and read per row; a missing or unknown `kind`, or a fact the kind requires - `currunix` for a dated leaf, a trade's `executions`, a book's two sides - is refused at the first row that needs it; every stated identity and fact must be the one the rebuilt leaf derives; two columns naming one fact are refused before a row is read; fused after an error)
+  pub fn from_arrow_reader(batches: BatchReader) -> Result<impl FusedIterator<Item = Result<MarketData>> + Send + 'static>  (tolerant: the root columns are resolved by name once per stream, whatever their case, any subset in any order, a foreign column ignored and a column of another castable type cast through one plan compiled before the first batch; each column's storage proven once and read per row; a missing or unknown `kind`, or a fact the kind requires - `currunix` for a dated leaf, a trade's `executions`, a book's two sides - is refused at the first row that needs it; every stated identity and fact must be the one the rebuilt leaf derives - a book's lanes, its three facts and a side's limits included; a null cell states nothing; two columns naming one fact are refused before a row is read; fused after an error)
 
 ### yggdryl::graph::kind  [rust/src/graph/kind.rs]
 pub enum MarketKind { Order, Quote, Execution, BookSide, OrderEvent, QuoteEvent, ExecutionEvent, TradeEvent, BookEvent, SnapshotEvent }  (which leaf a `MarketData` value is; repr(u8); Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)
@@ -1515,6 +1529,15 @@ pub struct EventIterator<E, I>  (the one walk: operation events read in their or
   pub fn alive(&self) -> impl Iterator<Item = &E>  (the elements still alive after what was read, one per identity, in no order)
   impl<E: Walked, I: Iterator<Item = E>> Iterator for EventIterator<E, I>  (Item = E; size_hint is the source's)
   impl<E: Walked, I: FusedIterator<Item = E>> FusedIterator for EventIterator<E, I>
+
+### yggdryl::graph::view  [rust/src/graph/view.rs]  (the named readings of a `marketdata` stream, one Plan each over the rows MarketData::arrow_reader writes)
+pub enum MarketView { Orders, Quotes, Executions, Trades, BookSides, Books, Lifecycle { crosscode: SmolStr } }  (one named reading of a `marketdata` stream, one Plan each; Clone, Debug, Eq, Hash, PartialEq; Display as `as_str`)
+  pub const ALL: [&'static str; 7]  (`orders`, `quotes`, `executions`, `trades`, `book_sides`, `books`, `lifecycle`)
+  pub const fn as_str(&self) -> &'static str
+  pub fn read(text: &str, crosscode: Option<&str>) -> Result<Self>  (ASCII case-insensitive; `lifecycle` requires its crosscode, every other view refuses one; InvalidRecord at `$.view` or `$.crosscode`)
+impl MarketData
+  pub fn plan(view: &MarketView, lifts: &[FieldPath]) -> Result<Plan>  (built structurally; its text reads back as the plan; lifts appended as projections, a missing key reading null and a missing column refused at bind)
+  pub fn apply_view(view: &MarketView, lifts: &[FieldPath], reader: BatchReader) -> Result<BatchReader>  (exactly plan.apply_arrow_reader(reader), bound once)
 
 ### yggdryl::hashing  [rust/src/hashing/mod.rs]
 (no public items: the private stable-hash adapters the digests share; xxhash and txhash are root modules with sections of their own)
@@ -2773,6 +2796,7 @@ pub struct TextLine  (one text row and the `Event` of the graph it is: what the 
   pub fn event_fact(&self, column: EventColumn) -> Result<Option<Scalar>>  (what the line states under one of the sixteen event columns, as the column's cell: the capture-fed facts through the refusing readings above, so a capture the fact cannot read refuses by name; the rest through the trait doors)
   impl Element, Event for TextLine  (the readings above through the trait doors, a refusal read as the fact's default: `get_currunix` is `mtime`, the handle's time over a refused capture, the epoch where the line has none; `get_seqnum` the row number; `get_currhashcode` the XXH3-64 of the cross code, the row number and the body, so two identical bodies read at one instant stay apart; `get_crosscode` the `sourceuri`'s canonical text - the identifier the line was read under, which a located read spells as its URL and a named read spells as the name rather than where it resolved - else empty, with `crosshashcode` derived; `get_curruuid` is `time_uuid` over millisecond time, the row number's ordered sequence lane and the cross-seeded XXH3 payload, nil where the instant has no UUIDv7; `get_crossuuid` from the same cross hash; explicitly stated event facts win; `get_srcuuids` what was stated, none otherwise; `is_after` by instant, then index; `finalize` lets the identity quartet derive again; `with_previous` is `Event::following`, `merge_with` is `Event::merging`)
   impl Clone, Debug, Display, PartialEq, Eq, PartialOrd, Ord, Hash for TextLine  (over the stated facts alone, never a resolved slot)
+  impl From<&TextLine> for TextLine  (one clone: what a borrowed line pays where an owned one is wanted)
 
 ### yggdryl::text::arrow  [rust/src/text/arrow.rs]
 pub struct TextLines
@@ -3833,6 +3857,7 @@ pub fn from_arrow_schema(name: &str, schema: &Schema) -> crate::arrow::Result<Se
   pub fn from_arrow_field(value: &ArrowField) -> Result<Self>
   pub fn from_arrow_field_ref(value: FieldRef) -> Result<Self>
   pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema>
+  pub fn into_arrow_exchange_ffi(self) -> crate::arrow::Result<arrow_schema::ffi::FFI_ArrowSchema>  (the root's C projection carrying into_arrow_exchange_schema's metadata - its own entries and the dictionary-ID sidecar - for a batch or stream crossing the C Data Interface)
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
   pub fn into_arrow_field_ffi(self) -> Result<FFI_ArrowSchema>
   pub fn into_arrow_field(self) -> Result<ArrowField>
@@ -3895,23 +3920,16 @@ pub struct Bytes  (the payload alone, 32 bytes; Deref<Target=[u8]>, AsRef<[u8]>,
 ### yggdryl::cast  [rust/src/cast.rs]  (the one recursive cast engine, reached through Serie::cast, the Serie Arrow doors, SerieReader and a held ArrowCastPlan)
 
 ### yggdryl::cast::options  [rust/src/cast.rs]
-pub enum Nullability
-  pub const ALL: [Self; 2]
-  pub fn from_str(value: &str) -> Result<Self>
-  pub const fn as_str(self) -> &'static str
-  pub const fn is_strict(self) -> bool
 pub enum Representation
   pub const ALL: [Self; 2]
   pub fn from_str(value: &str) -> Result<Self>
   pub const fn as_str(self) -> &'static str
   pub const fn is_bits(self) -> bool
-pub struct ArrowCastOptions
+pub struct ArrowCastOptions  (two answers, safe and representation; whether a value may be absent is the target field's nullability, never an option)
   pub const fn new() -> Self
   pub const fn with_safe(mut self, safe: bool) -> Self
-  pub const fn with_nullability(mut self, nullability: Nullability) -> Self
   pub const fn with_representation(mut self, representation: Representation) -> Self
   pub const fn is_safe(self) -> bool
-  pub const fn nullability(self) -> Nullability
   pub const fn representation(self) -> Representation
 
 ### yggdryl::cast::plan  [rust/src/cast.rs]
@@ -3930,7 +3948,7 @@ pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
   pub fn into_scheme_compat(self, scheme: &Scheme) -> Result<Self>
 
 ### yggdryl::decimal::fixed  [rust/src/decimal.rs]
-pub struct Decimal18  (one exact decimal at eighteen fractional digits and thirty-eight digits of precision - `decimal128(38, 18)` preapplied - as one i128 of units; Copy, Default (zero), Eq, Ord, Hash, Display (no trailing zero behind the point), Debug, FromStr; Add/Sub/Mul/Div and their assign forms refuse an overflow as the integers' do, Neg, Sum; From<i64>; From<Decimal18> for Decimal128 and for Scalar (a `Decimal128` at scale 18); re-exported at yggdryl::Decimal18)
+pub struct Decimal  (one exact decimal at eighteen fractional digits and thirty-eight digits of precision - `decimal128(38, 18)` preapplied - as one i128 of units, and the value of the registered `decimal` datatype; Copy, Default (zero), Eq, Ord, Hash, Display (no trailing zero behind the point), Debug, FromStr; Add/Sub/Mul/Div and their assign forms refuse an overflow as the integers' do, Neg, Sum; From<i64>; From<Decimal> for Decimal128, for BigDecimal and for Scalar (`Scalar::Decimal`); Value and DecimalValue at its one scale; re-exported at yggdryl::Decimal)
   pub const SCALE: i8 = 18
   pub const PRECISION: u8 = 38
   pub const ZERO: Self; pub const ONE: Self; pub const MAX: Self; pub const MIN: Self  (thirty-eight nines, eighteen fractional, and its negation)
@@ -3941,15 +3959,36 @@ pub struct Decimal18  (one exact decimal at eighteen fractional digits and thirt
   pub fn to_f64(self) -> f64
   pub fn parse(text: &str) -> Result<Self>  (lenient, one pass, no allocation: surrounding ASCII whitespace ignored, an empty text zero, an optional sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, digits past the eighteenth fractional one truncated toward zero, an `e` exponent; refuses text stating no number and a value past thirty-eight digits with Error::Parse)
   pub fn from_scalar(value: &Scalar) -> Option<Self>  (an exact decimal restated at eighteen digits, a whole integer, a finite float, or text `parse` reads)
-  pub const fn dtype() -> DataType  (DataType::DECIMAL)
+  pub const fn dtype() -> DataType  (DataType::Decimal, the leaf over `decimal128(38, 18)` storage)
   pub const fn is_zero(self) -> bool; pub const fn is_negative(self) -> bool; pub const fn is_positive(self) -> bool; pub const fn abs(self) -> Self
   pub fn checked_add(self, other: Self) -> Option<Self>  // and checked_sub, checked_mul, checked_div: None past the precision, checked_div also for a divisor of nothing; mul and div keep eighteen digits and truncate the rest toward zero, widening to 256 bits for the one product
   pub fn truncated(self, places: u8) -> Self  (the value at `places` fractional digits, the rest truncated toward zero)
   pub const fn into_decimal128(self) -> Decimal128
+  pub const fn widened(self) -> BigDecimal  (lossless: every Decimal is a BigDecimal)
+pub struct BigDecimal(i256)  (one exact decimal at eighteen fractional digits and seventy-six digits of precision - `decimal256(76, 18)` preapplied - and the value of the registered `bigdecimal` datatype; Copy, Default (zero), Eq, Ord, Hash, Display (no trailing zero behind the point), Debug, FromStr; Add/Sub/Mul/Div and their assign forms refuse an overflow, Neg, Sum; From<i64>, From<Decimal>; From<BigDecimal> for Decimal256 and for Scalar (`Scalar::BigDecimal`); Value and DecimalValue at its one scale; re-exported at yggdryl::BigDecimal)
+  pub const SCALE: i8 = 18
+  pub const PRECISION: u8 = 76
+  pub const ZERO: Self; pub const ONE: Self; pub const MAX: Self; pub const MIN: Self  (seventy-six nines, eighteen fractional, and its negation)
+  pub fn from_units(units: i256) -> Option<Self>  (the `decimal256(76, 18)` coefficient; None past the precision)
+  pub const fn units(self) -> i256
+  pub const fn from_int(value: i64) -> Self
+  pub fn narrowed(self) -> Option<Decimal>  (the value within thirty-eight digits, None past them)
+  pub fn from_f64(value: f64) -> Option<Self>; pub fn to_f64(self) -> f64
+  pub fn parse(text: &str) -> Result<Self>  (exactly as Decimal::parse reads, with seventy-six digits to fill)
+  pub fn from_scalar(value: &Scalar) -> Option<Self>  (a fixed leaf, an exact decimal restated at eighteen digits, a whole integer, a finite float, or text `parse` reads)
+  pub const fn dtype() -> DataType  (DataType::BigDecimal, the leaf over `decimal256(76, 18)` storage)
+  pub const fn is_zero(self) -> bool; pub const fn is_negative(self) -> bool; pub fn is_positive(self) -> bool; pub fn abs(self) -> Self
+  pub fn checked_add(self, other: Self) -> Option<Self>  // and checked_sub, checked_mul, checked_div: None past the precision, checked_div also for a divisor of nothing; mul and div keep eighteen digits and truncate the rest toward zero through a 512-bit product
+  pub fn truncated(self, places: u8) -> Self  (the value at `places` fractional digits, the rest truncated toward zero)
+  pub const fn into_decimal256(self) -> Decimal256
 impl DataType
-  pub const DECIMAL: Self  (`decimal128(38, 18)`, what every Decimal18 is)
+  pub const DECIMAL: Self  (`decimal128(38, 18)`: the storage every Decimal rides and the spelling a FIX dictionary types a price with - a parameterized width, never the `decimal` leaf)
 
 ### yggdryl::decimal  [rust/src/decimal.rs]
+pub enum DecimalType { Decimal32 { precision: u8, scale: i8 }, Decimal64 { .. }, Decimal128 { .. }, Decimal256 { .. }, Decimal, BigDecimal }  (#[non_exhaustive]; the four parameterized widths and the two fixed leaves, whose precision and scale are 38 and 76 at 18; the payload of DecimalField; Display `decimal` and `bigdecimal` for the leaves)
+  pub const fn id(self) -> DataTypeId
+  pub const fn precision(self) -> u8; pub const fn scale(self) -> i8; pub const fn maximum(self) -> u8
+  pub const fn narrowest(precision: u8, scale: i8) -> Self  (never a fixed leaf: bare `decimal` in the grammar names the leaf, `decimal(p, s)` this rule)
 pub fn from_decimal(unscaled: i256, scale: i8) -> Self
   pub const fn d128(unscaled: i128, scale: i8) -> Self
   pub const fn d256(unscaled: i256, scale: i8) -> Self
@@ -3978,6 +4017,7 @@ pub struct Differences<'schema>
 
 ### yggdryl::datatype  [rust/src/datatype.rs]
 pub enum DataType
+  DataType::Decimal, DataType::BigDecimal  (the parameter-free fixed decimal leaves over `Decimal128(38, 18)` and `Decimal256(76, 18)` storage under the extension names `yggdryl.decimal` and `yggdryl.bigdecimal`; bare storage imports as the parameterized width and casts onto the leaf by identity; `decimal` crosses Avro, Iceberg, Spark, Polars and pandas as their decimal(38, 18), `bigdecimal` is refused there)
   pub fn scalar(&self, value: impl Into<crate::Scalar>) -> Result<crate::Scalar>
   pub fn stable_hash(&self) -> u64
   pub const fn id(&self) -> DataTypeId
@@ -4340,6 +4380,7 @@ pub enum DataType
   pub fn is_empty(&self) -> bool
   pub fn get(&self, index: usize) -> Option<(i8, &Field)>
   pub fn get_by_name(&self, name: &str) -> Option<(i8, &Field)>
+  pub fn branch_of(&self, value: &Scalar) -> Result<(i8, &Field)>  (the member a bare value belongs to: its own datatype's, then its family's, then the one that accepts it; two candidates or none is a refusal naming them - the reading `scalar` gives a bare value that is not a sequence, offered for any value)
   pub fn as_fields(&self) -> &[(i8, Field)]
   pub fn into_fields(self) -> Vec<(i8, Field)>
   pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>
@@ -4611,7 +4652,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their d128/d256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -4669,8 +4710,9 @@ pub struct ProtocolField<'field>
   pub fn into_arrow_reader(&self) -> crate::arrow::Result<BatchReader>  (one batch)
   pub struct SerieReader  (one record Serie per batch of an Arrow stream under one ArrowCastPlan compiled from the stream's schema before a batch is pulled; at most one source batch held; fused after the first failure; Iterator<Item = crate::arrow::Result<Serie>>, FusedIterator, Debug)
   pub fn from_arrow_reader(root: Option<&Field>, reader: BatchReader, options: ArrowCastOptions) -> crate::arrow::Result<SerieReader>  (None: the stream's own schema as a DEFAULT_ROOT_NAME record)
-  pub fn from_serie(serie: Serie) -> crate::arrow::Result<SerieReader>  (one held column as one record column, a non-record column the one child of a DEFAULT_ROOT_NAME record; nothing cast or read; a run and a record with an absent row refused)
-  pub fn from_chunked(chunked: ChunkedSerie) -> crate::arrow::Result<SerieReader>  (a held chunked column as the stream of its chunks, one record column per chunk - a non-record field's chunks each the one child of a DEFAULT_ROOT_NAME record, from_serie's rule per chunk; nothing cast, copied or read; no chunk is the empty stream of its root; a record chunk with an absent row refused)
+  pub fn from_serie(serie: Serie) -> crate::arrow::Result<SerieReader>  (one held column as one record column, a non-record column the one child of a DEFAULT_ROOT_NAME record; nothing cast or read and no plan compiled; a run and a record with an absent row refused)
+  pub fn from_chunked(chunked: ChunkedSerie) -> crate::arrow::Result<SerieReader>  (a held chunked column as the stream of its chunks, one record column per chunk - a non-record field's chunks each the one child of a DEFAULT_ROOT_NAME record, from_serie's rule per chunk; nothing cast, copied or read and no plan compiled; no chunk is the empty stream of its root; a record chunk with an absent row refused)
+  pub fn cast(self, target: &Field, options: ArrowCastOptions) -> crate::arrow::Result<SerieReader>  (every record cast into target - a record root, or a column as the one child of one - by one plan: the reader itself under its own root; held records cast once each; a stream's batches cast by the plan they were opened under and landed under target after it, or by one plan from the stream's own schema over an identity)
   pub fn root_of(field: &Field) -> crate::Result<Field>  (the record root a held column of field crosses into a table under: a record's own field, required, or the DEFAULT_ROOT_NAME record it is the one child of; what from_serie and from_chunked name their field by and what into_arrow_batch, into_arrow_reader and ChunkedSerie::into_arrow_reader project their schema from)
   pub fn field(&self) -> &Field
   pub fn into_arrow_reader(self) -> BatchReader  (transport: batches reconciled to the root and never landed; the inner reader itself over an identity plan)
@@ -4944,7 +4986,7 @@ pub trait IntegerValue: Value  (implemented by Int8, Int16, Int32, Int64, UInt8,
 pub trait FloatingValue: Value  (implemented by Float16, Float32 and Float64)
   const BIT_WIDTH: u8
   fn as_f64(&self) -> f64
-pub trait DecimalValue: Value  (implemented by Decimal32, Decimal64, Decimal128 and Decimal256)
+pub trait DecimalValue: Value  (implemented by Decimal32, Decimal64, Decimal128, Decimal256, and by Decimal and BigDecimal at their one scale, a rescale to any other refused)
   fn coefficient(&self) -> i256
   fn scale(&self) -> i8
   fn rescale(self, scale: i8) -> Result<Self>
@@ -5355,6 +5397,13 @@ impl Scalar
   pub fn to_scalar(&self) -> Scalar
   pub fn from_scalar(scalar: &Scalar) -> Result<Self>  (as `IdMap::from_scalar`, each source read through `SecType::read` and each code validated by it)
   pub fn embedded(isin: &IsinCode) -> impl Iterator<Item = SecurityId>  (the national number a canonical ISIN carries: US and CA a CUSIP in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a SEDOL in positions 4 to 11, DE behind `000` a WKN in positions 5 to 11, CH and LI a Valor number in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
+
+### yggdryl::limit  [rust/src/limit.rs]  (one price limit of a book side: its price, the quantity resting there and the entries resting there; a root value type, not a DataType variant)
+pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids: Vec<Uuid> }  (price `None` on the one limit folding every unpriced entry; quantity the exact sum of the entries' quantities, an entry stating none adding nothing; uuids the entries' `curruuid`s in live order; Clone, Debug, Eq, Hash, PartialEq - order-sensitive on `uuids`)
+  pub fn dtype() -> DataType  (`struct<price: decimal?, quantity: decimal, uuids: serie<uuid>>`, the uuid item `uuid` required)
+  pub fn field() -> Field  (the required item `limit` of a `limits` column)
+  pub fn into_scalar(&self) -> Scalar  (the named `Scalar::Struct` of the three cells, a missing price `Null`)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null, so a missing quantity or uuids is refused as a stated null is, never the door's default - or the ordered row of three cells; read through `field()`'s value door first, the one value contract, and refused exactly as it refuses, located under `$.limit` - `$.limit.price`, `$.limit.quantity`, `$.limit.uuids[i]`; an empty text, a float or a 19th fractional digit is refused, never read as zero)
 
 ### yggdryl::side  [rust/src/side.rs]
   pub enum Side  (#[repr(u8)], one byte: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd` in FIX `Side(54)` code order; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)
@@ -6024,7 +6073,7 @@ pub enum Location
   pub fn field_from(&self, root: &Field) -> Result<Field>
   pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType>
   pub fn columns(&self) -> Vec<String>
-  pub fn read_columns(&self) -> Option<Vec<String>>
+  pub fn read_columns(&self) -> Option<Vec<String>>  (`None` - every column - whenever the select holds a star, whatever it excludes or appends)
   pub fn parameters(&self) -> Vec<String>
   pub fn simplify(&self) -> Self
   pub fn check_budget(&self) -> Result<()>

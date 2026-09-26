@@ -980,6 +980,7 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     _budget: &mut crate::budget::MaterializationBudget,
+    _resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::held;
     use super::string::{

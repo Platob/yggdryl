@@ -386,13 +386,23 @@ pub enum Function {
     /// [`FieldSegment::Range`], 0-based and half-open, a null bound meaning
     /// the serie's own end.
     Slice,
+    /// `unnest(serie)` - DuckDB's verb, the one select-list form that
+    /// multiplies rows: each element of a row's serie is a row of its own,
+    /// the row's other columns repeated beside it, and a null or empty serie
+    /// keeps none.
+    ///
+    /// It stands only as the whole term of a [`Projection`], at most once per
+    /// [`Selector`]; typed anywhere else - inside another
+    /// term, in a `where`, an `order by` or a key - it is refused, because a
+    /// value read per row cannot be many rows.
+    Unnest,
     /// A registered [user-defined function](UserFunction), by qualified name.
     User(UserRef),
 }
 
 impl Function {
     /// Every function this grammar knows, in canonical spelling.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::Lower,
         Self::Upper,
         Self::Length,
@@ -412,6 +422,7 @@ impl Function {
         Self::Size,
         Self::Get,
         Self::Slice,
+        Self::Unnest,
     ];
 
     /// The canonical lowercase name of this function.
@@ -438,6 +449,7 @@ impl Function {
             Self::Size => "size",
             Self::Get => "get",
             Self::Slice => "slice",
+            Self::Unnest => "unnest",
         }
     }
 
@@ -469,6 +481,7 @@ impl Function {
             "size" | "cardinality" => Self::Size,
             "get" => Self::Get,
             "slice" | "array_slice" => Self::Slice,
+            "unnest" | "explode" => Self::Unnest,
             _ => return None,
         })
     }
@@ -807,8 +820,9 @@ impl Expression {
 }
 
 /// Whether the `where` clause reads a name only the `select` clause
-/// publishes - an alias, which DuckDB lets a `where` read - so it has to run
-/// after the projection rather than before it.
+/// publishes - an alias, which DuckDB lets a `where` read, or a column an
+/// `unnest` lays out - so it has to run after the projection rather than
+/// before it.
 ///
 /// `input` names the columns the rows carry before the projection. A filter
 /// over stored columns runs first, which is what lets it prune; a filter that
@@ -823,12 +837,8 @@ pub(crate) fn filter_after_select<'a>(
         return false;
     }
     let input: Vec<&str> = input.into_iter().collect();
-    let published = select.names();
     filter.columns().iter().any(|column| {
-        !input.iter().any(|held| held.eq_ignore_ascii_case(column))
-            && published
-                .iter()
-                .any(|name| name.eq_ignore_ascii_case(column))
+        !input.iter().any(|held| held.eq_ignore_ascii_case(column)) && select.publishes(column)
     })
 }
 

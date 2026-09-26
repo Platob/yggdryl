@@ -9,7 +9,7 @@
 use super::market_column::{currency_of, tif_of, unit_of};
 use super::{Lane, Operation};
 use crate::idmap::IdMap;
-use crate::{DataType, Decimal18, Field, Result, Scalar, StructType};
+use crate::{DataType, Decimal, Field, Result, Scalar, StructType};
 
 /// One column of the facts every market operation answers beside the
 /// market's.
@@ -188,11 +188,11 @@ impl OperationColumn {
 /// Returns an error when the struct cannot be built.
 pub fn lane_datatype() -> Result<DataType> {
     let fields = vec![
-        DataType::DECIMAL.nullable_field("price"),
-        DataType::DECIMAL.nullable_field("spotrate"),
-        DataType::DECIMAL.nullable_field("forwardpoints"),
+        DataType::Decimal.nullable_field("price"),
+        DataType::Decimal.nullable_field("spotrate"),
+        DataType::Decimal.nullable_field("forwardpoints"),
         DataType::Ccy.nullable_field("currency"),
-        DataType::DECIMAL.nullable_field("quantity"),
+        DataType::Decimal.nullable_field("quantity"),
         DataType::Unit.nullable_field("unit"),
     ];
     Ok(DataType::from(StructType::from_fields(fields)?))
@@ -211,7 +211,7 @@ fn map_of(value: &Scalar) -> Option<IdMap> {
 
 /// A lane as the struct row its column holds.
 pub fn lane_fact(lane: &Lane) -> Scalar {
-    let decimal = |held: Option<Decimal18>| held.map_or(Scalar::Null, Scalar::from);
+    let decimal = |held: Option<Decimal>| held.map_or(Scalar::Null, Scalar::from);
     Scalar::from_sequence([
         decimal(lane.price),
         decimal(lane.spotrate),
@@ -230,11 +230,11 @@ pub fn lane_of(value: &Scalar) -> Option<Lane> {
         return None;
     }
     Lane {
-        price: Decimal18::from_scalar(&rows[0]),
-        spotrate: Decimal18::from_scalar(&rows[1]),
-        forwardpoints: Decimal18::from_scalar(&rows[2]),
+        price: Decimal::from_scalar(&rows[0]),
+        spotrate: Decimal::from_scalar(&rows[1]),
+        forwardpoints: Decimal::from_scalar(&rows[2]),
         currency: currency_of(&rows[3]),
-        quantity: Decimal18::from_scalar(&rows[4]),
+        quantity: Decimal::from_scalar(&rows[4]),
         unit: unit_of(&rows[5]),
     }
     .stated()

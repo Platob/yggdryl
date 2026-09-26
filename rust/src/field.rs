@@ -1628,7 +1628,7 @@ field_leaves! {
     [Struct] => StructField / StructType,
     [Union] => UnionField / UnionType,
     [Dictionary] => EnumField / EnumType,
-    [Decimal32, Decimal64, Decimal128, Decimal256] => DecimalField / DecimalType,
+    [Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal] => DecimalField / DecimalType,
     [Map, SortedMap] => MappingField / MappingType,
     [RunEndEncoded] => RunEndEncodedField / RunEndType,
     [Variant] => VariantField / VariantType,
@@ -1922,10 +1922,11 @@ mod arrow {
     use smol_str::{SmolStr, format_smolstr};
 
     use crate::{
-        BYTES_EXTENSION_NAME, BytesType, GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME,
-        MIMETYPE_EXTENSION_NAME, STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME,
-        URL_EXTENSION_NAME, URN_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME,
-        VERSION_EXTENSION_NAME, code_for_extension, is_variant_storage,
+        BIGDECIMAL_EXTENSION_NAME, BYTES_EXTENSION_NAME, BytesType, DECIMAL_EXTENSION_NAME,
+        GEOARROW_WKB_EXTENSION_NAME, MEDIATYPE_EXTENSION_NAME, MIMETYPE_EXTENSION_NAME,
+        STRING_EXTENSION_NAME, StringType, TIMEZONE_EXTENSION_NAME, URL_EXTENSION_NAME,
+        URN_EXTENSION_NAME, UUID_EXTENSION_NAME, VARIANT_EXTENSION_NAME, VERSION_EXTENSION_NAME,
+        code_for_extension, is_variant_storage,
     };
     use crate::{DataType, Error, GeospatialParameters, Metadata, Result};
     use crate::{Field, FieldRef};
@@ -2074,6 +2075,46 @@ mod arrow {
         pub fn into_arrow_exchange_schema(self) -> crate::arrow::Result<Schema> {
             crate::arrow::arrow_exchange_schema_from_field(&self)
         }
+        /// Projects this non-null Struct root as the one C schema an Arrow
+        /// runtime exchange crosses: the root's own C projection carrying
+        /// [`Self::into_arrow_exchange_schema`]'s metadata - the root's own
+        /// entries and the transport-only dictionary-ID sidecar - so a batch
+        /// or a stream handed over the C Data Interface reads back under the
+        /// identities its logical schema states, with no schema built on
+        /// the other side to learn them.
+        ///
+        /// ```
+        /// use arrow_schema::Schema;
+        /// use arrow_schema::ffi::FFI_ArrowSchema;
+        /// use yggdryl::{DataType, Field, StructType};
+        ///
+        /// # fn main() -> yggdryl::Result<()> {
+        /// let root = Field::from_parts(
+        ///     "row",
+        ///     DataType::from(StructType::from_fields([Field::new("id", DataType::Int64, false)])?),
+        ///     false,
+        ///     [("owner", "core")],
+        /// )?;
+        /// let crossed: FFI_ArrowSchema = root.into_arrow_exchange_ffi()?;
+        /// let schema = Schema::try_from(&crossed)?;
+        /// assert_eq!(schema.metadata().get("owner").map(String::as_str), Some("core"));
+        /// assert_eq!(schema.field(0).name(), "id");
+        /// # Ok(())
+        /// # }
+        /// ```
+        ///
+        /// # Errors
+        ///
+        /// [`Self::into_arrow_exchange_schema`]'s refusals: a root that is not
+        /// a bounded, non-null Struct, or one whose metadata uses the
+        /// transport-reserved sidecar key.
+        pub fn into_arrow_exchange_ffi(
+            self,
+        ) -> crate::arrow::Result<arrow_schema::ffi::FFI_ArrowSchema> {
+            let exchange = crate::arrow::arrow_exchange_schema_from_field(&self)?;
+            let schema = self.into_arrow_field_ffi()?;
+            Ok(schema.with_metadata(exchange.metadata())?)
+        }
         /// Consumes this Field and projects it as an Arrow schema.
         ///
         /// # Errors
@@ -2107,12 +2148,13 @@ mod arrow {
         /// the first pass already wrote. A digest fill reconciles to this root for
         /// itself whatever `cast` says, because a holder is addressed by position.
         ///
-        /// `options` carries the cast policy the first step runs under, and
-        /// under [`Nullability::Strict`](crate::Nullability::Strict) it also holds after the protocols have
-        /// run: a field an enabled protocol materializes may arrive absent or
-        /// holding its canonical default, because closing that hole is the
-        /// protocol's job, but the applied batch is checked again once every
-        /// protocol is done, so what a protocol left null is refused by path.
+        /// `options` carries the conversion the first step runs under. A
+        /// required field refuses a null or an absent column by path, and
+        /// that holds after the protocols have run too: a field an enabled
+        /// protocol materializes may arrive absent or holding its canonical
+        /// default, because closing that hole is the protocol's job, but the
+        /// applied batch is checked again once every protocol is done, so
+        /// what a protocol left null is refused by path.
         ///
         /// ```
         /// use std::sync::Arc;
@@ -2158,8 +2200,7 @@ mod arrow {
         ///
         /// Returns an error when this is not a Struct root, when the batch cannot
         /// be cast to it, when either protocol refuses a declaration it carries, or
-        /// when the applied batch leaves a declared non-null field null under
-        /// [`Nullability::Strict`](crate::Nullability::Strict).
+        /// when the applied batch leaves a declared non-null field null.
         pub fn apply_arrow_batch(
             &self,
             batch: &arrow_array::RecordBatch,
@@ -2340,6 +2381,10 @@ mod arrow {
         Bytes(DataType),
         /// The canonical `arrow.uuid` identifier over `FixedSizeBinary(16)`.
         Uuid,
+        /// The `yggdryl.decimal` fixed decimal over `Decimal128(38, 18)`.
+        Decimal,
+        /// The `yggdryl.bigdecimal` fixed decimal over `Decimal256(76, 18)`.
+        BigDecimal,
         /// The canonical version text over Utf8.
         Version,
         /// The canonical URL text over Utf8.
@@ -2368,6 +2413,8 @@ mod arrow {
                 }
                 Self::Code(dtype) | Self::String(dtype) | Self::Bytes(dtype) => dtype,
                 Self::Uuid => DataType::Uuid,
+                Self::Decimal => DataType::Decimal,
+                Self::BigDecimal => DataType::BigDecimal,
                 Self::Version => DataType::Version,
                 Self::Url => DataType::url(),
                 Self::Urn => DataType::urn(),
@@ -2487,6 +2534,14 @@ mod arrow {
             UUID_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::FixedSizeBinary(16))
                     .then_some(RecognizedExtension::Uuid))
+            }
+            DECIMAL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Decimal128(38, 18))
+                    .then_some(RecognizedExtension::Decimal))
+            }
+            BIGDECIMAL_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
+                Ok(matches!(storage, ArrowDataType::Decimal256(76, 18))
+                    .then_some(RecognizedExtension::BigDecimal))
             }
             VERSION_EXTENSION_NAME if document.unwrap_or("").is_empty() => {
                 Ok(matches!(storage, ArrowDataType::Utf8).then_some(RecognizedExtension::Version))
@@ -2767,8 +2822,11 @@ mod arrow {
                     None => Some(ArrowCastPlan::compile_schema(
                         landed.schema_ref(),
                         root,
-                        crate::ArrowCastOptions::new(),
-                        Deferred::default(),
+                        options,
+                        Deferred {
+                            transform: transform.is_some(),
+                            digest: true,
+                        },
                     )?),
                 };
                 Some(DigestStage {
@@ -2783,9 +2841,7 @@ mod arrow {
             let schema = applied.schema();
             // A cast with no protocol behind it already refused every hole, so the
             // re-check exists only where something could still have left one.
-            let verify = if options.nullability().is_strict()
-                && (transform.is_some() || digest.is_some() || cast.is_none())
-            {
+            let verify = if transform.is_some() || digest.is_some() || cast.is_none() {
                 Some(ArrowCastPlan::compile_schema(
                     schema.as_ref(),
                     root,
@@ -2938,7 +2994,9 @@ mod arrow {
     pub(crate) fn arrow_field_ref_from_shared(field: Arc<Field>) -> Result<FieldRef> {
         match Arc::try_unwrap(field) {
             Ok(field) => field.into_arrow_field_ref(),
-            Err(field) => field.as_ref().clone().into_arrow_field_ref(),
+            // Shared, so the box outlives this call: build into its cache,
+            // where every other holder finds the projection.
+            Err(field) => field.as_arrow_field_ref().map(Arc::clone),
         }
     }
 }

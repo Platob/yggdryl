@@ -927,6 +927,25 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     }
   })
 
+  test('the fixed decimal leaves cross the transport as themselves', () => {
+    // An exact decimal has no JavaScript number, so its marker comes back as
+    // the `Scalar` it was, the fixed leaf's id and units included, alone or
+    // inside a record.
+    for (const [id, text] of [['decimal', '1.5'], ['bigdecimal', '-2.25']]) {
+      const value = new DataType(id).scalar(text)
+      const back = value.asJs()
+      assert.ok(back instanceof Scalar, id)
+      assert.equal(back.id, id)
+      assert.ok(back.equals(value), id)
+      const { amount } = Scalar.from({ amount: value }).asJs()
+      assert.equal(amount.id, id)
+      assert.ok(amount.equals(value), id)
+    }
+    // The width with the same units is another leaf, and stays one.
+    const width = new DataType('decimal128(38,18)').scalar('1.5')
+    assert.equal(width.asJs().id, 'decimal128')
+  })
+
   test('exact intervals retain their flat JavaScript layouts', () => {
     const typed = (document, dtype) => json.loads(document, {
       field: new Field('span', dtype, false),
@@ -1094,6 +1113,35 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     }
   })
 
+  test('the fixed decimal leaves keep an exact remainder and refuse a zero divisor', () => {
+    const price = new DataType('decimal')
+    const wide = new DataType('bigdecimal')
+    // `remainder` is exact at scale eighteen, its sign the dividend's.
+    const rest = price.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(rest.id, 'decimal')
+    assert.ok(rest.equals(price.scalar('1.5')))
+    assert.ok(price.scalar('-7.5').remainder(2).equals(price.scalar('-1.5')))
+    assert.ok(price.scalar('7.5').remainder(price.scalar('-2')).equals(price.scalar('1.5')))
+    // A bigdecimal on either side answers one.
+    const widened = wide.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(widened.id, 'bigdecimal')
+    assert.ok(widened.equals(wide.scalar('1.5')))
+    // A divisor of nothing is a division by zero - a RangeError, as for every
+    // other exact value, where it used to be a TypeError.
+    for (const dividend of [price.scalar('1'), wide.scalar('1')]) {
+      for (const operation of ['divide', 'remainder']) {
+        assert.throws(
+          () => dividend[operation](price.scalar('0')),
+          (error) =>
+            error instanceof RangeError &&
+            error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO' &&
+            /by zero/.test(error.message),
+          `${dividend.id} ${operation}`,
+        )
+      }
+    }
+  })
+
   test('Field-directed natural JSON keeps exact typed values', () => {
     const narrow = json.loads('7', {
       field: new Field('value', 'int16', false),
@@ -1190,10 +1238,16 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     const emptyVector = Serie.fromScalars(new Field('value', 'int32', true), empty).intoArrowArray()
     assert.equal(emptyVector.length, 0)
 
+    // A value its column cannot hold is null where the column may hold one,
+    // and refused by that value where it may not.
     const overflowing = arrow.vectorFromArray(Int32Array.of(200))
     assert.deepEqual(
-      Serie.fromArrowArray(overflowing, new Field('value', 'int8', false)).intoScalar().asJs(),
-      [0],
+      Serie.fromArrowArray(overflowing, new Field('value', 'int8', true)).intoScalar().asJs(),
+      [null],
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(overflowing, new Field('value', 'int8', false)),
+      /Can't cast value 200 to type Int8/,
     )
   })
 
@@ -1248,42 +1302,46 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     )
   })
 
-  test('a value landed from Arrow is cast under the three answers the caller gave', () => {
+  test('a value landed from Arrow is cast under the two answers the caller gave; absence is the target field own', () => {
     const overflowing = arrow.vectorFromArray(Int32Array.of(7, 200))
+    // A required column refuses a value it cannot convert, by that value,
+    // whatever `safe` says.
     const quantity = new Field('value', 'int8', false)
-    assert.deepEqual(Serie.fromArrowArray(overflowing, quantity).intoScalar().asJs(), [7, 0])
     assert.throws(
-      () => Serie.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
-      /required Arrow field \$\.value holds 1 null values/,
+      () => Serie.fromArrowArray(overflowing, quantity),
+      /Can't cast value 200 to type Int8/,
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(overflowing, quantity, { safe: false }),
+      /Can't cast value 200 to type Int8/,
+    )
+    assert.throws(
+      () => Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity),
+      /Can't cast value 200 to type Int8/,
+    )
+
+    // A nullable target takes the value it cannot convert as null under
+    // `safe`, and refuses it, by that value, once `safe` is false.
+    assert.deepEqual(
+      Serie.fromArrowArray(overflowing, 'value: int8').intoScalar().asJs(),
+      [7, null],
     )
     assert.throws(
       () => Serie.fromArrowArray(overflowing, 'value: int8', { safe: false }),
       /Can't cast value 200 to type Int8/,
     )
-    assert.equal(
-      Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity).scalar(0).asJs(),
-      0,
-    )
-    assert.throws(
-      () =>
-        Serie.fromArrowArray(arrow.vectorFromArray(Int32Array.of(200)), quantity, {
-          safe: false,
-        }),
-      /Can't cast value 200 to type Int8/,
-    )
 
     const table = arrow.tableFromArrays({ id: Int32Array.from([1, 2]) })
     const root = Field.from('row: struct<id: int64, venue: utf8 not null> not null')
-    assert.deepEqual(Serie.fromArrowBatch(table, root).intoScalar().asJs(), [[1, ''], [2, '']])
     for (const read of [
-      () => Serie.fromArrowBatch(table, root, { nullability: 'strict' }),
-      () => Serie.fromArrowBatch(table.batches[0], root, { nullability: 'strict' }),
+      () => Serie.fromArrowBatch(table, root),
+      () => Serie.fromArrowBatch(table.batches[0], root),
     ]) {
       assert.throws(read, /required Arrow field \$\.venue is missing from the source/)
     }
     assert.throws(
       () => Serie.fromArrowBatch(table, root, { strict: true }),
-      /cast options take safe, nullability and representation/,
+      /cast options take safe and representation/,
     )
   })
 

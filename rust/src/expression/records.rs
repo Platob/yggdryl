@@ -187,6 +187,16 @@ impl Selector {
         R::Error: Into<Error>,
     {
         let (schema, rows) = schema_of(schema, records)?;
+        if self.unnests() {
+            // An unnest publishes one row per element, which the streamed
+            // path lays out; a row at a time answers one row.
+            let reader = Records {
+                field: schema,
+                rows,
+            }
+            .into_arrow_reader()?;
+            return Records::from_arrow_reader(self.apply_arrow_reader(reader)?);
+        }
         let bound = self.bind(&schema)?;
         let field = bound.output().clone();
         let rows = rows.map(move |row| bound.apply_scalar(&schema.canonicalize_row_value(row?)?));

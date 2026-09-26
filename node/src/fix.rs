@@ -54,14 +54,14 @@ use yggdryl::{
 use yggdryl::{IdMap, SecurityIds};
 
 use crate::field::JsField;
-use crate::graph::{JsLane, JsMarketData};
+use crate::graph::{JsLane, JsMarketData, JsMarketDataRowIterator};
 use crate::iobase::{LocationInput, folder_from_input, located_from_input};
 use crate::iomedia::JsBatchReader;
 use crate::text::codec::JsScalar;
 use crate::text::line::{JsFieldPath, JsTextLine, path_from_input};
 use crate::{
     Failed, Pulled, exact_f64, exact_i32, exact_i64, javascript_failure, napi_error,
-    napi_type_error,
+    napi_type_error, or_null,
 };
 
 /// The root a batch of FIX rows is named by, the core's own spelling.
@@ -1012,14 +1012,6 @@ pub struct FixEntryView {
 /// One instant as JavaScript reads it: nanoseconds since the epoch.
 fn instant(unix: i64) -> BigInt {
     BigInt::from(unix)
-}
-
-/// One fact answered, or `null` where the core holds nothing.
-///
-/// A plain object states every fact it declares: an absent one is `null`,
-/// as every absence at this boundary is, rather than a property left out.
-fn or_null<T>(value: Option<T>) -> Either<T, Null> {
-    value.map_or(Either::B(Null), Either::A)
 }
 
 /// One core entry and everything under it, as the object JavaScript reads.
@@ -2207,7 +2199,8 @@ impl JsFixCodec {
     /// nanoseconds; `null`, zero and a negative width disable snapshots;
     /// `officialTimeDelayMs` is how far from `SendingTime(52)` an official
     /// transaction clock may stand and still date the message, the core's
-    /// one second when unstated.
+    /// one second when unstated; `marketMetadata` is whether a market
+    /// operation carries its message's unmapped fields, on when unstated.
     #[napi(constructor)]
     pub fn new(
         registry: Option<ClassInstance<'_, JsFixRegistry>>,
@@ -2275,6 +2268,9 @@ impl JsFixCodec {
             inner = inner
                 .try_with_default_sending_time(Some(sending_time_from_js(held)?))
                 .map_err(napi_error)?;
+        }
+        if let Some(held) = options.market_metadata {
+            inner = inner.with_market_metadata(held);
         }
         Ok(Self { inner, registry })
     }
@@ -2371,6 +2367,13 @@ impl JsFixCodec {
             .iter()
             .map(ToString::to_string)
             .collect()
+    }
+
+    /// Whether a market operation this codec builds carries, in its
+    /// metadata, what its message states that no typed column reads.
+    #[napi(getter)]
+    pub fn market_metadata(&self) -> bool {
+        self.inner.market_metadata()
     }
 
     /// The `SendingTime` an undated message takes - one neither its row nor
@@ -2636,6 +2639,83 @@ impl JsFixCodec {
         Ok(JsBatchReader::from_core(reader, "marketdata"))
     }
 
+    /// A capture of messages as the market operations a book folds, in the
+    /// order it folds them.
+    ///
+    /// Admits what `bookArrowReader` admits and expands each admitted
+    /// message as `FixMsg.marketOperations` does, each leaf carrying its
+    /// message's unmapped fields where `marketMetadata` says so. The capture
+    /// is collected when this is called - it is bounded by its own size -
+    /// and the operations are stably sorted by `snapunix`, else `currunix`:
+    /// the instant a book folds them at. A source error and the refusal of
+    /// an admitted message's expansion are yielded first, in source order,
+    /// each thrown by its own `next`; neither the lifecycle nor the msgtype
+    /// filter runs here. The loader supplies the iterable pull, and a
+    /// failure of the iterable itself throws once, in place of the end.
+    #[napi(js_name = "_marketOperationsNative", skip_typescript)]
+    pub fn market_operations_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsMarketDataRowIterator> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled
+            .map(|message| Ok(message.inner.clone()))
+            .chain(std::iter::from_fn(move || {
+                failed.take().map(|error| Err(javascript_failure(error)))
+            }));
+        Ok(JsMarketDataRowIterator::over(Box::new(
+            self.inner.market_operations(messages),
+        )))
+    }
+
+    /// `marketOperations` as bounded Arrow batches of lifted `marketdata`
+    /// rows, closing as `bookArrowReader` closes them. Every failure is met
+    /// before the first operation, so one intake failure - a failure of the
+    /// iterable included - is the reader's only item.
+    #[napi(js_name = "_marketArrowReaderNative", skip_typescript)]
+    pub fn market_arrow_reader_native(
+        &self,
+        env: Env,
+        pull: Function<'_, (), Option<ClassInstance<'static, JsFixMsg>>>,
+    ) -> Result<JsBatchReader> {
+        let pulled = Pulled::new(env, pull)?;
+        let failed = pulled.failed.clone();
+        let messages = pulled
+            .map(|message| Ok(message.inner.clone()))
+            .chain(std::iter::from_fn(move || {
+                failed.take().map(|error| Err(javascript_failure(error)))
+            }));
+        let reader = self
+            .inner
+            .market_arrow_reader(messages)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, "marketdata"))
+    }
+
+    /// A stream of batches of FIX rows as batches of lifted `marketdata`
+    /// rows: `messages` into `marketArrowReader`, each row read as its own
+    /// message. Over rows no walk wrote it answers what `marketArrowReader`
+    /// answers for their messages. A walked capture reaches the sorted door
+    /// as messages - `marketArrowReader(codec.lifecycle(messages))` - never
+    /// as the rows `lifecycleArrowReader` writes: what a walk settles from a
+    /// message's predecessors (its `prevpx` and `prevqty`, a side or a ticker
+    /// carried forward, an execution instant) is no cell of the row. A
+    /// schema making no FIX root is refused before a row is read. The source
+    /// is consumed.
+    #[napi]
+    pub fn market_operations_arrow_reader(
+        &self,
+        source: &mut JsBatchReader,
+    ) -> Result<JsBatchReader> {
+        let reader = self
+            .inner
+            .market_operations_arrow_reader(source.take()?)
+            .map_err(napi_error)?;
+        Ok(JsBatchReader::from_core(reader, "marketdata"))
+    }
+
     /// A stream of messages as the rows one message field holds them.
     ///
     /// The third verb, and the one a consumer reads by: `parse*` turns a
@@ -2813,6 +2893,10 @@ pub struct FixCodecOptions<'env> {
     /// `null`.
     #[napi(ts_type = "Scalar | Date | null")]
     pub default_sending_time: Option<Either3<ClassInstance<'env, JsScalar>, JsDate<'env>, Null>>,
+    /// Whether a market operation this codec builds carries, in its
+    /// metadata, what its message states that no typed column reads - part
+    /// of the leaf's identity; the core's `true` when unstated.
+    pub market_metadata: Option<bool>,
 }
 
 /// The default sending time one codec option names, as the core takes it.

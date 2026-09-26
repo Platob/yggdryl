@@ -89,20 +89,30 @@ test('the bits reading crosses every same-width pair', () => {
   assert.equal(empty.type.toString(), 'Int64')
   assert.equal(empty.length, 0)
 
-  // The reading says what the bytes mean; nullability still says what an
-  // absent value means.
+  // The reading says what the bytes mean; the target field's own
+  // nullability still says what an absent value means - a required column
+  // refuses a null, whatever `safe` or `representation` say.
   const required = castArray(
     fields.int64('digest', { nullable: false }),
-    arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+    arrow.vectorFromArray([2n ** 64n - 1n], new arrow.Uint64()),
     bits,
   )
-  assert.deepEqual(Array.from(required), [0n, -1n])
+  assert.deepEqual(Array.from(required), [-1n])
+  assert.throws(
+    () =>
+      castArray(
+        fields.int64('digest', { nullable: false }),
+        arrow.vectorFromArray([null, 2n ** 64n - 1n], new arrow.Uint64()),
+        bits,
+      ),
+    /required Arrow field \$\.digest holds 1 null values/,
+  )
   assert.throws(
     () =>
       castArray(
         fields.int64('digest', { nullable: false }),
         arrow.vectorFromArray([null], new arrow.Uint64()),
-        { ...bits, nullability: 'strict' },
+        bits,
       ),
     /required Arrow field \$\.digest holds 1 null values/,
   )
@@ -283,6 +293,8 @@ test('typed field factories cover every native datatype variant', () => {
     ['decimal64', fields.decimal64('value', 18, 2)],
     ['decimal128', fields.decimal128('value', 38, 2)],
     ['decimal256', fields.decimal256('value', 76, 2)],
+    ['decimal', fields.decimal('value')],
+    ['bigdecimal', fields.bigdecimal('value')],
     ['map', fields.map('value', entries)],
     ['sorted_map', fields.map('value', entries, true)],
     ['run_end_encoded', fields.runEndEncoded('value', runEnds, values)],
@@ -491,12 +503,11 @@ test('the url factory builds a validated, canonical location column', () => {
   }
   // The empty text names nothing at all, so it is not a spelling to refuse
   // but an absence: null before the reader runs, which the required column
-  // repairs with its default, or refuses by path when strict; the nullable
-  // column keeps the null.
+  // refuses by path, whatever `safe` says; the nullable column keeps the
+  // null.
   const empty = () => arrow.vectorFromArray([''], new arrow.Utf8())
-  assert.deepEqual(Array.from(castArray(declared, empty())), ['file:///'])
   assert.throws(
-    () => castArray(declared, empty(), { nullability: 'strict' }),
+    () => castArray(declared, empty()),
     /required Arrow field \$\.location holds 1 null values/,
   )
   assert.deepEqual(Array.from(castArray(location, empty())), [null])
@@ -653,6 +664,63 @@ test('typed factory parameters delegate native validation', () => {
   )
 })
 
+test('the fixed decimal leaves are one datatype each over one Arrow storage', () => {
+  // Bare `decimal(name)` is the registered leaf - thirty-eight digits at
+  // scale eighteen - and a precision still names the narrowest width.
+  const price = fields.decimal('price', { nullable: false })
+  const notional = fields.bigdecimal('notional', { nullable: false })
+  assert.equal(price.dtype.id, 'decimal')
+  assert.equal(price.dtype.toString(), 'decimal')
+  assert.equal(price.dtype.kind, 'decimal')
+  assert.equal(price.nullable, false)
+  assert.equal(notional.dtype.id, 'bigdecimal')
+  assert.equal(notional.dtype.toString(), 'bigdecimal')
+  assert.ok(price.dtype.equals(DataType.from('decimal')))
+  assert.equal(fields.decimal('small', 38, 18).dtype.toString(), 'decimal128(38,18)')
+  // A skipped precision with no scale is the fixed leaf, its options kept;
+  // a scale alone says nothing the fixed leaf could take and is refused as
+  // Python refuses it, and options stated twice are two readings.
+  const skipped = fields.decimal('price', undefined, undefined, { nullable: false })
+  assert.equal(skipped.dtype.id, 'decimal')
+  assert.equal(skipped.nullable, false)
+  assert.throws(() => fields.decimal('price', undefined, 2), {
+    name: 'TypeError',
+    message: 'decimal(): a scale needs a precision',
+  })
+  assert.throws(() => fields.decimal('price', { nullable: false }, 2), {
+    name: 'TypeError',
+    message: 'decimal(): a scale needs a precision',
+  })
+  assert.throws(
+    () => fields.decimal('price', { nullable: false }, undefined, { nullable: true }),
+    { name: 'TypeError', message: 'decimal(): field options are stated once' },
+  )
+
+  // A value projects as the bigint of its units, as every exact decimal
+  // does, so a record of both is two bigints.
+  assert.equal(price.dtype.defaultJSValue(), 0n)
+  assert.equal(price.dtype.defaultJSHint().constructor, BigInt)
+  assert.deepEqual(fields.struct('row', [price, notional]).dtype.defaultJSValue(), [0n, 0n])
+
+  // Each rides Arrow's decimal at its width and scale, named by its own
+  // extension so a reader tells it from a bare `decimal128(38,18)`.
+  for (const [field, text, width, precision] of [
+    [price, '1.5', 128, 38],
+    [notional, '2.25', 256, 76],
+  ]) {
+    const value = field.dtype.scalar(text)
+    assert.equal(value.id, field.dtype.id)
+    assert.equal(value.toString(), JSON.stringify(text))
+    const batch = Serie.fromScalars(field, [value]).intoArrowBatch()
+    const [column] = batch.schema.fields
+    assert.equal(column.type.bitWidth, width)
+    assert.equal(column.type.precision, precision)
+    assert.equal(column.type.scale, 18)
+    assert.equal(column.metadata.get('ARROW:extension:name'), `yggdryl.${field.dtype.id}`)
+    assert.ok(Serie.fromArrowBatch(batch).scalar(0).get(0).equals(value))
+  }
+})
+
 test('defaulted temporal and decimal overloads share exact option handling', () => {
   const options = {
     nullable: true,
@@ -760,24 +828,25 @@ test('an empty text cell is null before safe is asked', () => {
   assert.deepEqual([...castArray(nullable, empty(), { safe: false })], [null])
   assert.deepEqual([...castArray(nullable, empty(), { safe: true })], [null])
 
-  // A required column then answers its nullability, exactly as it does for a
-  // null the source carried: the default repairs it, strictness refuses it
-  // naming the path and the count.
+  // A required column then answers its own nullability, exactly as it does
+  // for a null the source carried: it refuses by path, naming the count,
+  // whatever `safe` says.
   const required = fields.int32('quantity', { nullable: false })
-  assert.deepEqual([...castArray(required, empty())], [0])
   assert.throws(
-    () => castArray(required, empty(), { nullability: 'strict' }),
+    () => castArray(required, empty()),
+    /required Arrow field \$\.quantity holds 1 null values/,
+  )
+  assert.throws(
+    () => castArray(required, empty(), { safe: false }),
     /required Arrow field \$\.quantity holds 1 null values/,
   )
 
-  // Text is text: into a string column the empty cell is the value it is.
+  // Text is text: into a string column the empty cell is the value it is,
+  // so a required one holds it rather than refusing an absence that never
+  // arose.
   assert.deepEqual([...castArray(fields.utf8('symbol'), empty())], [''])
   assert.deepEqual(
-    [
-      ...castArray(fields.utf8('symbol', { nullable: false }), empty(), {
-        nullability: 'strict',
-      }),
-    ],
+    [...castArray(fields.utf8('symbol', { nullable: false }), empty())],
     [''],
   )
 
@@ -785,4 +854,18 @@ test('an empty text cell is null before safe is asked', () => {
   assert.equal(new DataType('int32').scalar('').kind, 'null')
   assert.equal(new DataType('utf8').scalar('').asJs(), '')
   assert.throws(() => required.scalar(''), /non-nullable field received null/)
+})
+
+test('a bare null enters the union member that holds absence', () => {
+  const choice = new Field(
+    'choice',
+    'variant(int:int64 not null,str:utf8 not null,none:null)',
+    true,
+  )
+  // A union has no validity of its own, so absence is its `null` member's.
+  assert.deepEqual(choice.scalar(null).asJs(), [2, null])
+  assert.deepEqual(choice.scalar(7n).asJs(), [0, 7])
+  // Members that all require a value leave a bare null no member to enter.
+  const required = new Field('choice', 'variant(int:int64 not null,str:utf8 not null)', true)
+  assert.throws(() => required.scalar(null), /one union member accepts/)
 })

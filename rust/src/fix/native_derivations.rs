@@ -6,7 +6,7 @@
 //! evaluator, so `FIX:derivation` remains the public customization surface.
 
 use crate::{
-    CusipCode, DataType, Decimal18, FixCategory, IsinCode, Result, Scalar, SedolCode, StringEnum,
+    CusipCode, DataType, Decimal, FixCategory, IsinCode, Result, Scalar, SedolCode, StringEnum,
     TimeUnit, Timezone,
 };
 
@@ -35,7 +35,7 @@ enum NativeKind {
     Country,
     Ccy,
     DateTimeNsUtc,
-    Decimal18,
+    Decimal,
     Float64,
     Int32,
     String,
@@ -48,7 +48,7 @@ impl NativeKind {
             Self::Country => dtype == &DataType::Country,
             Self::Ccy => dtype == &DataType::Ccy,
             Self::DateTimeNsUtc => dtype == &DATETIME_NS_UTC,
-            Self::Decimal18 => dtype == &DECIMAL18,
+            Self::Decimal => dtype == &DECIMAL18,
             Self::Float64 => dtype == &DataType::Float64,
             Self::Int32 => dtype == &DataType::Int32,
             Self::String => dtype == &DataType::utf8(),
@@ -59,55 +59,55 @@ impl NativeKind {
 /// Every scalar the native rules read or fill. Names are checked as well as
 /// tags so an alternate-tag lookup cannot make a different field look native.
 const FIELDS: &[(i32, &str, NativeKind)] = &[
-    (6, "avgpx", NativeKind::Decimal18),
-    (14, "cumqty", NativeKind::Decimal18),
+    (6, "avgpx", NativeKind::Decimal),
+    (14, "cumqty", NativeKind::Decimal),
     (15, "currency", NativeKind::Ccy),
     (22, "securityidsource", NativeKind::String),
-    (31, "lastpx", NativeKind::Decimal18),
-    (32, "lastqty", NativeKind::Decimal18),
+    (31, "lastpx", NativeKind::Decimal),
+    (32, "lastqty", NativeKind::Decimal),
     (35, "msgtype", NativeKind::String),
-    (38, "orderqty", NativeKind::Decimal18),
+    (38, "orderqty", NativeKind::Decimal),
     (39, "ordstatus", NativeKind::String),
     (43, "possdupflag", NativeKind::Boolean),
     (48, "securityid", NativeKind::String),
     (52, "sendingtime", NativeKind::DateTimeNsUtc),
     (55, "symbol", NativeKind::String),
     (59, "timeinforce", NativeKind::String),
-    (84, "cxlqty", NativeKind::Decimal18),
-    (119, "settlcurramt", NativeKind::Decimal18),
+    (84, "cxlqty", NativeKind::Decimal),
+    (119, "settlcurramt", NativeKind::Decimal),
     (120, "settlcurrency", NativeKind::Ccy),
     (122, "origsendingtime", NativeKind::DateTimeNsUtc),
-    (132, "bidpx", NativeKind::Decimal18),
-    (133, "offerpx", NativeKind::Decimal18),
+    (132, "bidpx", NativeKind::Decimal),
+    (133, "offerpx", NativeKind::Decimal),
     (150, "exectype", NativeKind::String),
-    (151, "leavesqty", NativeKind::Decimal18),
+    (151, "leavesqty", NativeKind::Decimal),
     (155, "settlcurrfxrate", NativeKind::Float64),
     (167, "securitytype", NativeKind::String),
-    (188, "bidspotrate", NativeKind::Decimal18),
-    (189, "bidforwardpoints", NativeKind::Decimal18),
-    (190, "offerspotrate", NativeKind::Decimal18),
-    (191, "offerforwardpoints", NativeKind::Decimal18),
-    (194, "lastspotrate", NativeKind::Decimal18),
-    (195, "lastforwardpoints", NativeKind::Decimal18),
+    (188, "bidspotrate", NativeKind::Decimal),
+    (189, "bidforwardpoints", NativeKind::Decimal),
+    (190, "offerspotrate", NativeKind::Decimal),
+    (191, "offerforwardpoints", NativeKind::Decimal),
+    (194, "lastspotrate", NativeKind::Decimal),
+    (195, "lastforwardpoints", NativeKind::Decimal),
     (201, "putorcall", NativeKind::Int32),
     (211, "pegoffsetvalue", NativeKind::Float64),
     (231, "contractmultiplier", NativeKind::Float64),
-    (381, "grosstradeamt", NativeKind::Decimal18),
+    (381, "grosstradeamt", NativeKind::Decimal),
     (454, "nosecurityaltid", NativeKind::Int32),
     (455, "securityaltid", NativeKind::String),
     (456, "securityaltidsource", NativeKind::String),
     (460, "product", NativeKind::Int32),
     (461, "cficode", NativeKind::String),
     (470, "countryofissue", NativeKind::Country),
-    (839, "peggedprice", NativeKind::Decimal18),
+    (839, "peggedprice", NativeKind::Decimal),
     (969, "minpriceincrement", NativeKind::Float64),
-    (1095, "peggedrefprice", NativeKind::Decimal18),
-    (1146, "minpriceincrementamount", NativeKind::Decimal18),
+    (1095, "peggedrefprice", NativeKind::Decimal),
+    (1146, "minpriceincrementamount", NativeKind::Decimal),
     (2353, "tradingunitperiodmultiplier", NativeKind::Int32),
-    (2367, "totaltradeqty", NativeKind::Decimal18),
-    (2368, "lastmultipliedqty", NativeKind::Decimal18),
-    (2369, "totalgrosstradeamt", NativeKind::Decimal18),
-    (2370, "totaltrademultipliedqty", NativeKind::Decimal18),
+    (2367, "totaltradeqty", NativeKind::Decimal),
+    (2368, "lastmultipliedqty", NativeKind::Decimal),
+    (2369, "totalgrosstradeamt", NativeKind::Decimal),
+    (2370, "totaltrademultipliedqty", NativeKind::Decimal),
     (2897, "currencycodesource", NativeKind::String),
     (2957, "symbolpositionnumber", NativeKind::Int32),
 ];
@@ -223,8 +223,8 @@ impl<'message> NativeRow<'message> {
             .unwrap_or(false)
     }
 
-    fn decimal(&self, tag: i32) -> Option<Decimal18> {
-        Decimal18::from_scalar(&self.get(tag)?)
+    fn decimal(&self, tag: i32) -> Option<Decimal> {
+        Decimal::from_scalar(&self.get(tag)?)
     }
 
     /// The first alternate identifier under `source`. Group filtering precedes
@@ -264,7 +264,7 @@ impl<'message> NativeRow<'message> {
         // In particular, MinPriceIncrement * ContractMultiplier is a float
         // expression whose certain result belongs in decimal128(38,18).
         let answer = if field.dtype() == &DataType::DECIMAL {
-            let Some(answer) = Decimal18::from_scalar(&answer) else {
+            let Some(answer) = Decimal::from_scalar(&answer) else {
                 return;
             };
             Scalar::from(answer)
@@ -348,7 +348,7 @@ fn cumulative_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
         return None;
     }
     let difference = subtract(row, 38, 151)?;
-    (!Decimal18::from_scalar(&difference)?.is_negative()).then_some(difference)
+    (!Decimal::from_scalar(&difference)?.is_negative()).then_some(difference)
 }
 
 fn security_id_source(row: &NativeRow<'_>) -> Option<Scalar> {
@@ -371,7 +371,7 @@ fn order_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
     }
     let canceled = row.decimal(84);
     let leaves = row.decimal(151);
-    if canceled.is_some_and(Decimal18::is_positive) && leaves.unwrap_or(Decimal18::ZERO).is_zero() {
+    if canceled.is_some_and(Decimal::is_positive) && leaves.unwrap_or(Decimal::ZERO).is_zero() {
         return add(row, 14, 84);
     }
     // Expression function arguments are eager: even when the first sum is
@@ -436,7 +436,7 @@ fn leaves_quantity(row: &NativeRow<'_>) -> Option<Scalar> {
         return None;
     }
     let difference = subtract(row, 38, 14)?;
-    (!Decimal18::from_scalar(&difference)?.is_negative()).then_some(difference)
+    (!Decimal::from_scalar(&difference)?.is_negative()).then_some(difference)
 }
 
 fn security_type(row: &NativeRow<'_>) -> Option<Scalar> {

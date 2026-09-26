@@ -125,31 +125,37 @@ pub(crate) fn json_document(value: serde_json::Value) -> serde_json::Result<serd
 /// Coerce the two cast answers JavaScript spells separately into one native
 /// value.
 ///
-/// `safe` decides whether a present value may be converted; `nullability`
-/// names the policy for a declared value that is absent; `representation` names
-/// what a same-width pair carries. All three cross explicitly on every cast
-/// entry point, so none is inferred from another.
+/// `safe` decides whether a present value may be converted; `representation`
+/// names what a same-width pair carries. Whether a value may be absent is not
+/// an option here: it is the target field's own nullability. Both answers
+/// cross explicitly on every cast entry point, so neither is inferred from
+/// the other.
 pub(crate) fn cast_options(
     safe: Option<bool>,
-    nullability: Option<&str>,
     representation: Option<&str>,
 ) -> napi::Result<yggdryl::ArrowCastOptions> {
-    let nullability = match nullability {
-        Some(value) => yggdryl::Nullability::from_str(value).map_err(napi_error)?,
-        None => yggdryl::Nullability::Default,
-    };
     let representation = match representation {
         Some(value) => yggdryl::Representation::from_str(value).map_err(napi_error)?,
         None => yggdryl::Representation::Value,
     };
     Ok(yggdryl::ArrowCastOptions::new()
         .with_safe(safe.unwrap_or(true))
-        .with_nullability(nullability)
         .with_representation(representation))
 }
 
 pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
+}
+
+/// One fact answered, or `null` where the core holds nothing.
+///
+/// A plain object states every fact it declares: an absent one is `null`,
+/// as every absence at this boundary is, rather than a property left out.
+pub(crate) fn or_null<T>(
+    value: Option<T>,
+) -> napi::bindgen_prelude::Either<T, napi::bindgen_prelude::Null> {
+    use napi::bindgen_prelude::{Either, Null};
+    value.map_or(Either::B(Null), Either::A)
 }
 
 /// Throw a real JavaScript `TypeError`, then report the pending exception.

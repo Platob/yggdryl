@@ -83,7 +83,9 @@ pub(crate) fn dtype_js_hint(dtype: &DataType) -> Result<JsValueHint> {
         | D::Decimal32 { .. }
         | D::Decimal64 { .. }
         | D::Decimal128 { .. }
-        | D::Decimal256 { .. } => JsValueHint::BigInt,
+        | D::Decimal256 { .. }
+        | D::Decimal
+        | D::BigDecimal => JsValueHint::BigInt,
         // A geospatial value is its Well-Known Binary payload, so the pair
         // projects exactly as the byte family does.
         bytes if bytes.bytes_parameters().is_some() => JsValueHint::Buffer,
@@ -260,6 +262,15 @@ fn numeric_to_js<'env>(
             .into_unknown(env)?
         }
         D::Decimal256 { scale, .. } => decimal256_to_js(env, value, *scale)?,
+        // The fixed leaves project as their units at scale eighteen.
+        D::Decimal => BigInt::from(
+            value
+                .decimal_unscaled_at(yggdryl::Decimal::SCALE)
+                .or_else(|| value.as_i128())
+                .ok_or_else(|| napi_error("invalid native decimal record value"))?,
+        )
+        .into_unknown(env)?,
+        D::BigDecimal => decimal256_to_js(env, value, yggdryl::BigDecimal::SCALE)?,
         _ => return Ok(None),
     };
     Ok(Some(output))

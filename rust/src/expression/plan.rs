@@ -961,18 +961,26 @@ impl Plan {
     /// `dtype`.
     ///
     /// The `create` section types its computed columns against the datatype;
-    /// otherwise `where` keeps it and `select` publishes from it.
+    /// otherwise `where` keeps it and `select` publishes from it - a `where`
+    /// that names what only the `select` publishes typed after it, where it
+    /// runs.
     ///
     /// # Errors
     ///
     /// Returns an error when a section does not bind against the datatype.
     pub fn apply_datatype(&self, dtype: &crate::DataType) -> Result<crate::DataType> {
+        let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
         if let Some(schema) = &self.schema {
-            let root = Field::new(crate::media::DEFAULT_ROOT_NAME, dtype.clone(), false);
             return Ok(schema
                 .declared_field(Some(&root), self.root_name())?
                 .dtype()
                 .clone());
+        }
+        let input = root.fields().iter().map(Field::name);
+        if super::filter_after_select(&self.filter, &self.selector, input) {
+            return self
+                .filter
+                .apply_datatype(&self.selector.apply_datatype(dtype)?);
         }
         self.selector
             .apply_datatype(&self.filter.apply_datatype(dtype)?)
@@ -1004,11 +1012,12 @@ impl Plan {
     /// The stored columns a read has to decode for this plan, when the plan
     /// narrows them; `None` reads everything.
     ///
-    /// A `select *` reads every column; anything else reads what its own
-    /// clauses name.
+    /// A `select` holding a `*` reads every column - whatever it excludes,
+    /// since what it keeps is the schema's to name, and whatever it appends;
+    /// anything else reads what its own clauses name.
     #[must_use]
     pub fn read_columns(&self) -> Option<Vec<String>> {
-        if self.selector.is_all() {
+        if self.selector.has_star() {
             return None;
         }
         Some(self.columns())
@@ -1354,12 +1363,12 @@ pub(crate) fn unreachable(target: &Target, reason: impl fmt::Display) -> Error {
 mod arrow {
     use std::sync::Arc;
 
-    use arrow_array::RecordBatch;
+    use arrow_array::{Array, ArrayRef, RecordBatch, StructArray, UInt32Array};
     use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
 
     use super::{Plan, Source, Target, Verb};
     use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
-    use crate::expression::arrow::{collected, one_batch};
+    use crate::expression::arrow::{collected, one_batch, scattered, struct_rows};
     use crate::holder::Holder;
     use crate::media::{IORecordOptions, RecordOptions};
     use crate::{Field, IOMedia, Result, Url};
@@ -1511,6 +1520,7 @@ mod arrow {
         /// the projection drops; a key that names what the projection
         /// publishes - an alias - orders after it instead.
         pub(crate) fn shape_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            let reader = self.narrowed_arrow_reader(reader)?;
             // A `where` over an alias runs after the projection that
             // publishes it; every other `where` runs first, where it prunes.
             let late = super::super::filter_after_select(
@@ -1551,26 +1561,185 @@ mod arrow {
             Ok(reader)
         }
 
+        /// The stream with only the columns some section reads.
+        ///
+        /// A column no section reads is dropped first, as the bare column it
+        /// is - which moves no buffer - so a `where` that keeps some rows
+        /// never copies a column the `select` would drop after it. A `*`
+        /// reads every column it does not exclude. A stream whose names two
+        /// columns spell alike is left whole, since only a quoted name tells
+        /// them apart.
+        fn narrowed_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
+            if self.selector.is_all() {
+                return Ok(reader);
+            }
+            let schema = reader.schema();
+            let names: Vec<&str> = schema
+                .fields()
+                .iter()
+                .map(|field| field.name().as_str())
+                .collect();
+            let alike = names.iter().enumerate().any(|(index, name)| {
+                names[..index]
+                    .iter()
+                    .any(|held| held.eq_ignore_ascii_case(name))
+            });
+            if alike {
+                return Ok(reader);
+            }
+            let read = self.columns();
+            let kept: Vec<&str> = names
+                .iter()
+                .copied()
+                .filter(|name| {
+                    read.iter().any(|column| column.eq_ignore_ascii_case(name))
+                        || (self.selector.has_star()
+                            && !self
+                                .selector
+                                .excluded()
+                                .iter()
+                                .any(|excluded| excluded.eq_ignore_ascii_case(name)))
+                })
+                .collect();
+            if kept.is_empty() || kept.len() == names.len() {
+                return Ok(reader);
+            }
+            super::Selector::from_columns(kept).apply_arrow_reader(reader)
+        }
+
         /// Order a whole stream, which is the one section that has to collect.
         fn sorted_arrow_reader(&self, reader: BatchReader) -> Result<BatchReader> {
-            let root = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &reader.schema())?;
             let batch = collected(reader)?;
-            let mut columns = Vec::with_capacity(self.order_by.len());
+            let indices = self.order_indices(&batch, None)?;
+            let sorted = arrow_select::take::take_record_batch(&batch, &indices)
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
+            Ok(one_batch(&sorted))
+        }
+
+        /// The order the `order by` keys put rows in.
+        ///
+        /// The ordering is stable: rows the keys cannot tell apart keep the
+        /// order they arrived in, because the row's position is the last key.
+        /// The keys read `batch`; with `scatter`, each key is laid out at the
+        /// struct positions it names first, null at a null struct row - a row
+        /// every key answers unknown for.
+        fn order_indices(
+            &self,
+            batch: &RecordBatch,
+            scatter: Option<&UInt32Array>,
+        ) -> Result<UInt32Array> {
+            let root = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &batch.schema())?;
+            let rows = scatter.map_or(batch.num_rows(), Array::len);
+            let positions = u32::try_from(rows).map_err(|_| crate::Error::InvalidRecord {
+                path: smol_str::SmolStr::new_static("$"),
+                reason: smol_str::format_smolstr!(
+                    "expected at most {} rows to order, got {rows}",
+                    u32::MAX
+                ),
+            })?;
+            let mut columns = Vec::with_capacity(self.order_by.len() + 1);
             for key in &self.order_by {
-                let bound = key.term.bind(&root)?;
+                let mut values = key.term.bind(&root)?.evaluate(batch)?;
+                if let Some(scatter) = scatter {
+                    values = scattered(&values, scatter)?;
+                }
                 columns.push(SortColumn {
-                    values: bound.evaluate(&batch)?,
+                    values,
                     options: Some(SortOptions {
                         descending: key.descending,
                         nulls_first: key.nulls_first,
                     }),
                 });
             }
-            let indices = lexsort_to_indices(&columns, None)
-                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
-            let sorted = arrow_select::take::take_record_batch(&batch, &indices)
-                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
-            Ok(one_batch(&sorted))
+            columns.push(SortColumn {
+                values: Arc::new(UInt32Array::from_iter_values(0..positions)),
+                options: None,
+            });
+            lexsort_to_indices(&columns, None)
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))
+        }
+
+        /// Apply this plan to one struct array: the plan over the struct's
+        /// rows, a null struct a row every term answers unknown for.
+        ///
+        /// [`Expression::apply_arrow_array`](crate::Expression::apply_arrow_array)
+        /// carries the rule.
+        pub(crate) fn apply_arrow_array(&self, array: &ArrayRef) -> Result<ArrayRef> {
+            let rows = struct_rows(array, "run a plan over")?;
+            let deletes = self
+                .write
+                .as_ref()
+                .is_some_and(|write| write.verb == Verb::Delete);
+            // A `where` drops a null row, an unnest lays out none for it, and
+            // a delete reads no row of the stream: the plan answers the
+            // struct's other rows alone.
+            let Some(scatter) = rows
+                .scatter
+                .as_ref()
+                .filter(|_| self.filter.is_always_true() && !self.selector.unnests() && !deletes)
+            else {
+                let applied = collected(self.apply_arrow_reader(one_batch(&rows.batch))?)?;
+                return Ok(Arc::new(StructArray::from(applied)));
+            };
+            if let Some(target) = self.write_target() {
+                let row = scatter
+                    .iter()
+                    .position(|at| at.is_none())
+                    .unwrap_or_default();
+                return Err(crate::Error::InvalidRecord {
+                    path: smol_str::format_smolstr!("$[{row}]"),
+                    reason: smol_str::format_smolstr!(
+                        "expected a record to write to {}, got a null struct at row {row}",
+                        target.location()
+                    ),
+                });
+            }
+            // Every null row survives: the struct's other rows are shaped and
+            // cast one for one, laid back out at their positions under the
+            // struct's mask, then ordered and bounded among the null rows.
+            let mut shaping = self.read_sections();
+            shaping.order_by.clear();
+            shaping.limit = None;
+            shaping.offset = None;
+            let shaped = collected(shaping.shape_arrow_reader(one_batch(&rows.batch))?)?;
+            let declared = collected(self.write_arrow_reader(one_batch(&shaped))?)?;
+            let columns = declared
+                .columns()
+                .iter()
+                .map(|column| scattered(column, scatter))
+                .collect::<Result<Vec<_>>>()?;
+            let mut laid: ArrayRef = Arc::new(
+                StructArray::try_new_with_length(
+                    declared.schema().fields().clone(),
+                    columns,
+                    rows.held.nulls().cloned(),
+                    rows.held.len(),
+                )
+                .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?,
+            );
+            if !self.order_by.is_empty() {
+                // Keys over stored columns read the struct's rows; a key over
+                // what the select publishes reads the shaped ones.
+                let stored = rows.batch.schema();
+                let keyed = if self
+                    .ordering_reads_only(stored.fields().iter().map(|field| field.name().as_str()))
+                {
+                    &rows.batch
+                } else {
+                    &shaped
+                };
+                let indices = self.order_indices(keyed, Some(scatter))?;
+                laid = arrow_select::take::take(laid.as_ref(), &indices, None)
+                    .map_err(|error| crate::Error::from(crate::arrow::Error::Arrow(error)))?;
+            }
+            let bound = |count: Option<u64>| {
+                count.map(|count| usize::try_from(count).unwrap_or(usize::MAX))
+            };
+            let offset = bound(self.offset).unwrap_or(0).min(laid.len());
+            let length = bound(self.limit)
+                .unwrap_or(usize::MAX)
+                .min(laid.len() - offset);
+            Ok(laid.slice(offset, length))
         }
 
         /// Write a shaped stream where the plan says, or hand it back.

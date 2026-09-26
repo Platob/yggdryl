@@ -876,6 +876,8 @@ impl fmt::Display for DataType {
             | D::State
             | D::TimeInForce
             | D::Unit
+            | D::Decimal
+            | D::BigDecimal
             | D::Uuid
             | D::Version
             | D::Timezone
@@ -1252,7 +1254,20 @@ impl<'a> Parser<'a> {
             "geometry" => self.parse_geospatial(false)?,
             "geography" => self.parse_geospatial(true)?,
             "dictionary" | "dict" => self.parse_dictionary(depth + 1)?,
-            "decimal" | "numeric" => {
+            // The parenthesis disambiguates, as it does for `variant`: bare
+            // `decimal` is the fixed `decimal128(38, 18)` leaf, and
+            // `decimal(p, s)` the narrowest parameterized width; SQL's bare
+            // `numeric` keeps its precision-only meaning.
+            "decimal" => {
+                if self.peek_opening().is_some() {
+                    let (precision, scale) = self.parse_decimal_parameters(38)?;
+                    DataType::decimal(precision, scale)?
+                } else {
+                    DataType::Decimal
+                }
+            }
+            "bigdecimal" => DataType::BigDecimal,
+            "numeric" => {
                 let (precision, scale) = self.parse_decimal_parameters(38)?;
                 DataType::decimal(precision, scale)?
             }
@@ -2040,7 +2055,11 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
 }
 
 pub(crate) fn normalized(value: &str) -> String {
-    folded(value).collect()
+    // Sized to the input once: a fold drops separators and lowercases the
+    // rest, so the folded name is the input's length or near it.
+    let mut name = String::with_capacity(value.len());
+    name.extend(folded(value));
+    name
 }
 
 pub(crate) fn precision_to_unit(precision: i64, position: usize) -> Result<TimeUnit> {

@@ -176,10 +176,17 @@ pub trait IORecordOptions: Sized {
         field
     }
 
-    /// Return whether a cast may null a value it cannot convert.
+    /// Return whether a declared or stored nullable column takes a value it
+    /// cannot convert as null; `true` unless a caller said otherwise.
+    ///
+    /// It never admits a null, an empty cell or a missing column into a
+    /// not-null column, which refuses them - and a value it cannot convert -
+    /// by name: the declared-column rule
+    /// [`ArrowCastOptions`](crate::ArrowCastOptions) states once.
     fn safe(&self) -> bool;
 
-    /// Set whether a cast may null a value it cannot convert.
+    /// Set whether a declared or stored nullable column takes a value it
+    /// cannot convert as null; `false` refuses it too.
     fn set_safe(&mut self, safe: bool);
 
     /// Return the row-per-batch bound, if any.
@@ -400,7 +407,7 @@ pub trait IORecordOptions: Sized {
     /// is the read that already happens. This is projection pushdown without
     /// a declared field.
     fn apply_columns(&self) -> Option<Vec<String>> {
-        if self.select().is_all() {
+        if self.select().has_star() {
             return None;
         }
         let mut columns = self.filter().columns();
@@ -683,11 +690,12 @@ pub trait IORecordOptions: Sized {
         self.require_merge_by().map(|()| self)
     }
 
-    /// Refuse a match key that names a column twice.
+    /// Refuse a match key that names a column twice, or that unnests: a key
+    /// is one value per row, where an `unnest` is one row per element.
     ///
     /// # Errors
     ///
-    /// Returns an error naming the repeated column.
+    /// Returns an error naming the repeated column, or the `unnest`.
     fn require_merge_by(&self) -> Result<()> {
         distinct_merge_key(self.merge_by())
     }
@@ -698,10 +706,13 @@ pub trait IORecordOptions: Sized {
     /// applied in order: the declared [`field`](Self::field) says what the
     /// rows are meant to be, the plan's `where` and `select` clauses keep and
     /// publish what they say, and `existing` - a holder's stored shape - is
-    /// what the batch is finally completed onto, always safely, so a value
-    /// that will not convert into a stored column becomes null rather than
-    /// quietly redefining that column for every reader of the resource. Each
-    /// absent layer costs nothing.
+    /// what the batch is finally completed onto. The declared and the stored
+    /// layer are both declarations and cast by the one declared-column rule:
+    /// a nullable column takes a value it cannot convert as null when
+    /// [`safe`](Self::safe), and a not-null column refuses that value, a
+    /// null and a missing column by name, so a write never quietly redefines
+    /// a stored column for every reader of the resource. Each absent layer
+    /// costs nothing.
     ///
     /// A field shapes rows by [applying](Field::apply_arrow_batch), not by
     /// casting: a declaration is a cast *and* the `TRANSFORM:`, `PARTITION:`
@@ -746,9 +757,7 @@ pub trait IORecordOptions: Sized {
         };
         let reader = self.apply_arrow_expressions(reader)?;
         match existing {
-            Some(stored) => {
-                Ok(stored.apply_arrow_reader(reader, true, true, true, ArrowCastOptions::new())?)
-            }
+            Some(stored) => Ok(stored.apply_arrow_reader(reader, true, true, true, options)?),
             None => Ok(reader),
         }
     }
@@ -903,7 +912,7 @@ impl Shaping {
                 true,
                 true,
                 true,
-                ArrowCastOptions::new(),
+                ArrowCastOptions::new().with_safe(options.safe()),
             )?),
             None => None,
         };
@@ -974,8 +983,10 @@ impl Shaping {
         }
     }
 }
-/// Refuse a match key naming one column twice, in any case.
+/// Refuse a match key that unnests, or names one column twice in any case:
+/// a key is one value per row, where an `unnest` is one row per element.
 fn distinct_merge_key(merge_by: &Selector) -> Result<()> {
+    merge_by.refuse_unnest("in a key")?;
     let names = merge_by.names();
     for (index, name) in names.iter().enumerate() {
         if names[..index]

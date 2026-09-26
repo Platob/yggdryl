@@ -51,11 +51,10 @@ pub enum Error {
         /// What the caller supplied, bounded by the shared error-text limit.
         actual: SmolStr,
     },
-    /// A non-nullable target field the source does not satisfy.
-    ///
-    /// Only [`Nullability::Strict`](crate::Nullability::Strict) produces this:
-    /// the default policy writes the field's canonical
-    /// [default](crate::Field::default_value) instead.
+    /// A non-nullable target field the source does not satisfy: a column
+    /// the source does not carry, or rows it leaves null. A cast never
+    /// writes the field's canonical [default](crate::Field::default_value)
+    /// in their place.
     #[non_exhaustive]
     RequiredField {
         /// Dot/bracket path from the cast root, such as `$.users[].zip`.
@@ -301,18 +300,20 @@ pub(crate) fn arrow_schema_from_field(field: &Field) -> Result<SchemaRef> {
             "tabular root Struct Field must be non-nullable".to_owned(),
         ));
     }
-    let Some(fields) = field.dtype().as_fields() else {
+    if field.dtype().as_fields().is_none() {
         return Err(Error::IncompatibleSchema(format!(
             "tabular field {:?} must have a Struct datatype",
             field.name()
         )));
+    }
+    // The root's own projection, built once into its cache, already lists
+    // every column: the schema shares that list rather than projecting each
+    // child again.
+    let arrow_schema::DataType::Struct(fields) = field.as_arrow_field_ref()?.data_type() else {
+        return Err(Error::internal("arrow::arrow_schema_from_field"));
     };
     Ok(Arc::new(Schema::new_with_metadata(
-        fields
-            .iter()
-            .cloned()
-            .map(Field::into_arrow_field_ref)
-            .collect::<crate::Result<Vec<_>>>()?,
+        fields.clone(),
         field.as_metadata().clone().into_arrow_metadata(),
     )))
 }
@@ -423,7 +424,10 @@ pub(crate) fn appended(
 ///
 /// The old private `appended` promoted to public and made symmetric: this is
 /// what a caller reaches for when they already know the shape both sides must
-/// land in.
+/// land in. `field` is a declaration, so both sides cast by the one
+/// declared-column rule: a nullable column takes a value it cannot convert
+/// as null when `safe`, and a not-null column refuses that value, a null and
+/// a missing column by name.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
 /// cast when it is pulled, and [`SerieReader`](crate::SerieReader) short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back

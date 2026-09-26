@@ -134,6 +134,8 @@ impl JsDataType {
             "timeinforce" => CoreDataType::TimeInForce,
             "unit" => CoreDataType::Unit,
             "uuid" => CoreDataType::uuid(),
+            "decimal" => CoreDataType::Decimal,
+            "bigdecimal" => CoreDataType::BigDecimal,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::url(),
             "urn" => CoreDataType::urn(),

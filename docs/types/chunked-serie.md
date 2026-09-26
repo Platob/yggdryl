@@ -21,7 +21,7 @@ One verb, three spellings, where the runtimes name the Arrow values differently:
 
 | Rust | Python | JavaScript |
 | --- | --- | --- |
-| `ChunkedSerie::from_arrow_arrays(field, arrays, options)` | `ChunkedSerie.from_arrow_chunked_array(chunked, field=None, *, safe, nullability, representation)` | `ChunkedSerie.fromArrowArray(vector, field?, options?)` |
+| `ChunkedSerie::from_arrow_arrays(field, arrays, options)` | `ChunkedSerie.from_arrow_chunked_array(chunked, field=None, *, safe, representation)` | `ChunkedSerie.fromArrowArray(vector, field?, options?)` |
 | `ChunkedSerie::from_arrow_reader(root, reader, options)` | `ChunkedSerie.from_arrow_reader(reader, root=None, *, ...)` - a `RecordBatchReader`, a `Table`, a dataset, a scanner, a frame | `ChunkedSerie.fromArrowBatch(batchOrTable, root?, options?)` for a `Table`, `ChunkedSerie.fromArrowReader(reader, root?, options?)` for a native `BatchReader` |
 | `ChunkedSerie::from_series(field, chunks, options)` | `ChunkedSerie.from_series(chunks, field=None, *, ...)` | `ChunkedSerie.fromSeries(chunks, field?, options?)` |
 | `ChunkedSerie::from_serie_reader(reader)` | `ChunkedSerie.from_(reader)`, which also reads every columnar runtime | none |
@@ -409,7 +409,7 @@ A chunked array is one layout in pieces, so every array must lay out as the firs
 
 ## Streams
 
-`SerieReader::from_chunked` reads a held chunked serie as the stream of its chunks, one record column per chunk: a record's chunks are the batches they are, and a leaf field's chunks are each the one child of a `row` record, named as it is - the rule [`SerieReader::from_serie`](serie.md#arrow-an-array-a-batch-a-reader) states, applied per chunk. Nothing is cast, copied or read, and a chunked serie of no chunk is the empty stream of its root. Coming back, `from_serie_reader` collects a stream, one chunk per batch, none joined. Because Python's `SerieReader.from_` reads a chunked serie as that stream, `IOBase.write_arrow` takes one as it is.
+`SerieReader::from_chunked` reads a held chunked serie as the stream of its chunks, one record column per chunk: a record's chunks are the batches they are, and a leaf field's chunks are each the one child of a `row` record, named as it is - the rule [`SerieReader::from_serie`](serie.md#arrow-an-array-a-batch-a-reader) states, applied per chunk. Nothing is cast, copied or read, no plan is compiled, and a chunked serie of no chunk is the empty stream of its root; a stream under another root is [`SerieReader::cast`](serie.md#arrow-an-array-a-batch-a-reader), one plan over every chunk. Coming back, `from_serie_reader` collects a stream, one chunk per batch, none joined. Because Python's `SerieReader.from_` reads a chunked serie as that stream, `IOBase.write_arrow` takes one as it is, and a `ChunkedSerie` answers `__arrow_c_stream__` - a record's chunks as those batches, any other field's as the column a `pyarrow.ChunkedArray` streams - so `pa.table` and `pa.chunked_array` read one directly.
 
 === "Rust"
 

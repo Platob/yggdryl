@@ -244,6 +244,19 @@ export declare class BookEvent {
   get snapshotPartitions(): Array<SnapshotPartition>
   /** Whether the best bid is strictly above the best ask. */
   get isCrossed(): boolean
+  /** Whether both bests are stated and equal. */
+  get isLocked(): boolean
+  /**
+   * The best ask less the best bid, negative when crossed, as decimal
+   * text; `null` where a side states no best.
+   */
+  get spread(): string | null
+  /**
+   * `(bid - ask) / (bid + ask)` over the two sides' `depth(levels)`, as
+   * decimal text: `'1'` bid-only, `'-1'` ask-only; `null` when the total
+   * is zero - both sides empty, or no level.
+   */
+  imbalance(levels: number): string | null
   /**
    * The arithmetic midpoint of a coherent two-sided best bid and offer,
    * as decimal text; `null` where there is none.
@@ -494,12 +507,27 @@ export declare class BookSide {
   /** Whether the side holds no live entry. */
   get isEmpty(): boolean
   /**
-   * The best live price on this side, as decimal text; `null` where
-   * empty.
+   * The best live price on this side, as decimal text: the first priced
+   * level's price, `null` for an empty side or one holding only unpriced
+   * entries.
    */
   get bestPrice(): string | null
-  /** The aggregate quantity at the exact best price; `null` where empty. */
+  /**
+   * The exact aggregate quantity at the best price, as decimal text, an
+   * entry stating none adding nothing; `null` where `bestPrice` is.
+   */
   get bestQuantity(): string | null
+  /**
+   * One limit per price level, best first and the one unpriced limit
+   * last, each naming its entries' `curruuid`s in position order.
+   */
+  get limits(): Array<BookLimit>
+  /**
+   * The exact quantity resting on the first `levels` limits, the
+   * unpriced one counted where reached, as decimal text: `'0'` for an
+   * empty side or no level, `null` only past what a decimal holds.
+   */
+  depth(levels: number): string | null
   /**
    * This side with one order or quote event - a leaf or a `MarketData` -
    * atomically applied.
@@ -2335,7 +2363,8 @@ export declare class FixCodec {
    * nanoseconds; `null`, zero and a negative width disable snapshots;
    * `officialTimeDelayMs` is how far from `SendingTime(52)` an official
    * transaction clock may stand and still date the message, the core's
-   * one second when unstated.
+   * one second when unstated; `marketMetadata` is whether a market
+   * operation carries its message's unmapped fields, on when unstated.
    */
   constructor(registry?: FixRegistry | undefined | null, options?: FixCodecOptions | undefined | null)
   /** The dictionary this codec resolves against, sharing it. */
@@ -2382,6 +2411,11 @@ export declare class FixCodec {
   get includeMsgtypes(): Array<string>
   /** The message types a parse refuses before it builds a frame. */
   get excludeMsgtypes(): Array<string>
+  /**
+   * Whether a market operation this codec builds carries, in its
+   * metadata, what its message states that no typed column reads.
+   */
+  get marketMetadata(): boolean
   /**
    * The `SendingTime` an undated message takes - one neither its row nor
    * its line dates - `DateTime64(ns, UTC)`, or `null` where each new
@@ -2474,6 +2508,19 @@ export declare class FixCodec {
    * states them again exactly as `lifecycleArrowReader(reader)` does.
    */
   messages(source: JsBatchReader): FixMessages
+  /**
+   * A stream of batches of FIX rows as batches of lifted `marketdata`
+   * rows: `messages` into `marketArrowReader`, each row read as its own
+   * message. Over rows no walk wrote it answers what `marketArrowReader`
+   * answers for their messages. A walked capture reaches the sorted door
+   * as messages - `marketArrowReader(codec.lifecycle(messages))` - never
+   * as the rows `lifecycleArrowReader` writes: what a walk settles from a
+   * message's predecessors (its `prevpx` and `prevqty`, a side or a ticker
+   * carried forward, an execution instant) is no cell of the row. A
+   * schema making no FIX root is refused before a row is read. The source
+   * is consumed.
+   */
+  marketOperationsArrowReader(source: JsBatchReader): JsBatchReader
   /**
    * A stream of batches of FIX rows as batches under one message field.
    *
@@ -4164,6 +4211,15 @@ export declare class MarketData {
    * after an error, the error thrown at the failing item.
    */
   static fromArrowReader(reader: JsBatchReader): JsMarketDataRowIterator
+  /**
+   * The plan one named view is over a `marketdata` stream - `orders`,
+   * `quotes`, `executions`, `trades`, `book_sides`, `books`, or the
+   * `lifecycle` of the chain `crosscode` names, the one view that takes
+   * one - read ignoring ASCII case, with each lift, a `FieldPath` read
+   * once, appended as a projection after the view's own columns. Built
+   * structurally; its text reads back as the same plan.
+   */
+  static plan(view: string, lifts?: Array<string | FieldPath> | null, crosscode?: string | null): Plan
   /** `MarketData(<curruuid>, kind=.., crosscode=..)`. */
   toString(): string
   /** The element's own identity, as its hyphenated text. */
@@ -4273,12 +4329,17 @@ export declare class MarketData {
 }
 export type JsMarketData = MarketData
 
-/** The lazy row-decode walk `MarketData.fromArrowReader` answers. */
+/**
+ * A stream of `MarketData`: the lazy row-decode walk
+ * `MarketData.fromArrowReader` answers, and the sorted operations
+ * `FixCodec.marketOperations` answers.
+ */
 export declare class MarketDataRowIterator {
   /**
-   * Advance the stream: the next value, or `null` at its end; a row the
-   * decoder refuses throws, once, and ends the walk. The loader wraps
-   * this into the iterator protocol.
+   * Advance the stream: the next value, or `null` at its end; an item the
+   * stream refuses throws, once - a decode walk ends there, the sorted
+   * operations continue past it. The loader wraps this into the iterator
+   * protocol.
    */
   next(): IteratorResult<MarketData>
 }
@@ -5777,9 +5838,16 @@ export declare class RecordOptions {
   get name(): string
   /** Set the root Field name. */
   set name(name: string)
-  /** Whether a cast may null a value it cannot convert. */
+  /**
+   * Whether a declared or stored nullable column takes a value it cannot
+   * convert as null, `true` by default; a not-null column refuses it by name
+   * either way.
+   */
   get safe(): boolean
-  /** Set whether a cast may null a value it cannot convert. */
+  /**
+   * Set whether a declared or stored nullable column takes a value it cannot
+   * convert as null; `false` refuses it too.
+   */
   set safe(safe: boolean)
   /** The rows-per-batch bound, when one is set. */
   get batchRowSize(): number | null
@@ -5912,7 +5980,10 @@ export declare class RecordOptions {
   withField(field: Field): RecordOptions
   /** Return these options with a different root Field name. */
   withName(name: string): RecordOptions
-  /** Return these options with a different cast strictness. */
+  /**
+   * Return a copy whose declared or stored nullable columns take a value
+   * they cannot convert as null (`true`) or refuse it (`false`).
+   */
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
   withBatchRowSize(batchRowSize: number): RecordOptions
@@ -6222,15 +6293,29 @@ export declare class Selector {
   static fromField(field: JsField): Selector
   /** Each projection, as its canonical text. */
   get projections(): Array<string>
-  /** The names this selector publishes, in output order; empty for `*`. */
+  /**
+   * The names this selector's projections publish, in output order: the
+   * columns a `*` keeps are the schema's to name, so empty for `*`.
+   */
   get names(): Array<string>
   /** The column names `select * exclude (...)` drops. */
   get excluded(): Array<string>
-  /** Whether this is `select *` with nothing excluded. */
+  /**
+   * Whether this is `select *` with nothing excluded and nothing
+   * appended: every column, unchanged.
+   */
   get isAll(): boolean
+  /**
+   * Whether this selector opens with `*`: it reads every stored column
+   * it does not exclude, whatever it appends after.
+   */
+  get hasStar(): boolean
   /** Whether every projection is a bare column. */
   get isColumns(): boolean
-  /** How many projections this selector holds. */
+  /**
+   * How many projections this selector holds: zero for `*`, the
+   * appended ones for a `*` that appends.
+   */
   get length(): number
   /** Every top-level column this selector reads, in first-seen order. */
   get columns(): Array<string>
@@ -6342,8 +6427,9 @@ export type JsSerieIterator = SerieIterator
  * one plan the core compiled from the stream's schema, or the one record
  * serie a held column is.
  *
- * The reader is a stream, read once: iterating it and `intoArrowReader`
- * both consume it, and a batch's failure surfaces at the pull that read it.
+ * The reader is a stream, read once: iterating it, `cast` and
+ * `intoArrowReader` each consume it, and a batch's failure surfaces at the
+ * pull that read it.
  */
 export declare class SerieReader {
   /** The record every yielded serie is typed by. */
@@ -7387,9 +7473,16 @@ export declare class TextOptions {
   get name(): string
   /** Replace the root name. */
   set name(name: string)
-  /** Return whether casts may null incompatible values. */
+  /**
+   * Whether a declared or stored nullable column takes a value it cannot
+   * convert as null, `true` by default; a not-null column refuses it by name
+   * either way.
+   */
   get safe(): boolean
-  /** Set whether casts may null incompatible values. */
+  /**
+   * Set whether a declared or stored nullable column takes a value it cannot
+   * convert as null; `false` refuses it too.
+   */
   set safe(safe: boolean)
   /** Return the row-per-batch bound. */
   get batchRowSize(): number | null
@@ -7517,7 +7610,10 @@ export declare class TextOptions {
   withField(field: Field): TextOptions
   /** Return a copy with a different root name. */
   withName(name: string): TextOptions
-  /** Return a copy with different cast strictness. */
+  /**
+   * Return a copy whose declared or stored nullable columns take a value
+   * they cannot convert as null (`true`) or refuse it (`false`).
+   */
   withSafe(safe: boolean): TextOptions
   /** Return a copy with a row-per-batch bound. */
   withBatchRowSize(size: number): TextOptions
@@ -8492,6 +8588,22 @@ export interface AvroDecodeLimitsInput {
   maxNodes?: number
 }
 
+/** One price limit of a book side, as the plain object JavaScript reads. */
+export interface BookLimit {
+  /**
+   * The limit's price as decimal text; `null` on the one limit folding
+   * every entry that states no price.
+   */
+  price: string | null
+  /**
+   * The exact sum of the quantities its entries state, as decimal text;
+   * an entry stating none adds nothing.
+   */
+  quantity: string
+  /** Its entries' `curruuid`s in live order: position, then arrival. */
+  uuids: Array<string>
+}
+
 /**
  * The five slots a book-control object states, each `undefined` or `null`
  * where not given; given, a slot is widened through `Scalar.from` as a
@@ -8768,6 +8880,12 @@ export interface FixCodecOptions {
    * `null`.
    */
   defaultSendingTime?: Scalar | Date | null
+  /**
+   * Whether a market operation this codec builds carries, in its
+   * metadata, what its message states that no typed column reads - part
+   * of the leaf's identity; the core's `true` when unstated.
+   */
+  marketMetadata?: boolean
 }
 
 /**

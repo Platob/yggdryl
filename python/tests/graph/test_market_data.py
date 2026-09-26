@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import decimal
+import inspect
 import pickle
 from collections.abc import Iterator
 from typing import Any
@@ -11,7 +12,7 @@ from typing import Any
 import pyarrow as pa
 import pytest
 
-from yggdryl import Field, graph
+from yggdryl import Field, FieldPath, Plan, enums, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -220,3 +221,148 @@ def test_an_undated_row_needs_no_clock() -> None:
     [data] = graph.MarketData.from_arrow_reader(pa.table({"kind": ["order"], "crosscode": ["X"]}))
     assert data.kind == "order" and data.crosscode == "X"
     assert data.as_order() == graph.Order(crosscode="X")
+
+
+# The root's nested columns: what a flat view drops.
+NESTED = ("executions", "bidside", "askside", "snapshotpartitions", "live", "deltas", "limits")
+ISIN = "US0378331005"
+
+
+def _stream() -> pa.RecordBatchReader:
+    """Every leaf kind, and an order stating its ISIN."""
+    identified = graph.OrderEvent(CLOCK + 5, crosscode="O-5", side="BUY", securityids={"ISIN": ISIN})
+    return graph.MarketData.arrow_reader([*leaves(), identified])
+
+
+def _root() -> pa.Schema:
+    return graph.MarketData.field().into_arrow_schema()
+
+
+def _flat() -> list[str]:
+    return [name for name in _root().names if name not in NESTED]
+
+
+def _prefixed(column: str, prefix: str) -> list[str]:
+    """The children of one nested column's item, each under ``prefix``."""
+    held = _root().field(column).type
+    item = held.value_type if isinstance(held, pa.ListType) else held
+    return [f"{prefix}.{child.name}" for child in item]
+
+
+def _view(view: str, lifts: Any = (), **crosscode: str) -> pa.Table:
+    return graph.MarketData.apply_view(view, _stream(), lifts, **crosscode).read_all()
+
+
+@pytest.mark.parametrize(
+    ("view", "kinds"),
+    [
+        ("orders", ["order", "order_event", "order_event"]),
+        ("quotes", ["quote", "quote_event"]),
+        ("executions", ["execution", "execution_event"]),
+    ],
+)
+def test_an_operation_view_keeps_its_two_kinds_and_every_flat_column(view: str, kinds: list[str]) -> None:
+    table = _view(view)
+    assert table.schema.names == _flat()
+    assert sorted(table.column("kind").to_pylist()) == kinds
+
+
+def test_a_trade_is_one_row_per_execution_its_own_columns_beside_it() -> None:
+    table = _view("trades")
+    assert table.schema.names == [*_flat(), *_prefixed("executions", "execution")]
+    assert table.column("crosscode").to_pylist() == ["T-1", "T-1"]
+    assert sorted(table.column("execution.crosscode").to_pylist()) == ["E-1", "E-2"]
+
+
+def test_a_book_is_two_side_rows_or_one_row_of_its_own() -> None:
+    table = _view("book_sides")
+    assert table.schema.names == ["currunix", "snapunix", *_prefixed("bidside", "side")]
+    # Bid then ask, for the one book the stream holds.
+    assert table.column("side.side").to_pylist() == ["BUY", "SELL"]
+    assert table.column("currunix").cast(pa.int64()).to_pylist() == [CLOCK, CLOCK]
+    books = _view("books")
+    kept = [name for name in _root().names if name not in ("executions", "live", "deltas", "limits")]
+    assert books.schema.names == kept
+    assert books.column("kind").to_pylist() == ["book_event"]
+
+
+def test_a_lifecycle_is_one_chain_ordered_and_needs_its_crosscode() -> None:
+    chain = [
+        graph.OrderEvent(CLOCK + step, crosscode="C-1", side="BUY")
+        for step in (30, 10, 20)
+    ]
+    other = graph.OrderEvent(CLOCK, crosscode="C-2", side="BUY")
+    source = graph.MarketData.arrow_reader([*chain, other])
+    table = graph.MarketData.apply_view("lifecycle", source, crosscode="C-1").read_all()
+    assert table.schema.names == _flat()
+    assert table.column("currunix").cast(pa.int64()).to_pylist() == [CLOCK + 10, CLOCK + 20, CLOCK + 30]
+    with pytest.raises(ValueError, match="crosscode"):
+        graph.MarketData.plan("lifecycle")
+    with pytest.raises(ValueError, match="crosscode"):
+        graph.MarketData.plan("orders", crosscode="C-1")
+    with pytest.raises(ValueError, match="book_sides"):
+        graph.MarketData.plan("book-sides")
+
+
+def test_a_lift_reads_one_key_null_where_missing_and_refuses_a_missing_column() -> None:
+    table = _view(
+        "orders",
+        ["securityids['ISIN'] as isin", FieldPath("securityids['WKN'] as wkn")],
+    )
+    assert table.schema.names == [*_flat(), "isin", "wkn"]
+    by_code = dict(zip(table.column("crosscode").to_pylist(), table.column("isin").to_pylist()))
+    assert by_code == {"O-1": None, "O-5": ISIN}
+    assert table.column("wkn").null_count == table.num_rows
+    with pytest.raises(Exception, match="nothing"):
+        _view("orders", ["nothing['ISIN'] as isin"])
+    # A path is resolved once at the boundary: text that is none is refused.
+    with pytest.raises(ValueError):
+        graph.MarketData.plan("orders", ["securityids["])
+    with pytest.raises(TypeError):
+        graph.MarketData.plan("orders", [1])  # type: ignore[list-item]
+
+
+@pytest.mark.parametrize("view", enums.MARKET_VIEWS)
+def test_a_view_plan_reads_back_as_its_text(view: str) -> None:
+    crosscode = {"crosscode": "C-1"} if view == "lifecycle" else {}
+    plan = graph.MarketData.plan(view, **crosscode)
+    assert isinstance(plan, Plan)
+    assert Plan(str(plan)) == plan
+    lifted = graph.MarketData.plan(view, ["securityids['ISIN'] as isin"], **crosscode)
+    assert "securityids['ISIN'] as isin" in str(lifted)
+    assert Plan(str(lifted)) == lifted
+    # The case of a spelling is not a view of its own.
+    assert graph.MarketData.plan(view.upper(), **crosscode) == plan
+
+
+def test_the_view_doors_state_their_defaults() -> None:
+    # No lift is the empty sequence, and only the lifecycle takes a crosscode.
+    assert str(inspect.signature(graph.MarketData.plan)) == "(view, lifts=(), *, crosscode=None)"
+    assert str(inspect.signature(graph.MarketData.apply_view)) == (
+        "(view, source, lifts=(), *, crosscode=None)"
+    )
+    # A lift list is a sequence of paths, never one path's characters.
+    with pytest.raises(TypeError):
+        graph.MarketData.plan("orders", "securityids['ISIN'] as isin")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        graph.MarketData.apply_view("orders", _stream(), "securityids['ISIN'] as isin")  # type: ignore[arg-type]
+    # None is no lifts, as Node reads null: the view's own plan at both doors.
+    assert graph.MarketData.plan("orders", None) == graph.MarketData.plan("orders")
+    assert graph.MarketData.plan("lifecycle", None, crosscode="C-1") == (
+        graph.MarketData.plan("lifecycle", crosscode="C-1")
+    )
+    assert graph.MarketData.apply_view("orders", _stream(), None).read_all().equals(_view("orders"))
+
+
+def test_the_plans_the_views_are() -> None:
+    nested = ", ".join(NESTED)
+    assert str(graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])) == (
+        f"select * exclude ({nested}), securityids['ISIN'] as isin "
+        "where kind in ('order', 'order_event')"
+    )
+    assert str(graph.MarketData.plan("book_sides")) == (
+        "select currunix, snapunix, unnest([bidside, askside]) as side where kind = 'book_event'"
+    )
+    # Applying a view is applying its plan.
+    plan = graph.MarketData.plan("trades")
+    assert plan.apply_arrow_reader(_stream()).read_all().equals(_view("trades"))

@@ -11,8 +11,6 @@
 //! Arrow buffer - is read through one bounded window, so nothing allocates
 //! proportionally to the payload.
 
-use arrow_array::RecordBatch as ArrowRecordBatch;
-use arrow_pyarrow::FromPyArrow;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -391,7 +389,7 @@ macro_rules! state {
                 force: bool,
             ) -> PyResult<Bound<'py, PyAny>> {
                 let root = core_field_from_value(root)?;
-                let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+                let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
                 let applied = self
                     .inner
                     .apply_arrow_batch(&root, batch, force)
@@ -624,7 +622,7 @@ impl PyDigester {
         force: bool,
     ) -> PyResult<Bound<'py, PyAny>> {
         let root = core_field_from_value(root)?;
-        let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+        let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
         let applied = self
             .inner
             .apply_arrow_batch(&root, batch, force)
@@ -678,7 +676,7 @@ pub(crate) fn row_digests<'py>(
     batch: &Bound<'py, PyAny>,
     algorithm: &str,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let batch = ArrowRecordBatch::from_pyarrow_bound(batch)?;
+    let batch = crate::datatype::record_batch_from_pyarrow(batch)?;
     let digests = yggdryl::xxhash::arrow::row_digests(&batch, algorithm_from_str(algorithm)?)
         .map_err(value_error)?;
     arrow_array_to_pyarrow(py, &digests, None)

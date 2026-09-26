@@ -1029,6 +1029,7 @@ fn view_column<O: OffsetLeaf>(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    below: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Serie> {
     let views = super::arrow::held::<GenericListViewArray<O>>(array)?;
     let (offsets, sizes, values) = rebased_views(
@@ -1061,7 +1062,8 @@ fn view_column<O: OffsetLeaf>(
     } else {
         None
     };
-    let items = super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
+    let items =
+        super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget, below)?;
     Ok(OffsetViewSerie::new(field, offsets, sizes, items, views.nulls().cloned()).into_serie())
 }
 
@@ -1082,13 +1084,14 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     use super::arrow::{held, rebased};
 
     let Some(sequence) = field.dtype().as_serie_type() else {
         return Ok(None);
     };
-    let item = Arc::clone(sequence.item_ref());
+    let (item, below) = super::arrow::resolved_item(resolved, sequence.item_ref());
     Ok(Some(match array.data_type() {
         ArrowDataType::List(_) => {
             let lists = held::<GenericListArray<i32>>(&array)?;
@@ -1103,8 +1106,14 @@ pub(crate) fn column_of(
             )?;
             let hidden =
                 super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
-            let items =
-                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
+            let items = super::arrow::child_of(
+                item,
+                values,
+                hidden.as_ref(),
+                proof.child(0),
+                budget,
+                below,
+            )?;
             OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::LargeList(_) => {
@@ -1120,15 +1129,21 @@ pub(crate) fn column_of(
             )?;
             let hidden =
                 super::arrow::offset_parent(&offsets, values.len(), hidden.as_ref(), budget)?;
-            let items =
-                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
+            let items = super::arrow::child_of(
+                item,
+                values,
+                hidden.as_ref(),
+                proof.child(0),
+                budget,
+                below,
+            )?;
             OffsetSerie::new(field, offsets, items, lists.nulls().cloned()).into_serie()
         }
         ArrowDataType::ListView(_) => {
-            view_column::<i32>(field, item, &array, parent, proof, budget)?
+            view_column::<i32>(field, item, &array, parent, proof, budget, below)?
         }
         ArrowDataType::LargeListView(_) => {
-            view_column::<i64>(field, item, &array, parent, proof, budget)?
+            view_column::<i64>(field, item, &array, parent, proof, budget, below)?
         }
         ArrowDataType::FixedSizeList(_, width) => {
             let lists = held::<FixedSizeListArray>(&array)?;
@@ -1143,8 +1158,14 @@ pub(crate) fn column_of(
                 budget.add_bitmap(values.len())?;
             }
             let hidden = hidden.map(|nulls| nulls.expand(width));
-            let items =
-                super::arrow::child_of(item, values, hidden.as_ref(), proof.child(0), budget)?;
+            let items = super::arrow::child_of(
+                item,
+                values,
+                hidden.as_ref(),
+                proof.child(0),
+                budget,
+                below,
+            )?;
             FixedSizeSerieSerie::new(field, width, items, lists.nulls().cloned(), lists.len())
                 .into_serie()
         }

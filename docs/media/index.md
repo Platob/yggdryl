@@ -68,7 +68,7 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, scalar
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
 
@@ -84,6 +84,17 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     rows = list(handle.read_records())
     assert len(rows) == 3
     assert {row["venue"] for row in rows} == {"XNAS", "XPAR", "XLON"}
+
+    # Instances of a record class are rows of the field their class declares,
+    # and each crosses the core's value contract on its way to the column.
+    @scalar(frozen=True)
+    class Trade:
+        id: int
+        venue: str
+
+    classes = IOBase(pathlib.Path(tempfile.mkdtemp()) / "classes.arrows")
+    classes.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")])
+    assert list(classes.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, "XNYS")]
     ```
 
 === "JavaScript"
@@ -208,7 +219,7 @@ A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current 
 
 ### Options
 
-One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `level`, plus the settings one encoding owns.
+One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, plus the settings one encoding owns. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default.
 
 === "Rust"
 
@@ -295,8 +306,8 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
     assert.equal(stream.level, 9)
 
     // `with*` returns a new value rather than changing the one it was built from.
-    assert.equal(options.withSafe(true).safe, true)
-    assert.equal(options.safe, false)
+    assert.equal(options.withSafe(false).safe, false)
+    assert.equal(options.safe, true)
     ```
 
 ## Arrow IPC
@@ -460,9 +471,9 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- io_write_st
 
 ## Parquet
 
-Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused.
+Pages are compressed inside the file (`compression`), and the footer records the codec, so reads name nothing. A coded name such as `.parquet.gz` is refused. Parquet has no union layout, so a union column is refused by name before a byte is written; Arrow IPC holds one, and a [variant](../types/variant.md) column is the semi-structured alternative.
 
-A read's `filter` skips every row group whose footer statistics rule it out before a page is decoded, and the rows of the groups that remain are filtered as always. A column's statistics count only when it is stored as the type the filter reads and the read restores no default into its nulls; a floating-point column's minimum and maximum never count, because writers leave NaN out of them, though its null count does. A file of up to a megabyte is read in one request, unless a `max_row_size` without a filter lets its footer be read first; a larger one always has its footer read first. After a footer-first read only the column chunks of the row groups and columns the read keeps are fetched, and chunks less than a megabyte apart come in one request, so a small pruned group or unprojected column between kept ones is read with them. Either way the bytes are copied into memory the reader owns, so rewriting the file while a reader or its batches live is safe. A read yields 65,536-row batches unless `batch_row_size` bounds them; without a filter, never more than `max_row_size` asks for, and under any `max_row_size` - of one file, a folder of them, or an Iceberg table - it decodes lazily, one file at a time on one thread. From a megabyte of column chunks up, it decodes row groups side by side - and, with fewer row groups than threads, each row group's columns - handing batches back in file order, each thread at most sixteen batches ahead of the consumer; split across threads, no batch spans two row groups. A write feeds each row group's column writers as its input arrives - at once on one thread, in feeds of 32 MiB of Arrow input on several, their columns side by side - and the file is byte for byte the one a single thread writes.
+A read's `filter` skips every row group whose footer statistics rule it out before a page is decoded, and the rows of the groups that remain are filtered as always. A column's statistics count only when it is stored as the type the filter reads, and a group holding a null that a declared not-null column refuses is never pruned by that column, so the refusal does not depend on the filter; a floating-point column's minimum and maximum never count, because writers leave NaN out of them, though its null count does. A file of up to a megabyte is read in one request, unless a `max_row_size` without a filter lets its footer be read first; a larger one always has its footer read first. After a footer-first read only the column chunks of the row groups and columns the read keeps are fetched, and chunks less than a megabyte apart come in one request, so a small pruned group or unprojected column between kept ones is read with them. Either way the bytes are copied into memory the reader owns, so rewriting the file while a reader or its batches live is safe. A read yields 65,536-row batches unless `batch_row_size` bounds them; without a filter, never more than `max_row_size` asks for, and under any `max_row_size` - of one file, a folder of them, or an Iceberg table - it decodes lazily, one file at a time on one thread. From a megabyte of column chunks up, it decodes row groups side by side - and, with fewer row groups than threads, each row group's columns - handing batches back in file order, each thread at most sixteen batches ahead of the consumer; split across threads, no batch spans two row groups. A write feeds each row group's column writers as its input arrives - at once on one thread, in feeds of 32 MiB of Arrow input on several, their columns side by side - and the file is byte for byte the one a single thread writes.
 
 === "Rust"
 
@@ -944,7 +955,7 @@ cargo bench --features "parquet iceberg" -p yggdryl --bench media -- codec/avro
 
 One record per line, or per framed chain under `framing`; a `rowheader` regex captures typed columns.
 
-`TextLine` exposes the [event identity](../graph.md#event) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
+`TextLine` exposes the [event identity](../graph/index.md#event) and full-width `seqnum`: its UUIDv7 orders by millisecond and row-derived sequence, with the content payload seeded by `crosshashcode`. Its constructor takes a Python integer or JavaScript unsigned 64-bit `bigint` index; assigning Python's writable index recomputes `seqnum` and the identity.
 
 === "Rust"
 

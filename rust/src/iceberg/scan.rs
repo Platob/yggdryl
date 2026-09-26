@@ -504,6 +504,9 @@ struct Refine {
     /// Whether a file may store a column under a name the read root does
     /// not use, so its footer has to be read before its projection is made.
     renamed: bool,
+    /// Each read-root column carrying a v3 `initial-default`, and that value:
+    /// what a data file written before the column existed reads it as.
+    defaults: Vec<(Field, Scalar)>,
     /// The threads one file's columns decode on: the whole read parallelism
     /// when files are read one at a time, a share of it when several are.
     threads: usize,
@@ -536,10 +539,11 @@ impl Refine {
         match self.read_root.without_fields(&columns) {
             Ok(stored) if stored.field_len() > 0 => {
                 // The footer is opened for the names only when a rename ever
-                // happened; otherwise the read root's names are the file's,
+                // happened, or when a column carries an initial default a file
+                // may predate; otherwise the read root's names are the file's,
                 // and the read that follows is the file's one open.
-                let projected = if self.renamed {
-                    file_projection(&part.handle, &options, &stored)
+                let projected = if self.renamed || !self.defaults.is_empty() {
+                    file_projection(&part.handle, &options, &stored, &self.defaults)
                 } else {
                     stored
                 };
@@ -566,6 +570,7 @@ impl Refine {
         residual: &[usize],
     ) -> std::result::Result<RecordBatch, arrow_schema::ArrowError> {
         restore_partitions(batch, partition)
+            .and_then(|batch| restore_partitions(&batch, &self.defaults))
             .and_then(|batch| align_by_field_id(batch, &self.read_root))
             .and_then(|batch| Ok(Self::cast(&mut plans.read, batch, &self.read_root)?))
             .and_then(|batch| apply_predicates(batch, &self.predicates, residual))
@@ -589,7 +594,7 @@ impl Refine {
                 ArrowCastPlan::compile_schema(
                     batch.schema_ref(),
                     root,
-                    ArrowCastOptions::new().with_safe(false),
+                    ArrowCastOptions::new(),
                     Deferred::default(),
                 )
             })?
@@ -667,8 +672,10 @@ pub(super) fn reader(
     } else {
         1
     };
+    let defaults = initial_defaults(&read_root)?;
     let refine = Arc::new(Refine {
         project: read_root.field_len() != root.field_len(),
+        defaults,
         read_root,
         root,
         target,
@@ -954,12 +961,13 @@ fn file_projection(
     handle: &Holder,
     options: &crate::media::RecordOptions,
     wanted: &Field,
+    defaults: &[(Field, Scalar)],
 ) -> Field {
     let Ok(file_root) = crate::IOMedia::read_arrow_field(handle, options) else {
         return wanted.clone();
     };
     let mut children: Vec<Field> = Vec::with_capacity(wanted.field_len());
-    let mut renamed = false;
+    let mut changed = false;
     for child in wanted.fields() {
         let Ok(Some(id)) = child.parquet_field_id() else {
             children.push(child.clone());
@@ -972,13 +980,21 @@ fn file_projection(
             .map(|candidate| candidate.name().to_owned());
         match stored_name {
             Some(name) if name != child.name() => {
-                renamed = true;
+                changed = true;
                 children.push(child.clone().with_name(name));
+            }
+            // A file written before a column with an initial default existed
+            // is not asked for it: the default is restored after the read.
+            None if defaults
+                .iter()
+                .any(|(field, _)| field.name() == child.name()) =>
+            {
+                changed = true;
             }
             _ => children.push(child.clone()),
         }
     }
-    if !renamed {
+    if !changed {
         return wanted.clone();
     }
     StructType::from_fields(children)
@@ -1043,7 +1059,21 @@ fn align_by_field_id(batch: RecordBatch, read_root: &Field) -> Result<RecordBatc
     RecordBatch::try_new(schema, batch.columns().to_vec()).map_err(Error::Arrow)
 }
 
-/// Add the partition columns a data file left out, typed as declared.
+/// Each read-root column carrying a v3 `initial-default`, with that value
+/// canonical under the column.
+fn initial_defaults(read_root: &Field) -> Result<Vec<(Field, Scalar)>> {
+    let mut defaults = Vec::new();
+    for child in read_root.fields() {
+        if let Some(value) = child.as_iceberg().initial_default()? {
+            defaults.push((child.clone(), child.scalar(value)?));
+        }
+    }
+    Ok(defaults)
+}
+
+/// Add the columns a data file left out - identity partition columns, and
+/// columns with an initial default the file predates - as their constant
+/// values, typed as declared.
 fn restore_partitions(batch: &RecordBatch, partition: &[(Field, Scalar)]) -> Result<RecordBatch> {
     let missing: Vec<&(Field, Scalar)> = partition
         .iter()

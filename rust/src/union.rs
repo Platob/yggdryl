@@ -9,7 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::datatype::invalid;
 use crate::structure::cmp_fields;
-use crate::{DataType, Field, Result, UnionMode};
+use crate::{DataType, Field, Result, Scalar, UnionMode};
 use smol_str::format_smolstr;
 
 /// Union members paired with their non-negative Arrow type IDs.
@@ -52,6 +52,41 @@ impl UnionFields {
     /// Finds a member by exact field name.
     pub fn get_by_name(&self, name: &str) -> Option<(i8, &Field)> {
         self.iter().find(|(_, field)| field.name() == name)
+    }
+
+    /// The member a bare value belongs to: a value that does not spell the
+    /// `[type_id, payload]` pair, such as a host runtime's own value under a
+    /// union its class declared.
+    ///
+    /// The member whose datatype is the value's own answers first, then the
+    /// one in the value's own family, then the one that accepts it; where a
+    /// step finds several, only those that accept the value remain. A null is
+    /// read the same way, so it belongs to the `null` member, else to the one
+    /// member that takes a null. This is the reading [`DataType::scalar`] gives
+    /// a bare value that is not a sequence, offered here for any value, a
+    /// sequence included.
+    ///
+    /// ```
+    /// use yggdryl::{DataType, Scalar};
+    ///
+    /// # fn main() -> yggdryl::Result<()> {
+    /// let union: DataType = "union<0: serie<int64>, 1: int64, 2: null>".parse()?;
+    /// let DataType::Union(members, _) = &union else { unreachable!() };
+    /// let list = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(5_i64)]);
+    /// assert_eq!(members.branch_of(&list)?.0, 0);
+    /// assert_eq!(members.branch_of(&Scalar::from(5_i64))?.0, 1);
+    /// assert_eq!(members.branch_of(&Scalar::Null)?.0, 2);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the candidates when several members accept the
+    /// value at the first step that finds any, and naming the members when
+    /// none does.
+    pub fn branch_of(&self, value: &Scalar) -> Result<(i8, &Field)> {
+        crate::value::union_branch_of(self, value)
     }
 
     /// Returns the shared member slice without allocating.
@@ -301,7 +336,7 @@ mod arrow {
             let mut fields = Vec::with_capacity(self.len());
             for (type_id, field) in self.iter() {
                 type_ids.push(type_id);
-                fields.push(field.clone().into_arrow_field_ref()?);
+                fields.push(Arc::clone(field.as_arrow_field_ref()?));
             }
             Ok(ArrowDataType::Union(
                 ArrowUnionFields::try_new(type_ids, fields)?,

@@ -145,7 +145,7 @@ The column spells through the row code, and Arrow answers only spellings a row r
 | projection of bare columns | `ArrayRef`s reordered, no buffer touched |
 | `select *`, a self alias, a cast to the type a column has | skipped at bind; the reader is the one that came in |
 | `offset`, `limit` | `RecordBatch::slice` views over the batches they cross |
-| `order by` | the stream collected once, then `lexsort_to_indices` and one `take` |
+| `order by` | the stream collected once, then `lexsort_to_indices` - the row position the last key, so a tie keeps its arrival order - and one `take` |
 
 ## Targets
 
@@ -291,6 +291,7 @@ The scan is planned by the filter that keeps the rows: a manifest-list summary a
 
 - Mask keeps some rows -> the batch is copied; only a mask keeping every row is zero-copy.
 - `apply_arrow_batch` on a plan with `order by` -> the one batch is sorted; on a reader every batch is collected first, and nothing else collects.
+- `apply_arrow_array` over a struct array with a null row -> the row answers unknown for every term and none of its children is read: a `select` keeps it null, a `where` drops it, an `unnest` lays out no row for it, an `order by` places it as a row of null keys, `offset` and `limit` count it, and a plan that would write it is refused.
 - `Bounds` prove no row can match -> `Some(false)`; the container is skipped unread.
 - Unprovable predicate -> `statistics_prune` returns `true`, one read.
 - A Hive path -> the tightest statistic there is: minimum equal to maximum, nothing null.

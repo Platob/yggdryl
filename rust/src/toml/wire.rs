@@ -292,6 +292,8 @@ fn write_scalar<W: Write>(
         Scalar::Decimal64(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal128(value) => write_quoted(writer, &value.to_string())?,
         Scalar::Decimal256(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::Decimal(value) => write_quoted(writer, &value.to_string())?,
+        Scalar::BigDecimal(value) => write_quoted(writer, &value.to_string())?,
         string_scalars!(value) => write_quoted(writer, value.as_str())?,
         code_scalars!() => {
             write_quoted(writer, value.as_str().expect("a code borrowed its text"))?;

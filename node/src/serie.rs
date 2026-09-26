@@ -13,7 +13,8 @@
 //! [`JsSerieReader`] is the stream beside it: one record serie per batch of a
 //! native `BatchReader`, every batch cast by the one plan the core compiled
 //! when the reader was built, the one record serie a held column is, or one
-//! per chunk of a held chunked column.
+//! per chunk of a held chunked column - and, cast into another root, the
+//! reader the core hands back with every record cast by one plan more.
 
 use std::borrow::Cow;
 use std::io::Cursor;
@@ -112,12 +113,15 @@ fn numbers<T: Copy + Into<i64>>(values: &[T]) -> Vec<f64> {
 
 /// The schema and batches of one Arrow IPC stream; an empty stream names no
 /// schema and is refused.
+///
+/// The stream is drained here, so the decoder reads the caller's bytes in
+/// place: each message body is copied once into the batch that owns it, and
+/// the payload is never copied whole first.
 pub(crate) fn arrow_batches(bytes: &[u8]) -> Result<(SchemaRef, Vec<RecordBatch>)> {
     if bytes.is_empty() {
         return Err(napi_error("Arrow IPC input is empty and has no schema"));
     }
-    let mut reader =
-        StreamReader::try_new(Cursor::new(bytes.to_vec()), None).map_err(napi_error)?;
+    let mut reader = StreamReader::try_new(Cursor::new(bytes), None).map_err(napi_error)?;
     let schema = reader.schema();
     let batches = reader
         .by_ref()
@@ -244,10 +248,9 @@ impl JsSerie {
         bytes: Uint8Array,
         field: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         column_from_ipc(&bytes, field.as_ref().map(|field| &field.inner), options)
             .map(Self::from_core)
     }
@@ -259,10 +262,9 @@ impl JsSerie {
         bytes: Uint8Array,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         records_from_ipc(&bytes, root.as_ref().map(|root| &root.inner), options)
             .map(Self::from_core)
     }
@@ -274,10 +276,9 @@ impl JsSerie {
         mut reader: ClassInstance<'_, JsBatchReader>,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         Serie::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
@@ -592,10 +593,9 @@ impl JsSerie {
         &self,
         target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         let target = match target {
             Either::A(field) => field.inner.clone(),
             Either::B(dtype) => dtype.inner.clone().required_field("value"),
@@ -871,8 +871,9 @@ impl JsSerie {
 /// one plan the core compiled from the stream's schema, or the one record
 /// serie a held column is.
 ///
-/// The reader is a stream, read once: iterating it and `intoArrowReader`
-/// both consume it, and a batch's failure surfaces at the pull that read it.
+/// The reader is a stream, read once: iterating it, `cast` and
+/// `intoArrowReader` each consume it, and a batch's failure surfaces at the
+/// pull that read it.
 #[napi(js_name = "SerieReader")]
 pub struct JsSerieReader {
     /// The undrained core reader, taken by whatever consumes it.
@@ -909,10 +910,9 @@ impl JsSerieReader {
         mut reader: ClassInstance<'_, JsBatchReader>,
         root: Option<ClassInstance<'_, JsField>>,
         safe: Option<bool>,
-        nullability: Option<String>,
         representation: Option<String>,
     ) -> Result<Self> {
-        let options = crate::cast_options(safe, nullability.as_deref(), representation.as_deref())?;
+        let options = crate::cast_options(safe, representation.as_deref())?;
         let inner = SerieReader::from_arrow_reader(
             root.as_ref().map(|root| &root.inner),
             reader.take()?,
@@ -969,6 +969,32 @@ impl JsSerieReader {
         }
         self.inner = None;
         Ok(None)
+    }
+
+    /// Every record this reader yields cast into `target` - a `Field`, or a
+    /// `DataType` as its required `value` field - by one plan: a record
+    /// root, or a column as the one child of a record named `row`. A target
+    /// that is this reader's own root answers the reader as it stands; held
+    /// records are cast here, once each, and a stream's batches as they are
+    /// pulled. The reader is consumed.
+    #[napi(js_name = "_castNative", skip_typescript)]
+    pub fn cast_native(
+        &mut self,
+        target: Either<ClassInstance<'_, JsField>, ClassInstance<'_, JsDataType>>,
+        safe: Option<bool>,
+        representation: Option<String>,
+    ) -> Result<Self> {
+        let options = crate::cast_options(safe, representation.as_deref())?;
+        let target = match target {
+            Either::A(field) => field.inner.clone(),
+            Either::B(dtype) => dtype.inner.clone().required_field("value"),
+        };
+        let reader = self.inner.take().ok_or_else(serie_reader_consumed)?;
+        self.taken = true;
+        reader
+            .cast(&target, options)
+            .map(Self::from_core)
+            .map_err(napi_error)
     }
 
     /// The stream's batches reconciled to the root as a native

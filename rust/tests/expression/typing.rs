@@ -250,3 +250,62 @@ mod grammar {
         assert_eq!(bound.term().to_string(), "n > int32 '2000'");
     }
 }
+
+mod fixed_leaves {
+    //! Arithmetic over a fixed decimal leaf types as the leaf, by the rule
+    //! `Scalar` arithmetic states.
+
+    use yggdryl::expression::Term;
+    use yggdryl::{DataType, Field, StructType};
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            Field::new("px", DataType::Decimal, true),
+            Field::new("qty", DataType::Decimal, false),
+            Field::new("n", DataType::BigDecimal, true),
+            Field::new("i", DataType::Int64, false),
+            Field::new("u", DataType::UInt64, false),
+            Field::new("d", DataType::decimal128(9, 2).unwrap(), false),
+            Field::new("w", DataType::decimal256(76, 0).unwrap(), false),
+            Field::new("f", DataType::Float64, false),
+            Field::new("s", DataType::utf8(), false),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row")
+    }
+
+    #[test]
+    fn a_fixed_leaf_keeps_itself_and_the_wide_side_wins() {
+        let schema = schema();
+        for (text, expected) in [
+            ("px * qty", DataType::Decimal),
+            ("px + qty", DataType::Decimal),
+            ("px - 1", DataType::Decimal),
+            ("px / qty", DataType::Decimal),
+            ("px % qty", DataType::Decimal),
+            ("px * i", DataType::Decimal),
+            ("u + px", DataType::Decimal),
+            ("px * d", DataType::Decimal),
+            ("-px", DataType::Decimal),
+            ("n + 1", DataType::BigDecimal),
+            ("n * n", DataType::BigDecimal),
+            ("px * n", DataType::BigDecimal),
+            ("px + w", DataType::BigDecimal),
+            ("w % px", DataType::BigDecimal),
+        ] {
+            let field = text.parse::<Term>().unwrap().field(&schema).unwrap();
+            assert_eq!(field.dtype(), &expected, "{text}");
+        }
+        // Nullability is the operands', as for every arithmetic.
+        let field = "qty * i".parse::<Term>().unwrap().field(&schema).unwrap();
+        assert!(!field.is_nullable());
+        // An approximate or a non-numeric operand meets no fixed leaf.
+        for text in ["px * f", "n + 1.5", "px + s"] {
+            assert!(
+                text.parse::<Term>().unwrap().field(&schema).is_err(),
+                "{text}"
+            );
+        }
+    }
+}

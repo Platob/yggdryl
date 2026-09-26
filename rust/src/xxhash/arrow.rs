@@ -27,7 +27,7 @@ use arrow_buffer::NullBuffer;
 use arrow_select::zip::zip;
 
 use crate::arrow::{Error, Result};
-use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Nullability, Representation};
+use crate::cast::{ArrowCastOptions, ArrowCastPlan, Deferred, Representation};
 use crate::metadata::is_all_sources;
 use crate::serie::{Proof, land, land_under};
 use crate::xxhash::{Xxh3, Xxh32, Xxh64, Xxh128};
@@ -153,11 +153,16 @@ pub(crate) fn apply_arrow_batch_with<S: ArrowDigestState>(
     force: bool,
 ) -> Result<RecordBatch> {
     let plan = StructPlan::compile(root, prototype.algorithm())?;
+    // The holders are the fill's to write, so a holder the batch leaves
+    // absent lands as its default for the fill to replace.
     let batch = crate::cast::ArrowCastPlan::compile_schema(
         batch.schema_ref(),
         root,
         ArrowCastOptions::new(),
-        crate::cast::Deferred::default(),
+        Deferred {
+            transform: false,
+            digest: true,
+        },
     )?
     .reconcile_batch(batch)?;
     plan.fill_arrow_batch(prototype, root, batch, force)
@@ -1007,13 +1012,8 @@ pub(crate) fn column_digests_with<S: ArrowDigestState>(
     array: ArrayRef,
     field: &Field,
 ) -> Result<Vec<Digest>> {
-    let column = Serie::from_arrow_array(
-        Some(field),
-        array,
-        ArrowCastOptions::new()
-            .with_safe(false)
-            .with_nullability(Nullability::Strict),
-    )?;
+    let column =
+        Serie::from_arrow_array(Some(field), array, ArrowCastOptions::new().with_safe(false))?;
     let mut digests = Vec::with_capacity(column.len());
     let mut digester = prototype.clone();
     for index in 0..column.len() {

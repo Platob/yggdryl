@@ -361,7 +361,8 @@ storage it does not describe imports as that storage.
 
 A bounded variable byte target checks every cell's length (`BytesIngest`); the
 four plain leaves stay Arrow's own kernel. Under `safe` a failing cell becomes
-null, under strict an error names the row and the column. The whole cast tier
+null where the column may hold one; under `safe = false`, or in a required
+column, an error names the row and the column. The whole cast tier
 is on [Cast](../cast.md).
 
 === "Rust"
@@ -493,7 +494,7 @@ number). A scalar crosses as `{"type":"bytes","value":...}`.
 - `string_parameters` on a byte column -> `None`, and `charset` answers `None`: a payload has no repertoire to be text in. A UUID reads into text through the one cast tier rather than a renderer of its own.
 - A `yggdryl.bytes` document over a storage it does not describe -> imports as the storage.
 - Avro and Iceberg have no maximum, so a bounded column crosses them unbounded and the bound is enforced where the values enter.
-- A `BytesIngest` refusal under `safe` -> null, which a required column then fills with the default; under strict -> `field "<name>" row <n>: expected ..., got ...`.
+- A `BytesIngest` refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> `field "<name>" row <n>: expected ..., got ...`, never the default.
 - Merging follows [Field](../field.md): two byte types meet parameter by parameter, and a byte column never meets a [string](string.md).
 
 ## Commands

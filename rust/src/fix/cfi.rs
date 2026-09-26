@@ -31,7 +31,7 @@ pub(super) const CFICODE_TAG: i32 = 461;
 
 /// The names a bridge states the detailed classification under, beside a
 /// coarse `CFICode(461)`: the bare spelling and its `#`-marked twin.
-const DETAILED_NAMES: [&str; 2] = ["detailedcficode", "#detailedcficode"];
+pub(super) const DETAILED_NAMES: [&str; 2] = ["detailedcficode", "#detailedcficode"];
 
 /// What a `PutOrCall(201)` says, as a listed-option **group**.
 ///

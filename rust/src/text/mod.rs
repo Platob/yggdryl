@@ -667,10 +667,10 @@ fn infer_utf8_decision(input: &str, limits: Limits) -> Inferred {
     }
     // Only XML opens with markup, so nothing else is tried as XML, and only a
     // well-formed document is XML - anything else keeps the reading it had.
-    let opens_markup = input
+    if input
         .trim_start_matches([' ', '\t', '\r', '\n', '\u{FEFF}'])
-        .starts_with('<');
-    if opens_markup {
+        .starts_with('<')
+    {
         if let Ok(value) = crate::xml::from_utf8_with_limits(input, limits) {
             return Inferred::Decoded(Format::Xml, value);
         }
@@ -848,6 +848,8 @@ pub(crate) fn check_encode_depth(value: &Scalar, format: &'static str) -> Result
             | Scalar::Decimal64(_)
             | Scalar::Decimal128(_)
             | Scalar::Decimal256(_)
+            | Scalar::Decimal(_)
+            | Scalar::BigDecimal(_)
             | Scalar::Date32(_)
             | Scalar::Date64(_)
             | Scalar::Time32(_)

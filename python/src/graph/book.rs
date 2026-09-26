@@ -180,16 +180,37 @@ graph_methods!(PyBookSide, "BookSide"; [
         self.inner.is_empty()
     }
 
-    /// The best live price on this side, as a decimal; `None` where empty.
+    /// The first priced level's price, as a decimal; `None` for an empty
+    /// side or one holding unpriced entries only.
     #[getter]
     fn best_price(&self) -> Option<PyScalar> {
         self.inner.best_price().map(decimal_scalar)
     }
 
-    /// The aggregate quantity at the exact best price; `None` where empty.
+    /// The exact aggregate quantity at the best price, an entry stating
+    /// none adding nothing; `None` where `best_price` is.
     #[getter]
     fn best_quantity(&self) -> Option<PyScalar> {
         self.inner.best_quantity().map(decimal_scalar)
+    }
+
+    /// One limit per price this side holds, best first, and one last for
+    /// every entry stating no price: each the struct `Scalar` of its
+    /// `price` (`None` on the unpriced limit), the exact `quantity` resting
+    /// there and the `uuids` of the entries resting there, in live order.
+    #[getter]
+    fn limits(&self) -> Vec<PyScalar> {
+        self.inner
+            .limits()
+            .map(|limit| PyScalar::from_inner(limit.into_scalar()))
+            .collect()
+    }
+
+    /// The exact sum of the first `levels` limits' quantities, the unpriced
+    /// limit counted where reached: zero for an empty side or no level,
+    /// `None` only past what a decimal holds.
+    fn depth(&self, levels: usize) -> Option<PyScalar> {
+        self.inner.depth(levels).map(decimal_scalar)
     }
 
     /// This side with one order or quote event - a leaf or a `MarketData` -
@@ -271,6 +292,26 @@ graph_methods!(PyBookEvent, "BookEvent"; [
     #[getter]
     fn is_crossed(&self) -> bool {
         self.inner.is_crossed()
+    }
+
+    /// Whether both sides state a best price and the two are equal.
+    #[getter]
+    fn is_locked(&self) -> bool {
+        self.inner.is_locked()
+    }
+
+    /// The best ask less the best bid, negative when the book is crossed;
+    /// `None` where a side states no best price.
+    #[getter]
+    fn spread(&self) -> Option<PyScalar> {
+        self.inner.spread().map(decimal_scalar)
+    }
+
+    /// `(bid - ask) / (bid + ask)` over the two sides' `depth(levels)`: one
+    /// for a bid-only book, minus one for an ask-only one, `None` where the
+    /// total is zero - both sides empty, or no level.
+    fn imbalance(&self, levels: usize) -> Option<PyScalar> {
+        self.inner.imbalance(levels).map(decimal_scalar)
     }
 
     /// The arithmetic midpoint of a coherent two-sided best bid and offer.

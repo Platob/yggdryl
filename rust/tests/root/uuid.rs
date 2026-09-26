@@ -637,7 +637,7 @@ mod parameters {
         // number is the placeholder no leaf takes.
         // FIGI and Unit each add one code leaf without changing the UUID
         // family's range.
-        assert_eq!(DataTypeId::ALL.len(), 85);
+        assert_eq!(DataTypeId::ALL.len(), 87);
         assert_eq!(DataTypeId::Uuid.as_u8(), 0x81);
         assert_eq!(DataTypeId::from_u8(0x80), None);
         assert!(

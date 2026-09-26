@@ -94,7 +94,7 @@ from yggdryl._native import (
     StringParameters,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import AsciiCode, CcyCode, fixed_ascii
+from yggdryl.enums import MARKET_VIEWS, AsciiCode, CcyCode, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -236,13 +236,13 @@ default_field_scalar: pa.Scalar = default_field_serie.into_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 landed_array: Serie = Serie.from_arrow_array(source_array)
 cast_field_array: pa.Array = Serie.from_arrow_array(
-    source_array, Field("value", "int64"), safe=False, nullability="strict"
+    source_array, Field("value", "int64"), safe=False
 ).into_arrow_array()
 bit_cast_field_array: pa.Array = Serie.from_arrow_array(
     pa.array([2**64 - 1], type=pa.uint64()), Field("value", "int64"), representation="bits"
 ).into_arrow_array()
 cast_dtype_serie: Serie = landed_array.cast(DataType("int64"))
-cast_field_serie: Serie = landed_array.cast(Field("value", "int64"), nullability="strict")
+cast_field_serie: Serie = landed_array.cast(Field("value", "int64"))
 source_batch = pa.record_batch([source_array], names=["value"])
 cast_root = Field("rows", DataType.from_fields([Field("value", "int64")]), nullable=False)
 landed_batch: Serie = Serie.from_arrow_batch(source_batch)
@@ -260,11 +260,19 @@ serie_reader_batches: list[Serie] = list(serie_reader)
 serie_reader_stream: pa.RecordBatchReader = SerieReader.from_arrow_reader(
     pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
 ).into_arrow_reader()
-cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True, nullability="default")
+cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True)
 cast_plan_source: pa.Field = cast_plan.source
 cast_plan_target: Field = cast_plan.target
 cast_plan_identity: bool = cast_plan.is_identity
 cast_plan_serie: Serie = cast_plan.apply(source_batch)
+capsule_schema: object = landed_array.__arrow_c_schema__()
+capsule_array: tuple[object, object] = landed_array.__arrow_c_array__()
+capsule_requested: tuple[object, object] = landed_array.__arrow_c_array__(
+    pa.int64().__arrow_c_schema__()
+)
+field_capsule: object = Field("value", "int64").__arrow_c_schema__()
+dtype_capsule: object = DataType("int64").__arrow_c_schema__()
+reader_capsule: object = SerieReader.from_(source_batch).__arrow_c_stream__()
 cast_plan_column: Serie = ArrowCastPlan(Field("value", "int32"), Field("value", "int64")).apply(
     landed_array
 )
@@ -522,6 +530,11 @@ typed_bloomberg_kind: Literal["bloomberg"] = typed_bloomberg.dtype.id
 typed_uuid: UuidField = yggdryl.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
+typed_decimal: yggdryl.DecimalField = yggdryl.decimal("px")
+typed_decimal_kind: Literal["decimal"] = typed_decimal.dtype.id
+typed_bigdecimal: yggdryl.BigDecimalField = yggdryl.bigdecimal("n")
+typed_bigdecimal_kind: Literal["bigdecimal"] = typed_bigdecimal.dtype.id
+typed_decimal_width: yggdryl.DecimalWidthField = yggdryl.decimal("px", 10, 2)
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
 typed_ascii_sedol: StringField = yggdryl.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
@@ -1222,6 +1235,7 @@ selector_names: list[str] = selector.names
 selector_projections: list[str] = selector.projections
 selector_excluded: list[str] = selector_except.excluded
 selector_is_all: bool = selector_all.is_all
+selector_has_star: bool = selector_except.has_star
 selector_field: Field = selector.apply_field(expression_schema)
 selector_stored: Field = selector.into_field(expression_schema)
 bound_selector: BoundSelector = selector.bind(expression_schema)
@@ -1654,6 +1668,12 @@ fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back
 fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
     [fix_read_text], snapshot_millis=0, global_=False
 )
+fix_reader_market_metadata: bool = fix_reader.market_metadata
+fix_reader_bare: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, market_metadata=False)
+fix_market_operations: graph.MarketDataRowIterator = fix_reader.market_operations([fix_read_text])
+fix_market_operation_list: list[graph.MarketData] = list(fix_market_operations)
+fix_market_rows: pa.RecordBatchReader = fix_reader.market_arrow_reader(iter([fix_read_text]))
+fix_market_twin: pa.RecordBatchReader = fix_reader.market_operations_arrow_reader(fix_parsed)
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 
 fix_counter: Field = Field("nopartyids", "int32")
@@ -2039,6 +2059,8 @@ graph_side_best_price: Scalar | None = graph_side_with_operation.best_price
 graph_side_best_quantity: Scalar | None = graph_side_with_operation.best_quantity
 graph_side_side: Scalar = graph_side.side
 graph_side_with_previous: graph.BookSide | None = graph_side.with_previous(graph_side)
+graph_side_limits: list[Scalar] = graph_side_with_operation.limits
+graph_side_depth: Scalar | None = graph_side_with_operation.depth(1)
 
 graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
 graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
@@ -2049,6 +2071,9 @@ graph_book_ask: graph.BookSide = graph_book_with_operations.ask
 graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
 graph_book_snapshot_partitions: list[graph.SnapshotPartition] = graph_book.snapshot_partitions
 graph_book_crossed: bool = graph_book_with_operations.is_crossed
+graph_book_locked: bool = graph_book_with_operations.is_locked
+graph_book_spread: Scalar | None = graph_book_with_operations.spread
+graph_book_imbalance: Scalar | None = graph_book_with_operations.imbalance(1)
 graph_book_midpoint: Scalar | None = graph_book_with_operations.bbo_midpoint
 graph_book_median_quantity: Scalar | None = graph_book_with_operations.median_quantity
 graph_book_restated: graph.BookEvent = graph_book.restating(graph_book)
@@ -2075,6 +2100,18 @@ graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reade
     graph_data_arrow_reader
 )
 graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
+graph_view_names: tuple[str, ...] = MARKET_VIEWS
+graph_view_plan: Plan = graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])
+graph_view_plan_path: Plan = graph.MarketData.plan(
+    "trades", (yggdryl.FieldPath("securityids['ISIN'] as isin"),)
+)
+graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="C-1")
+graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
+    "books", graph.MarketData.arrow_reader([graph_book_with_operations])
+)
+graph_view_lifecycle_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
+    "lifecycle", graph.MarketData.arrow_reader([graph_order_event]), (), crosscode="G-1"
+)
 
 graph_book_iterator: graph.BookIterator = graph.BookIterator(
     [graph_order_event, graph_data], snapshot_millis=0, global_=False
@@ -2198,6 +2235,7 @@ serie_books = yggdryl.Serie.from_arrow_array(
 assert isinstance(serie_books, yggdryl.MapSerie)
 serie_entries: yggdryl.StructSerie = serie_books.entries
 serie_names: list[str] = serie_entries.names
+serie_entries_capsule: object = serie_entries.__arrow_c_stream__()
 serie_scalar_serie: yggdryl.Serie | None = Scalar.from_([1]).as_serie()
 assert len(serie_run) == 3 and serie_row is not None and serie_window is not None
 assert serie_arrow is not None and serie_rows and serie_field is not None
@@ -2210,7 +2248,7 @@ chunked_prices: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_chunked_a
     pa.chunked_array([[1, 2], [3]]), Field("price", "int64"), safe=False
 )
 chunked_table: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_reader(
-    pa.Table.from_batches([source_batch, source_batch]), nullability="strict"
+    pa.Table.from_batches([source_batch, source_batch])
 )
 chunked_from: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_(source_batch)
 chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
@@ -2218,6 +2256,7 @@ chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
 )
 chunked_empty: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.empty(Field("price", "int64"))
 chunked_one: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(serie_column)
+chunked_capsule: object = chunked_one.__arrow_c_stream__()
 chunked_chunks: list[yggdryl.Serie] = chunked_prices.chunks
 chunked_chunk: yggdryl.Serie | None = chunked_prices.chunk(0)
 chunked_count: int = chunked_prices.num_chunks
@@ -2237,7 +2276,7 @@ chunked_arrow_reader: pa.RecordBatchReader = chunked_table.into_arrow_reader()
 chunked_rows: list[Scalar] = chunked_prices.rows()
 chunked_values: list[Any] = chunked_prices.as_py()
 chunked_get: Scalar | None = chunked_prices.get(5)
-chunked_prices.push_chunk(serie_column, nullability="strict")
+chunked_prices.push_chunk(serie_column, safe=False)
 chunked_reader: SerieReader = SerieReader.from_chunked(chunked_prices)
 chunked_plan: yggdryl.ChunkedSerie = ArrowCastPlan(
     Field("price", "int64"), Field("price", "float64")

@@ -272,10 +272,10 @@ impl Element for MarketData {
 }
 
 impl Market for MarketData {
-    fn get_price(&self) -> Option<crate::Decimal18> {
+    fn get_price(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_price)
     }
-    fn set_price(&mut self, price: Option<crate::Decimal18>) {
+    fn set_price(&mut self, price: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_price, price);
     }
     fn get_currency(&self) -> &crate::Ccy {
@@ -284,10 +284,10 @@ impl Market for MarketData {
     fn set_currency(&mut self, currency: crate::Ccy) {
         delegate_by_variant!(self, set_currency, currency);
     }
-    fn get_quantity(&self) -> Option<crate::Decimal18> {
+    fn get_quantity(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_quantity)
     }
-    fn set_quantity(&mut self, quantity: Option<crate::Decimal18>) {
+    fn set_quantity(&mut self, quantity: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_quantity, quantity);
     }
     fn get_unit(&self) -> &crate::Unit {
@@ -329,58 +329,58 @@ impl Market for MarketData {
     fn set_miccode(&mut self, code: Option<crate::MicCode>) {
         delegate_by_variant!(self, set_miccode, code);
     }
-    fn get_lastpx(&self) -> Option<crate::Decimal18> {
+    fn get_lastpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_lastpx)
     }
-    fn set_lastpx(&mut self, px: Option<crate::Decimal18>) {
+    fn set_lastpx(&mut self, px: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_lastpx, px);
     }
-    fn get_lastqty(&self) -> Option<crate::Decimal18> {
+    fn get_lastqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_lastqty)
     }
-    fn set_lastqty(&mut self, qty: Option<crate::Decimal18>) {
+    fn set_lastqty(&mut self, qty: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_lastqty, qty);
     }
-    fn get_avgpx(&self) -> Option<crate::Decimal18> {
+    fn get_avgpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_avgpx)
     }
-    fn set_avgpx(&mut self, px: Option<crate::Decimal18>) {
+    fn set_avgpx(&mut self, px: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_avgpx, px);
     }
-    fn get_cumqty(&self) -> Option<crate::Decimal18> {
+    fn get_cumqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_cumqty)
     }
-    fn set_cumqty(&mut self, qty: Option<crate::Decimal18>) {
+    fn set_cumqty(&mut self, qty: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_cumqty, qty);
     }
-    fn get_leavesqty(&self) -> Option<crate::Decimal18> {
+    fn get_leavesqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_leavesqty)
     }
-    fn set_leavesqty(&mut self, qty: Option<crate::Decimal18>) {
+    fn set_leavesqty(&mut self, qty: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_leavesqty, qty);
     }
-    fn get_prevpx(&self) -> Option<crate::Decimal18> {
+    fn get_prevpx(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_prevpx)
     }
-    fn set_prevpx(&mut self, px: Option<crate::Decimal18>) {
+    fn set_prevpx(&mut self, px: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_prevpx, px);
     }
-    fn get_prevqty(&self) -> Option<crate::Decimal18> {
+    fn get_prevqty(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_prevqty)
     }
-    fn set_prevqty(&mut self, qty: Option<crate::Decimal18>) {
+    fn set_prevqty(&mut self, qty: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_prevqty, qty);
     }
-    fn get_spotrate(&self) -> Option<crate::Decimal18> {
+    fn get_spotrate(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_spotrate)
     }
-    fn set_spotrate(&mut self, rate: Option<crate::Decimal18>) {
+    fn set_spotrate(&mut self, rate: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_spotrate, rate);
     }
-    fn get_forwardpoints(&self) -> Option<crate::Decimal18> {
+    fn get_forwardpoints(&self) -> Option<crate::Decimal> {
         delegate_by_variant!(self, get_forwardpoints)
     }
-    fn set_forwardpoints(&mut self, points: Option<crate::Decimal18>) {
+    fn set_forwardpoints(&mut self, points: Option<crate::Decimal>) {
         delegate_by_variant!(self, set_forwardpoints, points);
     }
     fn get_ticker(&self) -> Option<&str> {
