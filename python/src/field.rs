@@ -23,7 +23,7 @@ use crate::enums::{
 use crate::fix::FixTag;
 use crate::iomedia::{batch_reader_from_arrow_reader, batch_reader_to_pyarrow, batch_to_pyarrow};
 use crate::protocol::{PyPythonMetadata, core_python_metadata_from_value};
-use crate::scalar::{PyScalar, from_py as scalar_from_py};
+use crate::scalar::{PyScalar, from_py as scalar_from_py, from_py_under};
 use crate::uri::{PyUrl, core_url_from_value, url_object};
 use crate::{PyDifferenceIterator, cast_options, compare, value_error};
 
@@ -364,7 +364,7 @@ impl PyField {
     /// through here, never through `PyArrow`.
     fn scalar(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .scalar(scalar_from_py(value)?)
+            .scalar(from_py_under(&self.inner, value)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }
@@ -375,7 +375,7 @@ impl PyField {
     /// nullability.
     fn validate_value(&self, value: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
-            .validate_value(&scalar_from_py(value)?)
+            .validate_value(&from_py_under(&self.inner, value)?)
             .map_err(value_error)
     }
 
@@ -385,7 +385,7 @@ impl PyField {
     /// at the width and unit its own field declares.
     fn canonicalize_value(&self, value: &Bound<'_, PyAny>) -> PyResult<PyScalar> {
         self.inner
-            .canonicalize_value(scalar_from_py(value)?)
+            .canonicalize_value(from_py_under(&self.inner, value)?)
             .map(PyScalar::from_inner)
             .map_err(value_error)
     }

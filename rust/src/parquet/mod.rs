@@ -390,6 +390,47 @@ fn reject_outer_coding<H: IOBase + ?Sized>(handle: &H) -> Result<()> {
     }))
 }
 
+/// Refuse a union column before the writer is built: Parquet has no union
+/// layout, and the Arrow writer's schema conversion has no answer for one.
+fn reject_unions(schema: &Schema) -> Result<()> {
+    fn union_path(field: &arrow_schema::Field, path: &str) -> Option<String> {
+        use arrow_schema::DataType as D;
+        match field.data_type() {
+            D::Union(..) => Some(path.to_owned()),
+            D::Struct(children) => children
+                .iter()
+                .find_map(|child| union_path(child, &format!("{path}.{}", child.name()))),
+            D::List(item)
+            | D::LargeList(item)
+            | D::ListView(item)
+            | D::LargeListView(item)
+            | D::FixedSizeList(item, _)
+            | D::Map(item, _) => union_path(item, &format!("{path}[]")),
+            D::Dictionary(_, value) => union_path(
+                &arrow_schema::Field::new(field.name(), value.as_ref().clone(), true),
+                path,
+            ),
+            D::RunEndEncoded(_, values) => union_path(values, path),
+            _ => None,
+        }
+    }
+    match schema
+        .fields()
+        .iter()
+        .find_map(|field| union_path(field, field.name()))
+    {
+        None => Ok(()),
+        Some(path) => Err(Error::Core(CoreError::Codec {
+            format: "parquet",
+            position: 0,
+            reason: smol_str::format_smolstr!(
+                "expected columns parquet can store, got the union column {path:?}; parquet has \
+                 no union layout, so write it to Arrow IPC or declare the column a variant"
+            ),
+        })),
+    }
+}
+
 /// Read the Arrow schema of the file `handle` holds.
 ///
 /// # Errors
@@ -526,6 +567,7 @@ where
 {
     reject_outer_coding(handle)?;
     let schema = batches.schema();
+    reject_unions(schema.as_ref())?;
 
     let mut encoded = Vec::new();
     let mut writer_options = ArrowWriterOptions::new().with_properties(options.writer_properties());

@@ -1279,6 +1279,25 @@ fn canonical_struct(fields: &StructType, value: &Scalar) -> Result<(Scalar, bool
 
 fn canonical_union(fields: &crate::UnionFields, value: &Scalar) -> Result<(Scalar, bool)> {
     let Some(pair) = value.sequence_rows() else {
+        // A bare value is the payload of the one member it belongs to, and
+        // its canonical form is the pair naming that member.
+        if !matches!(value, Scalar::Null) {
+            if let Ok((type_id, field)) = union_branch(fields, value, 0) {
+                let (payload, _) = canonicalize_field_value(field, value).map_err(|error| {
+                    prepend_canonical_error(
+                        error,
+                        [
+                            FieldSegment::field("union"),
+                            FieldSegment::index(i64::from(type_id)),
+                        ],
+                    )
+                })?;
+                return Ok((
+                    Scalar::from_sequence([Scalar::from(i64::from(type_id)), payload]),
+                    true,
+                ));
+            }
+        }
         return Err(Error::InvalidRecord {
             path: SmolStr::new_static("$"),
             reason: SmolStr::new_static("validated union could not be canonicalized"),
@@ -1925,9 +1944,21 @@ fn validate_union(
     value: &Scalar,
     depth: usize,
 ) -> std::result::Result<(), ValidationFailure> {
-    let values = value
-        .sequence_rows()
-        .ok_or_else(|| expected("union [type_id, payload] sequence", value))?;
+    let Some(values) = value.sequence_rows() else {
+        // A value that is not a sequence does not spell the pair, so it is
+        // read as the payload of the one member it belongs to. A bare null
+        // is not a union value: absence is spelled through a member.
+        if matches!(value, Scalar::Null) {
+            return Err(expected("union [type_id, payload] sequence", value));
+        }
+        let (type_id, field) = union_branch(fields, value, depth)?;
+        return validate_field_value_at_depth(field, value, depth).map_err(|failure| {
+            failure.prepend_segments([
+                FieldSegment::field("union"),
+                FieldSegment::index(i64::from(type_id)),
+            ])
+        });
+    };
     let [type_id, payload] = &*values else {
         return Err(ValidationFailure::new(
             "union value must contain exactly [type_id, payload]",
@@ -1949,6 +1980,65 @@ fn validate_union(
             FieldSegment::index(i64::from(type_id)),
         ])
     })
+}
+
+/// The member a bare value belongs to - one that does not spell the
+/// `[type_id, payload]` pair.
+///
+/// The member whose datatype is the value's own answers first, then the one
+/// in the value's own family, then the one that accepts it. Two candidates at
+/// the first step that finds any is a refusal naming them, because two
+/// readings of one value are not one; no candidate at any step is a refusal
+/// naming the members.
+pub(crate) fn union_branch<'a>(
+    fields: &'a crate::UnionFields,
+    value: &Scalar,
+    depth: usize,
+) -> std::result::Result<(i8, &'a Field), ValidationFailure> {
+    let own = value.id();
+    let family = value.family();
+    let candidates = |matches: &dyn Fn(&Field) -> bool| {
+        fields
+            .iter()
+            .filter(move |(_, member)| matches(member))
+            .collect::<Vec<_>>()
+    };
+    let mut fitting = candidates(&|member| member.dtype().id() == own);
+    if fitting.is_empty() {
+        fitting = candidates(&|member| member.dtype().id().kind() == family);
+    }
+    if fitting.is_empty() {
+        fitting =
+            candidates(&|member| validate_field_value_at_depth(member, value, depth + 1).is_ok());
+    }
+    let names = |members: &mut dyn Iterator<Item = (i8, &Field)>| {
+        members
+            .map(|(_, member)| format!("{:?}", member.name()))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match fitting.as_slice() {
+        [one] => Ok(*one),
+        [] => Err(ValidationFailure::new(format_smolstr!(
+            "expected a value one union member accepts ({}), got {}",
+            names(&mut fields.iter()),
+            value.kind()
+        ))),
+        many => Err(ValidationFailure::new(format_smolstr!(
+            "a {} value fits more than one union member ({}); spell it as the \
+             [type_id, payload] pair",
+            value.kind(),
+            names(&mut many.iter().copied())
+        ))),
+    }
+}
+
+/// [`union_branch`] for a caller outside the value walk, rooted at the value.
+pub(crate) fn union_branch_of<'a>(
+    fields: &'a crate::UnionFields,
+    value: &Scalar,
+) -> Result<(i8, &'a Field)> {
+    union_branch(fields, value, 0).map_err(rooted_failure)
 }
 
 /// The reason an ASCII refusal carries; the walk re-roots its path.

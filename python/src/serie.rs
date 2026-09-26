@@ -56,7 +56,8 @@ use crate::iomedia::{
     record_batch_intake, rooted_batch_to_pyarrow, rooted_reader_to_pyarrow, type_name,
 };
 use crate::scalar::{
-    PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, pyarrow_scalar_into_array,
+    PyScalar, PyScalarIterator, as_py, as_py_with_field, from_py, from_py_under,
+    pyarrow_scalar_into_array,
 };
 use crate::{cast_options, compare, normalize_index, value_error};
 
@@ -146,12 +147,16 @@ impl Leaf {
 }
 
 /// Convert every Python value in `rows` to a core value, once.
-fn rows_from_py(rows: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
+/// Convert Python rows, each a value of `field` when the rows have one.
+fn rows_from_py(field: Option<&CoreField>, rows: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
     if let Ok(serie) = rows.extract::<PyRef<'_, PySerie>>() {
         return Ok(serie.inner.rows().into_owned());
     }
     rows.try_iter()?
-        .map(|row| from_py(&row?))
+        .map(|row| match field {
+            Some(field) => from_py_under(field, &row?),
+            None => from_py(&row?),
+        })
         .collect::<PyResult<Vec<Scalar>>>()
 }
 
@@ -691,7 +696,10 @@ impl PySerie {
     #[new]
     #[pyo3(signature = (values = None))]
     fn new(values: Option<&Bound<'_, PyAny>>) -> PyResult<Self> {
-        let rows = values.map(rows_from_py).transpose()?.unwrap_or_default();
+        let rows = values
+            .map(|values| rows_from_py(None, values))
+            .transpose()?
+            .unwrap_or_default();
         Ok(Self::from_inner(Serie::new(rows)))
     }
 
@@ -703,7 +711,7 @@ impl PySerie {
         rows: &Bound<'_, PyAny>,
     ) -> PyResult<Py<PyAny>> {
         let field = core_field_from_value(field)?;
-        let rows = rows_from_py(rows)?;
+        let rows = rows_from_py(Some(&field), rows)?;
         let serie = py
             .detach(move || Serie::from_scalars(field, rows))
             .map_err(value_error)?;
@@ -842,7 +850,7 @@ impl PySerie {
         rows: &Bound<'_, PyAny>,
         field: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<Py<PyAny>> {
-        let rows = rows_from_py(rows)?;
+        let rows = rows_from_py(None, rows)?;
         let serie = match field_of(field)? {
             Some(field) => py
                 .detach(move || Serie::from_scalars(field, rows))
@@ -984,12 +992,16 @@ impl PySerie {
     /// Replace rows `start..end` by `rows`: the one mutation.
     fn splice(&mut self, start: usize, end: usize, rows: &Bound<'_, PyAny>) -> PyResult<()> {
         self.inner
-            .splice(start..end, rows_from_py(rows)?)
+            .splice(start..end, rows_from_py(self.inner.field(), rows)?)
             .map_err(value_error)
     }
 
     fn set(&mut self, index: usize, value: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.set(index, from_py(value)?).map_err(value_error)
+        let value = match self.inner.field() {
+            Some(field) => from_py_under(field, value)?,
+            None => from_py(value)?,
+        };
+        self.inner.set(index, value).map_err(value_error)
     }
 
     fn push(&mut self, value: &Bound<'_, PyAny>) -> PyResult<()> {
@@ -1027,7 +1039,8 @@ impl PySerie {
     }
 
     fn extend(&mut self, rows: &Bound<'_, PyAny>) -> PyResult<()> {
-        self.inner.extend(rows_from_py(rows)?).map_err(value_error)
+        let rows = rows_from_py(self.inner.field(), rows)?;
+        self.inner.extend(rows).map_err(value_error)
     }
 
     /// Append every row of `other`, buffer to buffer where the fields agree.

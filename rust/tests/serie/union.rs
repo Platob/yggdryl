@@ -157,9 +157,30 @@ fn a_row_past_the_end_and_a_row_the_field_refuses_are_refused_and_nothing_moves(
         assert!(column.push(quote(7, Scalar::from(1_i64))).is_err());
         assert!(column.push(quote(0, Scalar::from("AAPL"))).is_err());
         assert!(column.push(quote(0, Scalar::Null)).is_err());
-        assert!(column.push(Scalar::from(1_i64)).is_err());
+        // A bare value no member accepts names the members.
+        let record = Scalar::from_struct([("px", Scalar::from(1_i64))]).unwrap();
+        let refusal = column.push(record).expect_err("no member holds a record");
+        assert!(
+            refusal.to_string().contains("one union member accepts"),
+            "{refusal}"
+        );
         assert_eq!(column.len(), 4);
         assert_eq!(column.rows().into_owned(), quote_rows());
+    }
+}
+
+#[test]
+fn a_bare_value_lands_in_the_member_its_datatype_names() {
+    for mut column in quotes() {
+        column
+            .push(Scalar::from(9_i64))
+            .expect("the id member's own value");
+        column
+            .push(Scalar::from("MSFT"))
+            .expect("the symbol member's own value");
+
+        assert_eq!(column.scalar(4).unwrap(), quote(0, Scalar::from(9_i64)));
+        assert_eq!(column.scalar(5).unwrap(), quote(1, Scalar::from("MSFT")));
     }
 }
 

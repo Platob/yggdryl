@@ -153,6 +153,57 @@ def test_exact_leaves_cross_unchanged_and_other_values_still_cast() -> None:
         yggdryl._classes.from_dict(Tick, {"n": True, "px": 1.0, "venue": None, "ok": True})
 
 
+@scalar(frozen=True, slots=True)
+class PlanLeg:
+    symbol: str
+    quantity: int
+
+
+@scalar(frozen=True, slots=True)
+class PlanOrder:
+    order_id: int
+    legs: list[PlanLeg]
+    note: str | None = None
+
+
+def test_a_compiled_read_answers_what_the_general_read_does() -> None:
+    good = '{"order_id": 1, "legs": [{"symbol": "A", "quantity": 2}], "note": null}'
+    # The first read compiles the plan, and every later one takes it.
+    for _ in range(2):
+        assert json.loads(good, cls=PlanOrder) == PlanOrder(1, [PlanLeg("A", 2)], None)
+    # A mapping the plan does not answer takes the general read, casts included.
+    assert json.loads(
+        '{"order_id": "3", "legs": [{"symbol": "A", "quantity": "4"}]}', cls=PlanOrder
+    ) == PlanOrder(3, [PlanLeg("A", 4)])
+    # A refusal names the path it reached, whichever read reached it.
+    with pytest.raises(TypeError, match=r"PlanOrder\.legs\[0\]\.quantity"):
+        json.loads('{"order_id": 1, "legs": [{"symbol": "A", "quantity": "x"}], "note": null}', cls=PlanOrder)
+    with pytest.raises(TypeError, match=r"PlanOrder\.legs\[0\]: unknown keys \['extra'\]"):
+        json.loads(
+            '{"order_id": 1, "legs": [{"symbol": "A", "quantity": 2, "extra": 0}], "note": null}',
+            cls=PlanOrder,
+        )
+    with pytest.raises(TypeError, match=r"PlanOrder\.legs\[0\]\.symbol"):
+        json.loads('{"order_id": 1, "legs": [{"symbol": null, "quantity": 2}], "note": null}', cls=PlanOrder)
+
+
+@scalar(frozen=True, slots=True)
+class PlanVariant:
+    value: int | str
+
+
+def test_a_union_member_read_keeps_the_exact_member_and_refuses_the_rest() -> None:
+    # The first read compiles the plan, and the second takes it.
+    for _ in range(2):
+        assert json.loads('{"value": 1}', cls=PlanVariant) == PlanVariant(1)
+        assert json.loads('{"value": "a"}', cls=PlanVariant) == PlanVariant("a")
+    # A value of neither member's class takes the union read, and its refusal.
+    with pytest.raises(TypeError, match=r"PlanVariant\.value"):
+        json.loads('{"value": 2.5}', cls=PlanVariant)
+    with pytest.raises(TypeError, match=r"PlanVariant\.value"):
+        json.loads('{"value": true}', cls=PlanVariant)
+
+
 def test_plain_dataclasses_compile_to_the_same_native_field_model() -> None:
     @dataclasses.dataclass
     class Point:

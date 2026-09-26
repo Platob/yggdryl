@@ -383,6 +383,82 @@ mod value {
             );
             assert_eq!(union.scalar(canonical.clone()).unwrap(), canonical);
         }
+
+        fn pair(type_id: i64, payload: Scalar) -> Scalar {
+            Scalar::from_sequence([Scalar::from(type_id), payload])
+        }
+
+        #[test]
+        fn a_bare_value_two_members_fit_is_refused_naming_both() {
+            // Two members of the value's own datatype are two readings of it.
+            let union = dtype("union<0: int64, 1: int64>");
+            let refused = union.scalar(7_i64).unwrap_err().to_string();
+            assert!(refused.contains("more than one union member"), "{refused}");
+            assert!(refused.contains("[type_id, payload]"), "{refused}");
+            // So are two members of its family, when neither is its own.
+            let refused = dtype("union<0: int16, 1: int32>")
+                .scalar(Scalar::from(7_i64))
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("more than one union member"), "{refused}");
+            // A value no member accepts names the members.
+            let refused = dtype("union<0: int64, 1: date32>")
+                .scalar(Scalar::from(true))
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("one union member accepts"), "{refused}");
+        }
+
+        #[test]
+        fn a_bare_value_enters_the_member_its_datatype_names() {
+            let union = dtype("union<0: int64, 1: utf8>");
+
+            assert_eq!(union.scalar(7_i64).unwrap(), pair(0, Scalar::from(7_i64)));
+            // Text is the text member's, even when it spells a number.
+            assert_eq!(union.scalar("42").unwrap(), pair(1, Scalar::from("42")));
+            // The value's family answers when no member is its own datatype,
+            // and the member's contract then restates it.
+            assert_eq!(
+                dtype("union<0: int32, 1: utf8>").scalar(7_i64).unwrap(),
+                pair(0, Scalar::from(7_i32))
+            );
+            // The one member that accepts it answers when neither does.
+            assert_eq!(
+                dtype("union<0: date32, 1: int64>")
+                    .scalar("2024-01-02")
+                    .unwrap(),
+                pair(0, DataType::Date32.scalar("2024-01-02").unwrap())
+            );
+            // The pair is still the pair, and a bare value inside a row is read
+            // the same way as a bare value on its own.
+            assert_eq!(
+                union.scalar(pair(1, Scalar::from("hi"))).unwrap(),
+                pair(1, Scalar::from("hi"))
+            );
+            let row = dtype("struct<choice: union<0: int64, 1: utf8>>");
+            assert_eq!(
+                row.scalar(Scalar::from_sequence([Scalar::from("x")]))
+                    .unwrap(),
+                Scalar::from_sequence([pair(1, Scalar::from("x"))])
+            );
+        }
+
+        #[test]
+        fn branch_of_reads_any_value_bare_a_sequence_included() {
+            let union = dtype("union<0: serie<int64>, 1: int64>");
+            let DataType::Union(members, _) = &union else {
+                panic!("a union")
+            };
+            let list = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(5_i64)]);
+
+            assert_eq!(members.branch_of(&list).unwrap().0, 0);
+            assert_eq!(members.branch_of(&Scalar::from(5_i64)).unwrap().0, 1);
+            // Under `scalar` the same sequence spells the pair, as it always has.
+            assert_eq!(
+                union.scalar(list.clone()).unwrap(),
+                pair(1, Scalar::from(5_i64))
+            );
+        }
     }
 
     /// Absence is a value only where the layout stores it beside the values.

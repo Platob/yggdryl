@@ -56,6 +56,7 @@ _ErrorPolicy = Literal["raise", "default"]
 _NONE_TYPE = type(None)
 _MISSING_KEY = object()
 _MISSING_INTO_FIELD_DESCRIPTOR = object()
+_MISSING = object()
 _UNION_ORIGINS = (typing.Union, types.UnionType)
 _SELF_HINTS = tuple(
     value
@@ -1074,6 +1075,24 @@ def _validate_physical_temporal(
         )
 
 
+# A physical field reached by descent is a fresh native wrapper, and every row
+# of a class descends the same way, so each answer is remembered against the
+# field it was asked of. The entry holds that field, so its id cannot be taken
+# by another object while the entry stands.
+_PHYSICAL_ANSWERS: dict[tuple[object, ...], tuple[NativeField, object]] = {}
+
+
+def _remembered(key: tuple[object, ...], field: NativeField) -> object:
+    entry = _PHYSICAL_ANSWERS.get(key)
+    return entry[1] if entry is not None and entry[0] is field else _MISSING
+
+
+def _remember(key: tuple[object, ...], field: NativeField, answer: object) -> None:
+    if len(_PHYSICAL_ANSWERS) >= 4096:
+        _PHYSICAL_ANSWERS.clear()
+    _PHYSICAL_ANSWERS[key] = (field, answer)
+
+
 def _physical_named_child(
     field: NativeField | None,
     name: str,
@@ -1082,6 +1101,21 @@ def _physical_named_child(
 ) -> NativeField | None:
     if field is None:
         return None
+    key = ("child", id(field), name)
+    remembered = _remembered(key, field)
+    if remembered is not _MISSING:
+        return typing.cast(NativeField, remembered)
+    child = _physical_named_child_uncached(field, name, path=path)
+    _remember(key, field, child)
+    return child
+
+
+def _physical_named_child_uncached(
+    field: NativeField,
+    name: str,
+    *,
+    path: str,
+) -> NativeField:
     dtype = _physical_dtype(field)
     if dtype.id != "struct":
         raise TypeError(
@@ -1104,19 +1138,23 @@ def _validate_physical_struct_names(
 ) -> None:
     if field is None:
         return
+    logical = frozenset(names)
+    key = ("names", id(field), logical)
+    if _remembered(key, field) is not _MISSING:
+        return
     dtype = _physical_dtype(field)
     if dtype.id != "struct":
         raise TypeError(
             f"{path}: logical structured annotation is incompatible with "
             f"physical arrow_type {dtype}"
         )
-    logical = frozenset(names)
     physical = frozenset(child.name for child in dtype)
     if logical != physical:
         raise TypeError(
             f"{path}: logical struct fields {sorted(logical)!r} do not match "
             f"physical struct children {sorted(physical)!r}"
         )
+    _remember(key, field, True)
 
 
 def _validate_physical_tuple_arity(
@@ -1159,6 +1197,16 @@ def _physical_serie_child(
 ) -> NativeField | None:
     if field is None:
         return None
+    key = ("item", id(field))
+    remembered = _remembered(key, field)
+    if remembered is not _MISSING:
+        return typing.cast(NativeField, remembered)
+    child = _physical_serie_child_uncached(field, path=path)
+    _remember(key, field, child)
+    return child
+
+
+def _physical_serie_child_uncached(field: NativeField, *, path: str) -> NativeField:
     dtype = _physical_dtype(field)
     if dtype.id == "map":
         # Nested Arrow map keys are represented at the Python boundary as an
@@ -1342,7 +1390,30 @@ def _accept_schema_null(
     raise TypeError(f"{path}: field is not nullable")
 
 
+_UNWRAPPED: dict[tuple[Any, type[Any]], Any] = {}
+
+
 def _unwrap_hint(hint: Any, owner: type[Any]) -> Any:
+    """Resolve an annotation to the hint that decides its conversion.
+
+    The answer depends on the hint and its owner alone, and every row of a
+    class asks the same question, so it is remembered for both.
+    """
+
+    try:
+        return _UNWRAPPED[hint, owner]
+    except KeyError:
+        pass
+    except TypeError:
+        return _unwrap_hint_uncached(hint, owner)
+    unwrapped = _unwrap_hint_uncached(hint, owner)
+    if len(_UNWRAPPED) >= 4096:
+        _UNWRAPPED.clear()
+    _UNWRAPPED[hint, owner] = unwrapped
+    return unwrapped
+
+
+def _unwrap_hint_uncached(hint: Any, owner: type[Any]) -> Any:
     while True:
         if any(hint is self_hint for self_hint in _SELF_HINTS):
             hint = owner
@@ -2346,6 +2417,189 @@ def _leaf_of(hint: Any) -> tuple[type[Any] | None, bool]:
     return answer
 
 
+class _ReadPlan(typing.NamedTuple):
+    """One class's safe mapping read, compiled once per owner and physical root.
+
+    ``names`` are the constructor's names: a mapping holding exactly those takes
+    the plan, and any other falls back to the general read, which owns every
+    refusal and its wording. Each reader answers what ``_convert`` would.
+    """
+
+    names: frozenset[str]
+    readers: tuple[tuple[str, Callable[[object, str], object]], ...]
+
+
+_READ_PLANS: dict[tuple[object, ...], tuple[object, _ReadPlan | None]] = {}
+
+
+def _read_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+) -> _ReadPlan | None:
+    key = (cls, owner, id(physical_root))
+    entry = _READ_PLANS.get(key)
+    if entry is not None and entry[0] is physical_root:
+        return entry[1]
+    try:
+        plan = _compile_read_plan(cls, schema, owner, physical_root)
+    except (TypeError, ValueError):
+        # The general read refuses the same way, naming the row it reached.
+        return None
+    if len(_READ_PLANS) >= 4096:
+        _READ_PLANS.clear()
+    _READ_PLANS[key] = (physical_root, plan)
+    return plan
+
+
+def _compile_read_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+) -> _ReadPlan | None:
+    if physical_root is not None:
+        _validate_physical_struct_names(
+            physical_root,
+            (field.name for field in schema.value_fields),
+            path=cls.__name__,
+        )
+    names = frozenset(field.name for field in schema.constructor_fields)
+    if any(field.name not in names for field in schema.value_fields):
+        # An init=False field is validated after construction, which the
+        # general read does.
+        return None
+    readers = []
+    for field in schema.constructor_fields:
+        if field.name not in schema.field_lookup:
+            physical_field = None
+        elif physical_root is None:
+            physical_field = schema.field_lookup[field.name]
+        else:
+            physical_field = _physical_named_child(
+                physical_root, field.name, path=cls.__name__
+            )
+        readers.append(
+            (
+                field.name,
+                _value_reader(
+                    schema.hints.get(field.name, field.type),
+                    owner,
+                    physical_field,
+                    own=physical_root is None,
+                ),
+            )
+        )
+    return _ReadPlan(names, tuple(readers))
+
+
+def _value_reader(
+    hint: Any,
+    owner: type[Any],
+    physical_field: NativeField | None,
+    *,
+    own: bool,
+) -> Callable[[object, str], object]:
+    """Compile what ``_convert`` does for one hint into a reader.
+
+    An exact leaf answers itself, a mapping under a record class is that
+    class's own read, and a list is read item by item; every other value takes
+    ``_convert``. An optional leaf answers itself only under the class's own
+    field (``own``), which a union cannot stand behind.
+    """
+
+    def general(value: object, path: str) -> object:
+        return _convert(value, hint, owner, path, "raise", physical_field=physical_field)
+
+    leaf, optional = _leaf_of(hint)
+    if leaf is not None and (own or not optional):
+        exact = leaf
+        # `None` under an optional leaf is `None` wherever the field holds a
+        # null - or has no physical field to refuse one - exactly as
+        # `_convert` answers it; a required field refuses it there.
+        takes_none = optional and (physical_field is None or physical_field.nullable)
+
+        def read_leaf(value: object, path: str) -> object:
+            if type(value) is exact or (value is None and takes_none):
+                return value
+            return general(value, path)
+
+        return read_leaf
+    unwrapped = _unwrap_hint(hint, owner)
+    if own and get_origin(unwrapped) in _UNION_ORIGINS:
+        members = [
+            member
+            for member in get_args(unwrapped)
+            if not _is_none_branch(member, owner)
+        ]
+        exact_members = frozenset(member for member in members if member in _IDENTITY_LEAVES)
+        # The checks the union read makes of its physical field, made once:
+        # where they pass, a value of one member's exact class is that
+        # member's, and converts to itself.
+        physical_children = _physical_union_children(physical_field)
+        physical_ok = physical_field is None or (
+            (len(members) <= 1 or _physical_dtype(physical_field).id == "union")
+            and (
+                not physical_children
+                or sum(child.dtype.id != "null" for child in physical_children)
+                == len(members)
+            )
+        )
+        if exact_members and physical_ok:
+
+            def read_member(value: object, path: str) -> object:
+                return value if type(value) in exact_members else general(value, path)
+
+            return read_member
+    if (
+        isinstance(unwrapped, type)
+        and dc.is_dataclass(unwrapped)
+        and not issubclass(unwrapped, (enum.Enum, dict))
+    ):
+        record = unwrapped
+        owner_schema = _ensure_schema(owner)
+
+        def read_record(value: object, path: str) -> object:
+            if type(value) is not dict:
+                return general(value, path)
+            entry = _READ_PLANS.get((record, owner, id(physical_field)))
+            plan = entry[1] if entry is not None and entry[0] is physical_field else None
+            if plan is not None and value.keys() == plan.names:
+                return record(
+                    **{name: read(value[name], f"{path}.{name}") for name, read in plan.readers}
+                )
+            return _from_dict(
+                record,
+                value,
+                safe=True,
+                errors="raise",
+                path=path,
+                resolved_hints=owner_schema.nested_hints.get(record),
+                resolved_cache=owner_schema.nested_hints,
+                conversion_owner=owner,
+                physical_root=physical_field,
+            )
+
+        return read_record
+    if get_origin(unwrapped) is list:
+        arguments = get_args(unwrapped)
+        item_field = _physical_serie_child(physical_field, path=owner.__name__)
+        read_item = _value_reader(
+            arguments[0] if arguments else Any, owner, item_field, own=own
+        )
+
+        def read_list(value: object, path: str) -> object:
+            if type(value) is not list:
+                return general(value, path)
+            result = [read_item(item, f"{path}[{index}]") for index, item in enumerate(value)]
+            _validate_physical_serie_length(result, physical_field, path=path)
+            return result
+
+        return read_list
+    return general
+
+
 def _from_dict(
     cls: type[_T],
     values: Mapping[str, Any],
@@ -2372,6 +2626,12 @@ def _from_dict(
         resolved_hints=resolved_hints,
         resolved_cache=resolved_cache,
     )
+    if errors == "raise" and not bindings and type(values) is dict:
+        plan = _read_plan(cls, schema, conversion_owner or cls, physical_root)
+        if plan is not None and values.keys() == plan.names:
+            return cls(
+                **{name: read(values[name], f"{path}.{name}") for name, read in plan.readers}
+            )
     if physical_root is not None:
         _validate_physical_struct_names(
             physical_root,

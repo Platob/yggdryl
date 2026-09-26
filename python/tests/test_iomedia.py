@@ -466,6 +466,16 @@ class Variant:
     value: int | str
 
 
+@scalar
+class ListOrInt:
+    value: list[int] | int
+
+
+@scalar
+class Numeric:
+    value: int | float
+
+
 class TestDataclassRecords:
     def test_decorated_dataclass_infers_its_cached_struct_field(
         self, tmp_path: pathlib.Path
@@ -508,13 +518,51 @@ class TestDataclassRecords:
 
         assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
 
-    def test_a_class_row_the_core_refuses_is_named_by_its_path(
+    def test_union_members_land_bare_and_read_back_as_written(
         self, tmp_path: pathlib.Path
     ) -> None:
-        handle = IOBase(tmp_path / "variant.parquet")
+        # A member holds a bare value: a list stays the list, never a pair.
+        rows = [Variant(1), Variant("a")]
+        lists = [ListOrInt([1, 5]), ListOrInt(7)]
 
-        with pytest.raises(ValueError, match=r"\.value: expected union"):
-            handle.overwrite_records([Variant(1)])
+        variants = IOBase(tmp_path / "variant.arrows")
+        variants.overwrite_records(rows)
+        assert list(variants.read_records(Variant)) == rows
+        members = IOBase(tmp_path / "lists.arrows")
+        members.overwrite_records(lists)
+        assert list(members.read_records(ListOrInt)) == lists
+        # Parquet has no union layout, and says so by the column's name.
+        with pytest.raises(ValueError, match='union column "value"'):
+            IOBase(tmp_path / "variant.parquet").overwrite_records(rows)
+
+    def test_a_union_member_no_branch_takes_is_refused_naming_its_path(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "numeric.parquet")
+
+        with pytest.raises(ValueError, match=r"\.value: expected a value one union member accepts"):
+            handle.overwrite_records([Numeric("x")])
+
+    def test_a_declared_field_reads_instances_by_name(self, tmp_path: pathlib.Path) -> None:
+        wider = IOBase(tmp_path / "wider.parquet")
+        options = wider.record_options()
+        options.field = Field(
+            "row", "struct<venue: utf8, id: int64 not null, note: utf8>", nullable=False
+        )
+
+        # A column the class does not declare is null; order is the field's.
+        wider.overwrite_records([Trade(1, "XNAS"), Trade(2, None)], options=options)
+        assert list(wider.read_records()) == [
+            {"venue": "XNAS", "id": 1, "note": None},
+            {"venue": None, "id": 2, "note": None},
+        ]
+
+        # A member the field does not declare is not read.
+        narrower = IOBase(tmp_path / "narrower.parquet")
+        options = narrower.record_options()
+        options.field = Field("row", "struct<id: int64 not null>", nullable=False)
+        narrower.overwrite_records([Trade(1, "XNAS")], options=options)
+        assert list(narrower.read_records()) == [{"id": 1}]
 
     def test_plain_dataclass_reads_one_row_at_a_time(
         self, tmp_path: pathlib.Path

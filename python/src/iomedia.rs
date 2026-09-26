@@ -62,6 +62,7 @@ use crate::datatype::{
 use crate::enums::{PyMimeType, core_media_type_from_value};
 use crate::expression::{PyFilter, PyPlan, PySelector, plan_from_value};
 use crate::field::{PyField, core_field_from_value, core_schema_to_pyarrow};
+use crate::scalar::RowPlan;
 use crate::serie::{PySerie, PySerieReader};
 use crate::timezone::{PyTimezone, core_timezone_from_value};
 use crate::value_error;
@@ -527,13 +528,19 @@ pub(crate) fn batch_reader_from_records(
         let schema = field.clone().into_arrow_schema().map_err(value_error)?;
         return Ok(yggdryl::arrow::batch_reader(schema, []));
     };
-    if options.field().is_none() && is_dataclass_instance(&first)? {
-        let field = core_root_field_from_value(&first, options.name())?;
-        options.set_field(field.clone());
-        // The rows are instances of the class whose own field this is, so
-        // each crosses the core's value contract and lands in a column
-        // there, rather than being lowered to a mapping for PyArrow to cast.
-        return row_reader(&items, &first, options, Some(Arc::new(field)));
+    if is_dataclass_instance(&first)? {
+        let root = if let Some(field) = options.field() {
+            field.clone()
+        } else {
+            let field = core_root_field_from_value(&first, options.name())?;
+            options.set_field(field.clone());
+            field
+        };
+        // Instances land through the core under the root the write declares,
+        // their class's own when none was: each is read onto the root's
+        // children by name and crosses the core's value contract there,
+        // rather than being lowered to a mapping for PyArrow to cast.
+        return row_reader(&items, &first, options, Some(Arc::new(root)));
     }
     row_reader(&items, &first, options, None)
 }
@@ -762,7 +769,7 @@ fn row_reader(
     };
     let mut rows = Rows {
         items: items.clone().unbind(),
-        landed,
+        landed: landed.map(|root| (RowPlan::new(py, &root), root)),
         from_pylist: pyarrow::record_batch(py)?
             .getattr(intern!(py, "from_pylist"))?
             .unbind(),
@@ -827,10 +834,10 @@ impl arrow_array::RecordBatchReader for Head {
 struct Rows {
     /// The Python iterator the rows are pulled from.
     items: Py<PyAny>,
-    /// The root the rows land under through the core, when they are a
-    /// record class's instances under the field that class declares; `None`
-    /// builds each batch with `from_pylist` instead.
-    landed: Option<Arc<CoreField>>,
+    /// The root the rows land under through the core, and how a row is read
+    /// onto its children, when the rows are a record class's instances;
+    /// `None` builds each batch with `from_pylist` instead.
+    landed: Option<(RowPlan, Arc<CoreField>)>,
     /// `pyarrow.RecordBatch.from_pylist`, resolved once rather than per batch.
     from_pylist: Py<PyAny>,
     /// The `pyarrow.Schema` every batch is built under, when one was declared.
@@ -896,7 +903,7 @@ impl Rows {
                 return Ok(None);
             }
             let batch = match (chunk, &self.landed) {
-                (Chunk::Values(rows), Some(root)) => {
+                (Chunk::Values(rows), Some((_, root))) => {
                     let root = Arc::clone(root);
                     // Landing reads no Python object, so other threads run.
                     py.detach(move || -> yggdryl::Result<RecordBatch> {
@@ -923,9 +930,10 @@ impl Rows {
         chunk: &mut Chunk<'_>,
         row: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
-        match chunk {
-            Chunk::Values(rows) => rows.push(crate::scalar::row_from_py(row)?),
-            Chunk::Mappings(rows) => rows.append(self.mapping(py, row)?)?,
+        match (chunk, self.landed.as_mut()) {
+            (Chunk::Values(rows), Some((plan, _))) => rows.push(plan.row(row)?),
+            (Chunk::Values(rows), None) => rows.push(crate::scalar::from_py(row)?),
+            (Chunk::Mappings(rows), _) => rows.append(self.mapping(py, row)?)?,
         }
         Ok(())
     }

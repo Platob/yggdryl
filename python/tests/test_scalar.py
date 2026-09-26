@@ -110,6 +110,25 @@ def test_a_record_class_reads_every_field_it_declares() -> None:
     ]
 
 
+@scalar
+class ListOrInt:
+    value: list[int] | int
+
+
+def test_a_record_class_member_under_a_union_is_read_bare() -> None:
+    field = ListOrInt.into_field()
+
+    # The instance's member is a list, so it is the list member's payload.
+    assert field.scalar(ListOrInt([1, 5])).as_py() == [[0, [1, 5]]]
+    assert field.scalar(ListOrInt(5)).as_py() == [[1, 5]]
+    assert Serie.from_scalars(field, [ListOrInt([1, 5]), ListOrInt(2)]).rows() == [
+        field.scalar(ListOrInt([1, 5])),
+        field.scalar(ListOrInt(2)),
+    ]
+    # A list handed to the union field itself still spells the pair.
+    assert field.dtype["value"].scalar([1, 5]).as_py() == [1, 5]
+
+
 def test_a_record_class_opening_the_arrow_protocol_is_the_column_it_exports() -> None:
     column = Scalar.from_(ArrowRecord((1, 2)))
 

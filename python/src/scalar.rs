@@ -1632,22 +1632,149 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     Encoder::default().convert(value, 0)
 }
 
-/// Convert one record row: a dictionary names its fields, the way a record
-/// door reads a mapping row, and anything else crosses as [`from_py`] reads it.
+/// Convert one Python value that is a value of `field`.
+///
+/// A record class's instance holds bare values: a member annotated
+/// `list[int] | str` holds a list, never the `[type_id, payload]` pair a
+/// sequence spells under a union. So an instance is walked alongside the
+/// field, and every union position below it reads its value bare and spells
+/// the pair naming its member, which the core's
+/// [`UnionFields::branch_of`](yggdryl::UnionFields::branch_of) chooses. Any
+/// other value - a list spelling a pair included - crosses as [`from_py`]
+/// reads it, as does every value under a field that holds no union.
 ///
 /// # Errors
 ///
-/// [`from_py`]'s, and a `TypeError` for a key that is not `str`.
-pub(crate) fn row_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
-    let Ok(mapping) = value.cast::<PyDict>() else {
-        return from_py(value);
-    };
-    let mut encoder = Encoder::default();
-    let pairs = mapping
-        .iter()
-        .map(|(name, item)| Ok((record_name(&name)?, encoder.convert(&item, 1)?)))
-        .collect::<PyResult<Vec<_>>>()?;
-    Scalar::from_struct(pairs).map_err(value_error)
+/// [`from_py`]'s, and the core's refusal of a member no union member takes.
+pub(crate) fn from_py_under(field: &CoreField, value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    if holds_union(field.dtype()) && matches!(class_kind(value)?, ClassKind::Record(_)) {
+        return Encoder::default().convert_under(field.dtype(), value, 0);
+    }
+    from_py(value)
+}
+
+/// Whether a union sits in `dtype` or anywhere below it.
+fn holds_union(dtype: &CoreDataType) -> bool {
+    matches!(dtype, CoreDataType::Union(..))
+        || (0..dtype.field_len())
+            .filter_map(|index| dtype.get_field_at(index))
+            .any(|child| holds_union(child.dtype()))
+}
+
+/// One record door's rows, read onto the children of the root they land
+/// under, in the root's order.
+///
+/// A dictionary and a record class's instance are read by name: a child the
+/// row does not hold is null, and a key or member the root does not declare
+/// is not read, which is how a mapping row has always met a declared schema.
+/// A list or a tuple of the root's arity is read by position. Every cell is
+/// a bare value, so a union child spells the pair naming its member.
+pub(crate) struct RowPlan {
+    /// Each child: its name, interned, and whether a union sits at or below it.
+    children: Vec<(Py<PyString>, CoreDataType, bool)>,
+    /// For each record class seen, the member attribute that fills each child.
+    classes: HashMap<usize, (Py<PyType>, ChildAttributes)>,
+}
+
+/// The member attribute filling each root child, for one record class; `None`
+/// where the class declares no member of the child's name.
+type ChildAttributes = Arc<[Option<Py<PyString>>]>;
+
+impl RowPlan {
+    /// Resolve the root's children once.
+    pub(crate) fn new(py: Python<'_>, root: &CoreField) -> Self {
+        let dtype = root.dtype();
+        let children = (0..dtype.field_len())
+            .filter_map(|index| dtype.get_field_at(index))
+            .map(|child| {
+                (
+                    PyString::intern(py, child.name()).unbind(),
+                    child.dtype().clone(),
+                    holds_union(child.dtype()),
+                )
+            })
+            .collect();
+        Self {
+            children,
+            classes: HashMap::new(),
+        }
+    }
+
+    /// Read one row onto the root's children.
+    ///
+    /// # Errors
+    ///
+    /// [`from_py`]'s, and the core's refusal of a member no union member takes.
+    pub(crate) fn row(&mut self, value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+        let py = value.py();
+        let mut encoder = Encoder::default();
+        if let Ok(mapping) = value.cast::<PyDict>() {
+            let mut cells = Vec::with_capacity(self.children.len());
+            for (name, dtype, union) in &self.children {
+                cells.push(match mapping.get_item(name.bind(py))? {
+                    Some(item) => encoder.cell(dtype, *union, &item)?,
+                    None => Scalar::Null,
+                });
+            }
+            return Ok(Scalar::from_sequence(cells));
+        }
+        if let ClassKind::Record(members) = class_kind(value)? {
+            let attributes = self.attributes(&value.get_type(), &members);
+            let mut cells = Vec::with_capacity(self.children.len());
+            for ((_, dtype, union), attribute) in self.children.iter().zip(attributes.iter()) {
+                cells.push(match attribute {
+                    Some(attribute) => {
+                        encoder.cell(dtype, *union, &value.getattr(attribute.bind(py))?)?
+                    }
+                    None => Scalar::Null,
+                });
+            }
+            return Ok(Scalar::from_sequence(cells));
+        }
+        let positional = value
+            .cast::<PyTuple>()
+            .map(|items| items.as_sequence().clone())
+            .or_else(|_| {
+                value
+                    .cast::<PyList>()
+                    .map(|items| items.as_sequence().clone())
+            });
+        if let Ok(items) = positional
+            && items.len()? == self.children.len()
+        {
+            let mut cells = Vec::with_capacity(self.children.len());
+            for (index, (_, dtype, union)) in self.children.iter().enumerate() {
+                cells.push(encoder.cell(dtype, *union, &items.get_item(index)?)?);
+            }
+            return Ok(Scalar::from_sequence(cells));
+        }
+        from_py(value)
+    }
+
+    /// The member attribute filling each child, for one record class.
+    fn attributes(&mut self, class: &Bound<'_, PyType>, members: &[Member]) -> ChildAttributes {
+        let key = class.as_ptr() as usize;
+        if let Some((known, attributes)) = self.classes.get(&key)
+            && known.bind(class.py()).is(class)
+        {
+            return Arc::clone(attributes);
+        }
+        let py = class.py();
+        let attributes: ChildAttributes = self
+            .children
+            .iter()
+            .map(|(name, _, _)| {
+                let name = name.bind(py).to_str().ok()?;
+                members
+                    .iter()
+                    .find(|member| &*member.name == name)
+                    .map(|member| member.attribute.clone_ref(py))
+            })
+            .collect();
+        self.classes
+            .insert(key, (class.clone().unbind(), Arc::clone(&attributes)));
+        attributes
+    }
 }
 
 /// Convert one core value into the Python object that names it.
@@ -1995,6 +2122,126 @@ impl Encoder {
                 }
                 self.convert_other(value, depth)
             }
+        }
+    }
+
+    /// Convert one cell of a row under its column's datatype: walked when a
+    /// union sits at or below it, and converted as it is otherwise.
+    fn cell(
+        &mut self,
+        dtype: &CoreDataType,
+        union: bool,
+        value: &Bound<'_, PyAny>,
+    ) -> PyResult<Scalar> {
+        if union {
+            self.convert_under(dtype, value, 1)
+        } else {
+            self.convert(value, 1)
+        }
+    }
+
+    /// Convert a bare value under the datatype it is a value of, spelling
+    /// each union position below as the pair naming the member the core
+    /// chooses for it. A record class's instance, a list, a tuple and a
+    /// dictionary are walked to reach those positions; anything else, and
+    /// anything under a datatype holding no union, converts as it is.
+    fn convert_under(
+        &mut self,
+        dtype: &CoreDataType,
+        value: &Bound<'_, PyAny>,
+        depth: usize,
+    ) -> PyResult<Scalar> {
+        if depth >= MAX_PYTHON_DEPTH {
+            return Err(PyValueError::new_err(format!(
+                "Python value exceeds the {MAX_PYTHON_DEPTH}-level codec limit"
+            )));
+        }
+        if value.is_none() || !holds_union(dtype) {
+            return self.convert(value, depth);
+        }
+        match dtype {
+            CoreDataType::Union(members, _) => {
+                let bare = self.convert(value, depth)?;
+                let (type_id, member) = match members.branch_of(&bare) {
+                    Ok(branch) => branch,
+                    // A value that is not a sequence reads the same way at
+                    // the core, whose refusal names the path to it; a
+                    // sequence would read there as the pair, so it is
+                    // refused here instead.
+                    Err(_) if bare.sequence_rows().is_none() => return Ok(bare),
+                    Err(error) => return Err(value_error(error)),
+                };
+                let payload = if holds_union(member.dtype()) {
+                    self.convert_under(member.dtype(), value, depth + 1)?
+                } else {
+                    bare
+                };
+                Ok(Scalar::from_sequence([
+                    Scalar::from(i64::from(type_id)),
+                    payload,
+                ]))
+            }
+            CoreDataType::Struct(children) => {
+                let ClassKind::Record(members) = class_kind(value)? else {
+                    return self.convert(value, depth);
+                };
+                let py = value.py();
+                self.with_cycle_check(value, |encoder| {
+                    let entries = members
+                        .iter()
+                        .map(|member| {
+                            let item = value.getattr(member.attribute.bind(py))?;
+                            let converted = match children.get_by_name(&member.name) {
+                                Some(child) => {
+                                    encoder.convert_under(child.dtype(), &item, depth + 1)?
+                                }
+                                None => encoder.convert(&item, depth + 1)?,
+                            };
+                            Ok((&*member.name, converted))
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    Scalar::from_struct(entries).map_err(value_error)
+                })
+            }
+            CoreDataType::Serie(item)
+            | CoreDataType::SerieView(item)
+            | CoreDataType::FixedSizeSerie(item, _)
+            | CoreDataType::LargeSerie(item)
+            | CoreDataType::LargeSerieView(item) => {
+                let items = match (value.cast::<PyList>(), value.cast::<PyTuple>()) {
+                    (Ok(items), _) => items.as_sequence().clone(),
+                    (_, Ok(items)) => items.as_sequence().clone(),
+                    _ => return self.convert(value, depth),
+                };
+                self.with_cycle_check(value, |encoder| {
+                    let rows = (0..items.len()?)
+                        .map(|index| {
+                            encoder.convert_under(item.dtype(), &items.get_item(index)?, depth + 1)
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    Ok(Scalar::from_sequence(rows))
+                })
+            }
+            CoreDataType::Map(map) | CoreDataType::SortedMap(map) => {
+                let (Ok(entries), Some(values)) =
+                    (value.cast::<PyDict>(), map.entries().get_field_at(1))
+                else {
+                    return self.convert(value, depth);
+                };
+                self.with_cycle_check(value, |encoder| {
+                    let entries = entries
+                        .iter()
+                        .map(|(key, item)| {
+                            Ok((
+                                encoder.convert(&key, depth + 1)?,
+                                encoder.convert_under(values.dtype(), &item, depth + 1)?,
+                            ))
+                        })
+                        .collect::<PyResult<Vec<_>>>()?;
+                    Scalar::from_mapping(entries).map_err(value_error)
+                })
+            }
+            _ => self.convert(value, depth),
         }
     }
 

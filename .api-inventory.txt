@@ -3876,6 +3876,7 @@ pub enum DataType
   pub fn is_empty(&self) -> bool
   pub fn get(&self, index: usize) -> Option<(i8, &Field)>
   pub fn get_by_name(&self, name: &str) -> Option<(i8, &Field)>
+  pub fn branch_of(&self, value: &Scalar) -> Result<(i8, &Field)>  (the member a bare value belongs to: its own datatype's, then its family's, then the one that accepts it; two candidates or none is a refusal naming them - the reading `scalar` gives a bare value that is not a sequence, offered for any value)
   pub fn as_fields(&self) -> &[(i8, Field)]
   pub fn into_fields(self) -> Vec<(i8, Field)>
   pub fn union<I>(fields: I, mode: UnionMode) -> Result<Self>

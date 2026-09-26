@@ -253,6 +253,14 @@ def _write_class_records() -> object:
     return SINK_FILE.size
 
 
+def _write_declared_class_records() -> object:
+    # A declared field reads each instance onto its columns by name.
+    options = SINK_FILE.record_options()
+    options.field = TradeRow.into_field()
+    SINK_FILE.overwrite_records(CLASS_ROWS, options=options)
+    return SINK_FILE.size
+
+
 def _read_class_records() -> object:
     return sum(1 for _ in FILE.read_records(TradeRow))
 
@@ -412,6 +420,12 @@ BENCHMARKS = tuple(
         Benchmark("parquet read subset", _read_file_subset, ROW_COUNT, "row"),
         Benchmark("parquet read records", _read_records, ROW_COUNT, "row"),
         Benchmark("parquet write class records", _write_class_records, ROW_COUNT, "row"),
+        Benchmark(
+            "parquet write declared class records",
+            _write_declared_class_records,
+            ROW_COUNT,
+            "row",
+        ),
         Benchmark("parquet read class records", _read_class_records, ROW_COUNT, "row"),
         Benchmark("parquet row size fresh", _fresh_row_size, 1, "lookup"),
         Benchmark("parquet column size fresh", _fresh_column_size, 1, "lookup"),

@@ -933,6 +933,44 @@ mod records {
         yggdryl::impl_default_iomedia!();
     }
 
+    #[test]
+    fn a_union_column_is_refused_by_name_before_the_writer_is_built() {
+        let union = DataType::union(
+            [
+                (0, DataType::Int64.required_field("int")),
+                (1, DataType::utf8().required_field("str")),
+            ],
+            yggdryl::UnionMode::Dense,
+        )
+        .unwrap();
+        let root =
+            DataType::from(StructType::from_fields([union.nullable_field("value")]).unwrap())
+                .required_field("row");
+        // A bare value is the member its datatype names, so this row lands.
+        let rows = yggdryl::Serie::from_scalars(
+            root,
+            [yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(
+                7_i64,
+            )])],
+        )
+        .unwrap();
+        let batch = rows.into_arrow_batch().unwrap();
+        let mut media = Parquet::new(
+            Buffer::new()
+                .with_media_type(Url::from_str("file:///union.parquet").unwrap().media_type()),
+        );
+        let options = media.record_options().unwrap();
+
+        let refused = media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("union column \"value\""), "{refused}");
+    }
+
     impl IOBase for Shared {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
             self.handle.lock().unwrap().pread(offset, buffer)
