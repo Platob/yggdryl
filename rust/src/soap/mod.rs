@@ -5,7 +5,7 @@
 //! and writes from: the header blocks and the body element are each a
 //! [`Fragment`] - one element by its spelled name, its natural value, and the
 //! namespace declarations in scope at it - so a protocol built over SOAP reads
-//! its own vocabulary through [`Element`](crate::xml::Element) and knows
+//! its own vocabulary through [`Element`] and knows
 //! nothing of the envelope. A [`Fault`] is the body an error answers with:
 //! its code, its human-readable string, the actor that raised it, and the
 //! protocol's own detail.
