@@ -36,10 +36,11 @@ use crate::{
 /// # fn main() -> yggdryl::Result<()> {
 /// let request = Request::get("https://api.example.com/v1/orders?limit=100")?
 ///     .with_pagination(Pagination::Link);
+/// let data: yggdryl::FieldPath = "data".parse()?;
 /// let mut rows = 0;
 /// for page in request.pages() {
 ///     let page = page?;
-///     rows += page.scalar()?.path("data").map_or(0, |data| data.len());
+///     rows += page.scalar()?.path(&data).map_or(0, |data| data.len());
 /// }
 /// assert!(rows > 0);
 /// // Or every page as one Arrow batch under one inferred root.
