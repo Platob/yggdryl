@@ -3333,6 +3333,7 @@ pub struct Scope
   pub fn bind(&mut self, prefix: impl Into<SmolStr>, namespace: impl Into<SmolStr>)
   pub fn with(mut self, prefix: impl Into<SmolStr>, namespace: impl Into<SmolStr>) -> Self
   pub fn resolve(&self, prefix: &str) -> Option<&str>
+  pub fn bindings(&self) -> impl Iterator<Item = (&str, &str)> + '_
   pub fn prefix_of(&self, namespace: &str) -> Option<&str>
 pub struct Element<'a>
   pub fn root(document: &'a Scalar) -> Result<Self>
@@ -3369,6 +3370,8 @@ pub struct Fragment
   pub const fn value(&self) -> &Scalar
   pub fn into_value(self) -> Scalar
   pub fn element(&self) -> Element<'_>
+  pub fn from_element(element: &Element<'_>) -> Self  (remembers the declarations in scope at the element)
+  pub fn write<W: Write>(&self, writer: &mut W) -> Result<()>  (declares the prefixes it spells that its value does not)
 pub enum FaultCode
   pub fn as_str(&self) -> &str
 pub struct Fault
@@ -3534,7 +3537,8 @@ pub enum Session
   pub const fn name(&self) -> &'static str
   pub fn session_id(&self) -> Option<&str>
   pub fn read(header: &[Fragment]) -> Result<Option<Self>>
-  pub fn into_fragment(&self) -> Result<Fragment>
+  pub fn into_fragment(&self) -> Result<Fragment>  (the client's block, `mustUnderstand="1"` unprefixed as Excel spells it)
+  pub fn into_answer_fragment(&self) -> Result<Fragment>  (the provider's block, without `mustUnderstand`)
 pub enum RequestMethod
 pub struct Request
   pub const fn new(method: RequestMethod) -> Self
@@ -3551,6 +3555,7 @@ pub struct Request
   pub fn from_bytes(input: &[u8]) -> Result<Self>
   pub fn into_envelope(&self) -> Result<Envelope>
   pub fn into_bytes(&self) -> Result<Vec<u8>>
+  pub fn into_writer<W: Write>(&self, writer: W) -> Result<W>  (the payload's children in the XMLA schema's order)
 
 ### yggdryl::xmla::response  [rust/src/xmla/response.rs]
 pub const ACTOR: &str = "yggdryl"
@@ -3562,7 +3567,9 @@ pub struct XmlaError
   pub fn source(&self) -> &str
   pub fn help_file(&self) -> &str
   pub fn into_fragment(&self) -> Result<Fragment>
-  pub fn from_fault(fault: &Fault) -> Vec<Self>
+  pub fn from_element(element: &Element<'_>) -> Option<Self>
+  pub fn write<W: Write>(&self, writer: &mut W) -> Result<()>
+  pub fn from_fault(fault: &Fault) -> Vec<Self>  (the XMLA `Error` elements, and olap4j's own `error`)
 pub fn fault(code: FaultCode, error: XmlaError) -> Result<Fault>
 pub enum Answer
 pub struct Response
@@ -3572,8 +3579,10 @@ pub struct Response
   pub const fn rows(&self) -> Option<&Serie>
   pub const fn rowset(&self) -> Option<&Rowset>
   pub fn from_envelope(envelope: &Envelope, field: Option<&Field>) -> Result<Self>
+  pub fn from_envelope_with(envelope: &Envelope, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<Self>
   pub fn from_bytes(input: &[u8], field: Option<&Field>) -> Result<Self>
 pub fn write_rowset<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<W>
+pub fn write_rowset_reporting<W: Write>( writer: W, header: &[Fragment], method: Method, rowset: &Rowset, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, content: Content, ) -> Result<(W, Option<XmlaError>)>  (a batch failing mid-stream is reported inside the root as `Messages/Error`)
 pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W>
 pub fn write_fault<W: Write>(writer: W, fault: &Fault) -> Result<W>
 
@@ -3595,11 +3604,14 @@ pub struct Rowset
   pub const fn shared_field(&self) -> &Arc<Field>
   pub fn element_names(&self) -> Vec<&str>
   pub fn write_root<W: Write>( &self, writer: &mut W, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, schema: bool, data: bool, ) -> Result<()>
+  pub fn write_root_reporting<W: Write>( &self, writer: &mut W, batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>, schema: bool, data: bool, ) -> Result<Option<super::response::XmlaError>>
   pub fn write_schema<W: Write>(&self, writer: &mut W) -> Result<()>
   pub fn write_rows<W: Write>(&self, writer: &mut W, batch: &Serie) -> Result<()>
   pub fn from_schema(schema: &Element<'_>) -> Result<Self>
   pub fn read_rows(&self, root: &Element<'_>) -> Result<Serie>
   pub fn read_root(root: &Element<'_>, field: Option<&Field>) -> Result<(Self, Serie)>
+  pub fn read_root_with(root: &Element<'_>, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<(Self, Serie)>  (a declared field types the rows; a safe cast nulls what it cannot hold)
+  pub fn stated_field(root: &Element<'_>) -> Result<Option<Field>>
 
 ### yggdryl::xmla::server  [rust/src/xmla/server.rs]
 pub struct ServerOptions
@@ -3662,7 +3674,7 @@ pub enum Format  (`Tabular`, `Multidimensional`, `Native`; each enumeration belo
   pub const fn as_str(self) -> &'static str
   pub const fn description(self) -> &'static str
   pub const DEFAULT: Self = Self::Native
-pub enum Content  (`None`, `Schema`, `Data`, `SchemaData`)
+pub enum Content  (`None`, `Schema`, `Data`, `SchemaData`, `DataOmitDefaultSlicer`, `DataIncludeDefaultSlicer`)
   pub const DEFAULT: Self = Self::SchemaData
   pub const fn has_schema(self) -> bool
   pub const fn has_data(self) -> bool
