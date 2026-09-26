@@ -35,11 +35,9 @@
 //! The writer has a streaming shape as well: [`EnvelopeWriter`] opens the
 //! envelope and its header, lends the body to the caller, and closes both, so
 //! a response whose body is a stream of rows is written as the rows arrive
-//! rather than held whole. [`http`] is the HTTP binding: the request framing a
-//! SOAP endpoint reads and the response framing it writes, over any
-//! `std::io` stream.
-
-pub mod http;
+//! rather than held whole. The HTTP a SOAP endpoint is reached over is the
+//! crate's [`http`](crate::http) server and client; what SOAP 1.1 states of
+//! its binding - the media type, the `SOAPAction` header - is here.
 
 use std::borrow::Cow;
 use std::fmt;

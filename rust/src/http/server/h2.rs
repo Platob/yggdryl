@@ -23,7 +23,11 @@ use bytes::Bytes;
 use h2::server::SendResponse;
 use ureq::http;
 
-use super::framed::{Chunks, head_of, is_truncated, prepared};
+use super::framed::{
+    Chunks, head_of, is_truncated, prepared, traced_body, traced_head, traced_refusal,
+    traced_request,
+};
+use super::trace::Exchange;
 use super::{Incoming, Inner, Outcome};
 use crate::http::runtime;
 use crate::http::{HttpVersion, Method, Status};
@@ -175,7 +179,10 @@ async fn answer(
     let (parts, mut recv) = request.into_parts();
     let head = match head_of(&parts, HttpVersion::Http2) {
         Ok(head) => head,
-        Err((status, text)) => return refuse(&mut respond, inner, status, &text),
+        Err((status, text)) => {
+            let exchange = traced_refusal(inner, &parts, HttpVersion::Http2);
+            return refuse(&mut respond, inner, status, &text, exchange);
+        }
     };
     let (max, read_timeout) = (inner.options.max_body_size, inner.options.read_timeout);
     // Each frame is waited for within the read timeout, as each read of an
@@ -201,11 +208,13 @@ async fn answer(
     let body = match collected {
         Ok(body) => body,
         Err(Some(status)) => {
+            let exchange = traced_refusal(inner, &parts, HttpVersion::Http2);
             return refuse(
                 &mut respond,
                 inner,
                 status,
                 &format!("request body longer than {max} bytes"),
+                exchange,
             );
         }
         // The peer reset the stream, or went quiet part way.
@@ -216,6 +225,7 @@ async fn answer(
     // steps out of the runtime for them rather than handing the request to
     // another thread and back; a fixed answer is made where it is.
     let incoming = Incoming { head, body };
+    let mut exchange = traced_request(inner, &incoming);
     let routed = inner.route_of(&incoming);
     let dispatched = if routed.may_block() {
         tokio::task::block_in_place(|| inner.answer_routed(routed, incoming))
@@ -229,6 +239,9 @@ async fn answer(
     };
     let truncated = is_truncated(&answer.body, cut);
     let (response, body) = prepared(answer, head_only, inner.options.server_header());
+    if let Some(exchange) = exchange.as_mut() {
+        traced_head(exchange, &response, HttpVersion::Http2);
+    }
     let Ok(mut send) = respond.send_response(response, body.is_none()) else {
         return;
     };
@@ -236,7 +249,7 @@ async fn answer(
         return;
     };
     let write_timeout = inner.options.write_timeout;
-    let mut chunks = Chunks::of(body, cut);
+    let mut chunks = Chunks::of(body, cut, exchange.take());
     while let Some(chunk) = chunks.next(SEND_CHUNK).await {
         let Ok(mut chunk) = chunk else {
             // The leaf ended short of its announced length.
@@ -271,14 +284,24 @@ async fn answer(
 }
 
 /// Answer `status` with `text` and end the stream.
-fn refuse(respond: &mut SendResponse<Bytes>, inner: &Inner, status: Status, text: &str) {
+fn refuse(
+    respond: &mut SendResponse<Bytes>,
+    inner: &Inner,
+    status: Status,
+    text: &str,
+    mut exchange: Option<Exchange>,
+) {
     let (response, body) = prepared(
         super::Answer::text(status, text),
         false,
         inner.options.server_header(),
     );
+    if let Some(exchange) = exchange.as_mut() {
+        traced_head(exchange, &response, HttpVersion::Http2);
+    }
     if let Ok(mut send) = respond.send_response(response, body.is_none()) {
         if let Some(super::AnswerBody::Bytes(body)) = body {
+            traced_body(exchange, body.as_bytes());
             let _ = send.send_data(Bytes::copy_from_slice(body.as_bytes()), true);
         }
     }

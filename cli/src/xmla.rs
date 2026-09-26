@@ -1,19 +1,21 @@
 //! `ygg xmla`: the XML for Analysis provider from a terminal.
 //!
-//! `serve` binds the provider in [`yggdryl::xmla`] to a socket over folders
-//! of record media - one catalog per folder, its files the tables, its
-//! folders the schemas - and answers Discover and Execute until it is
-//! stopped. Nothing here decides what a request means: the command parses
-//! its arguments, builds the [`Service`] and hands the [`Server`] its socket,
-//! so a table served here and a table read through a handle are the same
-//! object read by the same code.
+//! `serve` routes the provider in [`yggdryl::xmla`] on the crate's HTTP
+//! [`Server`] over folders of record media - one catalog per folder, its
+//! files the tables, its folders the schemas - and answers Discover and
+//! Execute until it is stopped. Nothing here decides what a request means:
+//! the command parses its arguments, builds the [`Service`], binds the
+//! server and routes the service at its path, so a table served here and a
+//! table read through a handle are the same object read by the same code.
 
 use std::process::ExitCode;
+use std::sync::Arc;
 
 use clap::{Args, Subcommand};
 use yggdryl::holder::Holder;
-use yggdryl::xmla::{Catalog, Server, ServerOptions, Service, ServiceOptions};
-use yggdryl::{Error, Result, Url};
+use yggdryl::http::{Server, ServerOptions};
+use yggdryl::xmla::{Catalog, Service, ServiceOptions};
+use yggdryl::{Result, Url};
 
 use crate::style;
 
@@ -48,7 +50,7 @@ pub struct Serve {
 
     /// The largest request body accepted, in bytes.
     #[arg(long, default_value_t = 16 * 1024 * 1024)]
-    max_body: usize,
+    max_body: u64,
 
     /// Write every exchange under this folder: `NNNN-request.http` as read,
     /// `NNNN-response.http` as sent, numbered from 0000 in request order.
@@ -73,19 +75,17 @@ impl Serve {
         for spelled in &self.catalogs {
             service = service.with_catalog(catalog(spelled)?);
         }
-        let mut options = ServerOptions::new()
-            .with_path(self.path.clone())
-            .with_max_body(self.max_body);
+        let mut options = ServerOptions::default().with_max_body_size(self.max_body);
         if let Some(trace) = &self.trace {
             options = options.with_trace(holder(trace)?);
         }
-        let server = Server::bind(service, self.bind.as_str())
-            .map_err(Error::from)?
-            .with_options(options);
+        let server = Server::bind_with(&self.bind, options)?;
+        let service = Arc::new(service);
+        let endpoint = Arc::clone(&service).route(&server, &self.path)?;
         // The endpoint first and on its own line, so whatever started the
         // process reads where to connect before anything else is printed.
-        println!("{}", server.endpoint());
-        for catalog in server.service().catalogs() {
+        println!("{endpoint}");
+        for catalog in service.catalogs() {
             style::note(&format!(
                 "catalog {} over {}{}",
                 catalog.name(),
@@ -93,8 +93,11 @@ impl Serve {
                 if self.writable { ", writable" } else { "" }
             ));
         }
-        server.serve().map_err(Error::from)?;
-        Ok(ExitCode::SUCCESS)
+        // The server answers on its own threads until the process is
+        // stopped; this one only has to outlive it.
+        loop {
+            std::thread::park();
+        }
     }
 }
 

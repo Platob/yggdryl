@@ -20,9 +20,9 @@ name = "ygg"
 path = "src/main.rs"
 
 [dependencies]
-# Default features: a tool that reads a dictionary wants the same core a
-# consumer has, and building it cut down leaves half the core unused.
-yggdryl = { path = "../rust" }
+# The default core plus `http`: a tool that reads a dictionary wants the same
+# core a consumer has, and `ygg xmla serve` answers on the core's HTTP server.
+yggdryl = { path = "../rust", features = ["http"] }
 # Argument parsing with derived help, so every command documents itself and
 # `--help` is generated from the same declaration the parser uses.
 clap = { version = "4.5", features = ["derive", "wrap_help"] }

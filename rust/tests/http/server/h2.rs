@@ -33,6 +33,36 @@ fn one_port_answers_http11_and_http2_alike() {
 }
 
 #[test]
+fn a_body_refused_over_the_bound_is_traced_with_its_413() {
+    let (dir, trace) = trace_folder("h2-413");
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default()
+            .with_max_body_size(1000)
+            .with_trace(trace),
+    )
+    .expect("bind");
+    server.route(None, "/sink", |_| Ok(Response::new(Status::OK)));
+    let target = server.url_of("/sink").unwrap().to_string();
+    let refused = asking(HttpVersion::Http2)
+        .post(&target, vec![0_u8; 5000])
+        .unwrap()
+        .send()
+        .unwrap();
+    assert_eq!(refused.status().code(), 413);
+    let answer = wait_for(&dir.join("0000-response.http"), |bytes| {
+        bytes.starts_with(b"HTTP/2 413") && bytes.ends_with(b"bytes")
+    });
+    let request = std::fs::read(dir.join("0000-request.http")).expect("the request file");
+    assert!(
+        request.starts_with(b"POST /sink HTTP/2\r\n"),
+        "{}",
+        String::from_utf8_lossy(&request)
+    );
+    assert!(String::from_utf8_lossy(&answer).contains("request body longer than 1000 bytes"));
+}
+
+#[test]
 fn a_body_over_the_bound_is_413_on_its_own_stream() {
     let server = Server::bind_with(
         "127.0.0.1:0",
@@ -104,6 +134,72 @@ fn a_connection_quiet_for_the_read_timeout_is_closed_and_the_client_opens_anothe
         "pong"
     );
     assert_eq!(server.connections(), 2);
+}
+
+#[test]
+fn a_written_body_over_http2_arrives_whole_with_no_content_length() {
+    let server = served();
+    server.route(Some(Method::Get), "/written", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            body.write_all(b"streamed-over-h2")?;
+            Ok(())
+        }))
+    });
+    let response = asking(HttpVersion::Http2)
+        .get(&server.url_of("/written").unwrap().to_string())
+        .unwrap()
+        .send()
+        .unwrap();
+    assert_eq!(response.version(), HttpVersion::Http2);
+    assert!(response.headers().get("content-length").is_none());
+    assert_eq!(&*response.bytes().unwrap(), b"streamed-over-h2");
+}
+
+#[test]
+fn a_traced_http2_exchange_is_written_as_the_http11_messages_its_frames_carried() {
+    let trace_dir =
+        std::env::temp_dir().join(format!("yggdryl-http-h2-trace-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&trace_dir);
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default().with_trace(Holder::folder(&trace_dir).expect("a trace folder")),
+    )
+    .expect("bind");
+    server.respond(None, "/x", Response::new(Status::OK).with_text("ok"));
+    let response = asking(HttpVersion::Http2)
+        .get(&server.url_of("/x").unwrap().to_string())
+        .unwrap()
+        .send()
+        .unwrap();
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(response.text().unwrap(), "ok");
+    // The files complete a moment after the client read the last byte, on
+    // the connection's own task.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline
+        && !std::fs::read(trace_dir.join("0000-response.http"))
+            .is_ok_and(|bytes| bytes.ends_with(b"ok"))
+    {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let request = std::fs::read(trace_dir.join("0000-request.http")).expect("request trace");
+    assert!(
+        request.starts_with(b"GET /x HTTP/2\r\n"),
+        "{}",
+        String::from_utf8_lossy(&request)
+    );
+    let answer = std::fs::read(trace_dir.join("0000-response.http")).expect("response trace");
+    assert!(
+        answer.starts_with(b"HTTP/2 200 OK\r\n"),
+        "{}",
+        String::from_utf8_lossy(&answer)
+    );
+    assert!(
+        answer.ends_with(b"ok"),
+        "{}",
+        String::from_utf8_lossy(&answer)
+    );
+    let _ = std::fs::remove_dir_all(&trace_dir);
 }
 
 #[test]

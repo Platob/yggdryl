@@ -8,7 +8,10 @@
 //! generic client feature against a server the crate controls, which is what
 //! [`Server::route`], [`Server::respond`], [`Server::inject`] and the request
 //! log are for. One accept thread and one thread per connection; HTTP/1.1
-//! keep-alive; request bodies framed by `Content-Length` or chunked.
+//! keep-alive; request bodies framed by `Content-Length` or chunked. A
+//! handler's answer is bytes in hand or a body written as it is sent
+//! ([`Response::with_writer`]), and [`ServerOptions::with_trace`] writes
+//! every exchange into a folder as the `message/http` documents it was.
 //!
 //! Faults, routes and mounts are looked up under one lock that is released
 //! before any byte is served, and a leaf is never read whole: a child of a
@@ -28,6 +31,7 @@ use std::time::Duration;
 
 use smol_str::format_smolstr;
 
+use super::response::BodyWriter;
 use super::wire::{MAX_LINE_BYTES, RequestHead};
 use super::{Body, Headers, Method, Request, Response, Status};
 use crate::holder::Holder;
@@ -41,6 +45,7 @@ mod h2;
 #[cfg(feature = "http3")]
 mod h3;
 mod mount;
+mod trace;
 
 /// What a server answers with, before the connection frames it.
 ///
@@ -56,6 +61,9 @@ pub(super) struct Answer {
 pub(super) enum AnswerBody {
     /// Bytes in hand: a route's answer, a listing, an error text.
     Bytes(Body),
+    /// Written by a handler's writer as it is sent, its length unknown
+    /// until it ends ([`Response::with_writer`]).
+    Writer(BodyWriter),
     /// `length` bytes of a mounted leaf from `start`, streamed when written.
     Stream {
         source: Source,
@@ -104,15 +112,20 @@ impl Answer {
     /// A handler's response as an answer: its status, headers and body.
     pub(super) fn from_response(response: &Response) -> Self {
         // The body as the handler stated it: a coded body goes out coded,
-        // under the `Content-Encoding` the handler set beside it.
-        let body = match response.raw_bytes() {
-            Ok(bytes) => Body::Bytes(bytes),
+        // under the `Content-Encoding` the handler set beside it, and a
+        // written one is written into the connection, never into memory.
+        let body = match response.take_writer() {
+            Ok(Some(writer)) => AnswerBody::Writer(writer),
+            Ok(None) => match response.raw_bytes() {
+                Ok(bytes) => AnswerBody::Bytes(Body::Bytes(bytes)),
+                Err(error) => return Self::from_error(&error),
+            },
             Err(error) => return Self::from_error(&error),
         };
         Self {
             status: response.status(),
             headers: response.headers().clone(),
-            body: AnswerBody::Bytes(body),
+            body,
         }
     }
 
@@ -258,6 +271,9 @@ pub struct ServerOptions {
     #[cfg(feature = "http3")]
     http3: bool,
     server_header: String,
+    /// Shared, since the options are copied and every connection writes
+    /// under the one folder.
+    trace: Option<Arc<Holder>>,
 }
 
 impl Default for ServerOptions {
@@ -275,6 +291,7 @@ impl Default for ServerOptions {
             #[cfg(feature = "http3")]
             http3: false,
             server_header: format!("yggdryl/{}", env!("CARGO_PKG_VERSION")),
+            trace: None,
         }
     }
 }
@@ -429,6 +446,30 @@ impl ServerOptions {
         self.server_header = server_header.into();
         self
     }
+
+    /// The folder every exchange is written into, when the server traces:
+    /// `NNNN-request.http` and `NNNN-response.http`, `message/http`
+    /// documents numbered from `0000` in the order the requests' heads
+    /// arrived, across every connection. An HTTP/1.1 exchange is written byte for
+    /// byte as it went over the wire - a request refused on its head, an
+    /// interim `100 Continue` and a chunked framing included - and an
+    /// HTTP/2 or HTTP/3 one as the HTTP/1.1 message its frames carried; a
+    /// connection that goes away before sending a byte wrote nothing, and a
+    /// tunnel's bytes past its `200` are not an exchange. An answer is
+    /// appended as it goes out, so a streamed one is never held whole for
+    /// its copy; a write to the folder that fails closes the connection
+    /// after the answer rather than trace on past a gap.
+    pub fn trace(&self) -> Option<&Holder> {
+        self.trace.as_deref()
+    }
+
+    /// This value tracing into `folder` (a container, whose children are
+    /// created as the exchanges begin).
+    #[must_use]
+    pub fn with_trace(mut self, folder: Holder) -> Self {
+        self.trace = Some(Arc::new(folder));
+        self
+    }
 }
 
 /// A mounted holder and the media types `PUT` declared for its children.
@@ -487,14 +528,35 @@ impl State {
     }
 
     /// The route of `method` at `path`, the exact method before the
-    /// any-method one.
+    /// any-method one; a `HEAD` no route names is answered by the `GET`
+    /// route, since it is that `GET` without its body (RFC 9110 9.3.2).
     fn route(&self, method: Method, path: &str) -> Option<Route> {
-        let path = path.to_owned();
-        let exact = (Some(method), path);
-        self.routes
-            .get(&exact)
-            .or_else(|| self.routes.get(&(None, exact.1)))
+        let exact = |method: Method| self.routes.get(&(Some(method), path.to_owned()));
+        exact(method)
+            .or_else(|| self.routes.get(&(None, path.to_owned())))
+            .or_else(|| {
+                (method == Method::Head)
+                    .then(|| exact(Method::Get))
+                    .flatten()
+            })
             .cloned()
+    }
+
+    /// The methods routed at `path`, as a `405` states them in `Allow`:
+    /// empty when no route names the path, `HEAD` beside a `GET`.
+    fn allowed(&self, path: &str) -> Vec<Method> {
+        let mut allowed: Vec<Method> = Method::ALL
+            .into_iter()
+            .filter(|method| self.routes.contains_key(&(Some(*method), path.to_owned())))
+            .collect();
+        if allowed.contains(&Method::Get) && !allowed.contains(&Method::Head) {
+            let at = allowed
+                .iter()
+                .position(|method| *method == Method::Get)
+                .map_or(0, |get| get + 1);
+            allowed.insert(at, Method::Head);
+        }
+        allowed
     }
 
     /// The longest mount whose prefix covers `path`, and the path below it.
@@ -517,6 +579,8 @@ pub(super) struct Inner {
     live: AtomicUsize,
     count: AtomicUsize,
     state: Mutex<State>,
+    /// Where exchanges are written, when the options trace.
+    trace: Option<trace::Trace>,
     /// The QUIC side, when the options answer HTTP/3.
     #[cfg(feature = "http3")]
     h3: Option<h3::Listener>,
@@ -567,11 +631,19 @@ impl Inner {
             let fault = state.take_fault(&path);
             let found = match state.route(incoming.head.method, &path) {
                 Some(route) => Some(Found::Route(route)),
-                None => state.mount(&path).map(|(mount, rest)| Found::Mount {
-                    shared: Arc::clone(&mount.shared),
-                    prefix: mount.prefix.clone(),
-                    rest: rest.to_owned(),
-                }),
+                None => match state.mount(&path) {
+                    Some((mount, rest)) => Some(Found::Mount {
+                        shared: Arc::clone(&mount.shared),
+                        prefix: mount.prefix.clone(),
+                        rest: rest.to_owned(),
+                    }),
+                    // A path routed for other methods is there: the method
+                    // is what it does not answer (RFC 9110 15.5.6).
+                    None => {
+                        let allowed = state.allowed(&path);
+                        (!allowed.is_empty()).then_some(Found::NotAllowed(allowed))
+                    }
+                },
             };
             (fault, found)
         };
@@ -641,6 +713,21 @@ impl Inner {
                     rest,
                 }),
             ) => mount::serve(&shared, &prefix, &rest, &incoming, &self.url, &self.options),
+            (Ok(_), Some(Found::NotAllowed(allowed))) => {
+                let allow = allowed
+                    .iter()
+                    .map(|method| method.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Answer::text(
+                    Status::METHOD_NOT_ALLOWED,
+                    &format!(
+                        "{} is not answered at {path}; {allow} are",
+                        incoming.head.method
+                    ),
+                )
+                .with_header("allow", &allow)
+            }
         };
         self.record(&incoming, &path, query, answer.status);
         #[cfg(feature = "http3")]
@@ -711,6 +798,8 @@ enum Found {
         prefix: String,
         rest: String,
     },
+    /// Routes for other methods, which a `405` names.
+    NotAllowed(Vec<Method>),
 }
 
 /// Where one request goes, decided under the state's lock and answered
@@ -759,7 +848,7 @@ fn path_below<'path>(prefix: &str, path: &'path str) -> Option<&'path str> {
 ///
 /// Returns [`Error::Parse`] with target `http path` for a query, a fragment
 /// or a control byte in it.
-fn normalize_path(path: &str) -> Result<String> {
+pub(crate) fn normalize_path(path: &str) -> Result<String> {
     if let Some(position) = path
         .bytes()
         .position(|byte| byte == b'?' || byte == b'#' || byte < b' ' || byte == 0x7f)
@@ -884,6 +973,7 @@ impl Server {
                 recording: options.recording,
                 ..State::default()
             }),
+            trace: options.trace.clone().map(trace::Trace::new),
             options,
             #[cfg(feature = "http3")]
             h3,
@@ -1047,13 +1137,21 @@ impl Server {
     }
 
     /// Answer `path` with `response` every time: its status, headers and
-    /// body, the body read whole once here.
+    /// body, the body read - or written - whole once here. A body that
+    /// cannot be read, or a writer that fails, is answered as that failure,
+    /// `500` with its text, rather than an empty body under the stated
+    /// status.
     pub fn respond(&self, method: Option<Method>, path: &str, response: Response) {
         let Ok(path) = normalize_path(path) else {
             return;
         };
-        let body = response.raw_bytes().map(Body::Bytes).unwrap_or(Body::Empty);
-        let fixed = Route::Fixed(Arc::new(response.with_body(body)));
+        let fixed = match response.raw_bytes() {
+            Ok(bytes) => response.with_body(Body::Bytes(bytes)),
+            Err(error) => {
+                Response::new(Status::INTERNAL_SERVER_ERROR).with_text(&error.to_string())
+            }
+        };
+        let fixed = Route::Fixed(Arc::new(fixed));
         self.inner.state().routes.insert((method, path), fixed);
     }
 

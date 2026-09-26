@@ -9628,6 +9628,11 @@ export interface HttpServerOptions {
   http3?: boolean
   /** The `Server` header every answer carries. */
   serverHeader?: string
+  /**
+   * A folder every exchange is written into, as `NNNN-request.http` and
+   * `NNNN-response.http`: a folder path, or a URL a holder resolves.
+   */
+  trace?: string
 }
 
 /** What a session is built with, as the loader normalizes it. */

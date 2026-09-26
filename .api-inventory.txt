@@ -2240,6 +2240,7 @@ pub struct ZipPath
   pub fn with_header(self, name: &str, value: &str) -> Result<Self>
   pub fn with_headers(self, headers: Headers) -> Result<Self>
   pub fn with_body(self, body: impl Into<Body>) -> Self
+  pub fn with_writer(self, writer: impl FnOnce(&mut dyn Write) -> Result<()> + Send + 'static) -> Self  (run into the connection when a server sends the answer, never held whole; read here it is written into memory once, within max_body_size)
   pub fn with_json(self, value: &Scalar) -> Result<Self>
   pub fn with_text(self, text: &str) -> Self
   pub fn status(&self) -> Status
@@ -2356,6 +2357,8 @@ pub struct ZipPath
   pub fn with_http3(self, http3: bool) -> Self  (feature `http3`)
   pub fn server_header(&self) -> &str
   pub fn with_server_header(self, server_header: impl Into<String>) -> Self
+  pub fn trace(&self) -> Option<&Holder>
+  pub fn with_trace(self, folder: Holder) -> Self  (a container; writes NNNN-request.http/NNNN-response.http per exchange, numbered from 0000 in request order)
   pub struct Server  (Debug; Drop shuts down)
   pub const MAX_RECORDED: usize = 65_536;
   pub const MAX_RECORDED_BYTES: usize = 64 << 20;
@@ -3853,33 +3856,6 @@ pub struct EnvelopeWriter<W: Write>
   pub fn fault(mut self, fault: &Fault) -> Result<W>
   pub fn finish(mut self) -> Result<W>
 
-### yggdryl::soap::http  [rust/src/soap/http.rs]
-pub const MAX_LINE: usize = 8192
-pub const MAX_HEADERS: usize = 128
-pub enum Status
-  pub const fn code(self) -> u16
-  pub const fn reason(self) -> &'static str
-pub struct HttpError
-  pub fn new(status: Status, reason: impl Into<String>) -> Self
-  pub const fn status(&self) -> Status
-  pub fn reason(&self) -> &str
-pub enum Version
-pub struct Request
-  pub fn read<R: BufRead, W: Write>( reader: &mut R, writer: &mut W, max_body: usize, ) -> Result<Option<Self>, HttpError>  (`writer` takes the interim `100 Continue`)
-  pub fn method(&self) -> &str
-  pub fn target(&self) -> &str
-  pub const fn version(&self) -> Version
-  pub fn header(&self, name: &str) -> Option<&str>
-  pub fn headers(&self) -> &[(String, String)]
-  pub fn body(&self) -> &[u8]
-  pub fn content_type(&self) -> Option<&str>
-  pub fn soap_action(&self) -> Option<&str>
-  pub fn keep_alive(&self) -> bool
-pub fn write_response<W: Write>( writer: &mut W, status: Status, content_type: &str, keep_alive: bool, headers: &[(&str, &str)], body: &[u8], ) -> io::Result<()>
-pub fn begin_chunked<W: Write>( mut writer: W, status: Status, content_type: &str, keep_alive: bool, headers: &[(&str, &str)], ) -> io::Result<ChunkedWriter<W>>
-pub struct ChunkedWriter<W: Write>
-  pub fn finish(mut self) -> io::Result<W>
-
 ### yggdryl::xmla  [rust/src/xmla/mod.rs]
 pub const NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis"
 pub const ROWSET_NAMESPACE: &str = "urn:schemas-microsoft-com:xml-analysis:rowset"
@@ -4059,25 +4035,9 @@ pub struct Rowset
   pub fn read_root_with(root: &Element<'_>, field: Option<&Field>, cast: crate::ArrowCastOptions) -> Result<(Self, Serie)>  (a declared field types the rows; a safe cast nulls what it cannot hold)
   pub fn stated_field(root: &Element<'_>) -> Result<Option<Field>>
 
-### yggdryl::xmla::server  [rust/src/xmla/server.rs]
-pub struct ServerOptions
-  pub fn new() -> Self
-  pub fn with_path(mut self, path: impl Into<String>) -> Self
-  pub const fn with_max_body(mut self, max_body: usize) -> Self
-  pub fn with_trace(mut self, folder: Holder) -> Self
-pub struct Server
-  pub fn bind(service: Service, address: impl ToSocketAddrs) -> io::Result<Self>
-  pub fn with_options(mut self, options: ServerOptions) -> Self
-  pub fn local_addr(&self) -> io::Result<SocketAddr>
-  pub fn endpoint(&self) -> String
-  pub fn service(&self) -> &Arc<Service>
-  pub fn serve(self) -> io::Result<()>
-  pub fn spawn(self) -> Running
-pub struct Running
-  pub const fn local_addr(&self) -> Option<SocketAddr>
-  pub fn endpoint(&self) -> &str
-  pub fn service(&self) -> &Arc<Service>
-  pub fn stop(mut self)
+### yggdryl::xmla::server  [rust/src/xmla/server.rs]  (behind the `http` feature)
+impl Service
+  pub fn route(self: Arc<Self>, server: &Server, path: &str) -> Result<Url>  (a GET the endpoint's description, a HEAD its head, a POST answered as it is sent; any other method the server's 405)
 
 ### yggdryl::xmla::service  [rust/src/xmla/service.rs]
 pub mod code  (the `ErrorCode` values the provider's faults carry)

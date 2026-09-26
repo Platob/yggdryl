@@ -4594,6 +4594,10 @@ assert_eq!(sent.headers.get("x-desk"), Some("power"));
 
 A server exposed to peers it does not trust stays bounded. `ServerOptions` caps the connections served at once (`max_connections`, 512; past it a connection is closed unread), gives a request head `read_timeout` to arrive whole however slowly it trickles, and gives a peer that stops reading its answer `write_timeout`. A `Transfer-Encoding` on an HTTP/1.0 request, or one not ending in `chunked`, is `400`, and a path whose decoded segments hold `.`, `..` or a separator never reaches a mount. With `with_tunnel(true)` the server answers `CONNECT host:port` by piping bytes to that address, standing in for the forward proxy a client's proxy handling is tested against.
 
+A `HEAD` no route names answers as its `GET` route would - the same headers, no body - and a method no route names is `405` with `Allow` listing the routed methods in `Method::ALL` order, `HEAD` beside a routed `GET`. `Expect: 100-continue` earns its interim `100 Continue` once an HTTP/1.1 head has passed every check the head alone refuses a body on (a bad `Transfer-Encoding` or `Content-Length` is `400`, a stated length over `max_body_size` is `413`, each with no `100`); a chunked body states no length, so one past the bound is `413` as it is read, after the `100`. HTTP/1.0 ignores the header, and any other expectation is `417`.
+
+In Rust, a route's answer is bytes in hand or a body [`Response::with_writer`](https://docs.rs/yggdryl/latest/yggdryl/http/struct.Response.html#method.with_writer) runs as it is sent - chunked on HTTP/1.1, as data frames on HTTP/2 and HTTP/3, 64 KiB at a time - never held whole; read here instead, it is written into memory once, within `max_body_size`, and a `HEAD` never runs it. `ServerOptions::with_trace(folder)` - in Python `trace=` on `Server.bind`, in Node `trace` in its server options, both a folder path - writes every exchange under it as `NNNN-request.http`/`NNNN-response.http`, `message/http` documents numbered from `0000` in the order the requests' heads arrived, across every connection: an HTTP/1.1 exchange byte for byte as it crossed the wire, the interim `100 Continue` and the chunked framing included, an HTTP/2 or HTTP/3 one rendered as the HTTP/1.1 message its frames carried, and the response file complete a moment after the connection thread finishes writing the answer.
+
 === "Rust"
 
     ```rust
@@ -4646,6 +4650,59 @@ A server exposed to peers it does not trust stays bounded. `ServerOptions` caps 
     ```
 
 JavaScript has no `route`: a handler would run on the server's thread and wait on the JavaScript thread, which deadlocks the moment that thread is the one sending the request; `respond`, `mount` and `inject` cover it.
+
+A written body is Rust-only; the `HEAD` answered by the `GET` route, the `405` naming what is routed and the trace are the server's in every language:
+
+=== "Rust"
+
+    ```rust
+    use std::io::Write;
+    use std::time::Duration;
+    use yggdryl::holder::Holder;
+    use yggdryl::http::{self, Body, Method, Response, Server, ServerOptions, Status};
+
+    let trace_dir = std::env::temp_dir().join(format!("yggdryl-docs-trace-{}", std::process::id()));
+    std::fs::create_dir_all(&trace_dir)?;
+    let options = ServerOptions::default().with_trace(Holder::folder(&trace_dir)?);
+    let server = Server::bind_with("127.0.0.1:0", options)?;
+    server.route(Some(Method::Get), "/rows", |_| {
+        Ok(Response::new(Status::OK).with_writer(|body| {
+            for row in 0..3 {
+                writeln!(body, "row {row}")?;
+            }
+            Ok(())
+        }))
+    });
+
+    // The body is written as the answer is sent - chunked here - never held whole.
+    let response = http::get(&server.url_of("/rows")?.to_string())?;
+    assert_eq!(response.headers().get("transfer-encoding"), Some("chunked"));
+    assert_eq!(response.text()?, "row 0\nrow 1\nrow 2\n");
+
+    // A HEAD no route names is the GET route's headers with no body, and
+    // never runs the writer.
+    let head = http::head(&server.url_of("/rows")?.to_string())?;
+    assert_eq!(head.bytes()?.len(), 0);
+    assert_eq!(head.headers().get("transfer-encoding"), None);
+
+    // A method no route names is 405 with Allow.
+    let refused = http::post(&server.url_of("/rows")?.to_string(), Body::Empty)?;
+    assert_eq!(refused.status().code(), 405);
+    assert_eq!(refused.headers().get("allow"), Some("GET, HEAD"));
+
+    // The exchange completes in the trace folder a moment after the
+    // connection thread finishes writing the answer.
+    let mut traced = false;
+    for _ in 0..50 {
+        if trace_dir.join("0000-response.http").exists() {
+            traced = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert!(traced);
+    std::fs::remove_dir_all(&trace_dir)?;
+    ```
 
 ### HTTP/2 and HTTP/3
 

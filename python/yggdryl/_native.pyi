@@ -3961,6 +3961,7 @@ class Server:
         tunnel: bool | None = None,
         http3: bool | None = None,
         server_header: str | None = None,
+        trace: IOBase | Url | str | PathLike[str] | None = None,
     ) -> Server: ...
     @property
     def url(self) -> Url: ...

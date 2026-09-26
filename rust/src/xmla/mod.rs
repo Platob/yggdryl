@@ -20,11 +20,11 @@
 //! | [`options`], [`media`] | the `.xmla` record medium: [`XmlaOptions`] and [`Xmla`] |
 //! | [`definitions`] | the rowsets this crate's provider answers, each as a `Field` with its restriction columns |
 //! | [`catalog`] | a catalog over a folder: its schemas and tables as the leaves and table folders under it |
-//! | [`service`] | the provider: every Discover answered from the catalogs, every Execute run through the expression grammar's `Plan` |
-//! | [`server`] | the HTTP endpoint the provider is reached at |
+//! | [`service`] | the provider: every Discover answered from the catalogs, every Execute run through the expression grammar's `Plan`; under the `http` feature, [`Service::route`] answers it on an [`http::Server`](crate::http::Server) |
 //!
-//! The SOAP envelope, fault and HTTP binding are XML's own, in
-//! [`crate::soap`]; this module speaks XMLA over them.
+//! The SOAP envelope and fault are XML's own, in [`crate::soap`], and the
+//! HTTP it travels over is the crate's [`http`](crate::http) server and
+//! client; this module speaks XMLA over them.
 //!
 //! The provider is a *tabular* one: its data sources are catalogs of tables,
 //! a table being any leaf a record medium reads or any folder that reads as
@@ -42,7 +42,8 @@ pub mod options;
 pub mod request;
 pub mod response;
 pub mod rowset;
-pub mod server;
+#[cfg(feature = "http")]
+mod server;
 pub mod service;
 pub mod vocabulary;
 
@@ -54,7 +55,6 @@ pub use options::XmlaOptions;
 pub use request::{Command, Discover, Execute, Request, RequestMethod, Session};
 pub use response::{Answer, Response, XmlaError, fault, write_empty, write_fault, write_rowset};
 pub use rowset::{Rowset, XsdType, decode_name, encode_name};
-pub use server::{Running, Server, ServerOptions};
 pub use service::{Execution, Service, ServiceOptions};
 pub use vocabulary::{
     Access, AuthenticationMode, AxisFormat, Content, Format, MdxSupport, Method, PropertyList,

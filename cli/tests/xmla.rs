@@ -1,13 +1,13 @@
 //! Process-level checks for `ygg xmla serve`: the endpoint it prints answers
 //! the SOAP 1.1 HTTP binding, and what it refuses it refuses before binding.
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use yggdryl::holder::Holder;
+use yggdryl::http::{Request as HttpRequest, Status};
 use yggdryl::local::LocalFolder;
 use yggdryl::media::IORecordOptions;
 use yggdryl::xmla::{Discover, Request, RequestType, Response};
@@ -73,60 +73,6 @@ fn ygg() -> Command {
     command
 }
 
-/// One HTTP exchange: the status and the whole body, a chunked body
-/// reassembled.
-fn exchange(address: &str, request: &[u8]) -> (u16, Vec<u8>) {
-    let mut stream = TcpStream::connect(address).expect("the server accepts");
-    stream.write_all(request).expect("the request is sent");
-    stream.flush().expect("flushed");
-    let mut reader = BufReader::new(stream);
-    let mut line = String::new();
-    reader.read_line(&mut line).expect("a status line");
-    let status: u16 = line
-        .split(' ')
-        .nth(1)
-        .and_then(|code| code.parse().ok())
-        .unwrap_or_else(|| panic!("a status in {line:?}"));
-    let mut chunked = false;
-    let mut length = None;
-    loop {
-        let mut header = String::new();
-        reader.read_line(&mut header).expect("a header line");
-        let header = header.trim_end_matches(['\r', '\n']);
-        if header.is_empty() {
-            break;
-        }
-        let (name, value) = header.split_once(':').expect("a header");
-        match name.trim().to_ascii_lowercase().as_str() {
-            "transfer-encoding" => chunked = value.trim() == "chunked",
-            "content-length" => length = value.trim().parse::<usize>().ok(),
-            _ => {}
-        }
-    }
-    let mut body = Vec::new();
-    if chunked {
-        loop {
-            let mut size = String::new();
-            reader.read_line(&mut size).expect("a chunk size");
-            let size = usize::from_str_radix(size.trim(), 16).expect("hexadecimal");
-            if size == 0 {
-                let mut trailer = String::new();
-                reader.read_line(&mut trailer).expect("the trailer");
-                break;
-            }
-            let mut chunk = vec![0; size];
-            reader.read_exact(&mut chunk).expect("the chunk");
-            body.extend_from_slice(&chunk);
-            let mut end = String::new();
-            reader.read_line(&mut end).expect("the chunk end");
-        }
-    } else {
-        body.resize(length.expect("a content length"), 0);
-        reader.read_exact(&mut body).expect("the body");
-    }
-    (status, body)
-}
-
 #[test]
 fn serve_prints_its_endpoint_first_and_answers_a_discover() {
     let root = catalog_root();
@@ -145,25 +91,23 @@ fn serve_prints_its_endpoint_first_and_answers_a_discover() {
         endpoint.starts_with("http://127.0.0.1:") && endpoint.ends_with("/olap"),
         "{endpoint}"
     );
-    let address = endpoint
-        .trim_start_matches("http://")
-        .split('/')
-        .next()
-        .expect("an authority");
 
     let payload = Request::from(Discover::new(RequestType::DbschemaTables))
         .into_bytes()
         .expect("a request encodes");
-    let mut request = format!(
-        "POST /olap HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml; charset=utf-8\r\n\
-         SOAPAction: \"urn:schemas-microsoft-com:xml-analysis:Discover\"\r\n\
-         Content-Length: {}\r\nConnection: close\r\n\r\n",
-        payload.len()
-    )
-    .into_bytes();
-    request.extend_from_slice(&payload);
-    let (status, body) = exchange(address, &request);
-    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
+    let response = HttpRequest::post(endpoint, payload)
+        .expect("a request builds")
+        .with_header("content-type", "text/xml; charset=utf-8")
+        .expect("a header")
+        .with_header(
+            "SOAPAction",
+            "\"urn:schemas-microsoft-com:xml-analysis:Discover\"",
+        )
+        .expect("a header")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
     let response = Response::from_bytes(&body, None).expect("a DiscoverResponse");
     let tables = response.rows().expect("a rowset");
     assert_eq!(tables.len(), 1);
@@ -221,42 +165,41 @@ fn serve_traces_each_exchange_under_the_folder_asked_for() {
     let mut lines = BufReader::new(stdout);
     let mut endpoint = String::new();
     lines.read_line(&mut endpoint).expect("the endpoint line");
-    let address = endpoint
-        .trim()
-        .trim_start_matches("http://")
-        .split('/')
-        .next()
-        .expect("an authority")
-        .to_owned();
+    let endpoint = endpoint.trim();
     let payload = Request::from(Discover::new(RequestType::DbschemaCatalogs))
         .into_bytes()
         .expect("a request encodes");
-    let mut request = format!(
-        "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
-         Content-Length: {}\r\nConnection: close\r\n\r\n",
-        payload.len()
-    )
-    .into_bytes();
-    request.extend_from_slice(&payload);
-    let (status, _) = exchange(&address, &request);
-    assert_eq!(status, 200);
+    let response = HttpRequest::post(endpoint, payload.clone())
+        .expect("a request builds")
+        .with_header("content-type", "text/xml")
+        .expect("a header")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
     // The response file is completed once the exchange ends, on the
     // connection's own thread: a moment after the client read the last byte.
-    let response = trace.join("0000-response.http");
+    let response_file = trace.join("0000-response.http");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while std::time::Instant::now() < deadline
-        && !std::fs::read(&response).is_ok_and(|bytes| bytes.ends_with(b"0\r\n\r\n"))
+        && !std::fs::read(&response_file).is_ok_and(|bytes| bytes.ends_with(b"0\r\n\r\n"))
     {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     drop(served);
-    let traced = std::fs::read(trace.join("0000-request.http")).expect("the request is traced");
-    assert_eq!(traced, request);
-    let response = std::fs::read(response).expect("the response is traced");
+    let traced_request =
+        std::fs::read(trace.join("0000-request.http")).expect("the request is traced");
     assert!(
-        response.starts_with(b"HTTP/1.1 200 OK\r\n") && response.ends_with(b"0\r\n\r\n"),
+        traced_request.starts_with(b"POST /xmla HTTP/1.1\r\n"),
         "{}",
-        String::from_utf8_lossy(&response)
+        String::from_utf8_lossy(&traced_request)
+    );
+    assert!(traced_request.ends_with(&payload));
+    let traced_response = std::fs::read(response_file).expect("the response is traced");
+    assert!(
+        traced_response.starts_with(b"HTTP/1.1 200 OK\r\n")
+            && traced_response.ends_with(b"0\r\n\r\n"),
+        "{}",
+        String::from_utf8_lossy(&traced_response)
     );
     let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&trace);

@@ -789,7 +789,7 @@ fn the_catalog_names_resolve_at_the_module_root() {
 
 #[test]
 fn the_provider_names_resolve_at_the_module_root() {
-    use yggdryl::xmla::{server, service};
+    use yggdryl::xmla::service;
     let options: service::ServiceOptions = yggdryl::xmla::ServiceOptions::new();
     let provider: service::Service = yggdryl::xmla::Service::new(options);
     let outcome: Result<service::Execution, Fault> =
@@ -798,14 +798,25 @@ fn the_provider_names_resolve_at_the_module_root() {
         panic!("no catalog holds `trades`");
     };
     assert_eq!(xmla_error(&fault).code(), code::UNKNOWN_TABLE);
-    let bound: server::Server = yggdryl::xmla::Server::bind(provider, "127.0.0.1:0")
-        .expect("a loopback port")
-        .with_options(yggdryl::xmla::ServerOptions::new().with_path("/xmla"));
-    assert!(bound.endpoint().ends_with("/xmla"), "{}", bound.endpoint());
-    let running: server::Running = bound.spawn();
-    assert!(running.local_addr().is_some());
-    assert!(running.service().catalogs().is_empty());
-    running.stop();
+}
+
+/// The provider's HTTP binding is a route on the crate's server, not a
+/// server of its own: `Service::route` answers the endpoint it took.
+#[cfg(feature = "http")]
+#[test]
+fn the_provider_is_routed_on_the_crates_http_server() {
+    use std::sync::Arc;
+    use yggdryl::http::{Server, ServerOptions};
+    let provider = Arc::new(yggdryl::xmla::Service::new(
+        yggdryl::xmla::ServiceOptions::new(),
+    ));
+    let server = Server::bind_with("127.0.0.1:0", ServerOptions::default()).expect("a port");
+    let endpoint = Arc::clone(&provider)
+        .route(&server, "/xmla")
+        .expect("a path the server routes");
+    assert_eq!(endpoint, server.url_of("/xmla").expect("the endpoint"));
+    assert!(provider.catalogs().is_empty());
+    server.shutdown().expect("the server stops");
 }
 
 // ----------------------------------------------------------------------------

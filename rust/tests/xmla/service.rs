@@ -1,15 +1,18 @@
 //! `rust/src/xmla/service.rs`: the provider answering Discover and Execute
 //! over catalogs of record media.
 
+#[cfg(feature = "http")]
 use std::collections::HashMap;
-use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::soap::http::Request as WireRequest;
+#[cfg(feature = "http")]
+use yggdryl::http::{Request as WireRequest, Response as WireResponse};
+#[cfg(feature = "http")]
+use yggdryl::media::IORecordOptions;
+use yggdryl::media::RecordOptions;
 use yggdryl::soap::{Envelope, FaultCode, Fragment};
 use yggdryl::xmla::{
     Answer, Catalog, Command, Content, Discover, Execute, PropertyList, Request, RequestType,
@@ -725,6 +728,7 @@ fn a_restriction_sent_with_no_value_restricts_nothing() {
 /// `reference` schema. The capture read Iceberg folders; the doors list tables
 /// and read `trades`, so IPC tables of the captured `trades` columns stand in,
 /// with as many rows as the query the door sent asked for.
+#[cfg(feature = "http")]
 fn excel_service(label: &str) -> Service {
     let root = catalog_root(label);
     let field = StructType::from_fields([
@@ -788,6 +792,7 @@ fn excel_service(label: &str) -> Service {
 
 /// One door's exchanges - number, request wire, response wire - in the order
 /// they went over the wire.
+#[cfg(feature = "http")]
 fn door(name: &str) -> Vec<(String, Vec<u8>, Vec<u8>)> {
     let folder = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/xmla/fixtures/excel")
@@ -817,47 +822,8 @@ fn door(name: &str) -> Vec<(String, Vec<u8>, Vec<u8>)> {
         .collect()
 }
 
-/// The body of a captured response: past the interim `100 Continue`, past the
-/// final head, the chunks joined.
-fn captured_body(wire: &[u8]) -> Vec<u8> {
-    let text = String::from_utf8_lossy(wire);
-    let head_end = text.find("\r\n\r\n").expect("a head");
-    let head = &text[..head_end];
-    let mut body = &wire[head_end + 4..];
-    if head.starts_with("HTTP/1.1 100 ") {
-        return captured_body(body);
-    }
-    if !head
-        .to_ascii_lowercase()
-        .contains("transfer-encoding: chunked")
-    {
-        return body.to_vec();
-    }
-    let mut joined = Vec::new();
-    loop {
-        let line_end = body
-            .windows(2)
-            .position(|pair| pair == b"\r\n")
-            .expect("a chunk size line");
-        let size = usize::from_str_radix(
-            std::str::from_utf8(&body[..line_end])
-                .expect("ASCII")
-                .split(';')
-                .next()
-                .expect("a size")
-                .trim(),
-            16,
-        )
-        .expect("a hexadecimal size");
-        if size == 0 {
-            return joined;
-        }
-        joined.extend_from_slice(&body[line_end + 2..line_end + 2 + size]);
-        body = &body[line_end + 2 + size + 2..];
-    }
-}
-
 /// The session id a message's header names, when it names one.
+#[cfg(feature = "http")]
 fn session_id(header: &[Fragment]) -> Option<String> {
     header
         .iter()
@@ -873,6 +839,7 @@ fn session_id(header: &[Fragment]) -> Option<String> {
 
 /// What a client reads off an answer: the fault's code, or the answer's kind
 /// with its columns and its number of rows.
+#[cfg(feature = "http")]
 fn shape(bytes: &[u8]) -> String {
     let envelope = Envelope::from_bytes(bytes)
         .unwrap_or_else(|error| panic!("{error}\n{}", String::from_utf8_lossy(bytes)));
@@ -905,17 +872,19 @@ fn shape(bytes: &[u8]) -> String {
 /// Replay `doors` in order through one service - one process served them all,
 /// so a session one door opened is the one the next closes - each captured
 /// session id standing for the live one it became.
+#[cfg(feature = "http")]
 fn replay(service: &Service, doors: &[&str]) {
     let mut sessions: HashMap<String, String> = HashMap::new();
     for name in doors {
         for (number, wire_request, wire_response) in door(name) {
-            let mut interim = Vec::new();
-            let read =
-                WireRequest::read(&mut Cursor::new(&wire_request[..]), &mut interim, 1 << 24)
-                    .unwrap_or_else(|error| panic!("{name}/{number}: {error}"))
-                    .unwrap_or_else(|| panic!("{name}/{number}: a request"));
-            let captured = captured_body(&wire_response);
-            let mut body = String::from_utf8(read.body().to_vec()).expect("UTF-8");
+            let read = WireRequest::from_bytes(&wire_request)
+                .unwrap_or_else(|error| panic!("{name}/{number}: {error}"));
+            // Past the interim `100 Continue` ADOMD.NET's requests earn.
+            let captured = WireResponse::from_bytes(&wire_response)
+                .unwrap_or_else(|error| panic!("{name}/{number}: {error}"))
+                .bytes()
+                .unwrap_or_else(|error| panic!("{name}/{number}: {error}"));
+            let mut body = String::from_utf8(read.body().as_bytes().to_vec()).expect("UTF-8");
             for (was, is) in &sessions {
                 body = body.replace(was.as_str(), is);
             }
@@ -941,12 +910,14 @@ fn replay(service: &Service, doors: &[&str]) {
     }
 }
 
+#[cfg(feature = "http")]
 #[test]
 fn excels_data_connection_wizard_and_its_pivottable_replay_as_captured() {
     let service = excel_service("excel-wizard");
     replay(&service, &["wizard", "pivottable"]);
 }
 
+#[cfg(feature = "http")]
 #[test]
 fn power_querys_analysis_services_database_with_a_query_replays_as_captured() {
     // ADOMD.NET: every request `Expect: 100-continue` and chunked, the body
@@ -959,6 +930,7 @@ fn power_querys_analysis_services_database_with_a_query_replays_as_captured() {
     replay(&service, &["pq-query", "refresh"]);
 }
 
+#[cfg(feature = "http")]
 #[test]
 fn power_querys_navigator_and_a_dax_text_are_refused_as_captured() {
     // Without a query, Power Query runs a DMV query - `select ... from
@@ -970,6 +942,7 @@ fn power_querys_navigator_and_a_dax_text_are_refused_as_captured() {
     replay(&service, &["pq-navigator", "pq-dax"]);
 }
 
+#[cfg(feature = "http")]
 #[test]
 fn an_odc_with_a_command_text_loads_a_table_through_msolap_as_captured() {
     // `Provider=MSOLAP;...;Initial Catalog=market;` with `CommandType Query`:

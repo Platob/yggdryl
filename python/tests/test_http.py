@@ -784,6 +784,26 @@ class TestServer:
         assert server.unmount("/nothing") is False
         assert server.unroute("/nothing") is False
 
+    def test_trace_writes_each_exchange_as_a_message_http_document(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        with Server.bind(trace=tmp_path) as traced:
+            traced.respond("/fixed", 200, None, b"fine")
+            with urllib.request.urlopen(f"http://127.0.0.1:{traced.port}/fixed") as answer:
+                assert answer.read() == b"fine"
+
+        # The pair is completed a moment after the client reads the last
+        # byte, on the connection's own thread, so a reader polls for it.
+        request_file = tmp_path / "0000-request.http"
+        response_file = tmp_path / "0000-response.http"
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not (
+            request_file.exists() and response_file.exists()
+        ):
+            time.sleep(0.02)
+        assert request_file.read_bytes().startswith(b"GET /fixed HTTP/1.1\r\n")
+        assert response_file.read_bytes().startswith(b"HTTP/1.1 200")
+
 
 class TestVersions:
     """HTTP/2 and HTTP/3 under the same session: what is asked, negotiated and answered."""

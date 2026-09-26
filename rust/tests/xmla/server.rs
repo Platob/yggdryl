@@ -1,20 +1,30 @@
-//! `rust/src/xmla/server.rs`: the provider reached over a loopback socket
-//! with the SOAP 1.1 HTTP binding, one request per POST.
+//! `rust/src/xmla/server.rs`: the routes [`Service::route`] answers on the
+//! crate's HTTP [`Server`](yggdryl::http::Server) - connection framing,
+//! keep-alive, `Expect: 100-continue`, chunked and traced bodies are the
+//! server's, proven in `rust/tests/http.rs`; what is proven here is XMLA's
+//! own: the `GET` description, the `POST` answer and its faults, the method
+//! table, and a traced exchange replayed through [`Service::handle`].
 
-use std::io::{BufRead, BufReader, Cursor, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use arrow_array::{Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
-use yggdryl::media::RecordOptions;
-use yggdryl::xmla::{
-    Catalog, Discover, Execute, PropertyList, Request, RequestType, Response, Server,
-    ServerOptions, Service, ServiceOptions,
+use yggdryl::http::{
+    Method, Request as HttpRequest, Response as HttpResponse, Server, ServerOptions, Status,
 };
-use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+use yggdryl::media::RecordOptions;
+use yggdryl::soap::Envelope;
+use yggdryl::xmla::{
+    Catalog, Discover, Execute, PropertyList, Request, RequestType, Response, Service,
+    ServiceOptions, XmlaError,
+};
+use yggdryl::{DataType, IOBase, IOMedia, MimeType, Result, Scalar, StructType, Url};
 
+/// A fresh catalog folder, named after `label`, holding `trades` with two
+/// rows.
 fn catalog_root(label: &str) -> PathBuf {
     let mut root = yggdryl::local::LocalFolder::temporary()
         .expect("a temporary directory")
@@ -53,29 +63,38 @@ fn catalog_root(label: &str) -> PathBuf {
     root
 }
 
-fn running(label: &str) -> yggdryl::xmla::Running {
+/// A service over a fresh `catalog_root(label)`, routed at `/xmla` on a
+/// fresh loopback server; the endpoint [`Service::route`] answered.
+fn running(label: &str) -> (Server, Url, Arc<Service>) {
     let root = catalog_root(label);
-    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
-        "market",
-        Holder::folder(&root).expect("holds"),
-    ));
-    Server::bind(service, "127.0.0.1:0")
-        .expect("a loopback port")
-        .with_options(ServerOptions::new().with_path("/xmla"))
-        .spawn()
+    let service = Arc::new(
+        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+            "market",
+            Holder::folder(&root).expect("holds"),
+        )),
+    );
+    let server = Server::bind("127.0.0.1:0").expect("a loopback port");
+    let endpoint = Arc::clone(&service)
+        .route(&server, "/xmla")
+        .expect("the path routes");
+    (server, endpoint, service)
 }
 
-/// One HTTP exchange: the status, the headers and the whole body, a chunked
-/// body reassembled.
-fn exchange(address: &str, request: &[u8]) -> (u16, Vec<(String, String)>, Vec<u8>) {
-    let mut stream = TcpStream::connect(address).expect("the server accepts");
-    stream.write_all(request).expect("the request is sent");
-    stream.flush().expect("flushed");
-    receive(&mut BufReader::new(stream))
+/// One SOAP `POST` of `body` to `endpoint` under `SOAPAction: "<action>"`.
+fn post(
+    endpoint: &Url,
+    body: impl Into<yggdryl::http::Body>,
+    action: &str,
+) -> Result<HttpResponse> {
+    HttpRequest::post(&endpoint.to_string(), body)?
+        .with_header("content-type", "text/xml; charset=utf-8")?
+        .with_header("SOAPAction", &format!("\"{action}\""))?
+        .send()
 }
 
-/// One response off `reader`: the status, the headers and the whole body, a
-/// chunked body reassembled.
+/// One HTTP/1.1 response read off `reader`: the status, the headers and the
+/// whole body, a chunked body reassembled - for the one exchange raw sockets
+/// still have to drive, an `Expect: 100-continue` request.
 fn receive<R: BufRead>(reader: &mut R) -> (u16, Vec<(String, String)>, Vec<u8>) {
     let mut line = String::new();
     reader.read_line(&mut line).expect("a status line");
@@ -127,37 +146,48 @@ fn receive<R: BufRead>(reader: &mut R) -> (u16, Vec<(String, String)>, Vec<u8>) 
     (status, headers, body)
 }
 
-fn post(address: &str, path: &str, body: &[u8], action: &str) -> (u16, Vec<u8>) {
-    let head = format!(
-        "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml; charset=utf-8\r\n\
-         SOAPAction: \"{action}\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
+#[test]
+fn route_answers_the_endpoint_url_and_refuses_a_path_with_a_query() {
+    let root = catalog_root("route");
+    let service = Arc::new(
+        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+            "market",
+            Holder::folder(&root).expect("holds"),
+        )),
     );
-    let mut request = head.into_bytes();
-    request.extend_from_slice(body);
-    let (status, _, body) = exchange(address, &request);
-    (status, body)
+    let server = Server::bind("127.0.0.1:0").expect("a loopback port");
+    let endpoint = Arc::clone(&service)
+        .route(&server, "/xmla")
+        .expect("the path routes");
+    assert_eq!(endpoint, server.url_of("/xmla").expect("the endpoint"));
+    let refused = Arc::clone(&service).route(&server, "/xmla?x=1");
+    assert!(refused.is_err(), "{refused:?}");
 }
 
 #[test]
-fn a_discover_and_an_execute_travel_over_the_socket() {
-    let server = running("exchange");
-    let address = server.local_addr().expect("an address").to_string();
-    assert_eq!(server.endpoint(), format!("http://{address}/xmla"));
-
+fn a_discover_and_an_execute_answer_their_rows_under_the_soap_headers() {
+    let (_server, endpoint, _service) = running("exchange");
     let discover = Request::from(Discover::new(RequestType::DbschemaTables))
         .into_bytes()
         .expect("a request");
-    let (status, body) = post(
-        &address,
-        "/xmla",
-        &discover,
+    let response = post(
+        &endpoint,
+        discover,
         "urn:schemas-microsoft-com:xml-analysis:Discover",
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(
+        response.headers().get("content-type"),
+        Some(yggdryl::soap::CONTENT_TYPE)
     );
-    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
-    let response = Response::from_bytes(&body, None).expect("a response");
-    let rows = response.rows().expect("a rowset");
-    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        response.headers().get("x-transport-caps-negotiation-flags"),
+        Some("0,0,0,0,0")
+    );
+    let body = response.bytes().expect("a body");
+    let discovered = Response::from_bytes(&body, None).expect("a response");
+    assert_eq!(discovered.rows().expect("a rowset").len(), 1);
 
     let execute = Request::from(
         Execute::statement("select symbol from trades where size > 200")
@@ -165,233 +195,152 @@ fn a_discover_and_an_execute_travel_over_the_socket() {
     )
     .into_bytes()
     .expect("a request");
-    let (status, body) = post(
-        &address,
-        "/xmla",
-        &execute,
+    let response = post(
+        &endpoint,
+        execute,
         "urn:schemas-microsoft-com:xml-analysis:Execute",
-    );
-    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&body));
-    let response = Response::from_bytes(&body, None).expect("a response");
-    let rows = response.rows().expect("a rowset");
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
+    let executed = Response::from_bytes(&body, None).expect("a response");
+    let rows = executed.rows().expect("a rowset");
     assert_eq!(rows.len(), 1);
     assert_eq!(
         rows.get(0).expect("a row").into_owned(),
         Scalar::from_sequence([Scalar::from("MSFT")])
     );
-    server.stop();
 }
 
 #[test]
-fn the_binding_refuses_what_is_not_a_soap_post_by_status() {
-    let server = running("statuses");
-    let address = server.local_addr().expect("an address").to_string();
-
-    let (status, _, body) = exchange(
-        &address,
-        format!("GET /xmla HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
-    );
-    assert_eq!(status, 200);
-    assert!(String::from_utf8_lossy(&body).contains("XML for Analysis"));
-
-    let (status, _, _) = exchange(
-        &address,
-        format!("GET /elsewhere HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n")
-            .as_bytes(),
-    );
-    assert_eq!(status, 404);
-
-    let (status, _, _) = exchange(
-        &address,
-        format!("PUT /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
-            .as_bytes(),
-    );
-    assert_eq!(status, 405);
-
-    let (status, _, _) = exchange(
-        &address,
-        format!(
-            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n\
-             Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-        )
-        .as_bytes(),
-    );
-    // Every fault goes out at 200 in a SOAP body, as the reference providers
-    // answer and as XMLA clients read a fault; nothing a SOAP body can carry
-    // is a 4xx or a 5xx.
-    assert_eq!(status, 200, "a body that is no XML is a fault at 200");
-
-    let (status, body) = post(&address, "/xmla", b"<not-soap/>", "");
-    assert_eq!(
-        status, 200,
-        "a message that is no request is a fault at 200"
-    );
-    let body = String::from_utf8_lossy(&body);
+fn a_get_describes_the_endpoint_with_no_negotiation_header() {
+    let (_server, endpoint, _service) = running("get");
+    let response = HttpRequest::get(&endpoint.to_string())
+        .expect("a request builds")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
     assert!(
-        body.contains("Fault") && body.contains("ErrorCode=\"1\""),
-        "{body}"
+        !response
+            .headers()
+            .contains_key("x-transport-caps-negotiation-flags")
     );
-
-    let (status, _, _) = exchange(
-        &address,
-        format!("POST /xmla HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
-    );
-    assert_eq!(status, 411, "a body with no length is refused");
-    server.stop();
+    let text = response.text().expect("a body");
+    assert!(text.contains("XML for Analysis"), "{text}");
 }
 
 #[test]
-fn a_connection_carries_several_requests_and_a_chunked_body() {
-    let server = running("keep-alive");
-    let address = server.local_addr().expect("an address").to_string();
-    let mut stream = TcpStream::connect(&address).expect("the server accepts");
-    let request = Request::from(Discover::new(RequestType::DiscoverDatasources))
-        .into_bytes()
-        .expect("a request");
-    for round in 0..2 {
-        // The second request arrives chunked, the way a client streaming its
-        // message would send it.
-        let mut wire =
-            format!("POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n")
-                .into_bytes();
-        if round == 0 {
-            wire.extend_from_slice(format!("Content-Length: {}\r\n\r\n", request.len()).as_bytes());
-            wire.extend_from_slice(&request);
-        } else {
-            wire.extend_from_slice(b"Transfer-Encoding: chunked\r\n\r\n");
-            for chunk in request.chunks(100) {
-                wire.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
-                wire.extend_from_slice(chunk);
-                wire.extend_from_slice(b"\r\n");
-            }
-            wire.extend_from_slice(b"0\r\n\r\n");
-        }
-        stream.write_all(&wire).expect("sent");
-        let mut reader = BufReader::new(stream.try_clone().expect("a reader"));
-        let mut line = String::new();
-        reader.read_line(&mut line).expect("a status line");
-        assert!(line.starts_with("HTTP/1.1 200"), "round {round}: {line}");
-        let mut chunked = false;
-        loop {
-            let mut header = String::new();
-            reader.read_line(&mut header).expect("a header");
-            let header = header.trim_end_matches(['\r', '\n']).to_ascii_lowercase();
-            if header.is_empty() {
-                break;
-            }
-            chunked |= header == "transfer-encoding: chunked";
-        }
-        assert!(chunked, "a rowset streams as chunks");
-        let mut body = Vec::new();
-        loop {
-            let mut size = String::new();
-            reader.read_line(&mut size).expect("a chunk size");
-            let size = usize::from_str_radix(size.trim(), 16).expect("hexadecimal");
-            if size == 0 {
-                let mut trailer = String::new();
-                reader.read_line(&mut trailer).expect("the trailer");
-                break;
-            }
-            let mut chunk = vec![0; size];
-            reader.read_exact(&mut chunk).expect("the chunk");
-            body.extend_from_slice(&chunk);
-            let mut end = String::new();
-            reader.read_line(&mut end).expect("the chunk end");
-        }
-        let response = Response::from_bytes(&body, None).expect("a response");
-        assert_eq!(response.rows().expect("a rowset").len(), 1, "round {round}");
-        // The reader's buffer must be empty for the next round to read from
-        // the stream itself; a response is consumed whole above.
-        assert!(reader.buffer().is_empty());
-    }
-    server.stop();
+fn a_head_answers_the_gets_head_with_no_body() {
+    let (_server, endpoint, _service) = running("head");
+    let response = HttpRequest::head(&endpoint.to_string())
+        .expect("a request builds")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    assert!(response.bytes().expect("a body").is_empty());
 }
 
 #[test]
-fn a_client_expecting_a_continue_gets_it_before_it_sends_the_body() {
-    let server = running("continue");
-    let address = server.local_addr().expect("an address").to_string();
-    let body = Request::from(Discover::new(RequestType::DbschemaCatalogs))
+fn a_put_is_refused_by_the_methods_routed() {
+    let (_server, endpoint, _service) = running("put");
+    let response = HttpRequest::new(Method::Put, endpoint)
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::METHOD_NOT_ALLOWED);
+    assert_eq!(response.headers().get("allow"), Some("GET, HEAD, POST"));
+}
+
+#[test]
+fn another_path_answers_404() {
+    let (server, _endpoint, _service) = running("elsewhere");
+    let response = HttpRequest::get(&format!("http://{}/elsewhere", server.address()))
+        .expect("a request builds")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::NOT_FOUND);
+}
+
+#[test]
+fn a_non_xml_content_type_is_a_client_fault_under_the_negotiation_header() {
+    let (_server, endpoint, _service) = running("non-xml");
+    let response = HttpRequest::post(&endpoint.to_string(), "<a/>")
+        .expect("a request builds")
+        .with_header("content-type", "text/plain")
+        .expect("a header")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    assert_eq!(
+        response.headers().get("x-transport-caps-negotiation-flags"),
+        Some("0,0,0,0,0")
+    );
+    let body = response.bytes().expect("a body");
+    let envelope = Envelope::from_bytes(&body).expect("an envelope");
+    let fault = envelope.fault().expect("a fault");
+    let errors = XmlaError::from_fault(fault);
+    assert_eq!(errors.first().map(XmlaError::code), Some(1));
+}
+
+#[test]
+fn an_empty_post_body_answers_a_fault() {
+    let (_server, endpoint, _service) = running("empty");
+    let response = HttpRequest::post(&endpoint.to_string(), Vec::<u8>::new())
+        .expect("a request builds")
+        .send()
+        .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let body = response.bytes().expect("a body");
+    assert!(
+        Envelope::from_bytes(&body)
+            .expect("an envelope")
+            .fault()
+            .is_some()
+    );
+}
+
+#[test]
+fn an_adomdnet_shaped_request_gets_the_interim_continue_then_a_chunked_answer() {
+    let (server, _endpoint, _service) = running("adomd");
+    let address = server.address().to_string();
+    let discover = Request::from(Discover::new(RequestType::DbschemaTables))
         .into_bytes()
         .expect("a request");
+    // ADOMD.NET opens every body with the UTF-8 byte-order mark.
+    let mut body = vec![0xEF, 0xBB, 0xBF];
+    body.extend_from_slice(&discover);
     let mut stream = TcpStream::connect(&address).expect("the server accepts");
     let head = format!(
         "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
-         SOAPAction: \"urn:schemas-microsoft-com:xml-analysis:Discover\"\r\n\
-         Expect: 100-continue\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-        body.len()
+         Expect: 100-continue\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
     );
     stream.write_all(head.as_bytes()).expect("the head is sent");
     stream.flush().expect("flushed");
     let mut reader = BufReader::new(stream.try_clone().expect("a read half"));
-    // The interim status arrives while the body is still held back.
     let mut interim = String::new();
     reader.read_line(&mut interim).expect("the interim status");
     assert_eq!(interim, "HTTP/1.1 100 Continue\r\n");
     interim.clear();
     reader.read_line(&mut interim).expect("the blank line");
     assert_eq!(interim, "\r\n");
-    stream.write_all(&body).expect("the body is sent");
+    for chunk in body.chunks(64) {
+        stream
+            .write_all(format!("{:x}\r\n", chunk.len()).as_bytes())
+            .expect("a chunk size");
+        stream.write_all(chunk).expect("a chunk");
+        stream.write_all(b"\r\n").expect("the chunk end");
+    }
+    stream.write_all(b"0\r\n\r\n").expect("the last chunk");
     stream.flush().expect("flushed");
     let (status, headers, body) = receive(&mut reader);
     assert_eq!(status, 200);
     assert!(
-        headers.contains(&(
-            "x-transport-caps-negotiation-flags".to_owned(),
-            "0,0,0,0,0".to_owned()
-        )),
+        headers
+            .iter()
+            .any(|(name, value)| name == "transfer-encoding" && value == "chunked"),
         "{headers:?}"
     );
     let response = Response::from_bytes(&body, None).expect("a response");
     assert_eq!(response.rows().map(yggdryl::Serie::len), Some(1));
-    server.stop();
-}
-
-#[test]
-fn every_soap_answer_carries_the_negotiation_flags_and_a_text_answer_none() {
-    let server = running("negotiation");
-    let address = server.local_addr().expect("an address").to_string();
-    let flags = (
-        "x-transport-caps-negotiation-flags".to_owned(),
-        "0,0,0,0,0".to_owned(),
-    );
-    // A refused message is a SOAP fault, and carries them.
-    let (status, headers, _) = exchange(
-        &address,
-        format!(
-            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/plain\r\n\
-             Content-Length: 2\r\nConnection: close\r\n\r\n{{}}"
-        )
-        .as_bytes(),
-    );
-    assert_eq!(status, 200);
-    assert!(headers.contains(&flags), "{headers:?}");
-    // A message that is XML but no XMLA is answered by the service, as a
-    // fault in the chunked answer, under the same flags.
-    let (status, headers, body) = exchange(
-        &address,
-        format!(
-            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
-             Content-Length: 7\r\nConnection: close\r\n\r\n<a/>   "
-        )
-        .as_bytes(),
-    );
-    assert_eq!(status, 200);
-    assert!(headers.contains(&flags), "{headers:?}");
-    assert!(
-        yggdryl::soap::Envelope::from_bytes(&body)
-            .expect("an envelope")
-            .fault()
-            .is_some()
-    );
-    // The endpoint's description is text, not SOAP.
-    let (status, headers, _) = exchange(
-        &address,
-        format!("GET /xmla HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n").as_bytes(),
-    );
-    assert_eq!(status, 200);
-    assert!(!headers.iter().any(|(name, _)| name == &flags.0));
-    server.stop();
 }
 
 #[test]
@@ -402,84 +351,77 @@ fn a_trace_writes_each_exchange_as_it_went_over_the_wire_and_the_request_replays
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&trace);
-    let service = Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
-        "market",
-        Holder::folder(&root).expect("holds"),
-    ));
-    let server = Server::bind(service, "127.0.0.1:0")
-        .expect("a loopback port")
-        .with_options(
-            ServerOptions::new()
-                .with_path("/xmla")
-                .with_trace(Holder::folder(&trace).expect("a trace folder")),
-        )
-        .spawn();
-    let service = Arc::clone(server.service());
-    let address = server.local_addr().expect("an address").to_string();
+    let service = Arc::new(
+        Service::new(ServiceOptions::new()).with_catalog(Catalog::new(
+            "market",
+            Holder::folder(&root).expect("holds"),
+        )),
+    );
+    let server = Server::bind_with(
+        "127.0.0.1:0",
+        ServerOptions::default().with_trace(Holder::folder(&trace).expect("a trace folder")),
+    )
+    .expect("a loopback port");
+    let endpoint = Arc::clone(&service)
+        .route(&server, "/xmla")
+        .expect("the path routes");
     let discover = Request::from(
         Discover::new(RequestType::DbschemaTables)
             .with_properties(PropertyList::new().with("Catalog", "market")),
     )
     .into_bytes()
     .expect("a request");
-    let (status, live) = post(
-        &address,
-        "/xmla",
-        &discover,
+    let response = post(
+        &endpoint,
+        discover.clone(),
         "urn:schemas-microsoft-com:xml-analysis:Discover",
-    );
-    assert_eq!(status, 200);
-    // A request refused on its head is traced too, with the refusal.
-    let (status, _, _) = exchange(
-        &address,
-        format!(
-            "POST /xmla HTTP/1.1\r\nHost: {address}\r\nContent-Type: text/xml\r\n\
-             Connection: close\r\n\r\n"
-        )
-        .as_bytes(),
-    );
-    assert_eq!(status, 411);
-    server.stop();
+    )
+    .expect("the server answers");
+    assert_eq!(response.status(), Status::OK);
+    let live = response.bytes().expect("a body");
+
     // Each pair is completed as its exchange ends, on the connection's own
     // thread: a moment after the client read the last byte.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while std::time::Instant::now() < deadline
-        && !std::fs::read(trace.join("0001-response.http"))
-            .is_ok_and(|bytes| bytes.starts_with(b"HTTP/1.1 411"))
+        && !std::fs::read(trace.join("0000-response.http"))
+            .is_ok_and(|bytes| bytes.ends_with(b"0\r\n\r\n"))
     {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let read = |name: &str| {
         std::fs::read(trace.join(name)).unwrap_or_else(|error| panic!("{name}: {error}"))
     };
-    let request = read("0000-request.http");
+    let traced_request = read("0000-request.http");
     assert!(
-        request.starts_with(b"POST /xmla HTTP/1.1\r\n"),
+        traced_request.starts_with(b"POST /xmla HTTP/1.1\r\n"),
         "{}",
-        String::from_utf8_lossy(&request)
+        String::from_utf8_lossy(&traced_request)
     );
-    assert!(request.ends_with(&discover));
-    let response = read("0000-response.http");
+    assert!(traced_request.ends_with(&discover));
+    let traced_response = read("0000-response.http");
     assert!(
-        response.starts_with(b"HTTP/1.1 200 OK\r\n"),
+        traced_response.starts_with(b"HTTP/1.1 200 OK\r\n"),
         "{}",
-        String::from_utf8_lossy(&response)
+        String::from_utf8_lossy(&traced_response)
     );
-    assert!(response.ends_with(b"0\r\n\r\n"));
-    assert!(read("0001-request.http").starts_with(b"POST /xmla HTTP/1.1\r\n"));
-    assert!(read("0001-response.http").starts_with(b"HTTP/1.1 411 Length Required\r\n"));
-    assert!(!trace.join("0002-request.http").exists());
-    // The traced request replays through the service and answers the same rows.
-    let mut interim = Vec::new();
-    let replayed =
-        yggdryl::soap::http::Request::read(&mut Cursor::new(&request[..]), &mut interim, 1 << 20)
-            .expect("the traced request reads")
-            .expect("a request");
+    assert!(
+        String::from_utf8_lossy(&traced_response)
+            .to_ascii_lowercase()
+            .contains("transfer-encoding: chunked"),
+        "the SOAP answer is chunked on the wire\n{}",
+        String::from_utf8_lossy(&traced_response)
+    );
+
+    // The traced request replays through the service and answers the same
+    // rows.
+    let replayed = HttpRequest::from_bytes(&traced_request).expect("the traced request reads");
     let again = service
-        .handle(replayed.body(), Vec::new())
+        .handle(replayed.body().as_bytes(), Vec::new())
         .expect("answered");
     let live = Response::from_bytes(&live, None).expect("a response");
     let again = Response::from_bytes(&again, None).expect("a response");
     assert_eq!(live.rows(), again.rows());
+    server.shutdown().expect("the server stops");
     let _ = std::fs::remove_dir_all(&trace);
 }

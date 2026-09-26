@@ -23,6 +23,7 @@ mod request;
 mod response;
 #[path = "xmla/rowset.rs"]
 mod rowset;
+#[cfg(feature = "http")]
 #[path = "xmla/server.rs"]
 mod server;
 #[path = "xmla/service.rs"]

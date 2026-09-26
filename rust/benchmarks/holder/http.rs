@@ -1,21 +1,23 @@
 //! HTTP access, against the crate's own server on loopback.
 //!
-//! The six shapes a caller of an HTTP resource performs: the whole value,
-//! one range out of the end (a footer read), a full streamed drain, one
-//! small JSON exchange, a walk of a paginated API, and a fan-out of many
-//! small requests over `send_all`. Each is a stated number of requests - one
-//! `GET`, one ranged `GET`, one `GET`, one `POST`, one `GET` per page, one
-//! `GET` per request - which the accounting tests hold; what is measured
-//! here is everything around those round trips, so a per-request cost that
-//! crept in shows beside the counts. Nothing leaves the machine: the server
-//! is `yggdryl::http::Server` bound on `127.0.0.1:0`, serving a memory
-//! folder and fixed answers.
+//! The seven shapes a caller of an HTTP resource performs: the whole value,
+//! one range out of the end (a footer read), a full streamed drain, the same
+//! whole value from a route whose handler writes it chunk by chunk rather
+//! than holding it (`Response::with_writer`), one small JSON exchange, a
+//! walk of a paginated API, and a fan-out of many small requests over
+//! `send_all`. Each is a stated number of requests - one `GET`, one ranged
+//! `GET`, one `GET`, one `GET`, one `POST`, one `GET` per page, one `GET` per
+//! request - which the accounting tests hold; what is measured here is
+//! everything around those round trips, so a per-request cost that crept in
+//! shows beside the counts. Nothing leaves the machine: the server is
+//! `yggdryl::http::Server` bound on `127.0.0.1:0`, serving a memory folder,
+//! fixed answers and one written route.
 //!
-//! Built with `http2`, the `http_versions` group sends the same three shapes,
-//! one small `GET`, the whole resource and the fan-out, over HTTP/1.1,
-//! HTTP/2 by prior knowledge and, with `http3`, HTTP/3 over QUIC, so what
-//! one connection's multiplexing buys a parallel walk, and what its framing
-//! costs a single transfer, sit side by side.
+//! Built with `http2`, the `http_versions` group sends the same four shapes,
+//! one small `GET`, the whole resource read whole and written, and the
+//! fan-out, over HTTP/1.1, HTTP/2 by prior knowledge and, with `http3`,
+//! HTTP/3 over QUIC, so what one connection's multiplexing buys a parallel
+//! walk, and what its framing costs a single transfer, sit side by side.
 
 use std::hint::black_box;
 use std::io::Read as _;
@@ -56,8 +58,9 @@ fn payload(length: usize) -> Vec<u8> {
         .collect()
 }
 
-/// A server with a memory folder mounted at `/` holding `data.bin`, a fixed
-/// JSON answer to `POST /orders`, and `PAGES` pages under `/pages/<n>`,
+/// A server with a memory folder mounted at `/` holding `data.bin`, the same
+/// payload written chunk by chunk by a route handler at `/written.bin`, a
+/// fixed JSON answer to `POST /orders`, and `PAGES` pages under `/pages/<n>`,
 /// each naming the next in its `next` member, the last naming none.
 fn serve() -> Server {
     serve_with(yggdryl::http::ServerOptions::default())
@@ -104,6 +107,17 @@ fn serve_with(options: yggdryl::http::ServerOptions) -> Server {
                 .with_body(format!(r#"{{"items":[{rows}]{next}}}"#)),
         );
     }
+    let written: Arc<[u8]> = payload(PAYLOAD).into();
+    server.route(Some(Method::Get), "/written.bin", move |_request| {
+        let written = Arc::clone(&written);
+        Ok(Response::new(Status::OK).with_writer(move |body| {
+            for chunk in written.chunks(yggdryl::DEFAULT_STREAM_BATCH_SIZE) {
+                body.write_all(chunk)?;
+            }
+            Ok(())
+        }))
+    });
+
     server.set_recording(false);
     server
 }
@@ -113,6 +127,7 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
     let session = Session::new();
     let url = |path: &str| server.url_of(path).expect("a URL").to_string();
     let resource = session.get(&url("/data.bin")).expect("a request");
+    let written_resource = session.get(&url("/written.bin")).expect("a request");
 
     let mut group = criterion.benchmark_group("http_bytes");
     group.throughput(Throughput::Bytes(PAYLOAD as u64));
@@ -156,6 +171,21 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
             }
             assert_eq!(total, PAYLOAD);
             black_box(total)
+        });
+    });
+
+    // The same whole read, but the route handler writes it in
+    // `DEFAULT_STREAM_BATCH_SIZE` pieces (`Response::with_writer`) rather
+    // than holding it, so the chunked framing on top shows beside
+    // `read_all`'s.
+    group.throughput(Throughput::Bytes(PAYLOAD as u64));
+    group.bench_function("written_drain", |bencher| {
+        bencher.iter(|| {
+            black_box(
+                black_box(&written_resource)
+                    .read_all_bytes()
+                    .expect("the body"),
+            )
         });
     });
     group.finish();
@@ -229,7 +259,7 @@ pub(crate) fn http_benchmarks(criterion: &mut Criterion) {
     versions(criterion);
 }
 
-/// The same three shapes over every version the build speaks.
+/// The same four shapes over every version the build speaks.
 #[cfg(feature = "http2")]
 fn versions(criterion: &mut Criterion) {
     use yggdryl::http::{HttpOptions, HttpVersion, ServerOptions};
@@ -310,6 +340,25 @@ fn versions(criterion: &mut Criterion) {
                 bencher.iter(|| {
                     let response = session
                         .get(whole)
+                        .expect("a request")
+                        .send()
+                        .expect("an answer");
+                    let body = response.bytes().expect("a body");
+                    assert_eq!(body.len(), PAYLOAD);
+                    black_box(body.len())
+                });
+            },
+        );
+
+        let written = format!("{origin}/written.bin");
+        group.throughput(Throughput::Bytes(PAYLOAD as u64));
+        group.bench_with_input(
+            BenchmarkId::new("written_drain", version),
+            &written,
+            |bencher, written| {
+                bencher.iter(|| {
+                    let response = session
+                        .get(written)
                         .expect("a request")
                         .send()
                         .expect("an answer");

@@ -295,7 +295,7 @@
   http.Client
     instance: session, stats
   http.Server
-    statics: bind(address="127.0.0.1:0", *, read_timeout=None, write_timeout=None, max_connections=None, max_head_size=None, max_body_size=None, keep_alive=None, recording=None, etag=None, tunnel=None, http3=None, server_header=None) - each option left out keeps the core's default; HTTP/2 by prior knowledge is always answered
+    statics: bind(address="127.0.0.1:0", *, read_timeout=None, write_timeout=None, max_connections=None, max_head_size=None, max_body_size=None, keep_alive=None, recording=None, etag=None, tunnel=None, http3=None, server_header=None, trace=None) - each option left out keeps the core's default; HTTP/2 by prior knowledge is always answered; trace is a folder path, writing every exchange under it as NNNN-request.http/NNNN-response.http
     instance: certificate, clear_faults, clear_requests, connections, inject, mount, port, request_count, requests, respond, route, shutdown, unmount, unroute, url, url_of, __enter__, __exit__
     faults: ("cut_body_at", n), "close_before_answer", ("refuse", status[, retry_after]), ("delay", seconds); a route handler runs under the GIL on the server's connection thread
   text.codec
@@ -698,7 +698,7 @@
     instance: acceptRanges, charset, contentEncoding, contentLength, contentRange, contentType, date, entries, equals, etag, get, getAll, has, keys, lastModified, length, links, location, mediaType, nextLink, setCookies, toJSON, toString
     protocol: Iterable<[name, value]>, immutable, names compared ignoring case
   http.Server
-    statics: bind(address = '127.0.0.1:0', { readTimeout, writeTimeout, maxConnections, maxHeadSize, maxBodySize, keepAlive, recording, etag, tunnel, http3, serverHeader }?)
+    statics: bind(address = '127.0.0.1:0', { readTimeout, writeTimeout, maxConnections, maxHeadSize, maxBodySize, keepAlive, recording, etag, tunnel, http3, serverHeader, trace }?) - trace is a folder path, writing every exchange under it as NNNN-request.http/NNNN-response.http
     instance: address, certificate, clearFaults, clearRequests, closed, connections, inject, mount, port, requestCount, requests, respond, setMediaType, setRecording, shutdown, toString, unmount, unroute, url
     no route: a JavaScript handler would run on the server's thread and wait on the JavaScript thread, which deadlocks when that thread is the one sending; Rust and Python only
   codec
