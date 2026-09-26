@@ -1696,6 +1696,34 @@ fn an_entrys_own_member_leads_a_message_field_of_its_name() {
 }
 
 #[test]
+fn a_book_roots_field_no_entry_inherits_rides_every_leaf() {
+    // The root states the symbol and a book type every entry inherits, and a
+    // price level and a position no entry reads off the root.
+    let leaves = message(
+        b"8=FIX.4.4|35=X|52=20260921-10:00:00|55=AAPL|1021=2|1023=5|290=3|268=2|279=0|269=0|278=B1|270=100|271=10|279=0|269=1|278=A1|270=101|271=11|10=0|",
+    )
+    .into_market_operations()
+    .expect("an incremental update");
+    let [bid, ask] = leaves.as_slice() else {
+        panic!("one leaf per entry")
+    };
+    for (leaf, entry) in [(bid, "B1"), (ask, "A1")] {
+        assert_eq!(
+            metadata(leaf),
+            [("mdentrypositionno", "3"), ("mdpricelevel", "5")]
+                .map(|(key, value)| (key.to_owned(), value.to_owned())),
+            "{entry}"
+        );
+        // What the entries inherit is read, and none of it is repeated.
+        assert!(!keys(leaf).iter().any(|key| key == "mdbooktype"), "{entry}");
+        assert_eq!(
+            event_of(leaf).get_crosscode(),
+            format!("Symbol=AAPL|MDBookType=2|MDEntryID={entry}")
+        );
+    }
+}
+
+#[test]
 fn a_trade_side_keeps_its_own_members_bare_and_the_order_independence_pins_hold() {
     let read = |line: &[u8]| {
         let leaves = message(line).into_market_operations().expect("a trade");

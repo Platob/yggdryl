@@ -143,3 +143,49 @@ test('one plan casts every chunk of a chunked column, kept apart', () => {
     /compiled for/,
   )
 })
+
+// Each cell of a column as its text, null where absent.
+function cellTexts(serie) {
+  return serie.rows().map((cell) => cell.toJSON())
+}
+
+test('a float into a decimal rounds half away from zero at the declared scale', () => {
+  // The number a float's shortest text names, rounded half away from zero:
+  // 0.125 is 0.13 where it used to be truncated to 0.12, and 1.15 stays 1.15.
+  const floats = [0.125, -0.125, 1.15, 0.005, null]
+  const cents = ['0.13', '-0.13', '1.15', '0.01', null]
+  const target = fields.decimal('v', 10, 2)
+  const column = Serie.fromScalars(fields.float64('v'), floats)
+  assert.deepEqual(cellTexts(column.cast(target)), cents)
+  assert.deepEqual(cellTexts(ArrowCastPlan.compile(column.field, target).apply(column)), cents)
+  const vector = arrow.vectorFromArray(floats, new arrow.Float64())
+  assert.deepEqual(cellTexts(Serie.fromArrowArray(vector, target)), cents)
+  assert.deepEqual(
+    cellTexts(Serie.fromScalars(fields.float64('v'), [2.5, -2.5]).cast(fields.decimal('v', 10, 0))),
+    ['3', '-3'],
+  )
+  // The fixed leaf holds the whole of it at scale eighteen.
+  assert.deepEqual(cellTexts(column.cast(fields.decimal('v'))), [
+    '0.125',
+    '-0.125',
+    '1.15',
+    '0.005',
+    null,
+  ])
+})
+
+test('a fixed decimal leaf into text is its trimmed text', () => {
+  const utf8 = fields.utf8('px')
+  for (const [leaf, field] of [
+    ['decimal', fields.decimal('px')],
+    ['bigdecimal', fields.bigdecimal('px')],
+  ]) {
+    const rows = ['1.125', '-2', '0'].map((text) => field.dtype.scalar(text))
+    const column = Serie.fromScalars(field, [...rows, null])
+    assert.deepEqual(column.cast(utf8).asJs(), ['1.125', '-2', '0', null], leaf)
+  }
+  // A parameterized width keeps the full scale it declares.
+  const width = fields.decimal128('px', 38, 18)
+  const column = Serie.fromScalars(width, [width.dtype.scalar('1.125'), null])
+  assert.deepEqual(column.cast(utf8).asJs(), ['1.125000000000000000', null])
+})

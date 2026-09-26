@@ -344,6 +344,14 @@ def test_the_view_doors_state_their_defaults() -> None:
     # A lift list is a sequence of paths, never one path's characters.
     with pytest.raises(TypeError):
         graph.MarketData.plan("orders", "securityids['ISIN'] as isin")  # type: ignore[arg-type]
+    with pytest.raises(TypeError):
+        graph.MarketData.apply_view("orders", _stream(), "securityids['ISIN'] as isin")  # type: ignore[arg-type]
+    # None is no lifts, as Node reads null: the view's own plan at both doors.
+    assert graph.MarketData.plan("orders", None) == graph.MarketData.plan("orders")
+    assert graph.MarketData.plan("lifecycle", None, crosscode="C-1") == (
+        graph.MarketData.plan("lifecycle", crosscode="C-1")
+    )
+    assert graph.MarketData.apply_view("orders", _stream(), None).read_all().equals(_view("orders"))
 
 
 def test_the_plans_the_views_are() -> None:

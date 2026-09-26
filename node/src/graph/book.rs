@@ -195,14 +195,16 @@ impl JsBookSide {
         self.inner.is_empty()
     }
 
-    /// The best live price on this side, as decimal text; `null` where
-    /// empty.
+    /// The best live price on this side, as decimal text: the first priced
+    /// level's price, `null` for an empty side or one holding only unpriced
+    /// entries.
     #[napi(getter)]
     pub fn best_price(&self) -> Option<String> {
         decimal_text(self.inner.best_price())
     }
 
-    /// The aggregate quantity at the exact best price; `null` where empty.
+    /// The exact aggregate quantity at the best price, as decimal text, an
+    /// entry stating none adding nothing; `null` where `bestPrice` is.
     #[napi(getter)]
     pub fn best_quantity(&self) -> Option<String> {
         decimal_text(self.inner.best_quantity())

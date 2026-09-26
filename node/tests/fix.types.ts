@@ -518,7 +518,11 @@ const books: BatchReader = reader.bookArrowReader([fromText], 1000, false)
 const sortedOperations: IterableIterator<MarketData> = reader.marketOperations([fromText])
 const nextOperation: IteratorResult<MarketData> = reader.marketOperations(stream).next()
 const operationRows: BatchReader = reader.marketArrowReader([fromText])
-const operationBatches: BatchReader = reader.marketOperationsArrowReader(walkedBatches)
+// The twin reads each row as its own message, so it takes parsed rows; a
+// walked capture reaches the sorted door as messages, never as the rows
+// `lifecycleArrowReader` writes.
+const unwalkedBatches: BatchReader = reader.parseTextArrowReader(BatchReader.fromIpc(new Uint8Array()))
+const operationBatches: BatchReader = reader.marketOperationsArrowReader(unwalkedBatches)
 const operationTable: BatchReader = reader.marketOperationsArrowReader(new Uint8Array())
 const withMetadata: boolean = reader.marketMetadata
 const withoutMetadata: FixCodec = new fix.FixCodec(loaded, { marketMetadata: false })

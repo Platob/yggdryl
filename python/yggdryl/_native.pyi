@@ -5777,7 +5777,13 @@ class FixCodec:
     def market_operations_arrow_reader(
         self, source: FixArrowSource
     ) -> pyarrow.RecordBatchReader:
-        """The Arrow twin of ``market_arrow_reader``: FIX rows in, ``marketdata`` rows out."""
+        """The Arrow twin of ``market_arrow_reader``: FIX rows in, ``marketdata`` rows out.
+
+        Each row is read as its own message. A walked capture reaches the
+        sorted door as messages - ``market_arrow_reader(codec.lifecycle(messages))``
+        - never as the rows ``lifecycle_arrow_reader`` writes, whose walked
+        facts are no cell of the row.
+        """
         ...
     def format_messages(
         self, messages: Iterable[FixMsg], field: FieldLike
@@ -7171,7 +7177,7 @@ class MarketData:
     @staticmethod
     def plan(
         view: str,
-        lifts: Sequence[str | FieldPath] = (),
+        lifts: Sequence[str | FieldPath] | None = (),
         *,
         crosscode: str | None = None,
     ) -> Plan:
@@ -7180,15 +7186,16 @@ class MarketData:
         ``view`` is one of ``enums.MARKET_VIEWS``, read ignoring ASCII case;
         each lift, a ``FieldPath`` or its text such as
         ``"securityids['ISIN'] as isin"``, is appended after the view's own
-        columns. ``crosscode`` is the chain ``lifecycle`` follows: that view
-        needs one and every other view refuses one.
+        columns; ``None`` is no lifts. ``crosscode`` is the chain
+        ``lifecycle`` follows: that view needs one and every other view
+        refuses one.
         """
         ...
     @staticmethod
     def apply_view(
         view: str,
         source: FixArrowSource,
-        lifts: Sequence[str | FieldPath] = (),
+        lifts: Sequence[str | FieldPath] | None = (),
         *,
         crosscode: str | None = None,
     ) -> pyarrow.RecordBatchReader:

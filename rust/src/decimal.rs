@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 
+pub(crate) use fixed::decimal_from_f64;
 pub use fixed::{BigDecimal, Decimal};
 use serde::{Deserialize, Serialize};
 use smol_str::{SmolStr, format_smolstr};
@@ -24,9 +25,93 @@ pub(crate) const BIGDECIMAL_EXTENSION_NAME: &str = "yggdryl.bigdecimal";
 
 /// Arrow casts owned by this datatype family.
 pub(crate) mod casts {
-    use arrow_buffer::i256;
+    use std::fmt::Write as _;
+    use std::sync::Arc;
 
-    use crate::DataType;
+    use arrow_array::builder::StringBuilder;
+    use arrow_array::{
+        Array, ArrayRef, Decimal128Array, Decimal256Array, Float16Array, Float32Array, Float64Array,
+    };
+    use arrow_buffer::{BooleanBuffer, i256};
+    use arrow_schema::DataType as ArrowDataType;
+
+    use crate::budget::{MaterializationBudget, reserve_vec_bytes};
+    use crate::cast::columns::is_exposed;
+    use crate::cast::downcast;
+    use crate::cast::text::encoded_value_of;
+    use crate::{DataType, Field, Scalar};
+
+    /// Whether a source Arrow type is a float a decimal reads through its
+    /// own reading rather than Arrow's.
+    pub(crate) const fn is_float_arrow(source: &ArrowDataType) -> bool {
+        matches!(
+            source,
+            ArrowDataType::Float16 | ArrowDataType::Float32 | ArrowDataType::Float64
+        )
+    }
+
+    /// Reads a column of floats into a decimal through
+    /// [`Scalar::from_decimal_float`], the reading a row takes.
+    ///
+    /// Arrow's kernel scales a float's binary fraction by a power of ten, so
+    /// `1.15` would land in a `decimal` as `1.149999999999999872` and `1e25`
+    /// in a `bigdecimal` with the binary noise past its sixteenth digit; this
+    /// reads the number the float names, rounded half away from zero at the
+    /// declared scale, so a batch and a row answer one number. A float no decimal of
+    /// the target holds is null under `safe` and refused, naming the field
+    /// and the row, otherwise.
+    pub(crate) fn ingest_float_values(
+        array: &ArrayRef,
+        safe: bool,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> crate::arrow::Result<ArrayRef> {
+        let rows = array.len();
+        let float: Box<dyn Fn(usize) -> f64> = match array.data_type() {
+            ArrowDataType::Float16 => {
+                let cells = downcast::<Float16Array>(array.as_ref())?;
+                Box::new(|index| cells.value(index).to_f64())
+            }
+            ArrowDataType::Float32 => {
+                let cells = downcast::<Float32Array>(array.as_ref())?;
+                Box::new(|index| f64::from(cells.value(index)))
+            }
+            ArrowDataType::Float64 => {
+                let cells = downcast::<Float64Array>(array.as_ref())?;
+                Box::new(|index| cells.value(index))
+            }
+            other => {
+                return Err(crate::arrow::Error::IncompatibleSchema(format!(
+                    "expected a float column to read into a decimal, got {other:?}"
+                )));
+            }
+        };
+        let dtype = encoded_value_of(field.dtype());
+        let read = Field::new(field.name(), dtype.clone(), true);
+        budget.add_array(dtype, rows)?;
+        reserve_vec_bytes::<Scalar>(budget, rows)?;
+        reserve_vec_bytes::<&Scalar>(budget, rows)?;
+        let mut values = Vec::with_capacity(rows);
+        for index in 0..rows {
+            if !is_exposed(exposure, index) || array.is_null(index) {
+                values.push(Scalar::Null);
+                continue;
+            }
+            let held = float(index);
+            match Scalar::from_decimal_float(dtype, held) {
+                Ok(value) => values.push(value),
+                Err(_) if safe => values.push(Scalar::Null),
+                Err(error) => {
+                    return Err(crate::arrow::Error::IncompatibleSchema(format!(
+                        "field {:?} row {index}: {held} does not read as {dtype}: {error}",
+                        field.name(),
+                    )));
+                }
+            }
+        }
+        crate::serie::value::array_of_rows(&read, &values.iter().collect::<Vec<_>>())
+    }
 
     pub(crate) struct DecimalText {
         bytes: [u8; 78],
@@ -80,6 +165,57 @@ pub(crate) mod casts {
         pub(crate) fn as_bytes(&self) -> &[u8] {
             &self.bytes[self.start..]
         }
+    }
+
+    /// Renders a fixed decimal leaf's column as the text its values spell.
+    ///
+    /// A leaf's one text is its units at scale eighteen with no trailing zero
+    /// behind the point - what its `Display` writes and what the value door
+    /// spells a row with - so a batch and a row answer one text. Arrow's
+    /// kernel would write the storage's full scale, which is the text of the
+    /// parameterized width the leaf rides and not of the leaf. The units are
+    /// read off the storage as they lie, so a storage value past the leaf's
+    /// bound still spells the number it holds.
+    pub(crate) fn render_fixed_text(
+        array: &ArrayRef,
+        field: &Field,
+        exposure: Option<&BooleanBuffer>,
+        budget: &mut MaterializationBudget,
+    ) -> crate::arrow::Result<ArrayRef> {
+        let rows = array.len();
+        let units: Box<dyn Fn(usize) -> crate::i256> = match array.data_type() {
+            ArrowDataType::Decimal128(..) => {
+                let cells = downcast::<Decimal128Array>(array.as_ref())?;
+                Box::new(|index| crate::i256::from_i128(cells.value(index)))
+            }
+            ArrowDataType::Decimal256(..) => {
+                let cells = downcast::<Decimal256Array>(array.as_ref())?;
+                Box::new(|index| crate::i256::from_le_bytes(cells.value(index).to_le_bytes()))
+            }
+            other => {
+                return Err(crate::arrow::Error::IncompatibleSchema(format!(
+                    "expected the decimal storage a fixed leaf rides, got {other:?}"
+                )));
+            }
+        };
+        budget.add_array(field.dtype(), rows)?;
+        let mut spelled = StringBuilder::with_capacity(rows, 0);
+        let mut text = String::new();
+        let mut payload = 0_usize;
+        for index in 0..rows {
+            if !is_exposed(exposure, index) || array.is_null(index) {
+                spelled.append_null();
+                continue;
+            }
+            text.clear();
+            let _ = write!(text, "{}", super::fixed::FixedText(units(index)));
+            payload += text.len();
+            spelled.append_value(&text);
+        }
+        // The reservation above charges the offsets a text array carries; the
+        // spellings are the payload this loop built.
+        budget.add_bytes(payload)?;
+        Ok(Arc::new(spelled.finish()))
     }
 
     /// Whether a target datatype holds decimals, however it encodes them.
@@ -424,8 +560,13 @@ mod fixed {
     ]);
 
     /// The exponent one `e` tail states: an optional sign and digits, or
-    /// nothing where the tail is not that or is past what an `i32` holds.
-    fn parse_exponent(tail: &[u8]) -> Option<i32> {
+    /// nothing where the tail is not that.
+    ///
+    /// An exponent past what any text can shift back saturates rather than
+    /// failing: every exponent beyond it moves the point past every width, so
+    /// the number it states is too many digits, or truncates to nothing, the
+    /// same way the largest one does.
+    fn parse_exponent(tail: &[u8]) -> Option<i64> {
         let (negative, digits) = match tail.split_first()? {
             (b'-', digits) => (true, digits),
             (b'+', digits) => (false, digits),
@@ -434,18 +575,24 @@ mod fixed {
         if digits.is_empty() || !digits.iter().all(u8::is_ascii_digit) {
             return None;
         }
-        let mut exponent: i32 = 0;
-        for digit in digits {
-            exponent = exponent
-                .checked_mul(10)?
-                .checked_add(i32::from(digit - b'0'))?;
-        }
+        let exponent = digits.iter().fold(0_i64, |held, digit| {
+            held.saturating_mul(10)
+                .saturating_add(i64::from(digit - b'0'))
+        });
         Some(if negative { -exponent } else { exponent })
     }
 
+    /// The largest shift up a width is asked for: past it, a mantissa that
+    /// is not zero has more digits than 256 bits hold.
+    const MOST_SHIFT_UP: i64 = 77;
+
+    /// The largest shift down that can leave a digit: past it, every
+    /// mantissa a width reads truncates to nothing.
+    const MOST_SHIFT_DOWN: i64 = 78;
+
     /// The integer a fixed decimal's text is read into: the digits as they
     /// come, then moved to the scale.
-    trait Mantissa: Copy {
+    trait Mantissa: Copy + PartialEq {
         /// Nothing read yet.
         const EMPTY: Self;
         /// The first integer no further digit ahead of the point fits under.
@@ -454,10 +601,12 @@ mod fixed {
         fn below_limit(self) -> bool;
         /// This integer with one more decimal digit behind it.
         fn push_digit(self, digit: u8) -> Self;
-        /// This integer times `10^shift`, or nothing past the width.
+        /// This integer times `10^shift`, or nothing past the width; the
+        /// shift is at most [`MOST_SHIFT_UP`].
         fn scaled_up(self, shift: u32) -> Option<Self>;
-        /// This integer divided by `10^shift`, truncated toward zero; nothing
-        /// is left of a shift past the width.
+        /// This integer divided by `10^shift`, truncated toward zero; the
+        /// shift is at most [`MOST_SHIFT_DOWN`], and nothing is left of one
+        /// past the width.
         fn scaled_down(self, shift: u32) -> Self;
     }
 
@@ -491,19 +640,24 @@ mod fixed {
         }
 
         fn push_digit(self, digit: u8) -> Self {
-            self.checked_mul(Self::from_u128(10))
-                .and_then(|held| held.checked_add(Self::from_u128(u128::from(digit))))
+            self.checked_mul_word(10)
+                .and_then(|held| held.checked_add_word(u64::from(digit)))
                 .expect("a mantissa below the limit takes one more digit")
         }
 
         fn scaled_up(self, shift: u32) -> Option<Self> {
-            (0..shift).try_fold(self, |held, _| held.checked_mul(Self::from_u128(10)))
+            (0..shift).try_fold(self, |held, _| held.checked_mul_word(10))
         }
 
         fn scaled_down(self, shift: u32) -> Self {
-            (0..shift).fold(self, |held, _| {
-                held.checked_div(Self::from_u128(10)).unwrap_or(Self::ZERO)
-            })
+            let mut held = self;
+            for _ in 0..shift {
+                if held.is_zero() {
+                    break;
+                }
+                held = held.div_rem_word(10).0;
+            }
+            held
         }
     }
 
@@ -518,7 +672,7 @@ mod fixed {
     /// (`1e3`, `2.5E-2`) moves the point. What is refused is text that states
     /// no number (a bare sign, two points, a letter, `NaN`, `inf`) and a
     /// value past the width, which no reading could hold.
-    fn parse_units<M: Mantissa>(text: &str, scale: i8, digits: &'static str) -> Result<(bool, M)> {
+    fn parse_units<M: Mantissa>(text: &str, scale: i64, digits: &'static str) -> Result<(bool, M)> {
         let refused = |reason: &str| Error::Parse {
             target: "decimal",
             position: 0,
@@ -541,10 +695,10 @@ mod fixed {
         // the point; a digit past what the integer holds is one too many
         // ahead of the point and one truncated behind it.
         let mut mantissa = M::EMPTY;
-        let mut fraction: i32 = 0;
+        let mut fraction: i64 = 0;
         let mut seen_digit = false;
         let mut seen_point = false;
-        let mut exponent: i32 = 0;
+        let mut exponent: i64 = 0;
         let mut at = 0;
         while at < rest.len() {
             match rest[at] {
@@ -573,19 +727,75 @@ mod fixed {
         if !seen_digit {
             return Err(refused("expected a decimal"));
         }
+        // Nothing is nothing, whatever the exponent says.
+        if mantissa == M::EMPTY {
+            return Ok((negative, M::EMPTY));
+        }
         // The units are the mantissa moved to the scale: up by what the point
         // and the exponent leave short, down - truncated toward zero - by what
-        // they leave over.
-        let shift = i32::from(scale) + exponent - fraction;
-        let units = if shift >= 0 {
+        // they leave over. The sum saturates rather than wrapping, and a
+        // shift past what any width holds is answered before a digit is
+        // moved.
+        let shift = scale.saturating_add(exponent).saturating_sub(fraction);
+        let units = if shift > MOST_SHIFT_UP {
+            return Err(too_many());
+        } else if shift >= 0 {
             u32::try_from(shift)
                 .ok()
                 .and_then(|shift| mantissa.scaled_up(shift))
                 .ok_or_else(too_many)?
+        } else if shift < -MOST_SHIFT_DOWN {
+            M::EMPTY
         } else {
             u32::try_from(-shift).map_or(M::EMPTY, |shift| mantissa.scaled_down(shift))
         };
         Ok((negative, units))
+    }
+
+    /// The signed 256-bit integer a sign and a magnitude state, or nothing
+    /// for a magnitude past what the signed half holds.
+    fn signed_units(negative: bool, magnitude: u256) -> Option<i256> {
+        let units = i256::from_le_bytes(magnitude.into_le_bytes());
+        if units.is_negative() {
+            return None;
+        }
+        if negative {
+            units.checked_neg()
+        } else {
+            Some(units)
+        }
+    }
+
+    /// The coefficient a float states at `scale`: the shortest decimal text
+    /// that reads back as the same float - the number the float was meant to
+    /// be, `3000000` and never the `2999999.99...` scaling its binary fraction
+    /// by a power of ten answers - rounded half away from zero at that scale.
+    /// Nothing for a float that is not finite or needs more than seventy-six
+    /// digits there.
+    ///
+    /// A float is an inexact reading, so it is rounded, as DuckDB rounds one;
+    /// text is exact, and [`Decimal::parse`] cuts it. The one reading of a
+    /// float every exact decimal takes: the fixed leaves' `from_f64`, and a
+    /// float cast into any decimal width in a row or in a column.
+    pub(crate) fn decimal_from_f64(value: f64, scale: i8) -> Option<i256> {
+        if !value.is_finite() {
+            return None;
+        }
+        // One digit past the scale is read too: the shortest text is exact,
+        // so that digit alone decides a rounding half away from zero.
+        let (negative, past) = parse_units::<u256>(
+            &format!("{value}"),
+            i64::from(scale) + 1,
+            "expected at most 76 digits",
+        )
+        .ok()?;
+        let (magnitude, dropped) = past.div_rem_word(10);
+        let magnitude = if dropped >= 5 {
+            magnitude.checked_add_word(1)?
+        } else {
+            magnitude
+        };
+        signed_units(negative, magnitude)
     }
 
     /// One exact decimal at eighteen fractional digits and thirty-eight digits
@@ -677,22 +887,21 @@ mod fixed {
             Self(value as i128 * ONE_UNITS)
         }
 
-        /// The nearest value to a float, or nothing for one that is not finite
-        /// or is past the precision.
+        /// The value a float names, or nothing for one that is not finite or
+        /// is past the precision.
         ///
         /// A float carries about sixteen significant digits, so what comes back
-        /// is the float's reading rounded to eighteen fractional digits, never
-        /// more exact than the float was.
+        /// is the shortest decimal text that reads back as the same float -
+        /// `3000000`, never the `2999999.999999999949668352` scaling its binary
+        /// fraction answers - rounded half away from zero at the eighteenth
+        /// fractional digit, never more exact than the float was. A float is an
+        /// inexact reading and is rounded; text is exact, and [`Self::parse`]
+        /// cuts it.
         #[must_use]
         pub fn from_f64(value: f64) -> Option<Self> {
-            if !value.is_finite() {
-                return None;
-            }
-            // The shortest text that reads back as the same float is the number
-            // the float was meant to be: `3000000`, never the
-            // `2999999.999999999949668352` that scaling the binary fraction by a
-            // power of ten answers.
-            Self::parse(&format!("{value}")).ok()
+            decimal_from_f64(value, Self::SCALE)
+                .and_then(i256::as_i128)
+                .and_then(Self::from_units)
         }
 
         /// The float nearest this value.
@@ -736,7 +945,7 @@ mod fixed {
         /// value past the precision.
         pub fn parse(text: &str) -> Result<Self> {
             let (negative, units) =
-                parse_units::<u128>(text, Self::SCALE, "expected at most 38 digits")?;
+                parse_units::<u128>(text, i64::from(Self::SCALE), "expected at most 38 digits")?;
             let refused = || Error::Parse {
                 target: "decimal",
                 position: 0,
@@ -934,14 +1143,11 @@ mod fixed {
             self.0.as_i128().and_then(Decimal::from_units)
         }
 
-        /// The nearest value to a float, or nothing for one that is not finite
-        /// or is past the precision; see [`Decimal::from_f64`].
+        /// The value a float names, or nothing for one that is not finite or
+        /// is past the precision; see [`Decimal::from_f64`].
         #[must_use]
         pub fn from_f64(value: f64) -> Option<Self> {
-            if !value.is_finite() {
-                return None;
-            }
-            Self::parse(&format!("{value}")).ok()
+            decimal_from_f64(value, Self::SCALE).and_then(Self::from_units)
         }
 
         /// The float nearest this value.
@@ -959,22 +1165,15 @@ mod fixed {
         /// value past the precision.
         pub fn parse(text: &str) -> Result<Self> {
             let (negative, units) =
-                parse_units::<u256>(text, Self::SCALE, "expected at most 76 digits")?;
+                parse_units::<u256>(text, i64::from(Self::SCALE), "expected at most 76 digits")?;
             let refused = || Error::Parse {
                 target: "decimal",
                 position: 0,
                 reason: format_smolstr!("expected at most 76 digits: {text:?}"),
             };
-            let units = i256::from_le_bytes(units.into_le_bytes());
-            if units.is_negative() {
-                return Err(refused());
-            }
-            let units = if negative {
-                units.checked_neg().ok_or_else(refused)?
-            } else {
-                units
-            };
-            Self::from_units(units).ok_or_else(refused)
+            signed_units(negative, units)
+                .and_then(Self::from_units)
+                .ok_or_else(refused)
         }
 
         /// The value a scalar holds, where it is an exact decimal that restates
@@ -1115,28 +1314,33 @@ mod fixed {
         };
     }
 
-    /// The decimal text of `units` at scale eighteen, with no trailing zero
-    /// behind the point.
-    fn write_trimmed(units: i256, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text = super::decimal_text(units, Decimal::SCALE);
-        let trimmed = match text.find('.') {
-            Some(_) => text.trim_end_matches('0').trim_end_matches('.'),
-            None => text.as_str(),
-        };
-        formatter.write_str(if trimmed.is_empty() { "0" } else { trimmed })
+    /// The one text a fixed leaf's units spell: the decimal text at scale
+    /// eighteen, with no trailing zero behind the point. Both leaves' `Display`
+    /// writes it, and a column of either renders it.
+    pub(super) struct FixedText(pub(super) i256);
+
+    impl fmt::Display for FixedText {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let text = super::decimal_text(self.0, Decimal::SCALE);
+            let trimmed = match text.find('.') {
+                Some(_) => text.trim_end_matches('0').trim_end_matches('.'),
+                None => text.as_str(),
+            };
+            formatter.write_str(if trimmed.is_empty() { "0" } else { trimmed })
+        }
     }
 
     impl fmt::Display for Decimal {
         /// The decimal text, with no trailing zero behind the point.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write_trimmed(i256::from(self.0), formatter)
+            FixedText(i256::from(self.0)).fmt(formatter)
         }
     }
 
     impl fmt::Display for BigDecimal {
         /// The decimal text, with no trailing zero behind the point.
         fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write_trimmed(self.0, formatter)
+            FixedText(self.0).fmt(formatter)
         }
     }
 
@@ -2173,6 +2377,51 @@ pub(crate) fn decimal_from_text(
 }
 
 impl Scalar {
+    /// Read a float as the decimal one datatype declares.
+    ///
+    /// The number a float names is its shortest decimal text - `1.15`, never
+    /// the `1.149999999999999872` its binary fraction is - and that is
+    /// rounded half away from zero at the declared scale, exactly as the
+    /// fixed leaves' `from_f64` reads one: `0.125` into `decimal(10, 2)` is
+    /// `0.13`. It is the one reading of a float a decimal takes, in a row and
+    /// in a column alike.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidRecord`] for a datatype that is not a decimal,
+    /// a float that is not finite, and one that names more digits than the
+    /// declared precision.
+    pub(crate) fn from_decimal_float(dtype: &DataType, value: f64) -> Result<Self> {
+        let refused = |reason: &str| Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason: format_smolstr!("expected {reason}, got {value}"),
+        };
+        let Some(family) = dtype.decimal_type() else {
+            return Err(refused("a decimal datatype to read a float into"));
+        };
+        let scale = family.scale();
+        let units = decimal_from_f64(value, scale)
+            .ok_or_else(|| refused("a finite float an exact decimal can hold"))?;
+        if units.unsigned_abs().decimal_digits() > u32::from(family.precision()) {
+            return Err(refused("a number within the declared precision"));
+        }
+        let narrow = || {
+            units
+                .as_i128()
+                .ok_or_else(|| refused("a number within the declared precision"))
+        };
+        Ok(match family {
+            DecimalType::Decimal256 { .. } => Self::d256(units, scale),
+            DecimalType::BigDecimal => BigDecimal::from_units(units)
+                .map(Self::BigDecimal)
+                .ok_or_else(|| refused("a number within the declared precision"))?,
+            DecimalType::Decimal => Decimal::from_units(narrow()?)
+                .map(Self::Decimal)
+                .ok_or_else(|| refused("a number within the declared precision"))?,
+            _ => Self::d128(narrow()?, scale),
+        })
+    }
+
     /// Read a decimal out of its text spelling, at one datatype's scale.
     ///
     /// The counterpart of [`Scalar::from_temporal_text`] for the other family

@@ -93,9 +93,11 @@ pub(crate) fn market_data_of(item: &Bound<'_, PyAny>) -> PyResult<CoreMarketData
     )))
 }
 
-/// The lifts a view appends, each a `FieldPath` or its text, resolved once.
-fn lifts_of(lifts: Vec<Bound<'_, PyAny>>) -> PyResult<Vec<FieldPath>> {
+/// The lifts a view appends, each a `FieldPath` or its text, resolved once;
+/// `None` is no lifts, as Node reads `null`.
+fn lifts_of(lifts: Option<Vec<Bound<'_, PyAny>>>) -> PyResult<Vec<FieldPath>> {
     lifts
+        .unwrap_or_default()
         .into_iter()
         .map(|lift| core_path_from_value(&lift))
         .collect()
@@ -283,16 +285,16 @@ graph_methods!(PyMarketData, "MarketData"; [
     /// of `enums.MARKET_VIEWS`, read ignoring ASCII case - with each of
     /// `lifts`, a `FieldPath` or its text such as
     /// `"securityids['ISIN'] as isin"`, appended after the view's own
-    /// columns. `crosscode` is the chain the `lifecycle` view follows: that
-    /// view needs one and every other view refuses one.
+    /// columns; `None` is no lifts. `crosscode` is the chain the `lifecycle`
+    /// view follows: that view needs one and every other view refuses one.
     #[staticmethod]
     #[pyo3(
-        signature = (view, lifts = Vec::new(), *, crosscode = None),
+        signature = (view, lifts = None, *, crosscode = None),
         text_signature = "(view, lifts=(), *, crosscode=None)"
     )]
     fn plan(
         view: &str,
-        lifts: Vec<Bound<'_, PyAny>>,
+        lifts: Option<Vec<Bound<'_, PyAny>>>,
         crosscode: Option<&str>,
     ) -> PyResult<PyPlan> {
         let view = CoreMarketView::read(view, crosscode).map_err(value_error)?;
@@ -309,14 +311,14 @@ graph_methods!(PyMarketData, "MarketData"; [
     /// A lift naming a column the rows do not hold is refused there.
     #[staticmethod]
     #[pyo3(
-        signature = (view, source, lifts = Vec::new(), *, crosscode = None),
+        signature = (view, source, lifts = None, *, crosscode = None),
         text_signature = "(view, source, lifts=(), *, crosscode=None)"
     )]
     fn apply_view<'py>(
         py: Python<'py>,
         view: &str,
         source: &Bound<'py, PyAny>,
-        lifts: Vec<Bound<'py, PyAny>>,
+        lifts: Option<Vec<Bound<'py, PyAny>>>,
         crosscode: Option<&str>,
     ) -> PyResult<Bound<'py, PyAny>> {
         let view = CoreMarketView::read(view, crosscode).map_err(value_error)?;
