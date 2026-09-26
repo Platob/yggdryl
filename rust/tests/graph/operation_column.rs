@@ -4,9 +4,9 @@
 
 use yggdryl::graph::{Lane, Operation, OperationColumn, OrderEvent};
 use yggdryl::idmap::IdMap;
-use yggdryl::{Ccy, DataType, Decimal18, Scalar, TimeInForce, Unit};
+use yggdryl::{Ccy, DataType, Decimal, Scalar, TimeInForce, Unit};
 
-fn decimal(text: &str) -> Decimal18 {
+fn decimal(text: &str) -> Decimal {
     text.parse().unwrap()
 }
 
@@ -25,7 +25,7 @@ fn operation_columns_round_trip_every_fact() {
         spotrate: Some(decimal("101")),
         forwardpoints: Some(decimal("0.25")),
         currency: Some(Ccy::new("USD").unwrap()),
-        quantity: Some(Decimal18::from_int(7)),
+        quantity: Some(Decimal::from_int(7)),
         unit: Some(Unit::new("share").unwrap()),
     }));
     source.set_ask(Some(Lane {

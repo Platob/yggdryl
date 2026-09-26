@@ -370,10 +370,13 @@ mod limits {
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
+                | DataType::Decimal
                 | DataType::LargeSerieView(_) => {
                     self.add_fixed_rows(rows, 16)?;
                 }
-                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
+                DataType::Decimal256 { .. } | DataType::BigDecimal => {
+                    self.add_fixed_rows(rows, 32)?;
+                }
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }
@@ -491,8 +494,11 @@ mod limits {
                 DataType::Interval(TimeUnit::MonthDayNano)
                 | DataType::Decimal128 { .. }
                 | DataType::Uuid
+                | DataType::Decimal
                 | DataType::LargeSerieView(_) => self.add_fixed_rows(rows, 16)?,
-                DataType::Decimal256 { .. } => self.add_fixed_rows(rows, 32)?,
+                DataType::Decimal256 { .. } | DataType::BigDecimal => {
+                    self.add_fixed_rows(rows, 32)?;
+                }
                 DataType::Interval(_) => {
                     return Err(unsupported(dtype, "invalid interval layout"));
                 }

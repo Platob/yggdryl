@@ -96,6 +96,8 @@ mod iomedia;
 mod iomode;
 #[path = "root/lib.rs"]
 mod lib;
+#[path = "root/limit.rs"]
+mod limit;
 #[path = "root/listing.rs"]
 mod listing;
 #[path = "root/mapping.rs"]

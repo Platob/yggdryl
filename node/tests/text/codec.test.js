@@ -927,6 +927,25 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     }
   })
 
+  test('the fixed decimal leaves cross the transport as themselves', () => {
+    // An exact decimal has no JavaScript number, so its marker comes back as
+    // the `Scalar` it was, the fixed leaf's id and units included, alone or
+    // inside a record.
+    for (const [id, text] of [['decimal', '1.5'], ['bigdecimal', '-2.25']]) {
+      const value = new DataType(id).scalar(text)
+      const back = value.asJs()
+      assert.ok(back instanceof Scalar, id)
+      assert.equal(back.id, id)
+      assert.ok(back.equals(value), id)
+      const { amount } = Scalar.from({ amount: value }).asJs()
+      assert.equal(amount.id, id)
+      assert.ok(amount.equals(value), id)
+    }
+    // The width with the same units is another leaf, and stays one.
+    const width = new DataType('decimal128(38,18)').scalar('1.5')
+    assert.equal(width.asJs().id, 'decimal128')
+  })
+
   test('exact intervals retain their flat JavaScript layouts', () => {
     const typed = (document, dtype) => json.loads(document, {
       field: new Field('span', dtype, false),
@@ -1091,6 +1110,35 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
       '_absoluteNative',
     ]) {
       assert.equal(forty[hidden], undefined, hidden)
+    }
+  })
+
+  test('the fixed decimal leaves keep an exact remainder and refuse a zero divisor', () => {
+    const price = new DataType('decimal')
+    const wide = new DataType('bigdecimal')
+    // `remainder` is exact at scale eighteen, its sign the dividend's.
+    const rest = price.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(rest.id, 'decimal')
+    assert.ok(rest.equals(price.scalar('1.5')))
+    assert.ok(price.scalar('-7.5').remainder(2).equals(price.scalar('-1.5')))
+    assert.ok(price.scalar('7.5').remainder(price.scalar('-2')).equals(price.scalar('1.5')))
+    // A bigdecimal on either side answers one.
+    const widened = wide.scalar('7.5').remainder(price.scalar('2'))
+    assert.equal(widened.id, 'bigdecimal')
+    assert.ok(widened.equals(wide.scalar('1.5')))
+    // A divisor of nothing is a division by zero - a RangeError, as for every
+    // other exact value, where it used to be a TypeError.
+    for (const dividend of [price.scalar('1'), wide.scalar('1')]) {
+      for (const operation of ['divide', 'remainder']) {
+        assert.throws(
+          () => dividend[operation](price.scalar('0')),
+          (error) =>
+            error instanceof RangeError &&
+            error.code === 'ERR_YGGDRYL_DIVISION_BY_ZERO' &&
+            /by zero/.test(error.message),
+          `${dividend.id} ${operation}`,
+        )
+      }
     }
   })
 

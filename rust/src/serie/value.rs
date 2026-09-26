@@ -273,6 +273,18 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
         DataType::Decimal256 { scale, .. } => {
             physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
         }
+        DataType::Decimal => {
+            physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
+                value,
+                crate::Decimal::SCALE
+            ))
+        }
+        DataType::BigDecimal => {
+            physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(
+                value,
+                crate::BigDecimal::SCALE
+            ))
+        }
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()
@@ -411,6 +423,12 @@ pub(crate) fn read_decimal64(dtype: &DataType, value: i64) -> Result<Scalar> {
 pub(crate) fn read_decimal128(dtype: &DataType, value: i128) -> Result<Scalar> {
     match dtype {
         DataType::Decimal128 { scale, .. } => Ok(Scalar::d128(value, *scale)),
+        // The fixed leaf reads its own value off the same slot; a coefficient
+        // past thirty-eight digits is one the storage held and the datatype
+        // does not.
+        DataType::Decimal => crate::Decimal::from_units(value)
+            .map(Scalar::Decimal)
+            .ok_or_else(|| misread(dtype, "a decimal128 slot within 38 digits")),
         _ => Err(misread(dtype, "a decimal128 slot")),
     }
 }
@@ -421,6 +439,11 @@ pub(crate) fn read_decimal256(dtype: &DataType, value: ArrowI256) -> Result<Scal
             i256::from_le_bytes(value.to_le_bytes()),
             *scale,
         )),
+        DataType::BigDecimal => {
+            crate::BigDecimal::from_units(i256::from_le_bytes(value.to_le_bytes()))
+                .map(Scalar::BigDecimal)
+                .ok_or_else(|| misread(dtype, "a decimal256 slot within 76 digits"))
+        }
         _ => Err(misread(dtype, "a decimal256 slot")),
     }
 }
@@ -897,6 +920,8 @@ pub(crate) fn value_from_array(
         DataType::Decimal64 { .. } => cell!(Decimal64Array, read_decimal64),
         DataType::Decimal128 { .. } => cell!(Decimal128Array, read_decimal128),
         DataType::Decimal256 { .. } => cell!(Decimal256Array, read_decimal256),
+        DataType::Decimal => cell!(Decimal128Array, read_decimal128),
+        DataType::BigDecimal => cell!(Decimal256Array, read_decimal256),
         map_dtype @ (DataType::Map(_) | DataType::SortedMap(_)) => {
             let map = &map_dtype
                 .as_mapping()

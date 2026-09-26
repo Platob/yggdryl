@@ -11,7 +11,7 @@ use yggdryl::graph::{Element, Event, Market, Operation};
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextBytes, TextLine};
 use yggdryl::{
-    Ccy, DataType, Decimal18, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType,
+    Ccy, DataType, Decimal, Field, FixCodec, FixEntry, FixMsg, FixRegistry, Scalar, StructType,
     fix_schema, fix_schema_carrying,
 };
 
@@ -1521,7 +1521,7 @@ fn a_regulatory_group_held_as_a_column_dates_the_message() {
 #[test]
 fn a_single_sided_quote_reads_as_its_lanes_side() {
     let (_registry, reader) = reader();
-    let decimal = |text: &str| Decimal18::parse(text).expect("a decimal");
+    let decimal = |text: &str| Decimal::parse(text).expect("a decimal");
 
     let bid = reader
         .sole_line(
@@ -1530,7 +1530,7 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         .unwrap();
     assert_eq!(bid.get_side().as_str(), "BUY");
     assert_eq!(bid.get_price(), Some(decimal("101.5")));
-    assert_eq!(bid.get_quantity(), Some(Decimal18::from_int(200)));
+    assert_eq!(bid.get_quantity(), Some(Decimal::from_int(200)));
     assert_eq!(bid.get_currency().as_str(), "USD");
     assert_eq!(
         bid.get_bid()
@@ -1551,7 +1551,7 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
         .unwrap();
     assert_eq!(offer.get_side().as_str(), "SELL");
     assert_eq!(offer.get_price(), Some(decimal("102")));
-    assert_eq!(offer.get_quantity(), Some(Decimal18::from_int(50)));
+    assert_eq!(offer.get_quantity(), Some(Decimal::from_int(50)));
 
     // Both lanes name no side, and nothing reads off either.
     let two = reader
@@ -1581,7 +1581,7 @@ fn a_single_sided_quote_reads_as_its_lanes_side() {
     assert_eq!(fill.get_price(), None);
     assert_eq!(fill.get_quantity(), None);
     assert_eq!(fill.get_lastpx(), Some(decimal("100")));
-    assert_eq!(fill.get_lastqty(), Some(Decimal18::from_int(10)));
+    assert_eq!(fill.get_lastqty(), Some(Decimal::from_int(10)));
 
     // A lane read under a side is the side's, not a statement of its own: a
     // buy whose side a write takes away quotes no lane any more, so it names

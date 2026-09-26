@@ -3,7 +3,7 @@
 
 use smol_str::SmolStr;
 
-use crate::Decimal18;
+use crate::Decimal;
 use crate::graph::Market;
 use crate::graph::facts::OperationEventFacts;
 use crate::securityid::{SecType, SecurityId};
@@ -366,6 +366,122 @@ impl FixCapture {
 /// `MDReqID(262)`.
 pub(super) const CROSS_TAGS: [i32; 6] = [37, 11, 41, 117, 131, 262];
 
+/// Every root tag a typed market column reads, one line per tag naming the
+/// column it feeds: the reads of `FixMsg::derive_market`,
+/// `FixMsg::reports_execution`, `FixMsg::stated_securityids` and
+/// [`FixMsg::classification`](super::FixMsg::classification), mirrored here
+/// so a leaf's metadata can carry every row child *outside* them. A read
+/// that learns a tag this table does not is a fact a leaf states twice.
+///
+/// What is typed on its own is not repeated: a lifted tag - the cross tags
+/// among them - a header tag and the crate's own columns answer
+/// [`is_typed_tag`], every crate tag - the instrument views and the
+/// instrument keys a rule folds into `secaltids` included - is the
+/// [envelope's](super::digest), and an identifier map's sources are the
+/// registry's. A group listed here, by its counter, is read whole.
+pub(super) const MARKET_TAGS: [i32; 32] = [
+    54,              // Side: side
+    15,              // Currency: currency
+    120,             // SettlCurrency: currency, where 15 states none
+    996,             // UnitOfMeasure: unit
+    TIMEINFORCE_TAG, // TimeInForce(59): tif
+    461,             // CFICode: cficode, the classification of record
+    201,             // PutOrCall: cficode, a listed option's group
+    55,              // Symbol: ticker
+    22,              // SecurityIDSource: securityids, the primary's source
+    48,              // SecurityID: securityids, the primary
+    454,             // NoSecurityAltID, the `secaltids` group: securityids
+    30,              // LastMkt: miccode
+    100,             // ExDestination: miccode, where 30 states none
+    207,             // SecurityExchange: miccode, where the others state none
+    326,             // SecurityTradingStatus: tradable
+    340,             // TradSesStatus: tradable, where 326 says nothing
+    965,             // SecurityStatus: tradable, where the others say nothing
+    39,              // OrdStatus: state
+    150,             // ExecType: state, and whether the message executed
+    487,             // TradeReportTransType: whether a trade capture executed
+    126,             // ExpireTime: exprtime
+    62,              // ValidUntilTime: exprtime
+    432,             // ExpireDate: exprtime
+    541,             // MaturityDate: exprtime
+    2749,            // ExecutionTimestamp: execunix
+    60,              // TransactTime: execunix, and currunix within the delay
+    768,             // NoTrdRegTimestamps, a clock group: currunix, execunix
+    140,             // PrevClosePx: prevpx
+    132,             // BidPx: the bid lane's price
+    133,             // OfferPx: the ask lane's price
+    134,             // BidSize: the bid lane's quantity
+    135,             // OfferSize: the ask lane's quantity
+];
+
+/// Every tag a book entry's own facts are read from, at any depth of its
+/// `NoMDEntries(268)` occurrence, one line per tag naming what it feeds:
+/// the reads of `Facts::record` in `market.rs`. What a book message's root
+/// states for its entries is [`BOOK_ROOT_TAGS`], a part of these.
+pub(super) const BOOK_ENTRY_TAGS: [i32; 23] = [
+    279,  // MDUpdateAction: the book control's action, and the state
+    269,  // MDEntryType: the leaf's kind, and a level's side
+    278,  // MDEntryID: crosscode, and the MDENTRYID alternate identifier
+    280,  // MDEntryRefID: crosscode, and the MDENTRYREFID alternate identifier
+    270,  // MDEntryPx: price, a lane's price, and the control's entry price
+    271,  // MDEntrySize: quantity, a lane's, and the control's entry size
+    1026, // MDEntrySpotRate: spotrate
+    1027, // MDEntryForwardPoints: forwardpoints
+    272,  // MDEntryDate: currunix, creaunix or execunix
+    273,  // MDEntryTime: currunix, creaunix or execunix
+    37,   // OrderID: an order rather than a quote, and the ORDERID identifier
+    55,   // Symbol: ticker, and the book scope
+    54,   // Side: a trade entry's side
+    290,  // MDEntryPositionNo: the control's position, and crosscode
+    1023, // MDPriceLevel: crosscode
+    1021, // MDBookType: the book scope
+    1173, // MDSubBookType: the book scope
+    1022, // MDFeedType: the book scope
+    1500, // MDStreamID: the book scope
+    1301, // MarketID: the book scope
+    1300, // MarketSegmentID: the book scope
+    262,  // MDReqID: the book scope
+    264,  // MarketDepth: the book scope
+];
+
+/// Every root tag of a book message its entries inherit, one line per tag
+/// naming what it feeds: the reads of `Facts::inherit_context` and
+/// `root_temporal_count` in `market.rs`, which are also all an empty `W`
+/// reads. Any other [`BOOK_ENTRY_TAGS`] member a root states is read by no
+/// entry, so it rides every leaf's metadata as any unread field does.
+pub(super) const BOOK_ROOT_TAGS: [i32; 11] = [
+    55,   // Symbol: ticker, and the book scope
+    1021, // MDBookType: the book scope
+    1173, // MDSubBookType: the book scope
+    1022, // MDFeedType: the book scope
+    1500, // MDStreamID: the book scope
+    1301, // MarketID: the book scope
+    1300, // MarketSegmentID: the book scope
+    262,  // MDReqID: the book scope
+    264,  // MarketDepth: the book scope
+    272,  // MDEntryDate: the date an entry stating none takes
+    273,  // MDEntryTime: the time an entry stating none takes
+];
+
+/// Every tag a trade side's execution is read from, at any depth of its
+/// `NoSides(552)` occurrence, one line per tag naming what it feeds: the
+/// reads of `trade_execution` in `market.rs`.
+pub(super) const TRADE_SIDE_TAGS: [i32; 13] = [
+    54,   // Side: side
+    1009, // SideLastQty: lastqty
+    1852, // SideAvgPx: avgpx
+    1154, // SideCurrency: currency
+    1427, // SideExecID: SIDEEXECID, and the side's stable key
+    1005, // SideTradeReportID: SIDETRADEREPORTID, and the stable key
+    1506, // SideTradeID: SIDETRADEID, and the stable key
+    1507, // SideOrigTradeID: SIDEORIGTRADEID
+    37,   // OrderID: ORDERID, the stable key and the side's chain
+    198,  // SecondaryOrderID: SECONDARYORDERID
+    11,   // ClOrdID: CLORDID, the stable key and the side's chain
+    526,  // SecondaryClOrdID: SECONDARYCLORDID
+    41,   // OrigClOrdID: ORIGCLORDID, and the side's chain
+];
+
 /// The FIX fields a message lifts out of its row and holds typed.
 ///
 /// A price and a quantity are what a consumer reads first, and an
@@ -427,14 +543,14 @@ pub(super) const PARTYID_TAG: i32 = 448;
 /// writes here but a tag.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FixLifted {
-    price: Option<Decimal18>,
-    orderqty: Option<Decimal18>,
-    quantity: Option<Decimal18>,
-    lastpx: Option<Decimal18>,
-    lastqty: Option<Decimal18>,
-    avgpx: Option<Decimal18>,
-    cumqty: Option<Decimal18>,
-    leavesqty: Option<Decimal18>,
+    price: Option<Decimal>,
+    orderqty: Option<Decimal>,
+    quantity: Option<Decimal>,
+    lastpx: Option<Decimal>,
+    lastqty: Option<Decimal>,
+    avgpx: Option<Decimal>,
+    cumqty: Option<Decimal>,
+    leavesqty: Option<Decimal>,
     /// The FX parts, boxed: most messages state none and pay one pointer.
     fx: Option<Box<LiftedFx>>,
     clordid: Option<SmolStr>,
@@ -454,12 +570,12 @@ pub struct FixLifted {
 /// `BidForwardPoints(189)`, `OfferSpotRate(190)` and `OfferForwardPoints(191)`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LiftedFx {
-    lastspotrate: Option<Decimal18>,
-    lastforwardpoints: Option<Decimal18>,
-    bidspotrate: Option<Decimal18>,
-    bidforwardpoints: Option<Decimal18>,
-    offerspotrate: Option<Decimal18>,
-    offerforwardpoints: Option<Decimal18>,
+    lastspotrate: Option<Decimal>,
+    lastforwardpoints: Option<Decimal>,
+    bidspotrate: Option<Decimal>,
+    bidforwardpoints: Option<Decimal>,
+    offerspotrate: Option<Decimal>,
+    offerforwardpoints: Option<Decimal>,
 }
 
 impl LiftedFx {
@@ -487,49 +603,49 @@ impl FixLifted {
 
     /// `LastSpotRate(194)`, where the message stated one.
     #[must_use]
-    pub fn lastspotrate(&self) -> Option<Decimal18> {
+    pub fn lastspotrate(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.lastspotrate)
     }
 
     /// `LastForwardPoints(195)`, where the message stated one.
     #[must_use]
-    pub fn lastforwardpoints(&self) -> Option<Decimal18> {
+    pub fn lastforwardpoints(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.lastforwardpoints)
     }
 
     /// `BidSpotRate(188)`, where the message stated one.
     #[must_use]
-    pub fn bidspotrate(&self) -> Option<Decimal18> {
+    pub fn bidspotrate(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.bidspotrate)
     }
 
     /// `BidForwardPoints(189)`, where the message stated one.
     #[must_use]
-    pub fn bidforwardpoints(&self) -> Option<Decimal18> {
+    pub fn bidforwardpoints(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.bidforwardpoints)
     }
 
     /// `OfferSpotRate(190)`, where the message stated one.
     #[must_use]
-    pub fn offerspotrate(&self) -> Option<Decimal18> {
+    pub fn offerspotrate(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.offerspotrate)
     }
 
     /// `OfferForwardPoints(191)`, where the message stated one.
     #[must_use]
-    pub fn offerforwardpoints(&self) -> Option<Decimal18> {
+    pub fn offerforwardpoints(&self) -> Option<Decimal> {
         self.fx.as_deref().and_then(|fx| fx.offerforwardpoints)
     }
 
     /// `Price(44)`, where the message stated one.
     #[must_use]
-    pub const fn price(&self) -> Option<Decimal18> {
+    pub const fn price(&self) -> Option<Decimal> {
         self.price
     }
 
     /// `OrderQty(38)`, where the message stated one.
     #[must_use]
-    pub const fn orderqty(&self) -> Option<Decimal18> {
+    pub const fn orderqty(&self) -> Option<Decimal> {
         self.orderqty
     }
 
@@ -538,37 +654,37 @@ impl FixLifted {
     /// Its own slot rather than a second name for `OrderQty`: a line that
     /// said `53=` re-emits `53=`, and a row keeps one column per tag.
     #[must_use]
-    pub const fn quantity(&self) -> Option<Decimal18> {
+    pub const fn quantity(&self) -> Option<Decimal> {
         self.quantity
     }
 
     /// `LastPx(31)`, where the message stated one.
     #[must_use]
-    pub const fn lastpx(&self) -> Option<Decimal18> {
+    pub const fn lastpx(&self) -> Option<Decimal> {
         self.lastpx
     }
 
     /// `LastQty(32)`, where the message stated one.
     #[must_use]
-    pub const fn lastqty(&self) -> Option<Decimal18> {
+    pub const fn lastqty(&self) -> Option<Decimal> {
         self.lastqty
     }
 
     /// `AvgPx(6)`, where the message stated one.
     #[must_use]
-    pub const fn avgpx(&self) -> Option<Decimal18> {
+    pub const fn avgpx(&self) -> Option<Decimal> {
         self.avgpx
     }
 
     /// `CumQty(14)`, where the message stated one.
     #[must_use]
-    pub const fn cumqty(&self) -> Option<Decimal18> {
+    pub const fn cumqty(&self) -> Option<Decimal> {
         self.cumqty
     }
 
     /// `LeavesQty(151)`, where the message stated one.
     #[must_use]
-    pub const fn leavesqty(&self) -> Option<Decimal18> {
+    pub const fn leavesqty(&self) -> Option<Decimal> {
         self.leavesqty
     }
 
@@ -660,7 +776,7 @@ impl FixLifted {
     /// Records what one lifted tag states; a null clears it. Whether the
     /// tag is a lifted tag at all.
     fn record(&mut self, tag: i32, value: &Scalar) -> bool {
-        let number = || Decimal18::from_scalar(value);
+        let number = || Decimal::from_scalar(value);
         let text = || {
             value
                 .as_str()

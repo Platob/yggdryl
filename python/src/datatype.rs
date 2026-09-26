@@ -108,7 +108,7 @@ pub(crate) fn arrow_scalar_from_core_type<'py>(
     // through the core once rather than letting Python's storage shape
     // silently bypass padding, a bound, a charset, parsing, or
     // canonicalization.
-    if needs_core_value_rules(dtype) || is_parsed_text(dtype) {
+    if needs_core_value_rules(dtype) || is_parsed_text(dtype) || is_fixed_decimal(dtype) {
         return core_arrow_scalar(py, value, dtype, safe);
     }
     let target = core_dtype_to_pyarrow(py, dtype)?;
@@ -130,6 +130,15 @@ pub(crate) fn is_parsed_text(dtype: &CoreDataType) -> bool {
             | CoreDataType::MimeType
             | CoreDataType::MediaType
     )
+}
+
+/// Whether a datatype is one of the fixed-scale decimal leaves.
+///
+/// A `decimal` column restates every exact number at scale eighteen and
+/// refuses a nineteenth digit; `PyArrow`'s own decimal intake would round it,
+/// so the core owns the value rule.
+pub(crate) fn is_fixed_decimal(dtype: &CoreDataType) -> bool {
+    matches!(dtype, CoreDataType::Decimal | CoreDataType::BigDecimal)
 }
 
 /// Whether a string or code datatype holds value rules `PyArrow` cannot check.
@@ -469,6 +478,8 @@ impl PyDataType {
             "timeinforce" => CoreDataType::TimeInForce,
             "unit" => CoreDataType::Unit,
             "uuid" => CoreDataType::uuid(),
+            "decimal" => CoreDataType::Decimal,
+            "bigdecimal" => CoreDataType::BigDecimal,
             "version" => CoreDataType::Version,
             "url" => CoreDataType::url(),
             "urn" => CoreDataType::urn(),

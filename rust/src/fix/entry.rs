@@ -214,11 +214,13 @@ pub(super) fn wire_text(value: &crate::Scalar) -> Option<SmolStr> {
         // stored at: this crate keeps a price and a quantity exact, at
         // `decimal128(38, 18)`, and a wire that spelled `12.5` as
         // `12.500000000000000000` would be stating the storage.
+        Scalar::Decimal(held) => Some(smol_str::format_smolstr!("{held}")),
+        Scalar::BigDecimal(held) => Some(smol_str::format_smolstr!("{held}")),
         Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => {
-            crate::Decimal18::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
+            crate::Decimal::from_scalar(value).map(|held| smol_str::format_smolstr!("{held}"))
         }
         // Every other number and duration writes its leaf's own canonical text.
         other => other

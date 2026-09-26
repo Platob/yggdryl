@@ -118,7 +118,7 @@ impl fmt::Display for Projection {
 
 impl fmt::Display for Selector {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.projections().is_empty() {
+        if self.has_star() {
             formatter.write_char('*')?;
             if !self.excluded().is_empty() {
                 formatter.write_str(" exclude (")?;
@@ -130,10 +130,9 @@ impl fmt::Display for Selector {
                 }
                 formatter.write_str(")")?;
             }
-            return Ok(());
         }
         for (index, projection) in self.projections().iter().enumerate() {
-            if index != 0 {
+            if index != 0 || self.has_star() {
                 formatter.write_str(", ")?;
             }
             write!(formatter, "{projection}")?;
@@ -491,6 +490,9 @@ pub(crate) fn literal_text(dtype: &DataType, value: &Scalar) -> Option<SmolStr> 
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
         | Scalar::Decimal256(_) => value.into_decimal_utf8().map(SmolStr::new),
+        // The fixed leaves spell their own trimmed text.
+        Scalar::Decimal(held) => Some(SmolStr::new(held.to_string())),
+        Scalar::BigDecimal(held) => Some(SmolStr::new(held.to_string())),
         crate::string_scalars!(held) => Some(held.storage().clone()),
         code_scalars!() => value.code_storage().cloned(),
         Scalar::Version(held) => Some(SmolStr::new(held.to_string())),

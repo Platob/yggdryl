@@ -8,7 +8,11 @@
 | --- | --- |
 | Owns | `Selector`, `Projection`, `BoundSelector`, `IntoSelector` |
 | Projection | a term, an optional alias, an optional declared datatype with `null` / `not null`, optional `with (...)` metadata |
-| `*` | every column; `* exclude (a, b)` every column but those |
+| `*` | every column; `* exclude (a, b)` every column but those; either may append projections, `* exclude (a), upper(b) as c`, published after the columns the star keeps. Only a leading star: the [refusals](grammar.md#refused) name the rest |
+| Star | `has_star()` - Python `has_star`, JavaScript `hasStar` - is whether the selector opens with `*`, so it reads every stored column it does not exclude whatever it appends; `is_all()` is a star excluding and appending nothing; `projections()`, `names()`, `len()` and `columns()` answer the appended projections alone, the kept columns being the schema's to name; `excluded()` the names the star drops |
+| Appending | `with_projection(p)` appends after everything the selector publishes, keeping a star and its exclusions: `Selector::all().with_projection(p)` is `*, p` |
+| Text and document | `Display` writes `*`, then ` exclude (a, b)`, then `, <projection>` per appended one, `except` printing as `exclude`; the JSON document is `{"star":true,"exclude":[...],"projections":[...]}`, each part written only when it says something, so `Selector::all()` is `{"star":true}`, `{}` reads as `*`, and an `exclude` without `star` is refused |
+| Pushdown | a plan's `read_columns()` is `None` - every column - whenever its select holds a star, so an encoding decodes what the star keeps and what the appended projections read |
 | Declared column | a `create table` column: `id int64 not null` publishes `id` cast to `int64`, refusing a null; a declared cast is safe (a value that does not fit becomes null) unless the column is `not null` |
 | Field | `from_field(field)` is lossless: each child becomes a declared column carrying its metadata and its `TRANSFORM:` derivation - a function over columns as `TRANSFORM:function` and `TRANSFORM:sources`, any other term as `TRANSFORM:expression`; `into_field(root)` writes the selector back as that declaration, so a `Field` is a plan holder |
 | Identity | binding `select *`, a self alias, or a cast to the type a column has is skipped; the batch or reader is handed back as is |
@@ -142,6 +146,83 @@
     )
     ```
 
+## A star keeps, then appends
+
+`*` keeps every stored column it does not exclude, in the schema's order, and the projections after it follow them - so a column is dropped, derived or lifted out of a nested one without spelling the rest.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Selector, StructType};
+
+    let root = DataType::from(StructType::from_fields([
+        DataType::utf8().nullable_field("ccy"),
+        DataType::Int64.nullable_field("size"),
+        DataType::utf8().nullable_field("secret"),
+    ])?)
+    .required_field("rows");
+    let selector: Selector = "* except (secret), size * 2 as doubled".parse()?;
+    assert_eq!(selector.to_string(), "* exclude (secret), size * 2 as doubled");
+    assert!(selector.has_star() && !selector.is_all());
+    assert_eq!(selector.excluded(), ["secret"]);
+    assert_eq!(selector.names(), ["doubled"], "the kept columns are the schema's to name");
+    let published: Vec<String> = selector
+        .apply_field(&root)?
+        .fields()
+        .iter()
+        .map(|field| field.name().to_owned())
+        .collect();
+    assert_eq!(published, ["ccy", "size", "doubled"]);
+
+    // Appending keeps the star and whatever it excludes.
+    let appended = Selector::all().with_projection("upper(ccy) as loud".parse()?);
+    assert_eq!(appended.to_string(), "*, upper(ccy) as loud");
+
+    // The document writes only the parts that say something.
+    assert_eq!(Selector::all().into_json()?, r#"{"star":true}"#);
+    assert_eq!(Selector::from_json("{}")?, Selector::all());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Selector
+
+    selector = Selector("* except (secret), size * 2 as doubled")
+    assert str(selector) == "* exclude (secret), size * 2 as doubled"
+    assert selector.has_star
+    assert selector.names == ["doubled"]
+
+    batch = pa.record_batch({"ccy": ["EUR"], "size": pa.array([1], pa.int64()), "secret": ["x"]})
+    projected = selector.apply_arrow_batch(batch)
+    assert projected.schema.names == ["ccy", "size", "doubled"]
+    assert projected.column("doubled").to_pylist() == [2]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
+    const { Selector } = require('yggdryl')
+
+    const selector = new Selector('* except (secret), size * 2 as doubled')
+    assert.equal(selector.toString(), '* exclude (secret), size * 2 as doubled')
+    assert.equal(selector.hasStar, true)
+    assert.deepEqual(selector.names, ['doubled'])
+
+    const batch = new arrow.Table({
+      ccy: arrow.vectorFromArray(['EUR'], new arrow.Utf8()),
+      size: arrow.vectorFromArray([1n], new arrow.Int64()),
+      secret: arrow.vectorFromArray(['x'], new arrow.Utf8()),
+    }).batches[0]
+    const projected = selector.applyArrowBatch(batch)
+    assert.deepEqual(projected.schema.fields.map((field) => field.name), ['ccy', 'size', 'doubled'])
+    assert.equal(projected.numRows, 1)
+    ```
+
 ## A selector declares a schema
 
 A projection with a datatype is a `create table` column, and a `Selector` is what a plan's `create` section holds.
@@ -159,7 +240,9 @@ A projection with a datatype is a `create table` column, and a `Selector` is wha
 
 ## Edges
 
-- `select *` -> `is_all`; `* exclude (a)` -> not all, the column dropped when the schema has it and ignored when it does not.
+- `select *` -> `is_all` and `has_star`; `* exclude (a)` and `*, x as y` -> `has_star` but not all, an excluded column dropped when the schema has it and ignored when it does not.
+- An empty projection list, or `without_columns` removing every projection -> `*`, the one spelling of it.
+- An appended projection publishing a name a kept column already has -> refused as the duplicate it is.
 - A self alias (`a as a`), a same-type cast -> dropped by `simplify` and skipped at bind.
 - A declared column a value cannot fit -> null, unless `not null`, where the error names the column and the value.
 - `apply_arrow_reader` -> the output schema is known before the first batch; `apply_arrow_batch` is the one-batch spelling and never collects a stream.

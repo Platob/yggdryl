@@ -9,9 +9,13 @@ composite trade is a :class:`TradeEvent`, a book a :class:`BookEvent` over two
 element, event, market and operation facts it states - and
 :class:`MarketData` holds any one of them, answering the element and market
 facts its leaf answers, with the lifted ``marketdata`` Arrow doors
-(``field``, ``arrow_reader``, ``from_arrow_reader``). :class:`Lane` is one
-side of a quote; :class:`BookRef` the typed book-control facts a market-data
-entry carries; :class:`SnapshotPartition` one scope a full snapshot replaces.
+(``field``, ``arrow_reader``, ``from_arrow_reader``) and the named views over
+them (``plan``, ``apply_view``, one of ``enums.MARKET_VIEWS`` each).
+:class:`Lane` is one side of a quote; :class:`BookRef` the typed
+book-control facts a market-data entry carries; :class:`SnapshotPartition`
+one scope a full snapshot replaces. A :class:`BookSide` answers its
+``limits`` and ``depth``, a :class:`BookEvent` its ``spread``,
+``is_locked`` and ``imbalance``.
 :class:`BookIterator` folds a sorted stream of leaves into books;
 :class:`EventIterator` chains a stream of leaves to the live element each
 follows.

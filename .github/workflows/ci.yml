@@ -488,3 +488,4 @@ jobs:
         run: |
           node scripts/build_docs_playground.js --check
           node scripts/build_docs_fix.js --check
+          node scripts/build_docs_replay.js --check

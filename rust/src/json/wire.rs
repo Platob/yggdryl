@@ -44,6 +44,8 @@ impl Serialize for JsonRef<'_> {
             Scalar::Decimal64(value) => serializer.collect_str(value),
             Scalar::Decimal128(value) => serializer.collect_str(value),
             Scalar::Decimal256(value) => serializer.collect_str(value),
+            Scalar::Decimal(value) => serializer.collect_str(value),
+            Scalar::BigDecimal(value) => serializer.collect_str(value),
             string_scalars!(value) => serializer.serialize_str(value.as_str()),
             code_scalars!() => {
                 serializer.serialize_str(self.0.as_str().expect("a code borrowed its text"))

@@ -263,8 +263,8 @@ test('Lane: a slot crosses the same door a fact does', () => {
   // facts; a fraction is refused the same way there and here.
   assert.ok(new graph.Lane({ price: 1, quantity: 2n }).equals(new graph.Lane({ price: '1', quantity: '2' })))
   assert.ok(new graph.Order({ bid: new graph.Lane({ price: 1 }) }).equals(new graph.Order({ bid: { price: 1 } })))
-  assert.throws(() => new graph.Lane({ price: 1.5 }), /expected unscaled decimal integer, got f64/)
-  assert.throws(() => new graph.Order({ price: 1.5 }), /expected unscaled decimal integer, got f64/)
+  assert.throws(() => new graph.Lane({ price: 1.5 }), /\$\.lane\.price: expected a decimal representable at scale 18 within 38 digits, got f64/)
+  assert.throws(() => new graph.Order({ price: 1.5 }), /\$\.price: expected a decimal representable at scale 18 within 38 digits, got f64/)
   assert.throws(() => new graph.Lane({ bogus: 1 }), /Lane has no slot "bogus"/)
   assert.ok(new graph.Lane() instanceof graph.Lane)
 })

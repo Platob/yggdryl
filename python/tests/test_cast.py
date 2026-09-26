@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 import pyarrow as pa
@@ -195,6 +196,49 @@ def test_a_one_row_cast_is_a_one_row_column() -> None:
     # A scalar is exactly one row.
     with pytest.raises(ValueError, match="exactly one row"):
         Serie.from_arrow_array(pa.array([1, 2], pa.int32()), int64).into_arrow_scalar()
+
+
+def test_a_float_into_a_decimal_rounds_half_away_from_zero_at_the_declared_scale() -> None:
+    # The number a float's shortest text names, rounded half away from zero:
+    # 0.125 is 0.13 where it used to be truncated to 0.12, and 1.15 stays 1.15.
+    floats = pa.array([0.125, -0.125, 1.15, 0.005, None], pa.float64())
+    cents = [Decimal("0.13"), Decimal("-0.13"), Decimal("1.15"), Decimal("0.01"), None]
+    assert Serie.from_arrow_array(floats, Field("v", "decimal(10,2)")).as_py() == cents
+    assert Serie.from_arrow_array(floats, Field("v", "float64")).cast(
+        Field("v", "decimal(10,2)")
+    ).as_py() == cents
+    assert Serie.from_arrow_array(pa.array([2.5, -2.5]), Field("v", "decimal(10,0)")).as_py() == [
+        Decimal("3"),
+        Decimal("-3"),
+    ]
+    # The fixed leaves hold the whole of it at scale eighteen.
+    assert Serie.from_arrow_array(floats, Field("v", "decimal")).as_py() == [
+        Decimal("0.125"),
+        Decimal("-0.125"),
+        Decimal("1.15"),
+        Decimal("0.005"),
+        None,
+    ]
+    # One plan over a batch answers what the column door answers.
+    batch = pa.record_batch({"v": floats})
+    target = Field("row", "struct<v:decimal(10,2)>", nullable=False)
+    assert ArrowCastPlan(batch.schema, target).apply(batch).child("v").as_py() == cents
+
+
+def test_a_fixed_decimal_leaf_into_text_is_its_trimmed_text() -> None:
+    rows = [Decimal("1.125"), Decimal("-2"), Decimal("0"), None]
+    utf8 = Field("px", "utf8")
+    for leaf in ("decimal", "bigdecimal"):
+        column = Serie.from_scalars(Field("px", leaf), rows)
+        assert column.cast(utf8).as_py() == ["1.125", "-2", "0", None], leaf
+    # A parameterized width keeps the full scale it declares.
+    width = Serie.from_scalars(Field("px", "decimal128(38,18)"), rows)
+    assert width.cast(utf8).as_py() == [
+        "1.125000000000000000",
+        "-2.000000000000000000",
+        "0.000000000000000000",
+        None,
+    ]
 
 
 def test_an_empty_text_cell_is_null_before_safe_is_asked() -> None:

@@ -1259,7 +1259,8 @@ impl JsSelector {
             .collect()
     }
 
-    /// The names this selector publishes, in output order; empty for `*`.
+    /// The names this selector's projections publish, in output order: the
+    /// columns a `*` keeps are the schema's to name, so empty for `*`.
     #[napi(getter)]
     pub fn names(&self) -> Vec<String> {
         self.inner
@@ -1279,10 +1280,18 @@ impl JsSelector {
             .collect()
     }
 
-    /// Whether this is `select *` with nothing excluded.
+    /// Whether this is `select *` with nothing excluded and nothing
+    /// appended: every column, unchanged.
     #[napi(getter)]
     pub fn is_all(&self) -> bool {
         self.inner.is_all()
+    }
+
+    /// Whether this selector opens with `*`: it reads every stored column
+    /// it does not exclude, whatever it appends after.
+    #[napi(getter)]
+    pub fn has_star(&self) -> bool {
+        self.inner.has_star()
     }
 
     /// Whether every projection is a bare column.
@@ -1291,7 +1300,8 @@ impl JsSelector {
         self.inner.is_columns()
     }
 
-    /// How many projections this selector holds.
+    /// How many projections this selector holds: zero for `*`, the
+    /// appended ones for a `*` that appends.
     #[napi(getter)]
     pub fn length(&self) -> u32 {
         u32::try_from(self.inner.len()).unwrap_or(u32::MAX)

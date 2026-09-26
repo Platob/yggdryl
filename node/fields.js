@@ -315,9 +315,23 @@ function createFields(DataType, Field, native) {
       )
     },
 
-    decimal(name, precision, scale = 0, value) {
-      return decimalField('decimal', name, precision, scale, value)
+    // Bare `decimal(name)`, with or without options, is the fixed leaf; a
+    // precision names the narrowest width that holds it. A scale alone says
+    // nothing the fixed leaf could take, so it is refused as Python refuses
+    // it, and options stated in both places are two readings of one call.
+    decimal(name, precision, scale, value) {
+      if (precision === undefined || isOptions(precision)) {
+        if (scale !== undefined) {
+          throw new TypeError('decimal(): a scale needs a precision')
+        }
+        if (precision !== undefined && value !== undefined) {
+          throw new TypeError('decimal(): field options are stated once')
+        }
+        return field(name, simpleType('decimal'), precision ?? value)
+      }
+      return decimalField('decimal', name, precision, scale ?? 0, value)
     },
+    bigdecimal: simple('bigdecimal'),
     decimal32(name, precision, scale = 0, value) {
       return decimalField('decimal32', name, precision, scale, value)
     },

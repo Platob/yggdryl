@@ -288,6 +288,14 @@ pub enum DataType {
     /// The unit a quantity is stated in - FIX's `UnitOfMeasure(996)` - up to
     /// thirty-two ASCII bytes.
     Unit,
+    /// One exact decimal at a fixed scale: thirty-eight digits, eighteen of
+    /// them fractional - `decimal128(38, 18)` preapplied - what every
+    /// [`Decimal`](crate::Decimal) is and a market's numbers are held as.
+    Decimal,
+    /// The wide twin: seventy-six digits at the same scale of eighteen -
+    /// `decimal256(76, 18)` preapplied - what every
+    /// [`BigDecimal`](crate::BigDecimal) is.
+    BigDecimal,
 }
 
 impl DataType {
@@ -403,6 +411,8 @@ impl DataType {
             Self::State => DataTypeId::State,
             Self::TimeInForce => DataTypeId::TimeInForce,
             Self::Unit => DataTypeId::Unit,
+            Self::Decimal => DataTypeId::Decimal,
+            Self::BigDecimal => DataTypeId::BigDecimal,
             Self::Uuid => DataTypeId::Uuid,
             Self::Version => DataTypeId::Version,
             Self::Url => DataTypeId::Url,
@@ -773,6 +783,8 @@ enum Shape<'a> {
     BloombergCode,
     FIGICode,
     Unit,
+    Decimal,
+    BigDecimal,
 }
 
 impl<'a> Shape<'a> {
@@ -846,6 +858,8 @@ impl<'a> Shape<'a> {
             D::BloombergCode => Self::BloombergCode,
             D::FIGICode => Self::FIGICode,
             D::Unit => Self::Unit,
+            D::Decimal => Self::Decimal,
+            D::BigDecimal => Self::BigDecimal,
         }
     }
 }
@@ -974,6 +988,8 @@ fn dtype_rank(value: &DataType) -> u8 {
         DataType::Urn => 65,
         DataType::FIGICode => 66,
         DataType::Unit => 68,
+        DataType::Decimal => 69,
+        DataType::BigDecimal => 70,
     }
 }
 
@@ -1244,7 +1260,9 @@ mod arrow {
                 R::Decimal32 { .. }
                 | R::Decimal64 { .. }
                 | R::Decimal128 { .. }
-                | R::Decimal256 { .. } => decimal::arrow_storage(self)?,
+                | R::Decimal256 { .. }
+                | R::Decimal
+                | R::BigDecimal => decimal::arrow_storage(self)?,
                 sequence_dtype @ (R::Serie(_)
                 | R::SerieView(_)
                 | R::FixedSizeSerie(..)
@@ -1541,6 +1559,11 @@ mod arrow {
                     .bytes_parameters()
                     .filter(|parameters| bytes::needs_extension(*parameters))
                     .map(|parameters| (crate::BYTES_EXTENSION_NAME, parameters.extension_json())),
+                // A fixed scale is the one fact about a decimal Arrow has
+                // nowhere to put: without the name the storage reads back as
+                // the parameterized `decimal128(38, 18)`.
+                Self::Decimal => Some((crate::DECIMAL_EXTENSION_NAME, String::new())),
+                Self::BigDecimal => Some((crate::BIGDECIMAL_EXTENSION_NAME, String::new())),
                 // Every identifier is Arrow's own sixteen bytes.
                 Self::Uuid => Some((crate::UUID_EXTENSION_NAME, String::new())),
                 Self::Version => Some((crate::VERSION_EXTENSION_NAME, String::new())),

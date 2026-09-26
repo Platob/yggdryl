@@ -1,6 +1,7 @@
 //! A FIX message: its typed facts, its row, and the registry that types it.
 
 use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::collections::BTreeMap;
 use std::fmt::{self, Write as _};
 use std::hash::{Hash, Hasher};
@@ -19,7 +20,7 @@ use crate::graph::{Element, Event, Lane, Market, Metadata, Operation};
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds};
 use crate::xxhash;
-use crate::{Ccy, CfiCode, Decimal18, MicCode, Side, State, StructType, TimeInForce, Unit, Uuid};
+use crate::{Ccy, CfiCode, Decimal, MicCode, Side, State, StructType, TimeInForce, Unit, Uuid};
 use crate::{DataType, Error, Field, FieldPath, FieldSegment, Result, Scalar, Serie};
 
 /// The nanoseconds in one day: what a transaction time at midnight to the
@@ -42,6 +43,17 @@ const ROW_STATED_FIGI: u16 = 1 << 7;
 const ROW_STATED_EXECUTION: u16 = 1 << 8;
 const ROW_STATED_RECORDING: u16 = 1 << 9;
 const ROW_STATED_MARKET_OPERATION: u16 = 1 << 10;
+
+/// The group an identifier map reads its role sources out of, and the two
+/// members of each occurrence it reads: the `PartyID(448)` stated under the
+/// occurrence's `PartyRole(452)`.
+const PARTIES: &str = "parties";
+const PARTYROLE: &str = "partyrole";
+const PARTYID: &str = "partyid";
+
+/// The bridge key an execution clock is read from where no FIX field
+/// states one.
+const EVENT_TIMESTAMP: &str = "eventtimestamp";
 
 /// The row-owned facts whose non-null value must survive market derivation.
 fn row_stated_bit(tag: i32) -> Option<u16> {
@@ -1361,7 +1373,7 @@ impl FixMsg {
                 .filter(|held| !held.is_empty())
         };
         let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
-        let number = |tag: i32| by_tag(tag).as_ref().and_then(Decimal18::from_scalar);
+        let number = |tag: i32| by_tag(tag).as_ref().and_then(Decimal::from_scalar);
         let word = |tag: i32| text(by_tag(tag));
 
         // The numbers, each from its own lifted slot.
@@ -1461,7 +1473,7 @@ impl FixMsg {
         let execunix = self
             .execution_instant(by_tag(2749))
             .or_else(|| self.trdreg_execution_instant())
-            .or_else(|| self.execution_instant(self.get_by_name("eventtimestamp")))
+            .or_else(|| self.execution_instant(self.get_by_name(EVENT_TIMESTAMP)))
             .or_else(|| {
                 self.reports_execution()
                     .then(|| self.execution_instant(by_tag(60)))
@@ -1750,7 +1762,7 @@ impl FixMsg {
                     .into_iter()
                     .collect(),
                 Some(role) => parties
-                    .get_or_insert_with(|| self.group_members("parties", &["partyrole", "partyid"]))
+                    .get_or_insert_with(|| self.group_members(PARTIES, &[PARTYROLE, PARTYID]))
                     .iter()
                     .filter(|occurrence| occurrence[0].as_deref() == Some(role))
                     .filter_map(|occurrence| occurrence[1].clone())
@@ -1764,7 +1776,7 @@ impl FixMsg {
                 match map.get(source.key()) {
                     Some(held) if held != value => {
                         let field = if source.role().is_some() {
-                            "parties"
+                            PARTIES
                         } else {
                             registry.get_field_by_tag(*tag).map_or("", Field::name)
                         };
@@ -1789,6 +1801,171 @@ impl FixMsg {
         let _ = self.event.set_accountids(accountids);
         let _ = self.event.set_userids(userids);
         let _ = self.event.set_altids(altids);
+    }
+
+    /// What this message states that no typed column of its leaves reads,
+    /// keyed as a leaf's metadata keys it: one walk of the row.
+    ///
+    /// The message's own map opens with the bridge's namespaced keys as the
+    /// metadata holds them, then every root child no typed fact reads,
+    /// under its name: a scalar as the canonical text it spells, a group,
+    /// a component or a map member by member under its path -
+    /// `parties[0].partyid` - null and counter children left out. Left out
+    /// too are a child the [envelope](super::digest) holds, since the
+    /// message's code leaves the same set out; a typed tag stated twice;
+    /// a tag [`identity::MARKET_TAGS`] reads; an identifier map's source
+    /// and a `parties` occurrence under a role one reads, whole; and a
+    /// child a read reaches by its name - the execution clock a bridge
+    /// states, a detailed classification, an identifier source's column.
+    ///
+    /// Where `expanded` names a group the message becomes one leaf per
+    /// occurrence of, that group is no child of the message's own: each
+    /// occurrence answers its own members instead, keyed bare, less the
+    /// tags `expanded` says its leaf reads. A child's tag, a group's
+    /// member plan and a group's path are each resolved once per walk,
+    /// never per occurrence.
+    pub(super) fn unmapped(&self, expanded: Option<&Expanded>) -> Unmapped {
+        let mut unmapped = Unmapped {
+            message: self.metadata.clone(),
+            occurrences: Vec::new(),
+        };
+        let fields = self.field.fields();
+        let Some(cells) = self.value.as_sequence() else {
+            return unmapped;
+        };
+        // Each child's tag and counter by position, off the indexes the
+        // message already holds.
+        let mut resolved: SmallVec<[(Option<i32>, Option<i32>); 32]> =
+            SmallVec::from_elem((None, None), fields.len());
+        for (tag, at) in &self.tags {
+            if let Some(slot) = resolved.get_mut(*at) {
+                slot.0 = Some(*tag);
+            }
+        }
+        for (counter, at) in &self.groups {
+            if let Some(slot) = resolved.get_mut(*at) {
+                slot.1 = Some(*counter);
+            }
+        }
+        let sources = self.registry.idmap_sources();
+        let inherited = expanded.map_or(&[][..], |expanded| expanded.inherited);
+        let read = |tag: i32| {
+            super::digest::is_envelope(tag)
+                || identity::is_typed_tag(tag)
+                || identity::MARKET_TAGS.contains(&tag)
+                || inherited.contains(&tag)
+                || sources
+                    .iter()
+                    .any(|(held, source)| *held == tag && source.role().is_none())
+        };
+        let skipped = |tag: i32| super::digest::is_envelope(tag) || inherited.contains(&tag);
+        // The children a read reaches by name rather than by tag.
+        let named: SmallVec<[usize; 3]> =
+            std::iter::once(self.child_index(&self.field, EVENT_TIMESTAMP))
+                .chain(
+                    super::cfi::DETAILED_NAMES
+                        .iter()
+                        .map(|name| self.index_of_name(name)),
+                )
+                .flatten()
+                .collect();
+        let parties = self.field.index_of(PARTIES);
+        let mut key = String::new();
+        for (at, ((child, cell), (tag, counter))) in
+            fields.iter().zip(cells).zip(&resolved).enumerate()
+        {
+            if cell.is_null() {
+                continue;
+            }
+            let nested = child.dtype().is_nested();
+            // A counter beside the group it counts states nothing the group
+            // does not.
+            if !nested
+                && tag.is_some_and(|tag| {
+                    self.groups
+                        .binary_search_by_key(&tag, |(counter, _)| *counter)
+                        .is_ok()
+                })
+            {
+                continue;
+            }
+            if let Some(expanded) = expanded.filter(|expanded| *counter == Some(expanded.counter)) {
+                unmapped.occurrences = self.own_occurrences(child, cell, expanded);
+                continue;
+            }
+            if tag.is_some_and(read) || counter.is_some_and(read) || named.contains(&at) {
+                continue;
+            }
+            if tag.is_none()
+                && !child.name().contains('.')
+                && SecType::from_field_name(child.name()).is_some()
+            {
+                continue;
+            }
+            if !nested {
+                if let Some(text) = spelled(cell) {
+                    unmapped.message.insert(SmolStr::new(child.name()), text);
+                }
+                continue;
+            }
+            let walk = Walk {
+                registry: &self.registry,
+                skipped: &skipped,
+            };
+            let planned = Planned::new(child);
+            key.clear();
+            planned.push(&walk, &mut key);
+            if Some(at) == parties {
+                // An occurrence under a role an identifier map reads landed
+                // its party there, whole.
+                let role = planned.member(&walk, PARTYROLE);
+                let roles: SmallVec<[&str; 4]> = sources
+                    .iter()
+                    .filter_map(|(_, source)| source.role())
+                    .collect();
+                planned.land_where(&walk, cell, &mut key, &mut unmapped.message, |occurrence| {
+                    !role
+                        .and_then(|at| occurrence.as_sequence()?.get(at))
+                        .and_then(scalar_text)
+                        .is_some_and(|held| roles.contains(&held.as_str()))
+                });
+            } else {
+                planned
+                    .shape(&walk)
+                    .land(&walk, cell, &mut key, &mut unmapped.message);
+            }
+        }
+        unmapped
+    }
+
+    /// Each occurrence of the group `expanded` names, in order: its own
+    /// members keyed bare, less the tags its leaf reads.
+    fn own_occurrences(&self, group: &Field, cell: &Scalar, expanded: &Expanded) -> Vec<Metadata> {
+        let skipped = |tag: i32| super::digest::is_envelope(tag) || expanded.reads.contains(&tag);
+        let walk = Walk {
+            registry: &self.registry,
+            skipped: &skipped,
+        };
+        let (DataType::Serie(item) | DataType::LargeSerie(item)) = group.dtype() else {
+            return Vec::new();
+        };
+        let Some(rows) = cell.as_serie() else {
+            return Vec::new();
+        };
+        let members = match item.dtype() {
+            DataType::Struct(_) => walk.members(item.fields()),
+            _ => Vec::new(),
+        };
+        let mut key = String::new();
+        rows.iter()
+            .map(|occurrence| {
+                let mut own = Metadata::new();
+                if let Some(cells) = occurrence.as_sequence() {
+                    land_members(&walk, &members, cells, &mut key, &mut own);
+                }
+                own
+            })
+            .collect()
     }
 
     /// Writes one security identifier where FIX states it: `SecurityID(48)`
@@ -3234,6 +3411,264 @@ fn entry_of(registry: &FixRegistry, field: &Field, value: &Scalar) -> Option<Fix
     }
 }
 
+/// The group a message expands into one leaf per occurrence, and what each
+/// of those leaves reads out of its own occurrence.
+pub(super) struct Expanded {
+    /// The group's `FIX:counter`.
+    pub(super) counter: i32,
+    /// The tags a leaf reads out of its own occurrence, at any depth of it.
+    pub(super) reads: &'static [i32],
+    /// The root tags every occurrence inherits, which are the root's own
+    /// reads: a book message's context, and none for a trade.
+    pub(super) inherited: &'static [i32],
+}
+
+/// What a message states that no typed column of its leaves reads,
+/// [`FixMsg::unmapped`]'s answer.
+pub(super) struct Unmapped {
+    /// The message's own, every leaf of it carries.
+    pub(super) message: Metadata,
+    /// Each occurrence of the expanded group, in order: its own members,
+    /// keyed bare, which only the occurrence's own leaf carries.
+    pub(super) occurrences: Vec<Metadata>,
+}
+
+impl Unmapped {
+    /// What the leaf of occurrence `index` carries: the message's own, then
+    /// the occurrence's, which leads a message field of the same name. The
+    /// occurrence's is moved out, so each is asked for once.
+    pub(super) fn leaf(&mut self, index: usize) -> Metadata {
+        let mut held = self.message.clone();
+        if let Some(own) = self.occurrences.get_mut(index) {
+            held.append(own);
+        }
+        held
+    }
+}
+
+/// What a walk of one message's row plans a nested child by: the
+/// dictionary that types its members, and the tags a leaf reads there.
+struct Walk<'a> {
+    registry: &'a FixRegistry,
+    skipped: &'a dyn Fn(i32) -> bool,
+}
+
+impl<'a> Walk<'a> {
+    /// The members of one component or occurrence, each resolved once: a
+    /// counter beside the group it counts is left out, as [`entries_of`]
+    /// leaves it out, and so is a member whose tag or counter the walk
+    /// skips. What a member holds is planned only once a value reaches it.
+    fn members(&self, fields: &'a [Field]) -> Vec<Planned<'a>> {
+        let counters: SmallVec<[i32; 4]> = fields
+            .iter()
+            .filter(|field| field.dtype().is_nested())
+            .filter_map(|field| super::schema::tag_and_counter(self.registry, field).1)
+            .collect();
+        fields
+            .iter()
+            .map(|field| {
+                let (tag, counter) = super::schema::tag_and_counter(self.registry, field);
+                let counts =
+                    !field.dtype().is_nested() && tag.is_some_and(|tag| counters.contains(&tag));
+                Planned {
+                    skipped: counts
+                        || tag.is_some_and(self.skipped)
+                        || counter.is_some_and(self.skipped),
+                    ..Planned::new(field)
+                }
+            })
+            .collect()
+    }
+
+    /// How a value of `field` is walked.
+    fn shape(&self, field: &'a Field) -> Shape<'a> {
+        match field.dtype() {
+            DataType::Serie(item) | DataType::LargeSerie(item) => {
+                Shape::Occurrences(Box::new(match item.dtype() {
+                    DataType::Struct(_) => Shape::Members(self.members(item.fields())),
+                    _ => self.shape(item),
+                }))
+            }
+            DataType::Struct(_) => Shape::Members(self.members(field.fields())),
+            DataType::Map(_) | DataType::SortedMap(_) => Shape::Map,
+            _ => Shape::Leaf,
+        }
+    }
+}
+
+/// One nested child of a row as a walk lands it: whether a leaf reads it,
+/// and - planned on the first value that reaches it, and kept for every
+/// later one - how its members are reached and how its path opens.
+struct Planned<'a> {
+    field: &'a Field,
+    /// Whether it is left out: a counter beside its group, or a tag a leaf
+    /// reads.
+    skipped: bool,
+    shape: OnceCell<Shape<'a>>,
+    /// Its key where it opens one: a scalar's own name, a nested child's
+    /// name as the path grammar opens a path with it.
+    opening: OnceCell<SmolStr>,
+}
+
+/// How a planned child's value is walked.
+enum Shape<'a> {
+    /// A scalar, landed as the canonical text it spells.
+    Leaf,
+    /// A component's members, or an occurrence's.
+    Members(Vec<Planned<'a>>),
+    /// A repeating group's occurrences, or a list's items, each shaped
+    /// alike.
+    Occurrences(Box<Shape<'a>>),
+    /// A map's entries, each under its key.
+    Map,
+}
+
+impl<'a> Planned<'a> {
+    /// `field`, walked, with nothing planned yet.
+    fn new(field: &'a Field) -> Self {
+        Self {
+            field,
+            skipped: false,
+            shape: OnceCell::new(),
+            opening: OnceCell::new(),
+        }
+    }
+
+    /// How this child's value is walked, planned on the first ask.
+    fn shape(&self, walk: &Walk<'a>) -> &Shape<'a> {
+        self.shape.get_or_init(|| walk.shape(self.field))
+    }
+
+    /// Opens `key` with this child, or continues it.
+    fn push(&self, walk: &Walk<'a>, key: &mut String) {
+        let name = self.field.name();
+        if key.is_empty() {
+            let opening = self.opening.get_or_init(|| match self.shape(walk) {
+                Shape::Leaf => SmolStr::new(name),
+                _ => format_smolstr!("{}", FieldPath::new([FieldSegment::field(name)])),
+            });
+            key.push_str(opening);
+        } else {
+            write!(key, "{}", FieldSegment::field(name))
+                .expect("writing into a String cannot fail");
+        }
+    }
+
+    /// Where one occurrence of this group holds the member `name`.
+    fn member(&self, walk: &Walk<'a>, name: &str) -> Option<usize> {
+        let Shape::Occurrences(item) = self.shape(walk) else {
+            return None;
+        };
+        let Shape::Members(members) = item.as_ref() else {
+            return None;
+        };
+        members
+            .iter()
+            .position(|member| member.field.name() == name)
+    }
+
+    /// Lands the occurrences of `value` that `keep` answers for, each under
+    /// its own position, `key` already opened by this child.
+    fn land_where(
+        &self,
+        walk: &Walk<'a>,
+        value: &Scalar,
+        key: &mut String,
+        into: &mut Metadata,
+        keep: impl Fn(&Scalar) -> bool,
+    ) {
+        match self.shape(walk) {
+            Shape::Occurrences(item) => item.land_occurrences(walk, value, key, into, keep),
+            shape => shape.land(walk, value, key, into),
+        }
+    }
+}
+
+impl<'a> Shape<'a> {
+    /// Lands `value` under `key`.
+    fn land(&self, walk: &Walk<'a>, value: &Scalar, key: &mut String, into: &mut Metadata) {
+        if value.is_null() {
+            return;
+        }
+        match self {
+            Self::Leaf => {
+                if let Some(text) = spelled(value) {
+                    into.insert(SmolStr::new(key.as_str()), text);
+                }
+            }
+            Self::Members(members) => {
+                if let Some(cells) = value.as_sequence() {
+                    land_members(walk, members, cells, key, into);
+                }
+            }
+            Self::Occurrences(item) => item.land_occurrences(walk, value, key, into, |_| true),
+            Self::Map => {
+                for (entry, held) in value.as_mapping().unwrap_or_default() {
+                    let Ok(segment) = FieldSegment::key(entry.clone()) else {
+                        continue;
+                    };
+                    let mark = key.len();
+                    write!(key, "{segment}").expect("writing into a String cannot fail");
+                    Self::Leaf.land(walk, held, key, into);
+                    key.truncate(mark);
+                }
+            }
+        }
+    }
+
+    /// Lands each occurrence of `value` `keep` answers for under its
+    /// position, this being the shape every occurrence has.
+    fn land_occurrences(
+        &self,
+        walk: &Walk<'a>,
+        value: &Scalar,
+        key: &mut String,
+        into: &mut Metadata,
+        keep: impl Fn(&Scalar) -> bool,
+    ) {
+        let Some(rows) = value.as_serie() else {
+            return;
+        };
+        for (index, occurrence) in rows.iter().enumerate() {
+            if !keep(&occurrence) {
+                continue;
+            }
+            let mark = key.len();
+            let position = FieldSegment::index(i64::try_from(index).unwrap_or(i64::MAX));
+            write!(key, "{position}").expect("writing into a String cannot fail");
+            self.land(walk, &occurrence, key, into);
+            key.truncate(mark);
+        }
+    }
+}
+
+/// Lands each member of one component or occurrence `members` planned.
+fn land_members<'a>(
+    walk: &Walk<'a>,
+    members: &[Planned<'a>],
+    cells: &[Scalar],
+    key: &mut String,
+    into: &mut Metadata,
+) {
+    for (member, cell) in members.iter().zip(cells) {
+        if member.skipped || cell.is_null() {
+            continue;
+        }
+        let mark = key.len();
+        member.push(walk, key);
+        member.shape(walk).land(walk, cell, key, into);
+        key.truncate(mark);
+    }
+}
+
+/// The canonical text one scalar spells, which is what a leaf's metadata
+/// holds; nothing for a value that spells none.
+fn spelled(value: &Scalar) -> Option<SmolStr> {
+    crate::string::str_from_value(value)?
+        .ok()
+        .map(SmolStr::from)
+}
+
 /// The metadata a Map value states: every text key under its text value.
 fn metadata_of(value: &Scalar) -> BTreeMap<SmolStr, SmolStr> {
     value
@@ -3574,11 +4009,11 @@ impl Event for FixMsg {
 }
 
 impl Market for FixMsg {
-    fn get_price(&self) -> Option<Decimal18> {
+    fn get_price(&self) -> Option<Decimal> {
         self.event.get_price()
     }
 
-    fn set_price(&mut self, px: Option<Decimal18>) {
+    fn set_price(&mut self, px: Option<Decimal>) {
         self.forced = true;
         self.event.set_price(px);
     }
@@ -3592,11 +4027,11 @@ impl Market for FixMsg {
         self.event.set_currency(currency);
     }
 
-    fn get_quantity(&self) -> Option<Decimal18> {
+    fn get_quantity(&self) -> Option<Decimal> {
         self.event.get_quantity()
     }
 
-    fn set_quantity(&mut self, qty: Option<Decimal18>) {
+    fn set_quantity(&mut self, qty: Option<Decimal>) {
         self.forced = true;
         self.event.set_quantity(qty);
     }
@@ -3707,83 +4142,83 @@ impl Market for FixMsg {
         self.event.set_miccode(miccode);
     }
 
-    fn get_lastpx(&self) -> Option<Decimal18> {
+    fn get_lastpx(&self) -> Option<Decimal> {
         self.event.get_lastpx()
     }
 
-    fn set_lastpx(&mut self, px: Option<Decimal18>) {
+    fn set_lastpx(&mut self, px: Option<Decimal>) {
         self.forced = true;
         self.event.set_lastpx(px);
     }
 
-    fn get_lastqty(&self) -> Option<Decimal18> {
+    fn get_lastqty(&self) -> Option<Decimal> {
         self.event.get_lastqty()
     }
 
-    fn set_lastqty(&mut self, qty: Option<Decimal18>) {
+    fn set_lastqty(&mut self, qty: Option<Decimal>) {
         self.forced = true;
         self.event.set_lastqty(qty);
     }
 
-    fn get_avgpx(&self) -> Option<Decimal18> {
+    fn get_avgpx(&self) -> Option<Decimal> {
         self.event.get_avgpx()
     }
 
-    fn set_avgpx(&mut self, px: Option<Decimal18>) {
+    fn set_avgpx(&mut self, px: Option<Decimal>) {
         self.forced = true;
         self.event.set_avgpx(px);
     }
 
-    fn get_cumqty(&self) -> Option<Decimal18> {
+    fn get_cumqty(&self) -> Option<Decimal> {
         self.event.get_cumqty()
     }
 
-    fn set_cumqty(&mut self, qty: Option<Decimal18>) {
+    fn set_cumqty(&mut self, qty: Option<Decimal>) {
         self.forced = true;
         self.event.set_cumqty(qty);
     }
 
-    fn get_leavesqty(&self) -> Option<Decimal18> {
+    fn get_leavesqty(&self) -> Option<Decimal> {
         self.event.get_leavesqty()
     }
 
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>) {
+    fn set_leavesqty(&mut self, qty: Option<Decimal>) {
         self.forced = true;
         self.event.set_leavesqty(qty);
     }
 
-    fn get_prevpx(&self) -> Option<Decimal18> {
+    fn get_prevpx(&self) -> Option<Decimal> {
         self.event.get_prevpx()
     }
 
-    fn set_prevpx(&mut self, px: Option<Decimal18>) {
+    fn set_prevpx(&mut self, px: Option<Decimal>) {
         self.forced = true;
         self.event.set_prevpx(px);
     }
 
-    fn get_prevqty(&self) -> Option<Decimal18> {
+    fn get_prevqty(&self) -> Option<Decimal> {
         self.event.get_prevqty()
     }
 
-    fn set_prevqty(&mut self, qty: Option<Decimal18>) {
+    fn set_prevqty(&mut self, qty: Option<Decimal>) {
         self.forced = true;
         self.event.set_prevqty(qty);
     }
 
-    fn get_spotrate(&self) -> Option<Decimal18> {
+    fn get_spotrate(&self) -> Option<Decimal> {
         self.event.get_spotrate()
     }
 
-    fn set_spotrate(&mut self, rate: Option<Decimal18>) {
+    fn set_spotrate(&mut self, rate: Option<Decimal>) {
         self.forced = true;
         self.event.set_spotrate(rate);
     }
 
-    fn get_forwardpoints(&self) -> Option<Decimal18> {
+    fn get_forwardpoints(&self) -> Option<Decimal> {
         self.event.get_forwardpoints()
     }
 
-    fn set_forwardpoints(&mut self, points: Option<Decimal18>) {
+    fn set_forwardpoints(&mut self, points: Option<Decimal>) {
         self.forced = true;
         self.event.set_forwardpoints(points);
     }

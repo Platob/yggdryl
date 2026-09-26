@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import copy
 import pickle
+from decimal import Decimal
 
 import pyarrow as pa
 import pytest
 
 import yggdryl
-from yggdryl import DataType, Expression, Field, Filter, Plan, Selector, Term
+from yggdryl import DataType, Expression, Field, Filter, Plan, Selector, Serie, Term
 from yggdryl.expression import (
     UserFunction,
     unregister_user_function,
@@ -205,7 +206,7 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "=" in COMPARISONS
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
-    assert len(FUNCTIONS) == 19
+    assert len(FUNCTIONS) == 20
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"
@@ -446,6 +447,117 @@ def test_a_selector_is_a_select_clause() -> None:
         {"ccy": "A", "quantity": 1, "doubled": 2},
         {"ccy": "B", "quantity": 2, "doubled": 4},
     ]
+
+
+def test_arithmetic_over_the_fixed_decimal_leaves_types_as_the_leaf() -> None:
+    # A fixed leaf on either side keeps the leaf at scale eighteen rather
+    # than the family's `decimal128(38, s)`; a bigdecimal or a decimal256
+    # beside it widens the answer to a bigdecimal.
+    root = Field(
+        "row",
+        DataType.from_fields(
+            [
+                Field("px", "decimal", True),
+                Field("qty", "decimal", True),
+                Field("size", "int64", True),
+                Field("big", "bigdecimal", True),
+                Field("wide", "decimal256(40,2)", True),
+            ]
+        ),
+        False,
+    )
+    typed = Selector(
+        "px * qty as notional, px / qty as ratio, px % qty as rest, px + size as moved, "
+        "px * big as widened, big / qty as narrowed, px - wide as spread"
+    ).apply_field(root).dtype
+    for name in ("notional", "ratio", "rest", "moved"):
+        assert typed[name].dtype == DataType("decimal"), name
+    for name in ("widened", "narrowed", "spread"):
+        assert typed[name].dtype == DataType("bigdecimal"), name
+
+
+def test_a_float_cast_into_a_decimal_rounds_half_away_from_zero_on_both_tiers() -> None:
+    # A float reads as its shortest text, rounded half away from zero at the
+    # declared scale, a row as a column: 0.125 is 0.13, never the truncated
+    # 0.12, and 1.15 is 1.15, never its binary fraction.
+    root = Field("row", "struct<v:float64>", nullable=False)
+    cast = Selector(
+        "cast(v as decimal(10,2)) as cents, cast(v as decimal(10,0)) as whole, cast(v as decimal) as leaf"
+    )
+    values = [0.125, -0.125, 1.15, 2.5, 0.005]
+    expected = [
+        {"cents": Decimal("0.13"), "whole": Decimal("0"), "leaf": Decimal("0.125")},
+        {"cents": Decimal("-0.13"), "whole": Decimal("0"), "leaf": Decimal("-0.125")},
+        {"cents": Decimal("1.15"), "whole": Decimal("1"), "leaf": Decimal("1.15")},
+        {"cents": Decimal("2.50"), "whole": Decimal("3"), "leaf": Decimal("2.5")},
+        {"cents": Decimal("0.01"), "whole": Decimal("0"), "leaf": Decimal("0.005")},
+    ]
+    bound = cast.bind(root)
+    assert [bound.apply_row({"v": value}) for value in values] == expected
+    batch = pa.record_batch({"v": pa.array(values, pa.float64())})
+    # `decimal(10,2)` is Arrow's decimal64, which pyarrow 18 cannot turn into Python values, so
+    # the batch is read back through the package's own column door rather than `to_pylist`.
+    answer = Serie.from_arrow_batch(cast.apply_arrow_batch(batch))
+    assert {name: answer.child(name).as_py() for name in expected[0]} == {
+        name: [row[name] for row in expected] for name in expected[0]
+    }
+
+
+def test_a_fixed_decimal_leaf_cast_to_text_is_its_trimmed_text_on_both_tiers() -> None:
+    root = Field("row", "struct<px:decimal, n:bigdecimal>", nullable=False)
+    text = Selector("cast(px as utf8) as px, cast(n as utf8) as n")
+    row = [Decimal("1.125"), Decimal("-2")]
+    expected = {"px": "1.125", "n": "-2"}
+    assert text.bind(root).apply_row(row) == expected
+    batch = Serie.from_scalars(root, [row]).into_arrow_batch()
+    assert text.apply_arrow_batch(batch).to_pylist() == [expected]
+
+
+def test_a_null_struct_row_is_answered_rather_than_read() -> None:
+    # The null row's own buffers hold a row the filter would keep, so an
+    # answer that read them would show it.
+    array = pa.StructArray.from_arrays(
+        [pa.array([1, 2]), pa.array(["a", "b"])],
+        names=["id", "tag"],
+        mask=pa.array([False, True]),
+    )
+    assert array.to_pylist() == [{"id": 1, "tag": "a"}, None]
+    # A selector keeps the null row null; a filter answers it unknown, which
+    # it does not keep.
+    assert Selector("id").apply_arrow_array(array).to_pylist() == [{"id": 1}, None]
+    assert Filter("id > 0").apply_arrow_array(array).to_pylist() == [{"id": 1, "tag": "a"}]
+    # Unknown even where the question is about absence: no cell is read.
+    assert Filter("tag is null").apply_arrow_array(array).to_pylist() == []
+    # A plan composes the two: its select keeps the null row, its where drops it.
+    assert Expression("select id").apply_arrow_array(array).to_pylist() == [{"id": 1}, None]
+    assert Expression("select id where id > 0").apply_arrow_array(array).to_pylist() == [{"id": 1}]
+    inferred = pa.array([{"id": 1, "tag": "a"}, None])
+    assert Selector("id").apply_arrow_array(inferred).to_pylist() == [{"id": 1}, None]
+    assert Filter("id > 0").apply_arrow_array(inferred).to_pylist() == [{"id": 1, "tag": "a"}]
+
+
+def test_a_star_may_carry_appended_projections() -> None:
+    # A `*` reads every stored column it does not exclude, whatever it
+    # appends: `has_star` is the question a pushdown asks, `is_all` the
+    # narrower one of a selector that changes nothing.
+    appended = Selector("* exclude (size), size * 2 as doubled")
+    assert str(appended) == "* exclude (size), size * 2 as doubled"
+    assert appended.has_star and not appended.is_all
+    assert appended.excluded == ["size"]
+    # Only what is appended is the selector's to name; the kept columns are
+    # the schema's.
+    assert appended.names == ["doubled"] and len(appended) == 1
+    assert Selector.all().has_star and Selector.all().is_all
+    assert Selector.all_except(["size"]).has_star
+    assert not Selector("ccy").has_star
+    assert Selector.all().with_projection("size * 2 as doubled") == Selector("*, size * 2 as doubled")
+    batch = rows_batch(["A", "B"], [1, 2])
+    projected = appended.apply_arrow_batch(batch)
+    assert projected.schema.names == ["ccy", "doubled"]
+    assert projected.column("doubled").to_pylist() == [2, 4]
+    # A star leads or is not there at all.
+    with pytest.raises(ValueError):
+        Selector("ccy, *")
 
 
 def test_a_selector_declares_columns_like_a_create_table() -> None:

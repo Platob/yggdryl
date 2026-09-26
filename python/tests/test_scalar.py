@@ -296,6 +296,29 @@ def test_checked_arithmetic_preserves_python_error_categories() -> None:
         _ = Scalar.decimal(1) / Scalar.decimal(3)
 
 
+def test_the_fixed_decimal_leaves_keep_an_exact_remainder_and_refuse_a_zero_divisor() -> None:
+    price = DataType("decimal")
+    wide = DataType("bigdecimal")
+    # `%` is exact at scale eighteen, its sign the dividend's, as Python's
+    # own Decimal answers it.
+    rest = price.scalar(Decimal("7.5")) % price.scalar(2)
+    assert rest.kind == "decimal" and rest.as_py() == Decimal("1.5")
+    assert (price.scalar(Decimal("-7.5")) % 2).as_py() == Decimal("-7.5") % 2
+    assert price.scalar(Decimal("7.5")).remainder(Decimal("-2")).as_py() == Decimal("1.5")
+    # A bigdecimal on either side answers one.
+    widened = wide.scalar(Decimal("7.5")) % price.scalar(2)
+    assert widened.kind == "bigdecimal" and widened.as_py() == Decimal("1.5")
+    # A divisor of nothing is a division by zero - ZeroDivisionError, as for
+    # every other exact value, where it used to be a TypeError.
+    for dividend in (price.scalar(1), wide.scalar(1)):
+        with pytest.raises(ZeroDivisionError, match="by zero"):
+            _ = dividend / price.scalar(0)
+        with pytest.raises(ZeroDivisionError, match="by zero"):
+            _ = dividend % price.scalar(0)
+        with pytest.raises(ZeroDivisionError, match="by zero"):
+            _ = dividend % 0
+
+
 def test_native_scalar_traversal_keeps_exact_children() -> None:
     instant = DataType('datetime64(ns,"UTC")').scalar(1)
     tree = Scalar.from_(

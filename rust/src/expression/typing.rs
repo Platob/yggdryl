@@ -20,6 +20,11 @@
 //!   meets a float - an exact number and an approximate one have no common
 //!   type that is honest, so the expression is refused and the caller writes
 //!   the cast they meant;
+//! * arithmetic over a fixed leaf - `decimal`, `bigdecimal` - answers the
+//!   leaf at scale eighteen, `bigdecimal` where either side is `bigdecimal`,
+//!   `decimal256`, `int128` or `uint128`: the rule `Scalar` arithmetic states,
+//!   so a price times a quantity is a price's type and not a scale the
+//!   operands' scales add up to;
 //! * a temporal meets a temporal of the same family, at the finer unit;
 //! * text meets text, bytes meet bytes, and nothing else meets anything.
 //!
@@ -360,6 +365,15 @@ pub(crate) fn unknown_column(name: &str, schema: &Field) -> Error {
     ))
 }
 
+/// The refusal of an `unnest` that is not the whole term of a projection,
+/// naming the call and where it stood.
+pub(crate) fn unnest_misplaced(unnest: &impl std::fmt::Display, place: &str) -> Error {
+    typing_error(format_smolstr!(
+        "unnest is a select-list form: expected `{unnest}` as the whole term of a projection, \
+         got it {place}"
+    ))
+}
+
 fn require_boolean(field: &Field, expression: &Term) -> Result<()> {
     if matches!(field.dtype(), DataType::Boolean | DataType::Null) {
         return Ok(());
@@ -439,6 +453,8 @@ pub(crate) const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale }
         | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal => Some((crate::Decimal::PRECISION, crate::Decimal::SCALE)),
+        DataType::BigDecimal => Some((crate::BigDecimal::PRECISION, crate::BigDecimal::SCALE)),
         _ => None,
     }
 }
@@ -552,6 +568,20 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
         }
         _ => {}
     }
+    // A fixed leaf keeps its own rule rather than the family's, whose scales
+    // add under a product: an exact operand meets it at scale eighteen.
+    if let Some(wide) = crate::arithmetic::fixed_result(left.id(), right.id()) {
+        let exact = |dtype: &DataType| {
+            matches!(dtype, DataType::Null)
+                || DataTypeKind::Integer.contains(dtype.id())
+                || DataTypeKind::Decimal.contains(dtype.id())
+        };
+        return (exact(left) && exact(right)).then_some(if wide {
+            DataType::BigDecimal
+        } else {
+            DataType::Decimal
+        });
+    }
     let shared = common_type(left, right)?;
     if decimal_parts(&shared).is_some() {
         let (left_precision, left_scale) = exact_parts(left)?;
@@ -640,6 +670,12 @@ fn function_field(
     arguments: &[Term],
     schema: &Field,
 ) -> Result<Field> {
+    // A projection types an unnest's argument itself; one reaching here is
+    // read as a value - inside another term, a filter or a key - and a value
+    // read per row cannot be many rows.
+    if matches!(function, Function::Unnest) {
+        return Err(unnest_misplaced(expression, "where a value is read"));
+    }
     // A user function is typed by its registered signature, and refused by
     // name when nothing is registered under it.
     if let Function::User(reference) = function {
@@ -724,6 +760,7 @@ fn function_field(
         }
         Function::Truncate => first.clone(),
         Function::User(_) => unreachable!("a user function returned above"),
+        Function::Unnest => unreachable!("an unnest returned above"),
         Function::Coalesce | Function::IfNull => {
             let mut unified: Option<DataType> = None;
             for field in &fields {

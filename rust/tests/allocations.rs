@@ -36,7 +36,7 @@ use yggdryl::graph::{
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
 use yggdryl::{
-    ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal18, Field,
+    ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal, Field,
     FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64,
     MediaType, MimeType, PythonKind, PythonMetadata, Scalar, Serie, Side, State, TimeUnit,
     Timezone, Value, Variant, Version,
@@ -892,8 +892,8 @@ fn allocation_book_operation(
     event.set_crosscode(code.into());
     event.set_ticker(Some(SmolStr::new("ALLOC")));
     event.set_side(Side::read("Buy").expect("the shipped buy side"));
-    event.set_price(Some(Decimal18::from_int(100)));
-    event.set_quantity(Some(Decimal18::from_int(quantity)));
+    event.set_price(Some(Decimal::from_int(100)));
+    event.set_quantity(Some(Decimal::from_int(quantity)));
     event.set_state(State::read(state).expect("a shipped state"));
     event.finalize();
     event.into()
@@ -956,6 +956,89 @@ fn one_book_update_does_not_allocate_per_live_entry() {
     black_box((shallow, deep));
 }
 
+/// A book of `levels` distinct prices on each side - bids from 1000 down,
+/// asks from 1001 up - with eight entries resting at every price: past the
+/// four a vector grown by pushing holds in its first allocation, so a limit
+/// that grew its identities rather than collecting them shows in the count.
+fn allocation_book_levels(levels: usize) -> BookEvent {
+    let entry = |side: &str, level: usize, slot: usize| {
+        let offset = i64::try_from(level).expect("a small corpus");
+        let (name, price) = if side == "Buy" {
+            ("B", 1_000 - offset)
+        } else {
+            ("A", 1_001 + offset)
+        };
+        let mut event = QuoteEvent::at(1);
+        event.set_crosscode(format!("{name}-{level}-{slot}"));
+        event.set_ticker(Some(SmolStr::new("ALLOC")));
+        event.set_side(Side::read(side).expect("a shipped side"));
+        event.set_price(Some(Decimal::from_int(price)));
+        event.set_quantity(Some(Decimal::from_int(1 + offset)));
+        event.set_state(State::read("New").expect("the shipped new state"));
+        event.finalize();
+        MarketData::from(event)
+    };
+    let mut book = BookEvent::new(1, "ALLOC");
+    book.add_operations(["Buy", "Sell"].into_iter().flat_map(|side| {
+        (0..levels).flat_map(move |level| (0..8).map(move |slot| entry(side, level, slot)))
+    }))
+    .expect("the initial depth");
+    book
+}
+
+/// Every reading of a book's bests and depth is read off the price levels
+/// in place: nothing is built, at two depths.
+#[test]
+fn book_readings_allocate_nothing() {
+    for levels in [8, 128] {
+        let book = allocation_book_levels(levels);
+        assert_eq!(book.bid().limits().count(), levels);
+        free("best_price", || {
+            black_box(black_box(&book).bid().best_price());
+        });
+        free("best_quantity", || {
+            black_box(black_box(&book).ask().best_quantity());
+        });
+        free("is_crossed", || {
+            black_box(black_box(&book).is_crossed());
+        });
+        free("is_locked", || {
+            black_box(black_box(&book).is_locked());
+        });
+        free("spread", || {
+            black_box(black_box(&book).spread());
+        });
+        free("bbo_midpoint", || {
+            black_box(black_box(&book).bbo_midpoint());
+        });
+        free("median_quantity", || {
+            black_box(black_box(&book).median_quantity());
+        });
+        free("imbalance", || {
+            black_box(black_box(&book).imbalance(levels));
+        });
+        free("depth", || {
+            black_box(black_box(&book).bid().depth(levels));
+        });
+    }
+}
+
+/// A side's limits cost one vector each - its entries' identities,
+/// collected at their exact count - and nothing per entry, at two depths.
+#[test]
+fn book_limits_allocate_one_vector_per_limit() {
+    for levels in [8, 128] {
+        let book = allocation_book_levels(levels);
+        let side = book.bid();
+        let (allocations, count) = counted(|| side.limits().map(black_box).count());
+        assert_eq!(count, levels);
+        assert_eq!(
+            allocations, levels,
+            "{levels} limits of eight entries each allocated {allocations} times"
+        );
+    }
+}
+
 /// One order the market-data read pin reads back: every fact a row hands
 /// back owning heap - the cross code, the sources, three identifiers (past
 /// the map's inline two), an account, the metadata and a book control - each
@@ -965,8 +1048,8 @@ fn allocation_market_order(index: usize) -> MarketData {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode(format!("ALLOC-ORDER-{index:06}"));
     order.set_seqnum(1 + u64::try_from(index).expect("a small corpus"));
-    order.set_price(Some(Decimal18::from_int(100)));
-    order.set_quantity(Some(Decimal18::from_int(10)));
+    order.set_price(Some(Decimal::from_int(100)));
+    order.set_quantity(Some(Decimal::from_int(10)));
     order.set_side(Side::read("Buy").expect("the shipped buy side"));
     order.set_ticker(Some(SmolStr::new("ALLOC")));
     order.set_state(State::read("New").expect("the shipped new state"));
@@ -1067,6 +1150,71 @@ fn a_market_data_batch_write_allocates_per_row_only_its_canonical_check() {
     assert!(
         large < small + (512 - 64) / 4,
         "512 rows cost {large} allocations beyond their checks, against {small} for 64"
+    );
+}
+
+/// A capture expands into its sorted leaves at a cost per message that does
+/// not grow with the capture - no row parsed again, no metadata key built
+/// per leaf beyond its own, one sort of the leaves - whether the leaves
+/// carry their unmapped fields or not, and carrying them costs something.
+#[test]
+fn fix_market_operations_cost_is_linear_in_the_leaves() {
+    let registry = Arc::new(committed_registry().clone());
+    // Orders, quotes, a fill and a two-entry snapshot in turn, a second
+    // apart, each stating fields no typed column reads.
+    let capture = |codec: &FixCodec, messages: usize| -> Vec<FixMsg> {
+        (0..messages)
+            .map(|index| {
+                let clock = format!("20260921-10:{:02}:{:02}", index / 60, index % 60);
+                let line = match index % 4 {
+                    0 => format!(
+                        "8=FIX.4.4|35=D|52={clock}|11=C{index}|55=AAPL|54=1|44=100|38=5|40=2|21=1|10=0|"
+                    ),
+                    1 => format!(
+                        "8=FIX.4.4|35=S|52={clock}|117=Q{index}|55=AAPL|132=99|134=7|133=101|135=8|537=1|10=0|"
+                    ),
+                    2 => format!(
+                        "8=FIX.4.4|35=8|52={clock}|17=E{index}|37=O{index}|55=AAPL|54=1|31=100|32=2|150=F|40=2|10=0|"
+                    ),
+                    _ => format!(
+                        "8=FIX.4.4|35=W|52={clock}|55=AAPL|1180=MDP|268=2|269=0|278=B{index}|270=100|271=10|83=1|269=1|278=A{index}|270=101|271=12|83=2|10=0|"
+                    ),
+                };
+                codec
+                    .parse_fix_line(line.as_bytes())
+                    .expect("a synthetic message")
+            })
+            .collect()
+    };
+    let cost = |market_metadata: bool, messages: usize| {
+        let codec = FixCodec::new(Arc::clone(&registry))
+            .with_threads(1)
+            .with_market_metadata(market_metadata);
+        let held = capture(&codec, messages);
+        // Settle the codec's and the registry's first-use state first.
+        black_box(codec.market_operations(held.clone()).count());
+        let (allocations, count) = counted(|| codec.market_operations(held.clone()).count());
+        assert_eq!(count, messages / 4 * 5, "a leaf each, two for a snapshot");
+        allocations
+    };
+    let mut costs = Vec::new();
+    for market_metadata in [true, false] {
+        let (small, large) = (cost(market_metadata, 8), cost(market_metadata, 64));
+        // Per message, the larger capture costs at most what the smaller
+        // does plus one allocation: the sort's buffer and the leaves'
+        // doublings, spread thinner, and nothing that grows per message.
+        assert!(
+            large <= small * 8 + 64,
+            "market_metadata={market_metadata}: 64 messages cost {large}, 8 cost {small}"
+        );
+        costs.push((small, large));
+    }
+    let [(filled_small, filled_large), (bare_small, bare_large)] = costs[..] else {
+        unreachable!("two settings")
+    };
+    assert!(
+        bare_small < filled_small && bare_large < filled_large,
+        "carrying the metadata costs something: {costs:?}"
     );
 }
 
@@ -2344,6 +2492,205 @@ fn a_merge_casts_every_incoming_batch_alike() {
     }
 }
 
+/// A batch of `rows` rows: an id, and a sorted text-keyed map holding three
+/// identifiers in every row, the `ISIN` one of them.
+fn map_key_corpus(rows: usize) -> arrow_array::RecordBatch {
+    let entries = StructType::from_fields([
+        DataType::utf8().required_field("key"),
+        DataType::utf8().required_field("value"),
+    ])
+    .map(DataType::from)
+    .expect("the entry fields are valid")
+    .required_field("entries");
+    let root = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::map(entries, true)
+            .expect("a text-keyed map")
+            .nullable_field("ids"),
+    ])
+    .map(DataType::from)
+    .expect("the root fields are valid")
+    .required_field("row");
+    let values: Vec<Scalar> = (0..rows)
+        .map(|row| {
+            let isin = format!("US{row:010}");
+            Scalar::from_sequence([
+                Scalar::from(i64::try_from(row).expect("a small corpus")),
+                Scalar::from_mapping([
+                    (Scalar::from("CUSIP"), Scalar::from(&isin[2..11])),
+                    (Scalar::from("ISIN"), Scalar::from(isin.as_str())),
+                    (Scalar::from("SEDOL"), Scalar::from("B0YBKJ7")),
+                ])
+                .expect("a map of three entries"),
+            ])
+        })
+        .collect();
+    Serie::from_scalars(root, values)
+        .expect("the corpus lays out")
+        .into_arrow_batch()
+        .expect("a record column is a batch")
+}
+
+#[test]
+fn a_map_key_lift_allocates_only_what_it_hands_back() {
+    let selector: yggdryl::Selector = "id, ids['ISIN'] as isin".parse().expect("a lift");
+    let mut each_at = Vec::new();
+    for rows in [2, 64] {
+        let batch = map_key_corpus(rows);
+        let cost = |batches: usize| {
+            let reader = yggdryl::arrow::batch_reader(batch.schema(), vec![batch.clone(); batches]);
+            counted(|| {
+                for projected in selector.apply_arrow_reader(reader).expect("the lift binds") {
+                    black_box(projected.expect("the lift answers"));
+                }
+            })
+            .0
+        };
+        cost(1);
+        let (one, two, four) = (cost(1), cost(2), cost(4));
+        let each = two - one;
+        assert_eq!(
+            four - one,
+            3 * each,
+            "{rows} rows: every batch after the first cost {each}, but four cost {four} and one {one}"
+        );
+        each_at.push(each);
+    }
+    // The key is found in place and the values taken once: a batch costs
+    // the same count of allocations whatever it holds, the taken output
+    // included.
+    assert_eq!(
+        each_at[0], each_at[1],
+        "a batch of 2 rows cost {} and one of 64 cost {}: the lift allocated per row",
+        each_at[0], each_at[1]
+    );
+    eprintln!("map_key_lift: per batch {}", each_at[0]);
+}
+
+/// A root of an id beside a serie, and a batch of `rows` rows under it
+/// whose series hold two elements each, laid out as one contiguous run.
+fn unnest_corpus(rows: usize) -> (Field, arrow_array::RecordBatch) {
+    let root = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("xs"),
+    ])
+    .map(DataType::from)
+    .expect("the root fields are valid")
+    .required_field("row");
+    let values: Vec<Scalar> = (0..rows)
+        .map(|row| {
+            let row = i64::try_from(row).expect("a small corpus");
+            Scalar::from_sequence([
+                Scalar::from(row),
+                Scalar::from_sequence([Scalar::from(2 * row), Scalar::from(2 * row + 1)]),
+            ])
+        })
+        .collect();
+    let batch = Serie::from_scalars(root.clone(), values)
+        .expect("the corpus lays out")
+        .into_arrow_batch()
+        .expect("a record column is a batch");
+    (root, batch)
+}
+
+/// An unnest over contiguous runs builds the parents - the take every other
+/// column is read by - and shares the elements as they lie: a batch costs
+/// the same count of allocations whatever it holds, the taken `id` and the
+/// batch itself included.
+#[test]
+fn a_contiguous_unnest_allocates_only_its_parents_and_what_it_takes() {
+    let selector: yggdryl::Selector = "id, unnest(xs) as x".parse().expect("an unnest");
+    let mut each_at = Vec::new();
+    for rows in [2, 64] {
+        let (root, batch) = unnest_corpus(rows);
+        let bound = selector.bind(&root).expect("the unnest binds");
+        let (once, repeated) = counted_once_and_repeated(|| {
+            let out = bound.apply_arrow_batch(&batch).expect("the unnest answers");
+            assert_eq!(out.num_rows(), 2 * rows);
+            black_box(out);
+        });
+        assert_eq!(
+            repeated,
+            once * 1_000,
+            "{rows} rows: one batch cost {once} and a thousand cost {repeated}"
+        );
+        each_at.push(once);
+    }
+    eprintln!("contiguous_unnest: per batch {each_at:?}");
+    assert_eq!(
+        each_at, [UNNEST_BATCH_ALLOCATIONS; 2],
+        "a batch of 2 rows cost {} and one of 64 cost {}",
+        each_at[0], each_at[1]
+    );
+}
+
+/// What one batch of a contiguous unnest allocates at any row count: the
+/// parents, the `id` taken by them, and the batch holding both beside the
+/// shared elements. Taking the elements instead of sharing them costs four
+/// more.
+const UNNEST_BATCH_ALLOCATIONS: usize = 16;
+
+/// One `marketdata` batch: two orders, a trade of two executions and a book.
+fn view_corpus() -> arrow_array::RecordBatch {
+    let (root, executions) = allocation_trade_parts(2);
+    let trade = TradeEvent::from_parts(&root, executions).expect("the trade");
+    let values = (0..2).map(allocation_market_order).chain([
+        MarketData::from(trade),
+        MarketData::from(allocation_book(1)),
+    ]);
+    let mut rows = MarketData::arrow_reader(values, None, None).expect("the row field");
+    let batch = rows
+        .next()
+        .expect("one batch")
+        .expect("the leaves are canonical");
+    assert!(rows.next().is_none());
+    batch
+}
+
+#[test]
+fn a_view_plan_is_compiled_once_per_stream() {
+    use yggdryl::graph::MarketView;
+
+    let batch = view_corpus();
+    let isin: FieldPath = "securityids['ISIN'] as isin".parse().expect("a lift");
+    for (view, lifts) in [
+        (MarketView::Orders, vec![isin]),
+        (MarketView::Trades, Vec::new()),
+        (MarketView::BookSides, Vec::new()),
+    ] {
+        // An endless stream of the one batch: the view binds when it is
+        // applied, and every batch it is then pulled for costs one batch.
+        let source = {
+            let batch = batch.clone();
+            std::iter::repeat_with(move || Ok(batch.clone()))
+        };
+        let reader: yggdryl::arrow::BatchReader = Box::new(arrow_array::RecordBatchIterator::new(
+            source,
+            batch.schema(),
+        ));
+        let mut viewed =
+            MarketData::apply_view(&view, &lifts, reader).expect("the view binds once");
+        let (once, repeated) = counted_once_and_repeated(|| {
+            black_box(
+                viewed
+                    .next()
+                    .expect("an endless stream")
+                    .expect("the view answers"),
+            );
+        });
+        assert!(
+            once > 0,
+            "{view}: a batch that allocates nothing moved nothing"
+        );
+        assert_eq!(
+            repeated,
+            once * 1_000,
+            "{view}: one batch cost {once} and a thousand cost {repeated}"
+        );
+        eprintln!("view_{view}: per batch {once}");
+    }
+}
+
 /// The cost of each chunk one resumable write session is pushed.
 ///
 /// Every chunk is `batches` row-less batches: a batch with no rows is shaped
@@ -2527,7 +2874,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 47] = [
+    let seeds: [(DataTypeId, Scalar); 49] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2539,6 +2886,14 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::UInt32, Scalar::from(1_i64)),
         (DataTypeId::UInt64, Scalar::from(1_i64)),
         (DataTypeId::Float16, Scalar::from(1.5_f64)),
+        (
+            DataTypeId::Decimal,
+            Scalar::Decimal("82.5".parse().unwrap()),
+        ),
+        (
+            DataTypeId::BigDecimal,
+            Scalar::BigDecimal(yggdryl::BigDecimal::from_int(3)),
+        ),
         (DataTypeId::Float32, Scalar::from(1.5_f64)),
         (DataTypeId::Float64, Scalar::from(1.5_f64)),
         (DataTypeId::Date32, Scalar::date32(19_723)),

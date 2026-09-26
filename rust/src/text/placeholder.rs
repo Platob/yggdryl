@@ -506,7 +506,9 @@ fn text_form(value: &Scalar) -> Option<Cow<'_, str>> {
         | Scalar::Decimal32(_)
         | Scalar::Decimal64(_)
         | Scalar::Decimal128(_)
-        | Scalar::Decimal256(_) => value.leaf_display()?.to_string(),
+        | Scalar::Decimal256(_)
+        | Scalar::Decimal(_)
+        | Scalar::BigDecimal(_) => value.leaf_display()?.to_string(),
         Scalar::Date32(value) => iso::format_date(value.count())?.to_string(),
         Scalar::Date64(value) => {
             let days = value.count().checked_div(86_400_000)?;

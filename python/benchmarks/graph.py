@@ -3,8 +3,9 @@
 Every case here is one crossing over the typed market leaves and
 ``MarketData``: building an order event from named facts, reading a fact back
 typed, dating and undating an element, a book folding a stream of operations,
-the lazy book and event walks, and the lifted Arrow doors. Run after
-installing the release wheel with::
+a book's limits and imbalance, the lazy book and event walks, the lifted
+Arrow doors, the named views, and a FIX capture through the sorted market
+doors. Run after installing the release wheel with::
 
     python benchmarks/graph.py --iterations 2000
 """
@@ -14,14 +15,17 @@ from __future__ import annotations
 import argparse
 import decimal
 import gc
+import pathlib
 import statistics
 import timeit
 from collections.abc import Callable
 
-from yggdryl import graph
+from yggdryl import DataType, graph
+from yggdryl.fix import FixCodec, FixRegistry
 
 FOLD_OPERATION_COUNT = 512
 CLOCK = 1_700_000_000_000_000_000
+SEED = pathlib.Path(__file__).resolve().parent.parent.parent / "config" / "fix"
 
 
 def _order_event(clock: int = CLOCK, **facts: object) -> graph.OrderEvent:
@@ -52,6 +56,24 @@ FOLD_OPERATIONS = [
     for index in range(FOLD_OPERATION_COUNT)
 ]
 FOLD_BOOK = graph.BookEvent(CLOCK, "ACME").with_operations(FOLD_OPERATIONS)
+FOLD_SIDE = FOLD_BOOK.bid
+FOLD_ROWS = graph.MarketData.arrow_reader(FOLD_OPERATIONS).read_all()
+
+# One order a millisecond, one price tick each, as the codec parses them:
+# the capture the sorted market doors expand and order.
+CODEC = FixCodec(
+    FixRegistry.from_handle(SEED),
+    default_sending_time=DataType('datetime64(ns,"UTC")').scalar(CLOCK),
+    exclude_msgtypes=[],
+    threads=1,
+)
+CAPTURE = [
+    CODEC.parse_fix_line(
+        b"8=FIX.4.4|35=D|52=20260921-10:00:%02d.%03d|11=C%d|55=ACME|54=1|44=%d|38=5|10=0|"
+        % (index // 1000, index % 1000, index, 100 + index)
+    )
+    for index in range(FOLD_OPERATION_COUNT)
+]
 
 
 def _order_event_from_kwargs() -> graph.OrderEvent:
@@ -128,6 +150,34 @@ def _book_from_arrow_reader() -> int:
     return sum(1 for _ in graph.MarketData.from_arrow_reader(reader))
 
 
+def _book_side_limits() -> int:
+    return len(FOLD_SIDE.limits)
+
+
+def _book_side_depth() -> object:
+    return FOLD_SIDE.depth(10)
+
+
+def _book_imbalance() -> object:
+    return FOLD_BOOK.imbalance(10)
+
+
+def _view_plan() -> object:
+    return graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])
+
+
+def _view_apply() -> int:
+    return graph.MarketData.apply_view("orders", FOLD_ROWS).read_all().num_rows
+
+
+def _market_operations() -> int:
+    return sum(1 for _ in CODEC.market_operations(CAPTURE))
+
+
+def _market_arrow_reader() -> int:
+    return CODEC.market_arrow_reader(CAPTURE).read_all().num_rows
+
+
 def _measure(name: str, operation: Callable[[], object], iterations: int) -> None:
     samples = timeit.repeat(operation, number=iterations, repeat=3)
     median = statistics.median(samples)
@@ -164,6 +214,13 @@ def main() -> None:
         _measure(f"operations from_arrow_reader/{count}", _operations_from_arrow_reader, folds)
         _measure("book arrow_reader", _book_arrow_reader, folds)
         _measure("book from_arrow_reader", _book_from_arrow_reader, folds)
+        _measure(f"book side limits/{count}", _book_side_limits, folds)
+        _measure("book side depth/10", _book_side_depth, args.iterations)
+        _measure("book imbalance/10", _book_imbalance, args.iterations)
+        _measure("view plan orders+lift", _view_plan, args.iterations)
+        _measure(f"view apply orders/{count}", _view_apply, folds)
+        _measure(f"fix market_operations/{count}", _market_operations, folds)
+        _measure(f"fix market_arrow_reader/{count}", _market_arrow_reader, folds)
     finally:
         gc.enable()
 

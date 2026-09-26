@@ -46,7 +46,9 @@ use crate::cast::columns::{
     is_reconcilable_nested, list_child, union_mode_matches,
 };
 use crate::cast::text::{blank_text_as_null, holds_text, ingest_text_values, keeps_empty_text};
-use crate::decimal::casts::holds_decimal;
+use crate::decimal::casts::{
+    holds_decimal, ingest_float_values, is_float_arrow, render_fixed_text,
+};
 use crate::geospatial::casts::{render_wkt_array, validate_wkb_ingest};
 use crate::path::{Path, Segment};
 use crate::string::casts::{StringSource, ingest_code_array, ingest_string_array};
@@ -1514,6 +1516,11 @@ enum ArrayCastKind {
     /// scale, and a digit that scale cannot state stays refused rather than
     /// rounded away - dropping a digit off a price is a value change.
     DecimalIngest,
+    /// A float entering a decimal: every exposed value is read as the number
+    /// it names, rounded half away from zero at the declared scale - the
+    /// reading a row takes - where Arrow's kernel would scale its binary
+    /// fraction.
+    DecimalFromFloat,
     /// Text entering a temporal: every exposed value is read through the
     /// crate's own spellings, which are wider than Arrow's. Arrow's kernel
     /// stays behind them for the spellings only it knows, so the reading is
@@ -1523,6 +1530,13 @@ enum ArrayCastKind {
     /// row spells - a zoned instant included, which Arrow's own formatter
     /// refuses without its timezone database.
     TemporalText,
+    /// A fixed decimal leaf rendering as the one text its value spells, with
+    /// no trailing zero behind the point, where Arrow's kernel would write
+    /// the storage's full scale. A target that is not plain text then reads
+    /// that text under the string rule, as it reads bare text.
+    FixedDecimalText {
+        ingest: bool,
+    },
     DeferredUnsupported {
         reason: String,
     },
@@ -1909,6 +1923,20 @@ impl ArrayCastPlan {
             (crate::string_dtypes!(), source) if plain_text && is_temporal_arrow(source) => {
                 ArrayCastKind::TemporalText
             }
+            // A fixed decimal leaf spells the text its value does, in a batch
+            // as in a row, whichever string it enters.
+            (
+                crate::string_dtypes!(),
+                ArrowDataType::Decimal128(..) | ArrowDataType::Decimal256(..),
+            ) if matches!(
+                source_extension,
+                Some(RecognizedExtension::Decimal | RecognizedExtension::BigDecimal)
+            ) =>
+            {
+                ArrayCastKind::FixedDecimalText {
+                    ingest: !plain_text,
+                }
+            }
             // A string reads its values, never its buffers: a recognized
             // string, code or UUID source is read under what it declares -
             // a UUID spelling its sixteen bytes as the identifier they name -
@@ -2015,6 +2043,11 @@ impl ArrayCastPlan {
             // and this crate refuses that where Arrow rounds it.
             (target, source) if holds_decimal(target) && holds_text(source) => {
                 ArrayCastKind::DecimalIngest
+            }
+            // A float enters a decimal as the number it names, in a batch as
+            // in a row, rather than as its binary fraction scaled.
+            (target, source) if holds_decimal(target) && is_float_arrow(source) => {
+                ArrayCastKind::DecimalFromFloat
             }
             (DataType::Struct(fields), ArrowDataType::Struct(source_fields)) => {
                 let ArrowDataType::Struct(target_fields) = expected else {
@@ -2537,6 +2570,24 @@ impl ArrayCastPlan {
             ArrayCastKind::TemporalText => {
                 render_temporal_text(&array, self.safe(), &self.field, exposure, budget)?
             }
+            ArrayCastKind::FixedDecimalText { ingest } => {
+                let spelled = render_fixed_text(&array, &self.field, exposure, budget)?;
+                if *ingest {
+                    ingest_string_array(
+                        &spelled,
+                        &StringSource::Bare,
+                        self.safe(),
+                        &self.field,
+                        exposure,
+                        budget,
+                    )?
+                } else {
+                    spelled
+                }
+            }
+            ArrayCastKind::DecimalFromFloat => {
+                ingest_float_values(&array, self.safe(), &self.field, exposure, budget)?
+            }
             ArrayCastKind::DecimalIngest => ingest_text_values(
                 &array,
                 &self.expected,
@@ -2746,6 +2797,10 @@ fn check_extension_source(target: &Field, source: Option<&RecognizedExtension>) 
         // A UUID source is sixteen bytes: a UUID target re-validates them,
         // text renders them, and bytes keep them.
         (_, RecognizedExtension::Uuid) => Ok(()),
+        // A fixed decimal source is its decimal storage with the scale
+        // already fixed: every target reads it as it reads that storage,
+        // except text, which spells the leaf's own trimmed text.
+        (_, RecognizedExtension::Decimal | RecognizedExtension::BigDecimal) => Ok(()),
         // A bounded byte source is its storage with a rule already checked:
         // another byte target re-measures it, and every other target reads
         // the bytes as it reads bare storage.
@@ -5014,6 +5069,7 @@ pub(crate) mod columns {
             | DataType::Float32
             | DataType::Float64
             | DataType::Decimal256 { .. }
+            | DataType::BigDecimal
             | DataType::Union(..)
             | DataType::Dictionary(_)
             | DataType::RunEndEncoded(_) => true,
@@ -5191,7 +5247,7 @@ pub(crate) mod columns {
                         .cmp(&crate::Float64::from_f64(right_values[right]))
                 })
             }
-            DataType::Decimal256 { .. } => {
+            DataType::Decimal256 { .. } | DataType::BigDecimal => {
                 let left_values = downcast::<Decimal256Array>(left.as_ref())?.values().clone();
                 let right_values = downcast::<Decimal256Array>(right.as_ref())?
                     .values()
