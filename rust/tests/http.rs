@@ -4,7 +4,8 @@
 //! carries that cfg; the ones that pin something a caller cannot reach - the
 //! retry schedule and its budget - carry the `internals` cfg beside it and
 //! reach the crate through `yggdryl::internals`. `headers` declares the four
-//! helper suites under `http/headers/` itself.
+//! helper suites under `http/headers/` itself, and `server` pins the three
+//! files under `http/server/` beside `server.rs`.
 //!
 //! [`http_server`] is not a suite: it is the in-process HTTP/1.1 server every
 //! suite over a socket runs against, declared here once so they share one
@@ -18,6 +19,9 @@ mod http_server;
 #[path = "http/authorization.rs"]
 mod authorization;
 #[cfg(feature = "http")]
+#[path = "http/client.rs"]
+mod client;
+#[cfg(feature = "http")]
 #[path = "http/cookie.rs"]
 mod cookie;
 #[cfg(feature = "http")]
@@ -27,17 +31,38 @@ mod headers;
 #[path = "http/method.rs"]
 mod method;
 #[cfg(feature = "http")]
+#[path = "http/mod_.rs"]
+mod mod_;
+#[cfg(feature = "http")]
 #[path = "http/options.rs"]
 mod options;
 #[cfg(feature = "http")]
+#[path = "http/pages.rs"]
+mod pages;
+#[cfg(feature = "http")]
 #[path = "http/pagination.rs"]
 mod pagination;
+#[cfg(feature = "http")]
+#[path = "http/request.rs"]
+mod request;
+#[cfg(feature = "http")]
+#[path = "http/response.rs"]
+mod response;
 #[cfg(all(feature = "http", feature = "internals"))]
 #[path = "http/retry.rs"]
 mod retry;
 #[cfg(feature = "http")]
+#[path = "http/server.rs"]
+mod server;
+#[cfg(feature = "http")]
+#[path = "http/session.rs"]
+mod session;
+#[cfg(feature = "http")]
 #[path = "http/status.rs"]
 mod status;
+#[cfg(feature = "http")]
+#[path = "http/stream.rs"]
+mod stream;
 #[cfg(feature = "http")]
 #[path = "http/wire.rs"]
 mod wire;

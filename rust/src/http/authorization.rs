@@ -1,7 +1,7 @@
 //! Who a request says it is: the `Authorization` header, or another header
 //! carrying a credential.
 //!
-//! The credential itself is a [`Secret`](crate::auth::Secret), so a session
+//! The credential itself is the crate's private `Secret`, so a session
 //! or a request holding one derives `Debug` and prints `<redacted>` where
 //! the token would be; [`Authorization::header_value`] is the one place the
 //! text is spelled out, for the wire.

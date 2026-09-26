@@ -374,6 +374,8 @@ pub mod internals {
     pub use crate::holder::buffered::internals as holder_buffered;
     #[cfg(feature = "http")]
     pub use crate::http::retry::internals as http_retry;
+    #[cfg(feature = "http")]
+    pub use crate::http::stream::internals as http_stream;
     #[cfg(feature = "iceberg")]
     pub use crate::iceberg::manifest::internals as iceberg_manifest;
     #[cfg(feature = "iceberg")]

@@ -89,6 +89,19 @@ pub enum Holder {
     /// One object on an object store.
     #[cfg(feature = "s3")]
     S3File(crate::s3::S3File),
+    /// An HTTP session: a container over its base URL, listing nothing.
+    #[cfg(feature = "http")]
+    HttpSession(crate::http::Session),
+    /// The resource an HTTP URL names, as the request that reads and writes
+    /// it.
+    #[cfg(feature = "http")]
+    HttpRequest(crate::http::Request),
+    /// One HTTP answer, its body the bytes.
+    #[cfg(feature = "http")]
+    HttpResponse(crate::http::Response),
+    /// A response body still on the wire, read forward.
+    #[cfg(feature = "http")]
+    HttpStream(crate::http::Stream),
     /// A prefix of one ZIP archive's members, or the archive root.
     ZipNode(crate::zip::ZipNode),
     /// A location inside a ZIP archive that resolves to whatever it holds.
@@ -168,7 +181,10 @@ impl Holder {
     /// a member of a ZIP archive; an object-store URL - `s3:`, `gs:`, `az:`
     /// and their aliases - is held through the `s3` feature, configured
     /// by the properties the store's own tooling names, read the way the
-    /// object store options read them.
+    /// object store options read them; an `http:` or `https:` URL is held
+    /// through the `http` feature as the request that reads and writes the
+    /// resource, configured by the [`HttpOptions`](crate::http::HttpOptions)
+    /// properties.
     ///
     /// Two properties are read here whatever the scheme: `media_type` (or
     /// `mime_type`, `content_type`) declares what the bytes are, and `codec`
@@ -221,6 +237,21 @@ impl Holder {
             {
                 return Err(crate::Error::unsupported(
                     "holding an object store location without the s3 feature",
+                    url.scheme().as_str(),
+                ));
+            }
+        } else if url.scheme().is_http() {
+            #[cfg(feature = "http")]
+            {
+                let options = crate::http::HttpOptions::from_properties(
+                    properties.iter().map(|(name, value)| (name, value)),
+                )?;
+                crate::http::located_with(&url.to_string(), options)?
+            }
+            #[cfg(not(feature = "http"))]
+            {
+                return Err(crate::Error::unsupported(
+                    "holding an HTTP location without the http feature",
                     url.scheme().as_str(),
                 ));
             }
@@ -551,6 +582,14 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpSession(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpRequest(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpResponse(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpStream(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -577,6 +616,14 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpSession(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpRequest(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpResponse(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpStream(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -603,6 +650,14 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpSession(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpRequest(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpResponse(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpStream(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -629,6 +684,14 @@ impl Holder {
             Self::S3Path(inner) => inner,
             #[cfg(feature = "s3")]
             Self::S3File(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpSession(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpRequest(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpResponse(inner) => inner,
+            #[cfg(feature = "http")]
+            Self::HttpStream(inner) => inner,
             Self::ZipNode(inner) => inner,
             Self::ZipPath(inner) => inner,
             Self::ZipLeaf(inner) => inner,
@@ -683,6 +746,15 @@ impl crate::IOMedia for Holder {
         options: &crate::media::RecordOptions,
     ) -> Result<crate::arrow::BatchReader> {
         crate::IOMedia::read_arrow_reader(self.as_media(), options)
+    }
+
+    /// Forwarded, because a handle can answer its rows other than through
+    /// its bytes - an HTTP request walks the pages of a paginated document.
+    fn read_arrow(
+        &self,
+        options: Option<&crate::media::RecordOptions>,
+    ) -> Result<crate::SerieReader> {
+        crate::IOMedia::read_arrow(self.as_media(), options)
     }
 
     fn overwrite_arrow_reader(
@@ -853,6 +925,13 @@ impl IOBase for Holder {
         self.as_io().kind()
     }
 
+    /// Forwarded, because a leaf answers its role without asking its store
+    /// where the default would settle it from [`IOBase::kind`], which on a
+    /// remote handle is a request.
+    fn is_container(&self) -> bool {
+        self.as_io().is_container()
+    }
+
     fn is_atomic(&self) -> bool {
         self.as_io().is_atomic()
     }
@@ -904,6 +983,34 @@ impl From<crate::fs::FsPath> for Holder {
 impl From<crate::fs::FsFile> for Holder {
     fn from(value: crate::fs::FsFile) -> Self {
         Self::FsFile(value)
+    }
+}
+
+#[cfg(feature = "http")]
+impl From<crate::http::Session> for Holder {
+    fn from(value: crate::http::Session) -> Self {
+        Self::HttpSession(value)
+    }
+}
+
+#[cfg(feature = "http")]
+impl From<crate::http::Request> for Holder {
+    fn from(value: crate::http::Request) -> Self {
+        Self::HttpRequest(value)
+    }
+}
+
+#[cfg(feature = "http")]
+impl From<crate::http::Response> for Holder {
+    fn from(value: crate::http::Response) -> Self {
+        Self::HttpResponse(value)
+    }
+}
+
+#[cfg(feature = "http")]
+impl From<crate::http::Stream> for Holder {
+    fn from(value: crate::http::Stream) -> Self {
+        Self::HttpStream(value)
     }
 }
 

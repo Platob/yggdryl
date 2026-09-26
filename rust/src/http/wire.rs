@@ -214,6 +214,51 @@ pub fn parse_request(bytes: &[u8]) -> Result<(RequestHead, Vec<u8>)> {
     ))
 }
 
+/// Parse one request head - the request line and the field lines up to and
+/// including the empty line - off `bytes`, which must hold exactly that.
+///
+/// This is the door a server reads a socket through: the head is read up to
+/// the blank line, parsed here, and the body then framed off the socket by
+/// what the headers state (`Content-Length`, or `Transfer-Encoding: chunked`
+/// through [`decode_chunked`]), never held whole in one buffer first.
+///
+/// # Errors
+///
+/// Returns [`Error::Parse`] with target `http message` for what
+/// [`parse_request`] refuses in a head, and for any byte after the empty
+/// line.
+pub(crate) fn parse_request_head(bytes: &[u8]) -> Result<RequestHead> {
+    let (line, position) = line_at(bytes, 0)?;
+    let (method, target, version) = parse_request_line(line, 0)?;
+    let (headers, _, end) = parse_field_lines(bytes, position)?;
+    refuse_trailing(bytes, end)?;
+    Ok(RequestHead {
+        method,
+        target,
+        version,
+        headers,
+    })
+}
+
+/// Render one response head - the status line, the field lines and the
+/// empty line - exactly as `head` states it, adding no framing.
+///
+/// [`render_response`] frames a body it is handed; a server that streams a
+/// body it does not hold whole states the framing in the headers itself and
+/// writes the body after this head.
+pub(crate) fn render_response_head(head: &ResponseHead) -> Vec<u8> {
+    let mut out = Vec::with_capacity(128);
+    out.extend_from_slice(head.version.as_str().as_bytes());
+    out.push(b' ');
+    out.extend_from_slice(head.status.code().to_string().as_bytes());
+    out.push(b' ');
+    out.extend_from_slice(head.reason.as_bytes());
+    out.extend_from_slice(b"\r\n");
+    render_fields(&mut out, &head.headers);
+    out.extend_from_slice(b"\r\n");
+    out
+}
+
 /// Parse one response message: the head, then the body it frames.
 ///
 /// A `1xx`, `204` or `304` response has no body whatever its headers state

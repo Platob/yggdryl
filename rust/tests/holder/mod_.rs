@@ -319,3 +319,118 @@ mod vocabulary {
         assert_eq!(streams.load(Ordering::Relaxed), 1);
     }
 }
+
+/// The four HTTP variants: what `Holder::from_url` routes to an `http:` or
+/// `https:` URL, the properties it reads, and what composes over one.
+#[cfg(feature = "http")]
+mod http_holders {
+    use std::time::Duration;
+
+    use yggdryl::holder::Holder;
+    use yggdryl::http::{HttpOptions, Session};
+    use yggdryl::{IOBase, IOKind, MimeType, Url};
+
+    #[test]
+    fn an_http_url_is_held_as_the_request_that_reads_it() {
+        let url = Url::from_str("https://data.example.com/lake/trades.parquet").unwrap();
+        let none: [(&str, &str); 0] = [];
+        let held = Holder::from_url(&url, none).unwrap();
+        let Holder::HttpRequest(request) = &held else {
+            panic!("expected a request, got {held:?}");
+        };
+        assert_eq!(request.url(), &url);
+        assert_eq!(held.url(), Some(&url));
+        assert_eq!(held.media_type().base(), &MimeType::PARQUET);
+        assert!(!held.is_container());
+        // Holding costs nothing.
+        assert_eq!(request.stats().requests, 0);
+        let held: Holder = Holder::try_from(&url).unwrap();
+        assert!(matches!(held, Holder::HttpRequest(_)));
+    }
+
+    #[test]
+    fn the_properties_configure_the_session_and_the_two_generic_ones_apply() {
+        let url = Url::from_str("http://api.example.com/v1/blob").unwrap();
+        let held = Holder::from_url(
+            &url,
+            [
+                ("timeout", "9"),
+                ("max-attempts", "1"),
+                ("header.X-Api-Key", "k-1"),
+                ("bearer_token", "t-1"),
+                ("media_type", "application/json"),
+                ("warehouse", "ignored"),
+            ],
+        )
+        .unwrap();
+        let Holder::HttpRequest(request) = &held else {
+            panic!("expected a request, got {held:?}");
+        };
+        let options = request.session().options();
+        assert_eq!(options.timeout(), Duration::from_secs(9));
+        assert_eq!(options.max_attempts(), 1);
+        assert_eq!(options.headers().get("x-api-key"), Some("k-1"));
+        assert!(options.authorization().is_some());
+        assert_eq!(held.media_type().base(), &MimeType::JSON);
+
+        let coded = Holder::from_url(&url, [("codec", "gzip")]).unwrap();
+        assert!(matches!(coded, Holder::Coded(_)), "{coded:?}");
+    }
+
+    #[test]
+    fn a_property_that_does_not_parse_is_refused_before_anything_is_held() {
+        let url = Url::from_str("http://api.example.com/v1/blob").unwrap();
+        let error = Holder::from_url(&url, [("timeout", "soon")]).expect_err("a refusal");
+        assert!(
+            matches!(
+                error,
+                yggdryl::Error::Parse {
+                    target: "http option",
+                    ..
+                }
+            ),
+            "{error:?}"
+        );
+    }
+
+    #[test]
+    fn into_declared_media_composes_over_an_http_location_without_a_request() {
+        let session = Session::with_options(HttpOptions::default()).unwrap();
+        let request = session
+            .get("http://data.example.com/logs/app.txt.gz")
+            .unwrap();
+        let composed = Holder::HttpRequest(request).into_declared_media();
+        match &composed {
+            Holder::Text(text) => match text.handle() {
+                Holder::Coded(coded) => {
+                    assert!(matches!(coded.handle(), Holder::HttpRequest(_)));
+                }
+                other => panic!("expected a coding under the text, got {other:?}"),
+            },
+            other => panic!("expected text over a coding, got {other:?}"),
+        }
+        assert_eq!(composed.media_type().base(), &MimeType::PLAIN_TEXT);
+        assert_eq!(session.stats().requests, 0);
+
+        let plain = Holder::HttpRequest(session.get("http://data.example.com/a.json").unwrap())
+            .into_declared_media();
+        assert!(matches!(plain, Holder::HttpRequest(_)), "{plain:?}");
+    }
+
+    #[test]
+    fn a_session_is_held_as_a_container() {
+        let base = Url::from_str("http://api.example.com/v1/").unwrap();
+        let session =
+            Session::with_options(HttpOptions::default().with_base_url(base.clone())).unwrap();
+        let held = Holder::from(session);
+        assert!(matches!(held, Holder::HttpSession(_)));
+        assert_eq!(held.kind(), IOKind::Directory);
+        assert_eq!(held.url(), Some(&base));
+        let child = held.child_by_path("items").unwrap();
+        assert!(matches!(child, Holder::HttpRequest(_)));
+        assert_eq!(
+            child.url().map(ToString::to_string).as_deref(),
+            Some("http://api.example.com/v1/items")
+        );
+    }
+}
