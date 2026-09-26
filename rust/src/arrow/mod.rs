@@ -975,8 +975,7 @@ impl Rebatched {
         let mut cut = self.rows.unwrap_or(usize::MAX).max(1);
         if let Some(bytes) = self.bytes {
             let size = sliced_memory_size(batch) as u128;
-            if size > 0 {
-                let fits = u128::from(bytes) * batch.num_rows() as u128 / size;
+            if let Some(fits) = (u128::from(bytes) * batch.num_rows() as u128).checked_div(size) {
                 cut = cut.min(usize::try_from(fits.max(1)).unwrap_or(usize::MAX));
             }
         }
