@@ -12,7 +12,7 @@ The unit a quantity is stated in: FIX `UnitOfMeasure(996)`, held as the text it 
 | Cached | The Arrow projection of its [`Field`](../field.md) |
 | Refuses | A thirty-third byte or a byte past `0x7F`, naming the width: `at most 32 bytes` |
 
-`Unit::none()` is the empty unit, the value stated as none: it is the code's default, what [`Market::get_unit`](../../graph/index.md#market) answers where a market states none and a `Lane` leaves out, and a [merge](index.md#the-code-family-value) takes the other unit over it.
+`Unit::none()` is the empty unit, the value stated as none: it is the code's default, what [`Market::get_unit`](../../graph/market.md#contract) answers where a market states none and a `Lane` leaves out, and a [merge](index.md#the-code-family-value) takes the other unit over it.
 
 ## DataType
 

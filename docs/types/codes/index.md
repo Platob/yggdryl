@@ -162,7 +162,7 @@ The contract every registered code answers lives in `rust/src/code.rs`: the `Cod
 
 The fourteen share no value type: each is its own `Scalar` variant over its own leaf value, the family is the code range of identifiers - `DataTypeKind::Code.contains(id)`, which is what `is_code` asks ([Scalar](../scalar.md#families)) - and what the leaves share is the `CodeValue` contract. Python and JavaScript read the family off the value itself, as `family` above.
 
-`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/index.md) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `ccy` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
+`CodeValue::merge_with` is the better statement of two codes of one kind, and what a [graph element](../../graph/market.md#following-and-merging) folds two statements of one fact with. What "less" means is each code's own: a `cfi` fills every `X` from the other where the two describe one instrument, a `state` that reached none takes the other and otherwise the further along stands, a `side` `UNKNOWN`, a `ccy` `XXX` and a `mic` `XXXX` take the other, and an identifier stands as it is. Rust only.
 
 ```rust
 use yggdryl::{CodeValue, Ccy, DataTypeKind, Isin, Mic, Scalar, State};

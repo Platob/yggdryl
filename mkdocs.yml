@@ -219,6 +219,16 @@ nav:
   - Hashing: hashing.md
   - Graph:
     - graph/index.md
+    - Element: graph/element.md
+    - Event: graph/event.md
+    - Market: graph/market.md
+    - Operation: graph/operation.md
+    - Order: graph/order.md
+    - Quote: graph/quote.md
+    - Execution: graph/execution.md
+    - Trade: graph/trade.md
+    - Book: graph/book.md
+    - Market data: graph/market-data.md
     - Replay: graph/replay.md
   - FIX:
     - fix/index.md

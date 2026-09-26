@@ -228,7 +228,7 @@ assert_eq!(Side::Unknown.as_str(), "UNKNOWN");
 
 ## Which lane of a quote
 
-`is_bid` and `is_ask` say which lane a side takes, which is what a FIX lift and [`Operation::fill_lanes`](../../graph/index.md#operation) fill a lane by; `Market::get_side` answers the value itself, one byte, `Side::Unknown` where a market states none. `BUY` and `BUYMINUS` take the bid; `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` take the ask. Everything else takes neither: a cross is both sides at once, `OPPOSITE` means "whatever the other leg was", and `ASDEF`, `UNDISC` and a side stated as none say nothing about a lane. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust only.
+`is_bid` and `is_ask` say which lane a side takes, which is what a FIX lift and [`Operation::fill_lanes`](../../graph/operation.md#contract) fill a lane by; `Market::get_side` answers the value itself, one byte, `Side::Unknown` where a market states none. `BUY` and `BUYMINUS` take the bid; `SELL`, `SELLPLUS`, `SSHORT`, `SSHORTEX` and `SELLUND` take the ask. Everything else takes neither: a cross is both sides at once, `OPPOSITE` means "whatever the other leg was", and `ASDEF`, `UNDISC` and a side stated as none say nothing about a lane. Domain knowledge written where a reviewer can check it, because Orchestra does not publish it. Rust only.
 
 ```rust
 use yggdryl::Side;

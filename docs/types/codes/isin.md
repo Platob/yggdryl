@@ -263,7 +263,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 - No default value: the empty text names no security, so an empty text cell entering the column is null, as it is for a UUID ([Cast](../cast.md#empty-text)).
 - No vocabulary: `StringEnum::from_logical_name("isin")` answers an enum of no members, and no Python code class declares it.
 - Nothing partial about an identifier, so [`merge_with`](index.md#the-code-family-value) keeps this one.
-- A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../../graph/index.md); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
+- A lifecycle may learn a missing matching identifier or CFI attribute only under an already-valid ISIN in its own [graph walk](../../graph/event.md#lifecycle-walk); that association registry is not a codec parser, a global mapper, or a replacement for a stated fact.
 - `SecurityIDSource(22)` and the crate tag `isincode(65055)` carry the normalized column in a [FIX capture](index.md#fix-message-definitions).
 - The prefix is the numbering agency's, which includes international prefixes no [country](country.md) names, so it is read as text rather than as that code.
 

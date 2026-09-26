@@ -404,7 +404,7 @@ assert_eq!(i256::from_le_bytes(i256::from_i128(9).into_le_bytes()), i256::from_i
 
 ## Decimal { #decimal }
 
-`decimal` is the family's fixed leaf: `decimal128(38, 18)` preapplied, one datatype, field and scalar of its own, and the value [a market](../../graph/index.md#market) holds its prices and quantities as.
+`decimal` is the family's fixed leaf: `decimal128(38, 18)` preapplied, one datatype, field and scalar of its own, and the value [a market](../../graph/market.md) holds its prices and quantities as.
 
 ### Contract
 

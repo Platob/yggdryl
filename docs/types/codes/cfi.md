@@ -277,7 +277,7 @@ assert_eq!(Cfi::new("ESVUFR")?.merge_with(&Cfi::new("DBFNFB")?).as_str(), "ESVUF
 - `Cfi::merged` answers `None` for anything that is not two well-formed codes; `merge_with` turns that `None` back into this code.
 - Python declares the vocabulary over the width as `yggdryl.enums.CFI`, over the `yggdryl.enums.Cfi` base a caller subclasses for a vocabulary of its own; `StringEnum::from_logical_name("cfi")` answers an enum of no members, because the grid is a rule rather than a listing.
 - `CFICode(461)` is the standard classification field, so no crate tag 65056 exists ([FIX message definitions](index.md#fix-message-definitions)).
-- A lifecycle may learn a missing CFI attribute only under an already-valid [ISIN](isin.md) in its own [graph walk](../../graph/index.md).
+- A lifecycle may learn a missing CFI attribute only under an already-valid [ISIN](isin.md) in its own [graph walk](../../graph/event.md#lifecycle-walk).
 
 ## Commands
 
