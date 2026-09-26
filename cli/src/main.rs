@@ -49,8 +49,10 @@ enum Command {
         #[arg(long, global = true)]
         annotate: bool,
 
+        // Boxed: the FIX verbs carry far more than the other namespaces, and
+        // the enum is one word wide without them inline.
         #[command(subcommand)]
-        command: Option<fix::Command>,
+        command: Option<Box<fix::Command>>,
     },
     /// Serve catalogs of record media over XML for Analysis.
     Xmla {
@@ -69,7 +71,7 @@ fn main() -> ExitCode {
         } => fix::run(
             root,
             *annotate || std::env::var_os("GITHUB_ACTIONS").is_some(),
-            command.as_ref(),
+            command.as_deref(),
         ),
         Command::Xmla { command } => xmla::run(command),
     };
