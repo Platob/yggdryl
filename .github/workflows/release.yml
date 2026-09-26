@@ -459,6 +459,17 @@ jobs:
           # setting changes the code the compiler emits.
           CARGO_PROFILE_RELEASE_STRIP: ${{ github.event_name == 'workflow_dispatch' && 'none' || 'symbols' }}
           CARGO_PROFILE_RELEASE_DEBUG: ${{ github.event_name == 'workflow_dispatch' && 'line-tables-only' || 'false' }}
+      # The web components' tests drive a headless Chromium. Every other
+      # runner image ships a browser; the Linux arm64 image ships none, so it
+      # takes Playwright's build of Chromium and the tests are told where it is.
+      - name: Install Chromium for the browser tests
+        if: matrix.label == 'linux-arm64-gnu'
+        shell: bash
+        run: |
+          npx --yes playwright@1.63.0 install --with-deps chromium
+          chrome=$(find "$HOME/.cache/ms-playwright" -path '*/chromium-*' -type f -name chrome | head -n 1)
+          test -x "$chrome"
+          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
       - name: Smoke tests against the release binary
         run: npm test --prefix node
       # A crash names its file and never its test: the runner reads each file
