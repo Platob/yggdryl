@@ -47,10 +47,10 @@ answers the task.
 | Task | Skill |
 | --- | --- |
 | declare a schema, parse a type expression, build or check a value, dataclass/record classes, metadata | `yggdryl-types` |
-| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS in or out, columns, casts | `yggdryl-arrow` |
-| open a file, bytes, local/ZIP/S3/GCS/Azure, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
-| parse or build a URI, URL, URN, ARN, path, glob, hive partition path | `yggdryl-uri` |
-| read or write rows/batches in Arrow IPC, Parquet, Avro, text, Iceberg; partitions; merge/upsert | `yggdryl-records` |
+| Arrow arrays/batches/readers, pyarrow/pandas/polars/Arrow JS columns in or out (whole files: `yggdryl-records`), casts | `yggdryl-arrow` |
+| open a file, bytes, list or glob a folder, local/ZIP/S3/GCS/Azure and their credentials, gzip/zlib/zstd, charsets, digests of a handle | `yggdryl-storage` |
+| parse or build a URI, URL, URN, ARN, path; glob pattern text or a hive partition path (listing is `yggdryl-storage`) | `yggdryl-uri` |
+| read or write rows/batches in Arrow IPC, Parquet, Avro, text, Iceberg; a file's schema or row count; pandas/polars frames to or from a file; partitions; merge/upsert | `yggdryl-records` |
 | JSON, JSON Lines, YAML, TOML, XML documents to and from values | `yggdryl-documents` |
 | filters, selections, SQL-like plans, predicate pushdown, field paths | `yggdryl-expressions` |
 | xxHash digests, stable hashes, row digests, TxHash | `yggdryl-hashing` |
@@ -76,7 +76,7 @@ answers the task.
 | 64-bit integers | `i64`/`u64` | `int` | `Scalar.asJs()`: `number` when safe, else `bigint`; record/batch cells: always `bigint`; pass `bigint` in |
 | bytes | `&[u8]`, `Vec<u8>` | `bytes` | `Buffer` / `Uint8Array` |
 | Arrow | `arrow-array` 59 types, shared buffers | pyarrow over the C Data Interface, **zero copy** | apache-arrow over IPC, **copied** |
-| errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with `ERR_YGGDRYL_*` codes |
+| errors | `yggdryl::Error`, `yggdryl::arrow::Error` (`?` converts both ways) | `ValueError` (bad input), `TypeError` (wrong kind), `OSError` subclasses (I/O), each with the native message; checked arithmetic raises `ArithmeticError` subclasses (`OverflowError`, `ZeroDivisionError`) | `Error` with the native message; arithmetic throws `TypeError`/`RangeError` with `ERR_YGGDRYL_*` codes |
 
 Verb prefixes mean the same everywhere: `from_*` parses or constructs,
 `into_*` converts (may allocate), `as_*` borrows without allocating, `is_*` /
@@ -138,13 +138,14 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
 - JavaScript: a 64-bit `Scalar`'s `asJs()` is a `number` while safe and a
   `bigint` beyond, but `int64` cells read from records or batches
   (`readRecords`, `readArrowReader`) are Arrow JS values and are always
-  `bigint`; write `1n`, not `1`, into `int64` columns. Arrow JS interop copies
+  `bigint`; pass `bigint` for values past 2^53, and keep one numeric kind
+  (`number` or `bigint`) per column in one record write. Arrow JS interop copies
   through IPC - cross the boundary in whole batches, not per row.
 
 ## Language references
 
 - `references/rust.md` - features, imports, error types, logging, a runnable end-to-end example.
-- `references/python.md` - package layout, typing, pyarrow/pandas/polars, logging, a runnable end-to-end example.
+- `references/python.md` - package layout and typing, arguments (`...` vs `None`), errors, record classes, logging, a runnable end-to-end example; pandas/polars/pyarrow columns are `yggdryl-arrow`, and pandas/polars frames to or from a file are `yggdryl-records`.
 - `references/javascript.md` - CommonJS/TypeScript, `bigint`, `Buffer`, Arrow JS, errors, a runnable end-to-end example.
 
 ## Deeper

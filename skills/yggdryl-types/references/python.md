@@ -373,6 +373,37 @@ assert codes.scalar("AAPL").dtype.id == "utf8"         # the decoded value
 assert yggdryl.fixed_size_serie("xy", yggdryl.float64("item"), 2).dtype.id == "fixed_size_serie"
 ```
 
+## Edit a schema in place
+
+Assigning `root[name]` replaces that child in place, or appends when no
+child carries the name; `del root[name]` removes it and closes the gap.
+`unnest_fields()` flattens nested structs to dotted leaf names;
+`explode_fields()` swaps each collection for its item.
+
+```python
+import pytest
+import yggdryl
+
+root = yggdryl.struct(
+    "row",
+    [yggdryl.int64("id", nullable=False), yggdryl.struct("line", [yggdryl.float64("px")])],
+    nullable=False,
+)
+
+# An unknown name appends; a known one replaces in place.
+root["venue"] = yggdryl.utf8("venue")
+root["id"] = yggdryl.utf8("id", nullable=False)
+assert [f.name for f in root] == ["id", "line", "venue"]
+assert str(root["id"].dtype) == "utf8"
+
+assert [f.name for f in root.unnest_fields()] == ["id", "line.px", "venue"]
+
+del root["id"]
+assert [f.name for f in root] == ["line", "venue"]
+with pytest.raises(KeyError):
+    del root["absent"]
+```
+
 ## Metadata and protocol properties
 
 Metadata is `<SCHEME>:<property>` text on the field; typed accessors and
@@ -404,6 +435,35 @@ row = Field(
 ).with_partition_fields(["year", "venue"])
 assert row.partition_field_names == ["year", "venue"]
 assert row["year"].metadata["FIELD:partition"] == "true"
+```
+
+## Declare an enumerated column
+
+`StringEnum` is the `FIELD:enum` vocabulary: member name to US-ASCII value,
+stored on the field so it crosses Arrow and files intact. It is accepted on a
+`fixed_ascii(n)` leaf with `n <= 16` or on a registered code, and it declares
+rather than gates: `field.scalar` accepts a non-member, so check with
+`get_member` when one must fail. `yggdryl.enums.Ccy` / `Country` are the
+bases for class-style vocabularies over the codes.
+
+```python
+import pytest
+from yggdryl import DataType, Field, StringEnum
+
+side = StringEnum("Side", {"BUY": "B", "SELL": "S"})
+field = Field("side", DataType.fixed_ascii(1), nullable=False)
+field.set_string_enum(side)
+assert field.string_enum == side
+assert Field.from_arrow(field.into_arrow()).string_enum == side
+
+assert side.get("BUY") == "B"
+assert side.get_member("S") == "SELL"
+assert side.get_member("X") is None
+assert field.scalar("X").as_py() == "X"  # a declared vocabulary, not a validator
+
+assert StringEnum.from_logical_name("ccy").get("USD") == "USD"
+with pytest.raises(ValueError, match="at most 16 bytes"):
+    Field("side", "utf8").set_string_enum(side)
 ```
 
 ## Compare, diff and merge schemas

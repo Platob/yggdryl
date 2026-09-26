@@ -1,6 +1,6 @@
 ---
 name: yggdryl-storage
-description: Read and write bytes through yggdryl's one positional handle (IOBase / Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, page caches and ZIP archives, with gzip/zlib/zstd codings and charsets. Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, listing or globbing a folder, clear/remove, open/close scopes, compress_into / decompressInto, gzip.dumps / zstd.loads, Charset / charset.decode, digests or read_scalar on a handle, S3Options / S3File, Buffered caches, Counted call budgets. Covers Rust, Python and Node.js.
+description: Read and write bytes through yggdryl's one positional handle (IOBase / Holder) on memory, local files, Arrow filesystems, S3 / Google Cloud Storage / Azure Blob, page caches and ZIP archives, with gzip/zlib/zstd codings and charsets. Use when opening a path or URL, reading a range or streaming chunks (read_range_bytes / readRangeBytes, pstream_bytes / pstreamBytes), cursors, listing or globbing a folder (ls, glob, rglob), clear/remove, open/close scopes, compress_into / decompressInto, gzip.dumps / zstd.loads, Charset / charset.decode, digests or read_scalar on a handle, S3Options / S3File, AWS credentials (aws::Session, profiles, SSO, assume role) or a MinIO / S3-compatible endpoint, Buffered caches, Counted call budgets. Covers Rust, Python and Node.js.
 ---
 
 # Storage: handles, bytes, codings, charsets

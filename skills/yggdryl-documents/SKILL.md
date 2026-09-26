@@ -1,6 +1,6 @@
 ---
 name: yggdryl-documents
-description: Parses and writes JSON, JSON Lines, YAML (multi-document), TOML and XML documents as yggdryl Scalar values or native objects, typed by an optional Field, bounded by limits, with opt-in {{ }} placeholders. Use when calling json/yaml/toml/xml loads, dumps, loads_all / loadsAll, dump_all / dumpAll, load_all / loadAll, from_json_scalar / into_json_scalar / from_json_scalar_with_field (and the yaml/toml/xml twins), json::from_utf8 / from_reader / into_writer, decoding into a dataclass with cls=, typing decimals/dates with field=, mapping XML attributes (@name) and #text, inferring a document's format, or read_scalar / write_scalar on a handle. Covers Rust, Python and Node.js.
+description: Parses and writes JSON, JSON Lines, YAML (multi-document), TOML and XML documents as yggdryl Scalar values or native objects, typed and validated by an optional Field, bounded by limits, with opt-in {{ }} and environment-variable placeholders. Use when loading or validating a config file, calling json/yaml/toml/xml loads, dumps, loads_all / loadsAll, dump_all / dumpAll, load_all / loadAll, from_json_scalar / into_json_scalar / from_json_scalar_with_field (and the yaml/toml/xml twins), json::from_utf8 / from_reader / into_writer, decoding into a dataclass with cls=, typing decimals/dates with field=, mapping XML attributes (@name) and #text, inferring a document's format, or read_scalar / write_scalar on a handle. Covers Rust, Python and Node.js.
 ---
 
 # Documents

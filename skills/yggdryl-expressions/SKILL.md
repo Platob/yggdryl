@@ -1,6 +1,6 @@
 ---
 name: yggdryl-expressions
-description: Parse, bind and evaluate yggdryl expressions - Term, Filter, Selector, Plan, Expression, FieldPath - over rows, Arrow batches and streams, and push where/select into record reads. Use when writing a where or select clause or an SQL-like plan (insert into, upsert ... by, delete from, execute), filtering or projecting Arrow data (apply_arrow_reader / applyArrowReader, apply_arrow_batch / applyArrowBatch, apply_records / applyRecords), binding parameters, pruning by statistics (Bounds, statistics_prune), partition_split, user-defined functions, TRANSFORM: columns or nested field paths. Covers Rust, Python and Node.js.
+description: Parse, bind and evaluate yggdryl expressions - Term, Filter, Selector, Plan, Expression, FieldPath - over rows, Arrow batches and streams, and push where/select into record reads. Use when writing a where or select clause or an SQL-like plan (insert into, upsert ... by, delete from, execute), filtering or projecting Arrow data (apply_arrow_reader / applyArrowReader, apply_arrow_batch / applyArrowBatch, apply_records / applyRecords), binding parameters, pruning by statistics (Bounds, statistics_prune), partition_split, user-defined functions, derived (TRANSFORM:expression) columns or nested field paths. Covers Rust, Python and Node.js.
 ---
 
 # Yggdryl expressions
@@ -90,8 +90,10 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
    | any of the above from JavaScript | copied through Arrow IPC in and out |
 
 5. **`order by` is the only section that collects.** `limit` and `offset` are
-   slices, pushed into the read only when nothing orders. Filter first and
-   order only when the answer needs it.
+   slices; `execute` pushes them into the read when nothing orders, and the
+   read keeps only `limit`, so a plan with `offset` and no `order by` must run
+   through `apply_arrow_reader`. Filter first and order only when the answer
+   needs it.
 6. **Statistics answer `false` only when no row can match.** `true` means
    "must read", never "matches"; a user function is unknown to statistics, so
    it forces a row read and never a wrong skip.
@@ -121,8 +123,9 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
     `TRANSFORM:function` + `TRANSFORM:sources` (a call over plain columns) or
     `TRANSFORM:expression`, and `Field::apply_arrow_batch` /
     `apply_arrow_reader` (Python `field.apply_arrow_batch(batch)`; not bound
-    in JavaScript) recomputes them on a batch - see `yggdryl-arrow` for the
-    cast it runs first. Keep the source columns in the selector: the stored
+    in JavaScript) recomputes them on a batch - it runs the field's cast
+    first (cast rules: `yggdryl-arrow` references/cast-rules.md), then
+    `TRANSFORM:`/`PARTITION:`, then `DIGEST:` holders (`yggdryl-hashing`). Keep the source columns in the selector: the stored
     field is what the recompute reads.
 13. **DuckDB names the vocabulary**: `* exclude (...)`, `unnest`/`explode`,
     `in`, `between`, `is null`, `case when`, `asc`/`desc nulls first`. Joins,
@@ -173,6 +176,6 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
   https://platob.github.io/yggdryl/holder/#pruning-and-filtering
 - Sibling skills: `yggdryl-records` (where the pushed-down read runs),
   `yggdryl-types` (the `Field` a clause binds against),
-  `yggdryl-arrow` (`BatchReader`, `Serie`, casts, the cast
-  `Field::apply_arrow_batch` runs before `TRANSFORM:`), `yggdryl-hashing`
-  (`stable_hash`).
+  `yggdryl-arrow` (`BatchReader`, `Serie`, casts; references/cast-rules.md
+  for the cast `Field::apply_arrow_batch` runs before `TRANSFORM:`),
+  `yggdryl-hashing` (`stable_hash`, the `DIGEST:` holders it fills last).

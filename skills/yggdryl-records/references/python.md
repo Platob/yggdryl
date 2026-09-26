@@ -429,6 +429,36 @@ assert [child.name for child in table.schema.dtype] == ["id", "note"]
 assert table.scan().read_all().column("note").to_pylist() == [None]
 ```
 
+## Write a pandas or polars frame to a file, and read one back
+
+Python only. `overwrite_/append_/merge_/write_` + `pandas_frame` or
+`polars_frame` take one frame, the `pandas` / `polars` forms an iterable of
+frames; `read_pandas_frame()` / `read_polars_frame()` answer the whole file and
+`read_pandas()` / `read_polars()` a lazy iterator of one frame per batch.
+`overwrite_arrow_batch` refuses a DataFrame (`TypeError`).
+
+```python
+import pathlib
+import tempfile
+
+import pandas as pd
+import polars as pl
+
+from yggdryl import IOBase
+
+with tempfile.TemporaryDirectory() as folder:
+    handle = IOBase(pathlib.Path(folder) / "trades.parquet")
+    handle.overwrite_pandas_frame(pd.DataFrame({"id": [1, 2], "px": [1.5, 2.5]}))
+    handle.append_polars_frame(pl.DataFrame({"id": [3], "px": [3.5]}))
+    handle.merge_pandas_frame(pd.DataFrame({"id": [3, 4], "px": [9.0, 4.5]}), merge_by=["id"])
+
+    frame = handle.read_polars_frame()
+    assert isinstance(frame, pl.DataFrame)
+    assert sorted(frame["id"].to_list()) == [1, 2, 3, 4]
+    assert handle.read_pandas_frame().set_index("id").loc[3, "px"] == 9.0
+    assert sum(len(chunk) for chunk in handle.read_pandas()) == 4
+```
+
 ## Hand the file to polars or a pyarrow dataset lazily
 
 Python only. `scan_polars()` answers a `polars.LazyFrame`, `scan_arrow()` a `pyarrow.dataset.Scanner`; a local Parquet leaf scans natively, anything else streams through the native reader.

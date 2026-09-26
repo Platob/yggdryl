@@ -1,6 +1,6 @@
 ---
 name: yggdryl-records
-description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC, Parquet, Avro, plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), RecordOptions (field, safe, select, filter, merge_by, max_row_size, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
+description: Reads and writes rows and Arrow batches on any yggdryl handle - Arrow IPC/Feather, Parquet, Avro, plain-text logs, Iceberg tables and hive-partitioned folders - with streamed readers, pushdown, append/merge (upsert) and commit cadence. Use when calling read_arrow_reader / readArrowReader, overwrite_arrow_* / append_* / merge_*, write_arrow_* with a mode, *_records / readRecords, read_arrow / write_arrow (SerieReader), read_arrow_field / row_size (a file's schema or row count without reading it), pandas or polars frames to and from a file (read_polars_frame, overwrite_pandas_frame, scan_polars), RecordOptions (field, safe, select, filter, merge_by, max_row_size, commit_row_size, plan), TextOptions rowheader, iceberg Table create/append/merge/scan, partition pruning, or picking an encoding by suffix. Covers Rust, Python and Node.js.
 ---
 
 # Records
@@ -52,6 +52,7 @@ medium does the work before a byte is decoded.
 | Iceberg time travel | `scan_at(snapshot_id, &[], None)?` | `scan_at(snapshot_id)` | `scanAt(snapshotId)` |
 | Iceberg schema change | `SchemaUpdate::from_metadata(..)?` + `evolve_schema(field)?` | `update_schema().add_column("", f).commit()` | `updateSchema().addColumn('', f).commit()` |
 | lazy engine scan | - | `scan_polars()`, `scan_arrow()` | - |
+| pandas / polars frames to and from a file | - | `read_pandas_frame()`, `read_polars_frame()` (whole), `read_pandas()` / `read_polars()` (lazy iterator of frames), `overwrite_pandas_frame(df)`, `append_polars_frame(df)`, `merge_pandas_frame(df, merge_by=[...])`, `write_polars(frames, mode)` | - |
 | SQL-like write/read plan | `"select ...".parse::<Plan>()?.execute()?`, `apply_arrow_reader` | `Plan("insert into ...").apply_arrow_batch(b)`, `.execute()` | `new Plan('...').applyArrowBatch(b)`, `.execute()` |
 
 ## Rules for fast, correct use
@@ -105,7 +106,8 @@ medium does the work before a byte is decoded.
     calls instead of re-parsing a filter per batch.
 13. **Pick the input shape that is already in hand.** A reader streams; a
     table or batch is wrapped into one; native rows (`*_records`) cross the
-    value contract row by row and cost the most (4,096 rows: about 0.1 ms as
+    value contract row by row - a row that omits a required column is refused,
+   not defaulted - and cost the most (4,096 rows: about 0.1 ms as
     a batch, 3 ms as records, on the docs' reference machine). Keep rows for
     small or hand-built data, batches for everything else.
 14. **Plain text has a fixed shape.** A text read answers the sixteen event
@@ -134,7 +136,9 @@ medium does the work before a byte is decoded.
   `compression="zstd(3)"` on a plain `.parquet`.
 - Expecting `offset` from `RecordOptions`: there is none, and a plan's
   `offset` given through `options.plan` / `withPlan` / `with_plan` is dropped
-  silently. Apply the `Plan` itself (`Plan.apply_arrow_reader`, `execute`).
+  silently. Apply the `Plan` to the reader (`Plan.apply_arrow_reader` /
+  `applyArrowReader`); `execute` drops `offset` too unless the plan also has
+  `order by`.
 - Calling `overwrite_records` / `read_arrow_reader` on a `.json`, `.jsonl`,
   `.yaml`, `.toml` or `.xml` handle - refused ("expected a record encoding
   this build implements"); use

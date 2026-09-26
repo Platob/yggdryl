@@ -324,6 +324,32 @@ assert.equal(xy.scalar([1.5, 2.5]).length, 2)
 assert.throws(() => xy.scalar([1, 2]), /expected float64, got i64/)   // integral Numbers
 ```
 
+## Edit a schema in place
+
+`setField` / `setFieldByPath` replace a child in place, or append when no
+child carries the name; `removeField` hands the prior child back and closes
+the gap. `unnestFields()` flattens nested structs to dotted leaf names;
+`explodeFields()` swaps each collection for its item.
+
+```javascript
+const assert = require('node:assert/strict')
+const { fields } = require('yggdryl')
+
+const root = fields.struct('row', [
+  fields.int64('id', { nullable: false }),
+  fields.struct('line', [fields.float64('px')]),
+], { nullable: false })
+
+// An unknown name appends; a known one replaces in place.
+root.setFieldByPath('venue', fields.utf8('venue'))
+root.setField('id', fields.utf8('id', { nullable: false }))
+assert.deepEqual(root.unnestFields().map((f) => f.name), ['id', 'line.px', 'venue'])
+assert.equal(root.field('id').dtype.toString(), 'utf8')
+
+assert.equal(root.removeField('id').name, 'id')
+assert.deepEqual(root.unnestFields().map((f) => f.name), ['line.px', 'venue'])
+```
+
 ## Metadata and protocol properties
 
 A `Field` is a `Map`-like view of its metadata (`get`, `set`, `has`,
@@ -354,6 +380,31 @@ const row = new Field('row', DataType.from('struct<year:int32 not null,px:float6
   .withPartitionFields(['year'])
 assert.deepEqual(row.partitionFieldNames(), ['year'])
 assert.equal(row.field('year').get('FIELD:partition'), 'true')
+```
+
+## Declare an enumerated column
+
+`StringEnum` is the `FIELD:enum` vocabulary: member name to US-ASCII value,
+stored on the field so it crosses Arrow and files intact. It is accepted on a
+`fixedAscii(n)` leaf with `n <= 16` or on a registered code, and it declares
+rather than gates: `field.scalar` accepts a non-member, so check with
+`getMember` when one must fail.
+
+```javascript
+const assert = require('node:assert/strict')
+const { DataType, Field, StringEnum } = require('yggdryl')
+
+const side = new StringEnum('Side', { BUY: 'B', SELL: 'S' })
+const field = new Field('side', DataType.fixedAscii(1), false)
+field.setStringEnum(side)
+assert.equal(field.stringEnum.get('BUY'), 'B')
+
+assert.equal(side.getMember('S'), 'SELL')
+assert.equal(side.getMember('X'), null)
+assert.equal(field.scalar('X').asJs(), 'X') // a declared vocabulary, not a validator
+
+assert.equal(StringEnum.fromLogicalName('ccy').get('USD'), 'USD')
+assert.throws(() => new Field('side', 'utf8', false).setStringEnum(side), /at most 16 bytes/)
 ```
 
 ## Compare, diff and merge schemas

@@ -445,6 +445,10 @@ assert.deepEqual([...table.scan().intoTable().getChild('note')], [null])
 fs.rmSync(path.dirname(root), { recursive: true, force: true })
 ```
 
+## Write a pandas or polars frame to a file, and read one back
+
+Python only (`overwrite_pandas_frame`, `read_polars_frame`, ...). In JavaScript, write an Arrow JS table with `overwriteArrowTable` and read it back with `readArrowReader().intoTable()`.
+
 ## Hand the file to polars or a pyarrow dataset lazily
 
 Python only (`scan_polars`, `scan_arrow`). In JavaScript, iterate `readArrowReader()` with the pushdown properties above.

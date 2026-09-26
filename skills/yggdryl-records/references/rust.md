@@ -566,6 +566,10 @@ assert_eq!(first.column(1).null_count(), 1);
 let _ = std::fs::remove_dir_all(&path);
 ```
 
+## Write a pandas or polars frame to a file, and read one back
+
+Python only (`overwrite_pandas_frame`, `read_polars_frame`, ...). In Rust, write the `RecordBatch`es in hand with `overwrite_arrow_reader` and read with `read_arrow_reader`.
+
 ## Hand the file to polars or a pyarrow dataset lazily
 
 Python only (`scan_polars`, `scan_arrow`). In Rust, iterate `read_arrow_reader` with the pushdown options above.

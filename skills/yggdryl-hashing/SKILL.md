@@ -152,7 +152,9 @@ spelled `<unix>@<unit>:<algorithm>:<hex>`.
   https://platob.github.io/yggdryl/hashing/#performance
 - The `digest` protocol view on a field: https://platob.github.io/yggdryl/types/protocol/
 - Sibling skills: `yggdryl-storage` (the `IOBase` handles `read_digest`
-  streams), `yggdryl-types` (`Scalar`, `Field` metadata, `apply_arrow_batch`),
+  streams), `yggdryl-types` (`Scalar`, `Field` metadata),
+  `yggdryl-expressions` (`Field.apply_arrow_batch`, the cast -> transform ->
+  digest pipeline),
   `yggdryl-arrow` (batches and readers), `yggdryl-market-data` (event
   identities built on `TxHash` and UUIDv7), `yggdryl-expressions`
   (`stable_hash` of a plan as a cache key).

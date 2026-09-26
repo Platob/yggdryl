@@ -35,6 +35,8 @@ with tempfile.TemporaryDirectory() as folder:
 Native refusals surface as `ValueError` (the input is not what the type
 accepts), `TypeError` (the argument is the wrong kind), and `OSError`
 subclasses for storage, each carrying the core's message with its location.
+Checked arithmetic on `Scalar` raises `ArithmeticError` subclasses
+(`OverflowError`, `ZeroDivisionError`).
 
 ```python
 from yggdryl import DataType

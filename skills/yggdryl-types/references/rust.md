@@ -376,6 +376,38 @@ assert_eq!(codes.scalar("AAPL")?.dtype()?, DataType::utf8());
 assert!(DataType::dictionary(DataType::utf8(), DataType::utf8()).is_err()); // integer keys only
 ```
 
+## Edit a schema in place
+
+`set_field` replaces a child by name or position - a name no child carries
+appends - `remove_field` hands the prior child back and closes the gap, and a
+refusal leaves the field unchanged. `unnest_fields` flattens nested structs to
+dotted leaf names; `explode_fields` swaps each collection for its item.
+
+```rust
+use yggdryl::{DataType, StructType};
+
+let line = DataType::from(StructType::from_fields([DataType::Float64.required_field("px")])?);
+let mut root = DataType::from(StructType::from_fields([
+    DataType::Int64.required_field("id"),
+    line.nullable_field("line"),
+])?)
+.required_field("row");
+
+// An unknown name appends; a known one replaces in place.
+root.set_field("venue", DataType::utf8().nullable_field("venue"))?;
+root.set_field_by_path("id", DataType::utf8().required_field("id"))?;
+assert_eq!(root.field_len(), 3);
+assert_eq!(root[0].name(), "id");
+assert_eq!(root["id"].dtype(), &DataType::utf8());
+
+let names: Vec<String> = root.unnest_fields().iter().map(|f| f.name().to_string()).collect();
+assert_eq!(names, ["id", "line.px", "venue"]);
+
+assert_eq!(root.remove_field("id")?.name(), "id");
+assert_eq!(root[0].name(), "line");
+assert!(root.remove_field("absent").is_err());
+```
+
 ## Metadata and protocol properties
 
 Metadata is one `<SCHEME>:<property>` map on the field. Typed accessors and
@@ -409,6 +441,31 @@ let row = DataType::from(StructType::from_fields([
 .with_partition_fields(&["year"])?;
 assert_eq!(row.partition_field_names().collect::<Vec<_>>(), ["year"]);
 assert_eq!(row["year"].get_metadata("FIELD:partition"), Some("true"));
+```
+
+## Declare an enumerated column
+
+`StringEnum` is the `FIELD:enum` vocabulary: member name to US-ASCII value,
+stored on the field so it crosses Arrow and files intact. It is accepted on a
+`fixed_ascii(n)` leaf with `n <= 16` or on a registered code, and it declares
+rather than gates: `Field::scalar` accepts a non-member, so check with
+`get_member` when one must fail.
+
+```rust
+use yggdryl::{DataType, Field, StringEnum};
+
+let side = StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?;
+let field = Field::new("side", DataType::fixed_ascii(1)?, false).try_with_string_enum(&side)?;
+assert_eq!(Field::from_arrow_field(&field.clone().into_arrow_field()?)?.string_enum()?, Some(side.clone()));
+
+assert_eq!(side.get("BUY"), Some("B"));
+assert_eq!(side.get_member("S"), Some("SELL"));
+assert_eq!(side.get_member("X"), None);
+assert!(field.scalar("X").is_ok()); // a declared vocabulary, not a validator
+
+assert_eq!(StringEnum::from_logical_name("ccy")?.get("USD"), Some("USD"));
+let refused = Field::new("side", DataType::utf8(), false).try_with_string_enum(&side).unwrap_err();
+assert!(refused.to_string().contains("at most 16 bytes"));
 ```
 
 ## Compare, diff and merge schemas

@@ -1,6 +1,6 @@
 ---
 name: yggdryl-types
-description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, FIX spellings), build Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, datetime64 zone, string or bytes leaf, ccy/isin codes, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
+description: Declare yggdryl types and values in Rust, Python and Node.js - parse DataType expressions (Arrow, SQL, Hive, Spark, FIX spellings), build and edit Field schemas (non-null Struct root, metadata, PARQUET:field_id, comment, protocol views, FIELD:enum) and read values through DataType.scalar / Field.scalar into Scalar. Use when choosing a column type (decimal, timestamp/datetime64 zone, string or bytes leaf, uuid, geometry/geography WKB, ccy/isin codes, an enumerated StringEnum column, serie/map/union), declaring a schema (Field::new, Field(...), new Field, yggdryl.int64 / fields.int64, @scalar dataclasses, into_field / intoField), adding, replacing or removing a column (set_field, remove_field, unnest_fields), an Arrow/pyarrow schema in or out (from_arrow_schema), converting values (Scalar.from_ / Scalar.from, as_py / asJs) or merging, diffing and walking schemas by path.
 ---
 
 # Types: DataType, Field, Scalar
@@ -41,9 +41,12 @@ A column of many values is a `Serie`, not a list of `Scalar`s: see
 | what the type side cannot say | `Scalar::from_decimal(i256, scale)`, `Scalar::from_duration(n, unit, zone)?` | `Scalar.decimal(coef, scale)`, `Scalar.duration(n, unit)` | `Scalar.decimal(coefBigInt, scale)`, `Scalar.duration(n, unit)`, `Scalar.float(v, width)` |
 | a named row, borrowed | `FieldRecord::new(&root, row)?`, `FieldScalar::new(&field, v)?` | Rust only | Rust only |
 | child by name, position, path | `root["id"]`, `root[1]`, `get_field_by_path("a.b")`, `index_of("b")` | `root["id"]`, `root[1]`, `get_field_by_path("a.b")`, `index_of("b")` | `root.field('id')`, `getFieldAt(1)`, `getFieldByPath('a.b')`, `indexOf('b')` |
+| add, replace or remove a column | `root.set_field("venue", f)?` (an unknown name appends, a known one replaces in place), `set_field_by_path("a.b", f)?`, `remove_field("id")?` (returns it); `DataType::with_fields([..])?` (same arity) | `root["venue"] = f`, `del root["id"]` | `root.setField('venue', f)`, `setFieldByPath('a.b', f)`, `removeField('id')` |
+| flatten or explode a schema | `unnest_fields()` (dotted leaf names), `explode_fields()` | `unnest_fields()`, `explode_fields()` | `unnestFields()`, `explodeFields()` |
 | raw metadata | `insert_metadata(k, v)?`, `get_metadata(k)` | `field.metadata[k] = v` | `field.set(k, v)`, `field.get(k)` |
 | reserved properties | `set_parquet_field_id(17)`, `set_comment(..)?` | `set_parquet_field_id(17)`, `set_comment(..)` | `setParquetFieldId(17)`, `setComment(..)` |
 | one protocol's keys | `as_iceberg_mut().insert("doc", ..)?` | `field.iceberg["doc"] = ..` | `field.iceberg.set('doc', ..)` |
+| an enumerated column (`FIELD:enum`) | `StringEnum::from_members("Side", [("BUY", "B"), ("SELL", "S")])?` + `Field::new("side", DataType::fixed_ascii(4)?, false).try_with_string_enum(&side)?`; `string_enum()?`; `StringEnum::from_logical_name("ccy")?` | `StringEnum("Side", {"BUY": "B", "SELL": "S"})` + `field.set_string_enum(side)`; `field.string_enum`; `StringEnum.from_logical_name("ccy")`; `yggdryl.enums.Ccy` / `Country` bases | `new StringEnum('Side', { BUY: 'B', SELL: 'S' })` + `field.setStringEnum(side)`; `field.stringEnum`; `StringEnum.fromLogicalName('ccy')` |
 | compare, diff | `equals(&o, true)`, `show_diffs(&o, true, false)` | `equals(o, with_metadata=False)`, `show_diffs(o)` | `equals(o, false)`, `showDiffs(o)` |
 | merge two schemas | `a.merge_with(&b, true)?` | `a.merge_with(b)` | `a.mergeWith(b)` |
 | stable value hash | `stable_hash()` | `stable_hash()` | `stableHash()` (a `bigint`) |
@@ -76,7 +79,9 @@ string and byte leaves, the legacy `list` words - is in
 4. **A non-null Struct `Field` is the schema.** There is no schema class and
    no second row type. A row is the ordered sequence in declaration order;
    named input (a record, a dataclass, a JS object) canonicalizes to it, and a
-   child it does not name takes that child's default. `validate_struct_root`
+   child it does not name takes that child's default (at `Field.scalar` /
+   `DataType.scalar` only; record writers - `overwrite_records`,
+   `overwriteRecords` - refuse a row missing a required child). `validate_struct_root`
    refuses a nullable root.
 5. **Metadata is `<SCHEME>:<property>` text on the one field map.** Typed
    accessors (`parquet_field_id`, `comment`, `location`, `display`) and the
@@ -161,6 +166,12 @@ string and byte leaves, the legacy `list` words - is in
 - A Python `uuid.UUID` passed to `Scalar.from_` infers as text: declare the
   column `uuid` and read through it. A JavaScript `Date` is
   `datetime64(ms,"UTC")` and a `date32` column refuses it.
+- A `StringEnum` (`FIELD:enum`) is only accepted on a `fixed_ascii(n)` field
+  with n <= 16 or on a registered code; on `utf8` it is refused ("at most 16
+  bytes"). It is a declared vocabulary, not a validator: `field.scalar("X")`
+  is accepted on a `Side` enum field. Check membership yourself
+  (`side.get_member(v)` / `getMember(v)` answers the member name or none)
+  when non-members must fail.
 - JavaScript `asJs()` on a decimal (and on values with no JS spelling) answers
   the `Scalar` itself: read `unscaled`/`scale`, or `toString()`.
 - `DataType.from_arrow(extension_type)` loses the extension name (a bare Arrow
