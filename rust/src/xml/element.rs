@@ -103,6 +103,15 @@ impl Scope {
             .filter(|namespace| !namespace.is_empty())
     }
 
+    /// Every binding in declaration order, outermost first, a rebound prefix
+    /// appearing once per binding: `("", namespace)` is a default namespace,
+    /// `("", "")` its undeclaration.
+    pub fn bindings(&self) -> impl Iterator<Item = (&str, &str)> + '_ {
+        self.bindings
+            .iter()
+            .map(|(prefix, namespace)| (prefix.as_str(), namespace.as_str()))
+    }
+
     /// The prefix bound to `namespace` here, the innermost binding winning;
     /// `Some("")` when it is the default namespace, and `Some("xml")` for the
     /// namespace the recommendation binds itself. A prefix a later binding

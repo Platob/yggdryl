@@ -315,19 +315,21 @@ impl Request {
                 format!("Content-Length is stated twice and disagrees: {length:?} and {other:?}"),
             ));
         }
+        // Digits alone (RFC 7230 section 3.3.2): a sign a peer may read
+        // differently is refused rather than parsed.
+        if !is_count(length.trim(), 10) {
+            return Err(HttpError::new(
+                Status::BadRequest,
+                format!("expected a byte count as Content-Length, got {length:?}"),
+            ));
+        }
         let length: usize = match length.trim().parse() {
             Ok(length) => length,
             // All digits and past `usize`: a byte count past any bound.
-            Err(_) if is_count(length.trim(), 10) => {
+            Err(_) => {
                 return Err(HttpError::new(
                     Status::PayloadTooLarge,
                     format!("the body is {length} bytes; at most {max_body} are accepted"),
-                ));
-            }
-            Err(_) => {
-                return Err(HttpError::new(
-                    Status::BadRequest,
-                    format!("expected a byte count as Content-Length, got {length:?}"),
                 ));
             }
         };
@@ -404,14 +406,21 @@ impl Request {
         (!action.is_empty()).then_some(action)
     }
 
-    /// Whether the connection outlives this exchange: HTTP/1.1 unless
-    /// `Connection: close`, HTTP/1.0 only with `Connection: keep-alive`.
+    /// Whether the connection outlives this exchange: HTTP/1.1 unless a
+    /// `Connection` option is `close`, HTTP/1.0 only with a `keep-alive`
+    /// option - the header a list of options, across every `Connection` line
+    /// (RFC 7230 sections 3.2.2 and 6.1).
     #[must_use]
     pub fn keep_alive(&self) -> bool {
-        let connection = self.header("connection").map(str::to_ascii_lowercase);
+        let mut options = self
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("connection"))
+            .flat_map(|(_, value)| value.split(','))
+            .map(str::trim);
         match self.version {
-            Version::Http11 => connection.as_deref() != Some("close"),
-            Version::Http10 => connection.as_deref() == Some("keep-alive"),
+            Version::Http11 => !options.any(|option| option.eq_ignore_ascii_case("close")),
+            Version::Http10 => options.any(|option| option.eq_ignore_ascii_case("keep-alive")),
         }
     }
 }
@@ -484,19 +493,20 @@ fn read_chunked<R: BufRead>(reader: &mut R, max_body: usize) -> Result<Vec<u8>, 
             ));
         };
         let size = line.split(';').next().unwrap_or("").trim();
+        // Hexadecimal digits alone (RFC 7230 section 4.1): a sign is refused.
+        if !is_count(size, 16) {
+            return Err(HttpError::new(
+                Status::BadRequest,
+                format!("expected a hexadecimal chunk size, got {size:?}"),
+            ));
+        }
         let size = match usize::from_str_radix(size, 16) {
             Ok(size) => size,
             // Hexadecimal and past `usize`: a chunk past any bound.
-            Err(_) if is_count(size, 16) => {
+            Err(_) => {
                 return Err(HttpError::new(
                     Status::PayloadTooLarge,
                     format!("the chunked body grew past the {max_body} bytes accepted"),
-                ));
-            }
-            Err(_) => {
-                return Err(HttpError::new(
-                    Status::BadRequest,
-                    format!("expected a hexadecimal chunk size, got {size:?}"),
                 ));
             }
         };

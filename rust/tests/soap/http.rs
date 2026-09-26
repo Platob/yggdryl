@@ -553,7 +553,7 @@ fn a_connection_that_closes_inside_the_headers_is_refused_with_400() {
 
 #[test]
 fn a_header_without_a_colon_is_refused_with_400_naming_the_line() {
-    for line in ["Host localhost", "Content-Length 5", "  "] {
+    for line in ["Host localhost", "Content-Length 5", "  ", "\t", " \t "] {
         let wire = format!("POST /xmla HTTP/1.1\r\n{line}\r\nContent-Length: 0\r\n\r\n");
         assert_refused(
             wire.as_bytes(),
@@ -670,13 +670,33 @@ fn a_failure_inside_a_chunk_is_refused_with_400_naming_the_failure() {
 }
 
 #[test]
-fn a_transfer_coding_other_than_chunked_on_the_first_of_two_lines_is_refused_with_400() {
-    let error = refused(&post(
-        "Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n",
-        b"5\r\nhello\r\n0\r\n\r\n",
-    ));
-    assert_eq!(error.status(), Status::BadRequest, "{error}");
-    assert!(error.reason().contains("gzip"), "{error}");
+fn a_transfer_coding_other_than_chunked_on_any_line_is_refused_with_400_naming_that_line() {
+    // RFC 7230 section 3.2.2: the lines of a list header are one list, and
+    // section 3.3.3: a request whose codings are not chunked alone cannot be
+    // framed. Reading one line alone frames by chunks what an intermediary
+    // reading the whole list frames otherwise.
+    for (headers, codings) in [
+        (
+            "Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n",
+            "gzip",
+        ),
+        (
+            "Transfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n",
+            "gzip",
+        ),
+        (
+            "Transfer-Encoding: chunked\r\nX-A: 1\r\ntransfer-encoding: chunked, gzip\r\n",
+            "chunked, gzip",
+        ),
+        ("Transfer-Encoding: chunked\r\nTRANSFER-ENCODING:\r\n", ""),
+    ] {
+        assert_refused(
+            &post(headers, b"5\r\nhello\r\n0\r\n\r\n"),
+            LIMIT,
+            Status::BadRequest,
+            &format!("expected the chunked transfer coding, got {codings:?}"),
+        );
+    }
 }
 
 #[test]
@@ -833,6 +853,18 @@ fn a_crlf_line_of_exactly_max_line_bytes_is_accepted() {
         .unwrap_or_else(|error| panic!("{error}"))
         .expect("a request");
     assert_eq!(request.header("x-long"), Some(value.as_str()));
+
+    // The request line is bounded the same way.
+    let target = format!("/{}", "a".repeat(MAX_LINE - "GET / HTTP/1.1".len()));
+    let line = format!("GET {target} HTTP/1.1");
+    assert_eq!(line.len(), MAX_LINE);
+    assert_eq!(read(format!("{line}\r\n\r\n").as_bytes()).target(), target);
+    assert_refused(
+        format!("GET {target}a HTTP/1.1\r\n\r\n").as_bytes(),
+        LIMIT,
+        Status::BadRequest,
+        &format!("a line longer than {MAX_LINE} bytes"),
+    );
 }
 
 #[test]
@@ -906,32 +938,12 @@ fn a_count_with_leading_zeros_is_its_decimal_or_hexadecimal_value() {
     assert_eq!(chunked.body(), b"hello");
 }
 
-// --- Request refusals the source does not make (defects) --------------------
-
 #[test]
-fn a_transfer_coding_other_than_chunked_on_a_later_line_is_refused_with_400() {
-    // RFC 7230 section 3.2.2: two lines of a list header are one list, so
-    // this is `chunked, gzip`, which the one-line spelling already refuses;
-    // section 3.3.3: a request whose final coding is not chunked cannot be
-    // framed, and a server MUST answer it with 400. Reading the first line
-    // alone frames by chunks what an intermediary frames otherwise.
-    let wire = post(
-        "Transfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n",
-        b"5\r\nhello\r\n0\r\n\r\n",
-    );
-    match Request::read(&mut Cursor::new(&wire[..]), LIMIT) {
-        Err(error) => {
-            assert_eq!(error.status(), Status::BadRequest, "{error}");
-            assert!(error.reason().contains("gzip"), "{error}");
-        }
-        Ok(answer) => panic!("framed by the first coding alone: {answer:?}"),
-    }
-}
-
-#[test]
-fn whitespace_between_a_header_name_and_its_colon_is_refused_with_400() {
-    // RFC 7230 section 3.2.4: a server MUST refuse such a request with 400,
-    // because peers that disagree about the name disagree about the framing.
+fn a_header_name_that_is_empty_or_holds_whitespace_is_refused_with_400_naming_it() {
+    // RFC 7230 section 3.2.4: a server MUST refuse whitespace between a
+    // header name and its colon with 400, because peers that trim the name
+    // differently frame the message differently; a name is a token, never
+    // empty.
     for (header, body, name) in [
         (
             "Transfer-Encoding : chunked\r\nContent-Length: 5\r\n",
@@ -940,35 +952,96 @@ fn whitespace_between_a_header_name_and_its_colon_is_refused_with_400() {
         ),
         ("Content-Length\t: 5\r\n", b"hello", "Content-Length"),
         ("Host :localhost\r\nContent-Length: 0\r\n", b"", "Host"),
+        ("Host \t :localhost\r\nContent-Length: 0\r\n", b"", "Host"),
+        ("Content Length: 5\r\n", b"hello", "Content Length"),
+        (": value\r\nContent-Length: 0\r\n", b"", ""),
+        (":\r\nContent-Length: 0\r\n", b"", ""),
     ] {
-        match Request::read(&mut Cursor::new(&post(header, body)[..]), LIMIT) {
-            Err(error) => {
-                assert_eq!(error.status(), Status::BadRequest, "{error}");
-                assert!(error.reason().contains(name), "{error}");
-            }
-            Ok(answer) => panic!("{header:?} was read as a header: {answer:?}"),
-        }
+        assert_refused(
+            &post(header, body),
+            LIMIT,
+            Status::BadRequest,
+            &format!("expected a header name followed by its colon, got {name:?} before the colon"),
+        );
     }
 }
 
 #[test]
-fn a_folded_header_line_is_refused_with_400_or_joined_to_the_header_it_continues() {
-    // RFC 7230 section 3.2.4: a server MUST either refuse obsolete line
-    // folding with 400 or read each fold as a space in the value it
-    // continues - never as a header of its own.
-    for fold in [" ", "\t"] {
+fn a_folded_header_line_is_refused_with_400_naming_it() {
+    // RFC 7230 section 3.2.4 lets a server refuse obsolete line folding with
+    // 400 or join it to the header it continues; refused here, so a fold is
+    // never read as a header of its own.
+    for line in [
+        " Transfer-Encoding: chunked",
+        "\tTransfer-Encoding: chunked",
+        "  continued",
+        "\t x",
+        " :",
+    ] {
         let wire = post(
-            &format!("X-A: 1\r\n{fold}Transfer-Encoding: chunked\r\nContent-Length: 5\r\n"),
+            &format!("X-A: 1\r\n{line}\r\nContent-Length: 5\r\n"),
             b"0\r\n\r\n",
         );
-        match Request::read(&mut Cursor::new(&wire[..]), LIMIT) {
-            Err(error) => assert_eq!(error.status(), Status::BadRequest, "{error}"),
-            Ok(Some(request)) => {
-                assert_eq!(request.header("transfer-encoding"), None, "{fold:?}");
-                assert_eq!(request.body(), b"0\r\n\r\n", "{fold:?}");
-            }
-            Ok(None) => panic!("a request was sent"),
-        }
+        assert_refused(
+            &wire,
+            LIMIT,
+            Status::BadRequest,
+            &format!("a folded header line is not accepted, got {line:?}"),
+        );
+    }
+    // A fold with no header before it to continue is refused the same way.
+    assert_refused(
+        b"GET /xmla HTTP/1.1\r\n Host: localhost\r\n\r\n",
+        LIMIT,
+        Status::BadRequest,
+        "a folded header line is not accepted, got \" Host: localhost\"",
+    );
+}
+
+// --- Request refusals the source does not make (defects) --------------------
+
+#[test]
+fn a_signed_content_length_is_refused_with_400() {
+    // RFC 7230 section 3.3.2: Content-Length is 1*DIGIT, with no sign. A
+    // peer that refuses `+5` (or ignores it) and one that reads it as 5
+    // frame the bytes after the head differently, which is how one request
+    // smuggles another.
+    assert_refused(
+        &post("Content-Length: +5\r\n", b"hello"),
+        LIMIT,
+        Status::BadRequest,
+        "expected a byte count as Content-Length, got \"+5\"",
+    );
+}
+
+#[test]
+fn a_signed_chunk_size_is_refused_with_400() {
+    // RFC 7230 section 4.1: a chunk size is 1*HEXDIG, with no sign; `+0`
+    // read as the last chunk ends the body where a stricter peer refuses it.
+    for size in ["+5", "+0"] {
+        assert_refused(
+            &chunked_post(&format!("{size}\r\nhello\r\n0\r\n\r\n")),
+            LIMIT,
+            Status::BadRequest,
+            &format!("expected a hexadecimal chunk size, got {size:?}"),
+        );
+    }
+}
+
+#[test]
+fn a_close_option_anywhere_in_the_connection_header_closes_an_http_1_1_connection() {
+    // RFC 7230 section 6.1: Connection is a list of options, and its lines
+    // are one list (section 3.2.2); section 6.6: a server that receives the
+    // `close` option MUST close the connection after its response. The
+    // rustdoc's `Connection: close` is that option, wherever it stands.
+    for headers in [
+        "Connection: TE, close\r\n",
+        "Connection: close, TE\r\n",
+        "Connection: keep-alive, Close\r\n",
+        "Connection: keep-alive\r\nConnection: close\r\n",
+    ] {
+        let request = read(format!("GET /xmla HTTP/1.1\r\n{headers}\r\n").as_bytes());
+        assert!(!request.keep_alive(), "{headers:?}");
     }
 }
 
@@ -1027,7 +1100,8 @@ fn header_lookup_ignores_case_and_answers_the_first_of_a_repeated_name() {
 fn headers_are_lowercased_trimmed_and_kept_in_wire_order() {
     let request = read(
         b"GET /xmla HTTP/1.1\r\nZeta:   last-named   \r\nALPHA:\tfirst-named\t\r\n\
-          Mixed-Case: a:b:c\r\nX-Empty:\r\nX-Unicode: caf\xc3\xa9 \xe2\x9c\x93\r\n\r\n",
+          Mixed-Case: a:b:c\r\nX-Empty:\r\nX-Blank: \t \t\r\nTight:a  b\tc\r\n\
+          X-Unicode: caf\xc3\xa9 \xe2\x9c\x93\r\n\r\n",
     );
     let headers: Vec<(&str, &str)> = request
         .headers()
@@ -1041,6 +1115,8 @@ fn headers_are_lowercased_trimmed_and_kept_in_wire_order() {
             ("alpha", "first-named"),
             ("mixed-case", "a:b:c"),
             ("x-empty", ""),
+            ("x-blank", ""),
+            ("tight", "a  b\tc"),
             ("x-unicode", "caf\u{e9} \u{2713}"),
         ]
     );
@@ -1141,6 +1217,9 @@ fn chunk_sizes_read_in_either_case_with_extensions_and_whitespace() {
         "A;name=value\r\n0123456789\r\na ; flag\r\nabcdefghij\r\n 2 \r\n\r\n\r\n00\r\n\r\n",
     ));
     assert_eq!(request.body(), b"0123456789abcdefghij\r\n");
+
+    let last = read(&chunked_post("1\r\nx\r\n0;last=yes\r\n\r\n"));
+    assert_eq!(last.body(), b"x", "the last chunk takes an extension too");
 }
 
 #[test]
@@ -1188,6 +1267,15 @@ fn the_chunked_coding_frames_the_body_over_a_content_length() {
 fn a_chunked_body_of_exactly_max_body_bytes_is_accepted() {
     let request = read_within(&chunked_post("4\r\nabcd\r\n6\r\nefghij\r\n0\r\n\r\n"), 10);
     assert_eq!(request.body(), b"abcdefghij");
+
+    let empty = read_within(&chunked_post("0\r\n\r\n"), 0);
+    assert_eq!(empty.body(), b"");
+    assert_refused(
+        &chunked_post("1\r\nx\r\n0\r\n\r\n"),
+        0,
+        Status::PayloadTooLarge,
+        "the chunked body grew past the 0 bytes accepted",
+    );
 }
 
 #[test]
@@ -1215,6 +1303,54 @@ fn a_request_framed_across_many_small_reads_reads_as_one_read_does() {
             );
             assert!(trickle.reads >= wire.len() / step, "step {step}");
         }
+    }
+}
+
+/// Every request `connection` carries, as method, target and body, until it
+/// closes.
+fn drain<R: BufRead>(connection: &mut R) -> Vec<(String, String, Vec<u8>)> {
+    let mut requests = Vec::new();
+    while let Some(request) =
+        Request::read(connection, LIMIT).unwrap_or_else(|error| panic!("{error}"))
+    {
+        requests.push((
+            request.method().to_owned(),
+            request.target().to_owned(),
+            request.body().to_vec(),
+        ));
+    }
+    requests
+}
+
+#[test]
+fn pipelined_requests_read_one_after_another_however_the_reads_split_them() {
+    let mut wire = post("Content-Length: 5\r\n", b"hello");
+    // A stray line break after a body is tolerated before the next request.
+    wire.extend_from_slice(b"\r\n");
+    wire.extend_from_slice(&chunked_post("3\r\nabc\r\n0\r\nX-Trailer: t\r\n\r\n"));
+    wire.extend_from_slice(b"GET /status HTTP/1.0\nConnection: keep-alive\n\n");
+    wire.extend_from_slice(b"HEAD /xmla HTTP/1.1\r\nContent-Length: 0\r\n\r\n");
+    wire.extend_from_slice(&post("Content-Length: 4\r\n", b"POST"));
+    let expected: Vec<(String, String, Vec<u8>)> = [
+        ("POST", "/xmla", &b"hello"[..]),
+        ("POST", "/xmla", b"abc"),
+        ("GET", "/status", b""),
+        ("HEAD", "/xmla", b""),
+        ("POST", "/xmla", b"POST"),
+    ]
+    .into_iter()
+    .map(|(method, target, body)| (method.to_owned(), target.to_owned(), body.to_vec()))
+    .collect();
+
+    assert_eq!(drain(&mut Cursor::new(&wire[..])), expected);
+    for capacity in [1, 4, 13] {
+        let mut buffered = BufReader::with_capacity(capacity, Cursor::new(&wire[..]));
+        assert_eq!(drain(&mut buffered), expected, "capacity {capacity}");
+    }
+    for step in [1, 2, 3, 7, 64] {
+        let mut trickle = Trickle::new(&wire, step);
+        assert_eq!(drain(&mut trickle), expected, "step {step}");
+        assert_eq!(trickle.position, wire.len(), "step {step}");
     }
 }
 
@@ -1246,6 +1382,8 @@ fn the_soap_action_is_the_header_with_its_quotes_taken_off() {
         ("  \"urn:x\"  ", Some("urn:x")),
         ("\"\"", None),
         ("", None),
+        ("   ", None),
+        ("\t", None),
         ("\"urn:x", Some("\"urn:x")),
         ("urn:x\"", Some("urn:x\"")),
     ] {
@@ -1517,6 +1655,11 @@ fn an_empty_write_or_flush_emits_no_chunk_that_would_end_the_body() {
     chunked.flush().expect("flushed");
     chunked.flush().expect("flushed again");
     assert_eq!(sink.bytes(), CHUNKED_HEAD.as_bytes());
+    assert_eq!(
+        sink.flushes.get(),
+        2,
+        "a flush with nothing gathered still reaches the sink"
+    );
 
     chunked.write_all(b"row").expect("gathered");
     chunked.flush().expect("flushed");
@@ -1687,5 +1830,15 @@ fn a_failing_sink_fails_the_chunked_head_and_the_chunks() {
 
     let chunked = begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
     let error = chunked.finish().expect_err("the terminator refuses");
+    assert_eq!(error.to_string(), "the socket is gone");
+
+    let mut chunked =
+        begin_chunked(budget(), Status::Ok, CONTENT_TYPE, true).expect("the head fits");
+    chunked
+        .write_all(&vec![b'a'; FULL_CHUNK - 1])
+        .expect("gathered, not yet sent");
+    let error = chunked
+        .write_all(b"a")
+        .expect_err("the write that fills a chunk refuses");
     assert_eq!(error.to_string(), "the socket is gone");
 }

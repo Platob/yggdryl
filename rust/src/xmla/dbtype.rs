@@ -214,7 +214,8 @@ impl DbType {
             Self::Guid => Some(16),
             Self::Numeric => Some(38),
             Self::DbDate => Some(10),
-            Self::DbTime => Some(18),
+            // `hh:mm:ss`: a DBTIME carries no fraction.
+            Self::DbTime => Some(8),
             Self::DbTimestamp => Some(29),
             Self::Bytes | Self::Wstr | Self::Variant | Self::HChapter => None,
         }

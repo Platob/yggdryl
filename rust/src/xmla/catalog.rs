@@ -3,8 +3,9 @@
 //! A [`Catalog`] is a named [`Holder`] over a container, read two levels
 //! deep. Directly under the root, a leaf whose media type is a record
 //! encoding this build implements is a table, a folder that is a table format
-//! (an Iceberg table, [`IOKind::Table`]) is a table, and every other folder
-//! is a *schema*. Under a schema, every such leaf is a table and every folder
+//! (an Iceberg table - one whose `metadata/` holds a version hint or a
+//! metadata document - or any folder a store answers [`IOKind::Table`] for)
+//! is a table, and every other folder is a *schema*. Under a schema, every such leaf is a table and every folder
 //! is one too, read as the table beneath it: a partitioned tree, a table
 //! format. So `catalog.schema.table` spells a path two levels under the root
 //! and `catalog.table` one level, and no listing has to guess whether a
@@ -98,7 +99,7 @@ impl Catalog {
             }
         }
         for schema in schemas {
-            let Some(schema_name) = schema.url().and_then(Url::file_name).map(SmolStr::new) else {
+            let Some(schema_name) = schema.url().and_then(entry_name) else {
                 continue;
             };
             for child in schema.ls(false, false) {
@@ -122,8 +123,8 @@ impl Catalog {
         for child in self.holder.ls(false, false) {
             let child = child?;
             if Entry::under_root(&child) == Entry::Schema {
-                if let Some(name) = child.url().and_then(Url::file_name) {
-                    schemas.push(SmolStr::new(name));
+                if let Some(name) = child.url().and_then(entry_name) {
+                    schemas.push(name);
                 }
             }
         }
@@ -146,7 +147,7 @@ impl Catalog {
         match found.len() {
             1 => Ok(found.remove(0)),
             0 => Err(Error::absent("table", self.path(schema, name))),
-            _ => Err(Error::conflict("table", "several leaves of that name", self.path(schema, name))),
+            _ => Err(Error::conflict("one table", "several leaves of that name", self.path(schema, name))),
         }
     }
 
@@ -175,7 +176,7 @@ impl Entry {
     /// reads.
     fn under_root(child: &Holder) -> Self {
         if child.is_container() {
-            return if child.kind() == IOKind::Table {
+            return if child.kind() == IOKind::Table || is_table_format(child) {
                 Self::Table
             } else {
                 Self::Schema
@@ -217,8 +218,8 @@ impl Table {
     fn new(catalog: &SmolStr, schema: Option<SmolStr>, holder: Holder) -> Self {
         let name = holder
             .url()
-            .and_then(Url::file_name)
-            .map_or_else(|| SmolStr::new_static("table"), |file| table_name(file, &holder));
+            .and_then(entry_name)
+            .map_or_else(|| SmolStr::new_static("table"), |file| table_name(&file, &holder));
         Self {
             catalog: catalog.clone(),
             schema,
@@ -272,10 +273,14 @@ impl Table {
     }
 
     /// What holds the rows, as `DBSCHEMA_TABLES` describes it: a leaf's media
-    /// type, a folder's kind.
+    /// type, a folder's kind - `table` for a table format's folder, whether
+    /// the store says so or the layout does.
     #[must_use]
     pub fn description(&self) -> String {
         if self.holder.is_container() {
+            if self.holder.kind() == IOKind::Table || is_table_format(&self.holder) {
+                return IOKind::Table.as_str().to_owned();
+            }
             self.holder.kind().as_str().to_owned()
         } else {
             self.holder.media_type().to_string()
@@ -309,6 +314,35 @@ impl Table {
             None => format!("{}.{}", self.catalog, self.name),
         }
     }
+}
+
+/// Whether a folder is laid out as an Iceberg table: its `metadata/` holds
+/// the `version-hint.text` a catalog-less table keeps, or a metadata
+/// document. A store that answers [`IOKind::Table`] for such a folder is
+/// never asked; a local or object store, which answers a directory, is asked
+/// with one listing of `metadata/` and no read. The layout is the fact, so
+/// a build without the `iceberg` feature lists the table too and refuses to
+/// read it by name.
+fn is_table_format(folder: &Holder) -> bool {
+    let Ok(metadata) = folder.child_by_path("metadata") else {
+        return false;
+    };
+    metadata.ls(false, false).any(|entry| {
+        entry.ok().and_then(|entry| entry.url().and_then(entry_name)).is_some_and(|name| {
+            name == "version-hint.text" || name.ends_with(".metadata.json")
+        })
+    })
+}
+
+/// The last segment of a location as the store spells it - the file or
+/// folder name, its URI escapes decoded (`order%20book` is `order book`) -
+/// which is what a catalog names its schemas and tables by.
+fn entry_name(url: &Url) -> Option<SmolStr> {
+    let name = url.file_name()?;
+    Some(match crate::uri::percent_decode(name, "a catalog entry's name") {
+        Ok(decoded) => SmolStr::new(decoded),
+        Err(_) => SmolStr::new(name),
+    })
 }
 
 /// A file name less the extensions a media type claims: `trades.arrows.gz`

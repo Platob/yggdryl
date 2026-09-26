@@ -1,7 +1,8 @@
 //! `rust/src/soap/mod.rs`: the SOAP 1.1 envelope - its constants, the
-//! fragments a header block and a body element are, the fault that stands in
-//! for a body, the envelope's reading from bytes and its natural value, and
-//! the whole and streaming writers.
+//! fragments a header block and a body element are (read from an element,
+//! written with the declarations they resolve by, equal by name and value),
+//! the fault that stands in for a body, the envelope's reading from bytes and
+//! its natural value, and the whole and streaming writers.
 //!
 //! `codec_error` is crate-private and pinned only through the refusals it
 //! spells, whose `format` is `soap`.
@@ -12,6 +13,7 @@ use yggdryl::soap::{
     ACTION_HEADER, Body, CONTENT_TYPE, ENCODING_NAMESPACE, ENVELOPE_NAMESPACE, Envelope,
     EnvelopeWriter, Fault, FaultCode, Fragment, PREFIX,
 };
+use yggdryl::xml::{Element, Scope, XSI_NAMESPACE};
 use yggdryl::{Error, Limits, Scalar};
 
 const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
@@ -59,12 +61,12 @@ fn read(xml: &str) -> Envelope {
     Envelope::from_bytes(xml.as_bytes()).unwrap_or_else(|error| panic!("{error}\n{xml}"))
 }
 
-/// The codec refusal `input` earns: its format and its reason.
-fn refusal(result: yggdryl::Result<Envelope>) -> (&'static str, String) {
+/// The codec refusal `result` holds: its format and its reason.
+fn refusal<T: std::fmt::Debug>(result: yggdryl::Result<T>) -> (&'static str, String) {
     match result {
         Err(Error::Codec { format, reason, .. }) => (format, reason.to_string()),
         Err(other) => panic!("expected a codec refusal, got {other}"),
-        Ok(envelope) => panic!("expected a refusal, read {envelope:?}"),
+        Ok(answer) => panic!("expected a refusal, got {answer:?}"),
     }
 }
 
@@ -200,6 +202,20 @@ fn an_envelope_in_another_namespace_is_refused_naming_both_namespaces() {
         reason.ends_with("got `SOAP-ENV:Envelope` in no namespace"),
         "{reason}"
     );
+
+    // The namespace is compared exactly: one without its trailing slash is
+    // another namespace.
+    let unslashed = "http://schemas.xmlsoap.org/soap/envelope";
+    let (format, reason) = refused(&format!(
+        "<soap:Envelope xmlns:soap=\"{unslashed}\"><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"
+    ));
+    assert_eq!(format, "soap");
+    assert_eq!(
+        reason,
+        format!(
+            "expected the SOAP 1.1 `Envelope` in {ENVELOPE_NAMESPACE:?}, got `soap:Envelope` in {unslashed:?}"
+        )
+    );
 }
 
 #[test]
@@ -235,6 +251,17 @@ fn an_envelope_without_exactly_one_body_is_refused_naming_the_body() {
     );
     let (_, reason) = refused(&foreign);
     assert!(reason.ends_with("found none"), "{reason}");
+
+    // An unqualified `Body` is the envelope's too, so beside a qualified one
+    // it is a second body.
+    let mixed = format!(
+        "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\"><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body><Body/></soap:Envelope>"
+    );
+    let (_, reason) = refused(&mixed);
+    assert_eq!(
+        reason,
+        "expected one `Body` element under `soap:Envelope`, found several"
+    );
 }
 
 #[test]
@@ -279,10 +306,50 @@ fn a_fault_without_a_faultcode_is_refused() {
         "<soap:Fault><faultcode/><faultstring>a nil code</faultstring></soap:Fault>",
         "<soap:Fault/>",
         "<soap:Fault xmlns:x=\"urn:x\"><x:faultcode>soap:Server</x:faultcode><faultstring>a code in another namespace</faultstring></soap:Fault>",
+        "<soap:Fault><faultcode xmlns=\"urn:x\">soap:Server</faultcode><faultstring>a code under a default namespace of its own</faultstring></soap:Fault>",
+        "<soap:Fault><faultcode><x>soap:Server</x></faultcode><faultstring>a code holding an element, no text</faultstring></soap:Fault>",
+        "<soap:Fault xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><faultcode xsi:nil=\"true\"/><faultstring>a code marked nil</faultstring></soap:Fault>",
     ] {
         let (format, reason) = refused(&envelope("soap", "", fault));
         assert_eq!(format, "soap", "{fault}");
         assert_eq!(reason, "a SOAP fault without a `faultcode`", "{fault}");
+    }
+
+    // A natural value's code that is no text is no code either.
+    let natural = record([(
+        "SOAP-ENV:Envelope",
+        record([
+            ("@xmlns:SOAP-ENV", text(ENVELOPE_NAMESPACE)),
+            (
+                "SOAP-ENV:Body",
+                record([(
+                    "SOAP-ENV:Fault",
+                    record([("faultcode", Scalar::from(500)), ("faultstring", text("x"))]),
+                )]),
+            ),
+        ]),
+    )]);
+    let (format, reason) = refusal(Envelope::from_natural(&natural));
+    assert_eq!(format, "soap");
+    assert_eq!(reason, "a SOAP fault without a `faultcode`");
+}
+
+#[test]
+fn an_empty_or_blank_faultcode_is_a_fault_without_a_faultcode() {
+    // SOAP 1.1, section 4.4: `faultcode` MUST be present and holds a QName.
+    // `<faultcode></faultcode>` is the same XML as `<faultcode/>` (XML 1.0,
+    // section 3.1), and blank text trimmed is no QName either, so each is a
+    // fault with no code - refused as `<faultcode/>` is - never a code
+    // spelled as nothing.
+    for code in [
+        "<faultcode></faultcode>",
+        "<faultcode>   </faultcode>",
+        "<faultcode>\r\n\t</faultcode>",
+    ] {
+        let fault = format!("<soap:Fault>{code}<faultstring>x</faultstring></soap:Fault>");
+        let (format, reason) = refused(&envelope("soap", "", &fault));
+        assert_eq!(format, "soap", "{code:?}");
+        assert_eq!(reason, "a SOAP fault without a `faultcode`", "{code:?}");
     }
 }
 
@@ -466,7 +533,7 @@ fn the_soap_1_1_request_example_reads_with_its_encoding_style() {
     );
 
     let document = yggdryl::xml::from_bytes(xml.as_bytes()).expect("XML");
-    let root = yggdryl::xml::Element::root(&document).expect("a root");
+    let root = Element::root(&document).expect("a root");
     assert_eq!(
         root.attribute_in(Some(ENVELOPE_NAMESPACE), "encodingStyle"),
         Some(ENCODING_NAMESPACE)
@@ -518,6 +585,121 @@ fn an_unqualified_body_is_the_envelopes_and_an_unqualified_fault_is_a_payload() 
     let payload = read.payload().expect("a payload");
     assert_eq!(payload.name(), "Fault");
     assert_eq!(payload.element().text(), Some("application-level"));
+}
+
+#[test]
+fn text_comments_and_trailing_envelope_children_are_not_the_body_element() {
+    // SOAP 1.1, section 4.1.1: the envelope MAY carry namespace-qualified
+    // elements after the `Body`; they are neither a header nor the body, and
+    // text, comments and processing instructions in the body are no element.
+    let xml = format!(
+        "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\"><soap:Body soap:encodingStyle=\"{ENCODING_NAMESPACE}\">\
+         lead <!-- a note --><?pi data?><m:A xmlns:m=\"urn:m\">1</m:A> trail</soap:Body>\
+         <x:Trailer xmlns:x=\"urn:x\">t</x:Trailer></soap:Envelope>"
+    );
+    let read = read(&xml);
+    assert!(read.header().is_empty());
+    let payload = read.payload().expect("a payload");
+    assert_eq!(payload.name(), "m:A");
+    assert_eq!(payload.element().text(), Some("1"));
+}
+
+#[test]
+fn a_payload_keeps_unicode_names_escaped_text_and_its_nil_marker() {
+    let xml = envelope(
+        "soap",
+        "",
+        "<m:réponse xmlns:m=\"urn:m\" note=\"a&quot;b&apos;c&lt;\">x &lt; y &amp; — 値</m:réponse>",
+    );
+    let read = read(&xml);
+    let payload = read.payload().expect("a payload");
+    assert_eq!(payload.name(), "m:réponse");
+    let element = payload.element();
+    assert_eq!(element.local_name(), "réponse");
+    assert_eq!(element.namespace(), Some("urn:m"));
+    assert_eq!(element.text(), Some("x < y & — 値"));
+    assert_eq!(element.attribute("note"), Some(&text("a\"b'c<")));
+
+    let nil = format!(
+        "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\" xmlns:xsi=\"{XSI_NAMESPACE}\">\
+         <soap:Body><m:A xmlns:m=\"urn:m\" xsi:nil=\"true\"/></soap:Body></soap:Envelope>"
+    );
+    let read = self::read(&nil);
+    let payload = read
+        .payload()
+        .expect("a nil element is still the one element");
+    assert!(payload.element().is_nil());
+    assert_eq!(payload.element().text(), None);
+}
+
+#[test]
+fn a_byte_order_mark_and_crlf_line_ends_read_as_the_same_message() {
+    let xml = format!(
+        "\u{feff}<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\">\r\n\
+         <soap:Header>\r\n<t:Hop xmlns:t=\"urn:t\">1</t:Hop>\r\n</soap:Header>\r\n\
+         <soap:Body>\r\n<m:A xmlns:m=\"urn:m\">x\r\ny</m:A>\r\n</soap:Body>\r\n</soap:Envelope>\r\n"
+    );
+    let read = read(&xml);
+    let [block] = read.header() else {
+        panic!("one header block, got {:?}", read.header());
+    };
+    assert_eq!(block.element().text(), Some("1"));
+    let payload = read.payload().expect("a payload");
+    assert_eq!(
+        payload.element().text(),
+        Some("x\ny"),
+        "a CRLF in content is read as LF"
+    );
+}
+
+#[test]
+fn a_header_holding_no_element_or_in_another_namespace_holds_no_block() {
+    for header in [
+        "<soap:Header/>".to_owned(),
+        "<soap:Header></soap:Header>".to_owned(),
+        "<soap:Header>just text</soap:Header>".to_owned(),
+        format!("<soap:Header soap:encodingStyle=\"{ENCODING_NAMESPACE}\">  </soap:Header>"),
+        "<x:Header xmlns:x=\"urn:x\"><h:A xmlns:h=\"urn:h\">1</h:A></x:Header>".to_owned(),
+    ] {
+        let xml = format!(
+            "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\">{header}\
+             <soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"
+        );
+        let read = read(&xml);
+        assert!(read.header().is_empty(), "{header}");
+        assert_eq!(read.payload().expect("a payload").name(), "m:A", "{header}");
+    }
+
+    // A declaration on the `Header` itself is in scope at its blocks.
+    let xml = format!(
+        "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\"><soap:Header xmlns:h=\"urn:h\">\
+         <h:Session>abc</h:Session></soap:Header><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body>\
+         </soap:Envelope>"
+    );
+    let read = read(&xml);
+    let [block] = read.header() else {
+        panic!("one header block, got {:?}", read.header());
+    };
+    assert_eq!(block.name(), "h:Session");
+    assert_eq!(block.value(), &text("abc"));
+    assert_eq!(block.element().namespace(), Some("urn:h"));
+}
+
+#[test]
+fn a_second_header_is_refused_rather_than_read_past() {
+    // SOAP 1.1, section 4.2: the `Header`, when present, is the first
+    // immediate child of the `Envelope`, so a message holds at most one.
+    // Reading the first and passing over the second drops its blocks - a
+    // `mustUnderstand` one among them, which section 4.2.3 says a recipient
+    // obeys or faults on - so the message is refused, naming the `Header`.
+    let xml = format!(
+        "<soap:Envelope xmlns:soap=\"{ENVELOPE_NAMESPACE}\">\
+         <soap:Header><a:Auth xmlns:a=\"urn:a\">token</a:Auth></soap:Header>\
+         <soap:Header><t:Transaction xmlns:t=\"urn:t\" soap:mustUnderstand=\"1\">5</t:Transaction></soap:Header>\
+         <soap:Body><m:Get xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"
+    );
+    let (_, reason) = refused(&xml);
+    assert!(reason.contains("`Header`"), "{reason}");
 }
 
 #[test]
@@ -622,6 +804,240 @@ fn a_faultcode_prefix_declared_on_the_faultcode_element_resolves() {
     );
     let read = read(&envelope("soap", "", &fault));
     assert_eq!(read.fault().expect("a fault").code(), &FaultCode::Client);
+}
+
+#[test]
+fn a_faultcode_prefix_resolves_under_the_innermost_declaration() {
+    // `faultcode` rebinding `soap` puts `soap:Client` in that other
+    // namespace, whatever the envelope bound it to: the code's own scope is
+    // the one it is read under, not the fault's.
+    let fault = "<soap:Fault><faultcode xmlns:soap=\"urn:example:vendor\">soap:Client.Auth</faultcode>\
+                 <faultstring>x</faultstring></soap:Fault>";
+    let read = read(&envelope("soap", "", fault));
+    let held = read.fault().expect("a fault");
+    assert_eq!(held.code(), &FaultCode::Other("soap:Client.Auth".into()));
+    assert_eq!(held.subcode(), None);
+
+    // A declaration on the `Fault` above the code is in scope at it.
+    let fault = format!(
+        "<soap:Fault xmlns:f=\"{ENVELOPE_NAMESPACE}\"><faultcode>f:Server.Disk</faultcode>\
+         <faultstring>x</faultstring></soap:Fault>"
+    );
+    let read = self::read(&envelope("soap", "", &fault));
+    let held = read.fault().expect("a fault");
+    assert_eq!(held.code(), &FaultCode::Server);
+    assert_eq!(held.subcode(), Some("Disk"));
+}
+
+#[test]
+fn a_faultcode_reads_case_sensitively_and_splits_its_subcode_off_the_local_part() {
+    for (spelled, code, subcode, why) in [
+        (
+            "Client.Authentication",
+            FaultCode::Client,
+            Some("Authentication"),
+            "an unprefixed code splits its subcode too",
+        ),
+        (
+            "soap:Client.",
+            FaultCode::Client,
+            Some(""),
+            "a dot with nothing past it is the empty subcode",
+        ),
+        (
+            "soap:Client.&#65;&amp;&lt;",
+            FaultCode::Client,
+            Some("A&<"),
+            "references in the subcode are the characters they name",
+        ),
+        (
+            "soap:client",
+            FaultCode::Other("soap:client".into()),
+            None,
+            "a QName's local part is case-sensitive",
+        ),
+        (
+            "soap:CLIENT.Auth",
+            FaultCode::Other("soap:CLIENT.Auth".into()),
+            None,
+            "a code SOAP 1.1 does not define keeps its dot",
+        ),
+        (
+            " \n x:Throttled \t",
+            FaultCode::Other("x:Throttled".into()),
+            None,
+            "a code of another namespace is trimmed as the envelope's are",
+        ),
+        (
+            "soap:Client:Extra",
+            FaultCode::Other("soap:Client:Extra".into()),
+            None,
+            "a second colon makes no local name SOAP 1.1 defines",
+        ),
+    ] {
+        let fault = format!(
+            "<soap:Fault xmlns:x=\"urn:example:vendor\"><faultcode>{spelled}</faultcode><faultstring>x</faultstring></soap:Fault>"
+        );
+        let read = read(&envelope("soap", "", &fault));
+        let held = read.fault().expect("a fault");
+        assert_eq!(held.code(), &code, "{why}: {spelled:?}");
+        assert_eq!(held.subcode(), subcode, "{why}: {spelled:?}");
+    }
+}
+
+#[test]
+fn fault_children_qualified_in_the_envelope_namespace_are_read_and_foreign_ones_are_not() {
+    // SOAP 1.1 writes a fault's children unqualified; one qualified in the
+    // envelope's own namespace is the same child, the intake reading an
+    // unqualified `Body` gets the other way round.
+    let fault = "<soap:Fault><soap:faultcode>soap:Server.Disk</soap:faultcode>\
+                 <soap:faultstring>disk full</soap:faultstring><soap:faultactor>urn:actor</soap:faultactor>\
+                 <soap:detail><e:Cause xmlns:e=\"urn:e\">quota</e:Cause></soap:detail></soap:Fault>";
+    let read = read(&envelope("soap", "", fault));
+    let held = read.fault().expect("a fault");
+    assert_eq!(held.code(), &FaultCode::Server);
+    assert_eq!(held.subcode(), Some("Disk"));
+    assert_eq!(held.string(), "disk full");
+    assert_eq!(held.actor(), Some("urn:actor"));
+    let names: Vec<&str> = held.detail().iter().map(Fragment::name).collect();
+    assert_eq!(names, ["e:Cause"]);
+
+    // In another namespace they are some other vocabulary's elements.
+    let fault = "<soap:Fault xmlns:x=\"urn:x\"><faultcode>soap:Server</faultcode>\
+                 <x:faultstring>not ours</x:faultstring><x:faultactor>urn:actor</x:faultactor>\
+                 <x:detail><d>1</d></x:detail></soap:Fault>";
+    let read = self::read(&envelope("soap", "", fault));
+    let held = read.fault().expect("a fault");
+    assert_eq!(held.code(), &FaultCode::Server);
+    assert_eq!(
+        held.string(),
+        "",
+        "a foreign `faultstring` is no faultstring"
+    );
+    assert_eq!(held.actor(), None, "a foreign `faultactor` is no actor");
+    assert!(held.detail().is_empty(), "a foreign `detail` is no detail");
+}
+
+#[test]
+fn a_fault_repeating_one_of_its_children_is_refused_naming_it() {
+    // SOAP 1.1, section 4.4 and its envelope schema: `faultcode` and
+    // `faultstring` occur once each, `faultactor` and `detail` at most once.
+    // Two codes that disagree name no one code, and reading the first in name
+    // order picks between two readings - in the second case the unqualified
+    // `Client` over the `Server` the document spelled before it.
+    for (children, name) in [
+        (
+            "<faultcode>soap:Client</faultcode><faultcode>soap:Server</faultcode><faultstring>x</faultstring>",
+            "faultcode",
+        ),
+        (
+            "<soap:faultcode>soap:Server</soap:faultcode><faultcode>soap:Client</faultcode><faultstring>x</faultstring>",
+            "faultcode",
+        ),
+        (
+            "<faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultstring>y</faultstring>",
+            "faultstring",
+        ),
+        (
+            "<faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultactor>urn:a</faultactor><faultactor>urn:b</faultactor>",
+            "faultactor",
+        ),
+        (
+            "<faultcode>soap:Client</faultcode><faultstring>x</faultstring><detail><a>1</a></detail><detail><b>2</b></detail>",
+            "detail",
+        ),
+    ] {
+        let fault = format!("<soap:Fault>{children}</soap:Fault>");
+        let (_, reason) = refused(&envelope("soap", "", &fault));
+        assert!(reason.contains(&format!("`{name}`")), "{name}: {reason}");
+    }
+}
+
+#[test]
+fn fault_text_reads_with_line_ends_normalized_references_resolved_and_cdata_as_text() {
+    for (spelled, expected, why) in [
+        (
+            "line one\r\nline two\rline three",
+            "line one\nline two\nline three",
+            "XML 1.0, section 2.11: a CRLF or a lone CR is read as LF",
+        ),
+        (
+            "a&#13;&#10;b",
+            "a\r\nb",
+            "a character reference is not a line end to normalize",
+        ),
+        (
+            "<![CDATA[a <b> & c]]>",
+            "a <b> & c",
+            "a CDATA section is text",
+        ),
+        ("   ", "   ", "whitespace-only text is kept"),
+    ] {
+        let fault = format!(
+            "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>{spelled}</faultstring>\
+             <faultactor>{spelled}</faultactor></soap:Fault>"
+        );
+        let read = read(&envelope("soap", "", &fault));
+        let held = read.fault().expect("a fault");
+        assert_eq!(held.string(), expected, "{why}");
+        assert_eq!(held.actor(), Some(expected), "{why}");
+    }
+
+    // An element holding no text at all: the string is empty and the actor
+    // absent.
+    for (string, actor) in [
+        ("<faultstring/>", "<faultactor/>"),
+        ("<faultstring></faultstring>", "<faultactor/>"),
+        (
+            "<faultstring xsi:nil=\"true\"/>",
+            "<faultactor xsi:nil=\"1\"/>",
+        ),
+    ] {
+        let fault = format!(
+            "<soap:Fault xmlns:xsi=\"{XSI_NAMESPACE}\"><faultcode>soap:Client</faultcode>{string}{actor}</soap:Fault>"
+        );
+        let read = read(&envelope("soap", "", &fault));
+        let held = read.fault().expect("a fault");
+        assert_eq!(held.string(), "", "{string}");
+        assert_eq!(held.actor(), None, "{actor}");
+    }
+}
+
+#[test]
+fn a_detail_holding_no_element_is_no_detail_and_its_own_declarations_are_in_scope() {
+    for detail in [
+        "<detail/>",
+        "<detail></detail>",
+        "<detail>only text</detail>",
+        "<detail xmlns:e=\"urn:e\" e:note=\"x\"/>",
+    ] {
+        let fault = format!(
+            "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>x</faultstring>{detail}</soap:Fault>"
+        );
+        let read = read(&envelope("soap", "", &fault));
+        assert!(
+            read.fault().expect("a fault").detail().is_empty(),
+            "{detail}"
+        );
+    }
+
+    let fault = "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>x</faultstring>\
+                 <detail xmlns:e=\"urn:example:error\"><e:Reason>expired</e:Reason></detail></soap:Fault>";
+    let read = read(&envelope("soap", "", fault));
+    let [detail] = read.fault().expect("a fault").detail() else {
+        panic!("one detail element");
+    };
+    assert_eq!(detail.name(), "e:Reason");
+    assert_eq!(
+        detail.value(),
+        &text("expired"),
+        "the declaration stays on `detail`"
+    );
+    assert_eq!(
+        detail.element().namespace(),
+        Some("urn:example:error"),
+        "a prefix `detail` declares resolves at its child"
+    );
 }
 
 #[test]
@@ -874,6 +1290,195 @@ fn a_fragment_refuses_a_second_default_namespace_or_a_non_text_leaf() {
 }
 
 #[test]
+fn a_fragment_in_a_namespace_is_never_answered_outside_it() {
+    // `Fragment::in_namespace` promises "the element named `name` in
+    // `namespace`", and it gets there by declaring `namespace` as the default.
+    // A default declaration does not reach a prefixed name (Namespaces in XML
+    // 1.0, section 6.2), so `m:A` would be in whatever `m` names - here
+    // nothing. Either answer keeps the promise: the element in `namespace`,
+    // or a refusal.
+    match Fragment::in_namespace("m:A", "urn:x", Scalar::Null) {
+        Ok(fragment) => assert_eq!(
+            fragment.element().namespace(),
+            Some("urn:x"),
+            "{fragment:?}"
+        ),
+        Err(Error::Codec { format, .. }) => assert_eq!(format, "soap"),
+        Err(other) => panic!("expected a codec refusal, got {other}"),
+    }
+}
+
+#[test]
+fn a_fragment_from_an_element_remembers_the_declarations_over_it() {
+    let document = yggdryl::xml::from_bytes(
+        b"<r xmlns:m=\"urn:m\" xmlns=\"urn:d\"><m:A note=\"x\">1</m:A><B><C>2</C></B></r>",
+    )
+    .expect("XML");
+    let root = Element::root(&document).expect("a root");
+    let a = root.child(Some("urn:m"), "A").expect("m:A");
+    let fragment = Fragment::from_element(&a);
+    assert_eq!(fragment.name(), "m:A", "the name as spelled");
+    assert_eq!(
+        fragment.value(),
+        &record([("@note", text("x")), ("#text", text("1"))]),
+        "the value holds no declaration it did not spell"
+    );
+    let element = fragment.element();
+    assert_eq!(element.namespace(), Some("urn:m"));
+    assert_eq!(element.scope().resolve(""), Some("urn:d"));
+
+    let b = root.child(Some("urn:d"), "B").expect("B");
+    let fragment = Fragment::from_element(&b);
+    assert_eq!(fragment.name(), "B");
+    assert_eq!(
+        fragment.element().namespace(),
+        Some("urn:d"),
+        "an unprefixed name is in the default namespace declared above it"
+    );
+    assert_eq!(
+        fragment
+            .element()
+            .child(Some("urn:d"), "C")
+            .expect("C")
+            .text(),
+        Some("2")
+    );
+}
+
+#[test]
+fn a_fragment_writes_the_declarations_its_scope_binds_and_its_value_does_not() {
+    let write = |fragment: &Fragment| {
+        let mut written = Vec::new();
+        fragment.write(&mut written).expect("written");
+        String::from_utf8(written).expect("UTF-8")
+    };
+
+    // Built with no scope, a fragment writes exactly what its value says.
+    let built = Fragment::new(
+        "m:A",
+        record([("@xmlns:m", text("urn:m")), ("b", text("1"))]),
+    );
+    assert_eq!(write(&built), "<m:A xmlns:m=\"urn:m\"><b>1</b></m:A>");
+    assert_eq!(
+        write(&Fragment::new("n", Scalar::from(42))),
+        "<n>42</n>",
+        "a leaf of any kind writes when there is nothing to declare"
+    );
+
+    // Each binding the scope holds and the value does not state is declared,
+    // the innermost binding of a prefix alone, and an undeclared default
+    // never.
+    let scope = Scope::new()
+        .with("m", "urn:outer")
+        .with("m", "urn:m")
+        .with("x", "urn:x")
+        .with("", "urn:d")
+        .with("", "");
+    let value = record([("@xmlns:x", text("urn:x")), ("#text", text("1"))]);
+    let fragment = Fragment::from_element(&Element::new("m:A", &value, &scope));
+    assert_eq!(
+        write(&fragment),
+        "<m:A xmlns:m=\"urn:m\" xmlns:x=\"urn:x\">1</m:A>"
+    );
+
+    // A text or null value gains its declarations beside it.
+    let scope = Scope::new().with("m", "urn:m");
+    let leaf = text("a < b");
+    let fragment = Fragment::from_element(&Element::new("m:A", &leaf, &scope));
+    assert_eq!(write(&fragment), "<m:A xmlns:m=\"urn:m\">a &lt; b</m:A>");
+    assert_eq!(
+        fragment.value(),
+        &leaf,
+        "writing declares; it changes no value"
+    );
+    let null = Scalar::Null;
+    let fragment = Fragment::from_element(&Element::new("m:A", &null, &scope));
+    assert_eq!(write(&fragment), "<m:A xmlns:m=\"urn:m\"/>");
+
+    // Written into another document, the fragment reads back where it was.
+    let document = yggdryl::xml::from_bytes(write(&fragment).as_bytes()).expect("XML");
+    let root = Element::root(&document).expect("a root");
+    assert!(root.is(Some("urn:m"), "A"));
+}
+
+#[test]
+fn a_fragment_write_refuses_a_leaf_that_cannot_carry_a_declaration_and_passes_on_the_xml_writers() {
+    let scope = Scope::new().with("m", "urn:m");
+    for (value, kind) in [(Scalar::from(42), "i32"), (Scalar::from(true), "boolean")] {
+        let fragment = Fragment::from_element(&Element::new("m:A", &value, &scope));
+        let mut written = Vec::new();
+        assert_eq!(
+            refusal(fragment.write(&mut written)),
+            (
+                "soap",
+                format!("expected a record or text for a namespaced element, got {kind}")
+            )
+        );
+        assert!(written.is_empty(), "nothing is written before the refusal");
+    }
+
+    let error = Fragment::new("1st", text("x"))
+        .write(&mut Vec::new())
+        .expect_err("not an XML name");
+    assert!(
+        error.to_string().contains("expected an XML name"),
+        "{error}"
+    );
+
+    let mut closed = Gate {
+        open: false,
+        bytes: Vec::new(),
+    };
+    let error = Fragment::new("A", text("x"))
+        .write(&mut closed)
+        .expect_err("the sink refuses");
+    assert!(matches!(error, Error::Io(_)), "{error}");
+}
+
+#[test]
+fn fragments_are_equal_by_spelled_name_and_value_not_by_where_they_were_read() {
+    // Two fragments are one element when they spell the same name over the
+    // same value; where one was read - the scope the message above it
+    // declared - is provenance, not identity.
+    let payload = |xml: &str| read(xml).payload().expect("a payload").clone();
+
+    let soap = payload(&envelope("soap", "", "<m:A xmlns:m=\"urn:m\">1</m:A>"));
+    let env = payload(&envelope("env", "", "<m:A xmlns:m=\"urn:m\">1</m:A>"));
+    assert_eq!(soap, env, "read under two envelope prefixes");
+    let built = Fragment::new(
+        "m:A",
+        record([("@xmlns:m", text("urn:m")), ("#text", text("1"))]),
+    );
+    assert_eq!(soap, built, "read, and built for a message");
+    assert_eq!(built, soap);
+
+    // The scope is no part of it: `m:A` read under two bindings of `m`, and
+    // built under none, is one fragment, the way a natural value keeps
+    // `m:A` as spelled whatever `m` names.
+    let declared_above = |namespace: &str| {
+        payload(&format!(
+            "<s:Envelope xmlns:s=\"{ENVELOPE_NAMESPACE}\" xmlns:m=\"{namespace}\"><s:Body><m:A>1</m:A></s:Body></s:Envelope>"
+        ))
+    };
+    let one = declared_above("urn:one");
+    let two = declared_above("urn:two");
+    assert_eq!(one.element().namespace(), Some("urn:one"));
+    assert_eq!(two.element().namespace(), Some("urn:two"));
+    assert_eq!(one, two);
+    assert_eq!(one, Fragment::new("m:A", text("1")));
+
+    // A name spelled otherwise, or another value, is another fragment.
+    assert_ne!(
+        soap,
+        payload(&envelope("soap", "", "<n:A xmlns:n=\"urn:m\">1</n:A>"))
+    );
+    assert_ne!(
+        soap,
+        payload(&envelope("soap", "", "<m:A xmlns:m=\"urn:m\">2</m:A>"))
+    );
+}
+
+#[test]
 fn fault_codes_spell_their_local_name_and_display_under_the_envelope_prefix() {
     for (code, local) in [
         (FaultCode::VersionMismatch, "VersionMismatch"),
@@ -1072,6 +1677,15 @@ fn the_header_is_written_before_the_body() {
         at(written, "<SOAP-ENV:Header>") < at(written, "<SOAP-ENV:Body>"),
         "the Header precedes the Body: {written}"
     );
+    assert_eq!(
+        written,
+        format!(
+            "{DECLARATION}<SOAP-ENV:Envelope xmlns:SOAP-ENV=\"{ENVELOPE_NAMESPACE}\">\
+             <SOAP-ENV:Header><t:Transaction SOAP-ENV:mustUnderstand=\"1\" xmlns:t=\"urn:example:transaction\">5</t:Transaction>\
+             </SOAP-ENV:Header><SOAP-ENV:Body><Discover xmlns=\"{XMLA}\"><RequestType>DISCOVER_DATASOURCES</RequestType>\
+             </Discover></SOAP-ENV:Body></SOAP-ENV:Envelope>"
+        )
+    );
 }
 
 #[test]
@@ -1170,7 +1784,90 @@ fn what_xml_cannot_spell_is_refused_on_write() {
 }
 
 #[test]
-fn a_repeated_header_or_detail_name_is_refused_on_write() {
+fn fault_text_is_written_escaped_and_reads_back_as_given() {
+    let fault = Fault::server("x ]]> y < & > \" ' a\r\nb")
+        .with_subcode("Disk&Quota")
+        .with_actor("urn:a?b=1&c=<2>")
+        .with_detail(Fragment::new(
+            "d",
+            record([
+                ("@note", text("a\"b<&>'")),
+                ("#text", text("x < y & z > w")),
+            ]),
+        ));
+    let bytes = Envelope::from_fault(fault.clone())
+        .into_bytes()
+        .expect("a message");
+    let written = utf8(&bytes);
+    assert!(
+        written.contains(
+            "<SOAP-ENV:Fault><faultcode>SOAP-ENV:Server.Disk&amp;Quota</faultcode>\
+             <faultstring>x ]]&gt; y &lt; &amp; &gt; \" ' a&#13;\nb</faultstring>\
+             <faultactor>urn:a?b=1&amp;c=&lt;2&gt;</faultactor>\
+             <detail><d note=\"a&quot;b&lt;&amp;&gt;'\">x &lt; y &amp; z &gt; w</d></detail>\
+             </SOAP-ENV:Fault>"
+        ),
+        "a CR is written as a reference, so no reader normalizes it away: {written}"
+    );
+
+    let read = Envelope::from_bytes(&bytes).expect("read back");
+    let held = read.fault().expect("a fault");
+    assert_eq!(held.code(), fault.code());
+    assert_eq!(held.subcode(), fault.subcode());
+    assert_eq!(held.string(), fault.string());
+    assert_eq!(held.actor(), fault.actor());
+    assert_eq!(held.detail()[0].value(), fault.detail()[0].value());
+}
+
+#[test]
+fn a_fault_text_xml_cannot_spell_is_refused_by_both_writers() {
+    for (fault, scalar) in [
+        (Fault::server("bad\u{1}"), "U+0001"),
+        (Fault::server("ok").with_actor("bad\u{0}"), "U+0000"),
+        (Fault::server("ok").with_subcode("bad\u{2}"), "U+0002"),
+        (
+            Fault::new(FaultCode::Other("x:Bad\u{1f}".into()), "ok"),
+            "U+001F",
+        ),
+    ] {
+        let expected = (
+            "xml",
+            format!("text carries {scalar}, which XML 1.0 cannot spell"),
+        );
+        assert_eq!(
+            refusal(Envelope::from_fault(fault.clone()).into_bytes()),
+            expected
+        );
+        let streamed = EnvelopeWriter::begin(Vec::new(), &[])
+            .expect("an open envelope")
+            .fault(&fault);
+        assert_eq!(refusal(streamed), expected);
+    }
+}
+
+#[test]
+fn a_subcode_on_a_code_of_another_namespace_is_written_dotted_and_read_back_whole() {
+    let fault =
+        Fault::new(FaultCode::Other("x:Throttled".into()), "slow down").with_subcode("Hard");
+    assert_eq!(fault.to_string(), "SOAP fault x:Throttled.Hard: slow down");
+    let bytes = Envelope::from_fault(fault).into_bytes().expect("a message");
+    assert!(
+        utf8(&bytes).contains("<faultcode>x:Throttled.Hard</faultcode>"),
+        "{}",
+        utf8(&bytes)
+    );
+    let read = Envelope::from_bytes(&bytes).expect("read back");
+    let held = read.fault().expect("a fault");
+    assert_eq!(
+        held.code(),
+        &FaultCode::Other("x:Throttled.Hard".into()),
+        "a code of another namespace is read whole, its dot included"
+    );
+    assert_eq!(held.subcode(), None);
+}
+
+#[test]
+fn a_repeated_header_block_name_is_read_and_refused_on_write_before_a_byte_is_written() {
     let xml = envelope(
         "soap",
         "<t:Hop xmlns:t=\"urn:t\">1</t:Hop><t:Hop xmlns:t=\"urn:t\">2</t:Hop>",
@@ -1190,22 +1887,83 @@ fn a_repeated_header_or_detail_name_is_refused_on_write() {
         "a repeated name keeps document order"
     );
 
-    match read.into_natural() {
-        Err(Error::Codec { format, reason, .. }) => {
-            assert_eq!(format, "value");
-            assert_eq!(reason, "record contains a duplicate field name");
-        }
-        other => panic!("expected the repeated name refused, got {other:?}"),
-    }
-    assert!(read.into_bytes().is_err());
+    let repeats = "header block `t:Hop` repeats; one element per name";
+    assert_eq!(refusal(read.into_bytes()), ("soap", repeats.to_owned()));
+    let mut sink = Vec::new();
+    assert_eq!(
+        refusal(read.into_writer(&mut sink)),
+        ("soap", repeats.to_owned())
+    );
+    assert!(sink.is_empty(), "nothing is written before the refusal");
+    assert_eq!(
+        refusal(read.into_natural()),
+        ("value", "record contains a duplicate field name".to_owned())
+    );
 
-    let detail = Envelope::from_fault(
+    // Built by hand, the name repeated past another one.
+    let built = Envelope::from_payload(Fragment::new("Get", Scalar::Null))
+        .with_header(Fragment::new("a", text("1")))
+        .with_header(Fragment::new("b", text("2")))
+        .with_header(Fragment::new("a", text("3")));
+    assert_eq!(
+        refusal(built.into_bytes()),
+        (
+            "soap",
+            "header block `a` repeats; one element per name".to_owned()
+        )
+    );
+    assert_eq!(refusal(built.into_natural()).0, "value");
+
+    // A header block sharing the payload's name is no repeat: they are
+    // children of two elements.
+    let shared = Envelope::from_payload(Fragment::new("A", text("body")))
+        .with_header(Fragment::new("A", text("header")));
+    let bytes = shared.into_bytes().expect("a message");
+    assert!(
+        utf8(&bytes).contains(
+            "<SOAP-ENV:Header><A>header</A></SOAP-ENV:Header><SOAP-ENV:Body><A>body</A></SOAP-ENV:Body>"
+        ),
+        "{}",
+        utf8(&bytes)
+    );
+    assert!(shared.into_natural().is_ok());
+}
+
+#[test]
+fn a_repeated_detail_name_is_read_and_refused_on_write_before_a_byte_is_written() {
+    let fault = "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>x</faultstring>\
+                 <detail><d>1</d><d>2</d></detail></soap:Fault>";
+    let read = read(&envelope("soap", "", fault));
+    let detail = read.fault().expect("a fault").detail();
+    let names: Vec<&str> = detail.iter().map(Fragment::name).collect();
+    assert_eq!(names, ["d", "d"], "a repeated detail is two elements");
+    let values: Vec<&Scalar> = detail.iter().map(Fragment::value).collect();
+    assert_eq!(
+        values,
+        [&text("1"), &text("2")],
+        "a repeated name keeps document order"
+    );
+
+    let repeats = "detail element `d` repeats; one element per name";
+    assert_eq!(refusal(read.into_bytes()), ("soap", repeats.to_owned()));
+    let mut sink = Vec::new();
+    assert_eq!(
+        refusal(read.into_writer(&mut sink)),
+        ("soap", repeats.to_owned())
+    );
+    assert!(sink.is_empty(), "nothing is written before the refusal");
+    assert_eq!(
+        refusal(read.into_natural()),
+        ("value", "record contains a duplicate field name".to_owned())
+    );
+
+    let built = Envelope::from_fault(
         Fault::server("x")
             .with_detail(Fragment::new("d", text("1")))
             .with_detail(Fragment::new("d", text("2"))),
     );
-    let error = detail.into_natural().expect_err("a repeated detail name");
-    assert!(error.to_string().contains("duplicate"), "{error}");
+    assert_eq!(refusal(built.into_bytes()), ("soap", repeats.to_owned()));
+    assert_eq!(refusal(built.into_natural()).0, "value");
 }
 
 #[test]
@@ -1230,20 +1988,33 @@ fn an_envelope_round_trips_through_its_bytes() {
     assert_eq!(payload.name(), discover().name());
     assert_eq!(payload.value(), discover().value());
     assert_eq!(payload.element().namespace(), Some(XMLA));
+    assert_eq!(
+        read, message,
+        "the message read is the message written: the scope it was read under is no part of it"
+    );
 
     assert_eq!(
         read.into_natural().expect("a document"),
         message.into_natural().expect("a document")
     );
-    assert_eq!(
-        read.into_bytes().expect("a message"),
-        bytes,
-        "a read message writes the same bytes"
+    // A read block writes the declarations for the prefixes it spells that
+    // its value does not state - the envelope's own prefix is the envelope's
+    // to declare - and those bytes read back write themselves again.
+    let rewritten = read.into_bytes().expect("a message");
+    assert!(
+        utf8(&rewritten).contains(
+            "<t:Transaction SOAP-ENV:mustUnderstand=\"1\" xmlns:t=\"urn:example:transaction\">5</t:Transaction>"
+        ),
+        "{}",
+        utf8(&rewritten)
     );
     assert_eq!(
-        Envelope::from_bytes(&read.into_bytes().expect("a message")).expect("read again"),
-        read,
-        "a read message is a fixed point"
+        Envelope::from_bytes(&rewritten)
+            .expect("read again")
+            .into_bytes()
+            .expect("a message"),
+        rewritten,
+        "the bytes a read message writes are a fixed point"
     );
 
     for fault in [
@@ -1275,6 +2046,144 @@ fn an_envelope_round_trips_through_its_bytes() {
     assert_eq!(detail.name(), "e:Reason");
     assert_eq!(detail.value(), full_fault().detail()[0].value());
     assert_eq!(detail.element().namespace(), Some("urn:example:error"));
+}
+
+#[test]
+fn a_prefix_declared_twice_above_a_fragment_is_written_once() {
+    // Namespaces in XML 1.0 lets a declaration repeat on a descendant, and
+    // `Fragment::write` promises the fragment writes as namespace-well-formed
+    // XML: the binding both declarations make is declared once, not refused
+    // as a record naming one attribute twice.
+    for xml in [
+        format!(
+            "<s:Envelope xmlns:s=\"{ENVELOPE_NAMESPACE}\" xmlns:m=\"urn:m\"><s:Body xmlns:m=\"urn:m\">\
+             <m:A>1</m:A></s:Body></s:Envelope>"
+        ),
+        format!(
+            "<s:Envelope xmlns:s=\"{ENVELOPE_NAMESPACE}\"><s:Body xmlns:s=\"{ENVELOPE_NAMESPACE}\">\
+             <m:A xmlns:m=\"urn:m\">1</m:A></s:Body></s:Envelope>"
+        ),
+    ] {
+        let read = read(&xml);
+        let bytes = read
+            .into_bytes()
+            .unwrap_or_else(|error| panic!("{error}\n{xml}"));
+        let again = Envelope::from_bytes(&bytes).expect("read again");
+        let payload = again.payload().expect("a payload");
+        assert_eq!(payload.element().namespace(), Some("urn:m"), "{xml}");
+        assert_eq!(payload.element().text(), Some("1"), "{xml}");
+    }
+
+    let scope = Scope::new().with("m", "urn:m").with("m", "urn:m");
+    let value = text("1");
+    let fragment = Fragment::from_element(&Element::new("m:A", &value, &scope));
+    let mut written = Vec::new();
+    fragment
+        .write(&mut written)
+        .expect("one binding, declared once");
+    assert_eq!(utf8(&written), "<m:A xmlns:m=\"urn:m\">1</m:A>");
+}
+
+#[test]
+fn a_read_message_writes_back_the_declarations_its_fragments_resolve_by() {
+    // Namespaces in XML 1.0, section 5: a prefix is declared on the element
+    // using it or on an ancestor. A fragment read out of a message remembers
+    // the declarations above it and writes each one its value does not
+    // state; without them `m:GetPrice` would land in no namespace - another
+    // message - in a document that is not namespace-well-formed.
+    let xml = format!(
+        "<s:Envelope xmlns:s=\"{ENVELOPE_NAMESPACE}\" xmlns:m=\"urn:example:market\" xmlns:h=\"urn:example:session\">\
+         <s:Header><h:Session>abc</h:Session></s:Header>\
+         <s:Body><m:GetPrice><m:symbol>DIS</m:symbol></m:GetPrice></s:Body></s:Envelope>"
+    );
+    let read = read(&xml);
+    let bytes = read.into_bytes().expect("a message");
+    // Each fragment declares the prefixes it spells and no other: the
+    // envelope's own binding is the envelope's to declare, and `s` and `h`
+    // are nothing to `m:GetPrice`.
+    assert!(
+        utf8(&bytes).contains(
+            "<SOAP-ENV:Header><h:Session xmlns:h=\"urn:example:session\">abc</h:Session></SOAP-ENV:Header>\
+             <SOAP-ENV:Body><m:GetPrice xmlns:m=\"urn:example:market\"><m:symbol>DIS</m:symbol></m:GetPrice></SOAP-ENV:Body>"
+        ),
+        "the prefixes a fragment spells are declared on it: {}",
+        utf8(&bytes)
+    );
+    let again = Envelope::from_bytes(&bytes).expect("read again");
+    let payload = again.payload().expect("a payload");
+    let element = payload.element();
+    assert_eq!(
+        element.namespace(),
+        Some("urn:example:market"),
+        "the payload keeps its namespace: {}",
+        utf8(&bytes)
+    );
+    assert_eq!(
+        element
+            .child(Some("urn:example:market"), "symbol")
+            .and_then(|symbol| symbol.text().map(str::to_owned)),
+        Some("DIS".to_owned())
+    );
+    assert_eq!(
+        again.header()[0].element().namespace(),
+        Some("urn:example:session"),
+        "the header block keeps its namespace: {}",
+        utf8(&bytes)
+    );
+
+    let fault = "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>x</faultstring>\
+                 <detail xmlns:e=\"urn:example:error\"><e:Reason>expired</e:Reason></detail></soap:Fault>";
+    let read = self::read(&envelope("soap", "", fault));
+    let bytes = read.into_bytes().expect("a message");
+    let again = Envelope::from_bytes(&bytes).expect("read again");
+    assert_eq!(
+        again.fault().expect("a fault").detail()[0]
+            .element()
+            .namespace(),
+        Some("urn:example:error"),
+        "the detail keeps its namespace: {}",
+        utf8(&bytes)
+    );
+}
+
+#[test]
+fn a_read_messages_natural_value_keeps_the_declarations_its_bytes_keep() {
+    // `into_natural` is "the document the envelope is", and `into_writer`
+    // holds that the two writers agree on what a message is. The bytes
+    // declare on each fragment the bindings it was read under; a natural
+    // value that drops them reads back with `m:GetPrice` in no namespace -
+    // another message than the bytes read back as.
+    let xml = format!(
+        "<s:Envelope xmlns:s=\"{ENVELOPE_NAMESPACE}\" xmlns:m=\"urn:example:market\" xmlns:h=\"urn:example:session\">\
+         <s:Header><h:Session>abc</h:Session></s:Header>\
+         <s:Body><m:GetPrice><m:symbol>DIS</m:symbol></m:GetPrice></s:Body></s:Envelope>"
+    );
+    let read = read(&xml);
+    let from_bytes = Envelope::from_bytes(&read.into_bytes().expect("a message")).expect("bytes");
+    let from_natural =
+        Envelope::from_natural(&read.into_natural().expect("a document")).expect("a document");
+    assert_eq!(
+        from_bytes
+            .payload()
+            .expect("a payload")
+            .element()
+            .namespace(),
+        Some("urn:example:market")
+    );
+    assert_eq!(
+        from_natural
+            .payload()
+            .expect("a payload")
+            .element()
+            .namespace(),
+        Some("urn:example:market"),
+        "the payload's namespace survives the natural value"
+    );
+    assert_eq!(
+        from_natural.header()[0].element().namespace(),
+        Some("urn:example:session"),
+        "the header block's namespace survives the natural value"
+    );
 }
 
 #[test]
@@ -1560,73 +2469,4 @@ fn the_envelope_writer_refuses_a_header_block_xml_cannot_spell_and_a_failing_sin
         error.to_string().contains("expected an XML name"),
         "{error}"
     );
-}
-
-#[test]
-fn zz_probe() {
-    let e = ENVELOPE_NAMESPACE;
-    let cases: Vec<String> = vec![
-        // 0 read payload declared on envelope, re-write
-        format!("<s:Envelope xmlns:s=\"{e}\" xmlns:m=\"urn:m\"><s:Body><m:A><m:b>1</m:b></m:A></s:Body></s:Envelope>"),
-        // 1 unqualified Header
-        format!("<soap:Envelope xmlns:soap=\"{e}\"><Header><h:A xmlns:h=\"urn:h\">1</h:A></Header><soap:Body><m:A xmlns:m=\"urn:m\">x</m:A></soap:Body></soap:Envelope>"),
-        // 2 whitespace-only faultcode
-        envelope("soap", "", "<soap:Fault><faultcode>   </faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 3 whitespace-only faultstring
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>   </faultstring></soap:Fault>"),
-        // 4 empty faultactor both ways
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultactor></faultactor></soap:Fault>"),
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultactor/></soap:Fault>"),
-        // 6 xsi:nil faultcode
-        envelope("soap", "", "<soap:Fault xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><faultcode xsi:nil=\"true\"/><faultstring>x</faultstring></soap:Fault>"),
-        // 7 faultcode shadowing soap
-        envelope("soap", "", "<soap:Fault><faultcode xmlns:soap=\"urn:other\">soap:Client</faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 8 qualified faultcode children
-        envelope("soap", "", "<soap:Fault><soap:faultcode>soap:Server</soap:faultcode><soap:faultstring>q</soap:faultstring><soap:faultactor>a</soap:faultactor><soap:detail><d>1</d></soap:detail></soap:Fault>"),
-        // 9 empty subcode
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client.</faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 10 CRLF
-        format!("<?xml version=\"1.0\"?>\r\n<soap:Envelope xmlns:soap=\"{e}\">\r\n<soap:Body>\r\n<m:A xmlns:m=\"urn:m\">x\r\ny</m:A>\r\n</soap:Body>\r\n</soap:Envelope>\r\n"),
-        // 11 detail children repeated names
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><detail><d>1</d><d>2</d></detail></soap:Fault>"),
-        // 12 detail with declaration on detail
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><detail xmlns:e=\"urn:e\"><e:A>1</e:A></detail></soap:Fault>"),
-        // 13 Header with text only and Header self closed
-        envelope("soap", "just text", "<m:A xmlns:m=\"urn:m\"/>"),
-        format!("<soap:Envelope xmlns:soap=\"{e}\"><soap:Header/><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"),
-        // 15 BOM
-        format!("\u{feff}<soap:Envelope xmlns:soap=\"{e}\"><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"),
-        // 16 xsi:nil payload
-        format!("<soap:Envelope xmlns:soap=\"{e}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><soap:Body><m:A xmlns:m=\"urn:m\" xsi:nil=\"true\"/></soap:Body></soap:Envelope>"),
-        // 17 comment and PI in body
-        envelope("soap", "", "<!-- c --><?pi x?><m:A xmlns:m=\"urn:m\">1</m:A>"),
-        // 18 faultcode padded other
-        envelope("soap", "", "<soap:Fault xmlns:x=\"urn:x\"><faultcode>  x:T  </faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 19 escaped faultcode
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client.&#65;&amp;</faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 20 Fault element with attrs in envelope namespace with Envelope default namespace
-        format!("<Envelope xmlns=\"{e}\"><Body><Fault><faultcode>Server</faultcode><faultstring>x</faultstring></Fault></Body></Envelope>"),
-        // 21 faultcode with child element and no text
-        envelope("soap", "", "<soap:Fault><faultcode><x/></faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 22 faultcode with default ns
-        envelope("soap", "", "<soap:Fault><faultcode xmlns=\"urn:x\">soap:Client</faultcode><faultstring>x</faultstring></soap:Fault>"),
-        // 23 ":Client" empty prefix under default envelope namespace
-        format!("<Envelope xmlns=\"{e}\"><Body><Fault><faultcode>:Client</faultcode><faultstring>x</faultstring></Fault></Body></Envelope>"),
-        // 24 unqualified Envelope under default envelope namespace + faultcode with prefix undeclared
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client:Extra</faultcode><faultstring>x</faultstring></soap:Fault>"),
-    ];
-    for (i, xml) in cases.iter().enumerate() {
-        let r = Envelope::from_bytes(xml.as_bytes());
-        println!("{i}: {r:?}");
-        if let Ok(env) = &r {
-            let b = env.into_bytes();
-            println!("   bytes: {:?}", b.as_ref().map(|b| String::from_utf8_lossy(b).into_owned()));
-            if let Ok(b) = b {
-                let again = Envelope::from_bytes(&b);
-                println!("   again eq: {:?}", again.as_ref().map(|a| a == env));
-                if let Ok(a) = &again { if let Some(p) = a.payload() { println!("   ns: {:?}", p.element().namespace()); } }
-            }
-            println!("   natural: {:?}", env.into_natural().map(|_| ()));
-        }
-    }
 }

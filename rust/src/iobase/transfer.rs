@@ -1036,6 +1036,12 @@ pub(crate) fn stored_field(
     if matches!(options, RecordOptions::Text(_)) {
         return Ok(None);
     }
+    // A rowset document may state no schema at all (a `Content` of `Data`),
+    // which is a resource with no shape yet rather than one that cannot be
+    // read.
+    if matches!(options, RecordOptions::Xmla(_)) {
+        return crate::xmla::media::stated_field(handle);
+    }
     let mut probe = RecordOptions::for_mime_type(&options.mime_type())?;
     probe.set_name(smol_str::SmolStr::new(options.name()));
     Ok(Some(leaf_field(handle, &probe)?))

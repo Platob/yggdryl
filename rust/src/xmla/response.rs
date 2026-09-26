@@ -115,7 +115,10 @@ impl XmlaError {
     }
 
     /// Every `Error` element a fault's detail carries, directly or under a
-    /// `Messages` element, in document order.
+    /// `Messages` element, in the order the detail answers its elements: a
+    /// fault built here as given, a read one in name order - so its direct
+    /// `Error` elements come before those under `Messages`, each group in
+    /// document order.
     #[must_use]
     pub fn from_fault(fault: &Fault) -> Vec<Self> {
         let mut errors = Vec::new();
@@ -230,9 +233,11 @@ impl Response {
 
     /// Read a response out of a message.
     ///
-    /// `field` types the rows of a rowset written without its schema -
-    /// `Content` of `Data` - and is otherwise unused: a rowset that carries
-    /// its schema states its own columns.
+    /// `field` is what a rowset's rows come back as, whatever schema the
+    /// rowset carries - what a declared field means to every medium, and
+    /// what types a rowset written without its schema (`Content` of `Data`).
+    /// Without one, a rowset states its own columns and a schemaless one is
+    /// refused.
     ///
     /// # Errors
     ///
@@ -263,12 +268,19 @@ impl Response {
             )));
         };
         let returned = element.one_child_in(NAMESPACE, "return")?;
-        let root = returned.one_child_in(ROWSET_NAMESPACE, "root").or_else(|_| {
-            returned
-                .children()
-                .find(|child| child.local_name() == "root")
-                .ok_or_else(|| invalid("the response's `return` holds no `root`"))
-        })?;
+        // One `root`, whichever namespace names the result it holds: the
+        // rowset's, the empty one, the dataset's, or none at all.
+        let mut roots = returned
+            .children()
+            .filter(|child| child.local_name() == "root");
+        let root = roots
+            .next()
+            .ok_or_else(|| invalid("the response's `return` holds no `root`"))?;
+        if roots.next().is_some() {
+            return Err(invalid(
+                "the response's `return` holds several `root` elements; a response carries one result",
+            ));
+        }
         let answer = match root.namespace() {
             Some(ROWSET_NAMESPACE) | None => {
                 let (rowset, rows) = Rowset::read_root(&root, field)?;
@@ -276,7 +288,7 @@ impl Response {
             }
             Some(EMPTY_NAMESPACE) => Answer::Empty,
             Some(MDDATASET_NAMESPACE) => {
-                Answer::Dataset(Fragment::new(root.name(), root.value().clone()))
+                Answer::Dataset(Fragment::from_element(&root))
             }
             Some(other) => {
                 return Err(invalid(format_smolstr!(

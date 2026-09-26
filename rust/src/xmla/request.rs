@@ -21,9 +21,11 @@
 //! # Ok::<(), yggdryl::Error>(())
 //! ```
 
+use std::io::Write;
+
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::soap::{Body, Envelope, Fragment};
+use crate::soap::{Body, Envelope, EnvelopeWriter, Fragment};
 use crate::xml::{ATTRIBUTE_PREFIX, Element};
 use crate::{Error, Result, Scalar};
 
@@ -249,10 +251,7 @@ impl Execute {
             (Some(child), None) if child.is_in(NAMESPACE, "Statement") => {
                 Command::Statement(child.text().unwrap_or_default().to_owned())
             }
-            (Some(child), None) => Command::Other(Fragment::new(
-                child.name(),
-                child.value().clone(),
-            )),
+            (Some(child), None) => Command::Other(Fragment::from_element(&child)),
             (None, _) => {
                 return Err(invalid("the Execute command holds no element"));
             }
@@ -581,7 +580,10 @@ impl Request {
         Self::from_envelope(&Envelope::from_bytes(input)?)
     }
 
-    /// The message this request is sent as.
+    /// The message this request is sent as, as a natural value: a record,
+    /// which sorts the payload's children by name. The bytes a client sends
+    /// come from [`Self::into_bytes`], which writes them in the order the
+    /// XMLA schema declares.
     ///
     /// # Errors
     ///
@@ -606,10 +608,94 @@ impl Request {
     ///
     /// # Errors
     ///
-    /// Returns [`Self::into_envelope`]'s refusal or the writer's.
+    /// Returns [`Self::into_writer`]'s refusal.
     pub fn into_bytes(&self) -> Result<Vec<u8>> {
-        self.into_envelope()?.into_bytes()
+        self.into_writer(Vec::new())
     }
+
+    /// Write the message this request is sent as, declaration first, the
+    /// payload's children in the order the XMLA schema declares them -
+    /// `RequestType`, `Restrictions`, `Properties` for a Discover; `Command`,
+    /// `Properties`, `Parameters` for an Execute - which a natural value,
+    /// being a record sorted by name, cannot keep.
+    ///
+    /// # Errors
+    ///
+    /// Returns the XML writer's refusal for a name or a value with no XML
+    /// spelling, or the sink's failure.
+    pub fn into_writer<W: Write>(&self, writer: W) -> Result<W> {
+        let mut envelope = EnvelopeWriter::begin(writer, &self.header)?;
+        let body = envelope.body();
+        match &self.method {
+            RequestMethod::Discover(discover) => {
+                write!(
+                    body,
+                    "<{} xmlns=\"{NAMESPACE}\"><RequestType>",
+                    Method::Discover.as_str()
+                )?;
+                crate::xml::write_element_text(body, discover.request_type.as_str())?;
+                write!(body, "</RequestType><Restrictions>")?;
+                if discover.restrictions.is_empty() {
+                    write!(body, "<RestrictionList/>")?;
+                } else {
+                    write!(body, "<RestrictionList>")?;
+                    for (name, values) in discover.restrictions.entries() {
+                        for value in values {
+                            crate::xml::write_fragment(body, name, &Scalar::from(value.as_str()))?;
+                        }
+                    }
+                    write!(body, "</RestrictionList>")?;
+                }
+                write!(body, "</Restrictions>")?;
+                write_properties(body, &discover.properties)?;
+                write!(body, "</{}>", Method::Discover.as_str())?;
+            }
+            RequestMethod::Execute(execute) => {
+                write!(
+                    body,
+                    "<{} xmlns=\"{NAMESPACE}\"><Command>",
+                    Method::Execute.as_str()
+                )?;
+                match &execute.command {
+                    Command::Statement(text) => {
+                        write!(body, "<Statement>")?;
+                        crate::xml::write_element_text(body, text)?;
+                        write!(body, "</Statement>")?;
+                    }
+                    Command::Other(fragment) => fragment.write(body)?,
+                }
+                write!(body, "</Command>")?;
+                write_properties(body, &execute.properties)?;
+                if !execute.parameters.is_empty() {
+                    write!(body, "<Parameters>")?;
+                    for (name, value) in &execute.parameters {
+                        write!(body, "<Parameter><Name>")?;
+                        crate::xml::write_element_text(body, name)?;
+                        write!(body, "</Name>")?;
+                        crate::xml::write_fragment(body, "Value", value)?;
+                        write!(body, "</Parameter>")?;
+                    }
+                    write!(body, "</Parameters>")?;
+                }
+                write!(body, "</{}>", Method::Execute.as_str())?;
+            }
+        }
+        envelope.finish()
+    }
+}
+
+/// Write `<Properties><PropertyList>` with one element per property.
+fn write_properties<W: Write>(writer: &mut W, properties: &PropertyList) -> Result<()> {
+    if properties.is_empty() {
+        write!(writer, "<Properties><PropertyList/></Properties>")?;
+        return Ok(());
+    }
+    write!(writer, "<Properties><PropertyList>")?;
+    for (name, value) in properties.entries() {
+        crate::xml::write_fragment(writer, name, &Scalar::from(value.as_str()))?;
+    }
+    write!(writer, "</PropertyList></Properties>")?;
+    Ok(())
 }
 
 impl From<Discover> for Request {

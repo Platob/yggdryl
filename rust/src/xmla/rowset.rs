@@ -37,6 +37,7 @@
 //! spelling the XML codec gives it, and the schema names the XML Schema type
 //! the column reads back as: [`XsdType`] is that mapping, both ways.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::io::Write;
 use std::sync::Arc;
@@ -317,16 +318,25 @@ pub fn encode_name(name: &str) -> SmolStr {
         first = false;
     }
     if encoded.is_empty() {
-        // An empty name has no element; the escape of nothing at all.
-        encoded.push_str("_x0000_");
+        // An empty name has no element; the escape of nothing at all, which
+        // `decode_name` reads back as the empty name. A name carrying U+0000
+        // itself would spell the same, and is refused where a rowset is built:
+        // no XML document holds that character, escaped or not.
+        encoded.push_str(EMPTY_NAME);
     }
     SmolStr::new(encoded)
 }
+
+/// The element name of the empty column name: the escape of nothing at all.
+const EMPTY_NAME: &str = "_x0000_";
 
 /// Read a column name back out of its element name: every `_xHHHH_` is the
 /// character it spells, a surrogate pair joined, and anything else stands.
 #[must_use]
 pub fn decode_name(encoded: &str) -> SmolStr {
+    if encoded == EMPTY_NAME {
+        return SmolStr::new_static("");
+    }
     let mut decoded = String::with_capacity(encoded.len());
     let mut pending: Option<u16> = None;
     let mut rest = encoded;
@@ -591,7 +601,12 @@ impl Rowset {
                 .zip(children)
                 .zip(self.field.fields())
             {
-                write_cell(writer, column, child, field, row)?;
+                write_cell(writer, column, child, field, row).map_err(|error| {
+                    Error::InvalidRecord {
+                        path: format_smolstr!("$[{row}].{}", field.name()),
+                        reason: format_smolstr!("{error}"),
+                    }
+                })?;
             }
             write!(writer, "</{ROW_ELEMENT}>")?;
         }
@@ -656,38 +671,25 @@ impl Rowset {
             .chain(root.children_in(None, ROW_ELEMENT))
             .enumerate()
         {
-            let entries: Vec<(SmolStr, Scalar)> = match row.value().as_struct() {
-                Some(entries) => entries
-                    .iter()
-                    .filter(|(key, _)| !key.starts_with('@') && !key.starts_with('#'))
-                    .map(|(key, value)| {
-                        let local = key.rsplit(':').next().unwrap_or(key);
-                        let name = names
-                            .get(local)
-                            .map_or_else(|| decode_name(local), |name| SmolStr::new(*name));
-                        (name, value.clone())
-                    })
-                    .collect(),
-                // `<row/>` and `<row></row>`: every column absent.
-                None => Vec::new(),
+            let located = |error: Error| Error::InvalidRecord {
+                path: format_smolstr!("$[{index}]"),
+                reason: format_smolstr!("{error}"),
             };
-            let record = Scalar::from_struct(entries)?;
+            let record = read_value(&row, &self.field, Some(&names)).map_err(located)?;
             let shaped = crate::xml::shaped(record, &self.field);
-            let canonical = self.field.from_natural_value(shaped).map_err(|error| {
-                Error::InvalidRecord {
-                    path: format_smolstr!("$[{index}]"),
-                    reason: format_smolstr!("{error}"),
-                }
-            })?;
+            let canonical = self.field.from_natural_value(shaped).map_err(located)?;
             rows.push(canonical);
         }
         let borrowed: Vec<&Scalar> = rows.iter().collect();
         crate::serie::from_canonical_rows(Arc::clone(&self.field), &borrowed)
     }
 
-    /// Read a whole `root` element: the columns from its schema - or from
-    /// `field` when one is declared, which is what types a document a
-    /// foreign provider wrote - and the rows under them.
+    /// Read a whole `root` element: its rows under the columns `field`
+    /// declares - what a declared field means to every medium, and what
+    /// types a document a foreign provider wrote without a schema - or,
+    /// with no field declared, under the columns the root's own `xsd:schema`
+    /// states, each `xsd:dateTime` column an instant where its rows spell a
+    /// zone.
     ///
     /// A root with no schema and no declared field is refused: its rows
     /// state no columns to read them as.
@@ -696,17 +698,70 @@ impl Rowset {
     ///
     /// Returns the schema's or the rows' refusal.
     pub fn read_root(root: &Element<'_>, field: Option<&Field>) -> Result<(Self, Serie)> {
-        let rowset = match (field, root.child(Some(XSD_NAMESPACE), "schema")) {
-            (Some(field), _) => Self::new(field.clone())?,
-            (None, Some(schema)) => Self::from_schema(&schema)?.zoned_where_the_rows_are(root)?,
-            (None, None) => {
-                return Err(invalid(
-                    "the rowset carries no schema and no field is declared to read its rows by",
-                ));
+        match (field, root.child(Some(XSD_NAMESPACE), "schema")) {
+            (Some(field), Some(schema)) => {
+                // The document's own schema says which element holds which
+                // column - `sql:field`, another writer's element names - and
+                // the declared field says what each is read as, so a cell
+                // parses straight into the type asked for and the cast onto
+                // the field reorders, drops and completes, converting nothing.
+                let stated = Self::from_schema(&schema)?
+                    .zoned_where_the_rows_are(root)?
+                    .typed_as(field)?;
+                let rows = stated.read_rows(root)?;
+                let rows = rows.cast(field, crate::ArrowCastOptions::default())?;
+                Ok((Self::new(field.clone())?, rows))
             }
-        };
-        let rows = rowset.read_rows(root)?;
-        Ok((rowset, rows))
+            (Some(field), None) => {
+                let declared = Self::new(field.clone())?;
+                let rows = declared.read_rows(root)?;
+                Ok((declared, rows))
+            }
+            (None, Some(schema)) => {
+                let stated = Self::from_schema(&schema)?.zoned_where_the_rows_are(root)?;
+                let rows = stated.read_rows(root)?;
+                Ok((stated, rows))
+            }
+            (None, None) => Err(invalid(
+                "the rowset carries no schema and no field is declared to read its rows by",
+            )),
+        }
+    }
+
+    /// The field a `root` element's own `xsd:schema` states, `None` where it
+    /// carries none.
+    ///
+    /// # Errors
+    ///
+    /// Returns the schema's refusal.
+    pub fn stated_field(root: &Element<'_>) -> Result<Option<Field>> {
+        root.child(Some(XSD_NAMESPACE), "schema")
+            .map(|schema| Ok(Self::from_schema(&schema)?.field().clone()))
+            .transpose()
+    }
+
+    /// This rowset with every column a declared field also names read as
+    /// that field's datatype - what the caller asked for, which a text cell
+    /// parses into directly - and every other column kept as stated, so the
+    /// cast onto the declared field converts nothing.
+    fn typed_as(mut self, declared: &Field) -> Result<Self> {
+        let fields = typed_fields(self.field.fields(), declared.fields());
+        let field = Field::new(
+            self.field.name(),
+            DataType::from(StructType::from_fields(fields)?),
+            false,
+        );
+        self.columns = self
+            .columns
+            .iter()
+            .zip(field.fields())
+            .map(|(column, field)| Column {
+                element: column.element.clone(),
+                shape: shape_of(field.dtype()),
+            })
+            .collect();
+        self.field = Arc::new(field);
+        Ok(self)
     }
 
     /// This rowset with each `xsd:dateTime` column read as an instant where
@@ -748,7 +803,10 @@ impl Rowset {
                 let text = row.children().find(|child| child.local_name() == element).and_then(|child| child.text().map(str::to_owned));
                 if let Some(text) = text {
                     let text = text.trim();
-                    zoned[slot] = Some(spells_a_zone(text));
+                    // An empty cell is no value, and decides nothing.
+                    if !text.is_empty() {
+                        zoned[slot] = Some(spells_a_zone(text));
+                    }
                 }
             }
             if zoned.iter().all(Option::is_some) {
@@ -792,8 +850,10 @@ impl Rowset {
 }
 
 /// Whether an `xsd:dateTime` text ends in a zone designator: `Z`, or an
-/// offset `+hh:mm` / `-hh:mm` after the time of day.
+/// offset `+hh:mm` / `-hh:mm` after the time of day, a bracketed zone name
+/// after either (`+01:00[Europe/Paris]`) read past.
 fn spells_a_zone(text: &str) -> bool {
+    let text = text.split('[').next().unwrap_or(text).trim_end();
     if text.ends_with(['Z', 'z']) {
         return true;
     }
@@ -810,7 +870,47 @@ fn spells_a_zone(text: &str) -> bool {
 }
 
 /// Refuse a column a rowset cannot spell.
+/// Whether a datatype is one of the five sequence layouts.
+const fn is_sequence(dtype: &DataType) -> bool {
+    matches!(
+        dtype,
+        DataType::Serie(_)
+            | DataType::SerieView(_)
+            | DataType::FixedSizeSerie(_, _)
+            | DataType::LargeSerie(_)
+            | DataType::LargeSerieView(_)
+    )
+}
+
+/// `stated` with each column `declared` also names carrying the declared
+/// datatype, a struct column's children the same way, and its stated
+/// nullability kept: whether a cell may be absent is the document's fact,
+/// what it holds is the caller's.
+fn typed_fields(stated: &[Field], declared: &[Field]) -> Vec<Field> {
+    stated
+        .iter()
+        .map(|column| {
+            let Some(wanted) = declared.iter().find(|held| held.name() == column.name()) else {
+                return column.clone();
+            };
+            let dtype = match (column.dtype(), wanted.dtype()) {
+                (DataType::Struct(inner), DataType::Struct(want)) => {
+                    StructType::from_fields(typed_fields(inner, want))
+                        .map_or_else(|_| wanted.dtype().clone(), DataType::from)
+                }
+                _ => wanted.dtype().clone(),
+            };
+            Field::new(column.name(), dtype, column.is_nullable())
+        })
+        .collect()
+}
+
 fn check_column(field: &Field, path: &str) -> Result<()> {
+    if field.name().contains('\0') {
+        return Err(invalid(format_smolstr!(
+            "column `{path}` carries U+0000 in its name, which no XML name spells"
+        )));
+    }
     match field.dtype() {
         DataType::Map(_) | DataType::SortedMap(_) => Err(invalid(format_smolstr!(
             "column `{path}` is a map, which a rowset has no element to spell"
@@ -900,37 +1000,179 @@ fn write_cell<W: Write>(
             write!(writer, "</{element}>")?;
             Ok(())
         }
-        Shape::Nested => {
+        Shape::Nested | Shape::Text | Shape::Bytes | Shape::Leaf => {
             let Some(value) = child.get(row) else {
                 return Ok(());
             };
-            if value.is_null() {
-                return Ok(());
-            }
-            let natural = field.into_natural_value(value.into_owned())?;
-            let natural = crate::xml::natural(natural, field);
-            match natural.sequence_rows() {
-                Some(items) => {
-                    for item in items.iter() {
-                        crate::xml::write_fragment(writer, element, item)?;
-                    }
-                    Ok(())
-                }
-                None => crate::xml::write_fragment(writer, element, &natural),
-            }
+            write_nested(writer, element, &value, field)
         }
-        Shape::Text | Shape::Bytes | Shape::Leaf => {
-            let Some(value) = child.get(row) else {
-                return Ok(());
-            };
-            if value.is_null() {
-                return Ok(());
-            }
+    }
+}
+
+/// Write one canonical value under `element`: nothing for null, a struct as
+/// its children in the order its field declares them - each under the escape
+/// of its name, the element the schema declares - a sequence as one element
+/// per item, and a leaf as its XML Schema text.
+fn write_nested<W: Write>(
+    writer: &mut W,
+    element: &str,
+    value: &Scalar,
+    field: &Field,
+) -> Result<()> {
+    if value.is_null() {
+        return Ok(());
+    }
+    match field.dtype() {
+        DataType::Struct(fields) => {
             write!(writer, "<{element}>")?;
-            crate::xml::write_leaf_text(writer, &value, field.name())?;
+            for (index, child) in fields.iter().enumerate() {
+                // A canonical row is an ordered run; a named record is read by
+                // name, so a value built either way writes.
+                let held = match value.as_struct() {
+                    Some(entries) => entries.get(child.name()).map(Cow::Borrowed),
+                    None => value.sequence_rows().and_then(|items| items.get(index).cloned().map(Cow::Owned)),
+                };
+                if let Some(held) = held {
+                    write_nested(writer, &encode_name(child.name()), &held, child)?;
+                }
+            }
             write!(writer, "</{element}>")?;
             Ok(())
         }
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => match value.sequence_rows() {
+            // A null item keeps its place as `<item/>`, which reads back as
+            // null; a null column is absent altogether.
+            Some(items) => items.iter().try_for_each(|held| {
+                if held.is_null() {
+                    write!(writer, "<{element}/>")?;
+                    Ok(())
+                } else {
+                    write_nested(writer, element, held, item)
+                }
+            }),
+            None => write_nested(writer, element, value, item),
+        },
+        _ => {
+            write!(writer, "<{element}>")?;
+            write_leaf(writer, value, field)?;
+            write!(writer, "</{element}>")?;
+            Ok(())
+        }
+    }
+}
+
+/// Write a leaf's XML Schema text: an instant as `xsd:dateTime` spells one -
+/// the offset alone, never the bracketed zone name the crate's own form adds -
+/// and every other leaf as the XML codec spells it.
+fn write_leaf<W: Write>(writer: &mut W, value: &Scalar, field: &Field) -> Result<()> {
+    if let Scalar::DateTime64(instant) = value {
+        if !instant.timezone().is_naive() {
+            let text = crate::temporal::format_timestamp(
+                instant.count(),
+                instant.unit(),
+                &instant.timezone(),
+            )
+            .ok_or_else(|| {
+                invalid(format_smolstr!(
+                    "column `{}` holds the datetime count {}, which has no ISO 8601 spelling",
+                    field.name(),
+                    instant.count()
+                ))
+            })?;
+            let offset_only = text.split('[').next().unwrap_or(&text);
+            crate::xml::write_element_text(writer, offset_only)?;
+            return Ok(());
+        }
+    }
+    crate::xml::write_leaf_text(writer, value, field.name())
+}
+
+/// Read one element as the value of `field`: null where it is marked `nil` in
+/// the XML Schema instance namespace under whatever prefix the document
+/// bound, a struct as its children by the names their elements decode to -
+/// the top-level names through the schema's own `sql:field` map - a sequence
+/// as one item per element, aggregated by the parent, and a leaf as its
+/// text, a byte column's with the whitespace XML Schema collapses taken out.
+/// A required child missing from a struct is refused by name.
+fn read_value(
+    element: &Element<'_>,
+    field: &Field,
+    names: Option<&std::collections::HashMap<&str, &str>>,
+) -> Result<Scalar> {
+    // A nil leaf is absent; a nil struct that may be absent is absent, and one
+    // that may not - the row itself, `<row/>` - is a struct of absent cells,
+    // each judged by its own column; a nil sequence element is one null item,
+    // since an absent sequence column is spelled by no element at all.
+    if element.is_nil()
+        && !is_sequence(field.dtype())
+        && (field.is_nullable() || !matches!(field.dtype(), DataType::Struct(_)))
+    {
+        return Ok(Scalar::Null);
+    }
+    match field.dtype() {
+        DataType::Struct(fields) => {
+            let mut entries: Vec<(SmolStr, Scalar)> = Vec::new();
+            // A sequence column's elements, one item each, in document order:
+            // gathered apart so one item, or one null item (`<sizes/>`), is
+            // the one-item sequence it is and never a lone value.
+            let mut sequences: Vec<(SmolStr, Vec<Scalar>)> = Vec::new();
+            for child in element.children() {
+                let local = child.local_name();
+                let name = names
+                    .and_then(|names| names.get(local))
+                    .map_or_else(|| decode_name(local), |name| SmolStr::new(*name));
+                let Some(child_field) = fields.iter().find(|held| held.name() == name) else {
+                    // Unknown to the schema: kept as spelled, for the field's
+                    // own value contract to refuse by name.
+                    entries.push((name, child.value().clone()));
+                    continue;
+                };
+                let value = read_value(&child, child_field, None)?;
+                if is_sequence(child_field.dtype()) {
+                    match sequences.iter_mut().find(|(held, _)| *held == name) {
+                        Some((_, items)) => items.push(value),
+                        None => sequences.push((name, vec![value])),
+                    }
+                } else {
+                    entries.push((name, value));
+                }
+            }
+            entries.extend(
+                sequences
+                    .into_iter()
+                    .map(|(name, items)| (name, Scalar::from_sequence(items))),
+            );
+            for child in fields.iter() {
+                // A sequence occurring no time is the empty sequence.
+                if !child.is_nullable()
+                    && !is_sequence(child.dtype())
+                    && child.dtype() != &DataType::Null
+                    && !entries.iter().any(|(held, _)| *held == child.name())
+                {
+                    return Err(invalid(format_smolstr!(
+                        "`{}` is missing from the row, and the rowset declares it required",
+                        child.name()
+                    )));
+                }
+            }
+            Scalar::from_struct(entries)
+        }
+        DataType::Serie(item)
+        | DataType::SerieView(item)
+        | DataType::FixedSizeSerie(item, _)
+        | DataType::LargeSerie(item)
+        | DataType::LargeSerieView(item) => read_value(element, item, None),
+        dtype => match element.text() {
+            Some(text) if dtype.bytes_parameters().is_some() => {
+                Ok(Scalar::from(text.split_whitespace().collect::<String>()))
+            }
+            Some(text) => Ok(Scalar::from(text)),
+            None => Ok(element.value().clone()),
+        },
     }
 }
 

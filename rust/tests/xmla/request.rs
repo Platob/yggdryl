@@ -1297,10 +1297,17 @@ fn a_discover_is_written_as_the_xmla_discover_element_in_its_namespace() {
     let payload = envelope.payload().expect("a payload");
     assert_eq!(payload.name(), Method::Discover.as_str());
     assert_eq!(payload.element().namespace(), Some(NAMESPACE));
+    // The natural envelope is a record, sorted by name; the bytes keep the
+    // order the XMLA schema declares, and read back as the same request.
+    let position = |needle: &str| text.find(needle).unwrap_or_else(|| panic!("{needle} in {text}"));
+    assert!(
+        position("<RequestType>") < position("<Restrictions>")
+            && position("<Restrictions>") < position("<Properties>"),
+        "{text}"
+    );
     assert_eq!(
-        envelope.into_bytes().expect("written"),
-        request.into_bytes().expect("written"),
-        "the bytes are the envelope's"
+        Request::from_bytes(&request.into_bytes().expect("written")).expect("read back"),
+        request
     );
 
     let text = written(&Request::from(Discover::new(

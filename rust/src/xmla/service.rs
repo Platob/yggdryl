@@ -564,7 +564,18 @@ impl Service {
             .as_str()
             .parse::<crate::Expression>()
             .and_then(crate::expression::IntoPlan::into_plan)
-            .map_err(|error| client_fault_or_server(code::BAD_STATEMENT, error))?;
+            .map_err(|error| {
+                if looks_like_mdx(statement.as_str()) {
+                    return client_fault(
+                        code::BAD_STATEMENT,
+                        format!(
+                            "the statement is MDX, which this tabular provider does not speak; \
+                             a statement is the expression grammar's, `select ... from ...`: {error}"
+                        ),
+                    );
+                }
+                client_fault_or_server(code::BAD_STATEMENT, error)
+            })?;
         if !self.options.writable && (plan.write_section().is_some() || plan.create_target().is_some()) {
             return Err(client_fault(
                 code::READ_ONLY,
@@ -792,6 +803,20 @@ fn enumerator_rows() -> Result<Vec<Scalar>> {
         StateSupport::ALL.iter().map(|member| (member.as_str(), member.description())).collect(),
     )?;
     Ok(rows)
+}
+
+/// Whether a statement the grammar refused reads as MDX: bracketed members
+/// (`[Measures].[Sales]`), an axis clause, a `WITH MEMBER` or `WITH SET`
+/// opening - the spellings no expression of the grammar carries, so the
+/// refusal can say which language the client spoke.
+fn looks_like_mdx(statement: &str) -> bool {
+    let folded = statement.to_ascii_uppercase();
+    folded.contains("].[")
+        || folded.contains(" ON COLUMNS")
+        || folded.contains(" ON ROWS")
+        || folded.contains(" ON AXIS(")
+        || folded.trim_start().starts_with("WITH MEMBER")
+        || folded.trim_start().starts_with("WITH SET")
 }
 
 /// `DISCOVER_LITERALS`: how the statement grammar spells its identifiers, as

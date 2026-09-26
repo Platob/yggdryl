@@ -405,9 +405,10 @@ fn from_fault_reads_the_errors_under_a_messages_element() {
 }
 
 #[test]
-fn a_detail_mixing_messages_and_a_direct_error_reads_in_document_order() {
-    // `from_fault` promises document order; the `Messages` element comes
-    // first in the document, so its error is the first one read.
+fn a_detail_mixing_messages_and_a_direct_error_reads_in_name_order() {
+    // A read fault's detail comes in name order, the one order a parsed
+    // document keeps, so the direct `Error` precedes the one under `Messages`
+    // whatever the wire held.
     let xml = envelope(
         "",
         &fault_body(&format!(
@@ -421,7 +422,7 @@ fn a_detail_mixing_messages_and_a_direct_error_reads_in_document_order() {
         .iter()
         .map(XmlaError::code)
         .collect();
-    assert_eq!(codes, [1, 2]);
+    assert_eq!(codes, [2, 1]);
 }
 
 #[test]
@@ -834,10 +835,11 @@ fn a_root_with_rows_and_no_schema_reads_under_the_declared_field() {
 }
 
 #[test]
-fn a_declared_field_is_unused_when_the_rowset_carries_its_schema() {
-    // `from_envelope`: `field` types the rows of a rowset written without its
-    // schema "and is otherwise unused: a rowset that carries its schema
-    // states its own columns".
+fn a_declared_field_casts_a_rowset_that_carries_its_own_schema() {
+    // `from_envelope`: `field` is what the rows come back as - a rowset
+    // carrying its schema is read under its own columns (`Order Id` is an
+    // `xsd:int` here) and cast onto the declared field, as every medium casts
+    // onto a declared field.
     let declared = StructType::from_fields([
         DataType::Int64.required_field("Order Id"),
         DataType::utf8().nullable_field("Symbol"),
@@ -846,8 +848,18 @@ fn a_declared_field_is_unused_when_the_rowset_carries_its_schema() {
     .expect("a valid root")
     .required_field("declared");
     let response = read(DISCOVER_RESPONSE, Some(&declared));
-    assert_eq!(response.rowset().map(Rowset::field), Some(&orders_field()));
-    assert_eq!(response.rows(), Some(&two_orders()));
+    assert_eq!(response.rowset().map(Rowset::field), Some(&declared));
+    let rows = response.rows().expect("a rowset");
+    assert_eq!(rows.field().map(Field::name), Some("declared"));
+    let ids = rows.child("Order Id").expect("the cast column");
+    assert_eq!(ids.field().map(Field::dtype), Some(&DataType::Int64));
+    assert_eq!(ids.scalar(0).expect("the first row"), Scalar::from(7_i64));
+    assert_eq!(ids.scalar(1).expect("the second row"), Scalar::from(8_i64));
+    assert_eq!(
+        rows.child("Symbol").and_then(|symbols| symbols.scalar(1).ok()),
+        Some(Scalar::Null),
+        "the null cell survives the cast"
+    );
 }
 
 #[test]

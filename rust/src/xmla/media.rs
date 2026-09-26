@@ -64,6 +64,47 @@ fn read_document<H: IOBase + ?Sized>(
     )))
 }
 
+/// The field the document `handle` holds states for itself, `None` where it
+/// states none: an empty handle, a rowset written with a `Content` of `Data`
+/// or `None`, a fault. This is what a write asks before it completes its
+/// rows onto what is stored, so a document that carries no schema is one
+/// that has no shape yet, never a refusal.
+///
+/// # Errors
+///
+/// Returns a read, decoding, or schema failure.
+pub(crate) fn stated_field<H: IOBase + ?Sized>(handle: &H) -> Result<Option<Field>> {
+    let encoded = handle.read_all_bytes()?;
+    if encoded.is_empty() {
+        return Ok(None);
+    }
+    let bytes = handle.codec().load(&encoded)?;
+    let charset = Charset::from_media_type(handle.media_type());
+    let text = charset.decode(&bytes)?;
+    let document = crate::xml::from_utf8(&text)?;
+    let root = Element::root(&document)?;
+    let envelope;
+    let root = if root.is(Some(ENVELOPE_NAMESPACE), "Envelope") {
+        envelope = crate::soap::Envelope::from_natural(&document)?;
+        let Some(payload) = envelope.payload() else {
+            return Ok(None);
+        };
+        let element = payload.element();
+        let Ok(returned) = element.one_child_in(super::NAMESPACE, "return") else {
+            return Ok(None);
+        };
+        returned
+            .children()
+            .find(|child| child.local_name() == "root")
+            .map(|root| Rowset::stated_field(&root))
+            .transpose()?
+            .flatten()
+    } else {
+        Rowset::stated_field(&root)?
+    };
+    Ok(root)
+}
+
 /// Read the schema of the document `handle` holds.
 ///
 /// # Errors
