@@ -30,7 +30,7 @@ store, must enable that feature; the bindings already carry all of them.
 | `DataType` | a shape: no name, no nullability, no metadata | a schema |
 | `Field` | a `DataType` + name + nullability + `<SCHEME>:<property>` metadata | stored beside a separate datatype |
 | schema | a **non-null Struct `Field`**; its children are the columns | a class of its own - there is no `Schema` type |
-| `Scalar` | one value; a row is an ordered `Scalar` sequence, named input (`dict`, object) is sorted and canonicalized against the Struct field | a map you index by position |
+| `Scalar` | one value; a row is an ordered `Scalar` sequence, one value per child field; named input (`Scalar.from_struct({...})` in Python, a plain object in JavaScript) is sorted and canonicalized against the Struct field | a Python `dict` at the value door - that is a `map` value |
 | `Serie` | a column: the Arrow buffers of one `Field`, or a schema-free run | a list of scalars |
 | `ChunkedSerie` | columns of one field kept apart: a chunked array, or a table of one batch per chunk | joined behind your back |
 | `SerieReader` | a stream: one record `Serie` per batch, under one cast plan | a `Scalar` |
@@ -129,7 +129,10 @@ Python, `readArrowReader({ rowheader })` in JavaScript.
   APIs: they do not exist without their feature.
 - Python: a `str` given to a structured-text loader is document content, not
   a path - pass `pathlib.Path`. Passing `None` to an optional argument clears
-  it; leave the argument out to keep the default.
+  it; leave the argument out to keep the default. A `dict` is a `map` value, so
+  `struct_field.scalar({...})` is refused: pass a list in field order, a
+  `@scalar` instance, or `Scalar.from_struct({...})`. Record writers
+  (`overwrite_records`) do take `dict` rows.
 - JavaScript: 64-bit integer columns come back as `bigint` once they pass
   `Number.MAX_SAFE_INTEGER`; write `1n`, not `1`, into `int64` columns when
   building Arrow JS vectors. Arrow JS interop copies through IPC - cross the
