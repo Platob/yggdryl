@@ -1,4 +1,4 @@
-//! `rust/src/xml/soap/mod.rs`: the SOAP 1.1 envelope - its constants, the
+//! `rust/src/soap/mod.rs`: the SOAP 1.1 envelope - its constants, the
 //! fragments a header block and a body element are, the fault that stands in
 //! for a body, the envelope's reading from bytes and its natural value, and
 //! the whole and streaming writers.
@@ -8,7 +8,7 @@
 
 use std::io::Write;
 
-use yggdryl::xml::soap::{
+use yggdryl::soap::{
     ACTION_HEADER, Body, CONTENT_TYPE, ENCODING_NAMESPACE, ENVELOPE_NAMESPACE, Envelope,
     EnvelopeWriter, Fault, FaultCode, Fragment, PREFIX,
 };
@@ -695,7 +695,9 @@ fn a_faultstring_is_kept_exactly_as_the_document_spells_it() {
 }
 
 #[test]
-fn header_blocks_keep_document_order_through_a_read_and_a_write() {
+fn header_blocks_are_written_as_given_and_read_in_name_order() {
+    // A parsed document is a record sorted by name, the one order it keeps,
+    // so a read message's blocks come in name order whatever the wire held.
     let xml = envelope(
         "soap",
         "<t:Transaction xmlns:t=\"urn:t\">5</t:Transaction><a:Auth xmlns:a=\"urn:a\">token</a:Auth>",
@@ -705,8 +707,8 @@ fn header_blocks_keep_document_order_through_a_read_and_a_write() {
     let names: Vec<&str> = read.header().iter().map(Fragment::name).collect();
     assert_eq!(
         names,
-        ["t:Transaction", "a:Auth"],
-        "`Envelope::header` answers the header blocks in document order"
+        ["a:Auth", "t:Transaction"],
+        "`Envelope::header` answers a read message's blocks in name order"
     );
 
     let built = Envelope::from_payload(Fragment::new("m:Get", Scalar::Null))
@@ -721,7 +723,7 @@ fn header_blocks_keep_document_order_through_a_read_and_a_write() {
 }
 
 #[test]
-fn detail_elements_keep_document_order_through_a_read_and_a_write() {
+fn detail_elements_are_written_as_given_and_read_in_name_order() {
     let fault = "<soap:Fault><faultcode>soap:Server</faultcode><faultstring>x</faultstring>\
                  <detail><z:Cause xmlns:z=\"urn:z\">disk</z:Cause><a:Hint xmlns:a=\"urn:a\">retry</a:Hint></detail>\
                  </soap:Fault>";
@@ -735,8 +737,8 @@ fn detail_elements_keep_document_order_through_a_read_and_a_write() {
         .collect();
     assert_eq!(
         names,
-        ["z:Cause", "a:Hint"],
-        "`Fault::detail` answers the detail elements in document order"
+        ["a:Hint", "z:Cause"],
+        "`Fault::detail` answers a read fault's elements in name order"
     );
 
     let built = Envelope::from_fault(
@@ -1563,12 +1565,68 @@ fn the_envelope_writer_refuses_a_header_block_xml_cannot_spell_and_a_failing_sin
 #[test]
 fn zz_probe() {
     let e = ENVELOPE_NAMESPACE;
-    for xml in [
-        format!("<soap:Envelope xmlns:soap=\"{e}\"><soap:Header><t:A xmlns:t=\"urn:t\">1</t:A></soap:Header><soap:Header><t:B xmlns:t=\"urn:t\">2</t:B></soap:Header><soap:Body><m:A xmlns:m=\"urn:m\">x</m:A></soap:Body></soap:Envelope>"),
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultcode>soap:Server</faultcode><faultstring>x</faultstring></soap:Fault>"),
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultstring>y</faultstring></soap:Fault>"),
-        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><soap:faultcode>soap:Server</soap:faultcode><faultstring>x</faultstring></soap:Fault>"),
-    ] {
-        println!("{:?}", Envelope::from_bytes(xml.as_bytes()));
+    let cases: Vec<String> = vec![
+        // 0 read payload declared on envelope, re-write
+        format!("<s:Envelope xmlns:s=\"{e}\" xmlns:m=\"urn:m\"><s:Body><m:A><m:b>1</m:b></m:A></s:Body></s:Envelope>"),
+        // 1 unqualified Header
+        format!("<soap:Envelope xmlns:soap=\"{e}\"><Header><h:A xmlns:h=\"urn:h\">1</h:A></Header><soap:Body><m:A xmlns:m=\"urn:m\">x</m:A></soap:Body></soap:Envelope>"),
+        // 2 whitespace-only faultcode
+        envelope("soap", "", "<soap:Fault><faultcode>   </faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 3 whitespace-only faultstring
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>   </faultstring></soap:Fault>"),
+        // 4 empty faultactor both ways
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultactor></faultactor></soap:Fault>"),
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><faultactor/></soap:Fault>"),
+        // 6 xsi:nil faultcode
+        envelope("soap", "", "<soap:Fault xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><faultcode xsi:nil=\"true\"/><faultstring>x</faultstring></soap:Fault>"),
+        // 7 faultcode shadowing soap
+        envelope("soap", "", "<soap:Fault><faultcode xmlns:soap=\"urn:other\">soap:Client</faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 8 qualified faultcode children
+        envelope("soap", "", "<soap:Fault><soap:faultcode>soap:Server</soap:faultcode><soap:faultstring>q</soap:faultstring><soap:faultactor>a</soap:faultactor><soap:detail><d>1</d></soap:detail></soap:Fault>"),
+        // 9 empty subcode
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client.</faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 10 CRLF
+        format!("<?xml version=\"1.0\"?>\r\n<soap:Envelope xmlns:soap=\"{e}\">\r\n<soap:Body>\r\n<m:A xmlns:m=\"urn:m\">x\r\ny</m:A>\r\n</soap:Body>\r\n</soap:Envelope>\r\n"),
+        // 11 detail children repeated names
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><detail><d>1</d><d>2</d></detail></soap:Fault>"),
+        // 12 detail with declaration on detail
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client</faultcode><faultstring>x</faultstring><detail xmlns:e=\"urn:e\"><e:A>1</e:A></detail></soap:Fault>"),
+        // 13 Header with text only and Header self closed
+        envelope("soap", "just text", "<m:A xmlns:m=\"urn:m\"/>"),
+        format!("<soap:Envelope xmlns:soap=\"{e}\"><soap:Header/><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"),
+        // 15 BOM
+        format!("\u{feff}<soap:Envelope xmlns:soap=\"{e}\"><soap:Body><m:A xmlns:m=\"urn:m\"/></soap:Body></soap:Envelope>"),
+        // 16 xsi:nil payload
+        format!("<soap:Envelope xmlns:soap=\"{e}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><soap:Body><m:A xmlns:m=\"urn:m\" xsi:nil=\"true\"/></soap:Body></soap:Envelope>"),
+        // 17 comment and PI in body
+        envelope("soap", "", "<!-- c --><?pi x?><m:A xmlns:m=\"urn:m\">1</m:A>"),
+        // 18 faultcode padded other
+        envelope("soap", "", "<soap:Fault xmlns:x=\"urn:x\"><faultcode>  x:T  </faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 19 escaped faultcode
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client.&#65;&amp;</faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 20 Fault element with attrs in envelope namespace with Envelope default namespace
+        format!("<Envelope xmlns=\"{e}\"><Body><Fault><faultcode>Server</faultcode><faultstring>x</faultstring></Fault></Body></Envelope>"),
+        // 21 faultcode with child element and no text
+        envelope("soap", "", "<soap:Fault><faultcode><x/></faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 22 faultcode with default ns
+        envelope("soap", "", "<soap:Fault><faultcode xmlns=\"urn:x\">soap:Client</faultcode><faultstring>x</faultstring></soap:Fault>"),
+        // 23 ":Client" empty prefix under default envelope namespace
+        format!("<Envelope xmlns=\"{e}\"><Body><Fault><faultcode>:Client</faultcode><faultstring>x</faultstring></Fault></Body></Envelope>"),
+        // 24 unqualified Envelope under default envelope namespace + faultcode with prefix undeclared
+        envelope("soap", "", "<soap:Fault><faultcode>soap:Client:Extra</faultcode><faultstring>x</faultstring></soap:Fault>"),
+    ];
+    for (i, xml) in cases.iter().enumerate() {
+        let r = Envelope::from_bytes(xml.as_bytes());
+        println!("{i}: {r:?}");
+        if let Ok(env) = &r {
+            let b = env.into_bytes();
+            println!("   bytes: {:?}", b.as_ref().map(|b| String::from_utf8_lossy(b).into_owned()));
+            if let Ok(b) = b {
+                let again = Envelope::from_bytes(&b);
+                println!("   again eq: {:?}", again.as_ref().map(|a| a == env));
+                if let Ok(a) = &again { if let Some(p) = a.payload() { println!("   ns: {:?}", p.element().namespace()); } }
+            }
+            println!("   natural: {:?}", env.into_natural().map(|_| ()));
+        }
     }
 }

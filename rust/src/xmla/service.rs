@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::expression::{Location, Plan, Source, Target};
-use crate::xml::soap::{Fault, FaultCode, Fragment};
+use crate::soap::{Fault, FaultCode, Fragment};
 use crate::{ArrowCastOptions, DataType, Error, Field, Result, Scalar, Serie, SerieReader, Uuid};
 
 use super::catalog::{Catalog, Table};

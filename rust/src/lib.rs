@@ -110,6 +110,7 @@ pub mod sedol_code;
 pub(crate) mod serde;
 pub mod serie;
 pub mod side;
+pub mod soap;
 pub mod state;
 pub mod string;
 pub mod structure;

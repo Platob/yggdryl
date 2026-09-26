@@ -13,10 +13,6 @@ mod element;
 mod mod_;
 #[path = "xml/parser.rs"]
 mod parser;
-#[path = "xml/soap/mod_.rs"]
-mod soap;
-#[path = "xml/soap/http.rs"]
-mod soap_http;
 #[cfg(all(feature = "s3", feature = "internals"))]
 #[path = "xml/scanner.rs"]
 mod scanner;

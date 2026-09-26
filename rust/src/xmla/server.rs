@@ -2,7 +2,7 @@
 //!
 //! XML for Analysis is SOAP 1.1 over HTTP `POST`, and this is exactly that
 //! much of a server: a listener, one thread per connection, each request read
-//! through [`crate::xml::soap::http`] and answered by the [`Service`], the
+//! through [`crate::soap::http`] and answered by the [`Service`], the
 //! response streamed back as chunks so an Execute over a large table is never
 //! held whole. A `GET` answers a short description of the endpoint, so a
 //! browser or a probe learns what it reached; anything else is refused with
@@ -29,8 +29,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::xml::soap::http::{Request, Status, begin_chunked, write_response};
-use crate::xml::soap::{self, Fault};
+use crate::soap::http::{Request, Status, begin_chunked, write_response};
+use crate::soap::{self, Fault};
 
 use super::service::Service;
 

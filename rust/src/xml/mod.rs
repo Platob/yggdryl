@@ -56,7 +56,6 @@ pub mod element;
 mod parser;
 #[cfg(feature = "aws")]
 pub(crate) mod scanner;
-pub mod soap;
 mod wire;
 
 pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};

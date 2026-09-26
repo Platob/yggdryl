@@ -1,4 +1,4 @@
-//! `rust/src/xml/soap/http.rs`: the SOAP 1.1 HTTP binding - the status table
+//! `rust/src/soap/http.rs`: the SOAP 1.1 HTTP binding - the status table
 //! and the refusal that names one, one request read off a connection (its
 //! line, its headers, a body framed by `Content-Length` or by chunks, every
 //! bound and every refusal), the connection's persistence, and the two
@@ -9,10 +9,10 @@ use std::error::Error as _;
 use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
 use std::rc::Rc;
 
-use yggdryl::xml::soap::http::{
+use yggdryl::soap::http::{
     HttpError, MAX_HEADERS, MAX_LINE, Request, Status, Version, begin_chunked, write_response,
 };
-use yggdryl::xml::soap::{ACTION_HEADER, CONTENT_TYPE};
+use yggdryl::soap::{ACTION_HEADER, CONTENT_TYPE};
 
 /// The body bound every test reads under unless it pins the bound itself.
 const LIMIT: usize = 1 << 20;
@@ -132,6 +132,8 @@ impl BufRead for Reset {
 struct Sink {
     bytes: Rc<RefCell<Vec<u8>>>,
     flushes: Rc<Cell<usize>>,
+    /// How many bytes had gone out when the sink was last flushed.
+    flushed_len: Rc<Cell<usize>>,
 }
 
 impl Sink {
@@ -148,6 +150,7 @@ impl Write for Sink {
 
     fn flush(&mut self) -> io::Result<()> {
         self.flushes.set(self.flushes.get() + 1);
+        self.flushed_len.set(self.bytes.borrow().len());
         Ok(())
     }
 }
@@ -216,6 +219,34 @@ fn decode_chunked(mut body: &[u8]) -> (Vec<usize>, Vec<u8>) {
     }
 }
 
+/// The payload of the whole chunks in `body`, which must hold whole data
+/// chunks and nothing else: what a chunked response has sent before
+/// `finish`.
+fn sent_payload(mut body: &[u8]) -> Vec<u8> {
+    let mut payload = Vec::new();
+    while !body.is_empty() {
+        let end = body
+            .windows(2)
+            .position(|pair| pair == b"\r\n")
+            .expect("a size line");
+        let line = std::str::from_utf8(&body[..end]).expect("an ASCII size line");
+        let size = usize::from_str_radix(line, 16).expect("a hexadecimal size");
+        assert_ne!(size, 0, "no terminating chunk before finish");
+        body = &body[end + 2..];
+        payload.extend_from_slice(&body[..size]);
+        assert_eq!(
+            &body[size..size + 2],
+            b"\r\n",
+            "a chunk ends with a line break"
+        );
+        body = &body[size + 2..];
+    }
+    payload
+}
+
+/// The most bytes a chunked response gathers before one goes out.
+const FULL_CHUNK: usize = 64 * 1024;
+
 // --- Status and HttpError --------------------------------------------------
 
 #[test]
@@ -256,6 +287,26 @@ fn an_http_error_carries_its_status_and_displays_code_phrase_and_reason() {
 }
 
 #[test]
+fn the_status_the_version_and_a_refusal_debug_as_their_names() {
+    assert_eq!(format!("{:?}", Status::PayloadTooLarge), "PayloadTooLarge");
+    assert_eq!(
+        (
+            format!("{:?}", Version::Http10),
+            format!("{:?}", Version::Http11)
+        ),
+        ("Http10".to_owned(), "Http11".to_owned())
+    );
+    let debug = format!(
+        "{:?}",
+        HttpError::new(Status::LengthRequired, "no delimiter")
+    );
+    assert!(
+        debug.contains("LengthRequired") && debug.contains("\"no delimiter\""),
+        "{debug}"
+    );
+}
+
+#[test]
 fn an_io_failure_becomes_a_400_naming_the_failure() {
     let error = HttpError::from(io::Error::other("the peer reset the connection"));
     assert_eq!(error.status(), Status::BadRequest);
@@ -279,6 +330,33 @@ fn a_connection_that_fails_to_read_is_refused_with_400_naming_the_failure() {
         error.reason(),
         "reading the request failed: the peer reset the connection"
     );
+}
+
+#[test]
+fn a_connection_that_fails_after_its_first_bytes_is_refused_with_400_naming_the_failure() {
+    let chunked = "POST /xmla HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n";
+    for head in [
+        "\r\n".to_owned(),
+        "POST /x".to_owned(),
+        "POST /xmla HTTP/1.1\r\n".to_owned(),
+        "POST /xmla HTTP/1.1\r\nHost: loc".to_owned(),
+        chunked.to_owned(),
+        format!("{chunked}5;ext"),
+        format!("{chunked}5\r\nhello"),
+        format!("{chunked}0\r\n"),
+        format!("{chunked}0\r\nX-Trailer: t\r\n"),
+    ] {
+        let mut connection = Cursor::new(head.as_bytes()).chain(Reset);
+        let error = Request::read(&mut connection, LIMIT).expect_err("a refusal");
+        assert_eq!(
+            (error.status(), error.reason()),
+            (
+                Status::BadRequest,
+                "reading the request failed: the peer reset the connection"
+            ),
+            "{head:?}"
+        );
+    }
 }
 
 #[test]
@@ -367,6 +445,68 @@ fn an_endless_line_is_refused_without_reading_the_whole_stream() {
         (error.status(), error.reason()),
         (Status::BadRequest, reason.as_str())
     );
+}
+
+#[test]
+fn a_line_one_byte_past_max_line_is_refused_however_the_reads_split_it() {
+    let reason = format!("a line longer than {MAX_LINE} bytes");
+    let value = "a".repeat(MAX_LINE - "X-Long: ".len() + 1);
+    for terminator in ["\r\n", "\n"] {
+        let wire = format!("GET /xmla HTTP/1.1{terminator}X-Long: {value}{terminator}{terminator}");
+        for step in [
+            1,
+            2,
+            3,
+            7,
+            4096,
+            MAX_LINE,
+            MAX_LINE + 1,
+            MAX_LINE + 2,
+            3 * MAX_LINE,
+        ] {
+            let error = Request::read(&mut Trickle::new(wire.as_bytes(), step), LIMIT)
+                .expect_err("a refusal");
+            assert_eq!(
+                (error.status(), error.reason()),
+                (Status::BadRequest, reason.as_str()),
+                "step {step}, {terminator:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_endless_line_is_refused_at_most_one_read_past_the_bound() {
+    let wire = vec![b'a'; 4 * MAX_LINE];
+    for step in [1, 7, 4096] {
+        let mut trickle = Trickle::new(&wire, step);
+        let error = Request::read(&mut trickle, LIMIT).expect_err("a refusal");
+        assert_eq!(
+            error.reason(),
+            format!("a line longer than {MAX_LINE} bytes")
+        );
+        assert!(
+            trickle.position <= MAX_LINE + 1 + step,
+            "step {step}: {} bytes read",
+            trickle.position
+        );
+    }
+}
+
+#[test]
+fn a_chunk_size_line_or_a_trailer_line_longer_than_max_line_is_refused_with_400() {
+    let long = "x".repeat(MAX_LINE);
+    for chunks in [
+        format!("5;{long}\r\nhello\r\n0\r\n\r\n"),
+        format!("0\r\nX-Trailer: {long}\r\n\r\n"),
+    ] {
+        assert_refused(
+            &chunked_post(&chunks),
+            LIMIT,
+            Status::BadRequest,
+            &format!("a line longer than {MAX_LINE} bytes"),
+        );
+    }
 }
 
 #[test]
@@ -461,7 +601,9 @@ fn a_body_with_neither_a_length_nor_a_coding_is_refused_with_411() {
 
 #[test]
 fn a_content_length_that_is_not_a_byte_count_is_refused_with_400_naming_it() {
-    for value in ["five", "-1", "", "5 5", "0x10", "5.0", "3, 5"] {
+    for value in [
+        "five", "-1", "", "5 5", "0x10", "5.0", "3, 5", "\u{665}", "5\u{665}",
+    ] {
         let wire = post(&format!("Content-Length: {value}\r\n"), b"hello");
         assert_refused(
             &wire,
@@ -515,6 +657,29 @@ fn a_failure_inside_the_body_is_refused_with_400_naming_the_failure() {
 }
 
 #[test]
+fn a_failure_inside_a_chunk_is_refused_with_400_naming_the_failure() {
+    let mut connection = Cursor::new(chunked_post("5\r\nhe")).chain(Reset);
+    let error = Request::read(&mut connection, LIMIT).expect_err("a refusal");
+    assert_eq!(
+        (error.status(), error.reason()),
+        (
+            Status::BadRequest,
+            "the connection closed inside a 5-byte chunk: the peer reset the connection"
+        )
+    );
+}
+
+#[test]
+fn a_transfer_coding_other_than_chunked_on_the_first_of_two_lines_is_refused_with_400() {
+    let error = refused(&post(
+        "Transfer-Encoding: gzip\r\nTransfer-Encoding: chunked\r\n",
+        b"5\r\nhello\r\n0\r\n\r\n",
+    ));
+    assert_eq!(error.status(), Status::BadRequest, "{error}");
+    assert!(error.reason().contains("gzip"), "{error}");
+}
+
+#[test]
 fn a_transfer_coding_other_than_chunked_is_refused_with_400_naming_it() {
     for coding in ["gzip", "identity", "gzip, chunked", "chunked, gzip", ""] {
         let wire = post(
@@ -540,6 +705,8 @@ fn a_chunk_size_that_is_not_hexadecimal_is_refused_with_400_naming_it() {
         ("5 5", "5 5"),
         ("zz;name=value", "zz"),
         (";name=value", ""),
+        ("\u{665}", "\u{665}"),
+        ("g0000000000000000000000", "g0000000000000000000000"),
     ] {
         let wire = chunked_post(&format!("{line}\r\nhello\r\n0\r\n\r\n"));
         assert_refused(
@@ -619,17 +786,41 @@ fn a_connection_that_closes_inside_a_chunked_body_is_refused_with_400() {
     );
 }
 
-// --- Request refusals the source does not make (defects) --------------------
-
 #[test]
-fn disagreeing_content_lengths_are_refused_with_400() {
+fn disagreeing_content_lengths_are_refused_with_400_naming_both() {
     // RFC 7230 section 3.3.2: differing Content-Length values are an
     // unrecoverable framing error; reading either one frames a different
     // message than the peer (or an intermediary) framed.
-    let wire = post("Content-Length: 3\r\nContent-Length: 5\r\n", b"hello");
-    let error = refused(&wire);
-    assert_eq!(error.status(), Status::BadRequest);
-    assert!(error.reason().contains("Content-Length"), "{error}");
+    for (headers, first, other) in [
+        ("Content-Length: 3\r\nContent-Length: 5\r\n", "3", "5"),
+        (
+            "Content-Length: 5\r\ncontent-length: 5\r\nCONTENT-LENGTH: 3\r\n",
+            "5",
+            "3",
+        ),
+        (
+            "Content-Length: 5\r\nHost: localhost\r\nContent-Length: five\r\n",
+            "5",
+            "five",
+        ),
+        ("Content-Length: 5\r\nContent-Length:\r\n", "5", ""),
+    ] {
+        assert_refused(
+            &post(headers, b"hello"),
+            LIMIT,
+            Status::BadRequest,
+            &format!("Content-Length is stated twice and disagrees: {first:?} and {other:?}"),
+        );
+    }
+}
+
+#[test]
+fn a_content_length_repeated_with_one_value_frames_the_body_by_it() {
+    let request = read(&post(
+        "Content-Length: 5\r\ncontent-length:   5  \r\n",
+        b"hello",
+    ));
+    assert_eq!(request.body(), b"hello");
 }
 
 #[test]
@@ -645,17 +836,140 @@ fn a_crlf_line_of_exactly_max_line_bytes_is_accepted() {
 }
 
 #[test]
+fn a_crlf_line_of_exactly_max_line_bytes_is_accepted_however_the_reads_split_it() {
+    // A read that ends between the CR and the LF holds one byte past the
+    // bound that is still the terminator's.
+    let value = "a".repeat(MAX_LINE - "X-Long: ".len());
+    let wire = format!("GET /xmla HTTP/1.1\r\nX-Long: {value}\r\n\r\n");
+    for step in [
+        1,
+        2,
+        3,
+        7,
+        4096,
+        MAX_LINE,
+        MAX_LINE + 1,
+        MAX_LINE + 2,
+        3 * MAX_LINE,
+    ] {
+        let request = Request::read(&mut Trickle::new(wire.as_bytes(), step), LIMIT)
+            .unwrap_or_else(|error| panic!("step {step}: {error}"))
+            .expect("a request");
+        assert_eq!(
+            request.header("x-long"),
+            Some(value.as_str()),
+            "step {step}"
+        );
+    }
+}
+
+#[test]
 fn a_content_length_past_the_integer_range_is_refused_with_413() {
     // A byte count past `usize` is still a byte count, and it is past any
     // `max_body`: the rustdoc answers it with 413.
-    let error = refused(&post("Content-Length: 99999999999999999999999\r\n", b""));
-    assert_eq!(error.status(), Status::PayloadTooLarge, "{error}");
+    let huge = "99999999999999999999999";
+    assert_refused(
+        &post(&format!("Content-Length: {huge}\r\n"), b""),
+        LIMIT,
+        Status::PayloadTooLarge,
+        &format!("the body is {huge} bytes; at most {LIMIT} are accepted"),
+    );
 }
 
 #[test]
 fn a_chunk_size_past_the_integer_range_is_refused_with_413() {
-    let error = refused(&chunked_post("fffffffffffffffffffffff\r\n"));
-    assert_eq!(error.status(), Status::PayloadTooLarge, "{error}");
+    for line in [
+        "fffffffffffffffffffffff",
+        "FFFFFFFFFFFFFFFFFFFFFFFF",
+        "10000000000000000000;ext=1",
+        " 123456789abcdef0123 ",
+    ] {
+        assert_refused(
+            &chunked_post(&format!("{line}\r\n")),
+            LIMIT,
+            Status::PayloadTooLarge,
+            &format!("the chunked body grew past the {LIMIT} bytes accepted"),
+        );
+    }
+}
+
+#[test]
+fn a_count_with_leading_zeros_is_its_decimal_or_hexadecimal_value() {
+    let zeros = "0".repeat(40);
+    let request = read(&post(&format!("Content-Length: {zeros}5\r\n"), b"hello"));
+    assert_eq!(request.body(), b"hello");
+    let decimal = read(&post("Content-Length: 010\r\n", b"0123456789"));
+    assert_eq!(decimal.body(), b"0123456789", "decimal, never octal");
+    let chunked = read(&chunked_post(&format!(
+        "{zeros}5\r\nhello\r\n{zeros}\r\n\r\n"
+    )));
+    assert_eq!(chunked.body(), b"hello");
+}
+
+// --- Request refusals the source does not make (defects) --------------------
+
+#[test]
+fn a_transfer_coding_other_than_chunked_on_a_later_line_is_refused_with_400() {
+    // RFC 7230 section 3.2.2: two lines of a list header are one list, so
+    // this is `chunked, gzip`, which the one-line spelling already refuses;
+    // section 3.3.3: a request whose final coding is not chunked cannot be
+    // framed, and a server MUST answer it with 400. Reading the first line
+    // alone frames by chunks what an intermediary frames otherwise.
+    let wire = post(
+        "Transfer-Encoding: chunked\r\nTransfer-Encoding: gzip\r\n",
+        b"5\r\nhello\r\n0\r\n\r\n",
+    );
+    match Request::read(&mut Cursor::new(&wire[..]), LIMIT) {
+        Err(error) => {
+            assert_eq!(error.status(), Status::BadRequest, "{error}");
+            assert!(error.reason().contains("gzip"), "{error}");
+        }
+        Ok(answer) => panic!("framed by the first coding alone: {answer:?}"),
+    }
+}
+
+#[test]
+fn whitespace_between_a_header_name_and_its_colon_is_refused_with_400() {
+    // RFC 7230 section 3.2.4: a server MUST refuse such a request with 400,
+    // because peers that disagree about the name disagree about the framing.
+    for (header, body, name) in [
+        (
+            "Transfer-Encoding : chunked\r\nContent-Length: 5\r\n",
+            &b"0\r\n\r\n"[..],
+            "Transfer-Encoding",
+        ),
+        ("Content-Length\t: 5\r\n", b"hello", "Content-Length"),
+        ("Host :localhost\r\nContent-Length: 0\r\n", b"", "Host"),
+    ] {
+        match Request::read(&mut Cursor::new(&post(header, body)[..]), LIMIT) {
+            Err(error) => {
+                assert_eq!(error.status(), Status::BadRequest, "{error}");
+                assert!(error.reason().contains(name), "{error}");
+            }
+            Ok(answer) => panic!("{header:?} was read as a header: {answer:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_folded_header_line_is_refused_with_400_or_joined_to_the_header_it_continues() {
+    // RFC 7230 section 3.2.4: a server MUST either refuse obsolete line
+    // folding with 400 or read each fold as a space in the value it
+    // continues - never as a header of its own.
+    for fold in [" ", "\t"] {
+        let wire = post(
+            &format!("X-A: 1\r\n{fold}Transfer-Encoding: chunked\r\nContent-Length: 5\r\n"),
+            b"0\r\n\r\n",
+        );
+        match Request::read(&mut Cursor::new(&wire[..]), LIMIT) {
+            Err(error) => assert_eq!(error.status(), Status::BadRequest, "{error}"),
+            Ok(Some(request)) => {
+                assert_eq!(request.header("transfer-encoding"), None, "{fold:?}");
+                assert_eq!(request.body(), b"0\r\n\r\n", "{fold:?}");
+            }
+            Ok(None) => panic!("a request was sent"),
+        }
+    }
 }
 
 // --- Request reading --------------------------------------------------------
@@ -1060,6 +1374,11 @@ fn a_response_is_flushed_once_written() {
     write_response(&mut sink.clone(), Status::Ok, CONTENT_TYPE, true, b"hi").expect("written");
     assert!(sink.flushes.get() >= 1);
     assert!(sink.bytes().ends_with(b"\r\n\r\nhi"));
+    assert_eq!(
+        sink.flushed_len.get(),
+        sink.bytes().len(),
+        "the flush follows the last byte"
+    );
 }
 
 #[test]
@@ -1165,6 +1484,11 @@ fn small_writes_gather_until_a_flush_sends_them_as_one_chunk() {
         flushes + 1,
         "the flush reaches the sink"
     );
+    assert_eq!(
+        sink.flushed_len.get(),
+        sink.bytes().len(),
+        "the sink is flushed after the chunk"
+    );
 
     chunked.write_all(b"g").expect("gathered");
     let returned = chunked.finish().expect("finished");
@@ -1177,6 +1501,11 @@ fn small_writes_gather_until_a_flush_sends_them_as_one_chunk() {
         "finish hands the sink back"
     );
     assert_eq!(sink.flushes.get(), flushes + 2, "finish flushes the sink");
+    assert_eq!(
+        sink.flushed_len.get(),
+        sink.bytes().len(),
+        "finish flushes after the terminator"
+    );
 }
 
 #[test]
@@ -1204,6 +1533,77 @@ fn an_empty_write_or_flush_emits_no_chunk_that_would_end_the_body() {
 }
 
 #[test]
+fn a_full_chunk_goes_out_without_a_flush_and_the_rest_waits() {
+    let sink = Sink::default();
+    let mut chunked =
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    chunked
+        .write_all(&vec![b'a'; FULL_CHUNK - 1])
+        .expect("gathered");
+    assert_eq!(
+        sink.bytes(),
+        CHUNKED_HEAD.as_bytes(),
+        "a byte short of a chunk waits"
+    );
+
+    chunked.write_all(b"b").expect("sent");
+    let mut expected = CHUNKED_HEAD.as_bytes().to_vec();
+    expected.extend_from_slice(b"10000\r\n");
+    expected.extend_from_slice(&vec![b'a'; FULL_CHUNK - 1]);
+    expected.extend_from_slice(b"b\r\n");
+    assert_eq!(sink.bytes(), expected, "a full chunk goes out unasked");
+    assert_eq!(sink.flushes.get(), 0, "sent, not flushed");
+
+    chunked.write_all(b"tail").expect("gathered");
+    assert_eq!(sink.bytes(), expected, "the rest waits");
+    chunked.finish().expect("finished");
+    expected.extend_from_slice(b"4\r\ntail\r\n0\r\n\r\n");
+    assert_eq!(sink.bytes(), expected);
+}
+
+#[test]
+fn after_every_write_less_than_one_chunk_waits_unsent() {
+    let sink = Sink::default();
+    let mut chunked =
+        begin_chunked(sink.clone(), Status::Ok, CONTENT_TYPE, true).expect("the head");
+    let mut written = Vec::new();
+    let sizes = [
+        1,
+        100,
+        FULL_CHUNK - 102,
+        1,
+        1,
+        5000,
+        FULL_CHUNK,
+        3 * FULL_CHUNK + 17,
+        0,
+        7,
+    ];
+    for (index, size) in sizes.into_iter().enumerate() {
+        let row: Vec<u8> = (0..=250_u8).cycle().skip(index).take(size).collect();
+        chunked.write_all(&row).expect("written");
+        written.extend_from_slice(&row);
+        let bytes = sink.bytes();
+        let sent = sent_payload(&bytes[CHUNKED_HEAD.len()..]);
+        assert_eq!(
+            sent,
+            written[..sent.len()],
+            "what went out is what was written"
+        );
+        assert!(
+            written.len() - sent.len() < FULL_CHUNK,
+            "after write {index}: {} bytes wait",
+            written.len() - sent.len()
+        );
+    }
+    let out = chunked.finish().expect("finished");
+    assert_eq!(out.bytes(), sink.bytes());
+    let bytes = sink.bytes();
+    let (_, body) = split_head(&bytes);
+    assert_eq!(decode_chunked(body).1, written);
+}
+
+#[test]
 fn many_small_writes_share_chunks_and_decode_to_what_was_written() {
     let payload: Vec<u8> = (0..=250_u8).cycle().take(150_000).collect();
     let rows = payload.chunks(100);
@@ -1216,11 +1616,8 @@ fn many_small_writes_share_chunks_and_decode_to_what_was_written() {
     let (_, body) = split_head(&out);
     let (sizes, decoded) = decode_chunked(body);
     assert_eq!(decoded, payload);
-    assert!(
-        sizes.len() < writes / 10,
-        "{} chunks for {writes} writes",
-        sizes.len()
-    );
+    // A chunk goes out on the write that fills 64 KiB: 656 writes of 100.
+    assert_eq!(sizes, [65_600, 65_600, 18_800], "{writes} writes");
 }
 
 #[test]

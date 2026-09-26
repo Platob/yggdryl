@@ -7,7 +7,7 @@ use std::sync::Arc;
 use arrow_array::{Float64Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::holder::Holder;
 use yggdryl::media::RecordOptions;
-use yggdryl::xml::soap::{Envelope, FaultCode};
+use yggdryl::soap::{Envelope, FaultCode};
 use yggdryl::xmla::{
     Catalog, Content, Discover, Execute, PropertyList, Request, RequestType, Response,
     Restrictions, Service, ServiceOptions,
@@ -95,7 +95,7 @@ fn answer(service: &Service, request: impl Into<Request>) -> Response {
 }
 
 /// Answer `request` and read the fault it earns.
-fn fault(service: &Service, request: impl Into<Request>) -> yggdryl::xml::soap::Fault {
+fn fault(service: &Service, request: impl Into<Request>) -> yggdryl::soap::Fault {
     let bytes = service
         .answer(&request.into(), Vec::new())
         .expect("the answer is written");

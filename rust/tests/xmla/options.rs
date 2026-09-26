@@ -11,7 +11,7 @@ use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
 use yggdryl::media::{IORecordOptions, RecordOptions};
-use yggdryl::xml::soap::ENVELOPE_NAMESPACE;
+use yggdryl::soap::ENVELOPE_NAMESPACE;
 use yggdryl::xmla::{Content, Method, NAMESPACE, ROWSET_NAMESPACE, XmlaOptions};
 use yggdryl::{
     DataType, Field, Filter, IOBase, IOMedia, IOMode, Level, MediaType, MimeType, Plan, Scalar,

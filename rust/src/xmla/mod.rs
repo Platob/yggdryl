@@ -24,7 +24,7 @@
 //! | [`server`] | the HTTP endpoint the provider is reached at |
 //!
 //! The SOAP envelope, fault and HTTP binding are XML's own, in
-//! [`crate::xml::soap`]; this module speaks XMLA over them.
+//! [`crate::soap`]; this module speaks XMLA over them.
 //!
 //! The provider is a *tabular* one: its data sources are catalogs of tables,
 //! a table being any leaf a record medium reads or any folder that reads as

@@ -23,7 +23,7 @@
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::xml::soap::{Body, Envelope, Fragment};
+use crate::soap::{Body, Envelope, Fragment};
 use crate::xml::{ATTRIBUTE_PREFIX, Element};
 use crate::{Error, Result, Scalar};
 
@@ -409,7 +409,7 @@ impl Session {
                 Scalar::from(NAMESPACE),
             ),
             (
-                format_smolstr!("{ATTRIBUTE_PREFIX}{}:mustUnderstand", crate::xml::soap::PREFIX),
+                format_smolstr!("{ATTRIBUTE_PREFIX}{}:mustUnderstand", crate::soap::PREFIX),
                 Scalar::from("1"),
             ),
         ];

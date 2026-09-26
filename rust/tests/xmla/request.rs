@@ -6,7 +6,7 @@
 //! `invalid` is crate-private and pinned only through the refusals it spells,
 //! whose path is `$.xmla`.
 
-use yggdryl::xml::soap::{Body, ENVELOPE_NAMESPACE, Envelope, Fault, Fragment};
+use yggdryl::soap::{Body, ENVELOPE_NAMESPACE, Envelope, Fault, Fragment};
 use yggdryl::xmla::{
     Command, Discover, Execute, Method, NAMESPACE, PropertyList, Request, RequestMethod,
     RequestType, Restrictions, Session,

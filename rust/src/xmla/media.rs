@@ -15,7 +15,7 @@ use arrow_array::RecordBatchIterator;
 
 use crate::arrow::{BatchReader, arrow_schema_from_field, field_from_arrow_schema};
 use crate::media::{IORecordOptions, RecordOptions};
-use crate::xml::soap::ENVELOPE_NAMESPACE;
+use crate::soap::ENVELOPE_NAMESPACE;
 use crate::xml::Element;
 use crate::{ArrowCastOptions, Charset, Field, IOBase, IOMedia, Result, Serie, SerieReader};
 
@@ -40,7 +40,7 @@ fn read_document<H: IOBase + ?Sized>(
     let root = Element::root(&document)?;
     if root.is(Some(ENVELOPE_NAMESPACE), "Envelope") {
         let response = Response::from_envelope(
-            &crate::xml::soap::Envelope::from_natural(&document)?,
+            &crate::soap::Envelope::from_natural(&document)?,
             field,
         )?;
         return match response.answer() {

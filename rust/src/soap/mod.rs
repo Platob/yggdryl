@@ -12,7 +12,7 @@
 //!
 //! ```
 //! use yggdryl::Scalar;
-//! use yggdryl::xml::soap::{Body, Envelope, Fragment};
+//! use yggdryl::soap::{Body, Envelope, Fragment};
 //!
 //! let discover = Scalar::from_struct([
 //!     ("@xmlns", Scalar::from("urn:schemas-microsoft-com:xml-analysis")),
@@ -46,8 +46,10 @@ use std::io::Write;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use super::element::{Element, Scope};
-use super::{ATTRIBUTE_PREFIX, from_bytes_with_limits, write_element_text, write_fragment};
+use crate::xml::{
+    ATTRIBUTE_PREFIX, Element, Scope, TEXT_KEY, from_bytes_with_limits, write_element_text,
+    write_fragment,
+};
 use crate::text::Limits;
 use crate::{Error, Result, Scalar};
 
@@ -125,7 +127,7 @@ impl Fragment {
             Scalar::Null => Scalar::from_struct([("@xmlns", Scalar::from(namespace))])?,
             leaf if leaf.as_str().is_some() => Scalar::from_struct([
                 (SmolStr::new_static("@xmlns"), Scalar::from(namespace)),
-                (SmolStr::new_static(super::TEXT_KEY), leaf),
+                (SmolStr::new_static(TEXT_KEY), leaf),
             ])?,
             other => {
                 return Err(codec_error(format_smolstr!(
@@ -648,7 +650,7 @@ impl Envelope {
 /// body element by element, the closing tags last.
 ///
 /// ```
-/// use yggdryl::xml::soap::{Envelope, EnvelopeWriter};
+/// use yggdryl::soap::{Envelope, EnvelopeWriter};
 ///
 /// let mut output = Vec::new();
 /// let mut envelope = EnvelopeWriter::begin(&mut output, &[])?;

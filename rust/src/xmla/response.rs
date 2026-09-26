@@ -16,7 +16,7 @@ use std::io::Write;
 
 use smol_str::{SmolStr, format_smolstr};
 
-use crate::xml::soap::{Body, Envelope, EnvelopeWriter, Fault, FaultCode, Fragment};
+use crate::soap::{Body, Envelope, EnvelopeWriter, Fault, FaultCode, Fragment};
 use crate::xml::{ATTRIBUTE_PREFIX, Element};
 use crate::{Error, Field, Result, Scalar, Serie};
 

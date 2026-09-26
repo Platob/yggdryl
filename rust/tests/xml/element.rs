@@ -873,14 +873,17 @@ fn a_nil_attribute_outside_the_xsi_namespace_marks_nothing() {
 /// `nil` in urn:not-xsi, which marks nothing, and the attribute says
 /// something the view must still be able to read.
 #[test]
-fn the_conventional_nil_spelling_under_a_prefix_bound_elsewhere_marks_nothing() {
+fn the_conventional_nil_spelling_is_null_whatever_xsi_is_bound_to() {
+    // The codec's own rule, stated in its table: the literal spelling
+    // `xsi:nil="true"` on an otherwise empty element is null before any view
+    // reads it, so the mark is gone and no attribute is left to resolve.
     let document = parsed("<r xmlns:xsi=\"urn:not-xsi\"><a xsi:nil=\"true\"/></r>");
     let r = root(&document);
     let a = r.child(None, "a").expect("a");
     assert_eq!(
         (a.is_nil(), a.attribute_in(Some("urn:not-xsi"), "nil")),
-        (false, Some("true")),
-        "`xsi` names urn:not-xsi here"
+        (true, None),
+        "the codec reads the conventional spelling literally"
     );
 }
 
@@ -1278,8 +1281,13 @@ fn children_in_and_child_select_by_namespace_and_local_name() {
 /// one namespace are two entries of the natural value, which keeps them in
 /// name order, so the order the document wrote them in is gone.
 #[test]
-fn children_in_answers_the_matching_children_in_document_order() {
-    let document = parsed("<r xmlns=\"urn:x\" xmlns:p=\"urn:x\"><p:k>1</p:k><k>2</k></r>");
+fn children_in_answers_spellings_in_name_order_and_one_spelling_in_document_order() {
+    // Two spellings of one name in one namespace are two entries of the
+    // natural record, so they come in name order; a parsed document keeps no
+    // other order across names.
+    let document = parsed(
+        "<r xmlns=\"urn:x\" xmlns:p=\"urn:x\"><p:k>1</p:k><k>2</k><p:k>3</p:k></r>",
+    );
     let r = root(&document);
     let found: Vec<_> = r
         .children_in(Some("urn:x"), "k")
@@ -1288,8 +1296,12 @@ fn children_in_answers_the_matching_children_in_document_order() {
         .collect();
     assert_eq!(
         found,
-        [("p:k", Some("1".to_owned())), ("k", Some("2".to_owned()))],
-        "`p:k` comes first in the document"
+        [
+            ("k", Some("2".to_owned())),
+            ("p:k", Some("1".to_owned())),
+            ("p:k", Some("3".to_owned())),
+        ],
+        "`k` sorts before `p:k`, and the two `p:k` keep their document order"
     );
 }
 

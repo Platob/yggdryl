@@ -11,7 +11,7 @@
 //! ```
 //! use std::io::Cursor;
 //!
-//! use yggdryl::xml::soap::http::{Request, Status};
+//! use yggdryl::soap::http::{Request, Status};
 //!
 //! let wire = b"POST /xmla HTTP/1.1\r\nHost: localhost\r\nContent-Type: text/xml\r\n\
 //!              SOAPAction: \"urn:schemas-microsoft-com:xml-analysis:Discover\"\r\n\
@@ -24,7 +24,7 @@
 //! assert_eq!(request.body(), b"hello");
 //! assert!(request.keep_alive());
 //! assert_eq!(Status::Ok.code(), 200);
-//! # Ok::<(), yggdryl::xml::soap::http::HttpError>(())
+//! # Ok::<(), yggdryl::soap::http::HttpError>(())
 //! ```
 
 use std::fmt;
@@ -228,13 +228,34 @@ impl Request {
                     format!("more than {MAX_HEADERS} request headers"),
                 ));
             }
+            // Obsolete line folding is refused rather than joined (RFC 7230
+            // section 3.2.4 allows either): a peer that joins it and one that
+            // does not disagree about which header the fold belongs to.
+            if line.starts_with([' ', '\t']) && !line.trim().is_empty() {
+                return Err(HttpError::new(
+                    Status::BadRequest,
+                    format!("a folded header line is not accepted, got {line:?}"),
+                ));
+            }
             let Some((name, value)) = line.split_once(':') else {
                 return Err(HttpError::new(
                     Status::BadRequest,
                     format!("expected `Name: value` as a header, got {line:?}"),
                 ));
             };
-            headers.push((name.trim().to_ascii_lowercase(), value.trim().to_owned()));
+            // The name runs up to the colon with nothing between (RFC 7230
+            // section 3.2.4): peers that trim it differently frame the
+            // message differently.
+            if name.is_empty() || name.contains([' ', '\t']) {
+                return Err(HttpError::new(
+                    Status::BadRequest,
+                    format!(
+                        "expected a header name followed by its colon, got {:?} before the colon",
+                        name.trim()
+                    ),
+                ));
+            }
+            headers.push((name.to_ascii_lowercase(), value.trim().to_owned()));
         }
         let mut request = Self {
             method: method.to_owned(),
@@ -248,13 +269,26 @@ impl Request {
     }
 
     fn read_body<R: BufRead>(&self, reader: &mut R, max_body: usize) -> Result<Vec<u8>, HttpError> {
-        if let Some(coding) = self.header("transfer-encoding") {
-            if !coding.eq_ignore_ascii_case("chunked") {
+        // Every Transfer-Encoding line is one list (RFC 7230 section 3.2.2),
+        // and only a body whose one coding is chunked can be framed here.
+        let mut chunked = false;
+        for (_, codings) in self
+            .headers
+            .iter()
+            .filter(|(name, _)| name.eq_ignore_ascii_case("transfer-encoding"))
+        {
+            if codings
+                .split(',')
+                .any(|coding| !coding.trim().eq_ignore_ascii_case("chunked"))
+            {
                 return Err(HttpError::new(
                     Status::BadRequest,
-                    format!("expected the chunked transfer coding, got {coding:?}"),
+                    format!("expected the chunked transfer coding, got {codings:?}"),
                 ));
             }
+            chunked = true;
+        }
+        if chunked {
             return read_chunked(reader, max_body);
         }
         let Some(length) = self.header("content-length") else {

@@ -3270,7 +3270,7 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported
   pub fn into_writer_all_with_formatting<W, I, V>(values: I, writer: W, formatting: Formatting) -> Result<()> where W: Write, I: IntoIterator<Item = V>, V: Borrow<Scalar>,
 
 ### yggdryl::xml  [rust/src/xml/mod.rs]
-pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};  (the namespace-aware view over a parsed document, `xml::soap` beside it)
+pub use element::{Element, Scope, XSD_NAMESPACE, XSI_NAMESPACE};  (the namespace-aware view over a parsed document, which `soap/` and `xmla/` read through)
 pub fn from_xml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar>  (re-exported at the crate root)
   pub fn from_xml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar>  (re-exported at the crate root)
   pub fn into_xml_scalar(value: &Scalar) -> Result<String>  (re-exported at the crate root)
@@ -3356,7 +3356,7 @@ pub struct Element<'a>
   pub fn child_in(&self, namespace: &str, local: &str) -> Option<Element<'_>>
   pub fn one_child_in(&self, namespace: &str, local: &str) -> Result<Element<'_>>
 
-### yggdryl::xml::soap  [rust/src/xml/soap/mod.rs]
+### yggdryl::soap  [rust/src/soap/mod.rs]
 pub const ENVELOPE_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/envelope/"
 pub const ENCODING_NAMESPACE: &str = "http://schemas.xmlsoap.org/soap/encoding/"
 pub const PREFIX: &str = "SOAP-ENV"
@@ -3406,7 +3406,7 @@ pub struct EnvelopeWriter<W: Write>
   pub fn fault(mut self, fault: &Fault) -> Result<W>
   pub fn finish(mut self) -> Result<W>
 
-### yggdryl::xml::soap::http  [rust/src/xml/soap/http.rs]
+### yggdryl::soap::http  [rust/src/soap/http.rs]
 pub const MAX_LINE: usize = 8192
 pub const MAX_HEADERS: usize = 128
 pub enum Status
