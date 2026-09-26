@@ -1254,7 +1254,7 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.deepEqual(Serie.fromArrowArray(overflowing, quantity).intoScalar().asJs(), [7, 0])
     assert.throws(
       () => Serie.fromArrowArray(overflowing, quantity, { nullability: 'strict' }),
-      /required Arrow field \$\.value holds 1 null values/,
+      /Can't cast value 200 to type Int8/,
     )
     assert.throws(
       () => Serie.fromArrowArray(overflowing, 'value: int8', { safe: false }),

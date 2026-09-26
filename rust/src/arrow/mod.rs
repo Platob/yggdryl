@@ -414,7 +414,7 @@ pub(crate) fn appended(
         second: crate::SerieReader::from_arrow_reader(
             Some(field),
             incoming,
-            crate::ArrowCastOptions::new().with_safe(safe),
+            crate::ArrowCastOptions::declared(safe),
         )?
         .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,
@@ -425,7 +425,10 @@ pub(crate) fn appended(
 ///
 /// The old private `appended` promoted to public and made symmetric: this is
 /// what a caller reaches for when they already know the shape both sides must
-/// land in.
+/// land in. `field` is a declaration, so both sides cast by the one
+/// declared-column rule: a nullable column takes a value it cannot convert
+/// as null when `safe`, and a not-null column refuses that value, a null and
+/// a missing column by name.
 /// Neither side is drained to inspect it and nothing is collected - a batch is
 /// cast when it is pulled, and [`SerieReader`](crate::SerieReader) short-circuits a side that is
 /// already the declared shape rather than rebuilding arrays it would hand back
@@ -469,13 +472,13 @@ pub fn combined_as(
         first: crate::SerieReader::from_arrow_reader(
             Some(field),
             left,
-            crate::ArrowCastOptions::new().with_safe(safe),
+            crate::ArrowCastOptions::declared(safe),
         )?
         .into_arrow_reader(),
         second: crate::SerieReader::from_arrow_reader(
             Some(field),
             right,
-            crate::ArrowCastOptions::new().with_safe(safe),
+            crate::ArrowCastOptions::declared(safe),
         )?
         .into_arrow_reader(),
         schema: arrow_schema_from_field(field)?,

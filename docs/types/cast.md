@@ -14,7 +14,8 @@ The [field](field.md) is the cast target: an Arrow array, a record batch, a stre
 | `safe` | Whether a *present* value may be converted. `true`: a failed conversion becomes null; `false`: error |
 | `nullability` | Whether a *declared* value may be absent. `default`: canonical default (`Field::default_value`); `strict`: error naming the path |
 | `representation` | What a *same-width* pair carries. `value`: the number it spells, range-checked; `bits`: the bytes under it, buffer shared |
-| Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand |
+| Independent | The three answer different questions and compose: a `safe` conversion failure becomes a null, and `nullability` then decides whether that null may stand. Under `strict` a required column refuses a value it cannot convert by that value, since the null it would become is refused anyway |
+| Declared columns | A column a schema declares - a `Selector` projection with a datatype, a `Plan` `create` section, a derived column, the record options' `field`, the stored field a write completes onto, an Iceberg table's schema - casts by one rule: a nullable column takes a value it cannot convert as null when `safe` (the default), and a not-null column refuses that value, a null, an empty text cell and a missing column by name, never writing its canonical default |
 | Empty text | A zero-length text cell entering a non-text column is null before `safe` is asked; `nullability` decides the rest. A string, byte or interval column, and a code whose neutral member is the empty text, keep it as the value it is |
 | Validates | `validate_value`: right arity, no null in a required column, every scalar in its declared range |
 | One reading | A row and a column read the same spellings: text into a number, a boolean, a decimal or a temporal; any value with a spelling into text; any byte-carrying value into a byte layout |
@@ -55,12 +56,13 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     assert_eq!(repaired.as_int64().expect("an int64 column").values(), &[1, 0]);
     assert_eq!(repaired.null_count(), 0);
 
-    // Strict refuses the same null instead of defaulting it, naming the path.
+    // Strict refuses what the required column cannot hold instead of
+    // defaulting it: the value it cannot convert, by that value.
     let strict = ArrowCastOptions::new().with_nullability(Nullability::Strict);
     let refused = Serie::from_arrow_array(Some(&field), broken, strict)
         .unwrap_err()
         .to_string();
-    assert_eq!(refused, "required Arrow field $.id holds 1 null values");
+    assert!(refused.contains("not a number"), "{refused}");
 
     // A column in hand casts once under another field.
     let narrow = ids.cast(&Field::new("id", DataType::Int32, false), ArrowCastOptions::new())?;
@@ -93,13 +95,14 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     else:
         raise AssertionError("an unsafe cast must fail")
 
-    # Strict refuses the same null instead of defaulting it, naming the path.
+    # Strict refuses what the required column cannot hold instead of
+    # defaulting it: the value it cannot convert, by that value.
     try:
         Serie.from_arrow_array(broken, field, nullability="strict")
     except ValueError as error:
-        assert str(error) == "required Arrow field $.id holds 1 null values"
+        assert "not a number" in str(error)
     else:
-        raise AssertionError("a strict cast must refuse the null")
+        raise AssertionError("a strict cast must refuse the value")
 
     # A column in hand casts once; a DataType is its required `value` field.
     narrow = ids.cast(DataType("int32"))
@@ -130,10 +133,11 @@ An array enters as the column of a field. `safe` decides whether a failed conver
     assert.deepEqual(Serie.fromArrowArray(broken, field).asJs(), [1, 0])
     assert.throws(() => Serie.fromArrowArray(broken, field, { safe: false }), /not a number/)
 
-    // Strict refuses the same null instead of defaulting it, naming the path.
+    // Strict refuses what the required column cannot hold instead of
+    // defaulting it: the value it cannot convert, by that value.
     assert.throws(
       () => Serie.fromArrowArray(broken, field, { nullability: 'strict' }),
-      /required Arrow field \$\.id holds 1 null values/,
+      /not a number/,
     )
 
     // A column in hand casts once under another field.
@@ -443,9 +447,10 @@ A `RecordBatch` is a `StructArray` plus a schema, so it takes the same recursive
 ## Strict nullability
 
 `nullability` decides what a cast does about a non-nullable target field the source cannot fill.
-`default` repairs - the canonical [default](field.md), which is what a lake being filled wants.
-`strict` refuses, naming the full dot/bracket path from the cast root, which is what a contract
-being enforced wants. The two failures happen at different times: a required field *no source
+`default` repairs - the canonical [default](field.md) - when a caller asks for it at the engine's
+doors. `strict` refuses, naming the full dot/bracket path from the cast root, and it is what every
+declared column runs: a record read or write, a stored field, a `Selector` or a `Plan` never writes
+a required column's default in place of a value it could not read. The two failures happen at different times: a required field *no source
 column carries* is decided by the fields alone and so is refused when the cast is compiled,
 before any batch exists; a required field *holding null* is a property of the rows and is refused
 when that batch is cast.
@@ -1124,7 +1129,8 @@ What each binding door accepts, each resolved once at the door:
 - A fixed-width byte target -> `BytesIngest` too: a cell that does not fill the width exactly is refused naming the field, the row and both lengths, rather than left to Arrow's builder to complain about a slice. A source whose own width is declared and disagrees is refused at plan time instead.
 - A dictionary or run-end target -> its values' own rule runs, then the encoding; a `dictionary<int32, ascii>` refuses what `ascii` refuses.
 - An encoded source into a plain target -> decoded first, so a dictionary of a recognized code still renders as text.
-- A bare null into a `union` or a `run_end_encoded` -> refused: both spell absence inside a child, so the value is the pair or the values entry that carries it.
+- A bare null into a `run_end_encoded` -> refused: it spells absence inside its values child, so the value is the entry that carries it.
+- A bare null into a `union` -> the payload of its `null` member, else of the one member that takes a null; with none, or several, it is refused naming the members ([Union](nested/union.md)).
 - A reading the declared unit or width cannot hold exactly -> null, never a rounded value.
 - Twelve-hour clock, and a bare date into a zoned datetime -> Arrow's kernel; a bare date into a naive datetime is that day at midnight on both tiers, compact `YYYYMMDD` included.
 - Temporal to text -> the classic form, zoned instants included.

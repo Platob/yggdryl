@@ -59,27 +59,32 @@ impl UnionFields {
     /// union its class declared.
     ///
     /// The member whose datatype is the value's own answers first, then the
-    /// one in the value's own family, then the one that accepts it - the
-    /// reading [`DataType::scalar`] gives a bare value that is not a sequence,
-    /// offered here for any value, a sequence included.
+    /// one in the value's own family, then the one that accepts it; where a
+    /// step finds several, only those that accept the value remain. A null is
+    /// read the same way, so it belongs to the `null` member, else to the one
+    /// member that takes a null. This is the reading [`DataType::scalar`] gives
+    /// a bare value that is not a sequence, offered here for any value, a
+    /// sequence included.
     ///
     /// ```
     /// use yggdryl::{DataType, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
-    /// let union: DataType = "union<0: serie<int64>, 1: int64>".parse()?;
+    /// let union: DataType = "union<0: serie<int64>, 1: int64, 2: null>".parse()?;
     /// let DataType::Union(members, _) = &union else { unreachable!() };
     /// let list = Scalar::from_sequence([Scalar::from(1_i64), Scalar::from(5_i64)]);
     /// assert_eq!(members.branch_of(&list)?.0, 0);
     /// assert_eq!(members.branch_of(&Scalar::from(5_i64))?.0, 1);
+    /// assert_eq!(members.branch_of(&Scalar::Null)?.0, 2);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// # Errors
     ///
-    /// Returns an error naming the candidates when two members fit at the
-    /// first step that finds any, and naming the members when none does.
+    /// Returns an error naming the candidates when several members accept the
+    /// value at the first step that finds any, and naming the members when
+    /// none does.
     pub fn branch_of(&self, value: &Scalar) -> Result<(i8, &Field)> {
         crate::value::union_branch_of(self, value)
     }

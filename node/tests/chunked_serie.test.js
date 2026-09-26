@@ -130,7 +130,7 @@ test('the three cast answers reach the core', () => {
 
   assert.throws(
     () => ChunkedSerie.fromArrowArray(overflowing, required, { nullability: 'strict' }),
-    /required Arrow field \$\.quantity holds 1 null values/,
+    /Can't cast value 130 to type Int8/,
   )
   assert.throws(
     () => ChunkedSerie.fromArrowArray(overflowing, required, { safe: false }),

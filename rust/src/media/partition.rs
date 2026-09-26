@@ -154,7 +154,7 @@ impl Constant {
                 let plan = ArrowCastPlan::compile_arrow(
                     &text,
                     child,
-                    ArrowCastOptions::new().with_safe(child.is_nullable()),
+                    ArrowCastOptions::declared(true),
                     Deferred::default(),
                 )?;
                 (child.clone().into_arrow_field()?, Some(plan))
@@ -883,7 +883,7 @@ fn part_reader(
     Ok(crate::SerieReader::from_arrow_reader(
         Some(field),
         restored,
-        ArrowCastOptions::new().with_safe(options.safe()),
+        ArrowCastOptions::declared(options.safe()),
     )?
     .into_arrow_reader())
 }

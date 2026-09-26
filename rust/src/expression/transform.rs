@@ -535,13 +535,15 @@ mod arrow {
                     bound.get_or_init(|| fresh)
                 }
             };
-            // Strict: a declared type the computed value does not fit is an
-            // error, not a column of silent nulls.
+            // The derived column is a declaration and casts by its rule:
+            // a value a nullable column cannot hold becomes null, exactly as
+            // the `Selector` spelling of the same column answers, and a
+            // `not null` column refuses that value or a null by name.
             let array = derived.cast.reconcile(
                 child,
                 None,
                 bound.evaluate(batch)?,
-                ArrowCastOptions::new().with_safe(false),
+                ArrowCastOptions::declared(true),
             )?;
             match held {
                 Some(index) => columns[index] = array,

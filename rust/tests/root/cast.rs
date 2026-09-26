@@ -1023,8 +1023,8 @@ mod batches {
         .unwrap();
 
         // The declared schema widens the price; the selection narrows and
-        // reorders; the stored shape finally adds the column the resource
-        // already has, defaulted, and every layer is one definition.
+        // reorders; the stored shape finally adds the nullable column the
+        // resource already has, as nulls, and every layer is one definition.
         let declared = root([
             DataType::utf8().required_field("symbol"),
             DataType::Int64.required_field("price"),
@@ -1033,7 +1033,7 @@ mod batches {
         let stored = root([
             DataType::Int64.required_field("price"),
             DataType::utf8().required_field("symbol"),
-            DataType::Int64.required_field("volume"),
+            DataType::Int64.nullable_field("volume"),
         ]);
         let options = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
             .unwrap()
@@ -1052,6 +1052,34 @@ mod batches {
         assert_eq!(names, ["price", "symbol", "volume"]);
         assert_eq!(shaped.column(0).data_type(), &ArrowDataType::Int64);
         assert_eq!(shaped.num_rows(), 1);
+        assert!(shaped.column(2).is_null(0));
+
+        // A required stored column the rows do not carry is a declaration
+        // they cannot meet, refused by name rather than written as its
+        // canonical default.
+        let required = root([
+            DataType::Int64.required_field("price"),
+            DataType::utf8().required_field("symbol"),
+            DataType::Int64.required_field("volume"),
+        ]);
+        let batch = RecordBatch::try_new(
+            Arc::new(Schema::new(vec![
+                ArrowField::new("symbol", ArrowDataType::Utf8, false),
+                ArrowField::new("price", ArrowDataType::Int32, false),
+                ArrowField::new("venue", ArrowDataType::Utf8, false),
+            ])),
+            vec![
+                Arc::new(StringArray::from(vec!["AAPL"])),
+                Arc::new(Int32Array::from(vec![12])),
+                Arc::new(StringArray::from(vec!["XPAR"])),
+            ],
+        )
+        .unwrap();
+        let refused = options
+            .apply_arrow_batch(batch, Some(&required))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("volume"), "{refused}");
 
         // A name the rows do not have is an error, not a null column.
         let missing = RecordOptions::for_mime_type(&MimeType::ARROW_STREAM)
@@ -3125,14 +3153,19 @@ mod strict {
         .unwrap();
         let target = root([DataType::Int64.required_field("id")]);
 
-        // safe: the failed conversion becomes null, and strictness is what then
-        // decides whether that null may stand in for a declared value.
+        // safe: the failed conversion becomes null, and the default policy
+        // repairs that null in a required column.
         let repaired = cast_batch(&target, &batch, ArrowCastOptions::new()).unwrap();
         assert_eq!(repaired.column(0).null_count(), 0);
-        assert_eq!(
-            refusal(&target, batch.clone()),
-            "required Arrow field $.id holds 1 null values"
-        );
+        // Strictness refuses the null a lenient conversion would leave in a
+        // required column, so the conversion is refused by the value itself
+        // rather than by the null it would have become.
+        let strict_message = refusal(&target, batch.clone());
+        assert!(strict_message.contains("not a number"), "{strict_message}");
+        // A nullable column still takes the failed conversion as null.
+        let nullable = root([DataType::Int64.nullable_field("id")]);
+        let nulled = cast_batch(&nullable, &batch, strict()).unwrap();
+        assert_eq!(nulled.column(0).null_count(), 1);
 
         // Unsafe: the conversion itself refuses, so strictness never sees a null.
         let unsafe_message = cast_batch(&target, &batch, strict().with_safe(false))

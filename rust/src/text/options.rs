@@ -143,7 +143,9 @@ pub struct TextOptions {
     pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
-    /// Whether a cast may null a value it cannot convert.
+    /// Whether a declared or stored nullable column takes a value it cannot
+    /// convert as null, `true` by default; a not-null column refuses it by
+    /// name either way.
     pub safe: bool,
     /// Bytes per emitted batch, whichever of this and `batch_row_size` binds
     /// first; [`DEFAULT_TEXT_BATCH_BYTE_SIZE`] as `new()` states it.
@@ -224,7 +226,7 @@ impl TextOptions {
             filter: crate::Filter::always_true(),
             select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
-            safe: false,
+            safe: true,
             batch_byte_size: Some(DEFAULT_TEXT_BATCH_BYTE_SIZE),
             batch_row_size: Some(DEFAULT_TEXT_BATCH_ROW_SIZE),
             max_row_size: None,

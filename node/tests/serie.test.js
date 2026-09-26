@@ -143,10 +143,11 @@ test('the three cast answers reach the core', () => {
   // required column repairs every absent row with its default.
   assert.deepEqual(Serie.fromArrowArray(overflowing, required).asJs(), [7, 0, 0])
 
-  // Strict nullability refuses the absent row by path.
+  // Strict nullability refuses what a required column cannot hold: a value
+  // it cannot convert by that value, before the absent row by its path.
   assert.throws(
     () => Serie.fromArrowArray(overflowing, required, { nullability: 'strict' }),
-    /required Arrow field \$\.quantity holds 2 null values/,
+    /Can't cast value 130 to type Int8/,
   )
 
   // `safe: false` refuses the conversion itself, whatever the policy.

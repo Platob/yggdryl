@@ -15,8 +15,9 @@ use pyo3::exceptions::{
 };
 use pyo3::prelude::*;
 use pyo3::types::{
-    PyAny, PyBool, PyByteArray, PyBytes, PyComplex, PyDict, PyFloat, PyFrozenSet, PyInt, PyList,
-    PyMemoryView, PySet, PyString, PyTuple, PyType, PyWeakrefReference,
+    PyAny, PyBool, PyByteArray, PyBytes, PyComplex, PyDate, PyDateTime, PyDelta, PyDict, PyFloat,
+    PyFrozenSet, PyInt, PyList, PyMemoryView, PySet, PyString, PyTime, PyTuple, PyType, PyTzInfo,
+    PyWeakrefReference,
 };
 use pyo3::{IntoPyObjectExt, PyTypeInfo, intern};
 use yggdryl::bytes::Bytes;
@@ -1661,6 +1662,16 @@ fn holds_union(dtype: &CoreDataType) -> bool {
             .any(|child| holds_union(child.dtype()))
 }
 
+/// Whether a value under `dtype` is read by it: a union spells the pair of
+/// the member a bare value belongs to, and a record reads a mapping by its
+/// children's names, at `dtype` or anywhere below it.
+fn directs(dtype: &CoreDataType) -> bool {
+    matches!(dtype, CoreDataType::Union(..) | CoreDataType::Struct(_))
+        || (0..dtype.field_len())
+            .filter_map(|index| dtype.get_field_at(index))
+            .any(|child| directs(child.dtype()))
+}
+
 /// One record door's rows, read onto the children of the root they land
 /// under, in the root's order.
 ///
@@ -1668,9 +1679,11 @@ fn holds_union(dtype: &CoreDataType) -> bool {
 /// row does not hold is null, and a key or member the root does not declare
 /// is not read, which is how a mapping row has always met a declared schema.
 /// A list or a tuple of the root's arity is read by position. Every cell is
-/// a bare value, so a union child spells the pair naming its member.
+/// a bare value, so a union child spells the pair naming its member, and a
+/// dictionary under a record child is read by name the same way the row is.
 pub(crate) struct RowPlan {
-    /// Each child: its name, interned, and whether a union sits at or below it.
+    /// Each child: its name, interned, and whether its datatype directs how
+    /// a value under it is read.
     children: Vec<(Py<PyString>, CoreDataType, bool)>,
     /// For each record class seen, the member attribute that fills each child.
     classes: HashMap<usize, (Py<PyType>, ChildAttributes)>,
@@ -1690,7 +1703,7 @@ impl RowPlan {
                 (
                     PyString::intern(py, child.name()).unbind(),
                     child.dtype().clone(),
-                    holds_union(child.dtype()),
+                    directs(child.dtype()),
                 )
             })
             .collect();
@@ -1710,9 +1723,9 @@ impl RowPlan {
         let mut encoder = Encoder::default();
         if let Ok(mapping) = value.cast::<PyDict>() {
             let mut cells = Vec::with_capacity(self.children.len());
-            for (name, dtype, union) in &self.children {
+            for (name, dtype, directed) in &self.children {
                 cells.push(match mapping.get_item(name.bind(py))? {
-                    Some(item) => encoder.cell(dtype, *union, &item)?,
+                    Some(item) => encoder.cell(dtype, *directed, &item)?,
                     None => Scalar::Null,
                 });
             }
@@ -1721,10 +1734,10 @@ impl RowPlan {
         if let ClassKind::Record(members) = class_kind(value)? {
             let attributes = self.attributes(&value.get_type(), &members);
             let mut cells = Vec::with_capacity(self.children.len());
-            for ((_, dtype, union), attribute) in self.children.iter().zip(attributes.iter()) {
+            for ((_, dtype, directed), attribute) in self.children.iter().zip(attributes.iter()) {
                 cells.push(match attribute {
                     Some(attribute) => {
-                        encoder.cell(dtype, *union, &value.getattr(attribute.bind(py))?)?
+                        encoder.cell(dtype, *directed, &value.getattr(attribute.bind(py))?)?
                     }
                     None => Scalar::Null,
                 });
@@ -1743,8 +1756,8 @@ impl RowPlan {
             && items.len()? == self.children.len()
         {
             let mut cells = Vec::with_capacity(self.children.len());
-            for (index, (_, dtype, union)) in self.children.iter().enumerate() {
-                cells.push(encoder.cell(dtype, *union, &items.get_item(index)?)?);
+            for (index, (_, dtype, directed)) in self.children.iter().enumerate() {
+                cells.push(encoder.cell(dtype, *directed, &items.get_item(index)?)?);
             }
             return Ok(Scalar::from_sequence(cells));
         }
@@ -1894,46 +1907,54 @@ pub(crate) fn as_py_with_field(
     value: &Scalar,
     field: &CoreField,
 ) -> PyResult<Py<PyAny>> {
+    as_py_with_dtype(py, value, field.dtype())
+}
+
+/// One record as the dict its children's names key.
+fn record_as_py(py: Python<'_>, value: &Scalar, fields: &[CoreField]) -> PyResult<Py<PyAny>> {
+    let output = PyDict::new(py);
+    match value {
+        Scalar::Serie(values)
+        | Scalar::SerieView(values)
+        | Scalar::FixedSizeSerie(values)
+        | Scalar::LargeSerie(values)
+        | Scalar::LargeSerieView(values)
+            if values.len() == fields.len() =>
+        {
+            for (child, value) in fields.iter().zip(values.iter()) {
+                output.set_item(child.name(), as_py_with_field(py, &value, child)?)?;
+            }
+        }
+        Scalar::Struct(values) => {
+            for child in fields {
+                let value = values.as_map().get(child.name()).ok_or_else(|| {
+                    PyValueError::new_err(format!(
+                        "typed record is missing field {:?}",
+                        child.name()
+                    ))
+                })?;
+                output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
+            }
+        }
+        _ => {
+            return Err(PyValueError::new_err(format!(
+                "expected {} typed struct values, got {}",
+                fields.len(),
+                value.kind()
+            )));
+        }
+    }
+    Ok(output.into_any().unbind())
+}
+
+/// [`as_py_with_field`] reading only the datatype, which is all the field
+/// answers: the names a record spells come from its children.
+fn as_py_with_dtype(py: Python<'_>, value: &Scalar, dtype: &CoreDataType) -> PyResult<Py<PyAny>> {
     if value.is_null() {
         return as_py(py, value);
     }
-    match field.dtype() {
-        CoreDataType::Struct(structure) => {
-            let fields = structure.as_fields();
-            let output = PyDict::new(py);
-            match value {
-                Scalar::Serie(values)
-                | Scalar::SerieView(values)
-                | Scalar::FixedSizeSerie(values)
-                | Scalar::LargeSerie(values)
-                | Scalar::LargeSerieView(values)
-                    if values.len() == fields.len() =>
-                {
-                    for (child, value) in fields.iter().zip(values.iter()) {
-                        output.set_item(child.name(), as_py_with_field(py, &value, child)?)?;
-                    }
-                }
-                Scalar::Struct(values) => {
-                    for child in fields {
-                        let value = values.as_map().get(child.name()).ok_or_else(|| {
-                            PyValueError::new_err(format!(
-                                "typed record is missing field {:?}",
-                                child.name()
-                            ))
-                        })?;
-                        output.set_item(child.name(), as_py_with_field(py, value, child)?)?;
-                    }
-                }
-                _ => {
-                    return Err(PyValueError::new_err(format!(
-                        "expected {} typed struct values, got {}",
-                        fields.len(),
-                        value.kind()
-                    )));
-                }
-            }
-            Ok(output.into_any().unbind())
-        }
+    match dtype {
+        CoreDataType::Struct(structure) => record_as_py(py, value, structure.as_fields()),
         sequence_dtype @ (CoreDataType::Serie(_)
         | CoreDataType::SerieView(_)
         | CoreDataType::FixedSizeSerie(..)
@@ -2003,12 +2024,7 @@ pub(crate) fn as_py_with_field(
             let dictionary = &dictionary_dtype
                 .enum_type()
                 .expect("the variant was just matched");
-            let value_field = CoreField::new(
-                field.name(),
-                dictionary.value().clone(),
-                field.is_nullable(),
-            );
-            as_py_with_field(py, value, &value_field)
+            as_py_with_dtype(py, value, dictionary.value())
         }
         CoreDataType::RunEndEncoded(encoded) => as_py_with_field(py, value, encoded.values()),
         _ => as_py(py, value),
@@ -2130,10 +2146,10 @@ impl Encoder {
     fn cell(
         &mut self,
         dtype: &CoreDataType,
-        union: bool,
+        directed: bool,
         value: &Bound<'_, PyAny>,
     ) -> PyResult<Scalar> {
-        if union {
+        if directed {
             self.convert_under(dtype, value, 1)
         } else {
             self.convert(value, 1)
@@ -2142,9 +2158,10 @@ impl Encoder {
 
     /// Convert a bare value under the datatype it is a value of, spelling
     /// each union position below as the pair naming the member the core
-    /// chooses for it. A record class's instance, a list, a tuple and a
+    /// chooses for it, and reading a dictionary under a record by its
+    /// children's names. A record class's instance, a list, a tuple and a
     /// dictionary are walked to reach those positions; anything else, and
-    /// anything under a datatype holding no union, converts as it is.
+    /// anything under a datatype that directs nothing, converts as it is.
     fn convert_under(
         &mut self,
         dtype: &CoreDataType,
@@ -2156,7 +2173,7 @@ impl Encoder {
                 "Python value exceeds the {MAX_PYTHON_DEPTH}-level codec limit"
             )));
         }
-        if value.is_none() || !holds_union(dtype) {
+        if value.is_none() || !directs(dtype) {
             return self.convert(value, depth);
         }
         match dtype {
@@ -2171,7 +2188,7 @@ impl Encoder {
                     Err(_) if bare.sequence_rows().is_none() => return Ok(bare),
                     Err(error) => return Err(value_error(error)),
                 };
-                let payload = if holds_union(member.dtype()) {
+                let payload = if directs(member.dtype()) {
                     self.convert_under(member.dtype(), value, depth + 1)?
                 } else {
                     bare
@@ -2181,28 +2198,7 @@ impl Encoder {
                     payload,
                 ]))
             }
-            CoreDataType::Struct(children) => {
-                let ClassKind::Record(members) = class_kind(value)? else {
-                    return self.convert(value, depth);
-                };
-                let py = value.py();
-                self.with_cycle_check(value, |encoder| {
-                    let entries = members
-                        .iter()
-                        .map(|member| {
-                            let item = value.getattr(member.attribute.bind(py))?;
-                            let converted = match children.get_by_name(&member.name) {
-                                Some(child) => {
-                                    encoder.convert_under(child.dtype(), &item, depth + 1)?
-                                }
-                                None => encoder.convert(&item, depth + 1)?,
-                            };
-                            Ok((&*member.name, converted))
-                        })
-                        .collect::<PyResult<Vec<_>>>()?;
-                    Scalar::from_struct(entries).map_err(value_error)
-                })
-            }
+            CoreDataType::Struct(children) => self.record_under(children, value, depth),
             CoreDataType::Serie(item)
             | CoreDataType::SerieView(item)
             | CoreDataType::FixedSizeSerie(item, _)
@@ -2243,6 +2239,49 @@ impl Encoder {
             }
             _ => self.convert(value, depth),
         }
+    }
+
+    /// [`Self::convert_under`] for a record: a mapping is read by name onto
+    /// the record's children, as a row is - a child the mapping does not hold
+    /// is null, and a key the record does not declare is not read - and a
+    /// record class's instance by its members.
+    fn record_under(
+        &mut self,
+        children: &yggdryl::StructType,
+        value: &Bound<'_, PyAny>,
+        depth: usize,
+    ) -> PyResult<Scalar> {
+        if let Ok(mapping) = value.cast::<PyDict>() {
+            return self.with_cycle_check(value, |encoder| {
+                let cells = children
+                    .as_fields()
+                    .iter()
+                    .map(|child| match mapping.get_item(child.name())? {
+                        Some(item) => encoder.convert_under(child.dtype(), &item, depth + 1),
+                        None => Ok(Scalar::Null),
+                    })
+                    .collect::<PyResult<Vec<_>>>()?;
+                Ok(Scalar::from_sequence(cells))
+            });
+        }
+        let ClassKind::Record(members) = class_kind(value)? else {
+            return self.convert(value, depth);
+        };
+        let py = value.py();
+        self.with_cycle_check(value, |encoder| {
+            let entries = members
+                .iter()
+                .map(|member| {
+                    let item = value.getattr(member.attribute.bind(py))?;
+                    let converted = match children.get_by_name(&member.name) {
+                        Some(child) => encoder.convert_under(child.dtype(), &item, depth + 1)?,
+                        None => encoder.convert(&item, depth + 1)?,
+                    };
+                    Ok((&*member.name, converted))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            Scalar::from_struct(entries).map_err(value_error)
+        })
     }
 
     /// Convert one of the standard-library values its class names exactly.
@@ -2829,11 +2868,43 @@ fn date_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
             value.kind()
         ))
     })?;
-    py.import("datetime")?
-        .getattr("date")?
-        .getattr("fromordinal")?
-        .call1((days + EPOCH_ORDINAL,))
-        .map(Bound::unbind)
+    let (year, month, day) = civil_date(days)?;
+    Ok(PyDate::new(py, year, month, day)?.into_any().unbind())
+}
+
+/// The proleptic Gregorian `(year, month, day)` `days` after 1970-01-01,
+/// computed here rather than asked of `datetime` per value.
+///
+/// A year outside what `datetime` holds is refused as `datetime` refuses
+/// it, before any Python object is built.
+fn civil_date(days: i64) -> PyResult<(i32, u8, u8)> {
+    // Howard Hinnant's `civil_from_days`: shift to an era starting on March
+    // 1st of year 0, so the leap day is the last day of the era's year.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let day_of_era = z.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    // `date.fromordinal`'s own refusals, in its own words.
+    if days + EPOCH_ORDINAL < 1 {
+        return Err(PyValueError::new_err("ordinal must be >= 1"));
+    }
+    match (i32::try_from(year), u8::try_from(month), u8::try_from(day)) {
+        (Ok(year), Ok(month), Ok(day)) if (1..=9999).contains(&year) => Ok((year, month, day)),
+        // `datetime`'s own refusal, in its own words.
+        _ => Err(PyValueError::new_err(format!(
+            "year {year} is out of range"
+        ))),
+    }
 }
 
 /// Convert a `datetime.time` into its microsecond count since midnight.
@@ -2869,19 +2940,24 @@ fn time_as_py(py: Python<'_>, value: &Scalar, zone: Timezone) -> PyResult<Py<PyA
         )));
     }
     let (hour, minute, second, microsecond) = split_day(count);
-    let datetime = py.import("datetime")?;
-    if zone.is_naive() {
-        return datetime
-            .getattr("time")?
-            .call1((hour, minute, second, microsecond))
-            .map(Bound::unbind);
-    }
-    let kwargs = PyDict::new(py);
-    kwargs.set_item("tzinfo", zone_to_tzinfo(py, zone, 0)?)?;
-    datetime
-        .getattr("time")?
-        .call((hour, minute, second, microsecond), Some(&kwargs))
-        .map(Bound::unbind)
+    // The clock fields of one day fit their widths by construction.
+    let clock = |field: i64| u8::try_from(field).unwrap_or(u8::MAX);
+    let micros = u32::try_from(microsecond).unwrap_or(u32::MAX);
+    let tzinfo = if zone.is_naive() {
+        None
+    } else {
+        Some(zone_to_tzinfo(py, zone, 0)?.cast_into::<PyTzInfo>()?)
+    };
+    Ok(PyTime::new(
+        py,
+        clock(hour),
+        clock(minute),
+        clock(second),
+        micros,
+        tzinfo.as_ref(),
+    )?
+    .into_any()
+    .unbind())
 }
 
 /// Convert a `datetime.timedelta` into its elapsed microsecond count.
@@ -2896,12 +2972,22 @@ fn duration_to_value(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
 
 /// Build the `datetime.timedelta` one elapsed microsecond count names.
 fn duration_as_py(py: Python<'_>, value: &Scalar) -> PyResult<Py<PyAny>> {
-    let kwargs = PyDict::new(py);
-    kwargs.set_item("microseconds", best_microseconds(value)?)?;
-    py.import("datetime")?
-        .getattr("timedelta")?
-        .call((), Some(&kwargs))
-        .map(Bound::unbind)
+    let count = best_microseconds(value)?;
+    let days = count.div_euclid(MICROSECONDS_PER_DAY);
+    let rest = count.rem_euclid(MICROSECONDS_PER_DAY);
+    // `timedelta`'s own refusal, in its own words, for a span its day count
+    // cannot hold.
+    let days = i32::try_from(days)
+        .ok()
+        .filter(|days| days.unsigned_abs() <= 999_999_999)
+        .ok_or_else(|| {
+            PyOverflowError::new_err(format!("days={days}; must have magnitude <= 999999999"))
+        })?;
+    let seconds = i32::try_from(rest / 1_000_000).unwrap_or(i32::MAX);
+    let micros = i32::try_from(rest % 1_000_000).unwrap_or(i32::MAX);
+    Ok(PyDelta::new(py, days, seconds, micros, false)?
+        .into_any()
+        .unbind())
 }
 
 /// Read a `datetime.datetime` as a UTC-relative microsecond count, and
@@ -2950,38 +3036,47 @@ fn overflowing_timestamp() -> PyErr {
 /// Build the `datetime.datetime` one UTC-relative count and zone name.
 fn datetime_as_py(py: Python<'_>, value: &Scalar, zone: Timezone) -> PyResult<Py<PyAny>> {
     let count = best_microseconds(value)?;
-    let datetime = py.import("datetime")?;
-    let date = datetime
-        .getattr("date")?
-        .getattr("fromordinal")?
-        .call1((count.div_euclid(MICROSECONDS_PER_DAY) + EPOCH_ORDINAL,))?;
+    let (year, month, day) = civil_date(count.div_euclid(MICROSECONDS_PER_DAY))?;
     let (hour, minute, second, microsecond) = split_day(count.rem_euclid(MICROSECONDS_PER_DAY));
-    let arguments = (
-        date.getattr("year")?.extract::<i64>()?,
-        date.getattr("month")?.extract::<i64>()?,
-        date.getattr("day")?.extract::<i64>()?,
-        hour,
-        minute,
-        second,
-        microsecond,
-    );
+    // The clock fields of one day fit their widths by construction.
+    let clock = |field: i64| u8::try_from(field).unwrap_or(u8::MAX);
+    let micros = u32::try_from(microsecond).unwrap_or(u32::MAX);
     if zone.is_naive() {
-        return datetime
-            .getattr("datetime")?
-            .call1(arguments)
-            .map(Bound::unbind);
+        return Ok(PyDateTime::new(
+            py,
+            year,
+            month,
+            day,
+            clock(hour),
+            clock(minute),
+            clock(second),
+            micros,
+            None,
+        )?
+        .into_any()
+        .unbind());
     }
     // The count is UTC, so the value is built in UTC and then moved into the
     // zone it was written in. Building it in that zone directly would need the
     // local reading, which is exactly what the offset was taken out of.
-    let kwargs = PyDict::new(py);
-    kwargs.set_item("tzinfo", datetime.getattr("timezone")?.getattr("utc")?)?;
-    let instant = datetime
-        .getattr("datetime")?
-        .call(arguments, Some(&kwargs))?;
+    let utc = PyTzInfo::utc(py)?.to_owned();
+    let instant = PyDateTime::new(
+        py,
+        year,
+        month,
+        day,
+        clock(hour),
+        clock(minute),
+        clock(second),
+        micros,
+        Some(&utc),
+    )?;
+    if zone.is_utc() {
+        return Ok(instant.into_any().unbind());
+    }
     let tzinfo = zone_to_tzinfo(py, zone, count.div_euclid(1_000_000))?;
     instant
-        .call_method1("astimezone", (tzinfo,))
+        .call_method1(intern!(py, "astimezone"), (tzinfo,))
         .map(Bound::unbind)
 }
 
@@ -2991,10 +3086,10 @@ fn zone_to_tzinfo(
     zone: Timezone,
     epoch_seconds: i64,
 ) -> PyResult<Bound<'_, PyAny>> {
-    let datetime = py.import("datetime")?;
     if zone.is_utc() {
-        return datetime.getattr("timezone")?.getattr("utc");
+        return Ok(PyTzInfo::utc(py)?.to_owned().into_any());
     }
+    let datetime = py.import("datetime")?;
     // A place names rules rather than an offset, and `zoneinfo` is where Python
     // keeps them, so the value comes back carrying the same live zone it went
     // in with rather than a frozen offset.

@@ -133,7 +133,9 @@ pub struct ParquetOptions {
     pub select: crate::Selector,
     /// The columns forming an explicit merge's match key.
     pub merge_by: crate::Selector,
-    /// Whether a cast may null a value it cannot convert.
+    /// Whether a declared or stored nullable column takes a value it cannot
+    /// convert as null, `true` by default; a not-null column refuses it by
+    /// name either way.
     pub safe: bool,
     /// Bytes per batch, whichever of this and `batch_row_size` binds first.
     ///
@@ -220,7 +222,7 @@ impl ParquetOptions {
             filter: crate::Filter::always_true(),
             select: crate::Selector::all(),
             merge_by: crate::Selector::all(),
-            safe: false,
+            safe: true,
             batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
@@ -1096,9 +1098,10 @@ impl ParquetSource {
                 continue;
             };
             let use_extremes = extremes_bound(&declared);
-            // A declared non-null column over a stored nullable one reads each
-            // stored null as the type's default, which no statistic describes.
-            let fills_nulls = !declared.is_nullable() && stored.field(index).is_nullable();
+            // A declared non-null column over a stored nullable one refuses each
+            // stored null it reads, so a group holding one is never pruned by
+            // this column: the refusal is the read's, whatever the filter.
+            let refuses_nulls = !declared.is_nullable() && stored.field(index).is_nullable();
             // Each statistic column lands once under the field the filter
             // reads, and a group's bound is one cell of it; a column that
             // does not land - another layout, a value the field refuses -
@@ -1113,7 +1116,7 @@ impl ParquetSource {
                 field,
                 leaf,
                 use_extremes,
-                fills_nulls,
+                refuses_nulls,
                 nulls,
             });
         }
@@ -1133,8 +1136,8 @@ impl ParquetSource {
             for column in &columns {
                 use arrow_array::Array as _;
                 let nulls = (!column.nulls.is_null(position)).then(|| column.nulls.value(position));
-                if column.fills_nulls && nulls != Some(0) {
-                    // Some rows read as a default the statistics never saw.
+                if column.refuses_nulls && nulls != Some(0) {
+                    // The group holds a null the read refuses.
                     continue;
                 }
                 // Writers before parquet-mr 1.10 ordered strings, bytes and
@@ -1278,8 +1281,8 @@ struct StoredBounds {
     leaf: usize,
     /// Whether the minimums and maximums bound the values the filter reads.
     use_extremes: bool,
-    /// Whether the read turns the stored nulls into the type's default.
-    fills_nulls: bool,
+    /// Whether the read refuses the stored nulls, so they never prune.
+    refuses_nulls: bool,
     /// Each kept group's minimum, or `None` where the statistics do not
     /// land under the field.
     minimums: Option<crate::Serie>,

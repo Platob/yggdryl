@@ -444,6 +444,42 @@ mod value {
         }
 
         #[test]
+        fn a_tie_keeps_the_members_that_accept_the_value() {
+            // Every record member is a struct, so the record's own datatype
+            // finds them all; the one whose names it spells is its member.
+            let union = dtype(
+                "union<0: struct<a: int64 not null> not null, \
+                 1: struct<b: utf8 not null> not null>",
+            );
+            let leg = Scalar::from_struct([("a", Scalar::from(1_i64))]).unwrap();
+            let quote = Scalar::from_struct([("b", Scalar::from("q"))]).unwrap();
+            assert_eq!(
+                union.scalar(leg).unwrap(),
+                pair(0, Scalar::from_sequence([Scalar::from(1_i64)]))
+            );
+            assert_eq!(
+                union.scalar(quote).unwrap(),
+                pair(1, Scalar::from_sequence([Scalar::from("q")]))
+            );
+            // Two members the record fits are still two readings, and one it
+            // fits neither of names the members its datatype found.
+            let twins = dtype(
+                "union<0: struct<a: int64 not null> not null, \
+                 1: struct<a: int64 not null> not null>",
+            );
+            let refused = twins
+                .scalar(Scalar::from_struct([("a", Scalar::from(1_i64))]).unwrap())
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("more than one union member"), "{refused}");
+            let refused = union
+                .scalar(Scalar::from_struct([("c", Scalar::from(1_i64))]).unwrap())
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("one union member accepts"), "{refused}");
+        }
+
+        #[test]
         fn branch_of_reads_any_value_bare_a_sequence_included() {
             let union = dtype("union<0: serie<int64>, 1: int64>");
             let DataType::Union(members, _) = &union else {
@@ -463,25 +499,57 @@ mod value {
 
     /// Absence is a value only where the layout stores it beside the values.
     mod absence {
-        use yggdryl::{DataType, Field, Scalar};
+        use yggdryl::{DataType, Field, Scalar, UnionMode};
 
         #[test]
         fn a_union_and_a_run_end_spell_absence_through_a_child() {
             // Both layouts carry absence inside a child rather than beside the
-            // values, so a bare null is not a value either of them holds - the
-            // same rule the nested walk has always applied to a child.
-            let union: DataType = "union<0: int32>".parse().unwrap();
-            let refused = union.scalar(Scalar::Null).unwrap_err().to_string();
-            assert!(refused.contains("[type_id, payload]"), "{refused}");
-            assert!(
-                Field::new("u", union.clone(), true)
+            // values. A union routes a bare null like any bare value: to the
+            // `null` member, else the one member that takes a null.
+            let members = |fields: Vec<(i8, Field)>| {
+                DataType::union(fields, UnionMode::Dense).expect("a union")
+            };
+            let pair = |type_id: i64| Scalar::from_sequence([Scalar::from(type_id), Scalar::Null]);
+            let with_null = members(vec![
+                (0, Field::new("int", DataType::Int64, false)),
+                (1, Field::new("str", DataType::utf8(), false)),
+                (2, Field::new("NoneType", DataType::Null, true)),
+            ]);
+            assert_eq!(with_null.scalar(Scalar::Null).unwrap(), pair(2));
+            assert_eq!(
+                Field::new("u", with_null.clone(), true)
                     .scalar(Scalar::Null)
-                    .is_err()
+                    .unwrap(),
+                pair(2)
             );
-            // The pair that does spell it is accepted.
-            union
-                .scalar(Scalar::from_sequence([Scalar::from(0_i64), Scalar::Null]))
-                .unwrap();
+            // A required union field refuses absence however it is spelled.
+            let refused = Field::new("u", with_null, false)
+                .scalar(Scalar::Null)
+                .unwrap_err()
+                .to_string();
+            assert!(refused.contains("non-nullable"), "{refused}");
+            // One nullable member holds it where no member is `null`.
+            let union: DataType = "union<0: int32>".parse().unwrap();
+            assert_eq!(union.scalar(Scalar::Null).unwrap(), pair(0));
+            // Two are two readings, and required members hold none.
+            let refused = members(vec![
+                (0, Field::new("int", DataType::Int64, true)),
+                (1, Field::new("str", DataType::utf8(), true)),
+            ])
+            .scalar(Scalar::Null)
+            .unwrap_err()
+            .to_string();
+            assert!(refused.contains("more than one union member"), "{refused}");
+            let refused = members(vec![
+                (0, Field::new("int", DataType::Int64, false)),
+                (1, Field::new("str", DataType::utf8(), false)),
+            ])
+            .scalar(Scalar::Null)
+            .unwrap_err()
+            .to_string();
+            assert!(refused.contains("one union member accepts"), "{refused}");
+            // The pair that spells it is still accepted.
+            union.scalar(pair(0)).unwrap();
 
             let required = DataType::run_end_encoded(
                 DataType::Int32.required_field("run_ends"),

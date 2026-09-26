@@ -401,7 +401,7 @@ native Version example corpus.
 - A fourth component, an empty component, a qualifier, or a patch above `65535` -> folded into the patch, never refused.
 - Empty text is no `Version`, and the datatype door reads an empty cell entering a non-text column as absence: a nullable column holds null, a required one refuses it.
 - Fractional or out-of-range constructor arguments in Python or JavaScript -> refused without narrowing.
-- The canonical default is `0` (`Version::MIN`), which is what a [strict-nullability](cast.md) cast writes where a required column holds a null.
+- The canonical default is `0` (`Version::MIN`), which is what a cast under the `default` [nullability](cast.md#strict-nullability) writes where a required column holds a null; `strict` refuses it.
 - A version merges only with itself; merged with `utf8` -> refused naming both, because the canonicalization is what the column is for.
 - An Arrow column under `yggdryl.version` over a storage that is not `Utf8` -> a foreign field wearing our name, imported as its storage.
 - A numeric Arrow source cast into a version column -> refused naming the datatype; text is the only source a version reads.

@@ -10,7 +10,7 @@
 | Sections | `create [target] (schema) [with (...)]`, a write verb with an optional target and `by (keys)`, `select`, `from target \| (plan)`, `where`, `order by`, `limit`, `offset` |
 | Verbs | `insert into` (append), `insert overwrite` (replace), `upsert into ... by (keys)` (merge), `delete from ... where`; every common alias reads and prints canonically |
 | Location | a quoted URL, or a catalog path `catalog.schema.table` whose parts may be quoted with `"`, backticks, or `[...]`; parts resolve against a base URL, a URL stands alone |
-| Target | a location and `with (name = 'value', ...)` properties: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_row_size`, `max_row_size`, `max_byte_size`, and whatever a holder reads |
+| Target | a location and `with (name = 'value', ...)` properties: `media_type`, `codec`, `safe`, `batch_row_size`, `batch_byte_size`, `commit_row_size`, `max_row_size`, `max_byte_size`, and whatever a holder reads; `safe = 'false'` refuses what a nullable declared column would otherwise take as null |
 | Execute | `execute()` reads the source through its holder with the read sections pushed down, runs a nested plan first, and writes where the plan says; a plan with no source starts from the empty stream, which is what `create` alone needs |
 | Apply | `apply_arrow_reader(reader)` shapes a stream it is given, source or not; `where` and `select` stream, `order by` collects, `offset` and `limit` slice views |
 | Field | `Plan::from_field(field)` is `create name (columns)`; `field()` reads a `create` section back; `field_from(root)` types the read sections against a root |

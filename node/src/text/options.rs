@@ -87,13 +87,16 @@ impl JsTextOptions {
         self.inner.set_name(name.into());
     }
 
-    /// Return whether casts may null incompatible values.
+    /// Whether a declared or stored nullable column takes a value it cannot
+    /// convert as null, `true` by default; a not-null column refuses it by name
+    /// either way.
     #[napi(getter)]
     pub fn safe(&self) -> bool {
         self.inner.safe()
     }
 
-    /// Set whether casts may null incompatible values.
+    /// Set whether a declared or stored nullable column takes a value it cannot
+    /// convert as null; `false` refuses it too.
     #[napi(setter)]
     pub fn set_safe(&mut self, safe: bool) {
         self.inner.set_safe(safe);
@@ -524,7 +527,8 @@ impl JsTextOptions {
         options
     }
 
-    /// Return a copy with different cast strictness.
+    /// Return a copy whose declared or stored nullable columns take a value
+    /// they cannot convert as null (`true`) or refuse it (`false`).
     #[napi]
     pub fn with_safe(&self, safe: bool) -> Self {
         let mut options = self.clone();

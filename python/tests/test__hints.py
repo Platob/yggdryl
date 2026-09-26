@@ -663,6 +663,28 @@ def test_items_view_and_union_inference_preserve_native_child_state() -> None:
     assert tuple(union.into_arrow().type_codes) == (0, 1)
 
 
+def test_none_among_several_members_is_a_null_member_appended_last() -> None:
+    # One value type beside `None` stays that type; the field is what may be
+    # absent.
+    assert DataType.from_pyhint(int | None) == DataType.from_pyhint(int)
+    # Several: an Arrow union has no validity, so `None` is a member of its
+    # own, appended so the value members keep their type ids.
+    for hint in (int | str | None, typing.Optional[int | str]):
+        union = DataType.from_pyhint(hint)
+        assert union.id == "union"
+        assert [member.name for member in union] == ["int", "str", "NoneType"]
+        assert [member.dtype.id for member in union] == ["int64", "utf8", "null"]
+        assert [member.nullable for member in union] == [False, False, True]
+        assert tuple(union.into_arrow().type_codes) == (0, 1, 2)
+    # Both spellings of the one hint infer one field: a union is no class to
+    # declare.
+    assert Field.from_pyhint("value", int | str | None) == Field.from_pyhint(
+        "value", typing.Optional[int | str]
+    )
+    item = DataType.from_pyhint(list[int | str | None])[0].dtype
+    assert [member.dtype.id for member in item] == ["int64", "utf8", "null"]
+
+
 def test_deep_union_inference_assigns_exact_tags_at_each_variant_boundary() -> None:
     hint = list[
         dict[str, Annotated[int, {"branch": "count"}] | str]

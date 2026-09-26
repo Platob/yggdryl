@@ -3687,7 +3687,10 @@ class RecordOptions:
     @field.setter
     def field(self, field: FieldLike | None) -> None: ...
     @property
-    def safe(self) -> bool: ...
+    def safe(self) -> bool:
+        """Whether a declared or stored nullable column takes a value it cannot
+        convert as null, ``True`` by default; a not-null column refuses it by
+        name either way."""
     @safe.setter
     def safe(self, safe: bool) -> None: ...
     @property

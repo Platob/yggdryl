@@ -542,6 +542,13 @@ pub(crate) fn batch_reader_from_records(
         // rather than being lowered to a mapping for PyArrow to cast.
         return row_reader(&items, &first, options, Some(Arc::new(root)));
     }
+    if let Some(field) = options.field() {
+        // A declared root reads every row the same way - a mapping by its
+        // names, a sequence by position - and lands it through the core's
+        // value contract rather than PyArrow's cast.
+        let root = Arc::new(field.clone());
+        return row_reader(&items, &first, options, Some(root));
+    }
     row_reader(&items, &first, options, None)
 }
 
@@ -763,9 +770,10 @@ fn row_reader(
     landed: Option<Arc<CoreField>>,
 ) -> PyResult<BatchReader> {
     let py = items.py();
+    // Rows that land through the core never meet PyArrow's schema.
     let declared = match options.field() {
-        Some(field) => Some(core_schema_to_pyarrow(py, &field)?),
-        None => None,
+        Some(field) if landed.is_none() => Some(core_schema_to_pyarrow(py, &field)?),
+        _ => None,
     };
     let mut rows = Rows {
         items: items.clone().unbind(),
@@ -1696,7 +1704,9 @@ impl PyRecordOptions {
         Ok(())
     }
 
-    /// Whether a cast may null a value it cannot convert.
+    /// Whether a declared or stored nullable column takes a value it cannot
+    /// convert as null, `True` by default; a not-null column refuses it by
+    /// name either way.
     #[getter]
     fn safe(&self) -> bool {
         self.inner.safe()

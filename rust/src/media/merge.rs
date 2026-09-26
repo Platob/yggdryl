@@ -116,7 +116,7 @@ pub(crate) fn merged(
         state.held.push(batch);
     }
 
-    let options = ArrowCastOptions::new().with_safe(safe);
+    let options = ArrowCastOptions::declared(safe);
     let mut plans = PlanCache::new();
     for batch in incoming {
         let batch = batch.map_err(from_reader_error)?;

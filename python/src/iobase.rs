@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use pyo3::buffer::PyBuffer;
 use pyo3::exceptions::{PyIsADirectoryError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyBytes, PyDict, PyDictMethods, PyString, PyTuple, PyType};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyDictMethods, PyIterator, PyString, PyTuple, PyType};
 
 use yggdryl::holder::Holder;
 use yggdryl::holder::buffered::BufferedOptions;
@@ -2592,10 +2592,14 @@ impl PyIOBase {
             .map_err(value_error)?;
         let field =
             yggdryl::Field::from_arrow_schema("row", &reader.schema()).map_err(value_error)?;
-        let from_dict = cls
+        let class = cls
             .map(|cls| {
-                let from_dict = py.import("yggdryl._classes")?.getattr("from_dict")?;
-                Ok::<_, PyErr>((from_dict.unbind(), cls.clone().unbind()))
+                let classes = py.import("yggdryl._classes")?;
+                Ok::<_, PyErr>(RecordClass {
+                    cls: cls.clone().unbind(),
+                    from_dict: classes.getattr("from_dict")?.unbind(),
+                    read_rows: classes.getattr("_read_rows")?.unbind(),
+                })
             })
             .transpose()?;
         Py::new(
@@ -2603,9 +2607,11 @@ impl PyIOBase {
             PyRecordIterator {
                 reader,
                 field,
-                from_dict,
+                class,
                 rows: yggdryl::Serie::default(),
                 next: 0,
+                instances: None,
+                taken: 0,
             },
         )
         .map(|iterator| iterator.into_bound(py).into_any())
@@ -3152,10 +3158,26 @@ impl PyIOBaseIterator {
 pub(crate) struct PyRecordIterator {
     reader: yggdryl::arrow::BatchReader,
     field: yggdryl::Field,
-    from_dict: Option<(Py<PyAny>, Py<PyAny>)>,
-    // The current batch's rows and the next one to hand out.
+    class: Option<RecordClass>,
+    // The current batch's rows and the next one to hand out row by row.
     rows: yggdryl::Serie,
     next: usize,
+    // The instances the class machinery reads the current batch as, a
+    // window of columns at a time, when the batch is the class's layout,
+    // and how many of them were handed out: a refusal ends that read, and
+    // the rows after the refused one are read row by row, as they would
+    // have been.
+    instances: Option<Py<PyAny>>,
+    taken: usize,
+}
+
+/// The class a record read builds, and the two doors that build it: the
+/// columnar read of a batch of the class's own layout, and the mapping read
+/// of one row.
+struct RecordClass {
+    cls: Py<PyAny>,
+    from_dict: Py<PyAny>,
+    read_rows: Py<PyAny>,
 }
 
 #[pymethods]
@@ -3170,12 +3192,29 @@ impl PyRecordIterator {
 
     fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         loop {
+            if let Some(instances) = &self.instances {
+                match instances.bind(py).cast::<PyIterator>()?.clone().next() {
+                    Some(Ok(instance)) => {
+                        self.taken += 1;
+                        return Ok(Some(instance.unbind()));
+                    }
+                    Some(Err(error)) => {
+                        self.instances = None;
+                        self.next = self.taken + 1;
+                        return Err(error);
+                    }
+                    None => self.instances = None,
+                }
+            }
             if self.next < self.rows.len() {
                 let row = self.rows.scalar(self.next).map_err(value_error)?;
                 self.next += 1;
                 let record = crate::scalar::as_py_with_field(py, &row, &self.field)?;
-                return match &self.from_dict {
-                    Some((from_dict, cls)) => from_dict.call1(py, (cls, record)).map(Some),
+                return match &self.class {
+                    Some(class) => class
+                        .from_dict
+                        .call1(py, (class.cls.clone_ref(py), record))
+                        .map(Some),
                     None => Ok(Some(record)),
                 };
             }
@@ -3194,6 +3233,17 @@ impl PyRecordIterator {
             };
             self.rows = rows?;
             self.next = 0;
+            if let Some(class) = &self.class {
+                // A batch of the class's own layout is read a window of
+                // columns at a time; any other is read row by row above.
+                let rows = crate::serie::described(py, self.rows.clone())?;
+                let instances = class.read_rows.call1(py, (class.cls.clone_ref(py), rows))?;
+                if !instances.is_none(py) {
+                    self.instances = Some(instances);
+                    self.taken = 0;
+                    self.next = self.rows.len();
+                }
+            }
         }
     }
 }

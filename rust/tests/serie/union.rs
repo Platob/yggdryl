@@ -152,8 +152,6 @@ fn a_row_past_the_end_and_a_row_the_field_refuses_are_refused_and_nothing_moves(
         assert!(column.is_null(4).is_err());
         assert!(column.slice(3, 2).is_err());
 
-        // A union spells absence inside a member: a bare null is no row.
-        assert!(column.push(Scalar::Null).is_err());
         assert!(column.push(quote(7, Scalar::from(1_i64))).is_err());
         assert!(column.push(quote(0, Scalar::from("AAPL"))).is_err());
         assert!(column.push(quote(0, Scalar::Null)).is_err());
@@ -178,9 +176,52 @@ fn a_bare_value_lands_in_the_member_its_datatype_names() {
         column
             .push(Scalar::from("MSFT"))
             .expect("the symbol member's own value");
+        // A union spells absence inside a member, so a bare null is the
+        // payload of the one member that takes a null.
+        column
+            .push(Scalar::Null)
+            .expect("the nullable symbol member holds absence");
 
         assert_eq!(column.scalar(4).unwrap(), quote(0, Scalar::from(9_i64)));
         assert_eq!(column.scalar(5).unwrap(), quote(1, Scalar::from("MSFT")));
+        assert_eq!(column.scalar(6).unwrap(), quote(1, Scalar::Null));
+        assert!(column.is_null(6).unwrap());
+    }
+}
+
+#[test]
+fn a_null_member_holds_absence_and_crosses_arrow_unchanged() {
+    for mode in [UnionMode::Dense, UnionMode::Sparse] {
+        let field = Field::new(
+            "choice",
+            DataType::union(
+                [
+                    (0, Field::new("int", DataType::Int64, false)),
+                    (1, Field::new("str", DataType::utf8(), false)),
+                    (2, Field::new("NoneType", DataType::Null, true)),
+                ],
+                mode,
+            )
+            .expect("three members"),
+            true,
+        );
+        let column = Serie::from_scalars(
+            field.clone(),
+            [Scalar::from(1_i64), Scalar::from("a"), Scalar::Null],
+        )
+        .expect("each value names its member");
+        let rows = vec![
+            quote(0, Scalar::from(1_i64)),
+            quote(1, Scalar::from("a")),
+            quote(2, Scalar::Null),
+        ];
+        assert_eq!(column.rows().into_owned(), rows);
+        assert_eq!(column.null_count(), 1);
+
+        let array = column.clone().into_arrow_array().expect("an Arrow union");
+        let again = Serie::from_arrow_array(Some(&field), array, strict())
+            .expect("the null member's absence is its own");
+        assert_eq!(again.rows().into_owned(), rows);
     }
 }
 

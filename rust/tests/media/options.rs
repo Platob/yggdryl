@@ -697,3 +697,121 @@ fn a_file_takes_its_thread_share_in_every_encoding_that_splits() {
     set_file_threads(&mut ipc, 3);
     assert_eq!(file_threads(&ipc), None);
 }
+
+/// The stored `value` column of a write, and a batch of text to complete onto
+/// it.
+fn stored_value(nullable: bool) -> Field {
+    DataType::from(
+        StructType::from_fields([Field::new("value", DataType::Int64, nullable)]).unwrap(),
+    )
+    .required_field("row")
+}
+
+fn text_values(values: &[Option<&str>]) -> RecordBatch {
+    RecordBatch::try_new(
+        Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+            "value",
+            arrow_schema::DataType::Utf8,
+            true,
+        )])),
+        vec![Arc::new(arrow_array::StringArray::from(values.to_vec()))],
+    )
+    .unwrap()
+}
+
+#[test]
+fn the_declared_and_the_stored_layer_cast_by_one_declared_column_rule() {
+    let options = RecordOptions::Ipc(IpcOptions::default());
+    // A caller who says nothing lets a nullable column take a value it cannot
+    // convert as null; a not-null column refuses it by that value, and a
+    // null by the column's path, rather than writing its canonical default.
+    assert!(options.safe());
+    let nulled = options
+        .apply_arrow_batch(
+            text_values(&[Some("1"), Some("x")]),
+            Some(&stored_value(true)),
+        )
+        .unwrap();
+    assert!(nulled.column(0).is_null(1));
+    let refused = options
+        .apply_arrow_batch(
+            text_values(&[Some("1"), Some("x")]),
+            Some(&stored_value(false)),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("'x'"), "{refused}");
+    for values in [[Some("1"), None], [Some("1"), Some("")]] {
+        let refused = options
+            .apply_arrow_batch(text_values(&values), Some(&stored_value(false)))
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("$.value"), "{refused}");
+    }
+
+    // `safe = false` refuses the nullable column's value too, and a declared
+    // field answers exactly as the stored one it completes onto.
+    let strict = options.clone().with_safe(false);
+    let refused = strict
+        .apply_arrow_batch(text_values(&[Some("x")]), Some(&stored_value(true)))
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("'x'"), "{refused}");
+    let declared = options.clone().with_field(stored_value(false));
+    let refused = declared
+        .apply_arrow_batch(text_values(&[Some("1"), None]), None)
+        .unwrap_err()
+        .to_string();
+    assert!(refused.contains("$.value"), "{refused}");
+}
+
+#[test]
+fn a_write_onto_a_stored_not_null_column_refuses_and_leaves_the_resource() {
+    let mut handle = Buffer::new().with_media_type(yggdryl::MimeType::ARROW_STREAM.into());
+    let options = handle.record_options().unwrap();
+    let stored = RecordBatch::try_new(
+        stored_value(false).into_arrow_schema().unwrap(),
+        vec![Arc::new(Int64Array::from(vec![7]))],
+    )
+    .unwrap();
+    handle
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(stored.schema(), [stored]),
+            &options,
+        )
+        .unwrap();
+
+    for values in [[Some("x")], [None]] {
+        let incoming = text_values(&values);
+        let refused = handle
+            .append_arrow_reader(
+                yggdryl::arrow::batch_reader(incoming.schema(), [incoming.clone()]),
+                &options,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("value"), "{refused}");
+        let refused = handle
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(incoming.schema(), [incoming]),
+                &options,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("value"), "{refused}");
+    }
+    let kept: Vec<i64> = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .flat_map(|batch| {
+            let batch = batch.unwrap();
+            let values = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            values.values().to_vec()
+        })
+        .collect();
+    assert_eq!(kept, [7]);
+}

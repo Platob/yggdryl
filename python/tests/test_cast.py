@@ -398,10 +398,9 @@ class TestArrowNullability:
             batch, root
         ).into_arrow_batch().column("quantity").to_pylist() == [7, 0]
 
-        # Strictness reads that same null as the absence it is, and refuses it.
-        with pytest.raises(
-            ValueError, match=r"required Arrow field \$\.quantity holds 1 null values"
-        ):
+        # Strictness refuses the null a lenient conversion would leave in a
+        # required column, so the conversion is refused by the value itself.
+        with pytest.raises(ValueError, match="Can't cast value 130 to type Int8"):
             Serie.from_arrow_batch(batch, root, nullability="strict").into_arrow_batch()
 
         # `safe=False` refuses the conversion itself, before any policy about

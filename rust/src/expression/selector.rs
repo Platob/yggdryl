@@ -1120,23 +1120,18 @@ mod arrow {
                     evaluated
                 } else {
                     // The projection declared a datatype the term does not
-                    // produce. A value the column cannot hold becomes null,
-                    // the best-effort reading of a cast - unless the column
-                    // is declared `not null`, where a null is refused anyway
-                    // and the cast says which value could not be held.
-                    cast.reconcile(
-                        field,
-                        None,
-                        evaluated,
-                        ArrowCastOptions::new().with_safe(field.is_nullable()),
-                    )
-                    .map_err(|error| Error::InvalidRecord {
-                        path: smol_str::format_smolstr!("$.{}", field.name()),
-                        reason: smol_str::format_smolstr!(
-                            "expected every value to fit the required column {:?}, got {error}",
-                            field.name()
-                        ),
-                    })?
+                    // produce, so it casts by the declared-column rule: a
+                    // value a nullable column cannot hold becomes null, and
+                    // a `not null` column refuses that value or a null by
+                    // name.
+                    cast.reconcile(field, None, evaluated, ArrowCastOptions::declared(true))
+                        .map_err(|error| Error::InvalidRecord {
+                            path: smol_str::format_smolstr!("$.{}", field.name()),
+                            reason: smol_str::format_smolstr!(
+                                "expected every value to fit the required column {:?}, got {error}",
+                                field.name()
+                            ),
+                        })?
                 };
                 super::require_present(field, array.null_count() > 0)?;
                 columns.push(array);

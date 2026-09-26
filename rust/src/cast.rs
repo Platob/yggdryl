@@ -245,7 +245,11 @@ mod options {
         #[default]
         Default,
         /// Refuse: a required field must be carried by the source and hold a value
-        /// in every exposed row, and the error names its full path.
+        /// in every exposed row, and the error names its full path. A present
+        /// value a required field cannot convert is refused by that value
+        /// whatever `safe` says, because the null a lenient conversion would
+        /// leave is refused anyway: only a nullable field, or one whose
+        /// datatype holds null as its default, nulls a failed conversion.
         Strict,
     }
 
@@ -430,6 +434,29 @@ mod options {
                 nullability: Nullability::Default,
                 representation: Representation::Value,
             }
+        }
+
+        /// The cast a declaration runs, and the one place its rule is stated.
+        ///
+        /// A declaration is a column whose datatype a schema states rather
+        /// than a value proves: a `Selector` projection with a datatype, a
+        /// `Plan` `create` section with or without a target, a derived
+        /// `TRANSFORM:` or `PARTITION:` column, the record options' declared
+        /// field on a read or a write, the stored field a write completes
+        /// onto, and an Iceberg table's schema. In each, a nullable column
+        /// takes a present value it cannot convert as null when `safe` - the
+        /// declaring doors' default - and a not-null column refuses it by that
+        /// value; a null, an empty text cell entering a non-text column, and a
+        /// column the source does not carry are refused by a not-null column
+        /// naming its path, never repaired to its canonical default. A column
+        /// a declaring protocol fills is deferred and re-checked once the
+        /// protocols have run. This is [`new`](Self::new) under
+        /// [`Nullability::Strict`], a second constructor rather than a
+        /// `with_*` because it names a rule rather than one answer.
+        pub(crate) const fn declared(safe: bool) -> Self {
+            Self::new()
+                .with_safe(safe)
+                .with_nullability(Nullability::Strict)
         }
 
         /// Set whether a failed conversion becomes null rather than an error.
@@ -1421,8 +1448,16 @@ pub(crate) struct ArrayCastPlan {
 
 impl ArrayCastPlan {
     /// Whether a failed conversion becomes null rather than an error.
-    pub(crate) const fn safe(&self) -> bool {
+    ///
+    /// Under [`Nullability::Strict`] a required field whose datatype does
+    /// not hold null as its default refuses the null a lenient conversion
+    /// would leave, so it converts strictly and the refusal names the value
+    /// rather than the null it would have become.
+    pub(crate) fn safe(&self) -> bool {
         self.options.is_safe()
+            && (self.field.is_nullable()
+                || self.null_default
+                || !self.options.nullability().is_strict())
     }
 
     /// Which target rows this node certifies, in the order the landing

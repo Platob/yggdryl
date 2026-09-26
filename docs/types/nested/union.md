@@ -223,13 +223,18 @@ branch, and the payload under that branch's field. It is stored as the ordered
 pair - a two-item `Scalar::Serie` - and the id canonicalizes to `Int64`, so
 a narrower spelling of the same number reads back the same value.
 
-A bare value - anything but a sequence, and never a bare null - is the payload
-of the one member it belongs to: the member whose datatype is its own, else the
-one in its own family, else the one that accepts it. Two members at the first
-step that finds any is a refusal naming both, because a value with two readings
-names no branch. `UnionFields::branch_of` answers the same question for any
-value, a sequence included, for a caller whose values are always bare - a
-Python member annotated `list[int] | str` holds a list, never a pair.
+A bare value - anything but a sequence, a null included - is the payload of
+the one member it belongs to: the member whose datatype is its own, else the
+one in its own family, else the one that accepts it. Where that step finds
+several, only those that accept the value remain: two records are both
+`struct`, and the one whose names the value spells is its member. Two left is
+a refusal naming both, because a value with two readings names no branch. A
+bare null therefore enters the `null` member, else the one member that takes a
+null, since a union has no validity of its own. `UnionFields::branch_of`
+answers the same question for any value, a sequence included, for a caller
+whose values are always bare - a Python member annotated `list[int] | str`
+holds a list, never a pair, and one annotated `int | str | None` infers a
+`null` member of its own.
 
 === "Rust"
 
@@ -254,9 +259,14 @@ Python member annotated `list[int] | str` holds a list, never a pair.
     let text = payload.scalar(Scalar::from_sequence([Scalar::from(1_i32), Scalar::from("hi")]))?;
     assert_eq!(text, Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("hi")]));
 
-    // A bare value is the payload of the member its datatype names.
+    // A bare value is the payload of the member its datatype names, and a
+    // bare null the payload of the one member that takes a null.
     assert_eq!(payload.scalar(7_i64)?, number);
     assert_eq!(payload.scalar("hi")?, text);
+    assert_eq!(
+        payload.scalar(Scalar::Null)?,
+        Scalar::from_sequence([Scalar::from(1_i64), Scalar::Null])
+    );
 
     // A type id no member carries names no branch.
     let refused = payload
@@ -279,9 +289,11 @@ Python member annotated `list[int] | str` holds a list, never a pair.
     assert payload.scalar([0, 7]).as_py() == [0, 7]
     assert payload.scalar([1, "hi"]).as_py() == [1, "hi"]
 
-    # A bare value is the payload of the member its datatype names.
+    # A bare value is the payload of the member its datatype names, and a
+    # bare null the payload of the one member that takes a null.
     assert payload.scalar(7).as_py() == [0, 7]
     assert payload.scalar("hi").as_py() == [1, "hi"]
+    assert payload.scalar(None).as_py() == [1, None]
 
     # A type id no member carries names no branch.
     with pytest.raises(ValueError, match="unknown union type id 9"):
@@ -303,9 +315,11 @@ Python member annotated `list[int] | str` holds a list, never a pair.
     assert.deepEqual(payload.scalar([0n, 7n]).asJs(), [0, 7])
     assert.deepEqual(payload.scalar([1n, 'hi']).asJs(), [1, 'hi'])
 
-    // A bare value is the payload of the member its datatype names.
+    // A bare value is the payload of the member its datatype names, and a
+    // bare null the payload of the one member that takes a null.
     assert.deepEqual(payload.scalar(7n).asJs(), [0, 7])
     assert.deepEqual(payload.scalar('hi').asJs(), [1, 'hi'])
+    assert.deepEqual(payload.scalar(null).asJs(), [1, null])
 
     // A type id no member carries names no branch.
     assert.throws(() => payload.scalar([9n, 1n]), /unknown union type id 9/)
@@ -464,8 +478,9 @@ union of declared members and a value that declares itself.
 - Bare `variant` is [the semi-structured datatype](../variant.md), and `variant(...)` with members is this sugar. The parenthesis is the whole of the difference.
 - The mode is a parameter, not an identifier: `union(dense,...)` and `union(sparse,...)` share `DataTypeId::Union`, and are still different datatypes.
 - A union value is the pair `[type_id, payload]`; the id canonicalizes to `Int64`, and an id no member carries -> `unknown union type id <n>`.
-- A sequence under a union is always read as that pair, so a list payload is spelled as the pair naming its member; a bare value that two members fit -> `fits more than one union member`, and one no member takes -> `expected a value one union member accepts`.
-- A bare null is no union value: absence is spelled through a member, as the pair `[type_id, null]`.
+- A sequence under a union is always read as that pair, so a list payload is spelled as the pair naming its member; a bare value that two members accept -> `fits more than one union member`, and one no member takes -> `expected a value one union member accepts`.
+- A bare null enters the `null` member, else the one member that takes a null; members that all require a value -> `expected a value one union member accepts (...), got null`, and a required union field -> `non-nullable field received null`, exactly as the pair `[n, null]` is.
+- A union column crosses Arrow IPC; [Parquet](../../media/index.md#parquet) has no union layout and refuses it by name.
 - A union has one child per member, so `with_fields` takes exactly that many and keeps the declared ids and the mode.
 - A union member is a whole [`Field`](../field.md): it carries its own name, nullability and metadata, and those survive the Arrow round trip.
 

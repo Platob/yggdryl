@@ -24,6 +24,8 @@ as zero.
 from __future__ import annotations
 
 import argparse
+import datetime
+import enum
 import gc
 import importlib
 import pathlib
@@ -183,6 +185,44 @@ class TradeRow:
 
 
 CLASS_ROWS = tuple(TradeRow(**row) for row in ROW_MAPPINGS)
+
+
+class LegSide(enum.Enum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+@scalar(frozen=True, slots=True)
+class LegRow:
+    """One leg of a nested record: a text, a count and an enum."""
+
+    symbol: str
+    quantity: int
+    side: LegSide
+
+
+@scalar(frozen=True, slots=True)
+class OrderRow:
+    """A record of three nested legs and an enum, read column by column."""
+
+    id: int
+    side: LegSide
+    legs: list[LegRow]
+    note: str | None
+
+
+@scalar(frozen=True, slots=True)
+class StampedRow:
+    """A record whose datetime column is what a class read converts most."""
+
+    id: int
+    at: datetime.datetime
+
+
+NESTED_COUNT = 16_384
+NESTED_FILE = IOBase(ROOT / "orders.arrows")
+STAMPED_FILE = IOBase(ROOT / "stamped.arrows")
+_STAMP = datetime.datetime(2024, 1, 2, 3, 4, 5, tzinfo=datetime.timezone.utc)
 RECORD_BATCH = TABLE.combine_chunks().to_batches(max_chunksize=ROW_COUNT)[0]
 MERGE_OPTIONS = SINK_FILE.record_options()
 MERGE_OPTIONS.merge_by = ["id"]
@@ -263,6 +303,31 @@ def _write_declared_class_records() -> object:
 
 def _read_class_records() -> object:
     return sum(1 for _ in FILE.read_records(TradeRow))
+
+
+def _write_nested_fixtures() -> None:
+    legs = [LegRow(f"L{leg}", leg, LegSide.BUY) for leg in range(3)]
+    NESTED_FILE.overwrite_records(
+        [OrderRow(index, LegSide.SELL, legs, None) for index in range(NESTED_COUNT)]
+    )
+    STAMPED_FILE.overwrite_records(
+        [
+            StampedRow(index, _STAMP + datetime.timedelta(seconds=index))
+            for index in range(NESTED_COUNT)
+        ]
+    )
+
+
+def _read_nested_class_records() -> object:
+    return sum(1 for _ in NESTED_FILE.read_records(OrderRow))
+
+
+def _read_stamped_class_records() -> object:
+    return sum(1 for _ in STAMPED_FILE.read_records(StampedRow))
+
+
+def _stamped_column_as_py() -> object:
+    return sum(len(serie.child("at").as_py()) for serie in STAMPED_FILE.read_arrow())
 
 
 def _fresh_row_size() -> object:
@@ -427,6 +492,11 @@ BENCHMARKS = tuple(
             "row",
         ),
         Benchmark("parquet read class records", _read_class_records, ROW_COUNT, "row"),
+        Benchmark("ipc read nested class records", _read_nested_class_records, NESTED_COUNT, "row"),
+        Benchmark(
+            "ipc read datetime class records", _read_stamped_class_records, NESTED_COUNT, "row"
+        ),
+        Benchmark("datetime column as_py", _stamped_column_as_py, NESTED_COUNT, "value"),
         Benchmark("parquet row size fresh", _fresh_row_size, 1, "lookup"),
         Benchmark("parquet column size fresh", _fresh_column_size, 1, "lookup"),
         Benchmark("parquet row size cached", _cached_row_size, 1, "lookup"),
@@ -538,6 +608,7 @@ def main() -> None:
         STREAM.overwrite_arrow_table(TABLE)
         FILE.overwrite_arrow_table(TABLE)
         GEO_FILE.overwrite_arrow_table(GEO_TABLE)
+        _write_nested_fixtures()
         FILE.open()
 
         whole_stream = _materialized(STREAM, None)

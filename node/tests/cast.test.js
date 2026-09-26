@@ -62,7 +62,9 @@ test('the three cast answers are the plan own', () => {
     nullability: 'strict',
     representation: 'value',
   })
-  assert.throws(() => strict.apply(overflowing), /required Arrow field \$\.quantity holds 2 null values/)
+  // Strictness refuses the null a lenient conversion would leave in a
+  // required column, so the conversion is refused by the value itself.
+  assert.throws(() => strict.apply(overflowing), /Can't cast value 130 to type Int8/)
 
   const unsafe = ArrowCastPlan.compile(source, target, { safe: false })
   assert.equal(unsafe.options.safe, false)

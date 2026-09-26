@@ -3365,6 +3365,73 @@ mod tables {
     }
 
     #[test]
+    fn a_required_column_with_an_initial_default_reads_it_in_files_that_predate_it() {
+        let path = root("evolution-initial-default");
+        let schema = trade_schema();
+        let mut table = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V3,
+            schema.clone(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let batch = trades(&[1], &[Some("AAPL")], &[Some("XNAS")]);
+        table
+            .commit_append(yggdryl::arrow::batch_reader(batch.schema(), [batch]))
+            .unwrap();
+
+        // A required column is added with the value older files read it as.
+        let mut evolved = schema.clone();
+        evolved.remove_metadata("ICEBERG:schema-id");
+        let mut quantity = DataType::Int64.required_field("quantity");
+        quantity
+            .insert_metadata("ICEBERG:initial-default", "7")
+            .unwrap();
+        let mut fields = evolved.fields().to_vec();
+        fields.push(quantity);
+        evolved
+            .set_dtype(DataType::from(StructType::from_fields(fields).unwrap()))
+            .unwrap();
+        super::assign_field_ids(&mut evolved, 4).unwrap();
+        table.evolve_schema(evolved).unwrap();
+
+        let arrow = table.schema().unwrap().clone().into_arrow_schema().unwrap();
+        let widened = arrow_array::RecordBatch::try_new(
+            arrow.clone(),
+            vec![
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![2_i64])),
+                std::sync::Arc::new(arrow_array::StringArray::from(vec![Some("MSFT")])),
+                std::sync::Arc::new(arrow_array::StringArray::from(vec![Some("XNYS")])),
+                std::sync::Arc::new(arrow_array::Int64Array::from(vec![50_i64])),
+            ],
+        )
+        .unwrap();
+        table
+            .commit_append(yggdryl::arrow::batch_reader(arrow, [widened]))
+            .unwrap();
+
+        // The file written before the column existed reads its initial
+        // default; the file written after keeps its own value.
+        let mut quantities = Vec::new();
+        for batch in table.scan(None).unwrap() {
+            let batch = batch.unwrap();
+            let column = batch.column_by_name("quantity").unwrap();
+            assert_eq!(column.null_count(), 0);
+            quantities.extend(
+                column
+                    .as_any()
+                    .downcast_ref::<arrow_array::Int64Array>()
+                    .unwrap()
+                    .values()
+                    .iter()
+                    .copied(),
+            );
+        }
+        quantities.sort_unstable();
+        assert_eq!(quantities, [7, 50]);
+    }
+
+    #[test]
     fn a_table_whose_schema_evolved_reads_old_files_with_the_new_column_null() {
         let path = root("evolution");
         let schema = trade_schema();

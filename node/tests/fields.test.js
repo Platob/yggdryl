@@ -786,3 +786,17 @@ test('an empty text cell is null before safe is asked', () => {
   assert.equal(new DataType('utf8').scalar('').asJs(), '')
   assert.throws(() => required.scalar(''), /non-nullable field received null/)
 })
+
+test('a bare null enters the union member that holds absence', () => {
+  const choice = new Field(
+    'choice',
+    'variant(int:int64 not null,str:utf8 not null,none:null)',
+    true,
+  )
+  // A union has no validity of its own, so absence is its `null` member's.
+  assert.deepEqual(choice.scalar(null).asJs(), [2, null])
+  assert.deepEqual(choice.scalar(7n).asJs(), [0, 7])
+  // Members that all require a value leave a bare null no member to enter.
+  const required = new Field('choice', 'variant(int:int64 not null,str:utf8 not null)', true)
+  assert.throws(() => required.scalar(null), /one union member accepts/)
+})

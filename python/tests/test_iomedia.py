@@ -472,6 +472,52 @@ class ListOrInt:
 
 
 @scalar
+class MaybeVariant:
+    value: int | str | None
+
+
+@scalar
+class Tagged:
+    code: str
+
+
+@scalar
+class Quoted:
+    price: float
+
+
+@scalar
+class Choice:
+    value: Tagged | Quoted | None
+
+
+@scalar
+class MaybeItems:
+    values: list[int | str | None]
+
+
+class Side(enum.Enum):
+    BUY = "buy"
+    SELL = "sell"
+
+
+@scalar(frozen=True)
+class Leg:
+    symbol: str
+    quantity: int
+    side: Side
+
+
+@scalar
+class Order:
+    id: int
+    side: Side
+    legs: list[Leg]
+    parent: Leg | None
+    note: str | None
+
+
+@scalar
 class Numeric:
     value: int | float
 
@@ -535,6 +581,22 @@ class TestDataclassRecords:
         with pytest.raises(ValueError, match='union column "value"'):
             IOBase(tmp_path / "variant.parquet").overwrite_records(rows)
 
+    def test_none_among_union_members_is_the_null_member(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # `None` beside several value types is a member of its own, so it
+        # crosses as that member's absence and reads back as `None`.
+        cases = [
+            (MaybeVariant, [MaybeVariant(1), MaybeVariant("a"), MaybeVariant(None)]),
+            (Choice, [Choice(Tagged("x")), Choice(Quoted(1.5)), Choice(None)]),
+            (MaybeItems, [MaybeItems([1, "a", None]), MaybeItems([])]),
+        ]
+        for cls, rows in cases:
+            handle = IOBase(tmp_path / f"{cls.__name__}.arrows")
+            handle.overwrite_records(rows)
+            assert list(handle.read_records(cls)) == rows
+        assert MaybeVariant.into_field().scalar(MaybeVariant(None)).as_py() == [[2, None]]
+
     def test_a_union_member_no_branch_takes_is_refused_naming_its_path(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -563,6 +625,117 @@ class TestDataclassRecords:
         options.field = Field("row", "struct<id: int64 not null>", nullable=False)
         narrower.overwrite_records([Trade(1, "XNAS")], options=options)
         assert list(narrower.read_records()) == [{"id": 1}]
+
+    def test_a_class_read_by_columns_answers_what_a_row_read_answers(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # More rows than one window, nested records, a list of records, an
+        # enum, and null parents: the columnar read and the mapping read of
+        # the same rows answer the same instances.
+        rows = [
+            Order(
+                index,
+                Side.BUY if index % 2 else Side.SELL,
+                [Leg(f"L{index}", leg, Side.BUY) for leg in range(index % 3)],
+                None if index % 5 else Leg("P", index, Side.SELL),
+                None if index % 7 else f"n{index}",
+            )
+            for index in range(2500)
+        ]
+        handle = IOBase(tmp_path / "orders.arrows")
+        handle.overwrite_records(rows)
+
+        assert list(handle.read_records(Order)) == rows
+        from yggdryl._classes import from_dict
+
+        assert [from_dict(Order, row) for row in handle.read_records()] == rows
+
+    def test_a_class_read_by_columns_builds_rows_in_order_and_refuses_at_the_row(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        built: list[int] = []
+
+        @scalar
+        class Counted:
+            id: int
+
+            def __post_init__(self) -> None:
+                if self.id == 1500:
+                    raise ValueError("row 1500 is refused")
+                built.append(self.id)
+
+        handle = IOBase(tmp_path / "counted.arrows")
+        handle.overwrite_records([{"id": index} for index in range(2000)])
+        read = handle.read_records(Counted)
+        instances = [next(read) for _ in range(1500)]
+        assert [instance.id for instance in instances] == list(range(1500))
+        assert built == list(range(1500))
+        with pytest.raises(ValueError, match="row 1500 is refused"):
+            next(read)
+        # Reading on after a refusal continues with the next row, as a read
+        # of one row at a time does.
+        assert next(read).id == 1501
+        assert sum(1 for _ in read) == 498
+
+    def test_a_reordered_constructor_is_called_by_its_names(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        @scalar
+        class Reordered:
+            a: int
+            b: str
+
+            def __init__(self, b: str, a: int) -> None:
+                self.a = a
+                self.b = b
+
+        handle = IOBase(tmp_path / "reordered.arrows")
+        handle.overwrite_records([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+        read = list(handle.read_records(Reordered))
+        assert [(row.a, row.b) for row in read] == [(1, "x"), (2, "y")]
+
+    def test_a_stored_not_null_column_refuses_what_it_cannot_hold(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "stored.arrows")
+        handle.overwrite_records([Trade(1, "XNAS")])
+        # A value the stored `int64 not null` cannot hold, or a null, is
+        # refused by name and never written as the column's default.
+        for rows in ([{"id": "x", "venue": None}], [{"id": None, "venue": None}]):
+            with pytest.raises(ValueError, match="id"):
+                handle.append_records(rows)
+        assert list(handle.read_records(Trade)) == [Trade(1, "XNAS")]
+        # A declared field reads a mapping row through the core's value
+        # contract, as it reads an instance.
+        declared = IOBase(tmp_path / "declared.arrows")
+        options = declared.record_options()
+        options.field = Trade.into_field()
+        declared.overwrite_records([{"id": "7", "venue": "XNAS"}], options=options)
+        assert list(declared.read_records(Trade)) == [Trade(7, "XNAS")]
+        with pytest.raises(ValueError, match="non-nullable"):
+            declared.overwrite_records([{"id": None, "venue": "XNAS"}], options=options)
+
+    def test_a_declared_field_reads_nested_mappings_by_name(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "nested.arrows")
+        options = handle.record_options()
+        options.field = Field(
+            "row",
+            "struct<id: int64 not null, leg: struct<x: int64, s: utf8>, "
+            "legs: serie<struct<x: int64>>, m: map<utf8, int64>>",
+            nullable=False,
+        )
+        # A mapping under a record child is read by name, as the row is: a
+        # missing key is null and a key the record does not declare is not
+        # read, at every depth.
+        handle.overwrite_records(
+            [{"id": 1, "leg": {"x": 1, "s": "a", "extra": 9}, "legs": [{"x": 2}, {}], "m": {"k": 3}}],
+            options=options,
+        )
+        assert list(handle.read_records()) == [
+            {"id": 1, "leg": {"x": 1, "s": "a"}, "legs": [{"x": 2}, {"x": None}], "m": {"k": 3}}
+        ]
 
     def test_plain_dataclass_reads_one_row_at_a_time(
         self, tmp_path: pathlib.Path
