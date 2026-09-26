@@ -125,16 +125,20 @@ this project and nothing else.
 
 ## Feature boundaries
 
-| Feature | Default | Adds |
-| --- | ---: | --- |
-| `arrow` | on | arrays, batches, IPC, casting |
-| `parquet` | off | the Parquet codec and its compression stack |
-| `iceberg` | off | Iceberg 0.10.1 metadata (Rust 1.94 or newer) |
-| `http` | off | the HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages and the `Server`, behind `IOBase` ([HTTP](holder/index.md#http)) |
-| `aws` | off | who a process is to AWS - the credential chain, Signature Version 4; implies `http` |
-| `s3` | off | Amazon S3, Google Cloud Storage and Azure Blob Storage ([Object stores](holder/index.md#object-stores)); implies `aws` |
+No feature is on by default (`default = []`); Arrow arrays, batches, IPC and casting are always compiled in.
 
-A schema, identifier, hashing, FIX, and structured-text consumer builds with `default-features = false` on Rust 1.85.
+| Feature | Adds |
+| --- | --- |
+| `parquet` | the Parquet codec and its compression stack |
+| `iceberg` | Iceberg tables, their metadata serde and validation owned by the official Iceberg 0.10.1 crate; implies `parquet`, needs Rust 1.94 or newer |
+| `http` | the HTTP/1.1 client, sessions, requests, responses, resumable streams, paginated pages and the `Server`, behind `IOBase` ([HTTP](holder/index.md#http)) |
+| `http2` | HTTP/2 under the same client - ALPN `h2` over TLS, `h2c` by prior knowledge; implies `http` |
+| `http3` | HTTP/3 under the same client, once an origin advertises it in `Alt-Svc`; implies `http2` |
+| `aws` | the AWS identity: credential chain, shared configuration, SSO, STS, Signature Version 4; implies `http` |
+| `s3` | the Amazon S3, Google Cloud Storage and Azure Blob Storage backend; implies `aws` |
+| `internals` | `yggdryl::internals`, reached by `rust/tests/` alone; no published build turns it on |
+
+The default build - schemas, identifiers, hashing, FIX, structured text, Arrow - and `s3` compile on Rust 1.85.
 
 ## Page skeleton
 

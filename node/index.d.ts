@@ -661,15 +661,19 @@ export declare class Bound {
   get columnIndices(): Array<number>
   /** Return whether answering this term requires reading rows. */
   get readsRows(): boolean
-  /** Evaluate this term for one row of column values, in schema order. */
-  eval(row: JsScalar): JsScalar
+  /**
+   * Evaluate this term for one row: the column values in schema order, or
+   * a named record the schema orders, refusing a name it does not declare.
+   * A JavaScript row is read through `Scalar.from` first.
+   */
+  eval(row: unknown): JsScalar
   /**
    * Answer this predicate for one row, reading unknown as "no".
    *
    * Unknown is not true, so a row whose value is null does not pass a
-   * comparison against it.
+   * comparison against it. The row is read as `eval` reads one.
    */
-  matches(row: JsScalar): boolean
+  matches(row: unknown): boolean
   /**
    * Split this predicate into the part a partition layout answers and the
    * rest.
@@ -3756,7 +3760,13 @@ export declare class IOBase {
   get parent(): IOBase | null
   /** Resolve a child of this resource, as `path.join`. */
   joinpath(others: Array<string>): IOBase
-  /** Return whether anything is here now, as `fs.existsSync`. */
+  /**
+   * Return whether anything is here now, as `fs.existsSync`.
+   *
+   * Each role answers its own question - a folder whether its container
+   * is there, a file whether its leaf is - so a folder `mkdir` made and
+   * `remove` deleted answers `false`.
+   */
   exists(): boolean
   /** Return whether this resource contains others, as `Stats.isDirectory`. */
   isDir(): boolean
@@ -4005,9 +4015,12 @@ export declare class IOBase {
    * Return the record settings this handle's media type names.
    *
    * The encoding is never guessed: it is whatever the handle already says it
-   * holds, which is why no record method below takes a format argument.
+   * holds, which is why no record method below takes a format argument. A
+   * plain-text handle answers the `TextOptions` its own settings live on -
+   * the row header `intoText` retained included - and every other handle
+   * its encoding's `RecordOptions`.
    */
-  recordOptions(): JsRecordOptions
+  recordOptions(): TextOptions | RecordOptions
   /** Read the canonical non-null struct root `Field` of this resource. */
   readArrowField(options?: JsRecordOptions | undefined | null): Field
   /**
@@ -4033,8 +4046,11 @@ export declare class IOBase {
    * and the options' `where`, `select` and row bounds are the record
    * surface's - a `where` may name a column the `select` builds, which no
    * line states. A caller wanting the clauses answered reads records.
+   *
+   * Absent options are the handle's own - the row header `intoText`
+   * retained included - and options of another encoding are refused.
    */
-  readTextLines(options?: JsTextOptions | undefined | null): TextLineIterator
+  readTextLines(options?: JsRecordOptions | undefined | null): TextLineIterator
   /**
    * Replace this resource's rows with every batch `batches` yields.
    *
@@ -5949,6 +5965,13 @@ export declare class RecordOptions {
   /** Set the bound on how many result rows flow in total. */
   set maxRowSize(maxRowSize: number | undefined | null)
   /**
+   * How many leading result rows a read or write skips, when set - the
+   * plan's `offset`; the row bound counts the rows after it.
+   */
+  get rowOffset(): number | null
+  /** Set how many leading result rows a read or write skips. */
+  set rowOffset(rowOffset: number | undefined | null)
+  /**
    * The bound on the result rows' Arrow in-memory bytes, when one is set.
    *
    * Counted uncompressed, never as encoded bytes; a non-zero bound always
@@ -6066,6 +6089,8 @@ export declare class RecordOptions {
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
   withBatchRowSize(batchRowSize: number): RecordOptions
+  /** Return these options skipping the given leading result rows. */
+  withRowOffset(rowOffset: number): RecordOptions
   /** Return these options with a bound on how many result rows flow. */
   withMaxRowSize(maxRowSize: number): RecordOptions
   /** Return these options with a bound on the result rows' Arrow bytes. */
@@ -6328,8 +6353,13 @@ export declare class Scalar {
   isEmpty(): boolean
   /** Look up one non-negative sequence index without projecting its value. */
   at(index: number): Scalar | null
-  /** Look up a dotted mapping/record key and sequence-index path. */
-  path(path: string): Scalar | null
+  /**
+   * Look one value up by a `FieldPath`, or the text of one: `.name` a key
+   * of a mapping or a record, `[i]` a row (negative from the end),
+   * `['key']` a mapping entry, `[a:b]` a run of rows. A segment that does
+   * not resolve answers `null`; text that is not a path throws.
+   */
+  path(path: string | JsFieldPath): Scalar | null
   /** The count a temporal holds, or `null`. */
   get count(): bigint | null
   /** The unit carried by a temporal, or `null`. */
@@ -6470,17 +6500,15 @@ export declare class ScanPlan {
 export type JsScanPlan = ScanPlan
 
 /**
- * A recording of column operations against a table's current schema.
+ * A recording of column operations against a table's schema.
  *
  * The loader hands one out from `table.updateSchema()` and wraps each method
- * to return the builder, so a chain reads as one sentence. Nothing is checked
- * while recording: `commit()` replays the recording onto a fresh core
- * `SchemaUpdate`, which is what makes the operations apply to the schema the
- * table has *then* and report the first failure with its core message.
+ * to return the builder, so a chain reads as one sentence. It is the core
+ * `SchemaUpdate` itself: nothing is checked while recording, and `commit()`
+ * replays the recording onto the schema the table has *then*, reporting the
+ * first failure with its core message.
  */
 export declare class SchemaUpdate {
-  /** Start an empty recording. */
-  constructor()
   /**
    * Record a new column under `parent` - `""` for the root, a dotted path
    * for a nested struct.
@@ -7496,16 +7524,16 @@ export declare class Term {
   /** Name one top-level column. */
   static column(name: string): Term
   /**
-   * Hold one constant.
-   *
-   * The constant is a `Scalar`, which is the JavaScript spelling of the
-   * values JavaScript itself has none of - an exact decimal, a date, a
-   * timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
-   * one out of an ordinary JavaScript value.
+   * Hold one constant: a `Scalar`, or any JavaScript value, which the
+   * loader reads through `Scalar.from` - text included, which stays the
+   * text it is rather than parsing.
    */
-  static literal(value: JsScalar): Term
-  /** Hold a constant in an explicitly named datatype, checked against it. */
-  static typedLiteral(dtype: DataTypeInput, value: JsScalar): Term
+  static literal(value: unknown): Term
+  /**
+   * Hold a constant in an explicitly named datatype, checked against it;
+   * a JavaScript value is read through `Scalar.from` first.
+   */
+  static typedLiteral(dtype: DataTypeInput, value: unknown): Term
   /** Name one late-bound value. */
   static parameter(name: string): Term
   /** The term that is true for every row. */
@@ -7513,11 +7541,11 @@ export declare class Term {
   /** The term that is true for no row. */
   static alwaysFalse(): Term
   /** Conjoin many terms into one flattened node; empty is true. */
-  static all(operands: Array<Term | string>): Term
+  static all(operands: Iterable<unknown>): Term
   /** Disjoin many terms into one flattened node; empty is false. */
-  static any(operands: Array<Term | string>): Term
+  static any(operands: Iterable<unknown>): Term
   /** Call one function of the closed scalar set over terms or their text. */
-  static call(name: string, arguments: Array<Term | string>): Term
+  static call(name: string, arguments: Iterable<unknown>): Term
   /** Every top-level column this term reads, in first-seen order. */
   get columns(): Array<string>
   /** Every parameter this term names, in first-seen order. */
@@ -7543,9 +7571,9 @@ export declare class Term {
   /** The tree of this term, drawn one node per line. */
   explain(): string
   /** Build `this and other`. */
-  and(other: Term | string): Term
+  and(other: unknown): Term
   /** Build `this or other`. */
-  or(other: Term | string): Term
+  or(other: unknown): Term
   /** Build `not this`. */
   not(): Term
   /**
@@ -7554,33 +7582,33 @@ export declare class Term {
    * The vocabulary is the grammar's own - `=`, `<>`, `<`, `<=`, `>`, `>=`,
    * `is distinct from`, `is not distinct from`.
    */
-  comparison(comparison: string, other: Term | string): Term
+  comparison(comparison: string, other: unknown): Term
   /** `this = other`. */
-  eq(other: Term | string): Term
+  eq(other: unknown): Term
   /** `this <> other`. */
-  ne(other: Term | string): Term
+  ne(other: unknown): Term
   /** `this < other`. */
-  lt(other: Term | string): Term
+  lt(other: unknown): Term
   /** `this <= other`. */
-  le(other: Term | string): Term
+  le(other: unknown): Term
   /** `this > other`. */
-  gt(other: Term | string): Term
+  gt(other: unknown): Term
   /** `this >= other`. */
-  ge(other: Term | string): Term
+  ge(other: unknown): Term
   /** `this in (...)`, over the terms or texts given. */
-  isIn(values: Array<Term | string>): Term
+  isIn(values: Iterable<unknown>): Term
   /** `this between low and high`, inclusive at both ends. */
-  between(low: Term | string, high: Term | string): Term
+  between(low: unknown, high: unknown): Term
   /** `this is null`, which answers true or false and never unknown. */
   isNull(): Term
   /** `this is not null`. */
   isNotNull(): Term
   /** `this like pattern`, with SQL's `%` and `_` wildcards. */
-  like(pattern: Term | string): Term
+  like(pattern: unknown): Term
   /** `this ilike pattern`, folding ASCII case. */
-  ilike(pattern: Term | string): Term
+  ilike(pattern: unknown): Term
   /** `this glob pattern`, under the `.gitignore` path rule. */
-  glob(pattern: Term | string): Term
+  glob(pattern: unknown): Term
   /** Cast this term to a datatype, refusing what it cannot hold. */
   cast(dtype: DataTypeInput): Term
   /** Cast this term to a datatype, nulling what it cannot hold. */
@@ -7598,8 +7626,11 @@ export declare class Term {
    * one is the serie's own edge.
    */
   slice(start?: number | undefined | null, end?: number | undefined | null): Term
-  /** Read a map value by key. */
-  key(key: JsScalar): Term
+  /**
+   * Read a map value by key: a `Scalar`, or any JavaScript value read
+   * through `Scalar.from`.
+   */
+  key(key: unknown): Term
   /** Build `-this`, folding a numeric literal in the native core. */
   negate(): Term
   /** Write this term as a structural JSON document. */
@@ -7833,6 +7864,10 @@ export declare class TextOptions {
   get maxRowSize(): number | null
   /** Set or clear the total result-row bound. */
   set maxRowSize(value: number | undefined | null)
+  /** Return how many leading result rows a read or write skips. */
+  get rowOffset(): number | null
+  /** Set or clear how many leading result rows a read or write skips. */
+  set rowOffset(value: number | undefined | null)
   /** Return the Arrow-memory byte bound. */
   get maxByteSize(): number | null
   /** Set or clear the Arrow-memory byte bound. */
@@ -7898,6 +7933,11 @@ export declare class TextOptions {
   get rowheader(): string | null
   /** Compile or clear the row-header regex. */
   set rowheader(rowheader: string | undefined | null)
+  /**
+   * The row header's named captures, in the order they become columns;
+   * empty without a row header.
+   */
+  get captureNames(): Array<string>
   /** Return the left-edge stripping patterns, in the order they apply. */
   get lstrip(): Array<string>
   /** Compile or clear the left-edge stripping patterns. */
@@ -7956,6 +7996,8 @@ export declare class TextOptions {
   withBatchRowSize(size: number): TextOptions
   /** Return a copy with a streamed-write commit cadence. */
   withCommitRowSize(rows: number): TextOptions
+  /** Return a copy skipping the given leading result rows. */
+  withRowOffset(rows: number): TextOptions
   /** Return a copy with a total result-row bound. */
   withMaxRowSize(rows: number): TextOptions
   /** Return a copy with an Arrow-memory byte bound. */

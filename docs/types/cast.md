@@ -268,7 +268,7 @@ width it declares and pads to it on the way out, because that is what the fixed 
     use yggdryl::{DataType, Scalar, StructType};
 
     let money: DataType = "decimal128(10, 2)".parse()?;
-    assert_eq!(money.scalar("10.50")?, Scalar::d128(1_050, 2));
+    assert_eq!(money.scalar("10.50")?, Scalar::decimal128(1_050, 2));
     // A digit the declared scale cannot state is a value change, so it is refused.
     assert!(money.scalar("1.005").is_err());
 
@@ -643,8 +643,11 @@ through every door - the Arrow walk and the scalar door alike - before any spell
 and before `safe` is consulted: an empty cell is not a failed conversion, because there was
 nothing to convert. The field's nullability then decides what that null is, exactly as for a
 null the source carried: a nullable column holds it and a required one refuses it by path
-([Required columns](#required-columns)). Only zero-length text is empty; whitespace is
-a spelling no reader takes and keeps the reader's own answer. A string leaf, a byte leaf and an
+([Required columns](#required-columns)). Only zero-length text is empty; whitespace is text.
+The integer, float, decimal and boolean readers read past surrounding whitespace, so ` 1 ` is
+`1`, and whitespace alone is a spelling none of them takes: a failed conversion, null in a
+nullable column under `safe` and refused naming the cell otherwise. The date and timestamp
+readers trim nothing, so ` 2024-01-02 ` fails the same way. A string leaf, a byte leaf and an
 interval keep the empty cell as what it is, and so does a code whose neutral member is the
 empty text, which is also that code's canonical default. A reader that takes only a plain text
 layout - version, url, urn, timezone, mimetype, mediatype under a dictionary source - answers a
@@ -678,6 +681,15 @@ too.
     // The scalar door answers the same, and a text column keeps the cell.
     assert_eq!(DataType::Int64.scalar("")?, Scalar::Null);
     assert_eq!(DataType::utf8().scalar("")?, Scalar::from(""));
+
+    // Whitespace is text: a number reads past it, and whitespace alone is a
+    // failed conversion - null under `safe`, refused in a required column.
+    let spaced: ArrayRef = Arc::new(StringArray::from(vec![" 1 ", " "]));
+    let read = Serie::from_arrow_array(Some(&nullable), Arc::clone(&spaced), ArrowCastOptions::new())?;
+    assert_eq!(read.scalar(0)?, Scalar::from(1_i64));
+    assert!(read.is_null(1)?);
+    let refused = Serie::from_arrow_array(Some(&required), spaced, ArrowCastOptions::new());
+    assert!(refused.unwrap_err().to_string().contains("Cannot cast string ' '"));
     ```
 
 === "Python"
@@ -706,6 +718,17 @@ too.
     # The scalar door answers the same, and a text column keeps the cell.
     assert DataType("int64").scalar("").as_py() is None
     assert DataType("utf8").scalar("").as_py() == ""
+
+    # Whitespace is text: a number reads past it, and whitespace alone is a
+    # failed conversion - null under safe, refused in a required column.
+    spaced = pa.array([" 1 ", " "])
+    assert Serie.from_arrow_array(spaced, nullable).as_py() == [1, None]
+    try:
+        Serie.from_arrow_array(spaced, required)
+    except ValueError as error:
+        assert "Cannot cast string ' '" in str(error)
+    else:
+        raise AssertionError("a required column must refuse whitespace alone")
     ```
 
 === "JavaScript"
@@ -733,6 +756,12 @@ too.
     // The scalar door answers the same, and a text column keeps the cell.
     assert.equal(DataType.from('int64').scalar('').kind, 'null')
     assert.equal(DataType.utf8().scalar('').asJs(), '')
+
+    // Whitespace is text: a number reads past it, and whitespace alone is a
+    // failed conversion - null under safe, refused in a required column.
+    const spaced = arrow.vectorFromArray([' 1 ', ' '], new arrow.Utf8())
+    assert.deepEqual(Serie.fromArrowArray(spaced, nullable).asJs(), [1, null])
+    assert.throws(() => Serie.fromArrowArray(spaced, required), /Cannot cast string ' '/)
     ```
 
 ## Compiled plans

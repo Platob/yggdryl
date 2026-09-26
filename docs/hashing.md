@@ -494,24 +494,24 @@ The bytes moved once, together, when the identifiers were laid out by family: ev
 | Variant | Tag | Feed after the tag |
 | --- | --- | --- |
 | `Null` | `null` | nothing |
-| `Bool` | `boolean` | `0x00` or `0x01` |
-| `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
-| `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
-| `D32`..`D256`, `Decimal`, `BigDecimal` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte - a fixed leaf's units at scale eighteen, so it feeds as the `d128` or `d256` naming the same number |
-| `String` | `utf8` | length `u64` little-endian, then the characters as UTF-8; the leaf - charset, shape and fixed width - never feeds |
+| `Boolean` | `boolean` | `0x00` or `0x01` |
+| `Int8`..`UInt128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
+| `Float16`/`Float32`/`Float64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
+| `Decimal32`..`Decimal256`, `Decimal`, `BigDecimal` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte - a fixed leaf's units at scale eighteen, so it feeds as the `Decimal128` or `Decimal256` naming the same number |
+| a string leaf, `Utf8String`..`SizedCp1252String` | `utf8` | length `u64` little-endian, then the characters as UTF-8; the leaf - charset, shape and fixed width - never feeds |
 | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |
 | `Version` | `version` | rendered length `u64` little-endian, then the canonical rendering |
 | `Vocabulary` | `dictionary` | length-prefixed vocabulary identity, then the member ordinal |
-| `Bytes` | `binary` | length `u64` little-endian, then the bytes |
-| `Geospatial` | `geometry` | length `u64` little-endian, then the WKB |
+| a byte leaf, `Binary`..`SizedBinary` | `binary` | length `u64` little-endian, then the bytes |
+| `Geometry`/`Geography` | `geometry` | length `u64` little-endian, then the WKB |
 | `Date32`/`Date64` | `date64` | unit class byte, normalized count as `i128` little-endian, length-prefixed timezone |
 | `Time32`/`Time64` | `time64` | as above |
 | `DateTime64` | `datetime64` | as above |
 | `Duration32`/`Duration64` | `duration64` | as above |
 | `Interval` | `interval` | months and days as `i32` little-endian, nanoseconds as `i64` little-endian, then the layout unit as one byte |
-| `Sequence` | `serie` (`0x91`, the byte it fed as `list`) | element count `u64` little-endian, then each element's feed |
-| `Mapping` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
+| `Serie`..`LargeSerieView` | `serie` (`0x91`, the byte it fed as `list`) | element count `u64` little-endian, then each element's feed |
+| `Map`/`SortedMap` | `map` | entry count `u64` little-endian, then each key feed and value feed in stored order |
 | `Struct` | `struct` | entry count `u64` little-endian, then per sorted entry a length-prefixed name and the value's feed |
 
 ## Digest holders and row digests

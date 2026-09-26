@@ -175,14 +175,14 @@ mod avro {
             assert!(rows[0].as_struct().is_some());
             assert!(
                 rows[0]
-                    .path("outer.0.by_name")
+                    .path(&yggdryl::FieldPath::from_str("outer[0].by_name").unwrap())
                     .unwrap()
                     .as_mapping()
                     .is_some()
             );
             assert_eq!(
                 rows[0]
-                    .path("outer.0.by_name.legs.1.flag")
+                    .path(&yggdryl::FieldPath::from_str("outer[0].by_name.legs[1].flag").unwrap())
                     .and_then(|flag| flag.as_bool()),
                 Some(false)
             );

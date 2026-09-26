@@ -834,7 +834,7 @@ pub(crate) fn projected_datatype(
     field: &Field,
 ) -> crate::Result<std::borrow::Cow<'_, arrow_schema::DataType>> {
     if !field.dtype().is_nested() && !field.as_metadata().may_hold_arrow_extension() {
-        return Ok(std::borrow::Cow::Owned(field.dtype().to_arrow_datatype()?));
+        return Ok(std::borrow::Cow::Owned(field.dtype().arrow_datatype()?));
     }
     Ok(std::borrow::Cow::Borrowed(
         field.as_arrow_field_ref()?.data_type(),
@@ -927,6 +927,91 @@ impl Iterator for Sliced {
 }
 
 impl arrow_array::RecordBatchReader for Sliced {
+    fn schema(&self) -> SchemaRef {
+        Arc::clone(&self.schema)
+    }
+}
+
+/// Cut every batch of a stream to at most `rows` rows and, as a target, about
+/// `bytes` Arrow bytes.
+///
+/// A longer batch is handed on as consecutive views over its own buffers
+/// ([`RecordBatch::slice`]) and a batch within both bounds passes untouched;
+/// nothing is merged, so a short batch stays short. The byte bound is a target
+/// rather than a ceiling, sized from the batch's
+/// [`sliced_memory_size`] spread over its rows, and a non-zero bound always
+/// yields at least one row. At most one source batch is held.
+pub(crate) fn rebatched_reader(
+    reader: BatchReader,
+    rows: Option<usize>,
+    bytes: Option<u64>,
+) -> BatchReader {
+    if rows.is_none() && bytes.is_none() {
+        return reader;
+    }
+    let schema = reader.schema();
+    Box::new(Rebatched {
+        inner: reader,
+        schema,
+        rows,
+        bytes,
+        held: None,
+    })
+}
+
+/// One reader's batches, cut to a row count and a byte target.
+struct Rebatched {
+    inner: BatchReader,
+    schema: SchemaRef,
+    rows: Option<usize>,
+    bytes: Option<u64>,
+    /// The batch being cut, the rows each cut takes, and where the next begins.
+    held: Option<(RecordBatch, usize, usize)>,
+}
+
+impl Rebatched {
+    /// The rows one cut of `batch` takes.
+    fn cut_rows(&self, batch: &RecordBatch) -> usize {
+        let mut cut = self.rows.unwrap_or(usize::MAX).max(1);
+        if let Some(bytes) = self.bytes {
+            let size = sliced_memory_size(batch) as u128;
+            if size > 0 {
+                let fits = u128::from(bytes) * batch.num_rows() as u128 / size;
+                cut = cut.min(usize::try_from(fits.max(1)).unwrap_or(usize::MAX));
+            }
+        }
+        cut
+    }
+}
+
+impl Iterator for Rebatched {
+    type Item = std::result::Result<RecordBatch, ArrowError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((batch, cut, at)) = &mut self.held {
+            let length = (*cut).min(batch.num_rows() - *at);
+            let piece = batch.slice(*at, length);
+            *at += length;
+            if *at == batch.num_rows() {
+                self.held = None;
+            }
+            return Some(Ok(piece));
+        }
+        let batch = match self.inner.next()? {
+            Ok(batch) => batch,
+            Err(error) => return Some(Err(error)),
+        };
+        let cut = self.cut_rows(&batch);
+        if batch.num_rows() <= cut {
+            return Some(Ok(batch));
+        }
+        let piece = batch.slice(0, cut);
+        self.held = Some((batch, cut, cut));
+        Some(Ok(piece))
+    }
+}
+
+impl arrow_array::RecordBatchReader for Rebatched {
     fn schema(&self) -> SchemaRef {
         Arc::clone(&self.schema)
     }

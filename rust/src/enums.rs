@@ -200,8 +200,8 @@ mod arrow {
             let Self::Dictionary(dictionary) = self;
             validate_dictionary_key(&dictionary.key)?;
             Ok(ArrowDataType::Dictionary(
-                Box::new(dictionary.key.to_arrow_datatype()?),
-                Box::new(dictionary.value.to_arrow_datatype()?),
+                Box::new(dictionary.key.arrow_datatype()?),
+                Box::new(dictionary.value.arrow_datatype()?),
             ))
         }
 

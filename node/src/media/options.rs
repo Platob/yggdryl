@@ -197,6 +197,25 @@ impl JsRecordOptions {
         Ok(())
     }
 
+    /// How many leading result rows a read or write skips, when set - the
+    /// plan's `offset`; the row bound counts the rows after it.
+    #[napi(getter)]
+    pub fn row_offset(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.row_offset().map(|rows| rows as f64)
+    }
+
+    /// Set how many leading result rows a read or write skips.
+    #[napi(setter)]
+    pub fn set_row_offset(&mut self, row_offset: Option<f64>) -> Result<()> {
+        let skip = match row_offset {
+            Some(rows) => Some(crate::exact_u64(rows, "rowOffset")?),
+            None => None,
+        };
+        self.inner.set_row_offset(skip);
+        Ok(())
+    }
+
     /// The bound on the result rows' Arrow in-memory bytes, when one is set.
     ///
     /// Counted uncompressed, never as encoded bytes; a non-zero bound always
@@ -535,6 +554,14 @@ impl JsRecordOptions {
     pub fn with_batch_row_size(&self, batch_row_size: u32) -> Result<Self> {
         let mut options = self.clone();
         options.set_batch_row_size(Some(batch_row_size))?;
+        Ok(options)
+    }
+
+    /// Return these options skipping the given leading result rows.
+    #[napi]
+    pub fn with_row_offset(&self, row_offset: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_row_offset(Some(row_offset))?;
         Ok(options)
     }
 

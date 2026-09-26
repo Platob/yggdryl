@@ -80,34 +80,50 @@ fn rules() -> Rules {
     }
 }
 
+/// Write to standard output, ending the process quietly when the reader has
+/// gone.
+///
+/// A reader that stops early - `ygg fix schema | head` - closes the pipe, and
+/// every Unix filter then ends without a word; `print!` panics instead. Any
+/// other write failure still panics as `print!` would, naming the error.
+pub fn write_out(text: std::fmt::Arguments<'_>) {
+    use std::io::Write as _;
+    if let Err(error) = std::io::stdout().lock().write_fmt(text) {
+        if error.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        panic!("failed printing to stdout: {error}");
+    }
+}
+
 /// A heading over a section of output.
 pub fn heading(text: &str) {
-    println!("\n{}", bold(&cyan(text)));
+    outln!("\n{}", bold(&cyan(text)));
 }
 
 /// One key and its value, aligned under a heading.
 pub fn entry(key: &str, value: &str) {
-    println!("  {:<18} {value}", dim(key));
+    outln!("  {:<18} {value}", dim(key));
 }
 
 /// A note the reader should see but not act on.
 pub fn note(text: &str) {
-    println!("{} {text}", dim("·"));
+    outln!("{} {text}", dim("·"));
 }
 
 /// A statement that something is right.
 pub fn good(text: &str) {
-    println!("{} {text}", green("✓"));
+    outln!("{} {text}", green("✓"));
 }
 
 /// A statement that something needs attention but is not a failure.
 pub fn warn(text: &str) {
-    println!("{} {text}", yellow("!"));
+    outln!("{} {text}", yellow("!"));
 }
 
 /// A statement that something is wrong.
 pub fn bad(text: &str) {
-    println!("{} {text}", red("✗"));
+    outln!("{} {text}", red("✗"));
 }
 
 /// How wide one cell renders, counted in what a terminal shows.
@@ -160,7 +176,7 @@ pub fn table(header: &[&str], rows: &[Vec<String>]) {
             .iter()
             .map(|held| rules.horizontal.repeat(held + 2))
             .collect();
-        println!("{}", dim(&format!("{left}{}{right}", middle.join(join))));
+        outln!("{}", dim(&format!("{left}{}{right}", middle.join(join))));
     };
 
     line(rules.corner[0], rules.corner[1], rules.corner[2]);
@@ -169,7 +185,7 @@ pub fn table(header: &[&str], rows: &[Vec<String>]) {
         .zip(&widths)
         .map(|(held, wanted)| bold(&cell(held, *wanted)))
         .collect();
-    println!(
+    outln!(
         "{} {} {}",
         dim(rules.vertical),
         titles.join(&format!(" {} ", dim(rules.vertical))),
@@ -182,7 +198,7 @@ pub fn table(header: &[&str], rows: &[Vec<String>]) {
             .enumerate()
             .map(|(at, wanted)| cell(row.get(at).map_or("", String::as_str), *wanted))
             .collect();
-        println!(
+        outln!(
             "{} {} {}",
             dim(rules.vertical),
             cells.join(&format!(" {} ", dim(rules.vertical))),
@@ -218,7 +234,7 @@ impl Progress {
             animated: decorated(),
         };
         if !held.animated {
-            println!("{}…", held.label);
+            outln!("{}…", held.label);
         }
         held
     }
@@ -230,7 +246,7 @@ impl Progress {
         }
         self.frame = self.frame.wrapping_add(1);
         let held = FRAMES[self.frame % FRAMES.len()];
-        print!("\r{} {} ", cyan(held), self.label);
+        out!("\r{} {} ", cyan(held), self.label);
         let _ = std::io::stdout().flush();
     }
 
@@ -238,9 +254,9 @@ impl Progress {
     pub fn finish(self, outcome: &str) {
         let spent = self.started.elapsed();
         if self.animated {
-            print!("\r{}\r", " ".repeat(self.label.chars().count() + 4));
+            out!("\r{}\r", " ".repeat(self.label.chars().count() + 4));
         }
-        println!("{} {outcome} {}", green("✓"), dim(&rendered(spent)));
+        outln!("{} {outcome} {}", green("✓"), dim(&rendered(spent)));
     }
 }
 

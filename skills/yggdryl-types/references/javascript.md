@@ -12,6 +12,7 @@ over the same core, and 64-bit integers and decimal coefficients are `bigint`.
 
 ```javascript
 const assert = require('node:assert/strict')
+const arrow = require('apache-arrow')
 const { DataType } = require('yggdryl')
 
 const amount = DataType.from('numeric(18, 4)')
@@ -25,8 +26,8 @@ assert.ok(DataType.from('bigint').equals(DataType.from('int64')))
 assert.ok(DataType.from('list<int64>').equals(DataType.from('array<int64>')))
 assert.equal(DataType.from('timestamp').toString(), 'datetime64(us)')
 
-// An Arrow JS type is read through its own textual form.
-assert.equal(DataType.fromArrow({ toString: () => 'Int32' }).id, 'int32')
+// An Arrow JS type crosses as a one-field IPC schema.
+assert.equal(DataType.fromArrow(new arrow.Int32()).id, 'int32')
 
 // Refusals name the byte where parsing stopped.
 assert.throws(() => DataType.from('large_utf8(64)'), /at byte/)
@@ -503,6 +504,5 @@ assert.throws(() => DataType.from('datetime64(ns)').intoSchemeCompat('spark'), /
   (only `intoField(Class)` checks it).
 - Arrow JS crossing is copied IPC (see `yggdryl-arrow`). The batch schema keeps
   `ARROW:extension:name`, so `Serie.fromArrowBatch(batch)` reads a `ccy` column
-  back as `ccy`; Arrow JS's own `get()` values are plain strings, and
-  `Field.fromArrow(arrowField)` reads only the field's text (drops
-  `nullable: false` and the extension).
+  back as `ccy`, and so does `Field.fromArrow(arrowField)`, nullability
+  included; Arrow JS's own `get()` values are plain strings.

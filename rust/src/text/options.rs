@@ -158,6 +158,8 @@ pub struct TextOptions {
     pub batch_row_size: Option<usize>,
     /// Most result rows in total.
     pub max_row_size: Option<u64>,
+    /// Leading result rows skipped before `max_row_size` counts.
+    pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
@@ -230,6 +232,7 @@ impl TextOptions {
             batch_byte_size: Some(DEFAULT_TEXT_BATCH_BYTE_SIZE),
             batch_row_size: Some(DEFAULT_TEXT_BATCH_ROW_SIZE),
             max_row_size: None,
+            row_offset: None,
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,

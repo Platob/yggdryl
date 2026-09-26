@@ -755,6 +755,10 @@ mod streams {
         let out = read("select name from '{url}' where id = 2");
         assert_eq!(out.num_columns(), 1);
         assert_eq!(names(&out), ["b"]);
+        // With nothing to order, the offset is pushed down with the limit:
+        // the media skips, then bounds.
+        assert_eq!(ids(&read("select * from '{url}' limit 2 offset 1")), [2, 3]);
+        assert_eq!(ids(&read("select * from '{url}' offset 3")), [4]);
 
         // `upsert ... by` replaces matching keys and adds the rest.
         run(

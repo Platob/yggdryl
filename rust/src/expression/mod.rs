@@ -78,6 +78,7 @@ pub use filter::{Filter, IntoFilter};
 pub use literal::Literal;
 pub use parser::needs_quoting;
 pub use path::{FieldPath, FieldSegment};
+pub(crate) use path::{resolve_index, resolve_range};
 pub use plan::{IntoPlan, Location, Ordering, Plan, Source, Target, Verb, Write};
 pub use pushdown::{Bounds, ColumnBounds, Residual};
 pub use records::Records;

@@ -254,10 +254,11 @@ Every width is one of Arrow's own and imports back as itself, so the round trip 
 
     ```javascript
     const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
     const { DataType } = require('yggdryl')
 
-    // Any Apache Arrow JS type is read through its own textual form.
-    assert.equal(DataType.fromArrow({ toString: () => 'uint8' }).toString(), 'uint8')
+    // An Apache Arrow JS type crosses as a one-field IPC schema.
+    assert.equal(DataType.fromArrow(new arrow.Uint8()).toString(), 'uint8')
 
     assert.equal(DataType.from('int32').fixedByteWidth, 4)
     assert.equal(DataType.from('int64').fixedByteWidth, 8)

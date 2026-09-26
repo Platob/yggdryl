@@ -810,6 +810,7 @@ fn dimension_options<M: IOMedia + ?Sized>(media: &M) -> Result<RecordOptions> {
     options.set_filter(crate::Filter::always_true());
     options.set_select(crate::Selector::all());
     options.set_max_row_size(None);
+    options.set_row_offset(None);
     options.set_max_byte_size(None);
     Ok(options)
 }

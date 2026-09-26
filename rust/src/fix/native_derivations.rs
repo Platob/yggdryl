@@ -703,7 +703,7 @@ fn exact_decimal(row: &NativeRow<'_>, tag: i32, scale: i8) -> Option<Scalar> {
         18 => &DECIMAL18,
         _ => return None,
     };
-    dtype.scalar(Scalar::d128(unscaled, scale)).ok()
+    dtype.scalar(Scalar::decimal128(unscaled, scale)).ok()
 }
 
 fn scaled_product(row: &NativeRow<'_>, left: i32, right: i32, scale: i8) -> Option<Scalar> {

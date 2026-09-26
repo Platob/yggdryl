@@ -1,4 +1,5 @@
-//! `rust/src/media/options.rs`: the row and byte limits, and the cadence.
+//! `rust/src/media/options.rs`: the row skip, the row and byte limits, and
+//! the cadence.
 //!
 //! Everything a caller states and observes reaches the crate through
 //! `yggdryl::`. The slicer a declared commit cadence pulls through is
@@ -426,6 +427,112 @@ fn a_limit_with_a_match_key_is_refused_naming_both_settings() {
 
     assert!(message.contains("max_row_size = 10"), "{message}");
     assert!(message.contains("merge_by `id`"), "{message}");
+}
+
+#[test]
+fn a_skip_with_a_match_key_is_refused_naming_both_settings() {
+    let options = IpcOptions::new()
+        .with_row_offset(4)
+        .with_merge_by(["id"])
+        .unwrap();
+    let Err(error) = options.limit_arrow_reader(reader(1, 2)) else {
+        panic!("a merge that skips rows must be refused");
+    };
+    let message = error.to_string();
+
+    assert!(message.contains("row_offset = 4"), "{message}");
+    assert!(message.contains("merge_by `id`"), "{message}");
+}
+
+/// The ids a reader yields, batch by batch.
+fn id_batches(reader: BatchReader) -> Vec<Vec<i64>> {
+    reader
+        .map(|batch| {
+            let batch = batch.unwrap();
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .values()
+                .to_vec()
+        })
+        .collect()
+}
+
+#[test]
+fn a_row_offset_drops_the_batches_it_covers_and_cuts_the_one_it_lands_in() {
+    let options = IpcOptions::new().with_row_offset(3);
+    // Rows 0..6 in batches of two: the first batch is dropped whole, the
+    // second is cut after its first row, and nothing empty is handed on.
+    assert_eq!(
+        id_batches(options.limit_arrow_reader(reader(3, 2)).unwrap()),
+        [vec![3], vec![4, 5]]
+    );
+}
+
+#[test]
+fn a_row_offset_is_taken_before_the_row_limit_counts() {
+    let options = IpcOptions::new().with_row_offset(2).with_max_row_size(3);
+    assert_eq!(
+        id_batches(options.limit_arrow_reader(reader(3, 2)).unwrap()),
+        [vec![2, 3], vec![4]]
+    );
+    // A skip past the stored rows reads the schema and no batches.
+    let past = IpcOptions::new().with_row_offset(9);
+    let mut limited = past.limit_arrow_reader(reader(3, 2)).unwrap();
+    assert_eq!(limited.schema(), schema().into_arrow_schema().unwrap());
+    assert!(limited.next().is_none());
+}
+
+#[test]
+fn a_plan_offset_is_the_row_offset_of_the_options() {
+    let options = IpcOptions::new()
+        .with_plan("select id limit 3 offset 2")
+        .unwrap();
+    assert_eq!(options.max_row_size(), Some(3));
+    assert_eq!(options.row_offset(), Some(2));
+    assert_eq!(options.plan().row_offset(), Some(2));
+    assert_eq!(options.plan().row_limit(), Some(3));
+
+    // A read through a handle skips, then bounds - the plan's offset is never
+    // dropped on the way into the media.
+    let mut handle = Buffer::new().with_media_type(yggdryl::MimeType::ARROW_STREAM.into());
+    let stored = handle.record_options().unwrap();
+    handle
+        .overwrite_arrow_reader(reader(3, 2), &stored)
+        .unwrap();
+    let read = handle
+        .record_options()
+        .unwrap()
+        .with_plan("select id limit 3 offset 2")
+        .unwrap();
+    let ids: Vec<i64> = id_batches(handle.read_arrow_reader(&read).unwrap())
+        .into_iter()
+        .flatten()
+        .collect();
+    assert_eq!(ids, [2, 3, 4]);
+}
+
+#[test]
+fn a_structured_document_is_refused_as_an_encoding_naming_its_own_doors() {
+    let json = Url::from_str("file:///t.json").unwrap().media_type();
+    let message = RecordOptions::for_media_type(&json)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("a record encoding this build implements"),
+        "{message}"
+    );
+    assert!(
+        message.contains("a json document is one value"),
+        "{message}"
+    );
+    assert!(message.contains("read_arrow"), "{message}");
+    // Any other media type is refused with the encodings alone.
+    let csv = yggdryl::MediaType::new(yggdryl::MimeType::CSV);
+    let message = RecordOptions::for_media_type(&csv).unwrap_err().to_string();
+    assert!(!message.contains("document is one value"), "{message}");
 }
 
 #[test]

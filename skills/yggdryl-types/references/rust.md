@@ -241,7 +241,7 @@ assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64)); // kinds stay apart
 
 assert_eq!(seven.as_i64(), Some(7));
 assert_eq!(Scalar::from(-1_i64).as_u64(), None);
-assert_eq!(Scalar::d128(1_250, 2).as_decimal(), Some((i256::from_i128(1_250), 2)));
+assert_eq!(Scalar::decimal128(1_250, 2).as_decimal(), Some((i256::from_i128(1_250), 2)));
 
 // The datatype and the field a value names, inferred without a schema.
 assert_eq!(Scalar::from(7_i64).dtype()?, DataType::Int64);
@@ -257,17 +257,17 @@ Arithmetic is `checked_*` (or the `Result` operator traits): exact or an error.
 ```rust
 use yggdryl::{DataType, Decimal, Field, Scalar, TimeUnit, Timezone, i256};
 
-let price = Scalar::d128(1_050, 2);
+let price = Scalar::decimal128(1_050, 2);
 assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.50"));
-assert_eq!(price, Scalar::d128(105, 1)); // normalized equality
-assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::d128(1_250, 2));
+assert_eq!(price, Scalar::decimal128(105, 1)); // normalized equality
+assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::decimal128(1_250, 2));
 
 let amount = Field::new("amount", DataType::decimal(10, 2)?, true);
 assert_eq!(amount.scalar("12.5")?.decimal_unscaled_at(2), Some(1_250));
 assert!(amount.scalar(12.5_f64).is_err()); // a float is inexact: refused
 
-assert_eq!(Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?, Scalar::d128(5, 1));
-assert!(Scalar::d128(1, 0).checked_div(&Scalar::d128(3, 0)).is_err()); // inexact
+assert_eq!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(2, 0))?, Scalar::decimal128(5, 1));
+assert!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(3, 0)).is_err()); // inexact
 assert!(Scalar::from(1_i64).checked_div(&Scalar::from(0_i64)).is_err());
 assert!(Scalar::from(i64::MAX).checked_add(&Scalar::from(1_i64)).is_err());
 assert_eq!(Scalar::from(-1_i8).checked_add(&Scalar::from(2_u8))?, Scalar::from(1_i16));
@@ -275,7 +275,7 @@ assert_eq!(Scalar::from(-1_i8).checked_add(&Scalar::from(2_u8))?, Scalar::from(1
 // The fixed `decimal` leaf holds eighteen fractional digits.
 let px: Decimal = "82.5".parse()?;
 assert_eq!((px * Decimal::from_int(1_000)).to_string(), "82500");
-assert_eq!(DataType::Decimal.scalar(Scalar::d128(825, 1))?, Scalar::from(px));
+assert_eq!(DataType::Decimal.scalar(Scalar::decimal128(825, 1))?, Scalar::from(px));
 
 let long = Scalar::from_duration(i64::from(i32::MAX) + 1, TimeUnit::Second, Timezone::NAIVE)?;
 assert!(matches!(long, Scalar::Duration64(_)));

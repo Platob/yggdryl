@@ -65,45 +65,52 @@ fn float_wrappers_keep_their_width_for_native_arithmetic() {
 #[test]
 fn decimal_arithmetic_is_scale_exact() {
     assert_eq!(
-        Scalar::d128(105, 2)
-            .checked_add(&Scalar::d128(2, 1))
+        Scalar::decimal128(105, 2)
+            .checked_add(&Scalar::decimal128(2, 1))
             .unwrap(),
-        Scalar::d128(125, 2)
+        Scalar::decimal128(125, 2)
     );
     assert_eq!(
-        Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0)).unwrap(),
-        Scalar::d128(5, 1)
+        Scalar::decimal128(1, 0)
+            .checked_div(&Scalar::decimal128(2, 0))
+            .unwrap(),
+        Scalar::decimal128(5, 1)
     );
     assert_eq!(
-        Scalar::d128(100, 2)
-            .checked_div(&Scalar::d128(2, 0))
+        Scalar::decimal128(100, 2)
+            .checked_div(&Scalar::decimal128(2, 0))
             .unwrap(),
-        Scalar::d128(5, 1)
+        Scalar::decimal128(5, 1)
     );
     assert_eq!(
-        Scalar::d128(1, 0)
-            .checked_div(&Scalar::d128(128, 0))
+        Scalar::decimal128(1, 0)
+            .checked_div(&Scalar::decimal128(128, 0))
             .unwrap(),
-        Scalar::d128(78_125, 7)
+        Scalar::decimal128(78_125, 7)
     );
     assert!(matches!(
-        Scalar::d128(1, 0).checked_div(&Scalar::d128(3, 0)),
+        Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(3, 0)),
         Err(Error::InexactArithmetic { .. })
     ));
 
-    let maximum = Scalar::d128(i128::MAX, 0);
-    assert_eq!(maximum.checked_div(&maximum).unwrap(), Scalar::d128(1, 0));
+    let maximum = Scalar::decimal128(i128::MAX, 0);
+    assert_eq!(
+        maximum.checked_div(&maximum).unwrap(),
+        Scalar::decimal128(1, 0)
+    );
     let wide: i256 = "9999999999999999999999999999999999999999999999999999999999999999999999999999"
         .parse()
         .unwrap();
-    let maximum = Scalar::d256(wide, 0);
+    let maximum = Scalar::decimal256(wide, 0);
     assert_eq!(
         maximum.checked_div(&maximum).unwrap(),
-        Scalar::d256(i256::from_i128(1), 0)
+        Scalar::decimal256(i256::from_i128(1), 0)
     );
     assert_eq!(
-        Scalar::d128(3, 0).checked_div(&Scalar::d128(6, 0)).unwrap(),
-        Scalar::d128(5, 1)
+        Scalar::decimal128(3, 0)
+            .checked_div(&Scalar::decimal128(6, 0))
+            .unwrap(),
+        Scalar::decimal128(5, 1)
     );
 
     let denominator = (0..75).fold(i256::from_i128(1), |value, _| {
@@ -113,10 +120,10 @@ fn decimal_arithmetic_is_scale_exact() {
         value.checked_mul(i256::from_i128(5)).unwrap()
     });
     assert_eq!(
-        Scalar::d256(i256::from_i128(1), 0)
-            .checked_div(&Scalar::d256(denominator, 0))
+        Scalar::decimal256(i256::from_i128(1), 0)
+            .checked_div(&Scalar::decimal256(denominator, 0))
             .unwrap(),
-        Scalar::d256(coefficient, 75)
+        Scalar::decimal256(coefficient, 75)
     );
 }
 

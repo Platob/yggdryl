@@ -1301,7 +1301,7 @@ Registration states the set tag 35 reads by - the one the field names, else `msg
 
 ## One default registry per process
 
-The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 29 crate scalar fields and one Map group beside the two seeded clocks, so `len()` is 32. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
+The first call resolves one shared default: an explicitly installed registry, then `YGGDRYL_FIX_REGISTRY`, then `LocalFolder::config()/fix`, then `FixRegistry::new()`: 39 crate scalar fields and one Map group beside the two seeded clocks, so `len()` is 42. A configured environment location must be valid; explicit codec or message registries take precedence over the process default.
 
 Environment and default-folder resolution happen once, on the first global lookup. `LocalFolder::config` reads `HOME`, then `USERPROFILE`; with neither present the optional default folder is skipped. Installing a default must happen before global resolution, and subsequent reads share the same registry.
 

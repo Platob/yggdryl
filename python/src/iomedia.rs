@@ -794,7 +794,11 @@ fn row_reader(
         // stop after 476 rows, publish, and only then inspect row 1,501.
         commit_row_size: options.commit_row_size().filter(|rows| *rows != 0),
         commit_progress: 0,
-        remaining: options.max_row_size(),
+        // The rows the limit seam keeps are the ones after its skip, so
+        // conversion stops once both are covered.
+        remaining: options
+            .max_row_size()
+            .map(|rows| rows.saturating_add(options.row_offset().unwrap_or(0))),
         pending: Some(first.clone().unbind()),
         drained: false,
     };
@@ -1485,6 +1489,7 @@ impl PyRecordOptions {
         state.set_item("batch_row_size", self.inner.batch_row_size())?;
         state.set_item("commit_row_size", self.inner.commit_row_size())?;
         state.set_item("max_row_size", self.inner.max_row_size())?;
+        state.set_item("row_offset", self.inner.row_offset())?;
         state.set_item("max_byte_size", self.inner.max_byte_size())?;
         state.set_item("level", self.inner.level().get())?;
         state.set_item("merge_by", self.inner.merge_by().to_string())?;
@@ -1579,6 +1584,7 @@ impl PyRecordOptions {
             required_record_pickle_item(state, "commit_row_size")?.extract::<Option<usize>>()?;
         options.inner.set_commit_row_size(commit_row_size);
         options.set_max_row_size(required_record_pickle_item(state, "max_row_size")?.extract()?)?;
+        options.set_row_offset(required_record_pickle_item(state, "row_offset")?.extract()?)?;
         options
             .set_max_byte_size(required_record_pickle_item(state, "max_byte_size")?.extract()?)?;
         options.set_level(required_record_pickle_item(state, "level")?.extract()?)?;
@@ -1773,6 +1779,23 @@ impl PyRecordOptions {
     fn set_max_row_size(&mut self, max_row_size: Option<u64>) -> PyResult<()> {
         self.require_mutable()?;
         self.inner.set_max_row_size(max_row_size);
+        Ok(())
+    }
+
+    /// How many leading result rows a read or write skips, when set - the
+    /// plan's `offset`.
+    ///
+    /// Taken with `max_row_size`, last and first: the skip drops the rows it
+    /// covers and the bound counts the rows after it.
+    #[getter]
+    fn row_offset(&self) -> Option<u64> {
+        self.inner.row_offset()
+    }
+
+    #[setter]
+    fn set_row_offset(&mut self, row_offset: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_row_offset(row_offset);
         Ok(())
     }
 
@@ -2266,6 +2289,23 @@ impl PyTextOptions {
         Ok(())
     }
 
+    /// How many leading result rows a read or write skips, when set - the
+    /// plan's `offset`.
+    ///
+    /// Taken with `max_row_size`, last and first: the skip drops the rows it
+    /// covers and the bound counts the rows after it.
+    #[getter]
+    fn row_offset(&self) -> Option<u64> {
+        self.inner.row_offset()
+    }
+
+    #[setter]
+    fn set_row_offset(&mut self, row_offset: Option<u64>) -> PyResult<()> {
+        self.require_mutable()?;
+        self.inner.set_row_offset(row_offset);
+        Ok(())
+    }
+
     #[getter]
     fn max_byte_size(&self) -> Option<u64> {
         self.inner.max_byte_size()
@@ -2611,12 +2651,11 @@ impl PyTextOptions {
         self.inner.write_batch_row_size()
     }
 
-    /// The columns the compiled `rowheader` captures, in order.
+    /// The names of the compiled `rowheader`'s captures, in regex order.
     ///
-    /// These are the columns a read produces after the fixed ones - the
-    /// seventeen event columns, `sourceurl`, `rownum`, `mtime`, `mimetype`,
-    /// `body`, `dropped_byte_size` - so the full source field is known before
-    /// any read runs.
+    /// A text read answers the sixteen event columns, then `body`, then one
+    /// column per capture named here, so the full source field is known
+    /// before any read runs.
     #[getter]
     fn capture_names<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
         PyTuple::new(py, self.inner.capture_names())

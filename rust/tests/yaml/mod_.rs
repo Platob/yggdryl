@@ -115,7 +115,10 @@ fn a_field_restores_exact_types_from_natural_yaml() {
     let decoded = yaml::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
+    assert_eq!(
+        row[0],
+        Scalar::decimal256(i256::from_str("1234500").unwrap(), 4)
+    );
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
@@ -233,7 +236,10 @@ fn from_yaml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         yaml::from_bytes_with_field(input.as_bytes(), &field).unwrap()
     );
     let row = decoded.as_sequence().unwrap();
-    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
+    assert_eq!(
+        row[0],
+        Scalar::decimal256(i256::from_str("1234500").unwrap(), 4)
+    );
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()

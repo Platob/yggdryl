@@ -231,7 +231,10 @@ function installRecords({
     const rowSize = settings.batchRowSize ?? defaultBatchRowSize
     const cadence = settings.commitRowSize
     let rowsToCommit = cadence
-    let remainingRows = settings.maxRowSize
+    // The rows the limit seam keeps are the ones after its skip, so
+    // conversion stops once both are covered.
+    let remainingRows =
+      settings.maxRowSize == null ? settings.maxRowSize : settings.maxRowSize + (settings.rowOffset ?? 0)
     let arrowSchema
     let inferred
     let recordKind
@@ -602,19 +605,9 @@ function installRecords({
     return copy
   }
 
-  // A plain-text handle answers `TextOptions`, the value its own settings
-  // live on, so a text setting is read off the answer directly and a property
-  // bag lands on the setter it names.
-  const nativeRecordOptions = IOBase.prototype.recordOptions
-  Object.defineProperty(IOBase.prototype, 'recordOptions', {
-    configurable: true,
-    value() {
-      const own = nativeRecordOptions.call(this)
-      return own.mimeType.toString() === 'text/plain' ? new TextOptions() : own
-    },
-  })
-
   // The options a property bag lands on: the ones given, or the handle's own.
+  // A plain-text handle answers its own `TextOptions`, so a text setting in
+  // the bag lands on the setter it names over the row header it retained.
   function propertyBase(handle, options) {
     if (options instanceof RecordOptions || options instanceof TextOptions) return options
     if (options !== undefined && options !== null) return RecordOptions.from(options)
@@ -630,7 +623,7 @@ function installRecords({
       options = undefined
     }
     if (properties === undefined || properties === null) {
-      return recordOptions(options) ?? handle.recordOptions()
+      return recordOptions(options == null ? handle.recordOptions() : options)
     }
     return recordOptions(withProperties(propertyBase(handle, options), properties))
   }
@@ -871,6 +864,17 @@ function installRecords({
     configurable: true,
     value(options, properties) {
       return readArrowField.call(this, readRecordOptions(this, options, properties))
+    },
+  })
+
+  // The line decode takes what a record read takes: absent options are the
+  // handle's own, a property bag lands on a copy of them, and the native
+  // half refuses options of another encoding by name.
+  const readTextLines = IOBase.prototype.readTextLines
+  Object.defineProperty(IOBase.prototype, 'readTextLines', {
+    configurable: true,
+    value(options, properties) {
+      return readTextLines.call(this, readRecordOptions(this, options, properties))
     },
   })
 

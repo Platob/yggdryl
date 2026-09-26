@@ -149,6 +149,8 @@ pub struct ParquetOptions {
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
+    /// Leading result rows skipped before `max_row_size` counts.
+    pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
@@ -185,6 +187,7 @@ struct ParquetOptionsIdentity<'a> {
     batch_byte_size: Option<u64>,
     batch_row_size: Option<usize>,
     max_row_size: Option<u64>,
+    row_offset: Option<u64>,
     max_byte_size: Option<u64>,
     commit_row_size: Option<usize>,
     level: crate::Level,
@@ -205,6 +208,7 @@ impl ParquetOptions {
             batch_byte_size: self.batch_byte_size,
             batch_row_size: self.batch_row_size,
             max_row_size: self.max_row_size,
+            row_offset: self.row_offset,
             max_byte_size: self.max_byte_size,
             commit_row_size: self.commit_row_size,
             level: self.level,
@@ -226,6 +230,7 @@ impl ParquetOptions {
             batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
+            row_offset: None,
             max_byte_size: None,
             commit_row_size: None,
             level: crate::Level::DEFAULT,
@@ -501,8 +506,7 @@ pub fn read_batch_reader<H: IOBase + ?Sized>(
     // for; under a filter the limit counts result rows, not stored ones, so
     // it does not size the batches.
     let batch_rows = options.batch_row_size().unwrap_or_else(|| {
-        options
-            .max_row_size()
+        row_bound(options)
             .filter(|_| options.filter().is_always_true())
             .and_then(|rows| usize::try_from(rows).ok())
             .map_or(crate::media::DEFAULT_RECORD_BATCH_ROW_SIZE, |rows| {
@@ -1428,8 +1432,7 @@ const FOOTER_PREFETCH_BYTES: u64 = 64 * 1024;
 /// has its footer read first and its column chunks only through
 /// [`ParquetSource::fetch`], once pruning and projection have said which.
 /// With a row bound and no filter - stored rows then are result rows - only
-/// the leading row groups whose counts cover
-/// [`max_row_size`](IORecordOptions::max_row_size) are kept. The bound is a
+/// the leading row groups whose counts cover [`row_bound`] are kept. The bound is a
 /// fetch plan, not the limit itself: the record methods above still trim the
 /// result to the exact row count, so this changes what is *read*, never what
 /// a limited read yields.
@@ -1441,6 +1444,16 @@ const FOOTER_PREFETCH_BYTES: u64 = 64 * 1024;
 ///
 /// Returns a read failure, a malformed footer, or a footer whose embedded
 /// Arrow schema cannot be interpreted.
+/// The stored rows an unfiltered read yields before its bounds are met: the
+/// [`row_offset`](IORecordOptions::row_offset) it skips plus the
+/// [`max_row_size`](IORecordOptions::max_row_size) it keeps, when it keeps a
+/// bounded count.
+fn row_bound(options: &ParquetOptions) -> Option<u64> {
+    options
+        .max_row_size()
+        .map(|rows| rows.saturating_add(options.row_offset().unwrap_or(0)))
+}
+
 fn open_footer<H: IOBase + ?Sized>(
     handle: &H,
     size: u64,
@@ -1449,7 +1462,7 @@ fn open_footer<H: IOBase + ?Sized>(
     reject_outer_coding(handle)?;
     let bound = options
         .filter(|options| options.filter().is_always_true())
-        .and_then(IORecordOptions::max_row_size);
+        .and_then(row_bound);
     let footer = if size < FOOTER_TAIL {
         None
     } else if size <= WHOLE_READ_BYTES {

@@ -164,31 +164,35 @@ mod columns {
             (
                 Field::new("decimal32", DataType::decimal32(9, 2).unwrap(), true),
                 Scalar::from_sequence([
-                    Scalar::d128(18_723, 2),
-                    Scalar::d128(-100, 2),
+                    Scalar::decimal128(18_723, 2),
+                    Scalar::decimal128(-100, 2),
                     Scalar::Null,
                 ]),
             ),
             (
                 Field::new("decimal64", DataType::decimal64(18, 4).unwrap(), true),
                 Scalar::from_sequence([
-                    Scalar::d128(187_230_000, 4),
-                    Scalar::d128(-1, 4),
+                    Scalar::decimal128(187_230_000, 4),
+                    Scalar::decimal128(-1, 4),
                     Scalar::Null,
                 ]),
             ),
             (
                 Field::new("decimal128", DataType::decimal128(12, 2).unwrap(), true),
                 Scalar::from_sequence([
-                    Scalar::d128(18_723, 2),
-                    Scalar::d128(-100, 2),
-                    Scalar::d128(0, 2),
+                    Scalar::decimal128(18_723, 2),
+                    Scalar::decimal128(-100, 2),
+                    Scalar::decimal128(0, 2),
                     Scalar::Null,
                 ]),
             ),
             (
                 Field::new("decimal256", DataType::decimal256(40, 3).unwrap(), true),
-                Scalar::from_sequence([Scalar::d128(18_723, 3), Scalar::d128(-1, 3), Scalar::Null]),
+                Scalar::from_sequence([
+                    Scalar::decimal128(18_723, 3),
+                    Scalar::decimal128(-1, 3),
+                    Scalar::Null,
+                ]),
             ),
             (
                 Field::new("decimal", DataType::Decimal, true),

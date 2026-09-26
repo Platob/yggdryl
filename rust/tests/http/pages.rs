@@ -147,7 +147,7 @@ fn a_failed_page_is_yielded_and_the_walk_resumes_from_that_page() {
         second
             .scalar()
             .expect("json")
-            .path("items")
+            .path(&"items".parse::<yggdryl::FieldPath>().unwrap())
             .map(|items| items.len()),
         Some(2)
     );
@@ -156,7 +156,7 @@ fn a_failed_page_is_yielded_and_the_walk_resumes_from_that_page() {
         third
             .scalar()
             .expect("json")
-            .path("items")
+            .path(&"items".parse::<yggdryl::FieldPath>().unwrap())
             .map(|items| items.len()),
         Some(1)
     );

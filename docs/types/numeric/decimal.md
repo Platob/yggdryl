@@ -156,26 +156,26 @@ One exact base-10 family: four parameterized backing widths - a precision, a sca
 
 ## Scalar
 
-A decimal value is a coefficient and a scale - `D32`, `D64`, `D128`, `D256` - and the number it names is `coefficient * 10^-scale`; the [fixed leaves](#decimal) hold their units alone. `as_decimal` is the cross-width reader that widens the coefficient to 256 bits; `as_d128` and `as_d256` read one width. Equality, order and hashing normalize first, so one number written at two scales is one value.
+A decimal value is a coefficient and a scale - `Decimal32`, `Decimal64`, `Decimal128`, `Decimal256` - and the number it names is `coefficient * 10^-scale`; the [fixed leaves](#decimal) hold their units alone. `as_decimal` is the cross-width reader that widens the coefficient to 256 bits; `as_decimal128` and `as_decimal256` read one width. Equality, order and hashing normalize first, so one number written at two scales is one value.
 
 === "Rust"
 
     ```rust
     use yggdryl::{Decimal128, Scalar, i256};
 
-    let price = Scalar::d128(1_050, 2);
+    let price = Scalar::decimal128(1_050, 2);
     assert_eq!(price.kind(), "d128");
     assert!(price.is_decimal());
-    assert_eq!(price.as_d128(), Some((1_050, 2)));
+    assert_eq!(price.as_decimal128(), Some((1_050, 2)));
     assert_eq!(price.as_decimal(), Some((i256::from_i128(1_050), 2)));
     assert_eq!(price.into_decimal_utf8().as_deref(), Some("10.50"));
 
     // One number at two scales is one value, and reads at any scale asked for.
-    assert_eq!(price, Scalar::d128(105, 1));
+    assert_eq!(price, Scalar::decimal128(105, 1));
     assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
 
     // A caller with only a coefficient gets the narrowest width holding it.
-    assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::d128(1_250, 2));
+    assert_eq!(Scalar::from_decimal(i256::from_i128(1_250), 2), Scalar::decimal128(1_250, 2));
     assert_eq!(Decimal128::new(1_050, 2).coefficient(), 1_050);
     assert_eq!(Decimal128::new(1_050, 2).scale(), 2);
     ```
@@ -264,11 +264,14 @@ Each width is Arrow's own decimal, carrying the same precision and scale, and im
 
     ```javascript
     const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
     const { DataType } = require('yggdryl')
 
     assert.equal(DataType.from('decimal128(38,4)').fixedByteWidth, 16)
     assert.equal(DataType.from('decimal256(40,2)').fixedByteWidth, 32)
-    assert.equal(DataType.fromArrow({ toString: () => 'decimal(9,2)' }).toString(), 'decimal32(9,2)')
+    // Arrow JS names the width it stores: Decimal(scale, precision, bitWidth).
+    assert.equal(DataType.fromArrow(new arrow.Decimal(2, 9, 32)).toString(), 'decimal32(9,2)')
+    assert.equal(DataType.fromArrow(new arrow.Decimal(2, 9, 128)).toString(), 'decimal128(9,2)')
     ```
 
 ## Exact arithmetic
@@ -281,18 +284,18 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
     use yggdryl::Scalar;
 
     assert_eq!(
-        Scalar::d128(1_050, 2).checked_add(&Scalar::d128(1, 0))?,
-        Scalar::d128(1_150, 2),
+        Scalar::decimal128(1_050, 2).checked_add(&Scalar::decimal128(1, 0))?,
+        Scalar::decimal128(1_150, 2),
     );
     assert_eq!(
-        Scalar::d128(825, 1).checked_mul(&Scalar::d128(1_000, 0))?,
-        Scalar::d128(825_000, 1),
+        Scalar::decimal128(825, 1).checked_mul(&Scalar::decimal128(1_000, 0))?,
+        Scalar::decimal128(825_000, 1),
     );
-    assert_eq!(Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?, Scalar::d128(5, 1));
+    assert_eq!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(2, 0))?, Scalar::decimal128(5, 1));
 
     // An inexact quotient is refused rather than rounded, and zero is refused.
-    assert!(Scalar::d128(1, 0).checked_div(&Scalar::d128(3, 0)).is_err());
-    assert!(Scalar::d128(1, 0).checked_div(&Scalar::d128(0, 0)).is_err());
+    assert!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(3, 0)).is_err());
+    assert!(Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(0, 0)).is_err());
     ```
 
 === "Python"
@@ -548,13 +551,13 @@ Bare `decimal` is the leaf; a parenthesis names the parameterized family, so `de
     let value = Scalar::from(px);
     assert_eq!(value, Scalar::Decimal(px));
     assert_eq!(value.kind(), "decimal");
-    assert_eq!(value, Scalar::d128(825, 1));
+    assert_eq!(value, Scalar::decimal128(825, 1));
     assert_eq!(value.as_decimal().map(|(_, scale)| scale), Some(18));
-    assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+    assert_eq!(Decimal::from_scalar(&Scalar::decimal128(825, 1)), Some(px));
 
     // The value door restates and is strict.
-    assert_eq!(DataType::Decimal.scalar(Scalar::d128(825, 1))?, value);
-    assert!(DataType::Decimal.scalar(Scalar::d128(1, 19)).is_err(), "a nineteenth digit");
+    assert_eq!(DataType::Decimal.scalar(Scalar::decimal128(825, 1))?, value);
+    assert!(DataType::Decimal.scalar(Scalar::decimal128(1, 19)).is_err(), "a nineteenth digit");
 
     // Arithmetic keeps the leaf; a remainder is exact at scale eighteen.
     assert_eq!(value.checked_mul(&Scalar::from(1_000_i64))?, Scalar::Decimal(Decimal::from_int(82_500)));
@@ -851,7 +854,7 @@ A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `
 - `Decimal::parse("0.1234567890123456789")` -> truncated to eighteen digits; `DataType::Decimal.scalar` of the same number -> refused, because the value door restates exactly or not at all.
 - A `decimal` or `bigdecimal` value under `%` -> the exact remainder at scale eighteen, its sign the dividend's: `-5.5 % 2` is `-1.5`. By a divisor of nothing, under `/` or `%` -> `Error::DivisionByZero`. Beside a float -> refused, as every exact decimal is.
 - `-1 / 3` over either leaf -> `-0.333333333333333333`: truncation is toward zero whatever the sign.
-- A `u64` past `i64`, an `int128` or a `uint128` beside a leaf -> read whole; the two 128-bit widths and `decimal256` answer a `bigdecimal`, as they widen the family to `d256`.
+- A `u64` past `i64`, an `int128` or a `uint128` beside a leaf -> read whole; the two 128-bit widths and `decimal256` answer a `bigdecimal`, as they widen the family to `decimal256`.
 - `Decimal::parse("1e2147483647")` -> refused as too many digits; `"1e-2147483648"` and `"0e2147483647"` -> zero, for both leaves.
 - `cast(f as bigdecimal)` over a float -> the number its shortest text names, `1e25` exactly; a float past the target's digits, `nan` or an infinity -> refused, `null` under `try_cast`. The same reading serves every decimal width, a column as a row: `1.15` into `decimal(10, 2)` is `1.15`, `0.125` is `0.13`, and `2.5` and `-2.5` into `decimal(10, 0)` are `3` and `-3`, rounded half away from zero where text would be cut.
 - `BigDecimal::narrowed()` past thirty-eight digits -> `None`; a `bigdecimal` column cast onto `decimal` narrows under the cast's `safe` rule.

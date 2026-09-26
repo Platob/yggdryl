@@ -164,14 +164,6 @@ impl JsField {
             .map_err(napi_error)
     }
 
-    /// Parse the textual representation of an Arrow-compatible JS field.
-    #[napi(factory, js_name = "fromArrowString", skip_typescript)]
-    pub fn from_arrow(value: String) -> Result<Self> {
-        CoreField::from_str(&value)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
     /// Build an empty native reader carrying exactly this Field's Arrow schema.
     ///
     /// The JavaScript records adapter captures and removes this private bridge;

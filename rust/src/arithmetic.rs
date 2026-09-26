@@ -143,14 +143,14 @@ impl Scalar {
                     .ok_or_else(|| overflow("d64"))?,
                 value.scale(),
             )),
-            Self::Decimal128(value) => Self::d128(
+            Self::Decimal128(value) => Self::decimal128(
                 value
                     .coefficient()
                     .checked_neg()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::Decimal256(value) => Self::d256(
+            Self::Decimal256(value) => Self::decimal256(
                 value
                     .coefficient()
                     .checked_neg()
@@ -230,14 +230,14 @@ impl Scalar {
             )),
             Self::Decimal(value) => Self::Decimal(value.abs()),
             Self::BigDecimal(value) => Self::BigDecimal(value.abs()),
-            Self::Decimal128(value) => Self::d128(
+            Self::Decimal128(value) => Self::decimal128(
                 value
                     .coefficient()
                     .checked_abs()
                     .ok_or_else(|| overflow("d128"))?,
                 value.scale(),
             ),
-            Self::Decimal256(value) => Self::d256(
+            Self::Decimal256(value) => Self::decimal256(
                 if value.coefficient().is_negative() {
                     value
                         .coefficient()

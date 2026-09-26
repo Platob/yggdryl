@@ -159,7 +159,7 @@ Each lookup exists by position, by path, or either:
 | replacing | `set_field_at` | `set_field_by_path` | `set_field` |
 | removing | `remove_field_at` | `remove_field_by_path` | `remove_field` |
 
-`DataType` answers the same calls, plus `fields`, `field_len`, `index_of`, and `named_field`. The [`FIELD:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
+`DataType` answers the same calls in all three languages. `index_of`, the position of the child with an exact name, is `Field`'s alone - Rust `Field::index_of`, Python `index_of`, JavaScript `indexOf` - and no `DataType` answers it. The child count is Rust `field_len` on both, Python `len()` on both, JavaScript `fieldLen` on a `Field` and `length` on a `DataType`; the children are Rust `Field::fields` and `DataType::as_fields`, Python iteration over a `DataType`, JavaScript `values()`. Rust's `DataType::named_field(name, nullable)` builds a `Field` rather than finding one. The [`FIELD:`](protocol.md) view is `as_field_properties`, `field_properties`, or `fieldProperties`.
 
 ## Flattening and expanding
 

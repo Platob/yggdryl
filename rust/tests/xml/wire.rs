@@ -165,7 +165,7 @@ fn leaves_write_their_interoperable_spellings() {
             ("whole", Scalar::from(1.0_f64)),
             ("nan", Scalar::from(f64::NAN)),
             ("inf", Scalar::from(f64::NEG_INFINITY)),
-            ("decimal", Scalar::d128(1250, 2)),
+            ("decimal", Scalar::decimal128(1250, 2)),
             ("bytes", Scalar::from(vec![0_u8, 255])),
             ("date", Scalar::date32(19_876)),
             (
@@ -352,7 +352,7 @@ fn a_field_types_the_text_a_document_leaves_behind() {
         Scalar::from(" keep me "),
         "text under a text column is kept exactly"
     );
-    assert_eq!(cells[2], Scalar::d128(1250, 2));
+    assert_eq!(cells[2], Scalar::decimal128(1250, 2));
     assert_eq!(
         cells[3],
         Scalar::from_sequence([Scalar::from(100_i64)]),

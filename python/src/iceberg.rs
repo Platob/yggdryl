@@ -1724,16 +1724,17 @@ impl PyTable {
 
     /// Start recording a column-level schema evolution against this table.
     ///
-    /// The recording methods touch nothing; [`PySchemaUpdate::commit`] plays
-    /// them back through the core evolution rules and writes one new metadata
-    /// document. `with table.update_schema() as update:` commits on a clean
-    /// exit and discards on an exception.
-    fn update_schema(slf: &Bound<'_, Self>) -> PySchemaUpdate {
-        PySchemaUpdate {
+    /// The recording methods touch nothing; [`PySchemaUpdate::commit`] hands
+    /// the recording to the core `Table::update_schema`, which writes one new
+    /// metadata document. `with table.update_schema() as update:` commits on a
+    /// clean exit and discards on an exception.
+    fn update_schema(slf: &Bound<'_, Self>) -> PyResult<PySchemaUpdate> {
+        let update =
+            SchemaUpdate::from_metadata(slf.borrow().inner.metadata()).map_err(value_error)?;
+        Ok(PySchemaUpdate {
             table: slf.clone().unbind(),
-            ops: Vec::new(),
-            consumed: false,
-        }
+            update: Some(update),
+        })
     }
 
     fn __repr__(&self) -> String {
@@ -1746,80 +1747,33 @@ impl PyTable {
     }
 }
 
-/// One recorded column operation, held until its update commits.
-///
-/// This mirrors the core's own recording: inference happens when the caller
-/// speaks - a field or datatype argument is read at the boundary - and the
-/// operation itself runs in Rust when the update is played back.
-enum RecordedOp {
-    /// Append a column to the root (`""`) or to a nested struct.
-    AddColumn {
-        /// The dotted path of the struct the column lands under.
-        parent: String,
-        /// The column itself; stale identifiers are stripped on apply.
-        field: CoreField,
-    },
-    /// Remove a column, retiring its identifier forever.
-    DropColumn {
-        /// The dotted path of the column.
-        path: String,
-    },
-    /// Rename a column, keeping its identifier.
-    RenameColumn {
-        /// The dotted path of the column.
-        path: String,
-        /// The new name.
-        name: String,
-    },
-    /// Set a column's `ICEBERG:doc` documentation string.
-    UpdateDoc {
-        /// The dotted path of the column.
-        path: String,
-        /// The documentation string.
-        doc: String,
-    },
-    /// Relax a required column to optional.
-    MakeNullable {
-        /// The dotted path of the column.
-        path: String,
-    },
-    /// Promote a column's type, gated by the legal Iceberg promotions.
-    UpdateType {
-        /// The dotted path of the column.
-        path: String,
-        /// The promoted type.
-        dtype: CoreDataType,
-    },
-}
-
 /// A recorded set of column operations against one table's current schema.
 ///
-/// Built by `Table.update_schema`. Each recording method returns the update
-/// itself so calls chain, and `commit` plays the operations back onto the
-/// table's metadata - added columns numbered above `last-column-id`, renames
-/// keeping their identifier, promotions gated by `can_promote` - as one new
-/// metadata document. Used as a context manager, a clean exit commits and an
-/// exception discards.
+/// Built by `Table.update_schema`, it holds the core `SchemaUpdate`. Each
+/// recording method returns the update itself so calls chain, and `commit`
+/// hands it to the core `Table::update_schema` - added columns numbered above
+/// `last-column-id`, renames keeping their identifier, promotions gated by
+/// `can_promote`, a beaten commit replayed onto the winner's schema - as one
+/// new metadata document. Used as a context manager, a clean exit commits and
+/// an exception discards.
 #[pyclass(name = "SchemaUpdate", module = "yggdryl._native", skip_from_py_object)]
 pub(crate) struct PySchemaUpdate {
     /// The table the update was started from and commits back to.
     table: Py<PyTable>,
-    /// The recorded operations, in call order.
-    ops: Vec<RecordedOp>,
-    /// Whether the update has already committed or been discarded.
-    consumed: bool,
+    /// The core recording; `None` once the update committed or was discarded.
+    update: Option<SchemaUpdate>,
 }
 
 impl PySchemaUpdate {
-    /// Refuse an update that has already committed or been discarded.
-    fn check_open(&self) -> PyResult<()> {
-        if self.consumed {
-            return Err(PyValueError::new_err(
-                "expected an open schema update, got one already committed or discarded",
-            ));
-        }
-        Ok(())
+    /// Borrow the recording, refusing an update already committed or discarded.
+    fn open(&mut self) -> PyResult<&mut SchemaUpdate> {
+        self.update.as_mut().ok_or_else(spent_schema_update)
     }
+}
+
+/// The refusal an update answers once it has committed or been discarded.
+fn spent_schema_update() -> PyErr {
+    PyValueError::new_err("expected an open schema update, got one already committed or discarded")
 }
 
 #[pymethods]
@@ -1840,21 +1794,14 @@ impl PySchemaUpdate {
         parent: &str,
         field: &Bound<'_, PyAny>,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        let field = core_field_from_value(field)?;
-        slf.ops.push(RecordedOp::AddColumn {
-            parent: parent.to_owned(),
-            field,
-        });
+        let update = slf.open()?;
+        update.add_column(parent, core_field_from_value(field)?);
         Ok(slf)
     }
 
     /// Record the removal of the column at `path`, retiring its identifier.
     fn drop_column<'py>(mut slf: PyRefMut<'py, Self>, path: &str) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        slf.ops.push(RecordedOp::DropColumn {
-            path: path.to_owned(),
-        });
+        slf.open()?.drop_column(path);
         Ok(slf)
     }
 
@@ -1865,11 +1812,7 @@ impl PySchemaUpdate {
         path: &str,
         name: &str,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        slf.ops.push(RecordedOp::RenameColumn {
-            path: path.to_owned(),
-            name: name.to_owned(),
-        });
+        slf.open()?.rename_column(path, name);
         Ok(slf)
     }
 
@@ -1880,11 +1823,7 @@ impl PySchemaUpdate {
         path: &str,
         doc: &str,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        slf.ops.push(RecordedOp::UpdateDoc {
-            path: path.to_owned(),
-            doc: doc.to_owned(),
-        });
+        slf.open()?.update_doc(path, doc);
         Ok(slf)
     }
 
@@ -1896,10 +1835,7 @@ impl PySchemaUpdate {
         mut slf: PyRefMut<'py, Self>,
         path: &str,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        slf.ops.push(RecordedOp::MakeNullable {
-            path: path.to_owned(),
-        });
+        slf.open()?.make_nullable(path);
         Ok(slf)
     }
 
@@ -1913,58 +1849,27 @@ impl PySchemaUpdate {
         path: &str,
         dtype: &Bound<'_, PyAny>,
     ) -> PyResult<PyRefMut<'py, Self>> {
-        slf.check_open()?;
-        let dtype = core_dtype_from_value(dtype)?;
-        slf.ops.push(RecordedOp::UpdateType {
-            path: path.to_owned(),
-            dtype,
-        });
+        let update = slf.open()?;
+        update.update_type(path, core_dtype_from_value(dtype)?);
         Ok(slf)
     }
 
-    /// Play the recorded operations back and write one new metadata document.
+    /// Commit the recorded operations as one new metadata document and
+    /// return the schema identifier they made current.
     ///
-    /// The evolved schema is added to the table's metadata and made current in
-    /// the same commit a property change uses, so the table describes the new
-    /// shape when this returns and describes the old one on any failure. An
-    /// update that recorded nothing commits nothing at all.
-    fn commit(&mut self, py: Python<'_>) -> PyResult<()> {
-        self.check_open()?;
-        self.consumed = true;
-        let ops = std::mem::take(&mut self.ops);
-        if ops.is_empty() {
-            return Ok(());
-        }
-        let mut table = self.table.bind(py).borrow_mut();
-        table
+    /// The core `Table::update_schema` replays the recording onto the
+    /// metadata each attempt reads, so a commit beaten by another writer
+    /// rebases onto the winner's schema; the table describes the new shape
+    /// when this returns and the old one on any failure. An update that
+    /// recorded nothing commits nothing and answers the current schema's
+    /// identifier. The update is spent either way.
+    fn commit(&mut self, py: Python<'_>) -> PyResult<i32> {
+        let update = self.update.take().ok_or_else(spent_schema_update)?;
+        self.table
+            .bind(py)
+            .borrow_mut()
             .inner
-            .commit_metadata_changes(move |metadata| {
-                // Replayed by reference: a beaten commit rebases and runs this
-                // closure again on the winner's metadata, so the recording
-                // must survive every attempt.
-                let mut update = SchemaUpdate::from_metadata(metadata)?;
-                for op in &ops {
-                    match op {
-                        RecordedOp::AddColumn { parent, field } => {
-                            update.add_column(parent, field.clone());
-                        }
-                        RecordedOp::DropColumn { path } => update.drop_column(path),
-                        RecordedOp::RenameColumn { path, name } => {
-                            update.rename_column(path, name.clone());
-                        }
-                        RecordedOp::UpdateDoc { path, doc } => {
-                            update.update_doc(path, doc.clone());
-                        }
-                        RecordedOp::MakeNullable { path } => update.make_nullable(path),
-                        RecordedOp::UpdateType { path, dtype } => {
-                            update.update_type(path, dtype.clone());
-                        }
-                    }
-                }
-                let evolved = update.into_field()?;
-                let schema_id = metadata.add_schema(evolved)?;
-                metadata.set_current_schema(schema_id)
-            })
+            .update_schema(&update)
             .map_err(value_error)
     }
 
@@ -1987,11 +1892,10 @@ impl PySchemaUpdate {
     ) -> PyResult<bool> {
         let _ = (exception, traceback);
         if exception_type.is_some() {
-            self.ops.clear();
-            self.consumed = true;
+            self.update = None;
             return Ok(false);
         }
-        if !self.consumed {
+        if self.update.is_some() {
             self.commit(py)?;
         }
         Ok(false)
@@ -1999,9 +1903,17 @@ impl PySchemaUpdate {
 
     fn __repr__(&self) -> String {
         format!(
-            "SchemaUpdate(ops={}, committed={})",
-            self.ops.len(),
-            if self.consumed { "True" } else { "False" },
+            "SchemaUpdate(empty={}, open={})",
+            if self.update.as_ref().is_none_or(SchemaUpdate::is_empty) {
+                "True"
+            } else {
+                "False"
+            },
+            if self.update.is_some() {
+                "True"
+            } else {
+                "False"
+            },
         )
     }
 }

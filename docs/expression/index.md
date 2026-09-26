@@ -59,7 +59,7 @@ Parse, bind once, ask a row.
 
     let row = Scalar::from_sequence([
         Scalar::from("EUR"),
-        Scalar::d128(15_000, 2),
+        Scalar::decimal128(15_000, 2),
         Scalar::from(5_i64),
     ]);
     assert!(bound.matches(&row)?);

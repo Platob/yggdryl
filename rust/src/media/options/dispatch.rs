@@ -185,6 +185,26 @@ impl IORecordOptions for RecordOptions {
         }
     }
 
+    fn row_offset(&self) -> Option<u64> {
+        match self {
+            Self::Ipc(options) => options.row_offset(),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.row_offset(),
+            Self::Avro(options) => options.row_offset(),
+            Self::Text(options) => options.row_offset(),
+        }
+    }
+
+    fn set_row_offset(&mut self, row_offset: Option<u64>) {
+        match self {
+            Self::Ipc(options) => options.set_row_offset(row_offset),
+            #[cfg(feature = "parquet")]
+            Self::Parquet(options) => options.set_row_offset(row_offset),
+            Self::Avro(options) => options.set_row_offset(row_offset),
+            Self::Text(options) => options.set_row_offset(row_offset),
+        }
+    }
+
     fn max_byte_size(&self) -> Option<u64> {
         match self {
             Self::Ipc(options) => options.max_byte_size(),

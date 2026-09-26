@@ -709,6 +709,52 @@ test('mkdir and touch bring a location into being', (t) => {
   assert.throws(() => folder.touch(), /got the directory/)
 })
 
+test('a folder answers whether it is there now, not what it was built as', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const folder = new IOBase(path.join(root, 'made'))
+  folder.mkdir()
+  assert.ok(folder.exists())
+  assert.equal(folder.kind, 'directory')
+
+  folder.remove(true)
+  assert.equal(fs.existsSync(path.join(root, 'made')), false)
+  assert.equal(folder.exists(), false)
+})
+
+test('a folder joins through a child that does not exist yet', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const folder = new IOBase(root)
+  assert.equal(folder.kind, 'directory')
+
+  // Resolution is a name, never a stat that turns a missing `a` into a leaf
+  // with no children.
+  const leaf = folder.joinpath('a', 'b.bin')
+  assert.equal(fs.existsSync(path.join(root, 'a')), false)
+  assert.equal(leaf.exists(), false)
+  leaf.writeBytes(Buffer.from('x'))
+  assert.equal(fs.readFileSync(path.join(root, 'a', 'b.bin'), 'utf8'), 'x')
+  assert.ok(leaf.exists())
+})
+
+test('a handle answers the options value its encoding owns', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  // A plain-text handle answers `TextOptions`, carrying what `intoText`
+  // retained; every other encoding answers `RecordOptions`.
+  const text = new IOBase(path.join(root, 'app.log'))
+  assert.ok(text.recordOptions() instanceof TextOptions)
+  const retained = new TextOptions()
+  retained.rowheader = '^(?<level>[A-Z]+) '
+  text.intoText(retained)
+  assert.deepEqual(text.recordOptions().captureNames, ['level'])
+
+  const parquet = new IOBase(path.join(root, 'trades.parquet')).recordOptions()
+  assert.ok(parquet instanceof RecordOptions)
+  assert.equal(parquet.mimeType.toString(), 'application/vnd.apache.parquet')
+})
+
 test('bytes move between two handles without a temporary copy', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

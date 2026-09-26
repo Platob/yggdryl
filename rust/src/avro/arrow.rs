@@ -331,6 +331,10 @@ fn node_json(dtype: &DataType, name: &str, counter: &mut usize) -> Result<Scalar
             }
             Scalar::from_struct([("type", Scalar::from("map")), ("values", values)])
         }
+        // A dictionary is an encoding of its values and Avro has none: the
+        // values are what it spells, and the cast onto the canonical shape
+        // unpacks each batch before the encoder sees it.
+        DataType::Dictionary(dictionary) => node_json(dictionary.value(), name, counter),
         other => Err(unspellable(other)),
     }
 }

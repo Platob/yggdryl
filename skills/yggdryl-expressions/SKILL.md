@@ -35,10 +35,10 @@ reader, statistics, or media pushdown).
 | parse a predicate | `"a > 1".parse::<Filter>()?` | `Filter("a > 1")` | `new Filter('a > 1')` |
 | parse a projection list | `"a, b * 2 as c".parse::<Selector>()?` | `Selector("a, b * 2 as c")` | `new Selector('a, b * 2 as c')` |
 | parse a plan / a sequence | `.parse::<Plan>()?` / `.parse::<Expression>()?` | `Plan(text)` / `Expression(text)` | `new Plan(text)` / `new Expression(text)` |
-| build a term without text | `col("p").gt(lit(100_i64))` | `Term.column("p").gt(100)`, `&`, `\|`, `~`, `+ - * / %` | `Term.column('p').gt('100')`, `.and()`, `.add(1)` |
+| build a term without text | `col("p").gt(lit(100_i64))` | `Term.column("p").gt(100)`, `&`, `\|`, `~`, `+ - * / %` | `Term.column('p').gt(100)`, `.and()`, `.add(1)` |
 | build a plan by section | `Plan::new().select(s)?.filter(f)?.limit(Some(10))` | `Plan().with_select(s).with_filter(f).with_limit(10)` | `new Plan().withSelect(s).withFilter(f).withLimit(10)` |
 | bind once (with parameters) | `f.bind(&root)?`, `f.bind_with(&root, &[("lo", v)])?` | `f.bind(root, {"lo": 1})` | `f.bind(root, { lo: 1 })` |
-| answer one row | `bound.matches(&row)?`, `bound.eval(&row)?` | `bound.matches(row)` (sequence or mapping) | `bound.matches(Scalar.from([...]))` |
+| answer one row | `bound.matches(&row)?`, `bound.eval(&row)?` | `bound.matches(row)` (sequence or mapping) | `bound.matches(row)` (array or object) |
 | shape a stream (primary) | `x.apply_arrow_reader(reader)?` | `x.apply_arrow_reader(reader)` | `x.applyArrowReader(BatchReader.from(t))` |
 | shape one batch | `x.apply_arrow_batch(&batch)?` | `x.apply_arrow_batch(batch)`, `apply_arrow(any)` | `x.applyArrowBatch(batch)`, `applyArrow(any)` |
 | filter with a held `Bound` | `bound.filter(&b)?`, `filter_mask`, `filter_reader(r)` | `bound.filter_arrow_batch(b)`, `filter_arrow_reader(r)` | `bound.filterArrowBatch(b)`, `filterArrowReader(r)` |
@@ -90,10 +90,9 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
    | any of the above from JavaScript | copied through Arrow IPC in and out |
 
 5. **`order by` is the only section that collects.** `limit` and `offset` are
-   slices; `execute` pushes them into the read when nothing orders, and the
-   read keeps only `limit`, so a plan with `offset` and no `order by` must run
-   through `apply_arrow_reader`. Filter first and order only when the answer
-   needs it.
+   slices; `execute` pushes them into the read when nothing orders, as the
+   record options' `max_row_size` and `row_offset`. Filter first and order
+   only when the answer needs it.
 6. **Statistics answer `false` only when no row can match.** `true` means
    "must read", never "matches"; a user function is unknown to statistics, so
    it forces a row read and never a wrong skip.
@@ -135,7 +134,7 @@ a Rust `Plan` answers only `apply_arrow_reader` and `execute` - convert with
 
 | Wrong | Right |
 | --- | --- |
-| `Term.column("ccy").eq("EUR")` - a string is term *text*, so this compares two columns | Python `eq(Term.literal("EUR"))` or `eq("'EUR'")`; JS `eq(Term.literal(Scalar.from('EUR')))` or `eq("'EUR'")` |
+| `Term.column("ccy").eq("EUR")` - a string is term *text*, so this compares two columns | Python `eq(Term.literal("EUR"))` or `eq("'EUR'")`; JS `eq(Term.literal('EUR'))` or `eq("'EUR'")` |
 | Python `Term.column("p") > 100` or `== ...` | `.gt(100)`, `.eq(...)`: comparison operators are Python ordering and equality, only `&`, `\|`, `~` and arithmetic build terms |
 | JS `Term.column('p').gt(100)` (throws) / `Term.literal('x')` (throws) | `gt('100')`; `Term.literal(Scalar.from('x'))` |
 | `Expression("a > 1")` (refused: an expression names its clause) | `Filter("a > 1")`, `Term("a > 1")`, or `Expression("where a > 1")` |

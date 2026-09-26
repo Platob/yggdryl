@@ -18,6 +18,39 @@ mod local {
         }
 
         #[test]
+        fn a_child_of_a_missing_child_resolves_without_touching_the_disk() {
+            let path = root("chain");
+            let directory = Holder::LocalFolder(LocalFolder::new(&path).unwrap());
+
+            // `a` does not exist, and a child of it is still a location to
+            // write to: resolution is a name, never a stat that turns a missing
+            // name into a file with no children.
+            let mut leaf = directory
+                .child_by_path("a")
+                .unwrap()
+                .child_by_path("b.bin")
+                .unwrap();
+            assert!(!path.exists());
+            assert!(!leaf.exists());
+            leaf.write_all_bytes(b"x").unwrap();
+            assert_eq!(std::fs::read(path.join("a").join("b.bin")).unwrap(), b"x");
+            assert!(leaf.exists());
+        }
+
+        #[test]
+        fn a_folder_handle_answers_whether_its_directory_is_there_now() {
+            let path = root("exists");
+            let directory = Holder::LocalFolder(LocalFolder::new(&path).unwrap());
+            assert!(!directory.exists());
+            std::fs::create_dir_all(&path).unwrap();
+            assert!(directory.exists());
+            std::fs::remove_dir_all(&path).unwrap();
+            // The role still names a container; what is there is the answer.
+            assert!(directory.is_container());
+            assert!(!directory.exists());
+        }
+
+        #[test]
         fn a_directory_handle_touches_nothing_until_used() {
             let path = root("lazy");
             let directory = LocalFolder::new(&path).unwrap();
@@ -51,11 +84,12 @@ mod local {
             let directory = LocalFolder::new(&path).unwrap();
             directory.create().unwrap();
 
-            // A write through a child creates the leaf.
+            // A child is the path role, resolved by name alone, and a write
+            // through it creates the leaf; a listing answers what is there.
             let mut leaf = directory.child_by_path("trades.arrows").unwrap();
+            assert!(matches!(leaf, Holder::LocalPath(_)));
             leaf.pwrite(0, b"payload").unwrap();
             leaf.flush().unwrap();
-            assert!(matches!(leaf, Holder::LocalFile(_)));
             assert!(!leaf.is_container());
 
             // A nested child creates its parent directory on write.
@@ -221,9 +255,10 @@ mod local {
                 folder.child_by_path("sub/").unwrap(),
                 Holder::LocalFolder(_)
             ));
+            // Without one it is the path role, resolved when it is used.
             assert!(matches!(
                 folder.child_by_path("sub").unwrap(),
-                Holder::LocalFile(_)
+                Holder::LocalPath(_)
             ));
             assert!(!path.join("sub").exists(), "resolving created nothing");
 

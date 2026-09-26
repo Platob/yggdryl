@@ -11,7 +11,7 @@ A non-null Struct root projected to an Arrow `Schema` and back, in process or ac
 | Metadata | Root metadata becomes schema metadata and comes back |
 | Sidecar | `YGGDRYL:ipc:dictionary-ids` = `v1;<path>=<id>` per non-zero ID, keyed by deterministic numeric field paths; transport only |
 | Errors | `Error::IncompatibleSchema` (root), `Error::Core(InvalidMetadataValue)` (sidecar) |
-| Feature flag | `arrow` (default) |
+| Feature flag | None: Arrow support is always compiled in |
 | Bindings | Rust; Python `Field.from_arrow_schema(schema, name="row")`, `Field.into_arrow_schema()`; JavaScript none |
 | Per-field | `Field::into_arrow`, `Field::from_arrow`, `DataType::into_arrow`: [Field](../types/field.md), [DataType](../types/datatype.md) |
 
@@ -94,7 +94,7 @@ Rust only.
 
 ## Strings and bytes
 
-Each column of a root projects through its own field, so a [string or bytes](../types/text/index.md) column crosses as that family's Arrow storage: text storage (`Utf8`, `LargeUtf8`, `Utf8View`) for the UTF-8 and US-ASCII leaves, the matching binary storage for the windows-1252 ones, and `FixedSizeBinary(width)` on a fixed leaf. A [registered code](../types/codes/index.md) crosses as `Utf8` under its own extension name, because a code is the text it is. A `yggdryl.string` or `yggdryl.bytes` extension document rides beside the storage only when Arrow cannot say what the field declares - `sized_cp1252(8)` is `Binary` with `{"layout":"sized_cp1252","charset":"windows-1252","max":8}` - and every projection reads back as the field that wrote it. The storage table and its Rust and Python round trips are on [Strings & bytes](../types/text/index.md), where JavaScript shows the stored Arrow field through a struct cast; JavaScript has no field projection, and `Field.fromArrow` reads a datatype expression.
+Each column of a root projects through its own field, so a [string or bytes](../types/text/index.md) column crosses as that family's Arrow storage: text storage (`Utf8`, `LargeUtf8`, `Utf8View`) for the UTF-8 and US-ASCII leaves, the matching binary storage for the windows-1252 ones, and `FixedSizeBinary(width)` on a fixed leaf. A [registered code](../types/codes/index.md) crosses as `Utf8` under its own extension name, because a code is the text it is. A `yggdryl.string` or `yggdryl.bytes` extension document rides beside the storage only when Arrow cannot say what the field declares - `sized_cp1252(8)` is `Binary` with `{"layout":"sized_cp1252","charset":"windows-1252","max":8}` - and every projection reads back as the field that wrote it. The storage table and its Rust and Python round trips are on [Strings & bytes](../types/text/index.md), where JavaScript shows the stored Arrow field through a struct cast; JavaScript has no field projection; `Field.fromArrow` reads an Arrow JS field through IPC, nullability and extension name included.
 
 ## Edges
 

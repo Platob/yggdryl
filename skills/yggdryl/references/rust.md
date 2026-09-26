@@ -65,8 +65,8 @@ let schema = DataType::from(StructType::from_fields([
 .required_field("trade");
 
 // A value enters through its type: 12.50 at scale 2 lands at the column's scale 4.
-let price = schema.fields()[2].dtype().scalar(Scalar::d128(1_250, 2))?;
-assert_eq!(price, Scalar::d128(125_000, 4));
+let price = schema.fields()[2].dtype().scalar(Scalar::decimal128(1_250, 2))?;
+assert_eq!(price, Scalar::decimal128(125_000, 4));
 
 // Rows are ordered sequences, one value per child field.
 let rows = [

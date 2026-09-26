@@ -54,22 +54,24 @@ mod scalars {
     #[test]
     fn a_decimal_names_the_precision_its_digits_need() {
         assert_eq!(
-            Scalar::d128(1_050, 2).dtype().unwrap(),
+            Scalar::decimal128(1_050, 2).dtype().unwrap(),
             DataType::decimal128(4, 2).unwrap()
         );
         // A coefficient smaller than its scale is still `0.00…`, which needs
         // precision enough to hold the scale.
         assert_eq!(
-            Scalar::d128(5, 3).dtype().unwrap(),
+            Scalar::decimal128(5, 3).dtype().unwrap(),
             DataType::decimal128(3, 3).unwrap()
         );
         // Thirty-nine digits are past Decimal128 and land on Decimal256.
         assert_eq!(
-            Scalar::d256(i256::from_i128(i128::MIN), 0).dtype().unwrap(),
+            Scalar::decimal256(i256::from_i128(i128::MIN), 0)
+                .dtype()
+                .unwrap(),
             DataType::decimal256(39, 0).unwrap()
         );
         assert_eq!(
-            Scalar::d128(0, 0).dtype().unwrap(),
+            Scalar::decimal128(0, 0).dtype().unwrap(),
             DataType::decimal128(1, 0).unwrap()
         );
     }

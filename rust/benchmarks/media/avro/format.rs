@@ -67,7 +67,7 @@ fn families() -> Vec<(&'static str, Scalar, RowMaker)> {
             Box::new(|index| {
                 Scalar::from_mapping([(
                     Scalar::from("price"),
-                    Scalar::d128(1_000_000 + index as i128 * 13, 4),
+                    Scalar::decimal128(1_000_000 + index as i128 * 13, 4),
                 )])
                 .expect("unique keys")
             }),

@@ -604,7 +604,7 @@ mod datatypes {
             ),
         ];
         for (dtype, storage) in cases {
-            assert_eq!(dtype.to_arrow_datatype().unwrap(), storage, "{dtype}");
+            assert_eq!(ArrowDataType::try_from(&dtype).unwrap(), storage, "{dtype}");
             assert_eq!(
                 dtype.clone().into_arrow_datatype().unwrap(),
                 storage,
@@ -622,7 +622,7 @@ mod datatypes {
         assert_eq!(
             DataType::duration32(TimeUnit::Second)
                 .unwrap()
-                .to_arrow_datatype()
+                .into_arrow_datatype()
                 .unwrap(),
             ArrowDataType::Duration(ArrowTimeUnit::Second)
         );
@@ -643,7 +643,7 @@ mod datatypes {
             DataType::Duration32(TimeUnit::YearMonth),
             DataType::Interval(TimeUnit::Second),
         ] {
-            assert!(dtype.to_arrow_datatype().is_err(), "{dtype}");
+            assert!(ArrowDataType::try_from(&dtype).is_err(), "{dtype}");
             assert!(dtype.into_arrow_datatype().is_err());
         }
     }

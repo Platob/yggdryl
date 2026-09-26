@@ -297,6 +297,46 @@ mod iceberg {
     }
 
     #[test]
+    fn a_schema_update_replays_onto_the_schema_a_rival_committed() {
+        use yggdryl::iceberg::SchemaUpdate;
+
+        let path = root("update-schema");
+        let mut first = Table::create(
+            LocalFolder::new(&path).unwrap(),
+            FormatVersion::V2,
+            schema(),
+            PartitionSpec::unpartitioned(),
+        )
+        .unwrap();
+        let mut second = Table::open(LocalFolder::new(&path).unwrap()).unwrap();
+        let current = first.metadata().current_schema_id();
+
+        // Nothing recorded commits nothing and answers the current schema.
+        let empty = SchemaUpdate::from_metadata(first.metadata()).unwrap();
+        assert_eq!(first.update_schema(&empty).unwrap(), current);
+
+        // Both handles record against the same schema; the second commits
+        // first, and the first replays onto what the second made current.
+        let mut late = SchemaUpdate::from_metadata(first.metadata()).unwrap();
+        late.add_column("", DataType::Int64.nullable_field("late"));
+        let mut early = SchemaUpdate::from_metadata(second.metadata()).unwrap();
+        early.add_column("", DataType::Int64.nullable_field("early"));
+        let early_id = second.update_schema(&early).unwrap();
+        let late_id = first.update_schema(&late).unwrap();
+
+        assert!(late_id > early_id && early_id > current);
+        let names: Vec<String> = first
+            .metadata()
+            .current_schema()
+            .unwrap()
+            .fields()
+            .iter()
+            .map(|field| field.name().to_owned())
+            .collect();
+        assert_eq!(names, ["id", "symbol", "venue", "early", "late"]);
+    }
+
+    #[test]
     fn data_files_are_sorted_by_the_default_order_the_metadata_records() {
         let path = root("sorted-files");
         let schema = schema();

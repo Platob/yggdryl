@@ -49,7 +49,7 @@ mod widths {
             // scale zero, carrying every digit.
             assert_eq!(
                 round_trip(column.clone(), Scalar::from(value)),
-                Scalar::d128(value, 0),
+                Scalar::decimal128(value, 0),
                 "i128 {value}"
             );
         }
@@ -60,7 +60,7 @@ mod widths {
         let coefficient = "12345678901234567890123456789012345678901234567890"
             .parse::<i256>()
             .unwrap();
-        let value = Scalar::d256(coefficient, 7);
+        let value = Scalar::decimal256(coefficient, 7);
         assert_eq!(
             round_trip(DataType::decimal256(57, 7).unwrap(), value.clone()),
             value
@@ -134,12 +134,12 @@ mod widths {
         let cases = [
             (
                 DataType::decimal32(9, 2).unwrap(),
-                Scalar::d128(125, 2),
+                Scalar::decimal128(125, 2),
                 DataTypeId::Decimal32,
             ),
             (
                 DataType::decimal64(18, 2).unwrap(),
-                Scalar::d128(125, 2),
+                Scalar::decimal128(125, 2),
                 DataTypeId::Decimal64,
             ),
             (
@@ -341,18 +341,18 @@ mod restating {
         // 10.50 at scale 2 is the coefficient 1050, whichever way it is spelled,
         // and it reads back as the decimal it is.
         assert_eq!(
-            round_trip(column.clone(), Scalar::d128(1_050, 2)),
-            Scalar::d128(1_050, 2)
+            round_trip(column.clone(), Scalar::decimal128(1_050, 2)),
+            Scalar::decimal128(1_050, 2)
         );
         assert_eq!(
-            round_trip(column.clone(), Scalar::d128(105, 1)),
-            Scalar::d128(1_050, 2)
+            round_trip(column.clone(), Scalar::decimal128(105, 1)),
+            Scalar::decimal128(1_050, 2)
         );
 
         // A coefficient that cannot be restated without losing a digit is
         // refused rather than rounded.
         let field = Field::new("price", column, true);
-        assert!(lay_out(&field, &Scalar::d128(1_055, 3)).is_err());
+        assert!(lay_out(&field, &Scalar::decimal128(1_055, 3)).is_err());
     }
 
     #[test]

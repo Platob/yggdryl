@@ -104,7 +104,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(1),
                 Scalar::from(1.5_f64),
-                Scalar::d128(150, 2),
+                Scalar::decimal128(150, 2),
                 Scalar::from("alpha"),
                 Scalar::from(true),
                 stamp(1_700_000_000_000_000),
@@ -121,7 +121,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(-3),
                 Scalar::from(f64::NAN),
-                Scalar::d128(-25, 2),
+                Scalar::decimal128(-25, 2),
                 Scalar::from("beta"),
                 Scalar::from(false),
                 stamp(0),
@@ -149,7 +149,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(100),
                 Scalar::from(f64::INFINITY),
-                Scalar::d128(10_000, 2),
+                Scalar::decimal128(10_000, 2),
                 Scalar::from("Alpha"),
                 Scalar::Null,
                 stamp(-1_000_000),
@@ -163,7 +163,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(0),
                 Scalar::from(0.0_f64),
-                Scalar::d128(0, 2),
+                Scalar::decimal128(0, 2),
                 Scalar::from(""),
                 Scalar::from(true),
                 stamp(1_700_000_000_000_001),
@@ -399,7 +399,7 @@ mod grammar {
         let row = |ccy: &str, price: i128, size: Option<i32>| {
             Scalar::from_sequence([
                 Scalar::from(ccy),
-                Scalar::d128(price, 2),
+                Scalar::decimal128(price, 2),
                 size.map_or(Scalar::Null, Scalar::from),
             ])
         };
@@ -407,6 +407,21 @@ mod grammar {
         assert!(!bound.matches(&row("USD", 15_000, Some(5))).unwrap());
         assert!(!bound.matches(&row("EUR", 5_000, Some(5))).unwrap());
         assert!(!bound.matches(&row("EUR", 15_000, None)).unwrap());
+
+        // A named record is the same row, ordered by the schema; a name the
+        // schema does not declare is refused rather than ignored.
+        let named = Scalar::from_struct([
+            ("size", Scalar::from(5_i32)),
+            ("price", Scalar::decimal128(15_000, 2)),
+            ("ccy", Scalar::from("EUR")),
+        ])
+        .unwrap();
+        assert!(bound.matches(&named).unwrap());
+        let stray =
+            Scalar::from_struct([("ccy", Scalar::from("EUR")), ("desk", Scalar::from("fx"))])
+                .unwrap();
+        let message = bound.matches(&stray).unwrap_err().to_string();
+        assert!(message.contains("desk"), "{message}");
     }
 
     #[test]

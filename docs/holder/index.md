@@ -7,7 +7,7 @@ Every storage implementation is one positional `IOBase` handle: a caller writes 
 | [Handles](#handles) | the `Holder` enum, what a name composes to, roles, delegation | default |
 | [Bytes](#bytes) | `pread`/`pwrite`, addresses, laziness, kinds, streams, cursors, media type, codings, open/close, clear/remove | default |
 | [Values](#values) | whole bytes, digests, structured JSON/YAML/TOML/XML scalars, `std::io` adapters | default |
-| [Records](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | `arrow` (default), `parquet` |
+| [Records](#records) | Arrow batch reads, the three write intents, pushdown, limits, native rows | default; `parquet` for Parquet |
 | [Partitions](#partitions) | listings, globs, Hive pruning, partition columns, derived columns | default |
 | [Call counts](#call-counts) | `Counted`, the `IOBase` call budget every derived operation is held to | default |
 | [Buffer](#buffer) | in-memory bytes | default |
@@ -95,7 +95,7 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
 
 ### What the name declares
 
-`into_declared_media` puts the name's content coding underneath and its record encoding on top, without resolving the store.
+`into_declared_media` puts the name's content coding underneath and its record encoding on top, without resolving the store. Python composes this wherever a handle is described. JavaScript does not: a JavaScript `IOBase` byte method (`readBytes`, `writeText`, `readRangeBytes`) addresses the stored bytes whatever the name declares, while its record methods read and write through the declared coding - so write a `.gz` name's bytes through `compressInto` or its records, never as plain text.
 
 | name | composed handle |
 | --- | --- |
@@ -169,9 +169,10 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
     let root = Holder::folder(LocalFolder::temporary()?.path()?)?;
     assert!(root.is_container());
 
-    // A child need not exist. Naming one yields a leaf handle, and nothing is created.
+    // A child need not exist. Naming one yields the path role - nothing has
+    // decided what it is yet - and nothing is created.
     let leaf = root.child_by_path("yggdryl-generic-child.bin")?;
-    assert!(matches!(leaf, Holder::LocalFile(_)));
+    assert!(matches!(leaf, Holder::LocalPath(_)));
     assert!(!leaf.is_container());
     assert_eq!(leaf.size(), 0);
     ```
@@ -182,21 +183,22 @@ The last four own the `Holder` they wrap; `repr` renders that stack outermost fi
     import pathlib
     import tempfile
 
-    from yggdryl.holder import LocalFile, LocalFolder
+    from yggdryl.holder import LocalFolder, LocalPath
     from yggdryl.media import Ipc
 
     root = LocalFolder(pathlib.Path(tempfile.mkdtemp()))
 
-    # A child need not exist. Naming one yields a leaf handle, and nothing is created.
+    # A child need not exist. Naming one yields the path role - nothing has
+    # decided what it is yet - and nothing is created.
     plain = root / "yggdryl-generic-child.bin"
-    assert type(plain) is LocalFile
+    assert type(plain) is LocalPath
     assert plain.size == 0
 
     # Composition is applied wherever a handle is described, children included.
     records = root.joinpath("yggdryl-generic-child.arrows")
     assert type(records) is Ipc
-    assert repr(records) == f'Ipc(LocalFile("{records.url}"))'
-    assert type(records.parent) is LocalFolder
+    assert repr(records) == f'Ipc(LocalPath("{records.url}"))'
+    assert records.parent.is_dir() and records.parent.url == root.url
     ```
 
 ### Roles
@@ -1879,13 +1881,15 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
 ### Limits
 
-`max_row_size` counts result rows, `max_byte_size` their uncompressed Arrow bytes; both apply last, and a satisfied limit stops pulling.
+`row_offset` skips leading result rows, `max_row_size` counts the result rows after it and `max_byte_size` their uncompressed Arrow bytes. All three apply last - a plan's `offset` and `limit` are the first two - and a satisfied limit stops pulling.
 
 === "Rust"
 
     ```rust
     use std::sync::Arc;
 
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int64Type;
     use arrow_array::{Int64Array, RecordBatch, RecordBatchReader};
     use yggdryl::arrow;
     use yggdryl::media::IORecordOptions;
@@ -1908,6 +1912,14 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     // Ten result rows, exactly: the batch the bound lands inside is sliced.
     let first = handle.read_arrow_reader(&plain.clone().with_max_row_size(10))?;
     assert_eq!(first.map(|batch| batch.unwrap().num_rows()).sum::<usize>(), 10);
+
+    // A skip comes first and the bound counts after it: rows 5, 6 and 7.
+    let window = plain.clone().with_row_offset(5).with_max_row_size(3);
+    let ids: Vec<i64> = handle
+        .read_arrow_reader(&window)?
+        .flat_map(|batch| batch.unwrap().column(0).as_primitive::<Int64Type>().values().to_vec())
+        .collect();
+    assert_eq!(ids, [5, 6, 7]);
 
     // Zero is a valid ask: the shaped schema answers, and no batch flows.
     let mut none = handle.read_arrow_reader(&plain.clone().with_max_row_size(0))?;
@@ -1944,6 +1956,10 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
     ten = handle.record_options()
     ten.max_row_size = 10
     assert handle.read_arrow_reader(options=ten).read_all().num_rows == 10
+
+    # A skip comes first and the bound counts after it: rows 5, 6 and 7.
+    window = handle.read_arrow_reader(row_offset=5, max_row_size=3).read_all()
+    assert window.column("id").to_pylist() == [5, 6, 7]
 
     # Zero is a valid ask: the shaped schema answers, and no batch flows.
     zero = handle.record_options()
@@ -1988,6 +2004,10 @@ The options' field selects and casts in one pass; `select` narrows by name. [Par
 
     // Ten result rows, exactly: the batch the bound lands inside is sliced.
     assert.equal(handle.readArrowReader(options.withMaxRowSize(10)).intoTable().numRows, 10)
+
+    // A skip comes first and the bound counts after it: rows 5, 6 and 7.
+    const window = handle.readArrowReader({ rowOffset: 5, maxRowSize: 3 }).intoTable()
+    assert.deepEqual([...window.getChild('id')], [5n, 6n, 7n])
 
     // Zero is a valid ask: the shaped schema answers, and no batch flows.
     const empty = handle.readArrowReader(options.withMaxRowSize(0))
@@ -3079,11 +3099,12 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
     drop(absent);
     folder.create()?;
 
-    // A child is a handle; writing through it creates the leaf.
+    // A child is the path role until something is there; writing through it
+    // creates the leaf.
     let mut leaf = folder.child_by_path("trades.arrows")?;
+    assert!(matches!(leaf, Holder::LocalPath(_)));
     leaf.write_all_bytes(b"payload")?;
     leaf.flush()?;
-    assert!(matches!(leaf, Holder::LocalFile(_)));
 
     // A nested child creates its parent directory on write.
     let mut nested = folder.child_by_path("sub/inner.bin")?;
@@ -3121,7 +3142,7 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
     import pathlib
     import tempfile
 
-    from yggdryl.holder import LocalFile, LocalFolder
+    from yggdryl.holder import LocalFile, LocalFolder, LocalPath
 
     root = pathlib.Path(tempfile.mkdtemp()) / "lake"
 
@@ -3132,14 +3153,15 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
     assert not root.exists()
     folder.mkdir()
 
-    # A child is a handle; writing through it creates the leaf.
+    # A child is the path role until something is there; writing through it
+    # creates the leaf.
     leaf = folder / "trades.bin"
-    assert isinstance(leaf, LocalFile)
+    assert isinstance(leaf, LocalPath)
     leaf.write_bytes(b"payload")
     leaf.flush()
 
-    # A nested child creates its parent directory on write. One string descends
-    # the whole path; joining segment by segment needs each one to exist first.
+    # A nested child creates its parent directory on write, whether one string
+    # descends the whole path or the segments are joined one by one.
     nested = folder / "sub/inner.bin"
     nested.write_bytes(b"deep")
     nested.flush()
@@ -3150,7 +3172,7 @@ Listings are sorted, and a recursive one stays out of `.git`, `.venv` and `.DS_S
 
     # A leaf's parent is the directory holding it.
     parent = leaf.parent
-    assert isinstance(parent, LocalFolder)
+    assert parent.is_dir()
     assert parent.url == folder.url
     ```
 

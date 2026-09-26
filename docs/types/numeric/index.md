@@ -93,17 +93,17 @@ A family is not a type: it is the range of identifiers its `DataTypeKind` owns, 
 
     assert_eq!(Scalar::from(7_i32).family(), DataTypeKind::Integer);
     assert_eq!(Scalar::from(1.5_f64).family(), DataTypeKind::Floating);
-    assert_eq!(Scalar::d128(1_250, 2).family(), DataTypeKind::Decimal);
+    assert_eq!(Scalar::decimal128(1_250, 2).family(), DataTypeKind::Decimal);
     assert_eq!(Scalar::from(true).family(), DataTypeKind::Boolean);
 
     // Membership is the identifier's range, whichever width holds the value.
     assert!(DataTypeKind::Integer.contains(Scalar::from(7_u8).id()));
-    assert!(Scalar::d128(1_250, 2).is_number() && !Scalar::d128(1_250, 2).is_integer());
+    assert!(Scalar::decimal128(1_250, 2).is_number() && !Scalar::decimal128(1_250, 2).is_integer());
 
     // The kind is the width, the id the datatype it proves.
     assert_eq!(Scalar::from(7_i32).kind(), "i32");
     assert_eq!(Scalar::from(1.5_f64).kind(), "f64");
-    assert_eq!(Scalar::d128(1_250, 2).kind(), "d128");
+    assert_eq!(Scalar::decimal128(1_250, 2).kind(), "d128");
     assert_eq!(Scalar::from(true).kind(), "boolean");
     ```
 

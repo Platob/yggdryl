@@ -253,7 +253,7 @@ mod avro {
             yggdryl::avro::write_container(&mut handle, &schema_json, &[], &[list]).unwrap();
             let container = yggdryl::avro::read_container(&handle).unwrap();
             let tail = container.rows[0]
-                .path("next.next.value")
+                .path(&yggdryl::FieldPath::from_str("next.next.value").unwrap())
                 .and_then(|value| value.as_i64());
             assert_eq!(tail, Some(3));
         }

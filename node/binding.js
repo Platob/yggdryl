@@ -320,7 +320,6 @@ const internalDtypeNames = new Set([
   '_map',
   '_mapOf',
   '_runEndEncoded',
-  'fromArrowString',
 ])
 const DataType = publicNativeClass(
   NativeDataType,
@@ -336,7 +335,7 @@ const DataType = publicNativeClass(
 const Field = publicNativeClass(
   NativeField,
   'Field',
-  new Set(['fromArrowString', 'fromJSON']),
+  new Set(['fromJSON']),
   (args) =>
     args.length <= 3 ? args : [...args.slice(0, 3), normalizeMetadata(args[3])],
 )
@@ -1146,26 +1145,119 @@ Object.defineProperty(DataType.prototype, 'scalar', {
   },
 })
 
-Object.defineProperties(
-  NativeTerm.prototype,
-  Object.fromEntries(
-    Object.entries(nativeTermArithmetic).map(([name, native]) => [
-      name,
-      {
-        configurable: true,
-        value(other) {
-          const operand =
-            other instanceof NativeTerm
-              ? other
-              : typeof other === 'string'
-                ? new NativeTerm(other)
-                : NativeTerm.literal(Scalar.from(other))
-          return Reflect.apply(native, this, [operand])
-        },
-      },
-    ]),
-  ),
+// One operand, read once: a Term as it is, text through the term grammar,
+// and every other JavaScript value as the `Scalar` it is - which the core
+// reads as a literal. A value becomes its Scalar here, where the conversion
+// lives; the native half reads Term, Scalar, or text and nothing else.
+function termOperand(value) {
+  return value instanceof NativeTerm ||
+    value instanceof NativeScalar ||
+    typeof value === 'string'
+    ? value
+    : Scalar.from(value)
+}
+
+// A literal holds the value it is given: text stays text rather than
+// parsing, which is what a constant is for.
+function literalValue(value) {
+  return value instanceof NativeScalar ? value : Scalar.from(value)
+}
+
+const TERM_OPERAND_STATICS = ['literal', 'typedLiteral', 'all', 'any', 'call']
+const nativeTermStatics = Object.fromEntries(
+  TERM_OPERAND_STATICS.map((name) => [name, NativeTerm[name].bind(NativeTerm)]),
 )
+// The native class keeps its statics fixed, so the public class carries the
+// coercing ones in their place, over the same prototype.
+const Term = publicNativeClass(NativeTerm, 'Term', new Set(TERM_OPERAND_STATICS))
+Object.defineProperties(Term, {
+  literal: {
+    configurable: true,
+    value(value) {
+      return nativeTermStatics.literal(literalValue(value))
+    },
+  },
+  typedLiteral: {
+    configurable: true,
+    value(dtype, value) {
+      return nativeTermStatics.typedLiteral(dtype, literalValue(value))
+    },
+  },
+  all: {
+    configurable: true,
+    value(operands) {
+      return nativeTermStatics.all(Array.from(operands, termOperand))
+    },
+  },
+  any: {
+    configurable: true,
+    value(operands) {
+      return nativeTermStatics.any(Array.from(operands, termOperand))
+    },
+  },
+  call: {
+    configurable: true,
+    value(name, args) {
+      return nativeTermStatics.call(name, Array.from(args, termOperand))
+    },
+  },
+})
+binding.Term = Term
+
+{
+  const unary = ['and', 'or', 'eq', 'ne', 'lt', 'le', 'gt', 'ge', 'like', 'ilike', 'glob']
+  const native = (name) => {
+    const method = NativeTerm.prototype[name]
+    if (typeof method !== 'function') {
+      throw new TypeError(`native binding is missing Term.${name}`)
+    }
+    return method
+  }
+  const nativeComparison = native('comparison')
+  const nativeIsIn = native('isIn')
+  const nativeBetween = native('between')
+  const nativeKey = native('key')
+  Object.defineProperties(NativeTerm.prototype, {
+    ...Object.fromEntries(
+      [
+        ...unary.map((name) => [name, native(name)]),
+        ...Object.entries(nativeTermArithmetic),
+      ].map(([name, method]) => [
+        name,
+        {
+          configurable: true,
+          value(other) {
+            return Reflect.apply(method, this, [termOperand(other)])
+          },
+        },
+      ]),
+    ),
+    comparison: {
+      configurable: true,
+      value(comparison, other) {
+        return Reflect.apply(nativeComparison, this, [comparison, termOperand(other)])
+      },
+    },
+    isIn: {
+      configurable: true,
+      value(values) {
+        return Reflect.apply(nativeIsIn, this, [Array.from(values, termOperand)])
+      },
+    },
+    between: {
+      configurable: true,
+      value(low, high) {
+        return Reflect.apply(nativeBetween, this, [termOperand(low), termOperand(high)])
+      },
+    },
+    key: {
+      configurable: true,
+      value(key) {
+        return Reflect.apply(nativeKey, this, [literalValue(key)])
+      },
+    },
+  })
+}
 
 Object.defineProperty(Scalar.prototype, 'asJs', {
   configurable: true,
@@ -3153,40 +3245,52 @@ const codec = Object.freeze({
   },
 })
 
-function arrowString(value, NativeType, name) {
-  if (value instanceof NativeType) return value
-  if (typeof value === 'string') return value
-  if (
-    value === null ||
-    (typeof value !== 'object' && typeof value !== 'function')
+// An Apache Arrow JS Field or DataType crosses the way a batch does: as the
+// one-field schema of an Arrow IPC stream, which states its nullability,
+// metadata, extension identity and every nested child, and which the core
+// imports through the one Arrow schema door. A class from another copy of
+// apache-arrow fails `instanceof`, so the constructor chain is walked by name
+// as well, each name paired with the shape it promises.
+function isArrowJs(value, className, shape) {
+  if (value === null || typeof value !== 'object') return false
+  if (value instanceof arrow()[className]) return true
+  for (
+    let type = value.constructor;
+    typeof type === 'function';
+    type = Object.getPrototypeOf(type)
   ) {
-    throw new TypeError(
-      `${name}.fromArrow expects a string or Arrow-compatible object`,
-    )
+    if (type.name === className) return shape(value)
   }
-  const toString = value.toString
-  if (
-    typeof toString !== 'function' ||
-    toString === Object.prototype.toString
-  ) {
-    throw new TypeError(
-      `${name}.fromArrow expects an object with its own textual representation`,
-    )
-  }
-  const text = Reflect.apply(toString, value, [])
-  if (typeof text !== 'string') {
-    throw new TypeError(`${name}.fromArrow toString() must return a string`)
-  }
-  return text
+  return false
 }
 
-const dtypeFromArrowString = NativeDataType.fromArrowString.bind(NativeDataType)
+const isArrowJsType = (value) =>
+  isArrowJs(value, 'DataType', (held) => typeof held.typeId === 'number')
+const isArrowJsField = (value) =>
+  isArrowJs(
+    value,
+    'Field',
+    (held) => typeof held.name === 'string' && isArrowJsType(held.type),
+  )
+
+function fieldFromArrowJs(field) {
+  const runtime = arrow()
+  const schema = new runtime.Schema([field])
+  const ipc = Buffer.from(runtime.tableToIPC(new runtime.Table(schema), 'stream'))
+  return binding.BatchReader.fromIpc(ipc).field.getFieldAt(0)
+}
+
 Object.defineProperty(DataType, 'fromArrow', {
   value(value) {
-    const inferred = arrowString(value, DataType, 'DataType')
-    return inferred instanceof DataType
-      ? DataType.from(inferred)
-      : dtypeFromArrowString(inferred)
+    if (value instanceof NativeDataType || typeof value === 'string') {
+      return DataType.from(value)
+    }
+    if (isArrowJsType(value)) {
+      return fieldFromArrowJs(new (arrow().Field)('value', value, true)).dtype
+    }
+    throw new TypeError(
+      'DataType.fromArrow expects a DataType, datatype text, or an Apache Arrow JS DataType',
+    )
   },
 })
 
@@ -3211,13 +3315,15 @@ for (const SchemaValue of [DataType, Field]) {
   })
 }
 
-const fieldFromArrowString = NativeField.fromArrowString.bind(NativeField)
 Object.defineProperty(Field, 'fromArrow', {
   value(value) {
-    const inferred = arrowString(value, Field, 'Field')
-    return inferred instanceof Field
-      ? Field.from(inferred)
-      : fieldFromArrowString(inferred)
+    if (value instanceof NativeField || typeof value === 'string') {
+      return Field.from(value)
+    }
+    if (isArrowJsField(value)) return fieldFromArrowJs(value)
+    throw new TypeError(
+      'Field.fromArrow expects a Field, field text, or an Apache Arrow JS Field',
+    )
   },
 })
 
@@ -3737,11 +3843,29 @@ defineArrowAppliers(NativeBoundSelector, 'BoundSelector', { records: false })
 defineArrowAppliers(NativePlan, 'Plan')
 defineArrowAppliers(NativeExpression, 'Expression')
 
-// A bound predicate filters the same three holders.
+// A bound predicate filters the same three holders, and answers one row
+// given as a Scalar or as the JavaScript value it is: a plain object is the
+// named record the core orders by the schema and checks, an array the column
+// values in schema order.
 {
   const nativeReader = takePrivate(NativeBound, '_filterArrowReaderNative')
   const nativeBatch = takePrivate(NativeBound, '_filterArrowBatchNative')
+  const nativeEval = NativeBound.prototype.eval
+  const nativeMatches = NativeBound.prototype.matches
+  const boundRow = (row) => (row instanceof NativeScalar ? row : Scalar.from(row))
   Object.defineProperties(NativeBound.prototype, {
+    eval: {
+      configurable: true,
+      value(row) {
+        return Reflect.apply(nativeEval, this, [boundRow(row)])
+      },
+    },
+    matches: {
+      configurable: true,
+      value(row) {
+        return Reflect.apply(nativeMatches, this, [boundRow(row)])
+      },
+    },
     filterArrowReader: {
       configurable: true,
       value(reader) {
@@ -3876,19 +4000,20 @@ for (const Owner of [binding.Table, binding.Catalog, binding.Namespace]) {
   })
 }
 
-// A schema evolution reads as one chained sentence. The native recorder holds
-// the operations and the native commit replays them, so this wrapper only adds
-// the chaining Node-API cannot spell: each call returns the builder, and
-// `commit()` carries the table the chain started from.
-const NativeSchemaUpdate = binding.SchemaUpdate
+// A schema evolution reads as one chained sentence. The recorder is the
+// core's own `SchemaUpdate` and the native commit is the core's, so this
+// wrapper only adds the chaining Node-API cannot spell: each call returns the
+// builder, and `commit()` carries the table the chain started from.
+const nativeUpdateSchema = binding.Table.prototype._updateSchemaNative
 const nativeCommitSchemaUpdate =
   binding.Table.prototype._commitSchemaUpdateNative
+delete binding.Table.prototype._updateSchemaNative
 delete binding.Table.prototype._commitSchemaUpdateNative
 Object.defineProperty(binding.Table.prototype, 'updateSchema', {
   configurable: true,
   value() {
     const table = this
-    const recorder = new NativeSchemaUpdate()
+    const recorder = nativeUpdateSchema.call(table)
     const builder = {
       addColumn(parent, field) {
         recorder.addColumn(parent, field)

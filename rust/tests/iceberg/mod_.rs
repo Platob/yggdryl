@@ -6492,7 +6492,7 @@ mod datatype_coverage {
                 Scalar::from(1),
                 Scalar::from(0.5_f32),
                 Scalar::from(2.25_f64),
-                Scalar::d128(1_500_000, 4),
+                Scalar::decimal128(1_500_000, 4),
                 Scalar::date32(20_000),
                 Scalar::time64(
                     43_200_000_000,
@@ -6532,7 +6532,7 @@ mod datatype_coverage {
         let first = records[0].as_sequence().unwrap();
         assert_eq!(first[0], Scalar::from(true));
         assert_eq!(first[2], Scalar::from(1));
-        assert_eq!(first[5], Scalar::d128(1_500_000, 4));
+        assert_eq!(first[5], Scalar::decimal128(1_500_000, 4));
         assert_eq!(
             first[8],
             Scalar::datetime64(
@@ -6625,7 +6625,7 @@ mod datatype_coverage {
                         .map(|(id, venue, price)| match index {
                             0 => Scalar::from(*id),
                             1 => Scalar::from(*venue),
-                            _ => Scalar::d128(*price, 4),
+                            _ => Scalar::decimal128(*price, 4),
                         })
                         .collect()
                 })
@@ -6674,8 +6674,8 @@ mod datatype_coverage {
             }
         }
         assert_eq!(prices.len(), 3);
-        assert_eq!(prices[&1], Scalar::d128(99_000, 4));
-        assert_eq!(prices[&3], Scalar::d128(30_000, 4));
+        assert_eq!(prices[&1], Scalar::decimal128(99_000, 4));
+        assert_eq!(prices[&3], Scalar::decimal128(30_000, 4));
     }
 }
 

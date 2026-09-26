@@ -2249,34 +2249,25 @@ impl JsTable {
             .map_err(napi_error)
     }
 
+    /// The native half of `updateSchema()`: a core `SchemaUpdate` started
+    /// from the metadata the table holds now.
+    #[napi(js_name = "_updateSchemaNative", skip_typescript)]
+    pub fn update_schema_native(&self) -> Result<JsSchemaUpdate> {
+        CoreSchemaUpdate::from_metadata(self.inner.metadata())
+            .map(|inner| JsSchemaUpdate { inner })
+            .map_err(napi_error)
+    }
+
     /// The native half of `updateSchema().commit()`.
     ///
-    /// The recorded operations are replayed onto a fresh core `SchemaUpdate`
-    /// built from the metadata the table holds *now*, the evolved schema is
-    /// added and made current, and one new metadata document is written. The
+    /// The core replays the recording onto the metadata each commit attempt
+    /// reads, so a commit beaten by another writer rebases onto the winner's
+    /// schema rather than dropping its columns. A recording with nothing in
+    /// it commits nothing and answers the current schema's identifier. The
     /// wrapper needs no refresh: a failed commit leaves the table as it was.
     #[napi(js_name = "_commitSchemaUpdateNative", skip_typescript)]
     pub fn commit_schema_update(&mut self, update: &JsSchemaUpdate) -> Result<i32> {
-        let mut evolution =
-            CoreSchemaUpdate::from_metadata(self.inner.metadata()).map_err(napi_error)?;
-        for op in &update.ops {
-            match op {
-                SchemaOp::AddColumn { parent, field } => {
-                    evolution.add_column(parent, field.clone());
-                }
-                SchemaOp::DropColumn { path } => evolution.drop_column(path),
-                SchemaOp::RenameColumn { path, name } => {
-                    evolution.rename_column(path, name.clone());
-                }
-                SchemaOp::UpdateDoc { path, doc } => evolution.update_doc(path, doc.clone()),
-                SchemaOp::MakeNullable { path } => evolution.make_nullable(path),
-                SchemaOp::UpdateType { path, dtype } => {
-                    evolution.update_type(path, dtype.clone());
-                }
-            }
-        }
-        let evolved = evolution.into_field().map_err(napi_error)?;
-        self.inner.evolve_schema(evolved).map_err(napi_error)
+        self.inner.update_schema(&update.inner).map_err(napi_error)
     }
 
     /// Return where the table lives, so a table prints as its location.
@@ -2347,82 +2338,56 @@ impl JsCompaction {
     }
 }
 
-/// One recorded column operation, held as native values until a commit.
-enum SchemaOp {
-    /// Append a column under a parent path, `""` naming the root itself.
-    AddColumn { parent: String, field: CoreField },
-    /// Remove a column, retiring its identifier forever.
-    DropColumn { path: String },
-    /// Rename a column, keeping its identifier.
-    RenameColumn { path: String, name: String },
-    /// Set a column's `ICEBERG:doc` documentation string.
-    UpdateDoc { path: String, doc: String },
-    /// Relax a required column to optional.
-    MakeNullable { path: String },
-    /// Promote a column's type, checked when the update is applied.
-    UpdateType { path: String, dtype: CoreDataType },
-}
-
-/// A recording of column operations against a table's current schema.
+/// A recording of column operations against a table's schema.
 ///
 /// The loader hands one out from `table.updateSchema()` and wraps each method
-/// to return the builder, so a chain reads as one sentence. Nothing is checked
-/// while recording: `commit()` replays the recording onto a fresh core
-/// `SchemaUpdate`, which is what makes the operations apply to the schema the
-/// table has *then* and report the first failure with its core message.
+/// to return the builder, so a chain reads as one sentence. It is the core
+/// `SchemaUpdate` itself: nothing is checked while recording, and `commit()`
+/// replays the recording onto the schema the table has *then*, reporting the
+/// first failure with its core message.
 #[napi(js_name = "SchemaUpdate")]
-#[derive(Default)]
 pub struct JsSchemaUpdate {
-    /// The recorded operations, in call order.
-    ops: Vec<SchemaOp>,
+    inner: CoreSchemaUpdate,
 }
 
 #[napi]
 impl JsSchemaUpdate {
-    /// Start an empty recording.
-    #[napi(constructor)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Record a new column under `parent` - `""` for the root, a dotted path
     /// for a nested struct.
     #[napi]
     pub fn add_column(&mut self, parent: String, field: FieldInput<'_>) -> Result<()> {
-        let field = field_from_input(field)?;
-        self.ops.push(SchemaOp::AddColumn { parent, field });
+        self.inner.add_column(&parent, field_from_input(field)?);
         Ok(())
     }
 
     /// Record the removal of the column at `path`, retiring its identifier.
     #[napi]
     pub fn drop_column(&mut self, path: String) {
-        self.ops.push(SchemaOp::DropColumn { path });
+        self.inner.drop_column(&path);
     }
 
     /// Record a rename of the column at `path`; its identifier is kept.
     #[napi]
     pub fn rename_column(&mut self, path: String, name: String) {
-        self.ops.push(SchemaOp::RenameColumn { path, name });
+        self.inner.rename_column(&path, name);
     }
 
     /// Record a new `ICEBERG:doc` documentation string on the column at `path`.
     #[napi]
     pub fn update_doc(&mut self, path: String, doc: String) {
-        self.ops.push(SchemaOp::UpdateDoc { path, doc });
+        self.inner.update_doc(&path, doc);
     }
 
     /// Record that the column at `path` becomes optional.
     #[napi]
     pub fn make_nullable(&mut self, path: String) {
-        self.ops.push(SchemaOp::MakeNullable { path });
+        self.inner.make_nullable(&path);
     }
 
     /// Record a type promotion on the column at `path`.
     #[napi]
     pub fn update_type(&mut self, path: String, dtype: DataTypeInput<'_>) -> Result<()> {
-        let dtype = dtype_from_input(dtype)?;
-        self.ops.push(SchemaOp::UpdateType { path, dtype });
+        self.inner.update_type(&path, dtype_from_input(dtype)?);
         Ok(())
     }
 }

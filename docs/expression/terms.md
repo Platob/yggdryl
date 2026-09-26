@@ -80,12 +80,13 @@ Compose without going back through text, then bind once.
 
     ```javascript
     const assert = require('node:assert/strict')
-    const { Field, Scalar, Term } = require('yggdryl')
+    const { Field, Term } = require('yggdryl')
 
     const schema = new Field('trades', 'struct<ccy:utf8,price:decimal(9,2),size:bigint>', false)
     const price = Term.column('price')
 
-    const composed = price.gt('100').and(Term.column('ccy').eq("'EUR'"))
+    // A plain value is a literal; a string is term text.
+    const composed = price.gt(100).and(Term.column('ccy').eq(Term.literal('EUR')))
     assert.ok(composed.equals("price > 100 and ccy = 'EUR'"))
     assert.equal(Term.column('size').add(1).toString(), 'size + 1')
     assert.equal(Term.column('trade').child('legs').slice(1, 3).toString(), 'trade.legs[1:3]')
@@ -95,7 +96,7 @@ Compose without going back through text, then bind once.
     assert.deepEqual(late.parameters, ['floor'])
     const bound = late.bind(schema, { floor: 10 })
     assert.equal(bound.term.toString(), 'size >= 10')
-    assert.equal(bound.matches(Scalar.from([null, null, 11])), true)
+    assert.equal(bound.matches({ size: 11 }), true)
 
     // Simplification keeps the answer and drops nodes.
     assert.equal(new Term('a = 1 or a = 2').simplify().toString(), 'a in (1, 2)')

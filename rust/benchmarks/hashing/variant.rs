@@ -26,14 +26,14 @@ fn corpus() -> Vec<(&'static str, Scalar)> {
     let row = Scalar::from_sequence([
         Scalar::from("AAPL"),
         Scalar::from(100),
-        Scalar::d128(18_723, 2),
+        Scalar::decimal128(18_723, 2),
         Scalar::from("XNAS"),
     ]);
     let long = "the quick brown fox jumps over the lazy dog; ".repeat(COMPRESS_FROM / 40 + 1);
     vec![
         ("leaf", Scalar::from("AAPL")),
         ("integer", Scalar::from(18_723)),
-        ("decimal", Scalar::d128(18_723, 2)),
+        ("decimal", Scalar::decimal128(18_723, 2)),
         ("row", row),
         ("wide_record", wide),
         ("deep_nest", deep),
@@ -74,7 +74,7 @@ pub(crate) fn variant_benchmarks(criterion: &mut Criterion) {
     let row = Scalar::from_struct([
         ("symbol", Scalar::from("AAPL")),
         ("quantity", Scalar::from(100_i64)),
-        ("price", Scalar::d128(18_723, 2)),
+        ("price", Scalar::decimal128(18_723, 2)),
         ("venue", Scalar::from("XNAS")),
     ])
     .expect("unique names");

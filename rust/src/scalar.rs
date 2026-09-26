@@ -22,7 +22,7 @@
 //! # fn main() -> yggdryl::Result<()> {
 //! let quote = Scalar::from_struct([
 //!     ("symbol", Scalar::from("AAPL")),
-//!     ("price", Scalar::d128(125, 1)),
+//!     ("price", Scalar::decimal128(125, 1)),
 //! ])?;
 //!
 //! assert_eq!(quote.get_key_str("symbol").and_then(Scalar::as_str), Some("AAPL"));
@@ -768,8 +768,8 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::D64(unscaled, scale) => Ok(Self::Decimal64(
                 crate::decimal::Decimal64::new(unscaled, scale),
             )),
-            StructuralWire::D128(unscaled, scale) => Ok(Self::d128(unscaled, scale)),
-            StructuralWire::D256(unscaled, scale) => Ok(Self::d256(unscaled, scale)),
+            StructuralWire::D128(unscaled, scale) => Ok(Self::decimal128(unscaled, scale)),
+            StructuralWire::D256(unscaled, scale) => Ok(Self::decimal256(unscaled, scale)),
             StructuralWire::Decimal(units) => Decimal::from_units(units)
                 .map(Self::Decimal)
                 .ok_or_else(|| serde::de::Error::custom("decimal units exceed 38 digits")),
@@ -2126,14 +2126,20 @@ impl Scalar {
         Some(leaf)
     }
 
-    /// Look one value up by a dotted path of mapping keys and sequence indexes.
+    /// Look one value up by a [`FieldPath`](crate::FieldPath) - the one path
+    /// grammar every nested read in the crate speaks.
     ///
-    /// `"legs.0.price"` reads the mapping key `legs`, then index `0`, then the
-    /// key `price`. A segment that does not resolve returns `None`, so probing a
-    /// shape needs no nested matching.
+    /// `.name` is a key of a mapping or a record, `[i]` a row of a sequence
+    /// (a negative index counting back from the end), `['key']` a mapping
+    /// entry by key, `[a:b]` a run of rows. A segment that does not resolve
+    /// returns `None`, so probing a shape needs no nested matching. A
+    /// `[predicate]` filter reads the fields a schema names, which a value
+    /// alone does not carry: it answers `None` here, and
+    /// [`FieldPath::apply_scalar`](crate::FieldPath::apply_scalar) takes it
+    /// under the value's `Field`.
     ///
     /// ```
-    /// use yggdryl::Scalar;
+    /// use yggdryl::{FieldPath, Scalar};
     ///
     /// # fn main() -> yggdryl::Result<()> {
     /// let order = Scalar::from_mapping([(
@@ -2144,14 +2150,15 @@ impl Scalar {
     ///     )])?]),
     /// )])?;
     ///
-    /// assert_eq!(order.path("legs.0.price").and_then(|price| price.as_i64()), Some(12));
-    /// assert!(order.path("legs.9.price").is_none());
+    /// let price = FieldPath::from_str("legs[0].price")?;
+    /// assert_eq!(order.path(&price).and_then(|price| price.as_i64()), Some(12));
+    /// assert!(order.path(&FieldPath::from_str("legs[9].price")?).is_none());
     /// # Ok(())
     /// # }
     /// ```
-    pub fn path(&self, path: &str) -> Option<Cow<'_, Self>> {
+    pub fn path(&self, path: &crate::FieldPath) -> Option<Cow<'_, Self>> {
         let mut current = Cow::Borrowed(self);
-        for segment in path.split('.').filter(|segment| !segment.is_empty()) {
+        for segment in path.segments() {
             current = match current {
                 Cow::Borrowed(held) => held.step(segment)?,
                 // A row built out of a column is owned here, so what it
@@ -2162,18 +2169,28 @@ impl Scalar {
         Some(current)
     }
 
-    /// One step of a path: a key of a mapping or a record, a row of a
-    /// sequence.
-    fn step(&self, segment: &str) -> Option<Cow<'_, Self>> {
-        match self {
-            Self::Map(_) | Self::SortedMap(_) | Self::Struct(_) => {
-                self.get_key_str(segment).map(Cow::Borrowed)
+    /// One step of a path over a value alone.
+    fn step(&self, segment: &crate::FieldSegment) -> Option<Cow<'_, Self>> {
+        use crate::FieldSegment as Segment;
+        match segment {
+            Segment::Field(name) => self.get_key_str(name).map(Cow::Borrowed),
+            Segment::Index(position) => {
+                let serie = self.as_serie()?;
+                serie.get(crate::expression::resolve_index(*position, serie.len())?)
             }
-            Self::Serie(_)
-            | Self::SerieView(_)
-            | Self::FixedSizeSerie(_)
-            | Self::LargeSerie(_)
-            | Self::LargeSerieView(_) => self.get(segment.parse::<usize>().ok()?),
+            Segment::Key(key) => {
+                let key = key.value();
+                self.get_key(key)
+                    .or_else(|| key.as_str().and_then(|key| self.get_key_str(key)))
+                    .map(Cow::Borrowed)
+            }
+            Segment::Range { start, end } => {
+                let serie = self.as_serie()?;
+                let (from, until) = crate::expression::resolve_range(*start, *end, serie.len());
+                Some(Cow::Owned(Self::from(
+                    serie.slice(from, until - from).ok()?,
+                )))
+            }
             _ => None,
         }
     }

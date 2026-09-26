@@ -177,9 +177,10 @@ string and byte leaves, the legacy `list` words - is in
 - `DataType.from_arrow(extension_type)` loses the extension name (a bare Arrow
   datatype carries no metadata): import the **field** to keep `ccy`, `uuid`,
   `decimal`, `version` identity.
-- JavaScript `Field.fromArrow(arrowJsField)` parses the field's `toString()`:
-  `c: Utf8` not-null under `yggdryl.ccy` comes back as a nullable `utf8`.
-  Take the schema from `Serie.fromArrowBatch(batch).field` instead.
+- JavaScript `DataType.fromArrow`/`Field.fromArrow` take an Arrow JS type or
+  field (crossed as IPC, so `c: Utf8` not-null under `yggdryl.ccy` reads back
+  as a required `ccy`), a native value, or text; any other object is a
+  `TypeError`, never stringified.
 - Python has no `DataType.decimal128`/`DataType.index_of`: exact decimal widths
   are field factories (`yggdryl.decimal128(name, p, s)`) and child positions
   are `Field.index_of`. JavaScript has no `DataType.decimal`.

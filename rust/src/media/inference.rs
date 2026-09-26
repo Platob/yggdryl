@@ -25,7 +25,7 @@
 //!
 //! # fn main() -> yggdryl::Result<()> {
 //! assert_eq!(Scalar::from(u64::MAX).dtype()?, DataType::UInt64);
-//! assert_eq!(Scalar::d128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
+//! assert_eq!(Scalar::decimal128(1_050, 2).dtype()?, DataType::decimal128(4, 2)?);
 //! assert_eq!(
 //!     Scalar::datetime64(0, TimeUnit::Microsecond, Timezone::NAIVE)?.dtype()?,
 //!     DataType::datetime64(TimeUnit::Microsecond, Timezone::NAIVE)?,

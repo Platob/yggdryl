@@ -619,7 +619,7 @@ fn materialize(plan: DefaultPlan) -> Result<Scalar> {
         DefaultPlan::Unsigned => Ok(Scalar::from(0_u64)),
         DefaultPlan::Float => Ok(Scalar::from(0.0_f64)),
         DefaultPlan::Decimal => Ok(Scalar::from(0_i128)),
-        DefaultPlan::Decimal256 => Ok(Scalar::d256(crate::i256::ZERO, 0)),
+        DefaultPlan::Decimal256 => Ok(Scalar::decimal256(crate::i256::ZERO, 0)),
         DefaultPlan::FixedDecimal => Ok(Scalar::Decimal(crate::Decimal::ZERO)),
         DefaultPlan::FixedBigDecimal => Ok(Scalar::BigDecimal(crate::BigDecimal::ZERO)),
         DefaultPlan::Interval(unit) => crate::Interval::new(0, 0, 0, unit).map(Scalar::Interval),

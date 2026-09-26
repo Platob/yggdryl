@@ -52,7 +52,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
             .unwrap(),
         ),
         ("id", Scalar::from(42_i64)),
-        ("price", Scalar::d256(i256::from_i128(1_050), 2)),
+        ("price", Scalar::decimal256(i256::from_i128(1_050), 2)),
         ("symbol", Scalar::from("AAPL")),
     ])
     .unwrap();
@@ -60,8 +60,8 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let rows = Scalar::from_sequence([record.clone()]);
     let integer_left = Scalar::from(9_876_543);
     let integer_right = Scalar::from(97);
-    let decimal_left = Scalar::d128(1_050, 2);
-    let decimal_right = Scalar::d128(2, 0);
+    let decimal_left = Scalar::decimal128(1_050, 2);
+    let decimal_right = Scalar::decimal128(2, 0);
     let instant = Scalar::datetime64(
         1_700_000_000_000_000,
         TimeUnit::Microsecond,
@@ -71,7 +71,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let duration = Scalar::duration64(250, TimeUnit::Millisecond).unwrap();
     let duration_scalar = Scalar::from(5);
     let typed_integer = Scalar::from(42_i64);
-    let typed_decimal = Scalar::d128(1_050, 2);
+    let typed_decimal = Scalar::decimal128(1_050, 2);
     let typed_field = Field::new("size", DataType::Int64, false);
     let integer256: i256 = "1234567890123456789012345678901234567890".parse().unwrap();
     let float16 = Float16::from_f16(half::f16::from_f32(1.25));
@@ -79,7 +79,7 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     let float64 = Float64::from_f64(1.25);
     let enum_member = Vocabulary::IOMode(IOMode::Append);
     let integer_scalar = Scalar::from(42);
-    let decimal_scalar = Scalar::d256(integer256, 2);
+    let decimal_scalar = Scalar::decimal256(integer256, 2);
     let float_scalar = Scalar::from_float(1.25, 32).unwrap();
 
     let mut group = criterion.benchmark_group("value");

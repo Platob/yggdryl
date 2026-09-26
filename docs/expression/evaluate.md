@@ -245,7 +245,7 @@ Rust and Python; JavaScript has no `Bounds`.
 
 ## Iceberg: one predicate, every level of the metadata
 
-The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list or a null test prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. Pushdown and time travel are on [Reading](../media/index.md#iceberg).
+The scan is planned by the filter that keeps the rows: a manifest-list summary answers first, then a manifest entry's partition tuple and column bounds. A `where` on a record read of a table is that filter, pushed down whole - a range, an `in` list or a null test prunes with the whole expression language, exactly as an equality does - and the `select` is the read's projection. The levels a conjunct is pushed through are on [Filters](filters.md#pushdown), the projection on [Column pushdown](../holder/index.md#column-pushdown). Time travel is a scan of one retained snapshot - `Table::scan_at(snapshot_id, filters, field)`, or `scan_ref(name, ...)` for a branch or tag (Python `scan_at`/`scan_ref`, JavaScript `scanAt`/`scanRef`) - whose `filters` are `(column, value)` equality pairs rather than an expression; no page here shows it yet.
 
 === "Rust"
 

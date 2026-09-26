@@ -7,6 +7,7 @@ import {
   type StringParameters,
   type StringParametersInput,
 } from '..'
+import { Int32 as ArrowInt32 } from 'apache-arrow'
 
 const type = DataType.from('struct<id: bigint not null>')
 const clonedType: DataType = DataType.from(type)
@@ -22,9 +23,11 @@ void raisingChild
 const children: Field[] = [...type]
 const typeHash: bigint = clonedType.stableHash()
 const typeJson: unknown = type.toJSON()
-const arrowType: DataType = DataType.fromArrow({
-  toString: () => type.toString(),
-})
+const arrowType: DataType = DataType.fromArrow(new ArrowInt32())
+const textType: DataType = DataType.fromArrow('int32')
+const copiedType: DataType = DataType.fromArrow(type)
+void textType
+void copiedType
 
 // The parenthesis disambiguates: a bare variant() is the Variant datatype
 // with its own literal id, and variant(fields) stays the dense-union sugar.

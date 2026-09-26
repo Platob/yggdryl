@@ -51,7 +51,7 @@ fn schema() -> Scalar {
 fn declared_cost(unscaled: i128) -> Scalar {
     DataType::decimal(10, 2)
         .expect("a ten-digit decimal declaration")
-        .scalar(Scalar::d128(unscaled, 2))
+        .scalar(Scalar::decimal128(unscaled, 2))
         .expect("a coefficient of at most ten digits")
 }
 

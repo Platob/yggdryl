@@ -292,38 +292,53 @@ fn comparison_from_str(value: &str) -> PyResult<CoreComparison> {
         })
 }
 
+/// Read one mapping as the core's named-input shape, `Scalar::Struct`.
+///
+/// The keys must be `str`; the core refuses a duplicate here and, where the
+/// record meets a schema, a name that schema does not declare.
+fn record_from_mapping(mapping: &Bound<'_, PyDict>) -> PyResult<Scalar> {
+    let mut entries = Vec::with_capacity(mapping.len());
+    for (name, value) in mapping.iter() {
+        entries.push((name.extract::<String>()?, crate::scalar::from_py(&value)?));
+    }
+    Scalar::from_struct(entries).map_err(value_error)
+}
+
 /// Read native rows: a mapping is a named record, anything else crosses
 /// through the shared value inference.
 fn rows_from_value(value: &Bound<'_, PyAny>) -> PyResult<Vec<Scalar>> {
     let mut rows = Vec::new();
     for row in value.try_iter()? {
         let row = row?;
-        if let Ok(mapping) = row.cast::<PyDict>() {
-            let mut entries = Vec::with_capacity(mapping.len());
-            for (name, value) in mapping.iter() {
-                entries.push((name.extract::<String>()?, crate::scalar::from_py(&value)?));
-            }
-            rows.push(Scalar::from_struct(entries).map_err(value_error)?);
-        } else {
-            rows.push(crate::scalar::from_py(&row)?);
-        }
+        rows.push(match row.cast::<PyDict>() {
+            Ok(mapping) => record_from_mapping(mapping)?,
+            Err(_) => crate::scalar::from_py(&row)?,
+        });
     }
     Ok(rows)
 }
 
-/// Read one row the way a bound term reads it: a sequence in schema order or
-/// a mapping from column name to value.
+/// Read one row the way a bound term reads it: a sequence in schema order, or
+/// a mapping from column name to value handed to the core as a named record,
+/// which orders it by the schema and refuses a name the schema does not
+/// declare. Each value of a mapping is read under the column it names, so a
+/// dictionary under a record column is that record, as the record doors read
+/// it, rather than a `map` value.
 fn row_value(schema: &CoreField, row: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     if let Ok(mapping) = row.cast::<PyDict>() {
-        let mut values = Vec::with_capacity(schema.field_len());
-        for field in schema.fields() {
-            let held = mapping.get_item(field.name())?;
-            values.push(match held {
-                Some(held) => crate::scalar::from_py(&held)?,
-                None => Scalar::Null,
-            });
+        let mut entries = Vec::with_capacity(mapping.len());
+        for (name, value) in mapping.iter() {
+            let name = name.extract::<String>()?;
+            let cell = match schema
+                .index_of(&name)
+                .and_then(|at| schema.get_field_at(at))
+            {
+                Some(column) => crate::scalar::from_py_cell(column.dtype(), &value)?,
+                None => crate::scalar::from_py(&value)?,
+            };
+            entries.push((name, cell));
         }
-        return Ok(Scalar::from_sequence(values));
+        return Scalar::from_struct(entries).map_err(value_error);
     }
     if row.is_instance_of::<PyList>() || row.is_instance_of::<PyTuple>() {
         return crate::scalar::from_py(row);
@@ -1785,6 +1800,11 @@ impl PyBoundSelector {
     }
 
     /// The row this selector publishes from one native row, as a mapping.
+    ///
+    /// A mapping is a named record, ordered by the schema's own row
+    /// canonicalization once here - a name the schema does not declare is
+    /// refused - because an identity selector hands its row back unread and
+    /// every other one reads it once per projection.
     fn apply_row(&self, py: Python<'_>, row: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
         let row = row_value(self.inner.schema(), row)?;
         let published = self.inner.apply_scalar(&row).map_err(value_error)?;

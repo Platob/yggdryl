@@ -366,7 +366,7 @@ use yggdryl::{DataType, TimeType, TimeUnit};
 let broken = DataType::Time32(TimeUnit::Nanosecond);
 assert!(broken.validate().is_err());
 assert!(broken.clone().into_arrow_datatype().is_err());
-assert!(broken.to_arrow_datatype().is_err());
+assert!(arrow_schema::DataType::try_from(&broken).is_err());
 
 // The constructor and `time_of` refuse the same leaf, with the same reason.
 assert!(DataType::time32(TimeUnit::Nanosecond).is_err());

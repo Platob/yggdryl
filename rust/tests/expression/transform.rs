@@ -110,7 +110,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(1),
                 Scalar::from(1.5_f64),
-                Scalar::d128(150, 2),
+                Scalar::decimal128(150, 2),
                 Scalar::from("alpha"),
                 Scalar::from(true),
                 stamp(1_700_000_000_000_000),
@@ -127,7 +127,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(-3),
                 Scalar::from(f64::NAN),
-                Scalar::d128(-25, 2),
+                Scalar::decimal128(-25, 2),
                 Scalar::from("beta"),
                 Scalar::from(false),
                 stamp(0),
@@ -155,7 +155,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(100),
                 Scalar::from(f64::INFINITY),
-                Scalar::d128(10_000, 2),
+                Scalar::decimal128(10_000, 2),
                 Scalar::from("Alpha"),
                 Scalar::Null,
                 stamp(-1_000_000),
@@ -169,7 +169,7 @@ mod grammar {
             Scalar::from_sequence([
                 Scalar::from(0),
                 Scalar::from(0.0_f64),
-                Scalar::d128(0, 2),
+                Scalar::decimal128(0, 2),
                 Scalar::from(""),
                 Scalar::from(true),
                 stamp(1_700_000_000_000_001),

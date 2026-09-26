@@ -121,7 +121,10 @@ fn a_field_restores_exact_types_from_natural_toml() {
     let decoded = ytoml::from_utf8_with_field(input, &typed_row_field()).unwrap();
     let row = decoded.as_sequence().unwrap();
 
-    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
+    assert_eq!(
+        row[0],
+        Scalar::decimal256(i256::from_str("1234500").unwrap(), 4)
+    );
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()
@@ -138,7 +141,7 @@ fn exact_values_emit_natural_scalars_without_private_tags() {
     let value = Scalar::from_struct([
         (
             "amount",
-            Scalar::d256(i256::from_str("1234500").unwrap(), 4),
+            Scalar::decimal256(i256::from_str("1234500").unwrap(), 4),
         ),
         (
             "at",
@@ -294,7 +297,10 @@ fn from_toml_scalar_with_field_types_and_orders_as_from_bytes_with_field_does() 
         ytoml::from_bytes_with_field(input.as_bytes(), &field).unwrap()
     );
     let row = decoded.as_sequence().unwrap();
-    assert_eq!(row[0], Scalar::d256(i256::from_str("1234500").unwrap(), 4));
+    assert_eq!(
+        row[0],
+        Scalar::decimal256(i256::from_str("1234500").unwrap(), 4)
+    );
     assert_eq!(
         row[1],
         Scalar::datetime64(0, TimeUnit::Second, Timezone::UTC).unwrap()

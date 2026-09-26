@@ -216,7 +216,11 @@ fn scalar_parses_json_json_lines_xml_and_yaml_under_the_content_type() {
 
     let json = get(&server, "/doc.json").scalar().expect("json");
     assert_eq!(json.get_key_str("a"), Some(&Scalar::from(1_i64)));
-    assert_eq!(json.path("b").map(|b| b.len()), Some(2));
+    assert_eq!(
+        json.path(&"b".parse::<yggdryl::FieldPath>().unwrap())
+            .map(|b| b.len()),
+        Some(2)
+    );
     assert_eq!(
         json.get_key_str("name").and_then(Scalar::as_str),
         Some("café")
@@ -229,7 +233,9 @@ fn scalar_parses_json_json_lines_xml_and_yaml_under_the_content_type() {
 
     let xml = get(&server, "/doc.xml").scalar().expect("xml");
     assert_eq!(
-        xml.path("root.b").as_deref().and_then(Scalar::as_str),
+        xml.path(&"root.b".parse::<yggdryl::FieldPath>().unwrap())
+            .as_deref()
+            .and_then(Scalar::as_str),
         Some("two")
     );
 
@@ -579,7 +585,7 @@ fn from_bytes_and_into_bytes_round_trip_a_message_and_into_scalar_describes_it()
     );
     assert_eq!(
         described
-            .path("headers.content-type")
+            .path(&r#"headers."content-type""#.parse::<yggdryl::FieldPath>().unwrap())
             .as_deref()
             .and_then(Scalar::as_str),
         Some("text/plain")

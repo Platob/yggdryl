@@ -1278,13 +1278,23 @@ impl BoundSelector {
     /// The row this selector publishes from one row of its schema.
     ///
     /// Each term is evaluated, converted into what its projection declares,
-    /// and checked against the nullability the output field carries.
+    /// and checked against the nullability the output field carries. A named
+    /// record is ordered by the schema's own canonicalization first - once,
+    /// not once per projection - so an identity selector answers it in
+    /// column order too, and a name the schema does not declare is refused.
     ///
     /// # Errors
     ///
     /// Returns an error when the row does not match the schema, a term fails,
     /// or a computed value does not fit its declared column.
     pub fn apply_scalar(&self, row: &Scalar) -> Result<Scalar> {
+        let ordered;
+        let row = if row.as_struct().is_some() {
+            ordered = self.schema.canonicalize_value(row.clone())?;
+            &ordered
+        } else {
+            row
+        };
         if self.is_identity() {
             return Ok(row.clone());
         }

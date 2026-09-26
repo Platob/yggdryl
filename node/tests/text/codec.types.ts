@@ -1,6 +1,7 @@
 import {
   DataType,
   Field,
+  FieldPath,
   Timezone,
   Scalar,
   Serie,
@@ -101,7 +102,8 @@ const childCount: number = nestedValues.length
 const emptyContainer: boolean = nestedValues.isEmpty()
 const childAt: Scalar | null = Scalar.from([1]).at(0)
 const childByKey: Scalar | null = nestedValues.get('rows')
-const childByPath: Scalar | null = nestedValues.path('rows.0')
+const childByPath: Scalar | null = nestedValues.path('rows[0]')
+const childByFieldPath: Scalar | null = nestedValues.path(new FieldPath('rows[-1]'))
 const hasChild: boolean = nestedValues.has('rows')
 const replacedValue: Scalar = nestedValues.set('rows', [2])
 const removedValue: Scalar = nestedValues.remove('rows')
@@ -113,6 +115,7 @@ void emptyContainer
 void childAt
 void childByKey
 void childByPath
+void childByFieldPath
 void hasChild
 void replacedValue
 void removedValue

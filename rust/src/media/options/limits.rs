@@ -1,11 +1,12 @@
-//! Row and Arrow-byte limits over one streaming reader.
+//! A row skip, then row and Arrow-byte limits, over one streaming reader.
 
-/// A reader bounding the rows and Arrow bytes that flow through it.
+/// A reader skipping its leading rows, then bounding the rows and Arrow bytes
+/// that flow through it.
 ///
-/// One batch is held at a time - pulled, cut if a bound lands inside it,
-/// handed on - and the moment the bounds are met the source is never pulled
-/// again, because a limit exists precisely so the rest of a file is not
-/// decoded.
+/// One batch is held at a time - pulled, cut if the skip or a bound lands
+/// inside it, handed on - and the moment the bounds are met the source is
+/// never pulled again, because a limit exists precisely so the rest of a file
+/// is not decoded. A batch the skip covers whole is dropped, not handed on.
 pub(super) struct Limited {
     pub(super) inner: crate::arrow::BatchReader,
     pub(super) schema: arrow_schema::SchemaRef,
@@ -21,6 +22,8 @@ pub(super) struct Limited {
 /// one global "at least one row" decision never restart at a chunk boundary.
 #[derive(Clone, Debug)]
 pub(crate) struct WriteLimitState {
+    /// Leading rows still to skip before either bound counts.
+    skip_rows: u64,
     /// Rows the row bound still admits; `None` when no row bound is set.
     remaining_rows: Option<u64>,
     /// Bytes the byte bound still admits; `None` when no byte bound is set.
@@ -33,8 +36,13 @@ pub(crate) struct WriteLimitState {
 }
 
 impl WriteLimitState {
-    pub(crate) const fn new(remaining_rows: Option<u64>, remaining_bytes: Option<u64>) -> Self {
+    pub(crate) const fn new(
+        skip_rows: u64,
+        remaining_rows: Option<u64>,
+        remaining_bytes: Option<u64>,
+    ) -> Self {
         Self {
+            skip_rows,
             remaining_rows,
             remaining_bytes,
             yielded: false,
@@ -48,17 +56,34 @@ impl WriteLimitState {
         self.satisfied
     }
 
+    /// Whether leading rows are still being skipped.
+    pub(crate) const fn skipping(&self) -> bool {
+        self.skip_rows != 0
+    }
+
     /// Admit the leading rows one logical write limit still allows.
     ///
     /// `None` means the limit is complete. A zero-row batch passes through as
     /// `Some`, because it carries schema continuity without spending either
-    /// budget.
+    /// budget; so does a batch the skip consumes whole, emptied.
     pub(crate) fn apply(
         &mut self,
         batch: arrow_array::RecordBatch,
     ) -> Option<arrow_array::RecordBatch> {
         if self.satisfied {
             return None;
+        }
+        let mut batch = batch;
+        if self.skip_rows != 0 {
+            let rows = batch.num_rows() as u64;
+            if rows <= self.skip_rows {
+                self.skip_rows -= rows;
+                return Some(batch.slice(0, 0));
+            }
+            // `skip_rows < rows <= usize::MAX` here, so the cast is exact.
+            let skip = self.skip_rows as usize;
+            self.skip_rows = 0;
+            batch = batch.slice(skip, batch.num_rows() - skip);
         }
         let rows = batch.num_rows() as u64;
         if rows == 0 {
@@ -111,18 +136,25 @@ impl Iterator for Limited {
     type Item = std::result::Result<arrow_array::RecordBatch, arrow_schema::ArrowError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.state.satisfied() {
-            return None;
-        }
-        let batch = match self.inner.next()? {
-            Ok(batch) => batch,
-            Err(error) => {
-                // Fused after the first error, per the listing contract.
-                self.state.satisfied = true;
-                return Some(Err(error));
+        loop {
+            if self.state.satisfied() {
+                return None;
             }
-        };
-        self.state.apply(batch).map(Ok)
+            let skipping = self.state.skipping();
+            let batch = match self.inner.next()? {
+                Ok(batch) => batch,
+                Err(error) => {
+                    // Fused after the first error, per the listing contract.
+                    self.state.satisfied = true;
+                    return Some(Err(error));
+                }
+            };
+            match self.state.apply(batch) {
+                // What the skip consumed is not handed on.
+                Some(batch) if skipping && batch.num_rows() == 0 => {}
+                admitted => return admitted.map(Ok),
+            }
+        }
     }
 }
 

@@ -320,6 +320,30 @@ class TestPathlibParity:
         with pytest.raises(IsADirectoryError, match="got the directory"):
             folder.touch()
 
+    def test_a_removed_folder_no_longer_exists(self, tmp_path: pathlib.Path) -> None:
+        folder = IOBase(tmp_path / "staging").mkdir()
+        assert folder.exists()
+
+        folder.remove(True)
+        # The handle still names a container; what is there is the answer.
+        assert not (tmp_path / "staging").exists()
+        assert not folder.exists()
+
+    def test_a_child_of_a_missing_segment_is_a_location_to_write_to(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        folder = IOBase(tmp_path / "lake").mkdir()
+
+        # `a` does not exist yet, and resolving through it touches nothing.
+        leaf = folder.joinpath("a", "b.bin")
+        assert not (tmp_path / "lake" / "a").exists()
+        assert not leaf.exists()
+
+        leaf.write_bytes(b"x")
+        assert (tmp_path / "lake" / "a" / "b.bin").read_bytes() == b"x"
+        assert leaf.exists()
+        assert (folder / "a").is_dir()
+
     def test_a_memory_handle_needs_no_location(self) -> None:
         handle = IOBase.from_bytes(b"AAPL")
 

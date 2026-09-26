@@ -300,7 +300,7 @@ fn scalar_benchmarks(criterion: &mut Criterion) {
         .map(|row| {
             Scalar::from_sequence([
                 Scalar::from(CURRENCIES[row % CURRENCIES.len()]),
-                Scalar::d128(i128::try_from(row % 20_000).unwrap_or_default(), 2),
+                Scalar::decimal128(i128::try_from(row % 20_000).unwrap_or_default(), 2),
                 if row % 16 == 0 {
                     Scalar::Null
                 } else {
@@ -647,8 +647,8 @@ fn prune_benchmarks(criterion: &mut Criterion) {
         )
         .with_column(
             "price",
-            Some(Scalar::d128(0, 2)),
-            Some(Scalar::d128(1_999_900, 2)),
+            Some(Scalar::decimal128(0, 2)),
+            Some(Scalar::decimal128(1_999_900, 2)),
             Some(0),
         )
         .with_column(

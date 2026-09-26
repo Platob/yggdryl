@@ -21,7 +21,7 @@ let bound = filter.bind(&schema)?;
 // The literal was converted once, into the column's exact type.
 assert_eq!(bound.term().to_string(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'");
 
-let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::d128(15_000, 2), Scalar::from(5_i64)]);
+let row = Scalar::from_sequence([Scalar::from("EUR"), Scalar::decimal128(15_000, 2), Scalar::from(5_i64)]);
 assert!(bound.matches(&row)?);
 
 // A null makes the answer unknown: `eval` says so, `matches` does not keep it.

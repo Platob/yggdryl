@@ -82,7 +82,6 @@ impl Format {
         }
     }
 
-    /// Return the canonical MIME type for this structured-text format.
     /// Name the format a MIME type describes.
     ///
     /// This is the exact reverse of [`Self::mime_type`], so the two cannot
@@ -139,6 +138,7 @@ impl Format {
         Self::from_media_type(handle.media_type())
     }
 
+    /// Return the canonical MIME type for this structured-text format.
     pub const fn mime_type(self) -> MimeType {
         match self {
             Self::Json => MimeType::JSON,

@@ -7,7 +7,8 @@ and `BatchReader` come from `require('yggdryl')`; Arrow crosses as
 ## Parse a predicate, bind it once, answer rows
 
 `bind` resolves names and converts each literal into its column's type once.
-A row is a `Scalar` sequence in schema order; an exact decimal is
+A row is an array in schema order, or a plain object naming its columns (a
+name the schema does not declare is refused); an exact decimal is
 `Scalar.decimal`, never a JavaScript number.
 
 ```javascript
@@ -22,36 +23,39 @@ const bound = filter.bind(schema)
 assert.equal(bound.term.toString(), "ccy = 'EUR' and price > decimal32(9,2) '100.00'")
 
 const price = Scalar.decimal(15000n, 2)
-assert.equal(bound.matches(Scalar.from(['EUR', price, 5])), true)
-assert.equal(bound.matches(Scalar.from(['USD', price, 5])), false)
+assert.equal(bound.matches(['EUR', price, 5]), true)
+assert.equal(bound.matches(['USD', price, 5]), false)
+assert.equal(bound.matches({ size: 5, ccy: 'EUR', price }), true)
+assert.throws(() => bound.matches({ ccy: 'EUR', desk: 'fx' }), /desk/)
 // A null makes the answer unknown, and unknown does not keep the row.
-assert.ok(bound.eval(Scalar.from(['EUR', null, 5])).equals(Scalar.from(null)))
-assert.equal(bound.matches(Scalar.from(['EUR', null, 5])), false)
+assert.ok(bound.eval(['EUR', null, 5]).equals(Scalar.from(null)))
+assert.equal(bound.matches(['EUR', null, 5]), false)
 ```
 
 ## Build a term without text, with a parameter
 
-Comparison builders take a `Term` or term text; arithmetic builders (`add`,
-`subtract`, `multiply`, `divide`, `remainder`) read plain JavaScript values as
-literals. A `:name` parameter is supplied once at `bind`.
+Every builder takes a `Term`, a `Scalar`, term text, or a plain value read as
+a literal through `Scalar.from` - a string stays term text, and `gt(100)`
+compares with the number. `Term.literal` takes a plain value too. A `:name` parameter is
+supplied once at `bind`.
 
 ```javascript
 const assert = require('node:assert/strict')
-const { Field, Scalar, Term } = require('yggdryl')
+const { Field, Term } = require('yggdryl')
 
 const schema = new Field('trades', 'struct<ccy:utf8,price:decimal(9,2),size:bigint>', false)
 
-const eur = Term.literal(Scalar.from('EUR'))
-const composed = Term.column('price').gt('100').and(Term.column('ccy').eq(eur))
+const eur = Term.literal('EUR')
+const composed = Term.column('price').gt(100).and(Term.column('ccy').eq(eur))
 assert.ok(composed.equals("price > 100 and ccy = 'EUR'"))
 assert.equal(Term.column('size').add(1).multiply(2).toString(), '(size + 1) * 2')
-assert.equal(Term.column('size').between('1', '10').toString(), 'size between 1 and 10')
+assert.equal(Term.column('size').between(1, 10).toString(), 'size between 1 and 10')
 
 const late = new Term('size >= :floor')
 assert.deepEqual(late.parameters, ['floor'])
 const bound = late.bind(schema, { floor: 10 })
 assert.equal(bound.term.toString(), 'size >= 10')
-assert.equal(bound.matches(Scalar.from([null, null, 11])), true)
+assert.equal(bound.matches([null, null, 11]), true)
 // A missing parameter is refused; an extra one is silently ignored.
 assert.throws(() => late.bind(schema, {}), /:floor/)
 assert.equal(late.bind(schema, { floor: 10, typo: 1 }).term.toString(), 'size >= 10')
@@ -328,13 +332,12 @@ assert.throws(() => new Expression('price > 1'), /expected `select`, `where`/)
 
 ## Gotchas in JavaScript
 
-- A string handed to a comparison builder is term **text**:
+- A string handed to a builder is term **text**:
   `Term.column('ccy').eq('EUR')` compares two columns. Pass
-  `Term.literal(Scalar.from('EUR'))` or `"'EUR'"`; `gt(100)` with a number
-  throws - write `gt('100')`.
-- `Term.literal` takes a `Scalar`, not a plain value: `Term.literal(Scalar.from(1n))`.
-- A row for `matches`/`eval` is `Scalar.from([...])` in schema order; a
-  plain object is refused there (it is accepted by `applyRecords`).
+  `Term.literal('EUR')` or `"'EUR'"`; numbers, `bigint`s and every other plain
+  value are literals.
+- A row for `matches`/`eval` is an array in schema order or a plain object
+  naming columns; an object naming a column the schema lacks is refused.
 - Arrow JS interop is copied IPC: a kept-everything batch comes back equal,
   never the same object. Keep large streams native (`BatchReader`,
   `readArrowReader`, `applyArrowReader`) and convert once at the end.

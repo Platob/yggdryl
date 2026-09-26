@@ -409,6 +409,8 @@ native_scalar_family: str = native_instant.family
 native_scalar_field: Field = Scalar.from_(1).into_field()
 native_array_field: Field = Scalar.from_([1]).into_array_field()
 native_struct_field: Field = Scalar.from_([{"id": 1}]).into_struct_field()
+native_path_text: Scalar | None = Scalar.from_([{"id": 1}]).path("[0].id")
+native_path_parsed: Scalar | None = Scalar.from_([{"id": 1}]).path(yggdryl.FieldPath("[-1].id"))
 temporal_count: int | None = native_instant.count
 temporal_unit: str | None = native_instant.unit
 temporal_zone: str | None = native_instant.zone
@@ -800,6 +802,7 @@ hashable_record_options = RecordOptions("trades.arrows")
 record_options_stable_hash: int = hashable_record_options.stable_hash()
 record_options_hash: int = hash(hashable_record_options)
 record_options_ordered: bool = hashable_record_options <= RecordOptions("trades.arrows")
+record_row_offset: int | None = hashable_record_options.row_offset
 record_options_reduce: tuple[object, tuple[dict[str, Any]]] = (
     hashable_record_options.__reduce__()
 )
@@ -1023,6 +1026,7 @@ iceberg_table.overwrite(
 )
 iceberg_table.set_options(iceberg.IcebergOptions(target_file_size=2048))
 iceberg_resolved: iceberg.IcebergOptions = iceberg_table.options()
+iceberg_schema_id: int = iceberg_table.update_schema().commit()
 iceberg_options_scan: pa.RecordBatchReader = iceberg_table.scan(
     options=iceberg.IcebergOptions(read_parallelism=2)
 )

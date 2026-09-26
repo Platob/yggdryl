@@ -80,7 +80,7 @@ mod internal {
             (Scalar::from(u128::MAX), Some((false, u128::MAX))),
             (Scalar::from(0_i32), Some((false, 0))),
             (Scalar::from(7.0), None),
-            (Scalar::d128(7, 0), None),
+            (Scalar::decimal128(7, 0), None),
             (Scalar::Null, None),
         ];
         for (value, expected) in &cases {
@@ -124,8 +124,8 @@ mod internal {
             (Scalar::from(1.0_f64), 3),
             (Scalar::Decimal32(yggdryl::Decimal32::new(1, 0)), 4),
             (Scalar::Decimal64(yggdryl::Decimal64::new(1, 0)), 4),
-            (Scalar::d128(1, 0), 4),
-            (Scalar::d256(i256::from_i128(1), 0), 4),
+            (Scalar::decimal128(1, 0), 4),
+            (Scalar::decimal256(i256::from_i128(1), 0), 4),
             (Scalar::date32(1), 7),
             (Scalar::date64(86_400_000), 7),
             (
@@ -217,7 +217,11 @@ mod internal {
             ),
             ("i32", Scalar::from(7_i32), 13_767_510_565_555_144_141),
             ("f32", Scalar::from(1.5_f32), 6_394_485_071_238_434_244),
-            ("d128", Scalar::d128(1250, 2), 9_433_506_932_114_274_648),
+            (
+                "d128",
+                Scalar::decimal128(1250, 2),
+                9_433_506_932_114_274_648,
+            ),
         ] {
             assert_eq!(stable_hash_of(&value), expected, "{name}");
         }
@@ -282,8 +286,8 @@ mod values {
             Scalar::from(half::f16::from_f32(1.0)),
             Scalar::from(1.25_f32),
             Scalar::from(1.5),
-            Scalar::d128(-1_050, 2),
-            Scalar::d256(i256::from_i128(1_050), 2),
+            Scalar::decimal128(-1_050, 2),
+            Scalar::decimal256(i256::from_i128(1_050), 2),
             Scalar::from("AAPL"),
             Scalar::from(b"\x00\xff".as_slice()),
             Scalar::date32(19_723),
@@ -354,8 +358,8 @@ mod values {
         assert!(null.as_datetime64().is_none());
         assert!(null.as_duration32().is_none());
         assert!(null.as_duration64().is_none());
-        assert!(null.as_d128().is_none());
-        assert!(null.as_d256().is_none());
+        assert!(null.as_decimal128().is_none());
+        assert!(null.as_decimal256().is_none());
         assert!(null.as_sequence().is_none());
         assert!(null.as_mapping().is_none());
         assert!(null.as_struct().is_none());
@@ -364,7 +368,10 @@ mod values {
         assert_eq!(null.len(), 0);
         assert!(null.get(0).is_none());
         assert!(null.get_key_str("k").is_none());
-        assert!(null.path("a.0.b").is_none());
+        assert!(
+            null.path(&yggdryl::FieldPath::from_str("a[0].b").unwrap())
+                .is_none()
+        );
         assert_eq!(null.iter().count(), 0);
         assert_eq!(null.entries().count(), 0);
         assert_eq!(null.record_iter().count(), 0);
@@ -406,8 +413,8 @@ mod values {
             let _ = value.as_datetime64();
             let _ = value.as_duration32();
             let _ = value.as_duration64();
-            let _ = value.as_d128();
-            let _ = value.as_d256();
+            let _ = value.as_decimal128();
+            let _ = value.as_decimal256();
             let _ = value.as_sequence();
             let _ = value.as_mapping();
             let _ = value.as_struct();
@@ -417,7 +424,7 @@ mod values {
             let _ = value.len();
             let _ = value.get(0);
             let _ = value.get_key_str("k");
-            let _ = value.path("a.b");
+            let _ = value.path(&yggdryl::FieldPath::from_str("a.b").unwrap());
             let _ = value.iter().count();
             let _ = value.kind();
             let _ = value.dtype();
@@ -592,26 +599,58 @@ fn order() -> Scalar {
     .unwrap()
 }
 
+/// A path in the one grammar every nested read speaks.
+fn path(text: &str) -> yggdryl::FieldPath {
+    yggdryl::FieldPath::from_str(text).unwrap()
+}
+
 #[test]
-fn a_dotted_path_walks_mappings_and_sequences() {
+fn a_field_path_walks_mappings_and_sequences() {
     let order = order();
 
     assert_eq!(
-        order.path("symbol").as_deref().and_then(Scalar::as_str),
+        order
+            .path(&path("symbol"))
+            .as_deref()
+            .and_then(Scalar::as_str),
         Some("AAPL")
     );
     assert_eq!(
-        order.path("legs.1.price").and_then(|price| price.as_i64()),
+        order
+            .path(&path("legs[1].price"))
+            .and_then(|price| price.as_i64()),
         Some(13)
     );
+    // A negative index counts back from the end, and a key reads a mapping
+    // entry by its value.
+    assert_eq!(
+        order
+            .path(&path("legs[-2].price"))
+            .and_then(|price| price.as_i64()),
+        Some(12)
+    );
+    assert_eq!(
+        order
+            .path(&path("['legs'][0]['price']"))
+            .and_then(|price| price.as_i64()),
+        Some(12)
+    );
+    // A range is a run of rows, clipped at either end.
+    let run = order.path(&path("legs[1:9]")).unwrap();
+    assert_eq!(run.len(), 1);
 
-    // A segment that does not resolve is absence, not an error.
-    assert!(order.path("legs.9.price").is_none());
-    assert!(order.path("symbol.price").is_none());
-    assert!(order.path("missing").is_none());
+    // A segment that does not resolve is absence, not an error - and a dotted
+    // number is a key, never a row: no second grammar reads it as one.
+    assert!(order.path(&path("legs[9].price")).is_none());
+    assert!(order.path(&path("symbol.price")).is_none());
+    assert!(order.path(&path("missing")).is_none());
+    assert!(order.path(&path("legs.`1`.price")).is_none());
 
-    // An empty path is the value itself, lent.
-    assert_eq!(order.path("").as_deref(), Some(&order));
+    // The root path is the value itself, lent.
+    assert_eq!(
+        order.path(&yggdryl::FieldPath::root()).as_deref(),
+        Some(&order)
+    );
 }
 
 #[test]
@@ -816,8 +855,8 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
         vec![
             Scalar::Decimal32(yggdryl::Decimal32::new(1_250, 2)),
             Scalar::Decimal64(yggdryl::Decimal64::new(12_500, 3)),
-            Scalar::d128(125, 1),
-            Scalar::d256(i256::from_i128(125), 1),
+            Scalar::decimal128(125, 1),
+            Scalar::decimal256(i256::from_i128(125), 1),
         ],
     ];
     for group in &groups {
@@ -839,14 +878,14 @@ fn cross_width_numbers_agree_in_equality_order_and_hash() {
     assert!(Scalar::from(2.5_f32) > Scalar::from(1.5_f64));
     assert!(
         Scalar::Decimal32(yggdryl::Decimal32::new(1_249, 2))
-            < Scalar::d256(i256::from_i128(125), 1)
+            < Scalar::decimal256(i256::from_i128(125), 1)
     );
-    assert!(Scalar::d128(-1, 0) < Scalar::Decimal64(yggdryl::Decimal64::new(0, 4)));
+    assert!(Scalar::decimal128(-1, 0) < Scalar::Decimal64(yggdryl::Decimal64::new(0, 4)));
 
     // Different kinds stay apart even when their numbers agree.
     assert_ne!(Scalar::from(1_i32), Scalar::from(1.0_f64));
-    assert_ne!(Scalar::from(1_i32), Scalar::d128(1, 0));
-    assert_ne!(Scalar::from(1.0_f64), Scalar::d128(1, 0));
+    assert_ne!(Scalar::from(1_i32), Scalar::decimal128(1, 0));
+    assert_ne!(Scalar::from(1.0_f64), Scalar::decimal128(1, 0));
 }
 
 #[test]
@@ -854,8 +893,8 @@ fn shape_predicates_answer_without_matching() {
     assert!(Scalar::Null.is_null());
     assert!(Scalar::from(1_i64).is_integer());
     assert!(Scalar::from(1.5).is_number());
-    assert!(Scalar::d128(15, 1).is_number());
-    assert!(Scalar::d256(i256::from_i128(15), 1).is_number());
+    assert!(Scalar::decimal128(15, 1).is_number());
+    assert!(Scalar::decimal256(i256::from_i128(15), 1).is_number());
     assert!(!Scalar::from(1.5).is_integer());
     assert!(order().is_container());
     assert!(!Scalar::from("AAPL").is_container());
@@ -878,7 +917,10 @@ fn mapping_helpers_read_and_rebuild_in_order() {
     let updated = order.with_key("venue", "XPAR").unwrap();
     assert_eq!(updated.keys(), vec!["symbol", "legs", "venue"]);
     assert_eq!(
-        updated.path("venue").as_deref().and_then(Scalar::as_str),
+        updated
+            .path(&yggdryl::FieldPath::from_str("venue").unwrap())
+            .as_deref()
+            .and_then(Scalar::as_str),
         Some("XPAR")
     );
 
@@ -994,7 +1036,10 @@ fn equal_cross_width_values_have_one_stable_hash() {
             Scalar::from(Float32::from_f32(1.0)),
             Scalar::from(Float64::from_f64(1.0)),
         ],
-        vec![Scalar::d128(100, 2), Scalar::d256(i256::from_i128(10), 1)],
+        vec![
+            Scalar::decimal128(100, 2),
+            Scalar::decimal256(i256::from_i128(10), 1),
+        ],
         vec![Scalar::date32(1), Scalar::date64(86_400_000)],
         vec![
             Scalar::duration32(1, TimeUnit::Second).unwrap(),
@@ -1175,7 +1220,7 @@ fn every_family_is_the_range_its_kind_owns_and_no_other() {
         (Scalar::from(7_i32), DataTypeKind::Integer),
         (Scalar::from(u128::MAX), DataTypeKind::Integer),
         (Scalar::from(1.5_f32), DataTypeKind::Floating),
-        (Scalar::d128(125, 1), DataTypeKind::Decimal),
+        (Scalar::decimal128(125, 1), DataTypeKind::Decimal),
         (Scalar::date32(1), DataTypeKind::Temporal),
         (
             Scalar::interval(1, 2, 3, TimeUnit::MonthDayNano).unwrap(),
@@ -1248,7 +1293,7 @@ fn every_family_is_the_range_its_kind_owns_and_no_other() {
     }
 
     // `as_decimal` is the coefficient-and-scale reader, not a family.
-    let price = Scalar::d128(125, 1);
+    let price = Scalar::decimal128(125, 1);
     assert_eq!(price.as_decimal(), Some((i256::from_i128(125), 1)));
     assert!(matches!(price, Scalar::Decimal128(_)));
     assert_eq!(Scalar::from(7_i32).as_decimal(), None);
@@ -1563,8 +1608,8 @@ fn every_width_leaf_round_trips_under_its_unchanged_tag() {
             Scalar::Decimal64(yggdryl::decimal::Decimal64::new(-7, 1)),
             "d64",
         ),
-        (Scalar::d128(125, 1), "d128"),
-        (Scalar::d256(i256::from_i128(-125), 3), "d256"),
+        (Scalar::decimal128(125, 1), "d128"),
+        (Scalar::decimal256(i256::from_i128(-125), 3), "d256"),
         (Scalar::date32(19_000), "date32"),
         (Scalar::date64(86_400_000), "date64"),
         (
@@ -1667,7 +1712,7 @@ fn truthiness_reads_absence_zero_and_emptiness_as_false() {
         Scalar::from(0_u64),
         Scalar::from(0.0_f64),
         Scalar::from(-0.0_f64),
-        Scalar::d128(0, 4),
+        Scalar::decimal128(0, 4),
         Scalar::from(""),
         Scalar::from("   "),
         Scalar::from(Arc::from(b"".as_slice())),
@@ -1683,7 +1728,7 @@ fn truthiness_reads_absence_zero_and_emptiness_as_false() {
         Scalar::from(1_i32),
         Scalar::from(-1_i64),
         Scalar::from(f64::NAN),
-        Scalar::d128(1, 4),
+        Scalar::decimal128(1, 4),
         Scalar::from("0.0"),
         Scalar::from("anything"),
         Scalar::from(Arc::from(b"\0".as_slice())),
@@ -1840,11 +1885,22 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
 
     // A path walks a column as it walks a run, and keeps walking under a
     // row it had to build.
-    assert_eq!(column.path("2").as_deref(), Some(&Scalar::from(3_i64)));
-    assert!(column.path("9").is_none());
+    assert_eq!(
+        column
+            .path(&yggdryl::FieldPath::from_str("[2]").unwrap())
+            .as_deref(),
+        Some(&Scalar::from(3_i64))
+    );
+    assert!(
+        column
+            .path(&yggdryl::FieldPath::from_str("[9]").unwrap())
+            .is_none()
+    );
     let order = Scalar::from_mapping([(Scalar::from("sizes"), column.clone())]).unwrap();
     assert_eq!(
-        order.path("sizes.2").and_then(|size| size.as_i64()),
+        order
+            .path(&yggdryl::FieldPath::from_str("sizes[2]").unwrap())
+            .and_then(|size| size.as_i64()),
         Some(3)
     );
     let legs = Scalar::from(
@@ -1861,8 +1917,15 @@ fn a_column_reads_through_get_path_and_iter_as_its_run_does() {
         )
         .unwrap(),
     );
-    assert_eq!(legs.path("0.1").and_then(|px| px.as_i64()), Some(8));
-    assert!(legs.path("0.2").is_none());
+    assert_eq!(
+        legs.path(&yggdryl::FieldPath::from_str("[0][1]").unwrap())
+            .and_then(|px| px.as_i64()),
+        Some(8)
+    );
+    assert!(
+        legs.path(&yggdryl::FieldPath::from_str("[0][2]").unwrap())
+            .is_none()
+    );
 
     // The walk yields the same rows in the same order, and so does the
     // borrowed iteration.

@@ -136,6 +136,40 @@ def test_rows_answer_either_spelling() -> None:
     assert bound.matches({"ccy": "EUR", "size": 5})
     # Unknown is not true: a null size does not pass `size > 1`.
     assert not bound.matches({"ccy": "EUR", "size": None})
+    # A mapping is a named record, ordered by the schema whatever its order.
+    assert bound.matches({"size": 5, "price": Decimal("150.00"), "ccy": "EUR"})
+    assert bound.eval({"size": 5, "ccy": "EUR"}) is True
+
+
+def test_a_dictionary_under_a_record_column_is_that_record() -> None:
+    # A mapping row's values are read under the columns they name, so a
+    # dictionary inside a serie of records is a record there, not a map.
+    schema = Field("trades", "struct<legs:serie<struct<ccy:utf8,size:bigint>>>", False)
+    row = {"legs": [{"size": 1, "ccy": "EUR"}, {"ccy": "USD", "size": 2}]}
+    assert Term("legs[-1].size").bind(schema).eval(row) == 2
+    assert Term("legs[ccy = 'EUR'][0].size = 1").bind(schema).matches(row)
+
+
+def test_a_mapping_row_refuses_a_name_the_schema_does_not_declare() -> None:
+    # A stray key is refused by the core rather than ignored, at every door a
+    # native row takes.
+    bound = Term("ccy = 'EUR'").bind(trades_schema())
+    with pytest.raises(ValueError, match='unknown field "desk"'):
+        bound.matches({"ccy": "EUR", "desk": "fx"})
+    with pytest.raises(ValueError, match='unknown field "desk"'):
+        bound.eval({"ccy": "EUR", "desk": "fx"})
+    with pytest.raises(TypeError):
+        bound.matches({1: "EUR"})
+    for selector in (Selector("ccy"), Selector.all()):
+        with pytest.raises(ValueError, match='unknown field "desk"'):
+            selector.bind(trades_schema()).apply_row({"ccy": "EUR", "desk": "fx"})
+    # The identity selector publishes the named record in schema order, a
+    # column the mapping leaves out as null.
+    assert Selector.all().bind(trades_schema()).apply_row({"size": 5, "ccy": "EUR"}) == {
+        "ccy": "EUR",
+        "price": None,
+        "size": 5,
+    }
 
 
 def test_parameters_are_supplied_at_bind() -> None:

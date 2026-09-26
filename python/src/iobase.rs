@@ -1185,16 +1185,22 @@ impl PyIOBase {
     }
 
     /// Return whether anything is here now, as `Path.exists`.
+    ///
+    /// Each role answers its own existence - a folder whether its directory
+    /// is there, a file its leaf, a path either - so a handle `mkdir` made and
+    /// `remove` deleted answers `False` though it still names a container. A
+    /// filesystem-bound handle asks its filesystem directly, so a refusal
+    /// such as `PermissionError` is raised rather than read as absence.
     fn exists(&self, py: Python<'_>) -> PyResult<bool> {
         let inner = self.inner()?;
-        if let Some(bound) = inner.bound_location() {
-            return bound
+        match inner.bound_location() {
+            Some(bound) => bound
                 .filesystem()
                 .file_info(bound.path())
                 .map(|info| info.kind != yggdryl::IOKind::Unknown)
-                .map_err(crate::holder::fs::storage_error);
+                .map_err(crate::holder::fs::storage_error),
+            None => Ok(py.detach(|| inner.exists())),
         }
-        Ok(py.detach(|| inner.kind()) != yggdryl::IOKind::Unknown)
     }
 
     /// Return whether this resource contains others, as `Path.is_dir`.

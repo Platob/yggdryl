@@ -502,9 +502,8 @@ has no S3 client for `IOBase.fromUri('s3://...')` (it reports `Unsupported`);
 - `writeBytes`/`writeText` on a `.gz` name write **plain** bytes: the byte
   surface is the stored bytes. Code with `compressInto`, `gzip.dumps`, or the
   value/record surfaces.
-- `joinpath('a', 'b.bin')` joins segment by segment and needs `a` to be a
-  container already; `joinpath('a/b.bin')` descends in one step and creates
-  parents on write.
+- `joinpath('a', 'b.bin')` and `joinpath('a/b.bin')` name the same location
+  whether or not `a` exists yet; a write creates the parents.
 - `size`, `kind`, `mediaType`, `codec`, `parent`, `partitions`, `url` are
   getters; `opened()`, `closed()`, `exists()`, `isDir()`, `isFile()` are methods.
 - `copyInto` answers a `bigint`; `compressInto`/`decompressInto` a `number`.

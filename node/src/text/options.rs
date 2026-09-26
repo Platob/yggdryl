@@ -166,6 +166,24 @@ impl JsTextOptions {
         Ok(())
     }
 
+    /// Return how many leading result rows a read or write skips.
+    #[napi(getter)]
+    pub fn row_offset(&self) -> Option<f64> {
+        #[allow(clippy::cast_precision_loss)]
+        self.inner.row_offset().map(|rows| rows as f64)
+    }
+
+    /// Set or clear how many leading result rows a read or write skips.
+    #[napi(setter)]
+    pub fn set_row_offset(&mut self, value: Option<f64>) -> Result<()> {
+        self.inner.set_row_offset(
+            value
+                .map(|rows| crate::exact_u64(rows, "rowOffset"))
+                .transpose()?,
+        );
+        Ok(())
+    }
+
     /// Return the Arrow-memory byte bound.
     #[napi(getter)]
     pub fn max_byte_size(&self) -> Option<f64> {
@@ -395,6 +413,13 @@ impl JsTextOptions {
             .map_err(napi_error)
     }
 
+    /// The row header's named captures, in the order they become columns;
+    /// empty without a row header.
+    #[napi(getter)]
+    pub fn capture_names(&self) -> Vec<String> {
+        self.inner.capture_names().map(ToOwned::to_owned).collect()
+    }
+
     /// Return the left-edge stripping patterns, in the order they apply.
     #[napi(getter)]
     pub fn lstrip(&self) -> Vec<String> {
@@ -549,6 +574,14 @@ impl JsTextOptions {
     pub fn with_commit_row_size(&self, rows: f64) -> Result<Self> {
         let mut options = self.clone();
         options.set_commit_row_size(Some(rows))?;
+        Ok(options)
+    }
+
+    /// Return a copy skipping the given leading result rows.
+    #[napi]
+    pub fn with_row_offset(&self, rows: f64) -> Result<Self> {
+        let mut options = self.clone();
+        options.set_row_offset(Some(rows))?;
         Ok(options)
     }
 

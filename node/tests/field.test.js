@@ -111,16 +111,76 @@ test('field JSON remains structural and native-owned', () => {
   assert.ok(Field.fromJSON(fieldJson).equals(field))
 })
 
-test('field Arrow-compatible input delegates through the native parser', () => {
-  const field = new Field(
-    'event_time',
-    DataType.fromString('timestamp[us, UTC]'),
-    false,
-  )
+test('an Apache Arrow JS field crosses as a one-field IPC schema', () => {
+  const arrow = require('apache-arrow')
 
-  assert.ok(Field.fromArrow({ toString: () => field.toString() }).equals(field))
-  assert.ok(Field.fromArrow(field).equals(field))
-  assert.throws(() => Field.fromArrow({}), /own textual representation/)
+  // Nullability and metadata are what text would lose.
+  const required = Field.fromArrow(
+    new arrow.Field(
+      'event_time',
+      new arrow.TimestampMicrosecond('UTC'),
+      false,
+      new Map([['source', 'feed']]),
+    ),
+  )
+  assert.equal(required.name, 'event_time')
+  assert.equal(required.nullable, false)
+  assert.equal(required.get('source'), 'feed')
+  assert.ok(required.dtype.equals(DataType.fromString('timestamp[us, UTC]')))
+
+  // An extension name is the identity the metadata carries.
+  const currency = Field.fromArrow(
+    new arrow.Field(
+      'ccy',
+      new arrow.Utf8(),
+      true,
+      new Map([['ARROW:extension:name', 'yggdryl.ccy'], ['ARROW:extension:metadata', '']]),
+    ),
+  )
+  assert.equal(currency.dtype.id, 'ccy')
+
+  // Nested children cross whole, which a string never did for a map.
+  const quote = Field.fromArrow(
+    new arrow.Field(
+      'quote',
+      new arrow.Struct([
+        new arrow.Field('bid', new arrow.Float64(), false),
+        new arrow.Field('venue', new arrow.Utf8(), true),
+      ]),
+      true,
+    ),
+  )
+  assert.equal(quote.dtype.id, 'struct')
+  assert.deepEqual(Array.from(quote.dtype, (child) => [child.name, child.nullable]), [
+    ['bid', false],
+    ['venue', true],
+  ])
+  const tags = Field.fromArrow(
+    new arrow.Field(
+      'tags',
+      new arrow.Map_(
+        new arrow.Field(
+          'entries',
+          new arrow.Struct([
+            new arrow.Field('key', new arrow.Utf8(), false),
+            new arrow.Field('value', new arrow.Int64(), true),
+          ]),
+          false,
+        ),
+      ),
+      true,
+    ),
+  )
+  assert.equal(tags.dtype.id, 'map')
+
+  // A native Field is copied, text parses, and nothing else is guessed at.
+  const field = new Field('px', 'float64', false)
+  const copied = Field.fromArrow(field)
+  assert.ok(copied.equals(field))
+  assert.notEqual(copied, field)
+  assert.ok(Field.fromArrow('px: float64 not null').equals(field))
+  assert.throws(() => Field.fromArrow({ toString: () => field.toString() }), TypeError)
+  assert.throws(() => Field.fromArrow(new arrow.Utf8()), /Apache Arrow JS Field/)
 })
 
 test('field metadata provides deterministic Map-like operations', () => {

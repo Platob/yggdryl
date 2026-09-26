@@ -1595,7 +1595,7 @@ fn feed_corpus() -> Vec<(&'static str, Scalar)> {
     vec![
         ("a leaf", Scalar::from("AAPL")),
         ("an integer", Scalar::from(18_723)),
-        ("a decimal", Scalar::d128(18_723, 2)),
+        ("a decimal", Scalar::decimal128(18_723, 2)),
         ("a wide record", wide),
         ("a deep nest", deep),
     ]
@@ -1630,7 +1630,7 @@ fn borrowed_value_bytes_allocate_nothing() {
     }
     for value in [
         Scalar::from("a symbol long enough to outgrow any inline string buffer"),
-        Scalar::d256(yggdryl::i256::from_i128(i128::MIN), -3),
+        Scalar::decimal256(yggdryl::i256::from_i128(i128::MIN), -3),
     ] {
         free("reading a wide payload", || {
             black_box(value.as_value_bytes().expect("the payload is there").len());
@@ -3491,7 +3491,7 @@ fn typed_leaf_columns() -> Vec<Serie> {
         (DataType::Float64, Scalar::from(1.5_f64)),
         (
             DataType::decimal(10, 2).expect("a decimal"),
-            Scalar::d128(1_025, 2),
+            Scalar::decimal128(1_025, 2),
         ),
         (DataType::Date64, Scalar::date64(86_400_000)),
         (
@@ -3571,7 +3571,7 @@ fn digesting_a_column_allocates_nothing_per_row() {
             Scalar::from(format!("{index:032}"))
         }),
         (DataType::decimal(18, 4).expect("a decimal"), |index| {
-            Scalar::d128(i128::try_from(index).expect("fits"), 4)
+            Scalar::decimal128(i128::try_from(index).expect("fits"), 4)
         }),
         (DataType::Country, |index| {
             Scalar::from(if index % 2 == 0 { "FR" } else { "US" })

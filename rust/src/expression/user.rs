@@ -317,13 +317,18 @@ impl FunctionSignature {
                     key: SmolStr::new_static(RETURNS_KEY),
                     reason: SmolStr::new_static("expected the return of the function, got none"),
                 })?;
-        let (dtype, nullable) = match stored.trim().rsplit_once(' ') {
-            Some((dtype, "null")) => (dtype.trim(), true),
-            Some((dtype, "not null")) | Some((dtype, "notnull")) => (dtype.trim(), false),
-            _ => match stored.trim().strip_suffix("not null") {
-                Some(dtype) => (dtype.trim(), false),
-                None => (stored.trim(), true),
-            },
+        // The nullability is the trailing words: `not null` is two of them, so
+        // it is matched before the bare `null` it ends with.
+        let stored = stored.trim();
+        let (dtype, nullable) = if let Some(dtype) = stored
+            .strip_suffix(" not null")
+            .or_else(|| stored.strip_suffix(" notnull"))
+        {
+            (dtype.trim_end(), false)
+        } else if let Some(dtype) = stored.strip_suffix(" null") {
+            (dtype.trim_end(), true)
+        } else {
+            (stored, true)
         };
         let dtype: DataType = dtype.parse().map_err(|error| Error::InvalidMetadataValue {
             key: SmolStr::new_static(RETURNS_KEY),

@@ -204,9 +204,10 @@ Arrow's own two logic-free storages: a boolean is a bit per value, and a null co
 
     ```javascript
     const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
     const { DataType } = require('yggdryl')
 
-    assert.equal(DataType.fromArrow({ toString: () => 'bool' }).toString(), 'boolean')
+    assert.equal(DataType.fromArrow(new arrow.Bool()).toString(), 'boolean')
     assert.equal(DataType.from('boolean').fixedByteWidth, 1)
     assert.equal(DataType.from('null').fixedByteWidth, null)
     ```

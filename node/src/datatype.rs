@@ -506,17 +506,6 @@ impl JsDataType {
             .map_err(napi_error)
     }
 
-    /// Parse the textual representation of an Arrow-compatible JS value.
-    ///
-    /// The loader coerces non-string inputs through their `toString` method;
-    /// recursive grammar and validation remain in the Rust core.
-    #[napi(factory, js_name = "fromArrowString", skip_typescript)]
-    pub fn from_arrow(value: String) -> Result<Self> {
-        CoreDataType::from_str(&value)
-            .map(Self::from_core)
-            .map_err(napi_error)
-    }
-
     /// Deserialize the structural JSON representation.
     ///
     /// One entry point for the three shapes a caller already has: the document

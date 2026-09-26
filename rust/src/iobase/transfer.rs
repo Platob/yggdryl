@@ -302,6 +302,7 @@ pub(crate) fn prepare_arrow_write_onto(
     delegated.set_filter(crate::Filter::always_true());
     delegated.set_select(crate::Selector::all());
     delegated.set_max_row_size(None);
+    delegated.set_row_offset(None);
     delegated.set_max_byte_size(None);
     delegated.set_commit_row_size(None);
     Ok((batches, delegated, declared))
@@ -444,6 +445,7 @@ impl ArrowWriteSession {
         delegated.set_filter(crate::Filter::always_true());
         delegated.set_select(crate::Selector::all());
         delegated.set_max_row_size(None);
+        delegated.set_row_offset(None);
         delegated.set_max_byte_size(None);
         delegated.set_commit_row_size(None);
         Ok(Self {
@@ -452,6 +454,7 @@ impl ArrowWriteSession {
             delegated,
             declared,
             limit: crate::media::WriteLimitState::new(
+                options.row_offset().unwrap_or(0),
                 options.max_row_size(),
                 options.max_byte_size(),
             ),

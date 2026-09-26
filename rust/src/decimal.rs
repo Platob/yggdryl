@@ -1754,26 +1754,26 @@ impl Scalar {
     /// Build the narrowest exact decimal width that holds `unscaled`.
     pub fn from_decimal(unscaled: i256, scale: i8) -> Self {
         unscaled.as_i128().map_or_else(
-            || Self::d256(unscaled, scale),
-            |value| Self::d128(value, scale),
+            || Self::decimal256(unscaled, scale),
+            |value| Self::decimal128(value, scale),
         )
     }
 
     /// Build an exact decimal from an unscaled integer and a scale.
     ///
-    /// The value is `unscaled * 10^-scale`, so `Scalar::d128(1_050, 2)` is
+    /// The value is `unscaled * 10^-scale`, so `Scalar::decimal128(1_050, 2)` is
     /// `10.50`. A negative scale multiplies instead, exactly as Arrow allows.
-    pub const fn d128(unscaled: i128, scale: i8) -> Self {
+    pub const fn decimal128(unscaled: i128, scale: i8) -> Self {
         Self::Decimal128(Decimal128::new(unscaled, scale))
     }
 
     /// Build an exact decimal with a 256-bit coefficient.
-    pub const fn d256(unscaled: i256, scale: i8) -> Self {
+    pub const fn decimal256(unscaled: i256, scale: i8) -> Self {
         Self::Decimal256(Decimal256::new(unscaled, scale))
     }
 
     /// Return the coefficient and scale when this is a 128-bit decimal.
-    pub const fn as_d128(&self) -> Option<(i128, i8)> {
+    pub const fn as_decimal128(&self) -> Option<(i128, i8)> {
         match self {
             Self::Decimal128(value) => Some((value.coefficient(), value.scale())),
             _ => None,
@@ -1781,7 +1781,7 @@ impl Scalar {
     }
 
     /// Return the coefficient and scale when this is a 256-bit decimal.
-    pub const fn as_d256(&self) -> Option<(i256, i8)> {
+    pub const fn as_decimal256(&self) -> Option<(i256, i8)> {
         match self {
             Self::Decimal256(value) => Some((value.coefficient(), value.scale())),
             _ => None,
@@ -2176,10 +2176,10 @@ pub(crate) fn decimal_arithmetic(
     }
     .ok_or_else(|| decimal_overflow(operation, wide))?;
     if wide {
-        Ok(Scalar::d256(held, target_scale))
+        Ok(Scalar::decimal256(held, target_scale))
     } else {
         held.as_i128()
-            .map(|held| Scalar::d128(held, target_scale))
+            .map(|held| Scalar::decimal128(held, target_scale))
             .ok_or_else(|| decimal_overflow(operation, false))
     }
 }
@@ -2411,14 +2411,14 @@ impl Scalar {
                 .ok_or_else(|| refused("a number within the declared precision"))
         };
         Ok(match family {
-            DecimalType::Decimal256 { .. } => Self::d256(units, scale),
+            DecimalType::Decimal256 { .. } => Self::decimal256(units, scale),
             DecimalType::BigDecimal => BigDecimal::from_units(units)
                 .map(Self::BigDecimal)
                 .ok_or_else(|| refused("a number within the declared precision"))?,
             DecimalType::Decimal => Decimal::from_units(narrow()?)
                 .map(Self::Decimal)
                 .ok_or_else(|| refused("a number within the declared precision"))?,
-            _ => Self::d128(narrow()?, scale),
+            _ => Self::decimal128(narrow()?, scale),
         })
     }
 
@@ -2468,7 +2468,7 @@ impl Scalar {
             reason: format_smolstr!("decimal coefficient exceeds {digits}"),
         };
         match dtype {
-            DataType::Decimal256 { .. } => Ok(Self::d256(coefficient, scale)),
+            DataType::Decimal256 { .. } => Ok(Self::decimal256(coefficient, scale)),
             DataType::BigDecimal => BigDecimal::from_units(coefficient)
                 .map(Self::BigDecimal)
                 .ok_or_else(|| past("76 digits")),
@@ -2479,7 +2479,7 @@ impl Scalar {
                 .ok_or_else(|| past("38 digits")),
             _ => coefficient
                 .as_i128()
-                .map(|coefficient| Self::d128(coefficient, scale))
+                .map(|coefficient| Self::decimal128(coefficient, scale))
                 .ok_or_else(|| past("128 bits")),
         }
     }

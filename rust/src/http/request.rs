@@ -1435,7 +1435,7 @@ fn rows_at(body: &Scalar, path: &FieldPath) -> Option<usize> {
     if path.is_root() {
         return body.sequence_rows().map(|rows| rows.len());
     }
-    body.path(&path.to_string())
+    body.path(path)
         .and_then(|value| value.sequence_rows().map(|rows| rows.len()))
 }
 

@@ -147,8 +147,8 @@ impl From<Url> for Location {
 /// The properties are the `with (...)` clause, kept in the order they were
 /// written. The ones a holder reads - `media_type`, `codec`, an object
 /// store's endpoint and credentials - open the location; the ones a write
-/// reads - `safe`, `batch_row_size`, `commit_row_size`, `max_row_size` and
-/// their byte counterparts - shape the read or write. Anything else travels
+/// reads - `safe`, `batch_row_size`, `commit_row_size`, `max_row_size`,
+/// `row_offset` and their byte counterparts - shape the read or write. Anything else travels
 /// along unread, the way a catalog's properties do.
 #[derive(
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, ::serde::Serialize, ::serde::Deserialize,
@@ -1409,6 +1409,9 @@ mod arrow {
             }
             if let Some(rows) = self.knob("max_row_size", "a row count")? {
                 options.set_max_row_size(Some(rows));
+            }
+            if let Some(rows) = self.knob("row_offset", "a row count")? {
+                options.set_row_offset(Some(rows));
             }
             if let Some(bytes) = self.knob("max_byte_size", "a byte count")? {
                 options.set_max_byte_size(Some(bytes));

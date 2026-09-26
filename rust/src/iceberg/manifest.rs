@@ -1349,7 +1349,7 @@ fn scalar_from_official(value: &OfficialLiteral, dtype: &OfficialType) -> Result
                     "expected a decimal scale fitting i8, got {scale}"
                 ))
             })?;
-            DataType::decimal(precision, scale)?.scalar(Scalar::d128(*value, scale))
+            DataType::decimal(precision, scale)?.scalar(Scalar::decimal128(*value, scale))
         }
         (OfficialPrimitiveType::Date, OfficialPrimitiveLiteral::Int(value)) => {
             Ok(Scalar::date32(*value))

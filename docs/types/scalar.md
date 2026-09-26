@@ -18,7 +18,7 @@
 | `Scalar::Variant` | one Apache Parquet Variant metadata dictionary and value payload; `into_variant` encodes any supported scalar and `from_variant` decodes it, while `DataType::encode_variant` / `decode_variant` apply one declared type |
 | Readers | across widths: `as_i128`, `as_u128`, `as_i64`, `as_u64`, `as_f64`, `as_decimal`; `temporal_unit`, `temporal_timezone`, `temporal_count`, `None` for a non-temporal |
 | Families | a family is the range of `DataTypeId` bytes its `DataTypeKind` owns, not a type: `family()` is the kind whose range `id()` is in, and `is_integer`, `is_decimal`, `is_temporal`, `is_code`, `is_number` are range checks; the value is the leaf its variant holds ([Families](#families)) |
-| Identity | total equality, ordering, hash, cross-width: `I32(7)` is `U8(7)`, `F32(1.5)` is `F64(1.5)`, `D32(1250, 2)` is `D256(125, 1)`; kinds stay apart, `I32(1)` is not `F64(1.0)` |
+| Identity | total equality, ordering, hash, cross-width: `Int32(7)` is `UInt8(7)`, `Float32(1.5)` is `Float64(1.5)`, `Decimal32(1250, 2)` is `Decimal256(125, 1)`; kinds stay apart, `Int32(1)` is not `Float64(1.0)` |
 | Bindings | `yggdryl.enums`, `enums`; `family` and `id` on every `Scalar`; `FieldScalar`, `DataTypeKind::range`/`contains`, `DataTypeId::temporal_family` and the `wkb` reader Rust only |
 
 ## Use
@@ -128,7 +128,7 @@ assert_eq!(decimal.temporal_unit(), None);
 
 // Numbers read across widths, and one number at two widths is one value.
 assert_eq!(decimal.as_decimal(), Some((i256::from_i128(1_250), 2)));
-assert_eq!(decimal, Scalar::d256(i256::from_i128(125), 1));
+assert_eq!(decimal, Scalar::decimal256(i256::from_i128(125), 1));
 assert_eq!(Scalar::from(7_u8).as_i128(), Some(7));
 assert_eq!(Scalar::from(7_u8), Scalar::from(7_i32));
 ```
@@ -263,15 +263,15 @@ Every width is a direct `Scalar` variant, with nothing between (`Scalar::Int32(I
 | group | variants |
 | --- | --- |
 | absence and logic | `Null`, `Boolean` |
-| integers | `I8`, `I16`, `I32`, `I64`, `I128`, `U8`, `U16`, `U32`, `U64`, `U128` |
-| floats | `F16`, `F32`, `F64` |
-| decimals | `D32`, `D64`, `D128`, `D256`, each a coefficient and a scale; the fixed [`Decimal` and `BigDecimal`](numeric/decimal.md#decimal), their units at scale eighteen under the wire tags `decimal` and `bigdecimal` |
+| integers | `Int8`, `Int16`, `Int32`, `Int64`, `Int128`, `UInt8`, `UInt16`, `UInt32`, `UInt64`, `UInt128` |
+| floats | `Float16`, `Float32`, `Float64` |
+| decimals | `Decimal32`, `Decimal64`, `Decimal128`, `Decimal256`, each a coefficient and a scale; the fixed [`Decimal` and `BigDecimal`](numeric/decimal.md#decimal), their units at scale eighteen under the wire tags `decimal` and `bigdecimal` |
 | text and binary | one variant per string leaf - `Utf8String`, `LargeUtf8String`, `Utf8StringView`, `LargeUtf8StringView`, `FixedUtf8String`, `SizedUtf8String` and the same six for `Ascii` and `Cp1252` - each holding the characters and, fixed or sized, its number; one per byte leaf - `Binary`, `LargeBinary`, `BinaryView`, `LargeBinaryView`, `FixedBinary`, `SizedBinary` - likewise; `Geometry`, `Geography`. Every string leaf writes the one wire tag `string` and every byte leaf `bytes`: the plain leaf its characters or payload alone, any other its `layout`, its number under `fixed`, and the text or bytes |
 | registered codes | `Country`, `Ccy`, `Mic`, `Cfi`, `Side`, `State`, `TimeInForce`, `Isin`, `Cusip`, `Sedol`, `Bbg`, `Figi`, `Unit`, `Ric` |
 | identifiers | `Uuid`, `Version`, `Url`, `Urn` |
 | date and time | `Date32`, `Date64`, `Time32`, `Time64`, `DateTime64` |
 | elapsed time | `Duration32`, `Duration64`, `Interval` |
-| containers | `Serie`, `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie`, `Map`, `SortedMap`, `Record`, `Variant`; each of the five serie variants holds a [`Serie`](serie.md) - a schema-free `Run`, or a column of one field - and `kind()` answers `serie`, `serie_view`, `large_serie`, `large_serie_view` or `fixed_size_serie` by leaf, `as_sequence` lending a run's values, `sequence_rows` reading any of the five and `as_serie` borrowing the `Serie` itself; the wire tags the five were written under before the rename, `list`, `list_view`, `large_list`, `large_list_view` and `fixed_size_list`, and a column's `list_view_serie`, `fixed_size_list_serie`, `large_list_serie` and `large_list_view_serie`, still read |
+| containers | `Serie`, `SerieView`, `LargeSerie`, `LargeSerieView`, `FixedSizeSerie`, `Map`, `SortedMap`, `Struct`, `Variant`; each of the five serie variants holds a [`Serie`](serie.md) - a schema-free `Run`, or a column of one field - and `kind()` answers `serie`, `serie_view`, `large_serie`, `large_serie_view` or `fixed_size_serie` by leaf, `as_sequence` lending a run's values, `sequence_rows` reading any of the five and `as_serie` borrowing the `Serie` itself; the wire tags the five were written under before the rename, `list`, `list_view`, `large_list`, `large_list_view` and `fixed_size_list`, and a column's `list_view_serie`, `fixed_size_list_serie`, `large_list_serie` and `large_list_view_serie`, still read |
 
 Arithmetic is checked in the Rust value model, both bindings redirect to it, and only unambiguous typed results exist.
 
@@ -296,8 +296,8 @@ Rust has `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, `checked_re
         Scalar::from(1_i16),
     );
     assert_eq!(
-        Scalar::d128(1, 0).checked_div(&Scalar::d128(2, 0))?,
-        Scalar::d128(5, 1),
+        Scalar::decimal128(1, 0).checked_div(&Scalar::decimal128(2, 0))?,
+        Scalar::decimal128(5, 1),
     );
     ```
 
