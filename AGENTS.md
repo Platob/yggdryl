@@ -1584,7 +1584,7 @@ and not a silent update.
 
 | Job | Proves | The one command that reproduces it |
 | --- | --- | --- |
-| Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
+| Rust quality (default features, all features) | `cargo fmt`; clippy at `-D warnings` on `-p yggdryl` and on `--workspace --all-features`; `cargo test --all-targets` in both lanes and the CLI's in the default one; rustdoc examples; `cargo doc` under `RUSTDOCFLAGS=-D warnings`; the optimized benchmark configuration | the failing step verbatim, with the lane's flags: nothing, or `--all-features` |
 | Core Rust 1.85 | the declared MSRV: `--all-targets`, `--no-default-features --lib`, and `--no-default-features --features s3 --lib` - the build a schema-only consumer gets | `rustup toolchain install 1.85.0`, then `cargo +1.85.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl <the failing flags>` |
 | Iceberg Rust 1.94 | the official Iceberg boundary at its own, later MSRV | `cargo +1.94.0 check --locked --manifest-path rust/Cargo.toml -p yggdryl --all-targets --features iceberg` |
 | S3 / Azure / Google exchange | the object stores against MinIO with boto3, Azurite with azure-storage-blob, fake-gcs-server with google-cloud-storage - signatures and dialects against implementations that answer 403 | `python scripts/check_object_interop.py`, `check_azure_interop.py`, `check_gcs_interop.py`; each fetches its own server |
