@@ -56,6 +56,10 @@ function route(req, res, url, body) {
         headers: req.headers,
         body: body.toString('utf8'),
       })
+    case '/probe':
+      // The same answer to HEAD and GET, so a mount's description and its
+      // bytes agree: the probe header the request carried.
+      return send(res, 200, { 'content-type': 'text/plain' }, req.headers['x-probe'] ?? 'none')
     case '/text':
       return send(res, 200, { 'content-type': 'text/plain; charset=utf-8' }, 'hello')
     case '/redirect':
@@ -339,6 +343,17 @@ test('an in-memory handle mounts as a copy of its bytes under its media type', (
   server.shutdown()
 })
 
+test('a mounted session serves its origin under its own headers', () => {
+  const server = http.Server.bind()
+  // The session itself crosses the mount, its defaults and its role kept.
+  const session = new http.Session(origin + '/', { headers: { 'x-probe': 'kept' } })
+  server.mount('/proxy', session.intoIOBase())
+  const response = http.get(new URL('proxy/probe', server.url.toString()).toString())
+  assert.equal(response.statusCode, 200)
+  assert.equal(response.text(), 'kept')
+  server.shutdown()
+})
+
 test('sendAll reads specs and is a walk pulled one answer at a time', () => {
   const session = new http.Session(origin + '/')
   const walk = session.sendAll(
@@ -358,7 +373,38 @@ test('sendAll reads specs and is a walk pulled one answer at a time', () => {
   assert.deepEqual(JSON.parse(posted.json().body), { n: 1 })
   assert.deepEqual(specified.json().query, [['from', 'spec']])
   assert.equal(specified.json().headers['x-probe'], 'yes')
-  assert.throws(() => session.sendAll([{ method: 'GET' }]), /names its url/)
+  assert.throws(() => [...session.sendAll([{ method: 'GET' }])], /names its url/)
+  assert.throws(
+    () => [...session.sendAll([{ url: `${origin}/text`, stream: true }])],
+    /cannot stream/,
+  )
+  assert.throws(() => session.sendAll(42), /requests must be an iterable/)
+})
+
+test('sendAll walks an endless input lazily and lets go when left early', () => {
+  const session = new http.Session(origin + '/')
+  let pulled = 0
+  function* endless() {
+    for (;;) yield `${origin}/echo?i=${pulled++}`
+  }
+  const walk = session.sendAll(endless(), 2)
+  assert.equal(pulled, 0)
+  const taken = []
+  for (const answer of walk) {
+    taken.push(answer.json().query[0][1])
+    if (taken.length === 3) break
+  }
+  assert.deepEqual(taken, ['0', '1', '2'])
+  // One window was read, not the whole input.
+  assert.ok(pulled <= 1024, `${pulled}`)
+  // The answers before an item that is no request are handed over first.
+  const answers = []
+  assert.throws(() => {
+    for (const answer of session.sendAll([`${origin}/text`, { method: 'GET' }])) {
+      answers.push(answer.text())
+    }
+  }, /names its url/)
+  assert.deepEqual(answers, ['hello'])
 })
 
 test('a closed streamed response stands alone and reopens at its cursor', () => {

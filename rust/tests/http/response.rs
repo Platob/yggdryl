@@ -380,6 +380,109 @@ fn a_closed_response_whose_resource_changed_is_refused_on_reopen() {
     }
 }
 
+#[test]
+fn a_post_answer_is_neither_resumed_nor_reopened() {
+    let server = HttpServer::start();
+    server.echo("/echo");
+    let payload = body(8192);
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+
+    // A cut answer to a POST is not asked for again: that would post twice.
+    server.cut_body_at("/echo", 4096);
+    let cut = session
+        .post(&server.url("/echo"), payload.clone())
+        .unwrap()
+        .stream()
+        .unwrap();
+    cut.read_all_bytes()
+        .expect_err("the rest of a POST answer is not re-requested");
+    assert_eq!(server.request_count(), 1);
+
+    // Nor is a closed one re-opened.
+    let mut closed = session
+        .post(&server.url("/echo"), payload)
+        .unwrap()
+        .stream()
+        .unwrap();
+    let mut head = [0_u8; 10];
+    closed.pread_exact(0, &mut head).expect("the first bytes");
+    closed.close().expect("let go of the transfer");
+    let error = closed
+        .pread_exact(10, &mut head)
+        .expect_err("a POST answer is not re-opened");
+    assert!(error.is_unsupported(), "{error:?}");
+    assert_eq!(server.request_count(), 2);
+}
+
+#[test]
+fn a_streamed_head_or_304_answers_an_empty_body() {
+    let server = HttpServer::start();
+    server.put_resource("/doc", &body(4096), Some("application/octet-stream"));
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+    let head = session.head(&server.url("/doc")).unwrap().stream().unwrap();
+    assert_eq!(head.status(), Status::OK);
+    assert_eq!(head.headers().content_length().unwrap(), Some(4096));
+    assert!(head.read_all_bytes().expect("no body to read").is_empty());
+
+    let etag = head.headers().get("etag").expect("an ETag").to_owned();
+    let unchanged = session
+        .get(&server.url("/doc"))
+        .unwrap()
+        .with_header("If-None-Match", &etag)
+        .unwrap()
+        .stream()
+        .unwrap();
+    assert_eq!(unchanged.status(), Status::NOT_MODIFIED);
+    assert!(unchanged.read_all_bytes().expect("no body").is_empty());
+}
+
+#[test]
+fn a_refusal_is_answered_whatever_the_size_of_its_body() {
+    let server = HttpServer::start();
+    let text = vec![b'x'; 5 << 20];
+    server.server().respond(
+        None,
+        "/huge-error",
+        Response::new(Status::new(503).unwrap()).with_body(text.clone()),
+    );
+    let session =
+        Session::with_options(HttpOptions::default().with_max_attempts(1)).expect("a session");
+    for streamed in [false, true] {
+        let request = session.get(&server.url("/huge-error")).unwrap();
+        let response = if streamed {
+            request.stream()
+        } else {
+            request.send()
+        }
+        .expect("the refusal is an answer");
+        assert_eq!(response.status().code(), 503);
+        assert_eq!(response.bytes().expect("its body").len(), text.len());
+    }
+}
+
+#[test]
+fn a_range_the_caller_asked_for_resumes_inside_that_window() {
+    let server = HttpServer::start();
+    let bytes = body(8192);
+    server.put_resource("/r", &bytes, Some("application/octet-stream"));
+    server.cut_body_at("/r", 1000);
+    let session = Session::with_options(HttpOptions::default()).expect("a session");
+    let response = session
+        .get(&server.url("/r"))
+        .unwrap()
+        .with_header("Range", "bytes=4096-")
+        .unwrap()
+        .stream()
+        .unwrap();
+    assert_eq!(response.status(), Status::PARTIAL_CONTENT);
+    let read = response.read_all_bytes().expect("the window, resumed");
+    assert_eq!(read, bytes[4096..]);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    // The window's end is known, so the resume asks for exactly what is left.
+    assert_eq!(requests[1].header("range"), Some("bytes=5096-8191"));
+}
+
 // --- the headers -------------------------------------------------------------
 
 #[test]

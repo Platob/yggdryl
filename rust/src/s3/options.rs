@@ -255,8 +255,11 @@ impl S3Options {
 
     /// Reach the endpoint through the proxy at `uri`.
     ///
-    /// `http://`, `https://`, `socks4://`, and `socks5://` are understood, and
-    /// a proxy may carry credentials of its own as `user:password@host`.
+    /// `http://` and `https://` are understood, and a proxy may carry
+    /// credentials of its own as `user:password@host`; a SOCKS proxy is
+    /// refused when the client is built, because the transport does not
+    /// speak it and a request going direct past it would leave the network
+    /// it names.
     /// Unset, the transport reads the usual `HTTPS_PROXY` and `NO_PROXY`
     /// variables, which is what most environments already say.
     #[must_use]

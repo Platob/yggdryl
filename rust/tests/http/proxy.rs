@@ -103,3 +103,35 @@ fn no_proxy_reads_ports_addresses_and_networks() {
         );
     }
 }
+
+#[test]
+fn under_cgi_the_upper_case_http_proxy_is_not_read() {
+    // httpoxy: a server sets `HTTP_PROXY` from its request's `Proxy` header.
+    let cgi = [
+        ("REQUEST_METHOD", "GET"),
+        ("HTTP_PROXY", "http://attacker:8080"),
+    ];
+    assert_eq!(chosen("http://api.example.com/", &cgi), None);
+    let lower = [
+        ("REQUEST_METHOD", "GET"),
+        ("http_proxy", "http://mine:3128"),
+    ];
+    assert_eq!(
+        chosen("http://api.example.com/", &lower).as_deref(),
+        Some("http://mine:3128")
+    );
+    // Outside CGI, and for the https variable, the upper case still counts.
+    assert_eq!(
+        chosen(
+            "http://api.example.com/",
+            &[("HTTP_PROXY", "http://upper:1")]
+        )
+        .as_deref(),
+        Some("http://upper:1")
+    );
+    let secure = [("REQUEST_METHOD", "GET"), ("HTTPS_PROXY", "http://upper:2")];
+    assert_eq!(
+        chosen("https://api.example.com/", &secure).as_deref(),
+        Some("http://upper:2")
+    );
+}

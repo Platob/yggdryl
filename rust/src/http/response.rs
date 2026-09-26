@@ -20,7 +20,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::client::Answer;
-use super::stream::{io_into_error, oversized_body, reader_at, refuse_write};
+use super::stream::{io_into_error, oversized_body, reader_at, refuse_write, window_of};
 use super::wire::{ResponseHead, parse_response, render_response};
 use super::{Body, Cookie, Headers, HttpVersion, Link, Method, NextPage, Request, Status, Stream};
 use crate::holder::{Buffer, Holder};
@@ -368,7 +368,7 @@ impl Response {
     /// A malformed `Link` header or next URL, or a body the pagination
     /// names a path into that is not a document.
     pub fn next_request(&self) -> Result<Option<Request>> {
-        let body = self.scalar().ok();
+        let body = self.document()?;
         let rows = body.as_ref().map_or(1, |body| {
             super::pages::rows_of(body, self.request.records()).map_or(1, |rows| rows.len())
         });
@@ -493,15 +493,7 @@ impl Response {
         let status = answer.status;
         let version = answer.version;
         let headers = answer.headers.clone();
-        let body = if streaming {
-            BodyState::Streaming(Arc::new(Stream::new(
-                request.clone(),
-                url.clone(),
-                answer,
-                0,
-                None,
-            )))
-        } else if request.method() == Method::Head
+        let body = if request.method() == Method::Head
             || status.is_informational()
             || matches!(status.code(), 204 | 304)
         {
@@ -512,13 +504,18 @@ impl Response {
                 decoded: None,
             }
         } else {
-            // Read through a stream, so a transfer cut short resumes from
-            // the byte it reached rather than failing the whole answer.
-            let raw =
-                Stream::new(request.clone(), url.clone(), answer, 0, None).read_from(0, limit)?;
-            BodyState::Held {
-                raw: Arc::from(raw),
-                decoded: None,
+            // Read through a stream over the window the answer covers - a
+            // `206` answering the caller's own range covers that range - so a
+            // transfer cut short resumes from the byte it reached.
+            let (start, last) = window_of(&answer);
+            let stream = Stream::new(request.clone(), url.clone(), answer, start, last);
+            if streaming {
+                BodyState::Streaming(Arc::new(stream))
+            } else {
+                BodyState::Held {
+                    raw: Arc::from(stream.read_from(0, limit)?),
+                    decoded: None,
+                }
             }
         };
         Ok(Self {
@@ -614,6 +611,15 @@ impl Response {
         Ok(())
     }
 
+    /// The body as the structured document pagination reads, when it is
+    /// one. A body no format reads - a binary answer, malformed text - is
+    /// `None`; failing to read the body at all - a cut transfer that could
+    /// not resume, the size bound - is the error it is, never "no next page".
+    pub(crate) fn document(&self) -> Result<Option<Scalar>> {
+        self.materialize()?;
+        Ok(self.scalar().ok())
+    }
+
     /// The body as sent, held: what a server writes back out for a handler's
     /// answer, coding and all.
     pub(crate) fn raw_bytes(&self) -> Result<Arc<[u8]>> {
@@ -666,6 +672,9 @@ impl IOBase for Response {
     /// ranged `GET` when the resource accepts ranges and refused by name
     /// otherwise.
     fn pread(&self, offset: u64, buffer: &mut [u8]) -> Result<usize> {
+        // A read waits out a whole read in flight and then answers from the
+        // bytes it held, rather than asking the drained stream to go back.
+        let _draining = self.materializing.lock().map_err(|_| poisoned())?;
         let stream = {
             let state = self.state()?;
             match &*state {

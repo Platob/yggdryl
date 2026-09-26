@@ -508,17 +508,31 @@ impl JsIOBase {
             .ok_or_else(|| napi_error("this handle is not bound to an Arrow filesystem"))
     }
 
-    /// What a server mounts for this handle: a second handle on the same
-    /// location, or - for an in-memory handle, which has none - a copy of
-    /// its bytes under its media type.
+    /// What a server mounts for this handle: the session or request itself,
+    /// a copy of a response's bytes or an in-memory handle's - which has no
+    /// location - under its media type, else a second handle on the same
+    /// location.
     pub(crate) fn mountable(&self) -> Result<Holder> {
-        if yggdryl::IOBase::kind(&self.inner) != yggdryl::IOKind::Memory {
-            return Ok(self.rebuilt()?.into_core());
+        // A session or a request is mounted as itself, its state and its role
+        // kept; a response and anything held in memory as a copy of its
+        // bytes, since asking its URL again would not be asking what it
+        // answered; anything else is rebuilt on its location.
+        match &self.inner {
+            Holder::HttpSession(session) => return Ok(Holder::HttpSession(session.clone())),
+            Holder::HttpRequest(request) => return Ok(Holder::HttpRequest(request.clone())),
+            Holder::HttpResponse(_) | Holder::HttpStream(_) => {}
+            inner if yggdryl::IOBase::kind(inner) != yggdryl::IOKind::Memory => {
+                return Ok(self.rebuilt()?.into_core());
+            }
+            _ => {}
         }
         let mut buffer = yggdryl::holder::Buffer::from_bytes(
             yggdryl::IOBase::read_all_bytes(&self.inner).map_err(napi_error)?,
         );
-        yggdryl::IOBase::set_media_type(&mut buffer, yggdryl::IOBase::media_type(&self.inner).clone());
+        yggdryl::IOBase::set_media_type(
+            &mut buffer,
+            yggdryl::IOBase::media_type(&self.inner).clone(),
+        );
         Ok(Holder::Buffer(buffer))
     }
 

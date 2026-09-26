@@ -11,9 +11,12 @@
 //! keep-alive; request bodies framed by `Content-Length` or chunked.
 //!
 //! Faults, routes and mounts are looked up under one lock that is released
-//! before any byte is served; a mounted leaf streams through
-//! [`IOBase::pstream_bytes`](crate::IOBase::pstream_bytes) and is never read
-//! whole.
+//! before any byte is served, and a leaf is never read whole: a child of a
+//! mount streams through
+//! [`IOBase::pstream_bytes`](crate::IOBase::pstream_bytes), and the holder
+//! mounted at the prefix itself through one
+//! [`IOBase::read_range_bytes`](crate::IOBase::read_range_bytes) per batch
+//! under the mount's lock, so no socket write holds it.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
@@ -61,9 +64,9 @@ pub(super) enum Source {
     /// a `Holder` is the crate's widest enum and every other variant is a
     /// pointer.
     Owned(Box<Holder>),
-    /// The mounted holder itself, read under the mount's own lock one
-    /// batch at a time.
-    Root(Arc<RwLock<Mounted>>),
+    /// The mounted holder itself at the version the answer described, read
+    /// under the mount's own lock one batch at a time.
+    Root(Arc<RwLock<Mounted>>, u64),
 }
 
 impl Answer {
@@ -187,11 +190,33 @@ impl Recorded {
     pub fn is_closed(&self) -> bool {
         self.status.code() == CLOSED_CODE
     }
+
+    /// The bytes of text this entry holds, as
+    /// [`Server::MAX_RECORDED_BYTES`] counts them.
+    fn size(&self) -> usize {
+        let pairs = |pairs: &mut dyn Iterator<Item = (&str, &str)>| {
+            pairs
+                .map(|(name, value)| name.len() + value.len())
+                .sum::<usize>()
+        };
+        self.target.len()
+            + self.path.len()
+            + pairs(
+                &mut self
+                    .query
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), value.as_str())),
+            )
+            + pairs(&mut self.headers.iter())
+    }
 }
 
 /// The status a request closed without an answer is recorded under: nginx's
 /// `499 Client Closed Request`, the one convention there is for it.
 const CLOSED_CODE: u16 = 499;
+
+/// How long the accept loop waits after the listener refuses a connection.
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(10);
 
 /// The methods a mount answers, as `Allow` lists them.
 const ALLOW: &str = "GET, HEAD, PUT, DELETE, OPTIONS";
@@ -248,7 +273,9 @@ impl ServerOptions {
     /// How long a connection waits for the next byte of a request, and
     /// the longest one request head may take to arrive whole, before it is
     /// closed (30 seconds): a peer trickling a head a byte at a time holds
-    /// its connection no longer than one that sends nothing.
+    /// its connection no longer than one that sends nothing. A tunnel quiet
+    /// both ways this long is closed. Zero is refused by
+    /// [`Server::bind_with`].
     pub fn read_timeout(&self) -> Duration {
         self.read_timeout
     }
@@ -260,7 +287,8 @@ impl ServerOptions {
     }
 
     /// How long writing an answer waits for the peer to take more bytes
-    /// before the connection is closed (30 seconds).
+    /// before the connection is closed (30 seconds). Zero is refused by
+    /// [`Server::bind_with`].
     pub fn write_timeout(&self) -> Duration {
         self.write_timeout
     }
@@ -382,6 +410,10 @@ impl ServerOptions {
 pub(super) struct Mounted {
     pub(super) holder: Holder,
     pub(super) declared: BTreeMap<String, MediaType>,
+    /// How many writes the mounted holder itself took: a body streamed from
+    /// it batch by batch stops where this moves, rather than splicing two
+    /// versions under the first one's length and validator.
+    pub(super) version: u64,
 }
 
 /// One mount: a normalized prefix and what is served under it.
@@ -406,6 +438,8 @@ struct State {
     routes: BTreeMap<(Option<Method>, String), Arc<Handler>>,
     faults: Vec<Injected>,
     recorded: VecDeque<Recorded>,
+    /// What the recorded heads hold, as [`Recorded::size`] counts it.
+    recorded_bytes: usize,
     recording: bool,
 }
 
@@ -558,10 +592,7 @@ impl Inner {
         if !state.recording {
             return;
         }
-        if state.recorded.len() == Server::MAX_RECORDED {
-            state.recorded.pop_front();
-        }
-        state.recorded.push_back(Recorded {
+        let recorded = Recorded {
             method: incoming.head.method,
             target: incoming.head.target.clone(),
             path: path.to_owned(),
@@ -569,7 +600,18 @@ impl Inner {
             headers: incoming.head.headers.clone(),
             body_len: incoming.body.len() as u64,
             status,
-        });
+        };
+        let size = recorded.size();
+        while state.recorded.len() == Server::MAX_RECORDED
+            || (!state.recorded.is_empty()
+                && state.recorded_bytes + size > Server::MAX_RECORDED_BYTES)
+        {
+            if let Some(dropped) = state.recorded.pop_front() {
+                state.recorded_bytes -= dropped.size();
+            }
+        }
+        state.recorded_bytes += size;
+        state.recorded.push_back(recorded);
     }
 }
 
@@ -671,6 +713,11 @@ impl Server {
     /// dropped first: a server left recording under load holds a bounded
     /// log rather than every request it ever answered.
     pub const MAX_RECORDED: usize = 65_536;
+    /// The most bytes of heads - targets, paths, query pairs and fields -
+    /// the log keeps, the oldest request dropped first: 64 MiB, so heads of
+    /// the largest size the options admit cannot fill the count's bound
+    /// with gibibytes.
+    pub const MAX_RECORDED_BYTES: usize = 64 << 20;
 
     /// Bind `address` (`127.0.0.1:0` for any loopback port) with the default
     /// options and start accepting.
@@ -686,9 +733,24 @@ impl Server {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::Io`] when the listener cannot be bound, or a parse
-    /// error when the bound address is not a URL host.
+    /// Returns [`Error::Parse`] when a read or write timeout is zero,
+    /// [`Error::Io`] when the listener cannot be bound, or a parse error
+    /// when the bound address is not a URL host.
     pub fn bind_with(address: &str, options: ServerOptions) -> Result<Self> {
+        for (name, timeout) in [
+            ("read_timeout", options.read_timeout),
+            ("write_timeout", options.write_timeout),
+        ] {
+            if timeout.is_zero() {
+                return Err(Error::Parse {
+                    target: "http server option",
+                    position: 0,
+                    reason: format_smolstr!(
+                        "{name}: expected a positive duration, got zero, which no read or write meets"
+                    ),
+                });
+            }
+        }
         let listener = TcpListener::bind(address)?;
         let address = listener.local_addr()?;
         let url = Url::from_str(&format!("http://{address}/"))?;
@@ -712,6 +774,9 @@ impl Server {
                     break;
                 }
                 let Ok(stream) = connection else {
+                    // Out of descriptors, most likely: waiting a moment for
+                    // connections to close beats spinning on the refusal.
+                    std::thread::sleep(ACCEPT_BACKOFF);
                     continue;
                 };
                 shared.connections.fetch_add(1, Ordering::Relaxed);
@@ -725,10 +790,17 @@ impl Server {
                     .is_ok();
                 if admitted {
                     let inner = Arc::clone(&shared);
-                    std::thread::spawn(move || {
-                        let _live = Live(&inner.live);
-                        connection::serve(&inner, stream);
-                    });
+                    let spawned = std::thread::Builder::new()
+                        .name("yggdryl-http-connection".to_owned())
+                        .spawn(move || {
+                            let _live = Live(&inner.live);
+                            connection::serve(&inner, stream);
+                        });
+                    // No thread to serve on: the stream closed with the
+                    // closure, and its slot is given back.
+                    if spawned.is_err() {
+                        shared.live.fetch_sub(1, Ordering::AcqRel);
+                    }
                 }
             }
         });
@@ -785,6 +857,7 @@ impl Server {
             shared: Arc::new(RwLock::new(Mounted {
                 holder,
                 declared: BTreeMap::new(),
+                version: 0,
             })),
         });
         state
@@ -896,6 +969,7 @@ impl Server {
     pub fn clear_requests(&self) {
         let mut state = self.inner.state();
         state.recorded.clear();
+        state.recorded_bytes = 0;
         self.inner.count.store(0, Ordering::Relaxed);
     }
 
@@ -924,9 +998,18 @@ impl Server {
     fn stop(&mut self) -> std::thread::Result<()> {
         self.inner.stopping.store(true, Ordering::SeqCst);
         // The accept loop reads the flag after a connection arrives, so one
-        // is made; the timeout bounds the wait when the listener is gone.
+        // is made - to the loopback address of the bound family when the
+        // bind was to every address, which not every platform dials; the
+        // timeout bounds the wait when the listener is gone.
+        let mut wake = self.inner.address;
+        if wake.ip().is_unspecified() {
+            wake.set_ip(match wake {
+                SocketAddr::V4(_) => std::net::Ipv4Addr::LOCALHOST.into(),
+                SocketAddr::V6(_) => std::net::Ipv6Addr::LOCALHOST.into(),
+            });
+        }
         drop(TcpStream::connect_timeout(
-            &self.inner.address,
+            &wake,
             Duration::from_millis(100),
         ));
         match self.accept.take() {

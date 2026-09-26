@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use yggdryl::internals::http_retry::{
     RETRY_BACKOFF, RETRY_BACKOFF_CAP, RETRY_COST, RETRY_REFUND, RETRY_TOKENS, RetryBudget, backoff,
-    delay, fresh_jitter, is_resumable, is_retryable_transport, retry_after,
+    delay, fresh_jitter, is_resumable, is_retryable_transport, is_unsent, retry_after,
 };
 
 #[test]
@@ -135,6 +135,28 @@ fn a_transport_failure_is_retried_and_a_malformed_request_is_not() {
         ureq::Error::Tls("refused"),
     ] {
         assert!(!is_retryable_transport(&verdict), "{verdict:?}");
+    }
+}
+
+#[test]
+fn a_request_is_unsent_only_when_no_connection_took_it() {
+    for unsent in [
+        ureq::Error::HostNotFound,
+        ureq::Error::ConnectionFailed,
+        ureq::Error::Timeout(ureq::Timeout::Resolve),
+        ureq::Error::Timeout(ureq::Timeout::Connect),
+        ureq::Error::Io(std::io::ErrorKind::ConnectionRefused.into()),
+    ] {
+        assert!(is_unsent(&unsent), "{unsent:?}");
+    }
+    for sent in [
+        ureq::Error::Timeout(ureq::Timeout::SendRequest),
+        ureq::Error::Timeout(ureq::Timeout::RecvResponse),
+        ureq::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+        ureq::Error::Io(std::io::ErrorKind::BrokenPipe.into()),
+        ureq::Error::StatusCode(503),
+    ] {
+        assert!(!is_unsent(&sent), "{sent:?}");
     }
 }
 

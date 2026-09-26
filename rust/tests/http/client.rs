@@ -45,6 +45,34 @@ fn a_proxy_that_is_not_a_url_is_refused_naming_the_option() {
 }
 
 #[test]
+fn a_socks_proxy_is_refused_rather_than_bypassed() {
+    for proxy in ["socks5://127.0.0.1:1080", "socks5h://h:1", "socks4://h:1"] {
+        let error =
+            Client::with_options(&HttpOptions::default().with_proxy(proxy)).expect_err("a refusal");
+        assert!(error.is_unsupported(), "{proxy}: {error:?}");
+        assert!(error.to_string().contains("SOCKS"), "{error}");
+    }
+}
+
+#[test]
+fn a_post_no_connection_took_is_retried() {
+    // Bind and drop a listener: its port now refuses every connection.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .expect("a free port")
+        .port();
+    let session =
+        Session::with_options(HttpOptions::default().with_max_attempts(3)).expect("a session");
+    let request = session
+        .post(&format!("http://127.0.0.1:{port}/items"), b"{}".to_vec())
+        .expect("a URL");
+    request.send().expect_err("nothing listens");
+    let stats = session.stats();
+    assert_eq!(stats.requests, 3, "a refused connection sent nothing");
+    assert_eq!(stats.retries, 2);
+}
+
+#[test]
 fn a_ca_bundle_that_cannot_be_read_is_refused() {
     let error = Client::with_options(
         &HttpOptions::default().with_ca_bundle("/nonexistent/yggdryl-bundle.pem"),

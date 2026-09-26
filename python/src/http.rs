@@ -1286,8 +1286,8 @@ impl PyResponse {
     }
 
     /// The decoded body in chunks of `chunk_size` bytes - the session's
-    /// `stream_batch_size` unless given - read off the wire as they arrive
-    /// when the request streamed.
+    /// `stream_batch_size` unless given, at most 64 MiB - read off the wire
+    /// as they arrive when the request streamed and the body is uncoded.
     #[pyo3(signature = (chunk_size = None))]
     fn iter_content(
         slf: &Bound<'_, Self>,
@@ -1346,7 +1346,7 @@ impl Chunks {
                      stream_batch_size",
                 ));
             }
-            Some(size) => size,
+            Some(size) => size.min(MAX_CHUNK_SIZE),
             None => PyResponse::read(slf, |response| {
                 response.request().session().options().stream_batch_size()
             })?,
@@ -1370,7 +1370,7 @@ impl Chunks {
         }
         let handle = self.response.bind(py).borrow();
         let response = response_of(handle.as_super())?;
-        if response.kind() != IOKind::File {
+        if !reads_off_the_wire(response) {
             drop(handle);
             return Ok(self.pull(py)?.map(|chunk| PyBytes::new(py, &chunk)));
         }
@@ -1401,7 +1401,7 @@ impl Chunks {
         }
         let handle = self.response.bind(py).borrow();
         let response = response_of(handle.as_super())?;
-        let chunk = if response.kind() == IOKind::File {
+        let chunk = if reads_off_the_wire(response) {
             // A whole chunk, as `requests` yields one: reads repeat until it
             // is full or the body ends, since one read answers what the
             // transport holds at that moment.
@@ -1433,6 +1433,29 @@ impl Chunks {
         self.position += chunk.len() as u64;
         Ok(Some(chunk))
     }
+}
+
+/// A copy of `holder`'s bytes under its media type, for a server to mount.
+fn copied(holder: &Holder) -> PyResult<Holder> {
+    let mut buffer = Buffer::from_bytes(holder.read_all_bytes().map_err(storage_error)?);
+    buffer.set_media_type(holder.media_type().clone());
+    Ok(Holder::Buffer(buffer))
+}
+
+/// The most one chunk of `iter_content` or `iter_lines` holds, whatever
+/// `chunk_size` asks: a chunk is allocated whole before it is filled.
+const MAX_CHUNK_SIZE: usize = 64 << 20;
+
+/// Whether a body's chunks are read straight off the wire: a streaming body
+/// carrying no content coding. A coded one - a server that coded what was
+/// asked for as `identity` - is decoded whole first, so a chunk is always
+/// the body's own bytes, as `requests` yields them.
+fn reads_off_the_wire(response: &Response) -> bool {
+    response.kind() == IOKind::File
+        && response
+            .headers()
+            .content_encoding()
+            .is_ok_and(|codings| codings.iter().all(|coding| coding.is_identity()))
 }
 
 /// Fill `buffer` from `response` at `position`: reads repeat until it is full
@@ -1516,6 +1539,22 @@ pub(crate) struct PyResponses {
     failure: Arc<Mutex<Option<PyErr>>>,
 }
 
+impl Drop for PyResponses {
+    fn drop(&mut self) {
+        // Dropping the walk joins its workers, each finishing the request it
+        // holds; a worker logging through the interpreter needs it, and every
+        // other thread should not wait on the network, so they are joined
+        // with the interpreter released.
+        let answers = std::mem::replace(
+            self.answers
+                .get_mut()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            Box::new(std::iter::empty()),
+        );
+        Python::attach(|py| py.detach(move || drop(answers)));
+    }
+}
+
 #[pymethods]
 impl PyResponses {
     #[classattr]
@@ -1593,7 +1632,9 @@ impl PyStream {
             .detach(|| -> yggdryl::Result<Vec<u8>> {
                 let position = stream.delivered();
                 if let Ok(size) = usize::try_from(size) {
-                    let mut buffer = vec![0_u8; size];
+                    // One read answers what the transport holds, so a room
+                    // larger than a batch would only be zeroed and not filled.
+                    let mut buffer = vec![0_u8; size.min(yggdryl::DEFAULT_STREAM_BATCH_SIZE)];
                     let read = stream.pread(position, &mut buffer)?;
                     buffer.truncate(read);
                     return Ok(buffer);
@@ -1802,8 +1843,11 @@ impl PyHeaders {
             .ok_or_else(|| PyKeyError::new_err(name.to_owned()))
     }
 
-    fn __contains__(&self, name: &str) -> bool {
-        self.inner.contains_key(name)
+    /// Whether a field of `name` is present; anything but a string names
+    /// none, as a mapping answers for a key of another type.
+    fn __contains__(&self, name: &Bound<'_, PyAny>) -> bool {
+        name.extract::<String>()
+            .is_ok_and(|name| self.inner.contains_key(&name))
     }
 
     fn __len__(&self) -> usize {
@@ -2258,13 +2302,17 @@ impl PyServer {
             ))
         })?;
         let handle = handle.borrow();
-        let holder = if handle.inner()?.kind() == IOKind::Memory {
-            let mut buffer =
-                Buffer::from_bytes(handle.inner()?.read_all_bytes().map_err(storage_error)?);
-            buffer.set_media_type(handle.inner()?.media_type().clone());
-            Holder::Buffer(buffer)
-        } else {
-            handle.rebuilt()?
+        let inner = handle.inner()?;
+        // A session or a request is mounted as itself, its state and its
+        // role kept; a response and anything held in memory as a copy of its
+        // bytes, since asking its URL again would not be asking what it
+        // answered; anything else is rebuilt on its location.
+        let holder = match inner {
+            Holder::HttpSession(session) => Holder::HttpSession(session.clone()),
+            Holder::HttpRequest(request) => Holder::HttpRequest(request.clone()),
+            Holder::HttpResponse(_) | Holder::HttpStream(_) => copied(inner)?,
+            _ if inner.kind() == IOKind::Memory => copied(inner)?,
+            _ => handle.rebuilt()?,
         };
         self.with(|server| server.mount(prefix, holder))?
             .map_err(storage_error)

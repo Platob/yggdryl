@@ -66,7 +66,7 @@ fn resolve<T>(
     let declared = mounted.declared.get(rest);
     if rest.is_empty() {
         let answer = read(&mounted.holder, declared)?;
-        return Ok((answer, Source::Root(Arc::clone(shared))));
+        return Ok((answer, Source::Root(Arc::clone(shared), mounted.version)));
     }
     let child = mounted.holder.child_by_path(rest)?;
     let answer = read(&child, declared)?;
@@ -177,6 +177,7 @@ fn put(shared: &Arc<RwLock<Mounted>>, rest: &str, incoming: &Incoming) -> Result
     let mut mounted = shared.write().unwrap_or_else(PoisonError::into_inner);
     let mut child;
     let holder = if rest.is_empty() {
+        mounted.version += 1;
         &mut mounted.holder
     } else {
         child = mounted.holder.child_by_path(rest)?;
@@ -207,6 +208,7 @@ fn delete(shared: &Arc<RwLock<Mounted>>, rest: &str) -> Result<Answer> {
     let mut mounted = shared.write().unwrap_or_else(PoisonError::into_inner);
     let mut child;
     let holder = if rest.is_empty() {
+        mounted.version += 1;
         &mut mounted.holder
     } else {
         child = mounted.holder.child_by_path(rest)?;
@@ -220,13 +222,26 @@ fn delete(shared: &Arc<RwLock<Mounted>>, rest: &str) -> Result<Answer> {
     Ok(Answer::status(Status::NO_CONTENT))
 }
 
+/// `path` - decoded segments joined by `/` - as URL path text, each segment
+/// escaped, so a reference to a name holding a space, a `?` or a `%` reaches
+/// the resource it names.
+fn escaped(path: &str) -> String {
+    path.split('/')
+        .map(crate::uri::percent_encode_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// A container's direct children as a JSON array of
 /// `{"name", "url", "kind", "size", "media_type"}`.
 fn listing(holder: &Holder, prefix: &str, rest: &str, server_url: &Url) -> Result<Answer> {
     let base = if rest.is_empty() {
-        server_url.join_reference(prefix)?
+        server_url.join_reference(&escaped(prefix))?
     } else {
-        server_url.join_reference(&format!("{}/{rest}", prefix.trim_end_matches('/')))?
+        server_url.join_reference(&escaped(&format!(
+            "{}/{rest}",
+            prefix.trim_end_matches('/')
+        )))?
     };
     let mut entries = Vec::new();
     for child in holder.ls(false, false) {

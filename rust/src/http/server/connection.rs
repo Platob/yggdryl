@@ -9,11 +9,12 @@
 //! before the body is read. Every answer carries `Server` and `Date`.
 
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{PoisonError, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-use super::{Answer, AnswerBody, Incoming, Inner, Mounted, Outcome, Source};
+use super::{ALLOW, Answer, AnswerBody, Incoming, Inner, Mounted, Outcome, Source};
 use crate::http::headers::render_http_date;
 use crate::http::wire::{
     HttpVersion, RequestHead, ResponseHead, decode_chunked, encode_chunked, parse_request_head,
@@ -180,9 +181,14 @@ pub(super) fn serve(inner: &Inner, stream: TcpStream) {
     }
 }
 
-/// Answer a `CONNECT`: `405` unless the options tunnel, else `502` when the
-/// address cannot be reached, else `200` and the bytes piped both ways until
-/// either side closes - the connection is the tunnel's from then on.
+/// Answer a `CONNECT`: `405` unless the options tunnel, else `502` when no
+/// address the target resolves to can be reached, else `200` and the bytes
+/// piped both ways - the connection is the tunnel's from then on.
+///
+/// A side that closes half-closes the other, so each direction ends on its
+/// own; a tunnel quiet both ways for the read timeout, or failing either way,
+/// is closed whole, so neither direction outlives it and its connection slot
+/// is given back.
 fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
     let options = &inner.options;
     let incoming = Incoming {
@@ -192,18 +198,40 @@ fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
     let target = incoming.head.target.clone();
     if !options.tunnel {
         inner.record(&incoming, "", Vec::new(), Status::METHOD_NOT_ALLOWED);
-        refuse(
-            &mut reader.get_mut().stream,
+        // A 405 names the methods that are allowed (RFC 9110 15.5.6).
+        let answer = Answer::text(
             Status::METHOD_NOT_ALLOWED,
             "this server does not tunnel CONNECT",
+        )
+        .with_header("allow", ALLOW);
+        let _ = write_answer(
+            &mut reader.get_mut().stream,
+            false,
+            answer,
+            true,
+            None,
             options.server_header(),
         );
         return;
     }
+    // Every address the name resolves to, in turn, as a client dialing it
+    // would: a dual-stack name whose first family is unreachable still
+    // tunnels through its second.
     let upstream = std::net::ToSocketAddrs::to_socket_addrs(&target)
         .ok()
-        .and_then(|mut addresses| addresses.next())
-        .and_then(|address| TcpStream::connect_timeout(&address, options.read_timeout).ok());
+        .and_then(|mut addresses| {
+            addresses
+                .find_map(|address| TcpStream::connect_timeout(&address, options.read_timeout).ok())
+        })
+        .filter(|upstream| {
+            upstream.set_nodelay(true).is_ok()
+                && upstream
+                    .set_read_timeout(Some(options.read_timeout))
+                    .is_ok()
+                && upstream
+                    .set_write_timeout(Some(options.write_timeout))
+                    .is_ok()
+        });
     let Some(upstream) = upstream else {
         inner.record(&incoming, "", Vec::new(), Status::BAD_GATEWAY);
         refuse(
@@ -222,20 +250,89 @@ fn tunnel(inner: &Inner, mut reader: BufReader<Deadline>, head: RequestHead) {
     {
         return;
     }
-    let (Ok(mut upstream_reader), Ok(mut client_writer)) =
-        (upstream.try_clone(), client.try_clone())
+    let (Ok(upstream_reader), Ok(client_writer)) = (upstream.try_clone(), client.try_clone())
     else {
         return;
     };
-    let back = std::thread::spawn(move || {
-        let _ = io::copy(&mut upstream_reader, &mut client_writer);
-        let _ = client_writer.shutdown(std::net::Shutdown::Write);
-    });
+    let quiet = Quiet::new(options.read_timeout);
+    let back = {
+        let quiet = quiet.clone();
+        std::thread::Builder::new()
+            .name("yggdryl-http-tunnel".to_owned())
+            .spawn(move || pipe(upstream_reader, client_writer, &quiet))
+    };
+    let Ok(back) = back else {
+        let _ = upstream.shutdown(Shutdown::Both);
+        return;
+    };
     // The reader still holds what the client sent past the head.
-    let mut upstream_writer = upstream;
-    let _ = io::copy(&mut reader, &mut upstream_writer);
-    let _ = upstream_writer.shutdown(std::net::Shutdown::Write);
+    let upstream_writer = upstream;
+    pipe(reader, upstream_writer, &quiet);
     let _ = back.join();
+}
+
+/// When a tunnel last moved a byte either way, shared by its two directions
+/// so a direction waiting on a quiet peer knows whether the other is busy.
+#[derive(Clone)]
+struct Quiet {
+    since: Instant,
+    /// Milliseconds after `since` of the last byte either way.
+    last: std::sync::Arc<AtomicU64>,
+    idle: Duration,
+}
+
+impl Quiet {
+    fn new(idle: Duration) -> Self {
+        Self {
+            since: Instant::now(),
+            last: std::sync::Arc::new(AtomicU64::new(0)),
+            idle,
+        }
+    }
+
+    fn elapsed(&self) -> u64 {
+        u64::try_from(self.since.elapsed().as_millis()).unwrap_or(u64::MAX)
+    }
+
+    fn moved(&self) {
+        self.last.store(self.elapsed(), Ordering::Relaxed);
+    }
+
+    fn is_idle(&self) -> bool {
+        let quiet_for = self
+            .elapsed()
+            .saturating_sub(self.last.load(Ordering::Relaxed));
+        u128::from(quiet_for) >= self.idle.as_millis()
+    }
+}
+
+/// One direction of a tunnel: `from` copied into `to` until `from` closes,
+/// then `to` half-closed; a failure either way, or both ways quiet for the
+/// idle bound, closes `to` whole, which ends the other direction too.
+fn pipe(mut from: impl Read, mut to: TcpStream, quiet: &Quiet) {
+    let mut buffer = vec![0; DEFAULT_STREAM_BATCH_SIZE.min(64 * 1024)];
+    loop {
+        match from.read(&mut buffer) {
+            Ok(0) => {
+                let _ = to.shutdown(Shutdown::Write);
+                return;
+            }
+            Ok(read) => {
+                if to.write_all(&buffer[..read]).is_err() {
+                    break;
+                }
+                quiet.moved();
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) && !quiet.is_idle() => {}
+            Err(_) => break,
+        }
+    }
+    let _ = to.shutdown(Shutdown::Both);
 }
 
 /// The bytes of one request head up to and including the empty line, or
@@ -253,7 +350,9 @@ fn read_head(
     loop {
         let before = head.len();
         // One more byte than the bound tells a too-long head from an exact one.
-        let limit = (max_head_size + 1).saturating_sub(before + skipped);
+        let limit = max_head_size
+            .saturating_add(1)
+            .saturating_sub(before + skipped);
         let read = reader
             .by_ref()
             .take(limit as u64)
@@ -486,23 +585,29 @@ fn write_answer(
             let limit = cut.map_or(length, |at| at.min(length));
             match source {
                 Source::Owned(holder) => stream_leaf(stream, holder.as_ref(), start, limit)?,
-                Source::Root(shared) => stream_root(stream, &shared, start, limit)?,
+                Source::Root(shared, version) => {
+                    stream_root(stream, &shared, version, start, limit)?;
+                }
             }
         }
     }
     stream.flush()
 }
 
-/// Write `limit` bytes of the mounted holder itself from `start`, one
+/// Write `limit` bytes of the mounted holder itself from `start`, at the
+/// version `version` the answer's head described, one
 /// [`DEFAULT_STREAM_BATCH_SIZE`] range read per batch.
 ///
 /// The mount's lock is taken for each read and never across a socket write:
 /// a peer slow to take its answer then holds no `PUT` or `DELETE` on the
 /// mount behind it. The price is one ranged read per batch where a child
-/// streams from one.
+/// streams from one. A write between two batches ends the body there, as a
+/// severed transfer the peer resumes under `If-Range`, rather than finishing
+/// it with the new version's bytes.
 fn stream_root(
     stream: &mut TcpStream,
     shared: &RwLock<Mounted>,
+    version: u64,
     start: u64,
     limit: u64,
 ) -> io::Result<()> {
@@ -512,25 +617,43 @@ fn stream_root(
         let want = usize::try_from(remaining)
             .unwrap_or(usize::MAX)
             .min(DEFAULT_STREAM_BATCH_SIZE);
-        let batch = shared
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .holder
-            .read_range_bytes(position, want)
-            .map_err(io::Error::other)?;
+        let batch = {
+            let mounted = shared.read().unwrap_or_else(PoisonError::into_inner);
+            if mounted.version != version {
+                return Err(short_body(remaining));
+            }
+            mounted
+                .holder
+                .read_range_bytes(position, want)
+                .map_err(io::Error::other)?
+        };
         if batch.is_empty() {
-            break;
+            return Err(short_body(remaining));
         }
-        stream.write_all(&batch)?;
-        position += batch.len() as u64;
-        remaining -= batch.len() as u64;
+        let take = usize::try_from(remaining)
+            .unwrap_or(usize::MAX)
+            .min(batch.len());
+        stream.write_all(&batch[..take])?;
+        position += take as u64;
+        remaining -= take as u64;
     }
     Ok(())
 }
 
+/// The failure of a body that ends `remaining` bytes short of the length
+/// its head stated: the connection closes on it, so the peer reads a
+/// severed transfer rather than taking the next answer's bytes as the rest.
+fn short_body(remaining: u64) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::UnexpectedEof,
+        format!("the body ended {remaining} bytes short of its stated length"),
+    )
+}
+
 /// Write `limit` bytes of `holder` from `start`, streamed in
 /// [`DEFAULT_STREAM_BATCH_SIZE`] batches; a leaf shorter than its stated
-/// length ends the body short, which the peer reads as a severed transfer.
+/// length ends the body short and closes the connection, which the peer
+/// reads as a severed transfer.
 fn stream_leaf(
     stream: &mut TcpStream,
     holder: &dyn IOBase,
@@ -552,8 +675,8 @@ fn stream_leaf(
         stream.write_all(&batch[..take])?;
         remaining -= take as u64;
         if remaining == 0 {
-            break;
+            return Ok(());
         }
     }
-    Ok(())
+    Err(short_body(remaining))
 }

@@ -262,14 +262,16 @@ impl Session {
     }
 
     /// Send every request of `requests` on up to `concurrency` threads -
-    /// the options' `concurrency` when `None`, `0` read as one - answering
-    /// in the order they were given, every answer's cookies stored in this
-    /// session's jar.
+    /// the options' `concurrency` when `None`, `0` read as one, at most
+    /// [`HttpOptions::MAX_CONCURRENCY`] - answering in the order they were
+    /// given, every answer's cookies stored in this session's jar.
     ///
     /// The walk is a stream: `requests` is pulled only as far as the
     /// workers can take - `concurrency` requests in flight - and each answer
     /// is handed over as soon as the ones before it were, so a million
-    /// requests hold a handful in memory. The iterator owns what it needs,
+    /// requests hold a handful in memory. The pull runs that far ahead of
+    /// the answer handed over, so a source that waits for an answer before
+    /// it yields its next request is walked on one thread. The iterator owns what it needs,
     /// the session included, and can be moved to another thread or held.
     /// A failure is one item; the walk goes on with the next request. One
     /// thread is the sequential map and spawns nothing.
@@ -285,7 +287,10 @@ impl Session {
         let session = self.clone();
         crate::parallel::ordered(
             requests,
-            concurrency.map_or(self.inner.options.concurrency(), |threads| threads.max(1)),
+            concurrency.map_or(
+                self.inner.options.concurrency(),
+                super::options::bounded_concurrency,
+            ),
             SEND_ALL_CHUNK,
             move |request: Request| session.send(&request),
         )
@@ -383,7 +388,15 @@ impl Session {
             .authorization()
             .or(self.inner.options.authorization())
             .cloned()
-            .or_else(|| Authorization::from_url(url))
+            // A hop inside the request's origin keeps the credential its
+            // URL stated, as `requests` keeps it, whatever the hop spells.
+            .or_else(|| {
+                Authorization::from_url(url).or_else(|| {
+                    same_origin(request.url(), url)
+                        .then(|| Authorization::from_url(request.url()))
+                        .flatten()
+                })
+            })
             .or_else(|| self.environment_authorization(url));
         if let Some(authorization) = authorization {
             if request.authorization().is_some()

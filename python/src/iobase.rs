@@ -1762,9 +1762,10 @@ impl PyIOBase {
     ///
     /// Filesystem-backed writes use the bound filesystem's stream capability;
     /// the Python binding does not retain or assemble the object in memory.
-    fn pwrite(&mut self, offset: u64, data: &[u8]) -> PyResult<usize> {
-        self.inner_mut()?
-            .pwrite(offset, data)
+    fn pwrite(&mut self, py: Python<'_>, offset: u64, data: &[u8]) -> PyResult<usize> {
+        // A remote backend may publish here: the interpreter is released.
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.pwrite(offset, data))
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -1999,9 +2000,9 @@ impl PyIOBase {
     }
 
     /// Flush anything buffered, as `IOBase.flush`.
-    fn flush(&mut self) -> PyResult<()> {
-        self.inner_mut()?
-            .flush()
+    fn flush(&mut self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.flush())
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -2146,9 +2147,10 @@ impl PyIOBase {
     /// The handle stays usable afterwards; a later operation re-materializes.
     /// This is what publishes a written file at its exact length, which is why
     /// a `with` block is how a file meant for another reader is written.
-    fn close(&mut self) -> PyResult<()> {
-        self.inner_mut()?
-            .close()
+    fn close(&mut self, py: Python<'_>) -> PyResult<()> {
+        // Publishing may be a network round trip: the interpreter is released.
+        let inner = self.inner_mut()?;
+        py.detach(|| inner.close())
             .map_err(crate::holder::fs::storage_error)
     }
 
@@ -2169,12 +2171,13 @@ impl PyIOBase {
     #[pyo3(signature = (exception_type = None, exception = None, traceback = None))]
     fn __exit__(
         &mut self,
+        py: Python<'_>,
         exception_type: Option<&Bound<'_, PyAny>>,
         exception: Option<&Bound<'_, PyAny>>,
         traceback: Option<&Bound<'_, PyAny>>,
     ) -> PyResult<bool> {
         let _ = (exception_type, exception, traceback);
-        self.close()?;
+        self.close(py)?;
         Ok(false)
     }
 

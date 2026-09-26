@@ -80,8 +80,11 @@ impl HttpOptions {
     pub const DEFAULT_ACCEPT_ENCODINGS: [Codec; 3] = [Codec::Gzip, Codec::Deflate, Codec::Zstd];
     /// The most a whole-body read holds: 256 MiB.
     pub const DEFAULT_MAX_BODY_SIZE: u64 = 256 * 1024 * 1024;
-    /// The most threads that send requests side by side: eight.
+    /// The most threads that send requests side by side by default: eight.
     pub const MAX_DEFAULT_CONCURRENCY: usize = 8;
+    /// The most threads any walk sends on: 256, one per connection the pool
+    /// keeps idle, so every thread finds its connection again.
+    pub const MAX_CONCURRENCY: usize = 256;
     /// The longest a `Retry-After` or a rate limit is waited for: thirty
     /// seconds.
     pub const DEFAULT_MAX_PAUSE: Duration = Duration::from_secs(30);
@@ -320,7 +323,10 @@ impl HttpOptions {
         self
     }
 
-    /// The proxy URL every request goes through.
+    /// The proxy URL every request goes through: `http://` or `https://`,
+    /// with credentials as `user:password@host`. A SOCKS proxy is refused
+    /// when the client is built - the transport does not speak it, and
+    /// going direct past it would leave the network it names.
     #[must_use]
     pub fn with_proxy(mut self, proxy: impl Into<String>) -> Self {
         self.proxy = Some(proxy.into());
@@ -367,10 +373,11 @@ impl HttpOptions {
         self
     }
 
-    /// How many requests go out side by side; zero is one.
+    /// How many requests go out side by side; zero is one, and more than
+    /// [`Self::MAX_CONCURRENCY`] is that many.
     #[must_use]
     pub const fn with_concurrency(mut self, concurrency: usize) -> Self {
-        self.concurrency = if concurrency == 0 { 1 } else { concurrency };
+        self.concurrency = bounded_concurrency(concurrency);
         self
     }
 
@@ -539,6 +546,17 @@ impl HttpOptions {
 impl Default for HttpOptions {
     fn default() -> Self {
         Self::defaults()
+    }
+}
+
+/// `concurrency` within `1..=`[`HttpOptions::MAX_CONCURRENCY`].
+pub(crate) const fn bounded_concurrency(concurrency: usize) -> usize {
+    if concurrency == 0 {
+        1
+    } else if concurrency > HttpOptions::MAX_CONCURRENCY {
+        HttpOptions::MAX_CONCURRENCY
+    } else {
+        concurrency
     }
 }
 

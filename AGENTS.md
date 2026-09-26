@@ -1030,23 +1030,25 @@ tests in `rust/tests/http/` assert exactly:
   `Last-Modified` for `mtime`. It never asks a second question to learn one.
 - Resume, never splice: a cut body re-issues `Range: bytes=<delivered>-` with
   `If-Range` naming the first answer's strong `ETag` or `Last-Modified`, only
+  for a successful uncoded `GET` - nothing else is asked for twice - only
   when the first answer offered ranges, and only while consecutive failures
   stay under `max_attempts` and `Stream::MAX_RESUMES` re-opens in all; a
   resumed `206` must state in `Content-Range` that it starts at the cursor;
   a resource whose validator moved is `Error::Conflict`. Every whole-body
-  read goes through that stream, so `send` resumes as `stream` does, and a
-  `Response` or `Stream` stands alone - request and session carried - so
-  `close` lets go of the transfer and keeps the cursor, and the next read
-  re-opens there.
+  read goes through that stream, under the same rules, and a `Response` or
+  `Stream` stands alone - request and session carried - so `close` lets go
+  of the transfer and keeps the cursor, and the next read re-opens there or
+  is refused by name.
 - Retry only what cannot do harm twice: a retryable status only for an
   idempotent method, a transport failure for an idempotent method or a
-  connection that never opened; `Retry-After` (delta or HTTP-date) waited up
+  request no connection took (`retry::is_unsent`); `Retry-After` (delta or HTTP-date) waited up
   to `max_pause` and never past it; one token budget per client. A redirect to
   another origin carries no credential the caller stated.
 - The proxy is chosen per request: a named `proxy` wins; else, reading the
   environment, `no_proxy`, then the scheme's `http_proxy`/`https_proxy`,
-  then `all_proxy`, lower case first - read at send time so a changed
-  environment is followed, the parse memoized by value (`http/proxy.rs`); a
+  then `all_proxy`, lower case first, upper-case `HTTP_PROXY` unread under
+  CGI - read at send time so a changed environment is followed, the parse
+  memoized by value (`http/proxy.rs`), a SOCKS proxy refused by name; a
   request naming no credential takes its host's `.netrc` entry, the file
   parsed once per version (`http/netrc.rs`).
 - `Session::send_all` is a stream: the source is pulled only as far as the
@@ -1062,8 +1064,9 @@ tests in `rust/tests/http/` assert exactly:
   `Holder::from_url` routes `http`/`https` through it; a name it does not know
   is ignored and a value it cannot read is refused naming the property.
 - `Server` is the crate's own answer to its own client: every client feature
-  is tested against it, a mounted holder streams through `pstream_bytes` and is
-  never read whole, and faults are injected per path rather than faked by a
+  is tested against it, a mounted leaf is never read whole - a child streams
+  through `pstream_bytes`, the holder at the prefix one `read_range_bytes` per
+  batch under its lock, ending the body where a write moves it - and faults are injected per path rather than faked by a
   second implementation. It stays bounded against peers it does not trust -
   `max_connections`, a head deadline, a write timeout, a capped request log,
   `TCP_NODELAY` - and `with_tunnel` makes it the forward proxy the client's
@@ -1682,7 +1685,7 @@ python scripts/check_charset_interop.py             # every code page against Py
 
 ```bash
 cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
-npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>
+npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|http|media|text|types>
 python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
 YGGDRYL_S3TABLES_ARN=<table bucket ARN> python python/benchmarks/media/s3tables.py  # a real table bucket and pyiceberg; SKIPPED otherwise
 ```

@@ -66,6 +66,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/arrow.py --iterations 10000
     python/.venv/bin/python python/benchmarks/holder.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/holder/io.py --iterations 10000
+    python/.venv/bin/python python/benchmarks/http_session.py
     python/.venv/bin/python python/benchmarks/coding.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/media.py --min-time 0.2 --repeat 7
     python/.venv/bin/python python/benchmarks/media/text.py --min-time 0.05 --repeat 3
@@ -90,6 +91,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:types:defaults
     npm run --prefix node bench:holder
     npm run --prefix node bench:holder:io
+    npm run --prefix node bench:http
     npm run --prefix node bench:coding
     npm run --prefix node bench:media
     npm run --prefix node bench:media:text

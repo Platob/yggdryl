@@ -766,25 +766,8 @@ impl Request {
         let (mut answer, url) = probe.exchange_range(start, last, None)?;
         match answer.status.code() {
             206 => {
-                // A range starting anywhere but where it was asked for, or
-                // stating nowhere, would hand over bytes at the wrong place.
-                let range = answer.headers.content_range()?;
-                match range {
-                    Some(ContentRange::Bytes { start: stated, .. }) if stated == start => {}
-                    _ => {
-                        return Err(Error::Io(std::io::Error::new(
-                            std::io::ErrorKind::InvalidData,
-                            format!(
-                                "asked {url} for bytes from {start}, got a 206 stating {}",
-                                range.map_or_else(
-                                    || "no Content-Range".to_owned(),
-                                    |range| range.to_string()
-                                )
-                            ),
-                        )));
-                    }
-                }
-                self.learn(&answer.headers, range.and_then(|range| range.total()));
+                let range = starting_at(&answer, &url, start)?;
+                self.learn(&answer.headers, range.total());
                 Ok(Some(answer.body))
             }
             200 => {
@@ -992,10 +975,7 @@ impl IOBase for Request {
         match answer.status.code() {
             200 | 206 => {
                 let total = match answer.status.code() {
-                    206 => answer
-                        .headers
-                        .content_range()?
-                        .and_then(|range| range.total()),
+                    206 => starting_at(&answer, &url, position)?.total(),
                     _ => answer.headers.content_length()?,
                 };
                 self.learn(&answer.headers, total);
@@ -1520,6 +1500,23 @@ fn read_full(body: &mut dyn Read, buffer: &mut [u8]) -> Result<usize> {
         filled += read;
     }
     Ok(filled)
+}
+
+/// The `Content-Range` of a `206` asked for bytes from `start`, refused
+/// unless it states that it starts there: a range starting anywhere else,
+/// or stating nowhere, would hand over bytes at the wrong place.
+fn starting_at(answer: &Answer, url: &Url, start: u64) -> Result<ContentRange> {
+    let range = answer.headers.content_range()?;
+    match range {
+        Some(range @ ContentRange::Bytes { start: stated, .. }) if stated == start => Ok(range),
+        _ => Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "asked {url} for bytes from {start}, got a 206 stating {}",
+                range.map_or_else(|| "no Content-Range".to_owned(), |range| range.to_string())
+            ),
+        ))),
+    }
 }
 
 /// The refusal a status past the redirects is, named by the method, the

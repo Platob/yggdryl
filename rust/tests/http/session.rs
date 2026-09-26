@@ -255,6 +255,36 @@ fn a_credential_in_the_url_is_sent_as_basic() {
 }
 
 #[test]
+fn the_urls_credential_follows_a_redirect_inside_its_origin_alone() {
+    let server = HttpServer::start();
+    server.put_resource("/there", b"there", Some("text/plain"));
+    let port = server.port();
+    // An absolute `Location` spelling no user info, to the same origin.
+    server.redirect("/near", 302, &format!("http://127.0.0.1:{port}/there"));
+    server.redirect("/far", 302, &format!("http://localhost:{port}/there"));
+    let expected = basic_credential("user", "pass");
+
+    let near = format!("http://user:pass@127.0.0.1:{port}/near");
+    Session::new().get(&near).unwrap().send().unwrap();
+    let requests = server.requests();
+    assert_eq!(requests[1].path, "/there");
+    assert_eq!(
+        header(&requests[1], "authorization"),
+        Some(expected.as_str())
+    );
+
+    server.clear_requests();
+    let far = format!("http://user:pass@127.0.0.1:{port}/far");
+    Session::new().get(&far).unwrap().send().unwrap();
+    let requests = server.requests();
+    assert_eq!(
+        header(&requests[0], "authorization"),
+        Some(expected.as_str())
+    );
+    assert_eq!(header(&requests[1], "authorization"), None);
+}
+
+#[test]
 fn the_credential_is_not_carried_to_another_host() {
     let server = HttpServer::start();
     server.put_resource("/there", b"there", Some("text/plain"));
@@ -538,6 +568,49 @@ fn send_all_on_one_thread_is_the_sequential_map() {
         .collect();
 
     assert_eq!(statuses, [200, 500]);
+}
+
+#[test]
+fn send_all_holds_as_many_requests_in_flight_as_its_concurrency() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let server = yggdryl::http::Server::bind("127.0.0.1:0").expect("bind");
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most = Arc::new(AtomicUsize::new(0));
+    {
+        let (in_flight, most) = (Arc::clone(&in_flight), Arc::clone(&most));
+        server.route(None, "/slow", move |_| {
+            let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            most.fetch_max(now, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            in_flight.fetch_sub(1, Ordering::SeqCst);
+            Ok(yggdryl::http::Response::new(yggdryl::http::Status::OK))
+        });
+    }
+    let url = server.url().join_reference("/slow").unwrap().to_string();
+    let session = configured(HttpOptions::default().with_concurrency(8));
+    // Never more than asked for - the session's own eight would show - and,
+    // with four asked for, more than one: a walk that ignored it either way
+    // fails here.
+    for (concurrency, fewest) in [(1, 1), (4, 2)] {
+        most.store(0, Ordering::SeqCst);
+        let requests: Vec<_> = (0..12).map(|_| session.get(&url).unwrap()).collect();
+        let answered = session
+            .send_all(requests, Some(concurrency))
+            .filter(|answer| {
+                answer
+                    .as_ref()
+                    .is_ok_and(|answer| answer.status().code() == 200)
+            })
+            .count();
+        assert_eq!(answered, 12);
+        let most = most.load(Ordering::SeqCst);
+        assert!(
+            (fewest..=concurrency).contains(&most),
+            "concurrency {concurrency}: {most} in flight"
+        );
+    }
 }
 
 #[test]

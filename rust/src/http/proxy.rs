@@ -5,9 +5,12 @@
 //! read the environment goes direct. Otherwise a host `no_proxy` names goes
 //! direct; else `https_proxy` carries an `https` URL and `http_proxy` an
 //! `http` one, then `all_proxy` either - each variable read lower case first,
-//! then upper case, an empty one unset. The environment is read for every
-//! request, so a process that sets, changes or clears a proxy after its
-//! first request is followed at its next one.
+//! then upper case, an empty one unset. Under CGI - `REQUEST_METHOD` set -
+//! upper-case `HTTP_PROXY` is not read, because a server sets it from the
+//! `Proxy` header of the request it is answering (httpoxy, CVE-2016-5385);
+//! `requests` and curl leave it unread there too. The environment is read
+//! for every request, so a process that sets, changes or clears a proxy
+//! after its first request is followed at its next one.
 //!
 //! A `no_proxy` entry is a host, matched with every host under it (`.`, `*.`
 //! and bare spellings alike, on a label boundary, so `example.com` never
@@ -47,6 +50,8 @@ pub(crate) fn environment_proxy(
     }
     let named = if https {
         first(HTTPS_PROXY)
+    } else if variable("REQUEST_METHOD").is_some() {
+        variable(HTTP_PROXY[0])
     } else {
         first(HTTP_PROXY)
     };

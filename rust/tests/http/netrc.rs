@@ -49,7 +49,10 @@ fn any_other_host_takes_default_and_without_it_nothing() {
     assert_eq!(authorization(no_default, "v2.api.example.com"), None);
     assert_eq!(authorization("", "api.example.com"), None);
     // An entry naming neither a login nor a password is no credential.
-    assert_eq!(authorization("machine bare.example.com", "bare.example.com"), None);
+    assert_eq!(
+        authorization("machine bare.example.com", "bare.example.com"),
+        None
+    );
 }
 
 #[test]

@@ -6,8 +6,8 @@
 //! environment names - carry
 //! the `internals` cfg beside it and
 //! reach the crate through `yggdryl::internals`. `headers` declares the four
-//! helper suites under `http/headers/` itself, and `server` pins the three
-//! files under `http/server/` beside `server.rs`.
+//! helper suites under `http/headers/` itself, and `server` the two under
+//! `http/server/`.
 //!
 //! [`http_server`] is not a suite: it is the in-process HTTP/1.1 server every
 //! suite over a socket runs against, declared here once so they share one

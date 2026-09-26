@@ -5085,6 +5085,11 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
   const Pages = binding.Pages
   const Server = binding.Server
   const sendAllNext = takePrivate(binding.SendAllAnswers, '_nextNative')
+  const sendAllClose = takePrivate(binding.SendAllAnswers, '_closeNative')
+  // How many requests `sendAll` reads off its input at a time: the input is
+  // a JavaScript iterable, read on the event loop, so it is read a window at
+  // a time rather than whole, and an endless one is walked.
+  const SEND_ALL_WINDOW = 1024
 
   const pairsLabel =
     'a Headers, a Map, URLSearchParams, [name, value] pairs or a plain object'
@@ -5250,6 +5255,9 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
       if (url === undefined || url === null) {
         throw new TypeError('a request spec names its url')
       }
+      if (options.stream !== undefined) {
+        throw new TypeError('a sendAll spec cannot stream: every answer is read whole')
+      }
       return prepared(session, method, url, options)
     }
     return prepared(session, 'GET', request)
@@ -5275,11 +5283,37 @@ for (const name of ['gzip', 'zlib', 'zstd']) {
           throw new TypeError('concurrency must be a non-negative whole number')
         }
       }
-      const held = Array.from(requests, (request) => requestOf(this, request))
-      const walk = sendAllNative.call(this, held, concurrency ?? undefined)
+      if (typeof requests?.[Symbol.iterator] !== 'function') {
+        throw new TypeError('requests must be an iterable')
+      }
+      const session = this
+      const source = requests[Symbol.iterator]()
       return (function* answers() {
-        for (let answer; (answer = sendAllNext.call(walk)) !== null; ) {
-          yield typeof answer === 'string' ? new Error(answer) : answer
+        for (;;) {
+          // An item that is no request ends the walk where it stands: the
+          // answers before it are handed over, then it throws.
+          const held = []
+          let failure = null
+          for (let item; held.length < SEND_ALL_WINDOW && !(item = source.next()).done; ) {
+            try {
+              held.push(requestOf(session, item.value))
+            } catch (error) {
+              failure = error
+              break
+            }
+          }
+          if (held.length > 0) {
+            const walk = sendAllNative.call(session, held, concurrency ?? undefined)
+            try {
+              for (let answer; (answer = sendAllNext.call(walk)) !== null; ) {
+                yield typeof answer === 'string' ? new Error(answer) : answer
+              }
+            } finally {
+              sendAllClose.call(walk)
+            }
+          }
+          if (failure !== null) throw failure
+          if (held.length < SEND_ALL_WINDOW) return
         }
       })()
     },

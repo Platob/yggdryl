@@ -2129,6 +2129,7 @@ pub struct ZipPath
   pub const DEFAULT_ACCEPT_ENCODINGS: [Codec; 3]
   pub const DEFAULT_MAX_BODY_SIZE: u64
   pub const MAX_DEFAULT_CONCURRENCY: usize
+  pub const MAX_CONCURRENCY: usize
   pub const DEFAULT_MAX_PAUSE: Duration
   pub fn from_properties<I, K, V>(properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
   pub fn with_properties<I, K, V>(self, properties: I) -> Result<Self> where I: IntoIterator<Item = (K, V)>, K: AsRef<str>, V: AsRef<str>
@@ -2284,7 +2285,7 @@ pub struct ZipPath
   pub fn patch(&self, url: &str, body: impl Into<Body>) -> Result<Request>
   pub fn send(&self, request: &Request) -> Result<Response>
   pub fn stream(&self, request: &Request) -> Result<Response>
-  pub fn send_all<I>(&self, requests: I, concurrency: Option<usize>) -> impl Iterator<Item = Result<Response>> where I: IntoIterator<Item = Request>, I::IntoIter: Send + 'static
+  pub fn send_all<I>(&self, requests: I, concurrency: Option<usize>) -> impl Iterator<Item = Result<Response>> + Send + 'static where I: IntoIterator<Item = Request>, I::IntoIter: Send + 'static
   pub fn pages(&self, request: Request) -> Pages
   pub fn cookies(&self) -> Vec<Cookie>
   pub fn set_cookie(&self, cookie: Cookie)
@@ -2352,6 +2353,7 @@ pub struct ZipPath
   pub fn with_server_header(self, server_header: impl Into<String>) -> Self
   pub struct Server  (Debug; Drop shuts down)
   pub const MAX_RECORDED: usize = 65_536;
+  pub const MAX_RECORDED_BYTES: usize = 64 << 20;
   pub fn bind(address: &str) -> Result<Self>
   pub fn bind_with(address: &str, options: ServerOptions) -> Result<Self>
   pub fn address(&self) -> SocketAddr

@@ -686,7 +686,7 @@
   http.Session
     constructor: new Session(baseUrl?, { headers, auth, timeout, options }?) - options are HttpOptions properties by name
     instance: baseUrl, close, cookies, delete, get, head, headers, intoIOBase, options, pages, patch, post, put, request, sendAll, setCookie, stats, stream, timeout, toString
-    sendAll(requests, concurrency?) -> IterableIterator<Response | Error>: a walk in request order, each answer pulled when asked for; an item is a Request, a URL to GET, or a spec - the request options beside method and url
+    sendAll(requests, concurrency?) -> IterableIterator<Response | Error>: a walk in request order, each answer pulled when asked for; an item is a Request, a URL to GET, or a spec - the request options beside method and url but stream; read 1024 at a time, an endless iterable walked
   http.Request
     statics: fromBytes
     constructor: new Request(method, url)

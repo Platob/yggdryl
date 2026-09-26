@@ -206,7 +206,7 @@ impl Pages {
 
     /// Settle where the page after `page` is, and the pause before it.
     fn advance(&mut self, page: &Response, request: &Request) -> Result<()> {
-        let body = page.scalar().ok();
+        let body = page.document()?;
         let rows = match &body {
             Some(body) => {
                 let path = Pagination::records_path(body, self.records.as_ref());

@@ -142,6 +142,22 @@ pub(crate) fn is_retryable_transport(error: &ureq::Error) -> bool {
     )
 }
 
+/// Whether a transport failure left the request unsent: the name did not
+/// resolve, or no address it resolved to took the connection, in time or
+/// at all. Such a request is retried whatever its method, because no
+/// server saw it.
+pub(crate) fn is_unsent(error: &ureq::Error) -> bool {
+    match error {
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Timeout(timeout) => {
+            matches!(timeout, ureq::Timeout::Resolve | ureq::Timeout::Connect)
+        }
+        // The one refusal a socket reports only while connecting.
+        ureq::Error::Io(error) => error.kind() == std::io::ErrorKind::ConnectionRefused,
+        _ => false,
+    }
+}
+
 /// Whether a read failure is the transport's rather than the server's verdict.
 ///
 /// The generic kind is included deliberately: a client library reports a
@@ -208,6 +224,11 @@ pub mod internals {
     /// Whether a transport failure is retried.
     pub fn is_retryable_transport(error: &ureq::Error) -> bool {
         super::is_retryable_transport(error)
+    }
+
+    /// Whether a transport failure left the request unsent.
+    pub fn is_unsent(error: &ureq::Error) -> bool {
+        super::is_unsent(error)
     }
 
     /// Whether a body read failure re-opens the transfer.

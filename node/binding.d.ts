@@ -3758,13 +3758,16 @@ export type HttpAuthInput =
   | { readonly bearer: string }
   | { readonly header: string; readonly value: string }
 
-/** What one request carries beyond its method and URL. */
-/** One request of `Session.sendAll`: the request options, a `method` and a `url`. */
-export interface HttpRequestSpec extends HttpRequestOptions {
+/**
+ * One request of `Session.sendAll`: the request options but `stream`, a
+ * `method` and a `url`.
+ */
+export interface HttpRequestSpec extends Omit<HttpRequestOptions, 'stream'> {
   method?: string
   url: HttpUrlInput
 }
 
+/** What one request carries beyond its method and URL. */
 export interface HttpRequestOptions {
   /** Query pairs appended to the URL's own. */
   params?: HttpPairsInput | null
@@ -3831,7 +3834,10 @@ declare module './index' {
      * spec naming `url` beside the request options and `method` - on up to
      * `concurrency` threads, as a walk answering in the order given: each
      * answer is pulled when asked for while the requests after it are in
-     * flight, and a failure is an `Error` in its place.
+     * flight, and a failure is an `Error` in its place. `requests` is read
+     * 1024 at a time, so an endless iterable is walked; an item that is no
+     * request throws once the answers before it are out, and leaving the
+     * walk early lets its requests in flight finish off the event loop.
      */
     sendAll(
       requests: Iterable<Request | HttpUrlInput | HttpRequestSpec>,

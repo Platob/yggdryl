@@ -9,8 +9,11 @@
 //! `ETag` or a `Last-Modified`, an `If-Range` naming it, so a resource that
 //! changed under the transfer is refused rather than spliced. Only a
 //! transport failure resumes, only while consecutive failures stay under the
-//! client's attempt limit, and only when the first answer said
-//! `Accept-Ranges: bytes` or was itself a `206`; a byte arriving resets the
+//! client's attempt limit, and only a successful `GET` whose body carries
+//! no content coding - the one request that asks for the same bytes again
+//! without acting twice, and the one body whose byte offsets are the
+//! resource's - when the first answer said `Accept-Ranges: bytes` or was
+//! itself a `206`; a byte arriving resets the
 //! failure count, so a transfer that keeps moving survives interruption
 //! after interruption while one that cannot deliver a byte stops - up to
 //! [`Stream::MAX_RESUMES`] re-opens of one transfer, past which a server cutting
@@ -29,10 +32,12 @@
 //! A stream stands alone: it carries the request that opened it, and that
 //! request its session, so nothing else has to be held for it to go on.
 //! [`IOBase::close`] lets go of the live transfer and its connection while
-//! keeping the cursor; the next read - or [`IOBase::open`] - re-opens it at
-//! the cursor with one ranged `GET` naming the first answer's validator, so
-//! a stream parked for a while costs no connection and resumes exactly where
-//! it stopped, or is refused if the resource changed meanwhile.
+//! keeping the cursor; the next read - or [`IOBase::open`] - re-opens a
+//! successful uncoded `GET` at the cursor with one ranged `GET` naming the
+//! first answer's validator, so a stream parked for a while costs no
+//! connection and resumes exactly where it stopped, or is refused if the
+//! resource changed meanwhile. Any other body is refused by name once let
+//! go of, since asking for it again would send its request twice.
 
 use std::io::{self, Read};
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -40,9 +45,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::client::Answer;
 use super::retry::is_resumable;
-use super::{ContentRange, Headers, Request, Status};
+use super::{ContentRange, Headers, Method, Request, Status};
 use crate::holder::Holder;
-use crate::{ByteStream, Error, IOBase, IOKind, Listing, MediaType, Result, Uri, Url};
+use crate::{ByteStream, Codec, Error, IOBase, IOKind, Listing, MediaType, Result, Uri, Url};
 
 /// The scratch a skip or a discard reads into.
 const DISCARD_CHUNK: usize = 64 * 1024;
@@ -90,8 +95,12 @@ struct Inner {
     delivered: u64,
     /// Consecutive failures since the last byte arrived.
     failures: u32,
-    /// Transfers re-opened so far.
+    /// Transfers re-opened so far, for any reason: a cut, a close, a read
+    /// behind the cursor.
     resumes: u32,
+    /// Re-opens after a transport failure, which [`Stream::MAX_RESUMES`]
+    /// bounds.
+    recovered: u32,
 }
 
 /// Where the bytes come from.
@@ -120,8 +129,15 @@ struct Transfer {
     validator: Option<String>,
     /// Whether the resource accepts a range, so a failure may re-open one.
     resumable: bool,
-    /// Whether the live transfer was let go by a close; the next read
-    /// re-opens it at the cursor.
+    /// Whether the body may be asked for again at all: a `GET`'s, uncoded.
+    /// A re-open is a ranged `GET` of the same representation, which is not
+    /// what a `POST` answered, and whose offsets mean nothing in a coded one.
+    reopenable: bool,
+    /// The length of the whole resource the first answer stated, which a
+    /// whole re-answer must state too.
+    total: Option<u64>,
+    /// Whether the live transfer was let go - by a close, or by a failure
+    /// that gave up; the next read re-opens it at the cursor.
     closed: bool,
 }
 
@@ -135,7 +151,8 @@ impl Stream {
     ///
     /// A `200` answer to a request that asked for a range from `start`
     /// ignored the range: the stream skips `start` bytes and bounds itself to
-    /// `last`. A `206` is trusted to start where it was asked to.
+    /// `last`. A `206` starts where it was asked to - the caller proves that
+    /// against its `Content-Range` ([`window_of`]) before building one.
     pub(crate) fn new(
         request: Request,
         url: Url,
@@ -145,7 +162,14 @@ impl Stream {
     ) -> Self {
         let headers = answer.headers;
         let content_range = headers.content_range().ok().flatten();
-        let resumable = headers.accept_ranges() || answer.status == Status::PARTIAL_CONTENT;
+        let uncoded = headers
+            .content_encoding()
+            .is_ok_and(|codings| codings.iter().all(|coding| *coding == Codec::Identity));
+        // Only a success is asked for again: a refusal's body re-requested
+        // could come back as the resource itself and be spliced onto it.
+        let reopenable = request.method() == Method::Get && uncoded && answer.status.is_success();
+        let resumable =
+            reopenable && (headers.accept_ranges() || answer.status == Status::PARTIAL_CONTENT);
         let total = match content_range {
             Some(range) => range.total(),
             None => headers.content_length().ok().flatten(),
@@ -174,11 +198,14 @@ impl Stream {
                     expected,
                     validator,
                     resumable,
+                    reopenable,
+                    total,
                     closed: false,
                 })),
                 delivered: 0,
                 failures: 0,
                 resumes: 0,
+                recovered: 0,
             }),
             delivered: AtomicU64::new(0),
             resumes: AtomicU32::new(0),
@@ -198,6 +225,7 @@ impl Stream {
                 delivered: 0,
                 failures: 0,
                 resumes: 0,
+                recovered: 0,
             }),
             delivered: AtomicU64::new(0),
             resumes: AtomicU32::new(0),
@@ -221,7 +249,8 @@ impl Stream {
         self.total
     }
 
-    /// How many times the transfer was re-opened.
+    /// How many times the transfer was re-opened, for any reason: a cut
+    /// resumed, a close read past, a read behind the cursor.
     pub fn resumes(&self) -> u32 {
         self.resumes.load(Ordering::Acquire)
     }
@@ -294,11 +323,17 @@ impl Stream {
     pub(crate) fn reacquire(&self) -> Result<()> {
         let mut inner = self.inner()?;
         let delivered = inner.delivered;
-        if let Source::Wire(transfer) = &mut inner.source {
-            if transfer.closed {
-                reopen(transfer, delivered).map_err(io_into_error)?;
-            }
+        let Source::Wire(transfer) = &mut inner.source else {
+            return Ok(());
+        };
+        if !transfer.closed {
+            return Ok(());
         }
+        let reopened = reopen_closed(transfer, delivered).map_err(io_into_error)?;
+        if reopened {
+            inner.resumes += 1;
+        }
+        self.publish(&inner);
         Ok(())
     }
 
@@ -323,16 +358,20 @@ fn read_rest(
     url: Option<&Url>,
 ) -> Result<Vec<u8>> {
     seek(inner, position)?;
-    let mut bytes = vec![0_u8; reserve.clamp(DISCARD_CHUNK, RESERVE_CAP)];
+    // One byte past the bound is room enough to tell an oversized body from
+    // an exact one, and no buffer grows beyond it.
+    let ceiling = usize::try_from(limit.saturating_add(1)).unwrap_or(usize::MAX);
+    let mut bytes = vec![0_u8; reserve.clamp(DISCARD_CHUNK, RESERVE_CAP).min(ceiling)];
     let mut filled = 0;
     loop {
         if filled == bytes.len() {
             let grow = DISCARD_CHUNK.max(bytes.len() / 2);
-            bytes.resize(bytes.len() + grow, 0);
+            bytes.resize(bytes.len().saturating_add(grow).min(ceiling), 0);
         }
         let read = read_inner(inner, &mut bytes[filled..]).map_err(io_into_error)?;
         if read == 0 {
             bytes.truncate(filled);
+            bytes.shrink_to_fit();
             return Ok(bytes);
         }
         filled += read;
@@ -528,9 +567,8 @@ fn seek(inner: &mut Inner, position: u64) -> Result<()> {
                 .min(chunk.len());
             let read = read_inner(inner, &mut chunk[..want]).map_err(io_into_error)?;
             if read == 0 {
-                // Past the end: the position is beyond the body, and a read
-                // there is empty, so it is where the cursor now stands.
-                inner.delivered = position;
+                // Past the end: a read there is empty, and the cursor stays
+                // where the body ended, which is its length.
                 return Ok(());
             }
         }
@@ -573,11 +611,13 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
         }
         Source::Wire(transfer) => loop {
             if transfer.closed {
-                // Closed by the caller: re-opened here, at the cursor, which
-                // is no failure and spends none of the resume budget.
-                if !reopen(transfer, inner.delivered)? {
+                // Let go of - by a close, or by a failure that gave up - and
+                // re-opened here, at the cursor, which is no failure and
+                // spends none of the resume budget.
+                if !reopen_closed(transfer, inner.delivered)? {
                     return Ok(0);
                 }
+                inner.resumes += 1;
             }
             if let Some(last) = transfer.last {
                 let window = last.saturating_sub(transfer.start).saturating_add(1);
@@ -598,18 +638,26 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
                     if !transfer.resumable
                         || !is_resumable(&error)
                         || inner.failures.saturating_add(1) >= client.max_attempts()
-                        || inner.resumes >= Stream::MAX_RESUMES
+                        || inner.recovered >= Stream::MAX_RESUMES
                     {
+                        // The reader that failed answers nothing more; a later
+                        // read re-opens at the cursor rather than taking its
+                        // silence for the end of the body.
+                        transfer.give_up();
                         return Err(error);
                     }
                     inner.failures += 1;
                     client.pause(inner.failures, None);
                     match reopen(transfer, inner.delivered) {
-                        Ok(true) => inner.resumes += 1,
+                        Ok(true) => {
+                            inner.resumes += 1;
+                            inner.recovered += 1;
+                        }
                         // Everything asked for arrived; the failure was the
                         // end of the body announcing itself badly.
                         Ok(false) => return Ok(0),
                         Err(reopen_error) => {
+                            transfer.give_up();
                             // A refusal is the caller's to hear; a second
                             // transport failure leaves the first one to tell.
                             return Err(if carries_refusal(&reopen_error) {
@@ -625,6 +673,26 @@ fn read_inner(inner: &mut Inner, buffer: &mut [u8]) -> io::Result<usize> {
     }
 }
 
+impl Transfer {
+    /// Let go of a reader that failed, so the next read re-opens rather than
+    /// reading its silence as the end.
+    fn give_up(&mut self) {
+        self.reader = Box::new(io::empty());
+        self.closed = true;
+    }
+}
+
+/// Re-open a transfer let go of, when its body may be asked for again.
+fn reopen_closed(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
+    if !transfer.reopenable {
+        return Err(io::Error::other(Error::unsupported(
+            "re-opening a body that is not a GET's uncoded representation",
+            format!("{} {}", transfer.request.method(), transfer.url),
+        )));
+    }
+    reopen(transfer, delivered)
+}
+
 /// One read within the window, the skip before it taken first.
 fn read_window(transfer: &mut Transfer, delivered: u64, buffer: &mut [u8]) -> io::Result<usize> {
     while transfer.skip > 0 {
@@ -634,7 +702,12 @@ fn read_window(transfer: &mut Transfer, delivered: u64, buffer: &mut [u8]) -> io
             .min(chunk.len());
         let read = transfer.reader.read(&mut chunk[..want])?;
         if read == 0 {
-            return Ok(0);
+            // The whole re-answer ended before the cursor: whatever it is,
+            // it is not the body already delivered.
+            return Err(misplaced(format!(
+                "the re-opened answer of {} ended {} bytes before the delivered cursor",
+                transfer.url, transfer.skip
+            )));
         }
         transfer.skip -= read as u64;
     }
@@ -664,13 +737,27 @@ fn read_window(transfer: &mut Transfer, delivered: u64, buffer: &mut [u8]) -> io
     Ok(read)
 }
 
+/// The window an answer covers, for a stream built over it: a `206`'s
+/// `Content-Range`, which answers a range the caller asked for, else the
+/// whole body from its first byte.
+pub(crate) fn window_of(answer: &Answer) -> (u64, Option<u64>) {
+    if answer.status == Status::PARTIAL_CONTENT {
+        if let Ok(Some(ContentRange::Bytes { start, end, .. })) = answer.headers.content_range() {
+            return (start, Some(end));
+        }
+    }
+    (0, None)
+}
+
 /// How many bytes the window holds, when the answer states it: a `206`'s
 /// `Content-Range`, a `200`'s `Content-Length` past the skip, either
 /// bounded by `last`.
 fn window_length(headers: &Headers, status: Status, start: u64, last: Option<u64>) -> Option<u64> {
     let stated = if status == Status::PARTIAL_CONTENT {
         match headers.content_range().ok().flatten() {
-            Some(ContentRange::Bytes { start, end, .. }) => Some(end.saturating_sub(start) + 1),
+            Some(ContentRange::Bytes { start, end, .. }) => {
+                Some(end.saturating_sub(start).saturating_add(1))
+            }
             _ => None,
         }
     } else {
@@ -680,7 +767,7 @@ fn window_length(headers: &Headers, status: Status, start: u64, last: Option<u64
             .flatten()
             .map(|length| length.saturating_sub(start))
     };
-    let bound = last.map(|last| last.saturating_sub(start) + 1);
+    let bound = last.map(|last| last.saturating_sub(start).saturating_add(1));
     match (stated, bound) {
         (Some(stated), Some(bound)) => Some(stated.min(bound)),
         (stated, None) => stated,
@@ -732,18 +819,26 @@ fn reopen(transfer: &mut Transfer, delivered: u64) -> io::Result<bool> {
         Status::OK => {
             // A whole answer where a range named a validator is the resource
             // having changed when its validator moved (RFC 9110 answers the
-            // whole representation rather than a 412 there); otherwise the
-            // server ignored the range and the delivered prefix is skipped.
-            if let (Some(sent), Some(now)) =
-                (transfer.validator.as_deref(), validator_of(&answer.headers))
-            {
-                if sent != now {
-                    return Err(io::Error::other(Error::conflict(
-                        "resource",
-                        "changed resource",
-                        &url,
-                    )));
-                }
+            // whole representation rather than a 412 there), and nothing
+            // proves it the same one when it carries no validator at all or
+            // states another length; otherwise the server ignored the range
+            // and the delivered prefix is skipped.
+            let validator = validator_of(&answer.headers);
+            let length = answer.headers.content_length().ok().flatten();
+            let changed = match (transfer.validator.as_deref(), validator.as_deref()) {
+                (Some(sent), Some(now)) => sent != now,
+                (Some(_), None) => true,
+                (None, _) => false,
+            } || matches!(
+                (transfer.total, length),
+                (Some(before), Some(now)) if before != now
+            );
+            if changed {
+                return Err(io::Error::other(Error::conflict(
+                    "resource",
+                    "changed resource",
+                    &url,
+                )));
             }
             transfer.reader = answer.body;
             transfer.closed = false;

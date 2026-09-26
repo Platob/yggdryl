@@ -35,12 +35,11 @@ use crate::{exact_u64, napi_error};
 
 /// A millisecond count as a duration, refused rather than rounded into one.
 fn millis(value: f64, name: &str) -> Result<Duration> {
-    if !value.is_finite() || value < 0.0 {
-        return Err(napi_error(format!(
-            "{name} must be a finite, non-negative number of milliseconds, got {value}"
-        )));
-    }
-    Ok(Duration::from_secs_f64(value / 1000.0))
+    Duration::try_from_secs_f64(value / 1000.0).map_err(|_| {
+        napi_error(format!(
+            "{name} must be a finite, non-negative number of milliseconds a duration holds, got {value}"
+        ))
+    })
 }
 
 /// A duration as JavaScript's millisecond count.
@@ -1237,8 +1236,33 @@ pub struct JsSendAllAnswers {
     answers: Box<dyn Iterator<Item = yggdryl::Result<Response>> + Send>,
 }
 
+impl JsSendAllAnswers {
+    /// Let go of the walk: its workers finish the requests they hold and
+    /// are joined on a thread of their own, never on the event loop.
+    fn release(&mut self) {
+        let answers = std::mem::replace(&mut self.answers, Box::new(std::iter::empty()));
+        // A spawn that fails drops the walk it was handed, which joins here.
+        let _ = std::thread::Builder::new()
+            .name("yggdryl-send-all-release".to_owned())
+            .spawn(move || drop(answers));
+    }
+}
+
+impl Drop for JsSendAllAnswers {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
 #[napi]
 impl JsSendAllAnswers {
+    /// Let go of the walk before it ends: the requests in flight finish off
+    /// the event loop and no further request is sent.
+    #[napi(js_name = "_closeNative", skip_typescript)]
+    pub fn close(&mut self) {
+        self.release();
+    }
+
     /// The next answer - a `Response`, or the failure's message in its place
     /// - or `null` once every request answered.
     #[napi(js_name = "_nextNative", skip_typescript)]

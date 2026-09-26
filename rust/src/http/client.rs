@@ -24,9 +24,9 @@ use super::{Headers, HttpOptions, HttpVersion, Method, Session, Status};
 use crate::holder::Holder;
 use crate::{Error, IOBase, IOKind, Listing, MediaType, Result, Uri, Url};
 
-/// The most of a failing answer's body the client reads into memory, so a
-/// refusal can be reported: a page of HTML is a refusal too, a gigabyte of
-/// one is not worth holding.
+/// The most of a retried answer's body drained so its connection goes back
+/// to the pool: a page of HTML is drained, and past this the connection is
+/// dropped rather than read.
 const FAILURE_BODY_LIMIT: u64 = 4 * 1024 * 1024;
 
 /// Idle connections one pool keeps, over every host.
@@ -167,9 +167,11 @@ struct Inner {
     /// Whether the proxy is the environment's, chosen for each request
     /// ([`super::proxy`]): no proxy is named and the environment is read.
     environment_proxy: bool,
-    /// The last proxy the environment named, as written and as parsed, so
-    /// an unchanged variable is not parsed again for every request.
-    parsed_proxy: Mutex<Option<(String, ureq::Proxy)>>,
+    /// The proxies the environment named lately, as written and as parsed,
+    /// so an unchanged variable is not parsed again for every request - one
+    /// per variable a walk alternates between (`http_proxy`, `https_proxy`),
+    /// at most [`PARSED_PROXIES`].
+    parsed_proxies: Mutex<Vec<(String, ureq::Proxy)>>,
 }
 
 impl std::fmt::Debug for Inner {
@@ -252,7 +254,7 @@ impl Client {
                 retries: RetryBudget::default(),
                 jitter: AtomicU64::new(fresh_jitter()),
                 environment_proxy: options.proxy().is_none() && options.read_environment(),
-                parsed_proxy: Mutex::new(None),
+                parsed_proxies: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -269,22 +271,21 @@ impl Client {
         };
         let mut parsed = self
             .inner
-            .parsed_proxy
+            .parsed_proxies
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some((text, proxy)) = parsed.as_ref() {
-            if *text == named {
-                return Ok(Some(Some(proxy.clone())));
-            }
+        if let Some((_, proxy)) = parsed.iter().find(|(text, _)| *text == named) {
+            return Ok(Some(Some(proxy.clone())));
         }
-        let proxy = ureq::Proxy::new(&named).map_err(|error| Error::Parse {
-            target: "http proxy",
-            position: 0,
-            reason: smol_str::format_smolstr!(
-                "the environment's proxy for {url}: expected a proxy URL, got {named:?}: {error}"
-            ),
-        })?;
-        *parsed = Some((named, proxy.clone()));
+        let proxy = parse_proxy(
+            &named,
+            "http proxy",
+            format_args!("the environment's proxy for {url}"),
+        )?;
+        if parsed.len() == PARSED_PROXIES {
+            parsed.remove(0);
+        }
+        parsed.push((named, proxy.clone()));
         Ok(Some(Some(proxy)))
     }
 
@@ -361,7 +362,8 @@ impl Client {
     /// is waited for up to the options' `max_pause`, and one asking longer
     /// ends the retries with that answer; a `3xx` is not followed here.
     /// Every attempt is counted, so a test reads the true number of round
-    /// trips rather than the intended one. A `2xx` body is never read.
+    /// trips rather than the intended one. A body is read only to drain an
+    /// answer that is retried; the one handed back is the caller's, unread.
     ///
     /// # Errors
     ///
@@ -379,12 +381,8 @@ impl Client {
             let mut answer = match outcome {
                 Ok(answer) => answer,
                 Err(Failure::Transport(error)) => {
-                    let unsent = matches!(
-                        error,
-                        ureq::Error::ConnectionFailed | ureq::Error::HostNotFound
-                    );
                     if retry::is_retryable_transport(&error)
-                        && (wire.idempotent || unsent)
+                        && (wire.idempotent || retry::is_unsent(&error))
                         && self.may_retry(attempt)
                     {
                         self.pause(attempt, None);
@@ -398,6 +396,10 @@ impl Client {
                 let asked = retry::retry_after(answer.headers.get("retry-after"));
                 let patient = asked.is_none_or(|pause| pause <= self.inner.max_pause);
                 if patient && self.may_retry(attempt) {
+                    let _ = std::io::copy(
+                        &mut (&mut answer.body).take(FAILURE_BODY_LIMIT),
+                        &mut std::io::sink(),
+                    );
                     self.pause(attempt, asked);
                     continue;
                 }
@@ -481,18 +483,7 @@ impl Client {
             .into_with_config()
             .limit(u64::MAX)
             .reader();
-        // Only a failing answer is read here, and only so its refusal can be
-        // reported: a successful body belongs to the caller, untouched.
-        let body: Box<dyn Read + Send> = if status.is_success() || status.is_informational() {
-            Box::new(reader)
-        } else {
-            let mut body = Vec::new();
-            let _ = reader
-                .take(FAILURE_BODY_LIMIT)
-                .read_to_end(&mut body)
-                .map_err(ureq::Error::Io)?;
-            Box::new(std::io::Cursor::new(body))
-        };
+        let body: Box<dyn Read + Send> = Box::new(reader);
         Ok(Answer {
             status,
             version,
@@ -631,14 +622,7 @@ fn build_agent(options: &HttpOptions, tls: Option<ureq::tls::TlsConfig>) -> Resu
     // not read the environment names none; otherwise `.proxy` is left
     // untouched so `HTTPS_PROXY` and `NO_PROXY` keep deciding.
     if let Some(proxy) = options.proxy() {
-        let proxy = ureq::Proxy::new(proxy).map_err(|error| Error::Parse {
-            target: "http option",
-            position: 0,
-            reason: smol_str::format_smolstr!(
-                "proxy: expected a proxy URL, got {proxy:?}: {error}"
-            ),
-        })?;
-        builder = builder.proxy(Some(proxy));
+        builder = builder.proxy(Some(parse_proxy(proxy, "http option", "proxy")?));
     } else if !options.read_environment() {
         builder = builder.proxy(None);
     }
@@ -646,6 +630,33 @@ fn build_agent(options: &HttpOptions, tls: Option<ureq::tls::TlsConfig>) -> Resu
         builder = builder.tls_config(tls);
     }
     Ok(ureq::Agent::new_with_config(builder.build()))
+}
+
+/// How many environment proxies a client keeps parsed.
+const PARSED_PROXIES: usize = 4;
+
+/// The proxy `text` names, `context` saying whose it is.
+///
+/// A SOCKS proxy is refused: this build's transport speaks HTTP proxies
+/// alone, and a request that went direct past the proxy it was told to use
+/// would leave the network the caller meant it to go through.
+fn parse_proxy(
+    text: &str,
+    target: &'static str,
+    context: impl std::fmt::Display,
+) -> Result<ureq::Proxy> {
+    let proxy = ureq::Proxy::new(text).map_err(|error| Error::Parse {
+        target,
+        position: 0,
+        reason: smol_str::format_smolstr!("{context}: expected a proxy URL, got {text:?}: {error}"),
+    })?;
+    match proxy.protocol() {
+        ureq::ProxyProtocol::Http | ureq::ProxyProtocol::Https => Ok(proxy),
+        other => Err(Error::unsupported(
+            "a SOCKS proxy, which this transport does not speak",
+            format_args!("{context}: {other}"),
+        )),
+    }
 }
 
 /// The TLS configuration the options' bundle - or the environment's, when

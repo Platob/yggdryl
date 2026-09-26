@@ -628,6 +628,9 @@ class TestHeadersAndResponses:
         assert headers == Headers(headers.items())
         assert hash(headers) == hash(Headers(headers.items()))
         assert json.loads(headers.into_json())["vary"] == "Accept, Accept-Encoding"
+        # Membership reads like a mapping's: a key of another type is absent.
+        assert "ETag" in headers and "absent" not in headers
+        assert 5 not in headers and None not in headers
 
     def test_a_response_built_by_hand(self) -> None:
         response = Response(201, {"X-Id": "7"}, json={"created": True})
@@ -751,6 +754,20 @@ class TestServer:
         server.inject("/flaky", ("refuse", 503, 0))
         assert session.get("flaky").content == b"fine"
         assert session.stats["retries"] == 1
+
+    def test_a_mounted_session_serves_its_origin_under_its_own_headers(
+        self, server: Server
+    ) -> None:
+        with Server.bind() as upstream:
+            upstream.route(
+                "/data/probe",
+                lambda request: (200, None, request.headers.get("x-probe", "none")),
+            )
+            # The session's defaults and its container role cross the mount.
+            session = Session(str(upstream.url_of("data/")), headers={"x-probe": "kept"})
+            server.mount("/proxy", session)
+            with urllib.request.urlopen(f"http://127.0.0.1:{server.port}/proxy/probe") as answer:
+                assert answer.read() == b"kept"
 
     def test_the_server_names_where_it_listens(self, server: Server) -> None:
         assert str(server.url) == f"http://127.0.0.1:{server.port}/"
