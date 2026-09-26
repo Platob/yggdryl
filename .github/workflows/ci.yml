@@ -404,12 +404,12 @@ jobs:
         run: python -m pytest python/tests/test_spark_interop.py -m spark_interop
 
   docs-examples:
-    # Every fenced example under `docs/` compiled and run, in each of the three
-    # languages it is shown in - which the documentation contract requires of
-    # every example and nothing has ever enforced. `docs.yml` re-runs whenever
-    # this script changes but has never executed it, and `mkdocs build
-    # --strict` reads links and navigation, never a code block. 772 examples
-    # were shipping unrun.
+    # Every fenced example under `docs/` and `skills/` compiled and run, in each
+    # of the three languages it is shown in - which the documentation contract
+    # requires of every example and nothing has ever enforced. `docs.yml`
+    # re-runs whenever this script changes but has never executed it, and
+    # `mkdocs build --strict` reads links and navigation, never a code block.
+    # 772 examples were shipping unrun.
     #
     # The three halves need three toolchains, which is why the job is one and
     # not three: the Rust half generates an integration target and compiles it

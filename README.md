@@ -90,6 +90,9 @@ node/                    The JavaScript extension
   web/                   The browser components and the replay application
   tests/                 The mirror of both, file for file
 cli/                     The ygg command-line tool
+skills/                  Agent skills for code using the package, one folder
+                         per layer, published as a Claude Code plugin by
+                         .claude-plugin/
 config/fix/              The generated FIX dictionary store
 docs/                    The MkDocs site sources
 scripts/                 Generators, documentation and interoperability checkers
@@ -98,6 +101,18 @@ scripts/                 Generators, documentation and interoperability checkers
 The repository root owns the workspace manifest, the shared dependency pins, and
 the shared lints. Repository-wide implementation rules are in
 [`AGENTS.md`](AGENTS.md).
+
+## Agent skills
+
+[`skills/`](skills/README.md) teaches a coding agent to use the package in
+Rust, Python and Node.js - one skill per layer, each a decision table, the
+rules that keep work streamed and compiled once, and runnable recipes per
+language that CI executes like the documentation's. In Claude Code:
+
+```console
+claude plugin marketplace add Platob/yggdryl
+claude plugin install yggdryl@yggdryl
+```
 
 ## Parsing
 

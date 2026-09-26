@@ -75,6 +75,7 @@ Each shared trait, enum, value or type owns one root `rust/src/<name>.rs`; each 
 - One page per type under its family's folder, in the order its core file is written: Contract, DataType, Field, Scalar, Arrow storage, features, Edges, Commands.
 - Media is one page, `docs/media/index.md`: a Read and write overview, then one short section per media type, codec and charset, each led by its example rather than prose and closed by its own `<section> performance` subsection.
 - Every example appears in Rust, Python, and JavaScript unless it carries the "Rust only" line, and every block runs under `python scripts/check_docs_examples.py`.
+- The agent skills under `skills/` teach the same surface to agents using the package: a change to a public name, default or refusal a skill teaches updates that skill in the same change, and its blocks run under the same checker.
 - A benchmark table lives on the page that owns the measured method, names host and toolchain, and ends with its regenerate command.
 - Adding or renaming a page updates `mkdocs.yml` and every link to it in the same change; `mkdocs build --strict` fails otherwise.
 

@@ -135,6 +135,17 @@ Metadata belongs to the field and behaves like each language's mapping type; a n
 | Digests and time-keyed digests | [Hashing](hashing.md) |
 | FIX messages, registries, and captures | [FIX](fix/index.md) |
 
+## Agent skills
+
+The repository ships [agent skills](https://github.com/Platob/yggdryl/tree/main/skills) that teach a coding agent this package in all three languages: which door answers a task, the rules that keep reads streamed and casts compiled once, and the spellings an agent gets wrong when it guesses. Every example in them runs in CI beside this site's. In Claude Code they install as one plugin:
+
+```bash
+claude plugin marketplace add Platob/yggdryl
+claude plugin install yggdryl@yggdryl
+```
+
+Another agent reads the same folders: copy `skills/<name>/` into its skills directory, or start it at `skills/yggdryl/SKILL.md`.
+
 ## Repository checks
 
 The full pass, per entry and per language, is on [Testing](testing.md); what a change must satisfy before handoff is on [Contributing](contributing.md).

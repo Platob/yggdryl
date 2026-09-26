@@ -47,7 +47,8 @@ results and exact skipped checks.
    binding exists. Never pin an unsettled design by writing a binding first.
 5. **Python** (§3): redirects, parity tests, boundary benchmarks.
 6. **Node** (§4): the same.
-7. **Docs** (§5): every layer touched, examples in all three languages.
+7. **Docs** (§5): every layer touched, examples in all three languages, and
+   the skill under `skills/` that teaches the surface.
 8. **Push and read CI** (§2), then **handoff** (§5): sweeps, inventories,
    local-only checks, cleanup, report.
 
@@ -172,7 +173,7 @@ passes.
 | the Python view redirects | `python/.venv/bin/python -m maturin develop -m python/Cargo.toml`, then the same interpreter's `-m pytest python/tests/<file> -x -q` | the binding against the core it redirects to, with no wheel built |
 | the Node view redirects | `npm run --prefix node build:debug`, then `node --test node/tests/<file>.test.js` | the same, with no package audit |
 | the inventories are not stale | `python scripts/check_api_inventory.py` | every section header names a file or folder that exists; a Rust name still occurs somewhere in that crate's `src/`, and so does every type the signature beside it names; a binding entry's dotted key still resolves through the tree its section names - each segment a module beside its parent or a name that parent binds. What is omitted is counted - source files with no section, `pub` names the inventory never spells - never failed |
-| a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language - there is no per-page filter, so this is a pre-push check, not a loop |
+| a page example runs | `python scripts/check_docs_examples.py --lang rust`, or `python`, or `javascript` | every block in that language under `docs/` and `skills/` - there is no per-page filter, so this is a pre-push check, not a loop |
 | the installed wheel works | `python scripts/check_wheel_smoke.py` | what `pip install yggdryl` gives a reader: the extension loads and an Iceberg table round-trips. It reads `yggdryl` from the environment, never `python/yggdryl`, so install a wheel (or `maturin develop`) first - the release runs it against every wheel it publishes |
 
 The measured costs that shape the loop: an already-built harness is under a
@@ -1605,7 +1606,7 @@ and not a silent update.
 | Python binding wheel | `stage_cli.py --debug`, the maturin wheel at `--profile dev` (CI never measures; the release workflow builds what ships), and the assertion that it carries `yggdryl-<version>.data/scripts/ygg` | the wheel path in §3, with those two debug flags |
 | Python binding (`pyarrow==18.*`, `pyarrow>=18`) | `pytest python/tests` and `mypy --strict` on both legs, with pandas, polars, tzdata, and xxhash installed so no suite skips silently | §3, with the leg's pyarrow pinned into `python/.venv` |
 | Node.js binding | `test:package:debug`, the generated loader and declarations unchanged, `node --test` plus `tsc --noEmit`, and the three docs manifests | §4 |
-| Documentation examples | every fenced block under `docs/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
+| Documentation examples | every fenced block under `docs/` and `skills/` compiled and run in Rust, Python, and JavaScript | `python scripts/check_docs_examples.py --lang <the failing language>` |
 | `docs.yml` build | `mkdocs build --strict` - nav, links, and strict warnings | `python -m mkdocs build --strict --config-file mkdocs.yml` |
 
 ## What CI never runs
@@ -1872,6 +1873,15 @@ section change together. What binds every page:
 - A benchmark table lives in the Performance section of the page owning the
   measured method, names machine/runtime/build, compares a trusted baseline, and
   ends with its regenerate command; `docs/benchmarks.md` only indexes them.
+- `skills/` holds the agent skills for code that *uses* the package, one folder
+  per layer: a `SKILL.md` (the door table - task to Rust, Python and JavaScript
+  spelling - then the rules and pitfalls) and `references/rust.md`,
+  `python.md`, `javascript.md` of runnable recipes, linking the published pages
+  for depth rather than restating them. `skills/yggdryl/` is the entry skill.
+  A change to a public name, default, cost or refusal a skill teaches updates
+  that skill in the same change; its blocks follow the example rules above and
+  run under `scripts/check_docs_examples.py`, and `.claude-plugin/` publishes
+  the folder as the `yggdryl` Claude Code plugin.
 
 ## Documentation checks
 
@@ -1897,8 +1907,8 @@ python scripts/check_docs_examples.py --lang javascript   # needs the built addo
 
 ## Handoff
 
-- Sweep for dead code, duplicated logic, retired symbols, stale docs, Rust-only
-  bindings a stable core no longer justifies.
+- Sweep for dead code, duplicated logic, retired symbols, stale docs and
+  skills, Rust-only bindings a stable core no longer justifies.
 - Run the §2 local-only checks the change made stale - charset table drift,
   charset interop, and the benchmark behind any number a page now states.
 - Push, then read the run. A branch whose CI has not been read is not handed

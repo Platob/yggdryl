@@ -1,7 +1,9 @@
 """Compile and run every example in the documentation.
 
 The documentation contract says an example must be runnable, in every language
-it is shown in. This extracts each fenced block under ``docs/`` and executes it:
+it is shown in. This extracts each fenced block under ``docs/`` - and under
+``skills/``, whose agent skills teach the same surface and are held to the same
+contract - and executes it:
 
 * ``rust`` blocks become tests in one generated integration target and are
   compiled and run by cargo;
@@ -41,6 +43,7 @@ from typing import NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
+SKILLS = ROOT / "skills"
 RUST_TARGET = ROOT / "rust" / "tests" / "docs_examples.rs"
 PYTHON = ROOT / "python" / ".venv" / "Scripts" / "python.exe"
 if not PYTHON.exists():
@@ -80,8 +83,8 @@ class Block(NamedTuple):
 
 
 def slug(path: pathlib.Path) -> str:
-    """Return a safe identifier for a documentation page."""
-    relative = path.relative_to(DOCS).with_suffix("")
+    """Return a safe identifier for a documentation or skill page."""
+    relative = path.relative_to(ROOT).with_suffix("")
     return re.sub(r"[^a-z0-9]+", "_", str(relative).replace("\\", "/").lower()).strip("_")
 
 
@@ -293,7 +296,7 @@ def main() -> int:
     )
     arguments = parser.parse_args()
 
-    pages = sorted(DOCS.rglob("*.md"))
+    pages = sorted(DOCS.rglob("*.md")) + sorted(SKILLS.rglob("*.md"))
     status = 0
 
     fences = [problem for page in pages for problem in unhighlighted(page)]

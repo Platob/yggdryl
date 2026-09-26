@@ -1,0 +1,13 @@
+{
+  "name": "yggdryl",
+  "displayName": "Yggdryl",
+  "description": "Agent skills for using the yggdryl package from Rust, Python and Node.js: Arrow-native schemas and values, columns and casts, storage handles, record media (Arrow IPC, Parquet, Avro, text, Iceberg), JSON/YAML/TOML/XML, URIs, expressions, hashing, FIX and market data.",
+  "author": {
+    "name": "Yggdryl contributors",
+    "url": "https://github.com/Platob/yggdryl"
+  },
+  "homepage": "https://platob.github.io/yggdryl/",
+  "repository": "https://github.com/Platob/yggdryl",
+  "license": "Apache-2.0",
+  "keywords": ["arrow", "parquet", "iceberg", "schema", "serie", "fix", "rust", "python", "nodejs"]
+}

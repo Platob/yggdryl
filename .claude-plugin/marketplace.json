@@ -1,0 +1,17 @@
+{
+  "name": "yggdryl",
+  "owner": {
+    "name": "Platob",
+    "url": "https://github.com/Platob"
+  },
+  "description": "The yggdryl agent skills, installable as one plugin.",
+  "plugins": [
+    {
+      "name": "yggdryl",
+      "source": "./",
+      "description": "Agent skills for using the yggdryl package from Rust, Python and Node.js.",
+      "category": "development",
+      "tags": ["arrow", "parquet", "iceberg", "fix", "rust", "python", "nodejs"]
+    }
+  ]
+}
