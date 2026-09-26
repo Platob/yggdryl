@@ -271,7 +271,7 @@ assert_eq!(Side::read("BUY")?.merge_with(&Side::read("SELL")?).as_str(), "BUY");
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi_code::coded code::datatypes state::coded string::listings timeinforce::coded
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- cfi::coded code::datatypes state::coded string::listings timeinforce::coded
     ```
 
 === "Python"

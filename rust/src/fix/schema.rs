@@ -2473,7 +2473,7 @@ impl super::FixMsg {
             // where there was nothing stated to merge with.
             self.get_cficode()
                 .cloned()
-                .map(crate::Scalar::CfiCode)
+                .map(crate::Scalar::Cfi)
                 .or_else(|| self.classification().map(crate::Scalar::from))
                 .unwrap_or(crate::Scalar::Null)
         } else if super::is_crate_tag(tag) {

@@ -6,9 +6,9 @@ The owned logical type of one value: immutable, and cloning never allocates.
 
 | | |
 | --- | --- |
-| Owns | 48 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the twelve [codes](codes/index.md) |
+| Owns | 86 variants: every Arrow logical type plus Variant, geospatial, UUID, Version, the URI family, the [string and byte families](text/index.md), the fourteen [codes](codes/index.md) |
 | Parses | Arrow, SQL, Hive, Spark, FIX spellings; `to_string` re-parses losslessly, including `figi` as ANSI X9.145's checked identifier |
-| Identity | `id()`, `kind()`: 85 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
+| Identity | `id()`, `kind()`: 88 ids, 12 kinds, parameter-free; a string's id is its leaf, a byte column's its leaf |
 | Serializes | one structural model under JSON, YAML, TOML |
 | Defaults | one non-null default per variant, freshly allocated |
 | Limits | recursion 64; a default above 64 MiB errors |
@@ -82,7 +82,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     )?;
     assert_eq!(
         row.get_field_by_path("venue").map(|field| field.dtype().clone()),
-        Some(DataType::MicCode)
+        Some(DataType::Mic)
     );
     assert_eq!(
         row.get_field_by_path("at").map(|field| field.dtype().clone()),
@@ -172,7 +172,7 @@ A FIX name resolves to, and displays as, an ordinary datatype.
     assert.equal(DataType.from('float').id, 'float32')
     ```
 
-The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sedol`; `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
+The registry is the FIX Latest table plus `mic`, `cfi`, the securities identifiers `isin`, `cusip`, `sedol`, `bbg`, `ric` and `figi`, and the codes `side`, `state`, `timeinforce` and `unit`, each resolving to its own [code](codes/index.md); `ccy`, `country`, `mic` also name a [prebuilt vocabulary](codes/index.md).
 
 | FIX | base | resolves to | why |
 | --- | --- | --- | --- |
@@ -183,6 +183,9 @@ The registry is the FIX Latest table plus `mic`, `cfi`, `isin`, `cusip` and `sed
 | `isin` | - | `isin` | ISO 6166, twelve bytes closed by a check digit |
 | `cusip` | - | `cusip` | CUSIP, nine bytes closed by a check digit |
 | `sedol` | - | `sedol` | SEDOL, seven bytes closed by a check digit |
+| `bbg` | - | `bbg` | a Bloomberg identifier, at most 32 bytes |
+| `ric` | - | `ric` | a Refinitiv Identification Code, one token of at most 32 bytes |
+| `figi` | - | `figi` | ANSI X9.145, twelve bytes closed by a check digit |
 | `Language` | String | `fixed_ascii(2)` | ISO 639-1 alpha-2 |
 | `MonthYear` | String | `fixed_ascii(8)` | `YYYYMM`, `YYYYMMDD`, or `YYYYMMWW` |
 | `Tenor` | Pattern | `fixed_ascii(8)` | `D5`, `W2`, `M3`, `Y1` |

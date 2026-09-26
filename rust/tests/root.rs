@@ -15,6 +15,8 @@ mod counting;
 mod arithmetic;
 #[path = "root/ascii.rs"]
 mod ascii;
+#[path = "root/bbg.rs"]
+mod bbg;
 #[path = "root/boolean.rs"]
 mod boolean;
 #[path = "root/budget.rs"]
@@ -26,8 +28,8 @@ mod bytes;
 mod bytestream;
 #[path = "root/cast.rs"]
 mod cast;
-#[path = "root/cfi_code.rs"]
-mod cfi_code;
+#[path = "root/cfi.rs"]
+mod cfi;
 #[path = "root/charset.rs"]
 mod charset;
 #[path = "root/chunked_serie.rs"]
@@ -38,8 +40,8 @@ mod code;
 mod codec;
 #[path = "root/compatibility.rs"]
 mod compatibility;
-#[path = "root/cusip_code.rs"]
-mod cusip_code;
+#[path = "root/cusip.rs"]
+mod cusip;
 #[path = "root/datatype.rs"]
 mod datatype;
 #[path = "root/datatype_id.rs"]
@@ -68,8 +70,8 @@ mod enumeration;
 mod error;
 #[path = "root/field.rs"]
 mod field;
-#[path = "root/figi_code.rs"]
-mod figi_code;
+#[path = "root/figi.rs"]
+mod figi;
 #[path = "root/floating.rs"]
 mod floating;
 #[path = "root/geospatial.rs"]
@@ -122,14 +124,16 @@ mod path;
 mod protocol;
 #[path = "root/regex.rs"]
 mod regex;
+#[path = "root/ric.rs"]
+mod ric;
 #[path = "root/scalar.rs"]
 mod scalar;
 #[path = "root/scheme.rs"]
 mod scheme;
 #[path = "root/securityid.rs"]
 mod securityid;
-#[path = "root/sedol_code.rs"]
-mod sedol_code;
+#[path = "root/sedol.rs"]
+mod sedol;
 #[path = "root/serde.rs"]
 mod serde;
 #[path = "root/serie.rs"]

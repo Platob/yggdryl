@@ -65,8 +65,8 @@ use crate::uuid::Uuid;
 use crate::value::Children;
 use crate::version::Version;
 use crate::{
-    BloombergCode, Ccy, CfiCode, Country, CusipCode, FIGICode, IsinCode, MicCode, SedolCode, Side,
-    State, TimeInForce, Unit, decimal,
+    Bbg, Ccy, Cfi, Country, Cusip, Figi, Isin, Mic, Ric, Sedol, Side, State, TimeInForce, Unit,
+    decimal,
 };
 use crate::{
     DataTypeId, DataTypeKind, Error, MediaType, MimeType, Result, TimeUnit, Timezone, i256,
@@ -214,9 +214,9 @@ pub enum Scalar {
     /// ISO 4217 currency code.
     Ccy(Ccy),
     /// ISO 10383 market identifier code.
-    MicCode(MicCode),
+    Mic(Mic),
     /// ISO 10962 classification code.
-    CfiCode(CfiCode),
+    Cfi(Cfi),
     /// FIX's side of a trade.
     Side(Side),
     /// What state one thing is in, ranked so the bytes sort by lifecycle.
@@ -224,13 +224,13 @@ pub enum Scalar {
     /// How long an order stands.
     TimeInForce(TimeInForce),
     /// ISO 6166 securities identification number.
-    IsinCode(IsinCode),
+    Isin(Isin),
     /// CUSIP securities identifier.
-    CusipCode(CusipCode),
+    Cusip(Cusip),
     /// SEDOL securities identifier.
-    SedolCode(SedolCode),
-    /// BloombergCode securities identifier.
-    BloombergCode(BloombergCode),
+    Sedol(Sedol),
+    /// Bloomberg securities identifier.
+    Bbg(Bbg),
     /// An RFC 9562 identifier.
     Uuid(Uuid),
     /// A canonical, numerically ordered version.
@@ -303,9 +303,11 @@ pub enum Scalar {
     /// canonically encoded - keys sorted, sizes narrowest.
     Variant(crate::Variant),
     /// ANSI X9.145 Financial Instrument Global Identifier.
-    FIGICode(FIGICode),
+    Figi(Figi),
     /// The unit a quantity is stated in.
     Unit(Unit),
+    /// Refinitiv Identification Code.
+    Ric(Ric),
 }
 
 const _: () = assert!(std::mem::size_of::<Scalar>() == 48);
@@ -691,18 +693,12 @@ impl<'de> Deserialize<'de> for Scalar {
             String(crate::string::StringDocument),
             Country(SmolStr),
             Ccy(SmolStr),
-            #[serde(rename = "mic")]
-            MicCode(SmolStr),
-            #[serde(rename = "cfi")]
-            CfiCode(SmolStr),
-            #[serde(rename = "isin")]
-            IsinCode(SmolStr),
-            #[serde(rename = "cusip")]
-            CusipCode(SmolStr),
-            #[serde(rename = "sedol")]
-            SedolCode(SmolStr),
-            #[serde(rename = "bloomberg")]
-            BloombergCode(SmolStr),
+            Mic(SmolStr),
+            Cfi(SmolStr),
+            Isin(SmolStr),
+            Cusip(SmolStr),
+            Sedol(SmolStr),
+            Bbg(SmolStr),
             Side(SmolStr),
             State(SmolStr),
             #[serde(rename = "timeinforce")]
@@ -745,9 +741,9 @@ impl<'de> Deserialize<'de> for Scalar {
             SortedMap(Vec<(Scalar, Scalar)>),
             Struct(RecordEntries),
             Variant(Arc<[u8]>, Arc<[u8]>),
-            #[serde(rename = "figi")]
-            FIGICode(SmolStr),
+            Figi(SmolStr),
             Unit(SmolStr),
+            Ric(SmolStr),
         }
 
         match StructuralWire::deserialize(deserializer)? {
@@ -787,29 +783,32 @@ impl<'de> Deserialize<'de> for Scalar {
             StructuralWire::Ccy(value) => crate::Ccy::new(value)
                 .map(Self::Ccy)
                 .map_err(D::Error::custom),
-            StructuralWire::MicCode(value) => crate::MicCode::new(value)
-                .map(Self::MicCode)
+            StructuralWire::Mic(value) => crate::Mic::new(value)
+                .map(Self::Mic)
                 .map_err(D::Error::custom),
-            StructuralWire::CfiCode(value) => crate::CfiCode::new(value)
-                .map(Self::CfiCode)
+            StructuralWire::Cfi(value) => crate::Cfi::new(value)
+                .map(Self::Cfi)
                 .map_err(D::Error::custom),
-            StructuralWire::IsinCode(value) => crate::IsinCode::new(value)
-                .map(Self::IsinCode)
+            StructuralWire::Isin(value) => crate::Isin::new(value)
+                .map(Self::Isin)
                 .map_err(D::Error::custom),
-            StructuralWire::CusipCode(value) => crate::CusipCode::new(value)
-                .map(Self::CusipCode)
+            StructuralWire::Cusip(value) => crate::Cusip::new(value)
+                .map(Self::Cusip)
                 .map_err(D::Error::custom),
-            StructuralWire::BloombergCode(value) => crate::BloombergCode::new(value)
-                .map(Self::BloombergCode)
-                .map_err(serde::de::Error::custom),
-            StructuralWire::FIGICode(value) => crate::FIGICode::new(value)
-                .map(Self::FIGICode)
+            StructuralWire::Bbg(value) => crate::Bbg::new(value)
+                .map(Self::Bbg)
+                .map_err(D::Error::custom),
+            StructuralWire::Ric(value) => crate::Ric::new(value)
+                .map(Self::Ric)
+                .map_err(D::Error::custom),
+            StructuralWire::Figi(value) => crate::Figi::new(value)
+                .map(Self::Figi)
                 .map_err(D::Error::custom),
             StructuralWire::Unit(value) => crate::Unit::new(value)
                 .map(Self::Unit)
                 .map_err(D::Error::custom),
-            StructuralWire::SedolCode(value) => crate::SedolCode::new(value)
-                .map(Self::SedolCode)
+            StructuralWire::Sedol(value) => crate::Sedol::new(value)
+                .map(Self::Sedol)
                 .map_err(D::Error::custom),
             // A side and a state are read by their spelling, exactly as a
             // column reads them.
@@ -1055,16 +1054,17 @@ impl Ord for Scalar {
             string_scalars!(left) => same_kind!(string_scalars!(right) => left.cmp(right)),
             Self::Country(_)
             | Self::Ccy(_)
-            | Self::MicCode(_)
-            | Self::CfiCode(_)
+            | Self::Mic(_)
+            | Self::Cfi(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::IsinCode(_)
-            | Self::CusipCode(_)
-            | Self::SedolCode(_)
-            | Self::BloombergCode(_)
-            | Self::FIGICode(_)
+            | Self::Isin(_)
+            | Self::Cusip(_)
+            | Self::Sedol(_)
+            | Self::Bbg(_)
+            | Self::Ric(_)
+            | Self::Figi(_)
             | Self::Unit(_) => code_key(self).cmp(&code_key(other)),
             Self::Uuid(left) => same_kind!(Self::Uuid(right) => left.cmp(right)),
             Self::Version(left) => same_kind!(Self::Version(right) => left.cmp(right)),
@@ -1159,16 +1159,17 @@ impl Hash for Scalar {
             string_scalars!(value) => value.hash(state),
             Self::Country(_)
             | Self::Ccy(_)
-            | Self::MicCode(_)
-            | Self::CfiCode(_)
+            | Self::Mic(_)
+            | Self::Cfi(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::IsinCode(_)
-            | Self::CusipCode(_)
-            | Self::SedolCode(_)
-            | Self::BloombergCode(_)
-            | Self::FIGICode(_)
+            | Self::Isin(_)
+            | Self::Cusip(_)
+            | Self::Sedol(_)
+            | Self::Bbg(_)
+            | Self::Ric(_)
+            | Self::Figi(_)
             | Self::Unit(_) => code_key(self).hash(state),
             Self::Uuid(value) => value.hash(state),
             Self::Version(value) => value.hash(state),
@@ -1237,7 +1238,7 @@ fn temporal_value(value: &Scalar) -> Option<(crate::TemporalKind, (u8, i128), Ti
     ))
 }
 
-/// The twelve registered codes as one pattern.
+/// The registered codes as one pattern.
 ///
 /// A guard does not count towards exhaustiveness, so a match that must cover
 /// every `Scalar` spells the codes out. This is where they are spelled, once;
@@ -1246,16 +1247,17 @@ macro_rules! code_scalars {
     () => {
         $crate::Scalar::Country(_)
             | $crate::Scalar::Ccy(_)
-            | $crate::Scalar::MicCode(_)
-            | $crate::Scalar::CfiCode(_)
+            | $crate::Scalar::Mic(_)
+            | $crate::Scalar::Cfi(_)
             | $crate::Scalar::Side(_)
             | $crate::Scalar::State(_)
             | $crate::Scalar::TimeInForce(_)
-            | $crate::Scalar::IsinCode(_)
-            | $crate::Scalar::CusipCode(_)
-            | $crate::Scalar::SedolCode(_)
-            | $crate::Scalar::BloombergCode(_)
-            | $crate::Scalar::FIGICode(_)
+            | $crate::Scalar::Isin(_)
+            | $crate::Scalar::Cusip(_)
+            | $crate::Scalar::Sedol(_)
+            | $crate::Scalar::Bbg(_)
+            | $crate::Scalar::Ric(_)
+            | $crate::Scalar::Figi(_)
             | $crate::Scalar::Unit(_)
     };
 }
@@ -1301,7 +1303,7 @@ macro_rules! bytes_scalars {
     };
 }
 
-/// The reading the twelve registered codes order and hash by.
+/// The reading the registered codes order and hash by.
 ///
 /// They share one value rank, so the identity is what separates them: a
 /// currency and a country whose bytes agree are two values.
@@ -1365,16 +1367,17 @@ const fn value_rank(value: &Scalar) -> u8 {
         Scalar::Uuid(_) => 17,
         Scalar::Country(_)
         | Scalar::Ccy(_)
-        | Scalar::MicCode(_)
-        | Scalar::CfiCode(_)
+        | Scalar::Mic(_)
+        | Scalar::Cfi(_)
         | Scalar::Side(_)
         | Scalar::State(_)
         | Scalar::TimeInForce(_)
-        | Scalar::IsinCode(_)
-        | Scalar::CusipCode(_)
-        | Scalar::SedolCode(_)
-        | Scalar::BloombergCode(_)
-        | Scalar::FIGICode(_)
+        | Scalar::Isin(_)
+        | Scalar::Cusip(_)
+        | Scalar::Sedol(_)
+        | Scalar::Bbg(_)
+        | Scalar::Ric(_)
+        | Scalar::Figi(_)
         | Scalar::Unit(_) => 18,
         Scalar::Version(_) => 19,
         Scalar::Url(_) => 20,
@@ -1450,16 +1453,17 @@ impl Scalar {
             Self::SizedCp1252String(_, _) => DataTypeId::SizedCp1252String,
             Self::Country(_) => DataTypeId::Country,
             Self::Ccy(_) => DataTypeId::Ccy,
-            Self::MicCode(_) => DataTypeId::MicCode,
-            Self::CfiCode(_) => DataTypeId::CfiCode,
+            Self::Mic(_) => DataTypeId::Mic,
+            Self::Cfi(_) => DataTypeId::Cfi,
             Self::Side(_) => DataTypeId::Side,
             Self::State(_) => DataTypeId::State,
             Self::TimeInForce(_) => DataTypeId::TimeInForce,
-            Self::IsinCode(_) => DataTypeId::IsinCode,
-            Self::CusipCode(_) => DataTypeId::CusipCode,
-            Self::SedolCode(_) => DataTypeId::SedolCode,
-            Self::BloombergCode(_) => DataTypeId::BloombergCode,
-            Self::FIGICode(_) => DataTypeId::FIGICode,
+            Self::Isin(_) => DataTypeId::Isin,
+            Self::Cusip(_) => DataTypeId::Cusip,
+            Self::Sedol(_) => DataTypeId::Sedol,
+            Self::Bbg(_) => DataTypeId::Bbg,
+            Self::Ric(_) => DataTypeId::Ric,
+            Self::Figi(_) => DataTypeId::Figi,
             Self::Unit(_) => DataTypeId::Unit,
             Self::Uuid(_) => DataTypeId::Uuid,
             Self::Version(_) => DataTypeId::Version,
@@ -1530,16 +1534,17 @@ impl Scalar {
             },
             Self::Country(_) => DataTypeId::Country.as_str(),
             Self::Ccy(_) => DataTypeId::Ccy.as_str(),
-            Self::MicCode(_) => DataTypeId::MicCode.as_str(),
-            Self::CfiCode(_) => DataTypeId::CfiCode.as_str(),
+            Self::Mic(_) => DataTypeId::Mic.as_str(),
+            Self::Cfi(_) => DataTypeId::Cfi.as_str(),
             Self::Side(_) => DataTypeId::Side.as_str(),
             Self::State(_) => DataTypeId::State.as_str(),
             Self::TimeInForce(_) => DataTypeId::TimeInForce.as_str(),
-            Self::IsinCode(_) => DataTypeId::IsinCode.as_str(),
-            Self::CusipCode(_) => DataTypeId::CusipCode.as_str(),
-            Self::SedolCode(_) => DataTypeId::SedolCode.as_str(),
-            Self::BloombergCode(_) => DataTypeId::BloombergCode.as_str(),
-            Self::FIGICode(_) => DataTypeId::FIGICode.as_str(),
+            Self::Isin(_) => DataTypeId::Isin.as_str(),
+            Self::Cusip(_) => DataTypeId::Cusip.as_str(),
+            Self::Sedol(_) => DataTypeId::Sedol.as_str(),
+            Self::Bbg(_) => DataTypeId::Bbg.as_str(),
+            Self::Ric(_) => DataTypeId::Ric.as_str(),
+            Self::Figi(_) => DataTypeId::Figi.as_str(),
             Self::Unit(_) => DataTypeId::Unit.as_str(),
             Self::Uuid(_) => "uuid",
             Self::Version(_) => "version",
@@ -1829,7 +1834,7 @@ impl Scalar {
 
     /// Borrow the validated storage when this is a registered code.
     ///
-    /// The twelve codes are twelve variants, but every question but "which
+    /// Each code is a variant of its own, but every question but "which
     /// one" has the same answer for all of them, so this is where they are
     /// written out and [`Self::id`] is the other half: the identity leads, and
     /// the text follows it. A currency and a country whose bytes agree are two
@@ -1839,16 +1844,17 @@ impl Scalar {
         match self {
             Self::Country(value) => Some(value.storage()),
             Self::Ccy(value) => Some(value.storage()),
-            Self::MicCode(value) => Some(value.storage()),
-            Self::CfiCode(value) => Some(value.storage()),
+            Self::Mic(value) => Some(value.storage()),
+            Self::Cfi(value) => Some(value.storage()),
             Self::Side(value) => Some(value.storage()),
             Self::State(value) => Some(value.storage()),
             Self::TimeInForce(value) => Some(value.storage()),
-            Self::IsinCode(value) => Some(value.storage()),
-            Self::CusipCode(value) => Some(value.storage()),
-            Self::SedolCode(value) => Some(value.storage()),
-            Self::BloombergCode(value) => Some(value.storage()),
-            Self::FIGICode(value) => Some(value.storage()),
+            Self::Isin(value) => Some(value.storage()),
+            Self::Cusip(value) => Some(value.storage()),
+            Self::Sedol(value) => Some(value.storage()),
+            Self::Bbg(value) => Some(value.storage()),
+            Self::Ric(value) => Some(value.storage()),
+            Self::Figi(value) => Some(value.storage()),
             Self::Unit(value) => Some(value.storage()),
             _ => None,
         }
@@ -2094,16 +2100,17 @@ impl Scalar {
             | string_scalars!(_)
             | Self::Country(_)
             | Self::Ccy(_)
-            | Self::MicCode(_)
-            | Self::CfiCode(_)
+            | Self::Mic(_)
+            | Self::Cfi(_)
             | Self::Side(_)
             | Self::State(_)
             | Self::TimeInForce(_)
-            | Self::IsinCode(_)
-            | Self::CusipCode(_)
-            | Self::SedolCode(_)
-            | Self::BloombergCode(_)
-            | Self::FIGICode(_)
+            | Self::Isin(_)
+            | Self::Cusip(_)
+            | Self::Sedol(_)
+            | Self::Bbg(_)
+            | Self::Ric(_)
+            | Self::Figi(_)
             | Self::Unit(_)
             | Self::Uuid(_)
             | Self::Version(_)

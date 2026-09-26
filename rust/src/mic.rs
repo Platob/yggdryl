@@ -56,9 +56,9 @@ impl fmt::Display for DxFeedExchangeFeed {
     }
 }
 
-code_leaf!(MicCode, MIC_WIDTH);
+code_leaf!(Mic, MIC_WIDTH);
 
-impl MicCode {
+impl Mic {
     /// ISO 10383's code for no market.
     const NONE: &str = "XXXX";
 
@@ -71,18 +71,18 @@ impl MicCode {
 
     /// Whether `text` is shaped as an ISO 10383 code: exactly four of
     /// `[A-Z0-9]`. A Reuters mnemonic - `S`, `TW` - is not;
-    /// [`MicCode::from_reuters_exchange_code`] resolves one.
-    /// [`MicCode::new`] stays permissive, because a stored column may hold
+    /// [`Mic::from_reuters_exchange_code`] resolves one.
+    /// [`Mic::new`] stays permissive, because a stored column may hold
     /// a short code a venue wrote.
     ///
     /// ```
-    /// # use yggdryl::MicCode;
-    /// assert!(MicCode::is_iso("XSWX"));
-    /// assert!(MicCode::is_iso("RJEA"));
-    /// assert!(!MicCode::is_iso("S"));
-    /// assert!(!MicCode::is_iso("TW"));
-    /// assert!(!MicCode::is_iso("xswx"));
-    /// assert!(!MicCode::is_iso("XSWXX"));
+    /// # use yggdryl::Mic;
+    /// assert!(Mic::is_iso("XSWX"));
+    /// assert!(Mic::is_iso("RJEA"));
+    /// assert!(!Mic::is_iso("S"));
+    /// assert!(!Mic::is_iso("TW"));
+    /// assert!(!Mic::is_iso("xswx"));
+    /// assert!(!Mic::is_iso("XSWXX"));
     /// ```
     #[must_use]
     pub fn is_iso(text: &str) -> bool {
@@ -102,18 +102,18 @@ impl MicCode {
     /// Pearl Equities; dxFeed currently prints the nonexistent `MRPL`.
     ///
     /// ```
-    /// use yggdryl::{DxFeedExchangeFeed, MicCode};
+    /// use yggdryl::{DxFeedExchangeFeed, Mic};
     ///
     /// assert_eq!(
-    ///     MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
+    ///     Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::CtaUtp, "Q")?.as_str(),
     ///     "XNAS"
     /// );
     /// assert_eq!(
-    ///     MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
+    ///     Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::UsOptions, "Q")?.as_str(),
     ///     "XNDQ"
     /// );
     /// assert!(
-    ///     MicCode::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err()
+    ///     Mic::from_dxfeed_exchange_code(DxFeedExchangeFeed::Cboe, "C").is_err()
     /// );
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
@@ -219,12 +219,12 @@ impl MicCode {
     /// ISO 10383 never carried on are refused.
     ///
     /// ```
-    /// use yggdryl::MicCode;
+    /// use yggdryl::Mic;
     ///
-    /// assert_eq!(MicCode::from_reuters_exchange_code("L")?.as_str(), "XLON");
-    /// assert_eq!(MicCode::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
-    /// assert_eq!(MicCode::from_reuters_exchange_code("d")?.as_str(), "XEUR");
-    /// assert!(MicCode::from_reuters_exchange_code("TH").is_err());
+    /// assert_eq!(Mic::from_reuters_exchange_code("L")?.as_str(), "XLON");
+    /// assert_eq!(Mic::from_reuters_exchange_code("TW")?.as_str(), "XTAI");
+    /// assert_eq!(Mic::from_reuters_exchange_code("d")?.as_str(), "XEUR");
+    /// assert!(Mic::from_reuters_exchange_code("TH").is_err());
     /// # Ok::<(), yggdryl::Error>(())
     /// ```
     ///
@@ -400,7 +400,7 @@ impl MicCode {
     }
 }
 
-code_value!(MicCode, MicCode, MIC_WIDTH, merge = MicCode::merged);
+code_value!(Mic, Mic, MIC_WIDTH, merge = Mic::merged);
 
 /// The Arrow extension name of the market identifier code.
 pub(crate) const MIC_EXTENSION_NAME: &str = "yggdryl.mic";
@@ -414,15 +414,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::mic(), DataType::MicCode);
+    /// assert_eq!(DataType::mic(), DataType::Mic);
     /// assert_eq!(DataType::mic().to_string(), "mic");
     /// assert_eq!(DataType::mic().code_width(), Some(4));
     /// ```
     #[must_use]
     pub const fn mic() -> Self {
-        Self::MicCode
+        Self::Mic
     }
 }
 
 // /// A MIC-typed field: ISO 10383's market identifier.
-define_field_types!(MicCodeType, MicCode);
+define_field_types!(MicType, Mic);

@@ -580,8 +580,8 @@ mod scalars {
             ),
             (DataType::Country, DataTypeId::Country),
             (DataType::Ccy, DataTypeId::Ccy),
-            (DataType::MicCode, DataTypeId::MicCode),
-            (DataType::CfiCode, DataTypeId::CfiCode),
+            (DataType::Mic, DataTypeId::Mic),
+            (DataType::Cfi, DataTypeId::Cfi),
             (DataType::Uuid, DataTypeId::Uuid),
             (
                 DataType::interval(TimeUnit::YearMonth).unwrap(),

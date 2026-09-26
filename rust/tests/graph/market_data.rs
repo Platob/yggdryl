@@ -206,13 +206,15 @@ fn only_two_dated_values_order_and_only_one_variant_merges() {
 /// The enum is its widest inline leaf, a trade: the book is boxed so the
 /// one value every boundary crosses as does not carry a book's width.
 /// Pinned when the enum replaced the generic envelope; a moved number is a
-/// design answer, never one to re-pin from a whole run.
+/// design answer, never one to re-pin from a whole run. It moved from 1072
+/// when the market facts began to know which identifiers they only derived:
+/// one `u64` mask, padded to sixteen bytes' alignment.
 #[test]
 fn the_enum_is_the_size_of_its_widest_inline_leaf() {
     use std::mem::size_of;
     assert_eq!(size_of::<MarketData>(), size_of::<TradeEvent>());
     assert!(size_of::<BookEvent>() > size_of::<MarketData>());
-    assert_eq!(size_of::<MarketData>(), 1072);
+    assert_eq!(size_of::<MarketData>(), 1088);
 }
 
 /// An execution follows the order it fills across kinds, through the facts

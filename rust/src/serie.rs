@@ -520,12 +520,12 @@ pub enum Serie {
     Country(Arc<Utf8StringSerie>),
     /// A column of `Ccy` values, stored as their UTF-8 text.
     Ccy(Arc<Utf8StringSerie>),
-    /// A column of `MicCode` values, stored as their UTF-8 text.
-    MicCode(Arc<Utf8StringSerie>),
-    /// A column of `CfiCode` values, stored as their UTF-8 text.
-    CfiCode(Arc<Utf8StringSerie>),
-    /// A column of `IsinCode` values, stored as their UTF-8 text.
-    IsinCode(Arc<Utf8StringSerie>),
+    /// A column of `Mic` values, stored as their UTF-8 text.
+    Mic(Arc<Utf8StringSerie>),
+    /// A column of `Cfi` values, stored as their UTF-8 text.
+    Cfi(Arc<Utf8StringSerie>),
+    /// A column of `Isin` values, stored as their UTF-8 text.
+    Isin(Arc<Utf8StringSerie>),
     /// A column of `Side` values, stored as their UTF-8 text.
     Side(Arc<Utf8StringSerie>),
     /// A column of `State` values, stored as their UTF-8 text.
@@ -544,14 +544,16 @@ pub enum Serie {
     MimeType(Arc<Utf8StringSerie>),
     /// A column of `MediaType` values, stored as their UTF-8 text.
     MediaType(Arc<Utf8StringSerie>),
-    /// A column of `CusipCode` values, stored as their UTF-8 text.
-    CusipCode(Arc<Utf8StringSerie>),
-    /// A column of `SedolCode` values, stored as their UTF-8 text.
-    SedolCode(Arc<Utf8StringSerie>),
-    /// A column of `BloombergCode` values, stored as their UTF-8 text.
-    BloombergCode(Arc<Utf8StringSerie>),
-    /// A column of `FIGICode` values, stored as their UTF-8 text.
-    FIGICode(Arc<Utf8StringSerie>),
+    /// A column of `Cusip` values, stored as their UTF-8 text.
+    Cusip(Arc<Utf8StringSerie>),
+    /// A column of `Sedol` values, stored as their UTF-8 text.
+    Sedol(Arc<Utf8StringSerie>),
+    /// A column of `Bbg` values, stored as their UTF-8 text.
+    Bbg(Arc<Utf8StringSerie>),
+    /// A column of `Ric` values, stored as their UTF-8 text.
+    Ric(Arc<Utf8StringSerie>),
+    /// A column of `Figi` values, stored as their UTF-8 text.
+    Figi(Arc<Utf8StringSerie>),
     /// A column of `Unit` values, stored as their UTF-8 text.
     Unit(Arc<Utf8StringSerie>),
     /// A column of UUIDs, sixteen fixed bytes each.
@@ -650,9 +652,9 @@ macro_rules! column {
             Serie::FixedString($column) => $answer,
             Serie::Country($column) => $answer,
             Serie::Ccy($column) => $answer,
-            Serie::MicCode($column) => $answer,
-            Serie::CfiCode($column) => $answer,
-            Serie::IsinCode($column) => $answer,
+            Serie::Mic($column) => $answer,
+            Serie::Cfi($column) => $answer,
+            Serie::Isin($column) => $answer,
             Serie::Side($column) => $answer,
             Serie::State($column) => $answer,
             Serie::TimeInForce($column) => $answer,
@@ -662,10 +664,11 @@ macro_rules! column {
             Serie::Timezone($column) => $answer,
             Serie::MimeType($column) => $answer,
             Serie::MediaType($column) => $answer,
-            Serie::CusipCode($column) => $answer,
-            Serie::SedolCode($column) => $answer,
-            Serie::BloombergCode($column) => $answer,
-            Serie::FIGICode($column) => $answer,
+            Serie::Cusip($column) => $answer,
+            Serie::Sedol($column) => $answer,
+            Serie::Bbg($column) => $answer,
+            Serie::Ric($column) => $answer,
+            Serie::Figi($column) => $answer,
             Serie::Unit($column) => $answer,
             Serie::Uuid($column) => $answer,
             Serie::Serie($column) => $answer,
@@ -871,15 +874,15 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::MicCode(held) => {
+            Serie::Mic(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::CfiCode(held) => {
+            Serie::Cfi(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::IsinCode(held) => {
+            Serie::Isin(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -919,19 +922,23 @@ macro_rules! column_mut {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::CusipCode(held) => {
+            Serie::Cusip(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::SedolCode(held) => {
+            Serie::Sedol(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::BloombergCode(held) => {
+            Serie::Bbg(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
-            Serie::FIGICode(held) => {
+            Serie::Ric(held) => {
+                let $column = Arc::make_mut(held);
+                $answer
+            }
+            Serie::Figi(held) => {
                 let $column = Arc::make_mut(held);
                 $answer
             }
@@ -1339,9 +1346,9 @@ impl Leaf for Utf8StringSerie {
         match SerieValue::field(&self).dtype() {
             DataType::Country => Serie::Country(Arc::new(self)),
             DataType::Ccy => Serie::Ccy(Arc::new(self)),
-            DataType::MicCode => Serie::MicCode(Arc::new(self)),
-            DataType::CfiCode => Serie::CfiCode(Arc::new(self)),
-            DataType::IsinCode => Serie::IsinCode(Arc::new(self)),
+            DataType::Mic => Serie::Mic(Arc::new(self)),
+            DataType::Cfi => Serie::Cfi(Arc::new(self)),
+            DataType::Isin => Serie::Isin(Arc::new(self)),
             DataType::Side => Serie::Side(Arc::new(self)),
             DataType::State => Serie::State(Arc::new(self)),
             DataType::TimeInForce => Serie::TimeInForce(Arc::new(self)),
@@ -1351,10 +1358,11 @@ impl Leaf for Utf8StringSerie {
             DataType::Timezone => Serie::Timezone(Arc::new(self)),
             DataType::MimeType => Serie::MimeType(Arc::new(self)),
             DataType::MediaType => Serie::MediaType(Arc::new(self)),
-            DataType::CusipCode => Serie::CusipCode(Arc::new(self)),
-            DataType::SedolCode => Serie::SedolCode(Arc::new(self)),
-            DataType::BloombergCode => Serie::BloombergCode(Arc::new(self)),
-            DataType::FIGICode => Serie::FIGICode(Arc::new(self)),
+            DataType::Cusip => Serie::Cusip(Arc::new(self)),
+            DataType::Sedol => Serie::Sedol(Arc::new(self)),
+            DataType::Bbg => Serie::Bbg(Arc::new(self)),
+            DataType::Ric => Serie::Ric(Arc::new(self)),
+            DataType::Figi => Serie::Figi(Arc::new(self)),
             DataType::Unit => Serie::Unit(Arc::new(self)),
             _ => Serie::Utf8String(Arc::new(self)),
         }
@@ -1365,9 +1373,9 @@ impl Leaf for Utf8StringSerie {
             Serie::Utf8String(held)
             | Serie::Country(held)
             | Serie::Ccy(held)
-            | Serie::MicCode(held)
-            | Serie::CfiCode(held)
-            | Serie::IsinCode(held)
+            | Serie::Mic(held)
+            | Serie::Cfi(held)
+            | Serie::Isin(held)
             | Serie::Side(held)
             | Serie::State(held)
             | Serie::TimeInForce(held)
@@ -1377,10 +1385,11 @@ impl Leaf for Utf8StringSerie {
             | Serie::Timezone(held)
             | Serie::MimeType(held)
             | Serie::MediaType(held)
-            | Serie::CusipCode(held)
-            | Serie::SedolCode(held)
-            | Serie::BloombergCode(held)
-            | Serie::FIGICode(held)
+            | Serie::Cusip(held)
+            | Serie::Sedol(held)
+            | Serie::Bbg(held)
+            | Serie::Ric(held)
+            | Serie::Figi(held)
             | Serie::Unit(held) => Some(held.as_ref()),
             _ => None,
         }
@@ -1391,9 +1400,9 @@ impl Leaf for Utf8StringSerie {
             Serie::Utf8String(held)
             | Serie::Country(held)
             | Serie::Ccy(held)
-            | Serie::MicCode(held)
-            | Serie::CfiCode(held)
-            | Serie::IsinCode(held)
+            | Serie::Mic(held)
+            | Serie::Cfi(held)
+            | Serie::Isin(held)
             | Serie::Side(held)
             | Serie::State(held)
             | Serie::TimeInForce(held)
@@ -1403,10 +1412,11 @@ impl Leaf for Utf8StringSerie {
             | Serie::Timezone(held)
             | Serie::MimeType(held)
             | Serie::MediaType(held)
-            | Serie::CusipCode(held)
-            | Serie::SedolCode(held)
-            | Serie::BloombergCode(held)
-            | Serie::FIGICode(held)
+            | Serie::Cusip(held)
+            | Serie::Sedol(held)
+            | Serie::Bbg(held)
+            | Serie::Ric(held)
+            | Serie::Figi(held)
             | Serie::Unit(held) => Some(Arc::make_mut(held)),
             _ => None,
         }
@@ -2909,9 +2919,9 @@ impl Serie {
             }
             (Self::Country(mine), Self::Country(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Ccy(mine), Self::Ccy(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::MicCode(mine), Self::MicCode(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::CfiCode(mine), Self::CfiCode(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::IsinCode(mine), Self::IsinCode(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Mic(mine), Self::Mic(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Cfi(mine), Self::Cfi(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Isin(mine), Self::Isin(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Side(mine), Self::Side(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::State(mine), Self::State(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::TimeInForce(mine), Self::TimeInForce(theirs)) => {
@@ -2923,12 +2933,11 @@ impl Serie {
             (Self::Timezone(mine), Self::Timezone(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::MimeType(mine), Self::MimeType(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::MediaType(mine), Self::MediaType(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::CusipCode(mine), Self::CusipCode(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::SedolCode(mine), Self::SedolCode(theirs)) => Arc::make_mut(mine).append(theirs),
-            (Self::BloombergCode(mine), Self::BloombergCode(theirs)) => {
-                Arc::make_mut(mine).append(theirs)
-            }
-            (Self::FIGICode(mine), Self::FIGICode(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Cusip(mine), Self::Cusip(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Sedol(mine), Self::Sedol(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Bbg(mine), Self::Bbg(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Ric(mine), Self::Ric(theirs)) => Arc::make_mut(mine).append(theirs),
+            (Self::Figi(mine), Self::Figi(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Unit(mine), Self::Unit(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Uuid(mine), Self::Uuid(theirs)) => Arc::make_mut(mine).append(theirs),
             (Self::Serie(mine), Self::Serie(theirs)) => Arc::make_mut(mine).append(theirs),

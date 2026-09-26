@@ -629,7 +629,7 @@ mod fields {
         ArrowCastOptions, DataType, DataTypeId, Field, FieldScalar, Scalar, Serie, StringEnum,
         StructType,
     };
-    use yggdryl::{CcyField, CfiCodeField, CountryField, MicCodeField, StringField};
+    use yggdryl::{CcyField, CfiField, CountryField, MicField, StringField};
 
     use super::typed::assert_typed_marker;
     use yggdryl::FieldValue as _;
@@ -648,8 +648,8 @@ mod fields {
         );
         assert_typed_marker::<yggdryl::CountryType>(DataType::Country);
         assert_typed_marker::<yggdryl::CcyType>(DataType::Ccy);
-        assert_typed_marker::<yggdryl::MicCodeType>(DataType::MicCode);
-        assert_typed_marker::<yggdryl::CfiCodeType>(DataType::CfiCode);
+        assert_typed_marker::<yggdryl::MicType>(DataType::Mic);
+        assert_typed_marker::<yggdryl::CfiType>(DataType::Cfi);
 
         // Every string is one parameterized datatype, so the field takes it
         // through `try_new`; a code is not a string and is refused by name.
@@ -663,13 +663,10 @@ mod fields {
         // and a `fixed_ascii(3)` are the same three bytes and are not each other.
         assert_eq!(CcyField::unit("ccy", false).dtype(), &DataType::Ccy);
         assert_eq!(CountryField::unit("iso", true).dtype(), &DataType::Country);
-        assert_eq!(
-            MicCodeField::unit("venue", true).dtype(),
-            &DataType::MicCode
-        );
+        assert_eq!(MicField::unit("venue", true).dtype(), &DataType::Mic);
         assert!(CcyField::try_new("ccy", DataType::fixed_ascii(3).unwrap(), false).is_err());
         // Six bytes against eight: the confusion a width/code mix-up produces.
-        assert!(CfiCodeField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
+        assert!(CfiField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).is_err());
 
         // The typed value is checked under the one US-ASCII rule for its width.
         let width = StringField::try_new("code", DataType::fixed_ascii(8).unwrap(), false).unwrap();
@@ -686,7 +683,7 @@ mod fields {
             Some("USD")
         );
         assert!(FieldScalar::new(&ccy.to_field(), "EURO").is_err());
-        let cfi = CfiCodeField::unit("classification", false);
+        let cfi = CfiField::unit("classification", false);
         assert!(FieldScalar::new(&cfi.to_field(), "ESVUFR").is_ok());
     }
 

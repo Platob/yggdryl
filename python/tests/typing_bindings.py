@@ -15,27 +15,28 @@ import pyarrow.fs as pa_fs  # type: ignore[import-untyped]
 import yggdryl
 from yggdryl import (
     ArrowCastPlan,
-    BloombergCodeField,
+    BbgField,
     Bound,
     BoundSelector,
     BytesField,
-    CfiCodeField,
+    CfiField,
     CountryField,
     CcyField,
-    CusipCodeField,
+    CusipField,
     DataType,
     DenseUnionField,
     Expression,
     Field,
+    FigiField,
     Filter,
     FixedSizeSerieField,
     GeographyField,
     GeometryField,
     IOBase,
     Int32Field,
-    IsinCodeField,
+    IsinField,
     MediaType,
-    MicCodeField,
+    MicField,
     MimeType,
     Parameters,
     Plan,
@@ -43,8 +44,9 @@ from yggdryl import (
     PythonMetadata,
     RecordOptions,
     Records,
+    RicField,
     Scalar,
-    SedolCodeField,
+    SedolField,
     Selector,
     Serie,
     SerieField,
@@ -94,7 +96,7 @@ from yggdryl._native import (
     StringParameters,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import MARKET_VIEWS, AsciiCode, CcyCode, fixed_ascii
+from yggdryl.enums import MARKET_VIEWS, AsciiCode, Ccy, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -515,18 +517,22 @@ typed_country: CountryField = yggdryl.country("iso", nullable=False)
 typed_country_kind: Literal["country"] = typed_country.dtype.id
 typed_ccy: CcyField = yggdryl.ccy("ccy", nullable=False)
 typed_ccy_kind: Literal["ccy"] = typed_ccy.dtype.id
-typed_mic: MicCodeField = yggdryl.mic("venue")
+typed_mic: MicField = yggdryl.mic("venue")
 typed_mic_kind: Literal["mic"] = typed_mic.dtype.id
-typed_cfi: CfiCodeField = yggdryl.cfi("classification")
+typed_cfi: CfiField = yggdryl.cfi("classification")
 typed_cfi_kind: Literal["cfi"] = typed_cfi.dtype.id
-typed_isin: IsinCodeField = yggdryl.isin("instrument")
+typed_isin: IsinField = yggdryl.isin("instrument")
 typed_isin_kind: Literal["isin"] = typed_isin.dtype.id
-typed_cusip: CusipCodeField = yggdryl.cusip("cusip")
+typed_cusip: CusipField = yggdryl.cusip("cusip")
 typed_cusip_kind: Literal["cusip"] = typed_cusip.dtype.id
-typed_sedol: SedolCodeField = yggdryl.sedol("sedol")
+typed_sedol: SedolField = yggdryl.sedol("sedol")
 typed_sedol_kind: Literal["sedol"] = typed_sedol.dtype.id
-typed_bloomberg: BloombergCodeField = yggdryl.bloomberg("bloomberg")
-typed_bloomberg_kind: Literal["bloomberg"] = typed_bloomberg.dtype.id
+typed_bbg: BbgField = yggdryl.bbg("bbg")
+typed_bbg_kind: Literal["bbg"] = typed_bbg.dtype.id
+typed_ric: RicField = yggdryl.ric("ric")
+typed_ric_kind: Literal["ric"] = typed_ric.dtype.id
+typed_figi: FigiField = yggdryl.figi("figi")
+typed_figi_kind: Literal["figi"] = typed_figi.dtype.id
 typed_uuid: UuidField = yggdryl.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
@@ -547,7 +553,7 @@ ascii_member_name: str = StringEnum.member_name("n/a")
 ascii_width_base: type[AsciiCode] = fixed_ascii(4)
 
 
-class TypedCcy(CcyCode):
+class TypedCcy(Ccy):
     USD = "USD"
     EUR = "EUR"
 

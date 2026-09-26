@@ -1,4 +1,4 @@
-//! `rust/src/cfi_code.rs`: the coded datatypes FIX's constant vocabulary earns.
+//! `rust/src/cfi.rs`: the coded datatypes FIX's constant vocabulary earns.
 //!
 //! `DataType` is `#[non_exhaustive]` and the datatype layer carries some sixty
 //! wildcard arms, so a new variant compiles clean while behaving wrongly. A
@@ -13,7 +13,7 @@ mod coded {
 
     #[test]
     fn a_cfi_stores_the_six_characters_it_is_and_nothing_beside_them() {
-        let cfi = Field::new("classification", DataType::CfiCode, false);
+        let cfi = Field::new("classification", DataType::Cfi, false);
         let stored = Serie::from_scalars(cfi.clone(), [Scalar::from("ESVUFR")])
             .unwrap()
             .require_arrow_array()
@@ -27,13 +27,13 @@ mod coded {
                 .unwrap()
                 .scalar(0)
                 .unwrap(),
-            DataType::CfiCode.scalar(Scalar::from("ESVUFR")).unwrap()
+            DataType::Cfi.scalar(Scalar::from("ESVUFR")).unwrap()
         );
         // A width of six bytes is spellable and is still not a CFI code.
         assert_eq!(
             DataType::from_str("fixed_ascii(6)").unwrap(),
             DataType::fixed_ascii(6).unwrap()
         );
-        assert_ne!(DataType::CfiCode, DataType::fixed_ascii(6).unwrap());
+        assert_ne!(DataType::Cfi, DataType::fixed_ascii(6).unwrap());
     }
 }

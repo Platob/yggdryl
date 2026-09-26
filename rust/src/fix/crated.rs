@@ -768,7 +768,7 @@ const CRATED: [Crated; 40] = [
     ),
     Crated::own(
         BLOOMBERGCODE_TAG_NAME,
-        || Ok(DataType::BloombergCode),
+        || Ok(DataType::Bbg),
         "BloombergCode",
         "The normalized Bloomberg identifier the message identifies.",
     ),

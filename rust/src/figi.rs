@@ -19,9 +19,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct FIGICode(SmolStr);
+pub struct Figi(SmolStr);
 
-impl<'de> Deserialize<'de> for FIGICode {
+impl<'de> Deserialize<'de> for Figi {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -31,17 +31,17 @@ impl<'de> Deserialize<'de> for FIGICode {
     }
 }
 
-impl FIGICode {
+impl Figi {
     /// Validate and construct a Financial Instrument Global Identifier.
     ///
     /// ```
-    /// use yggdryl::FIGICode;
+    /// use yggdryl::Figi;
     ///
-    /// let figi = FIGICode::new("BBG000BLNQ16").unwrap();
+    /// let figi = Figi::new("BBG000BLNQ16").unwrap();
     /// assert_eq!(figi.as_str(), "BBG000BLNQ16");
-    /// assert_eq!(FIGICode::new("bbg000blnq16").unwrap(), figi);
+    /// assert_eq!(Figi::new("bbg000blnq16").unwrap(), figi);
     /// assert_eq!(figi.check_digit(), 6);
-    /// assert!(FIGICode::new("BBG000BLNQ15").is_err());
+    /// assert!(Figi::new("BBG000BLNQ15").is_err());
     /// ```
     ///
     /// # Errors
@@ -185,13 +185,13 @@ impl FIGICode {
     }
 }
 
-impl fmt::Display for FIGICode {
+impl fmt::Display for Figi {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(FIGICode, FIGICode, FIGI_WIDTH);
+code_value!(Figi, Figi, FIGI_WIDTH);
 
 /// The Arrow extension name of a Financial Instrument Global Identifier.
 pub(crate) const FIGI_EXTENSION_NAME: &str = "yggdryl.figi";
@@ -205,14 +205,14 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::figi(), DataType::FIGICode);
+    /// assert_eq!(DataType::figi(), DataType::Figi);
     /// assert_eq!(DataType::figi().to_string(), "figi");
     /// assert_eq!(DataType::figi().code_width(), Some(12));
     /// ```
     #[must_use]
     pub const fn figi() -> Self {
-        Self::FIGICode
+        Self::Figi
     }
 }
 
-define_field_types!(FIGICodeType, FIGICode);
+define_field_types!(FigiType, Figi);

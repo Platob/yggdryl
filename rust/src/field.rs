@@ -15,13 +15,13 @@ use crate::metadata::{
     parse_field_id, parse_reserved_bool, property_key, write_json_string as write_quoted,
 };
 use crate::{
-    BloombergCodeType, BooleanType, BytesType, CcyType, CfiCodeType, CountryType, CusipCodeType,
-    DateTimeType, DateType, DecimalType, DurationType, EnumType, FIGICodeType, Float16Type,
-    Float32Type, Float64Type, GeographyType, GeometryType, Int8Type, Int16Type, Int32Type,
-    Int64Type, IntervalType, IsinCodeType, MappingType, MediaTypeType, MicCodeType, MimeTypeType,
-    NullType, RunEndType, SedolCodeType, SerieType, SideType, StateType, StringType, StructType,
-    TimeInForceType, TimeType, TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    UnionType, UnitType, UriType, UuidType, VariantType, VersionType,
+    BbgType, BooleanType, BytesType, CcyType, CfiType, CountryType, CusipType, DateTimeType,
+    DateType, DecimalType, DurationType, EnumType, FigiType, Float16Type, Float32Type, Float64Type,
+    GeographyType, GeometryType, Int8Type, Int16Type, Int32Type, Int64Type, IntervalType, IsinType,
+    MappingType, MediaTypeType, MicType, MimeTypeType, NullType, RicType, RunEndType, SedolType,
+    SerieType, SideType, StateType, StringType, StructType, TimeInForceType, TimeType,
+    TimezoneType, UInt8Type, UInt16Type, UInt32Type, UInt64Type, UnionType, UnitType, UriType,
+    UuidType, VariantType, VersionType,
 };
 use crate::{DataType, DataTypeValue, FieldValue, preflight_schema_shape};
 
@@ -1615,9 +1615,9 @@ field_leaves! {
     ] => StringField / StringType,
     [Country] => CountryField / CountryType,
     [Ccy] => CcyField / CcyType,
-    [MicCode] => MicCodeField / MicCodeType,
-    [CfiCode] => CfiCodeField / CfiCodeType,
-    [IsinCode] => IsinCodeField / IsinCodeType,
+    [Mic] => MicField / MicType,
+    [Cfi] => CfiField / CfiType,
+    [Isin] => IsinField / IsinType,
     [Side] => SideField / SideType,
     [State] => StateField / StateType,
     [TimeInForce] => TimeInForceField / TimeInForceType,
@@ -1637,10 +1637,11 @@ field_leaves! {
     [Timezone] => TimezoneField / TimezoneType,
     [MimeType] => MimeTypeField / MimeTypeType,
     [MediaType] => MediaTypeField / MediaTypeType,
-    [CusipCode] => CusipCodeField / CusipCodeType,
-    [SedolCode] => SedolCodeField / SedolCodeType,
-    [BloombergCode] => BloombergCodeField / BloombergCodeType,
-    [FIGICode] => FIGICodeField / FIGICodeType,
+    [Cusip] => CusipField / CusipType,
+    [Sedol] => SedolField / SedolType,
+    [Bbg] => BbgField / BbgType,
+    [Ric] => RicField / RicType,
+    [Figi] => FigiField / FigiType,
     [Unit] => UnitField / UnitType,
 }
 

@@ -1521,9 +1521,9 @@ mod types {
         for (dtype, value) in [
             (DataType::Country, "FR"),
             (DataType::Ccy, "USD"),
-            (DataType::MicCode, "XPAR"),
-            (DataType::CfiCode, "ESVUFR"),
-            (DataType::IsinCode, "US0378331005"),
+            (DataType::Mic, "XPAR"),
+            (DataType::Cfi, "ESVUFR"),
+            (DataType::Isin, "US0378331005"),
             (DataType::Side, "BUY"),
             (DataType::State, "0"),
             (DataType::TimeInForce, "GTC"),
@@ -4124,7 +4124,7 @@ mod planning {
         let path = root("code-bounds");
         let mut schema = StructType::from_fields([
             DataType::Int64.required_field("id"),
-            DataType::MicCode.nullable_field("venue"),
+            DataType::Mic.nullable_field("venue"),
         ])
         .map(DataType::from)
         .unwrap()

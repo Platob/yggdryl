@@ -21,9 +21,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct SedolCode(SmolStr);
+pub struct Sedol(SmolStr);
 
-impl SedolCode {
+impl Sedol {
     /// The weight each of the six leading characters carries.
     const WEIGHTS: [u32; SEDOL_WIDTH - 1] = [1, 3, 1, 7, 3, 9];
 
@@ -34,15 +34,15 @@ impl SedolCode {
     /// reads a letter by its position, which case does not change.
     ///
     /// ```
-    /// use yggdryl::SedolCode;
+    /// use yggdryl::Sedol;
     ///
-    /// let shell = SedolCode::new("B0YBKJ7").unwrap();
+    /// let shell = Sedol::new("B0YBKJ7").unwrap();
     /// assert_eq!(shell.as_str(), "B0YBKJ7");
     /// assert_eq!(shell.check_digit(), 7);
-    /// assert_eq!(SedolCode::new("b0ybkj7").unwrap(), shell);
+    /// assert_eq!(Sedol::new("b0ybkj7").unwrap(), shell);
     /// // One digit off is a typo, not a security.
-    /// assert!(SedolCode::new("B0YBKJ8").is_err());
-    /// assert!(SedolCode::new("B0YBKJ").is_err());
+    /// assert!(Sedol::new("B0YBKJ8").is_err());
+    /// assert!(Sedol::new("B0YBKJ").is_err());
     /// ```
     ///
     /// # Errors
@@ -144,13 +144,13 @@ impl SedolCode {
     }
 }
 
-impl fmt::Display for SedolCode {
+impl fmt::Display for Sedol {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(SedolCode, SedolCode, SEDOL_WIDTH);
+code_value!(Sedol, Sedol, SEDOL_WIDTH);
 
 /// The Arrow extension name of the SEDOL securities identifier.
 pub(crate) const SEDOL_EXTENSION_NAME: &str = "yggdryl.sedol";
@@ -167,15 +167,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::sedol(), DataType::SedolCode);
+    /// assert_eq!(DataType::sedol(), DataType::Sedol);
     /// assert_eq!(DataType::sedol().to_string(), "sedol");
     /// assert_eq!(DataType::sedol().code_width(), Some(7));
     /// ```
     #[must_use]
     pub const fn sedol() -> Self {
-        Self::SedolCode
+        Self::Sedol
     }
 }
 
 // /// A SEDOL-typed field: the seven-character London Stock Exchange securities identifier.
-define_field_types!(SedolCodeType, SedolCode);
+define_field_types!(SedolType, Sedol);

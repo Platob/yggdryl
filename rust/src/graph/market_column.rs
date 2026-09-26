@@ -9,9 +9,7 @@ use smol_str::SmolStr;
 
 use super::Market;
 use crate::securityid::SecurityIds;
-use crate::{
-    Ccy, CfiCode, DataType, Decimal, Field, MicCode, Result, Scalar, Side, TimeInForce, Unit,
-};
+use crate::{Ccy, Cfi, DataType, Decimal, Field, Mic, Result, Scalar, Side, TimeInForce, Unit};
 
 /// One column of the market facts every market element answers.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -154,8 +152,8 @@ impl MarketColumn {
             Self::Unit => DataType::Unit,
             Self::Side => DataType::Side,
             Self::SecurityIds => SecurityIds::dtype(),
-            Self::CfiCode => DataType::CfiCode,
-            Self::MicCode => DataType::MicCode,
+            Self::CfiCode => DataType::Cfi,
+            Self::MicCode => DataType::Mic,
             Self::Ticker => DataType::utf8(),
             Self::Metadata => DataType::map_of(DataType::utf8(), DataType::utf8(), true)
                 .expect("a sorted utf8 map is a datatype"),
@@ -288,14 +286,14 @@ impl MarketColumn {
                 }
             }
             Self::CfiCode => element.set_cficode(match value {
-                Scalar::CfiCode(held) => Some(held.clone()),
+                Scalar::Cfi(held) => Some(held.clone()),
                 Scalar::Null => None,
-                other => other.as_str().and_then(|text| CfiCode::new(text).ok()),
+                other => other.as_str().and_then(|text| Cfi::new(text).ok()),
             }),
             Self::MicCode => element.set_miccode(match value {
-                Scalar::MicCode(held) => Some(held.clone()),
+                Scalar::Mic(held) => Some(held.clone()),
                 Scalar::Null => None,
-                other => other.as_str().and_then(|text| MicCode::new(text).ok()),
+                other => other.as_str().and_then(|text| Mic::new(text).ok()),
             }),
             Self::LastPx => element.set_lastpx(decimal()),
             Self::LastQty => element.set_lastqty(decimal()),

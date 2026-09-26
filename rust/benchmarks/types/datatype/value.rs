@@ -10,19 +10,26 @@ pub(crate) fn value_benchmarks(criterion: &mut Criterion) {
     {
         use yggdryl::graph::{BookSide, Market};
         use yggdryl::securityid::{SecType, SecurityId};
-        use yggdryl::{CfiCode, FIGICode, IsinCode};
+        use yggdryl::{Cfi, Figi, Isin, Ric};
         let mut codes = criterion.benchmark_group("instrument_codes");
         codes.bench_function("isin", |bench| {
-            bench.iter(|| IsinCode::new(black_box("us0378331005")).unwrap());
+            bench.iter(|| Isin::new(black_box("us0378331005")).unwrap());
         });
         codes.bench_function("figi", |bench| {
-            bench.iter(|| FIGICode::new(black_box("bbg000blnq16")).unwrap());
+            bench.iter(|| Figi::new(black_box("bbg000blnq16")).unwrap());
+        });
+        codes.bench_function("ric", |bench| {
+            bench.iter(|| Ric::new(black_box("0005.HK")).unwrap());
+        });
+        let ric = Ric::new("0005.HK").unwrap();
+        codes.bench_function("ric_exchange_code", |bench| {
+            bench.iter(|| black_box(&ric).exchange_code());
         });
         codes.bench_function("cfi_classification", |bench| {
-            bench.iter(|| CfiCode::is_classified(black_box("ESVUFR")));
+            bench.iter(|| Cfi::is_classified(black_box("ESVUFR")));
         });
         codes.bench_function("cfi_merge", |bench| {
-            bench.iter(|| CfiCode::merged(black_box("ESXXXX"), black_box("ESVUFR")));
+            bench.iter(|| Cfi::merged(black_box("ESXXXX"), black_box("ESVUFR")));
         });
         let isin = SecurityId::new(SecType::read("ISIN").unwrap(), "US0378331005").unwrap();
         codes.bench_function("market_identifier_setter", |bench| {

@@ -2496,18 +2496,19 @@ mod typed {
             targets
         }
 
-        /// The twelve registered codes.
+        /// The registered codes.
         fn codes() -> Vec<DataType> {
             vec![
                 DataType::Country,
                 DataType::Ccy,
-                DataType::MicCode,
-                DataType::CfiCode,
-                DataType::IsinCode,
-                DataType::CusipCode,
-                DataType::SedolCode,
-                DataType::BloombergCode,
-                DataType::FIGICode,
+                DataType::Mic,
+                DataType::Cfi,
+                DataType::Isin,
+                DataType::Cusip,
+                DataType::Sedol,
+                DataType::Bbg,
+                DataType::Ric,
+                DataType::Figi,
                 DataType::Side,
                 DataType::State,
                 DataType::TimeInForce,
@@ -2729,7 +2730,7 @@ mod typed {
                 DataType::datetime64(TimeUnit::Microsecond, Timezone::UTC).unwrap(),
                 DataType::duration64(TimeUnit::Millisecond).unwrap(),
                 DataType::uuid(),
-                DataType::CusipCode,
+                DataType::Cusip,
                 DataType::Version,
                 DataType::url(),
                 DataType::Timezone,

@@ -208,7 +208,7 @@ pub struct ValueStream  (Iterator<Item = Vec<u8>> + FusedIterator: one chunk per
 
 ### yggdryl::root::datatype_id  [rust/src/datatype_id.rs]
 pub enum DataTypeId
-  pub const ALL: [Self; 87] = [all exact datatype identifiers in canonical declaration order, including FIGICode, Decimal and BigDecimal];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position)
+  pub const ALL: [Self; 88] = [all exact datatype identifiers in canonical declaration order, including Figi, Decimal, BigDecimal and Ric at 0x7e];  (every discriminant is explicit; values are partitioned by DataTypeKind rather than declaration position)
   pub fn from_str(value: &str) -> Result<Self>  (an identifier's as_str name or one of its LEGACY_NAMES, ignoring case)
   pub const fn as_str(self) -> &'static str  (the serie family spells serie, serie_view, fixed_size_serie, large_serie, large_serie_view)
   pub const LEGACY_NAMES: [(&'static str, Self); 5]  (the names the serie family had before it took its own - list, list_view, fixed_size_list, large_list, large_list_view - read by every door that reads a datatype's name, written by none)
@@ -228,7 +228,7 @@ pub enum DataTypeId
   pub const fn is_binary(self) -> bool
   pub const fn is_string(self) -> bool  (the eighteen string leaves)
   pub const fn fixed_byte_width(self) -> Option<usize>  (the numbers, a UUID; a code answers code_width instead)
-  pub const fn code_width(self) -> Option<usize>  (the twelve registered codes; the most bytes one value may be: cusip 9, sedol 7)
+  pub const fn code_width(self) -> Option<usize>  (the fourteen registered codes; the most bytes one value may be: cusip 9, sedol 7, bbg, ric and unit 32)
 
 ### yggdryl::root::datatype_kind  [rust/src/datatype_kind.rs]
 pub enum DataTypeKind
@@ -762,7 +762,7 @@ pub const STATE_TAG_NAME: (i32, &str) = (65_052, "state");  (nullable `state` co
 pub const EXPRTIME_TAG_NAME: (i32, &str) = (65_053, "exprtime");  (nullable clock, display `ExprTime`: when the message stops being good - `ExpireTime(126)`, else `ValidUntilTime(62)`, `ExpireDate(432)` or `MaturityDate(541)` - the latest its chain knows once followed; a row stating one is the row's word)
 pub const MSGCAT_TAG_NAME: (i32, &str) = (65_054, "msgcat");  (nullable `int32`: the stable market-operation/business-category ID obtained by resolving the message definition's symbolic `FIX:msgcat` through `msgcatcodeset`)
 pub const ISINCODE_TAG_NAME: (i32, &str) = (65_055, "isincode");  (nullable `isin`: the `ISIN` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
-pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");  (nullable `bloomberg`: the `BLOOMBERG` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
+pub const BLOOMBERGCODE_TAG_NAME: (i32, &str) = (65_059, "bloombergcode");  (nullable `bbg`: the `BLOOMBERG` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
 pub const MICCODE_TAG_NAME: (i32, &str) = (65_060, "miccode");  (nullable `mic`: the normalized market identifier)
 pub const FIGICODE_TAG_NAME: (i32, &str) = (65_061, "figicode");  (nullable `figi`: the `FIGI` entry of the message's security identifiers, a view of `get_securityids()`; row-stated when written)
 pub const EXECUNIX_TAG_NAME: (i32, &str) = (65_062, "execunix");  (nullable nanosecond UTC clock: the latest precise execution instant this lifecycle has reached; directly stated by the row, else ExecutionTimestamp(2749), a TrdRegTimestamps(768) member typed ExecutionTime, `eventtimestamp`, or TransactTime(60) only where `FixMsg::is_execution` recognizes the report - including an initial TradeCaptureReport `35=AE` whose TradeReportTransType(487) is absent/New and whose ExecType(150) is absent or execution-like; a non-New AE and AD/AQ/AR never invent one; an execution report stating none takes its own `currunix` at intake - a raw observation only, a placed message keeping the execution its chain reached - non-executions carry the predecessor's clock, and following keeps the later clock)
@@ -1318,10 +1318,10 @@ pub trait Market  (an element that stands in a market, no supertrait: nineteen f
   fn insert_securityid(&mut self, id: SecurityId) -> Result<bool>  (fill only, stated; whether it was added)
   fn remove_securityid(&mut self, key: &SecType) -> Result<bool>  (whether one was held)
   fn derive_securityid(&mut self, id: SecurityId) -> bool  (fill only, derived: what the element implies rather than states, never reaching a store the holder is a view of)
-  fn get_cficode(&self) -> Option<&CfiCode>
-  fn set_cficode(&mut self, code: Option<CfiCode>)
-  fn get_miccode(&self) -> Option<&MicCode>  (the market it trades on, ISO 10383, where known)
-  fn set_miccode(&mut self, code: Option<MicCode>)
+  fn get_cficode(&self) -> Option<&Cfi>
+  fn set_cficode(&mut self, code: Option<Cfi>)
+  fn get_miccode(&self) -> Option<&Mic>  (the market it trades on, ISO 10383, where known)
+  fn set_miccode(&mut self, code: Option<Mic>)
   fn get_lastpx(&self) -> Option<Decimal>  (what the element last traded, with `get_lastqty`; each with its `set_`)
   fn get_avgpx(&self) -> Option<Decimal>  (what it averaged; `get_cumqty` and `get_leavesqty` how much is done and how much is left; each with its `set_`)
   fn get_prevpx(&self) -> Option<Decimal>  (with `get_prevqty`: what the step before this one settled on, which a walk fills; each with its `set_`)
@@ -1378,7 +1378,7 @@ pub enum EventColumn { CurrUnix, CreaUnix, ExecUnix, RecdUnix, ExprTime, PrevUni
   pub fn record<E: Event + ?Sized>(self, event: &mut E, value: &Scalar)  (states a cell back through the traits; a null clears the fact, a value the fact's type refuses is silence)
 
 ### yggdryl::graph::market_column  [rust/src/graph/market_column.rs]
-pub enum MarketColumn { Price, Currency, Quantity, Unit, Side, SecurityIds, CfiCode, MicCode, LastPx, LastQty, AvgPx, CumQty, LeavesQty, PrevPx, PrevQty, SpotRate, ForwardPoints, Ticker, Metadata }  (the nineteen canonical columns every `Market` answers, one per fact under the trait's own name: `price` .. `metadata`)
+pub enum MarketColumn { Price, Currency, Quantity, Unit, Side, SecurityIds, Cfi, Mic, LastPx, LastQty, AvgPx, CumQty, LeavesQty, PrevPx, PrevQty, SpotRate, ForwardPoints, Ticker, Metadata }  (the nineteen canonical columns every `Market` answers, one per fact under the trait's own name: `price` .. `metadata`)
   impl Clone, Copy, Debug, Eq, Hash, PartialEq for MarketColumn
   pub const ALL: [Self; 19]
   pub const fn name(self) -> &'static str
@@ -3622,7 +3622,7 @@ pub enum DataType
 
 ### yggdryl::field  [rust/src/field.rs]
   pub struct FieldOf<D: DataTypeValue>  (one field carrying its family's own datatype, so the payload is the proof and no marker carries it)
-  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the twelve code fields CountryField .. TimeInForceField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipCodeField, SedolCodeField, BloombergCodeField, FIGICodeField)
+  pub type Int8Field = FieldOf<Int8Type>;  (one alias per family: Int8Field .. Float64Field, DateTimeField, DateField, TimeField, DurationField, IntervalField, BytesField, StringField, the fourteen code fields CountryField .. UnitField, UuidField, VersionField, UriField, SerieField, StructField, UnionField, EnumField, DecimalField, MappingField, RunEndEncodedField, VariantField, GeometryField, GeographyField, TimezoneField, MimeTypeField, MediaTypeField, CusipField, SedolField, BbgField, FigiField)
   pub type FieldRef = Arc<ArrowField>;
   pub enum Field  (the enum over those leaves; every arm names the family that answers, and a variant is a datatype nobody can disagree with)
   pub fn new(name: impl Into<SmolStr>, dtype: DataType, nullable: bool) -> Self
@@ -4241,7 +4241,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their d128/d256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, MicCode, CfiCode, Side, State, TimeInForce, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the twelve registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their d128/d256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the fourteen registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -4250,7 +4250,7 @@ pub struct ProtocolField<'field>
   pub fn from_struct<K, I>(entries: I) -> Result<Self> where
   pub const fn as_bool(&self) -> Option<bool>
   pub fn as_str(&self) -> Option<&str>
-  pub const fn code_storage(&self) -> Option<&SmolStr>  (the twelve registered codes written out once; `id` is the other half - the identity leads, the text follows)
+  pub const fn code_storage(&self) -> Option<&SmolStr>  (the fourteen registered codes written out once; `id` is the other half - the identity leads, the text follows)
   pub const fn is_code(&self) -> bool  (DataTypeKind::Code.contains(self.id()))
   pub fn as_bytes(&self) -> Option<&[u8]>
   pub fn into_json_bytes(&self) -> Result<Vec<u8>>
@@ -4284,7 +4284,7 @@ pub struct ProtocolField<'field>
   pub fn without_field(&self, name: &str) -> Result<Self>
 
 ### yggdryl::serie  [rust/src/serie.rs]  (Serie, the fourth side of the value model: many values, as a schema-free run or as the Arrow buffers of one Field; the flat root, the identity helpers and the serde shadow live here, the leaves in serie/)
-  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the twelve codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
+  pub enum Serie  (#[non_exhaustive]; Run(Run), then one variant per storage layout, named as the leaf that holds it without Serie - a variant names the layout, never the datatype, which is the field's (SerieValue::id): Null, Boolean, Int8 .. Float64 (Arc<Int8Serie> ..), DateTimeSecond, DateTimeMillisecond, DateTimeMicrosecond, DateTimeNanosecond (Arc<DateTimeSecondSerie> ..), Date32, Date64, Time32Second, Time32Millisecond, Time64Microsecond, Time64Nanosecond (Arc<Time32SecondSerie> ..), DurationSecond, DurationMillisecond, DurationMicrosecond, DurationNanosecond (Arc<DurationSecondSerie> ..; each holds duration32 and duration64 alike, the width the field's), IntervalYearMonth, IntervalDayTime, IntervalMonthDayNano (Arc<IntervalYearMonthSerie> ..), Binary (a sized binary too), LargeBinary, BinaryView (a large view too), FixedBytes (Arc<BinarySerie> .. Arc<FixedBytesSerie>), Utf8String (every string leaf laid out as UTF-8, ascii and sized_utf8 among them), LargeUtf8String, Utf8ViewString, BinaryString, LargeBinaryString, BinaryViewString, FixedString (Arc<Utf8StringSerie> .. Arc<FixedStringSerie>), the fourteen codes and Version, Url, Urn, Timezone, MimeType, MediaType (Arc<Utf8StringSerie>), Uuid(Arc<FixedBytesSerie>), Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (Arc<SerieSerie> .. Arc<LargeSerieViewSerie>; the one layout a datatype names, so the variant shares the datatype's name), Struct, Union, Dictionary(Arc<DictionarySerie>), Decimal32 .. Decimal256, Map, SortedMap (Arc<MapSerie>), RunEndEncoded, Variant, Geometry, Geography (Arc<BinarySerie>); 24 bytes; Clone is a pointer bump per column; Eq/Ord/Hash over the rows alone, never the leaf or the field, so a run and a column of equal rows are one value and hash alike; Display a run as its slice, a column as name[row, ...]; Debug a column as its leaf's Name { field, len, nulls }; Default = an empty run)
   pub fn new(values: impl Into<Arc<[Scalar]>>) -> Self  (a run)
   pub fn empty(field: impl Into<Arc<Field>>) -> Result<Self>  (the empty column of field; a union of no member, wherever it lies, refused)
   pub fn with_capacity(field: impl Into<Arc<Field>>, rows: usize) -> Result<Self>  (the empty column whose buffers reserve rows; an encoding reserves nothing)
@@ -4462,7 +4462,7 @@ pub struct ProtocolField<'field>
   pub type BinaryViewSerie = ByteViewSerie<BinaryViewType, Octets>
   pub type FixedBytesSerie = FixedSerie<Octets>  (a UUID, or any identity stored at one width)
 
-### yggdryl::serie::string  [rust/src/serie/string.rs]  (the string family's leaves over the byte layouts: the field says which of the eighteen string leaves or twelve codes the bytes are)
+### yggdryl::serie::string  [rust/src/serie/string.rs]  (the string family's leaves over the byte layouts: the field says which of the eighteen string leaves or fourteen codes the bytes are)
   pub type Utf8StringSerie = ByteSerie<Utf8Type, Chars>
   pub type LargeUtf8StringSerie = ByteSerie<LargeUtf8Type, Chars>
   pub type Utf8ViewStringSerie = ByteViewSerie<StringViewType, Chars>
@@ -4589,11 +4589,11 @@ pub trait TemporalValue: Value  (implemented by Date32, Date64, Time32, Time64, 
 pub trait GeospatialValue: Value  (implemented by Geometry and Geography)
   fn as_bytes(&self) -> &[u8]
   fn storage(&self) -> &Arc<[u8]>
-pub trait CodeValue: Value  (implemented by the twelve registered codes)
+pub trait CodeValue: Value  (implemented by the fourteen registered codes)
   const WIDTH: usize
   fn as_str(&self) -> &str
   fn storage(&self) -> &SmolStr
-  fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: CfiCode fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Ccy `XXX` and MicCode `XXXX` take the other, every identifier stands as it is)
+  fn merge_with(self, other: &Self) -> Self  (provided as this code; the better statement of two codes of one kind: Cfi fills every `X` from the other where the two describe one instrument, State that reached none takes the other and otherwise the further along stands, Side `UNKNOWN`, Ccy `XXX` and Mic `XXXX` take the other, every identifier stands as it is)
 pub trait NestedValue: Value  (implemented by Run, Serie, Map and Struct)
   fn len(&self) -> usize
   fn is_empty(&self) -> bool  (provided: len() == 0)
@@ -4844,20 +4844,20 @@ impl Scalar
   pub const fn ccy() -> Self
   pub type CcyField = FieldOf<CcyType>;
 
-### yggdryl::mic_code  [rust/src/mic_code.rs]
+### yggdryl::mic  [rust/src/mic.rs]
   pub enum DxFeedExchangeFeed  (#[non_exhaustive]; CtaUtp, Cboe, NasdaqBasic, NyseBqt, Otc, Cme, UsOptions; the dxFeed table that gives a regional exchange code its meaning)
     pub const fn as_str(self) -> &'static str
     impl Display
-  pub struct MicCode(SmolStr)  (one validated code; `MicCodeType` marks its field, `MicCodeField` is `FieldOf<MicCodeType>`)
+  pub struct Mic(SmolStr)  (one validated code; `MicType` marks its field, `MicField` is `FieldOf<MicType>`)
   pub fn none() -> Self
   pub fn from_dxfeed_exchange_code(feed: DxFeedExchangeFeed, code: impl AsRef<str>) -> Result<Self>
   pub fn from_reuters_exchange_code(code: impl AsRef<str>) -> Result<Self>  (FIX 4.2 Appendix C / RIC suffix, case-sensitive, to the MIC carrying the market)
   pub fn is_iso(text: &str) -> bool  (exactly four upper-case ASCII letters or digits: an ISO 10383 MIC, where `new` stays permissive for a venue's short code)
   pub const fn mic() -> Self
-  pub type MicCodeField = FieldOf<MicCodeType>;
+  pub type MicField = FieldOf<MicType>;
 
-### yggdryl::cfi_code  [rust/src/cfi_code.rs]
-  pub struct CfiCode(SmolStr)  (one validated code; `CfiCodeType` marks its field, `CfiCodeField` is `FieldOf<CfiCodeType>`)
+### yggdryl::cfi  [rust/src/cfi.rs]
+  pub struct Cfi(SmolStr)  (one validated code; `CfiType` marks its field, `CfiField` is `FieldOf<CfiType>`)
   pub const CFI_CATEGORIES: [CfiCategory; 14] = [
   pub const LENGTH: usize = 6;
   pub const UNKNOWN: char = 'X';
@@ -4867,7 +4867,7 @@ impl Scalar
   pub fn merged(left: &str, right: &str) -> Option<SmolStr>
   pub fn coarse(category: char, group: Option<char>) -> Option<SmolStr>
   pub const fn cfi() -> Self
-  pub type CfiCodeField = FieldOf<CfiCodeType>;
+  pub type CfiField = FieldOf<CfiType>;
   pub struct CfiCategory
   pub struct CfiGroup
   pub const fn letter(&self) -> char
@@ -4878,9 +4878,9 @@ impl Scalar
   pub const fn name(&self) -> &'static str
   pub fn attributes(&self, at: usize) -> &'static str
 
-### yggdryl::isin_code  [rust/src/isin_code.rs]
-  pub struct IsinCode(SmolStr)  (one validated code; `IsinCodeType` marks its field, `IsinCodeField` is `FieldOf<IsinCodeType>`)
-  pub struct IsinCode(SmolStr);
+### yggdryl::isin  [rust/src/isin.rs]
+  pub struct Isin(SmolStr)  (one validated code; `IsinType` marks its field, `IsinField` is `FieldOf<IsinType>`)
+  pub struct Isin(SmolStr);
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -4891,11 +4891,11 @@ impl Scalar
   pub fn is_canonical(text: &str) -> bool
   pub fn closing_digit(body: &str) -> Option<u8>
   pub const fn isin() -> Self
-  pub type IsinCodeField = FieldOf<IsinCodeType>;
+  pub type IsinField = FieldOf<IsinType>;
 
-### yggdryl::cusip_code  [rust/src/cusip_code.rs]
-  pub struct CusipCode(SmolStr)  (one validated code; `CusipCodeType` marks its field, `CusipCodeField` is `FieldOf<CusipCodeType>`)
-  pub struct CusipCode(SmolStr);
+### yggdryl::cusip  [rust/src/cusip.rs]
+  pub struct Cusip(SmolStr)  (one validated code; `CusipType` marks its field, `CusipField` is `FieldOf<CusipType>`)
+  pub struct Cusip(SmolStr);
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -4906,11 +4906,11 @@ impl Scalar
   pub fn is_canonical(text: &str) -> bool
   pub fn closing_digit(body: &str) -> Option<u8>
   pub const fn cusip() -> Self
-  pub type CusipCodeField = FieldOf<CusipCodeType>;
+  pub type CusipField = FieldOf<CusipType>;
 
-### yggdryl::sedol_code  [rust/src/sedol_code.rs]
-  pub struct SedolCode(SmolStr)  (one validated code; `SedolCodeType` marks its field, `SedolCodeField` is `FieldOf<SedolCodeType>`)
-  pub struct SedolCode(SmolStr);
+### yggdryl::sedol  [rust/src/sedol.rs]
+  pub struct Sedol(SmolStr)  (one validated code; `SedolType` marks its field, `SedolField` is `FieldOf<SedolType>`)
+  pub struct Sedol(SmolStr);
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -4919,14 +4919,29 @@ impl Scalar
   pub fn is_canonical(text: &str) -> bool
   pub fn closing_digit(body: &str) -> Option<u8>
   pub const fn sedol() -> Self
-  pub type SedolCodeField = FieldOf<SedolCodeType>;
+  pub type SedolField = FieldOf<SedolType>;
 
-### yggdryl::bloomberg_code  [rust/src/bloomberg_code.rs]
-  pub struct BloombergCode(SmolStr)  (one validated code; `BloombergCodeType` marks its field, `BloombergCodeField` is `FieldOf<BloombergCodeType>`)
+### yggdryl::bbg  [rust/src/bbg.rs]
+  pub struct Bbg(SmolStr)  (one validated Bloomberg identifier, datatype `bbg`, extension `yggdryl.bbg`, at most 32 bytes, case and inner spaces kept; `BbgType` marks its field, `BbgField` is `FieldOf<BbgType>`)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
   pub fn is_canonical(text: &str) -> bool
+  pub const fn bbg() -> Self
+  pub type BbgField = FieldOf<BbgType>;
 
-### yggdryl::figi_code  [rust/src/figi_code.rs]
-  pub struct FIGICode(SmolStr)  (one validated twelve-character Financial Instrument Global Identifier; `FIGICodeType` marks its field, `FIGICodeField` is `FieldOf<FIGICodeType>`)
+### yggdryl::ric  [rust/src/ric.rs]
+  pub struct Ric(SmolStr)  (one validated Refinitiv Identification Code, datatype `ric`, extension `yggdryl.ric`: one token of printable ASCII - no space, no control byte - of at most 32 bytes after the NUL padding is trimmed, case kept; no Default, and Deserialize validates through `new`; `RicType` marks its field, `RicField` is `FieldOf<RicType>`)
+  pub fn new(value: impl AsRef<str>) -> Result<Self>  (error kind "ric")
+  pub fn as_str(&self) -> &str
+  pub const fn storage(&self) -> &SmolStr
+  pub fn exchange_code(&self) -> Option<&str>  (the text after the last period when a ticker stands before it and something follows; None for an index `.SPX`, a chain carrying `#`, `EUR=`, `ESc1`)
+  pub fn is_canonical(text: &str) -> bool
+  pub const fn ric() -> Self
+  pub type RicField = FieldOf<RicType>;
+
+### yggdryl::figi  [rust/src/figi.rs]
+  pub struct Figi(SmolStr)  (one validated twelve-character Financial Instrument Global Identifier; `FigiType` marks its field, `FigiField` is `FieldOf<FigiType>`)
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
@@ -4935,7 +4950,7 @@ impl Scalar
   pub fn is_canonical(text: &str) -> bool
   pub fn closing_digit(body: &str) -> Option<u8>
   pub const fn figi() -> Self
-  pub type FIGICodeField = FieldOf<FIGICodeType>;
+  pub type FigiField = FieldOf<FigiType>;
 
 ### yggdryl::idmap  [rust/src/idmap.rs]  (identifiers keyed by name: the accounts, users and alternate ids a market states beside its instrument codes)
   pub struct IdMap(SmallVec<[SmolStr; 2]>)  (a small sorted map of ASCII values under upper-cased ASCII keys; one entry per key, `[key len][KEY][value]` in one buffer inline up to 23 bytes; keys 1 to 32 bytes folded to upper case on every door, values trimmed 1 to 64 bytes; `null`, `none`, `n/a`, `[n/a]` and empty add nothing; 56 bytes; Clone, Debug, Default, Eq, PartialEq, Hash, Display `{KEY=value, ...}`)
@@ -4964,7 +4979,7 @@ impl Scalar
   pub fn from_fix_source(code: char) -> Option<Self>
   pub fn as_str(&self) -> &str
   pub fn is_known(&self) -> bool
-  pub fn max_code_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FIGI 12, WKN 6, VALOR 9, ISOCCY 3, ISOCTRY 2, `BLOOMBERG_WIDTH` 32 otherwise)
+  pub fn max_code_width(&self) -> usize  (ISIN 12, CUSIP 9, SEDOL 7, FIGI 12, WKN 6, VALOR 9, ISOCCY 3, ISOCTRY 2, `BBG_WIDTH` 32 otherwise)
   pub fn validate_code(&self, code: &str) -> Result<()>  (the checked code's own constructor for ISIN, CUSIP, SEDOL and FIGI; WKN six of `[0-9A-HJ-NP-Z]`; VALOR one to nine digits without a leading zero; BLOOMBERG keeps case and inner spaces; otherwise printable ASCII within the width; no source takes an empty or null-like code)
   pub struct SecurityId(SmolStr)  (one buffer: a known source is one tag byte, its index in `KNOWN` plus one, an unknown source `0x7F`, one length byte and the key; the code follows; every byte ASCII; 24 bytes, inline up to 23; Clone, Debug, Eq, Hash, PartialEq, Display `KEY:CODE`, Ord on the source then the code, never the tag)
   pub fn new(key: SecType, code: &str) -> Result<Self>  (the code trimmed and validated by its source; a case-folding source's code is held upper-cased)
@@ -4985,7 +5000,7 @@ impl Scalar
   pub fn dtype() -> DataType  (`IdMap::dtype`)
   pub fn to_scalar(&self) -> Scalar
   pub fn from_scalar(scalar: &Scalar) -> Result<Self>  (as `IdMap::from_scalar`, each source read through `SecType::read` and each code validated by it)
-  pub fn embedded(isin: &IsinCode) -> impl Iterator<Item = SecurityId>  (the national number a canonical ISIN carries: US and CA a CUSIP in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a SEDOL in positions 4 to 11, DE behind `000` a WKN in positions 5 to 11, CH and LI a Valor number in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
+  pub fn embedded(isin: &Isin) -> impl Iterator<Item = SecurityId>  (the national number a canonical ISIN carries: US and CA a CUSIP in positions 2 to 11, GB, IE, GG, JE and IM behind `00` a SEDOL in positions 4 to 11, DE behind `000` a WKN in positions 5 to 11, CH and LI a Valor number in positions 2 to 11 with its leading zeros dropped; at most one, and only where it closes on its own check)
 
 ### yggdryl::limit  [rust/src/limit.rs]  (one price limit of a book side: its price, the quantity resting there and the entries resting there; a root value type, not a DataType variant)
 pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids: Vec<Uuid> }  (price `None` on the one limit folding every unpriced entry; quantity the exact sum of the entries' quantities, an entry stating none adding nothing; uuids the entries' `curruuid`s in live order; Clone, Debug, Eq, Hash, PartialEq - order-sensitive on `uuids`)
@@ -5116,18 +5131,18 @@ pub struct Str  (the characters alone, 24 bytes, SmolStr-backed; Deref<Target=st
 impl Scalar
   pub const fn string_parameters(&self) -> Option<StringType>  (the leaf a string value is written under, its number included - a cell read out of sized_utf8(32) answers SizedUtf8String(32); None for a code)
   pub const fn as_string(&self) -> Option<&Str>  (the characters of any string leaf; as_str also reads a code's text)
-pub struct Country  // and Ccy, MicCode, CfiCode, IsinCode, CusipCode, SedolCode, BloombergCode, FIGICode, Side, State, TimeInForce: one validated code each, SmolStr storage, serde transparent; IsinCode, CusipCode and SedolCode fold lower case and refuse a check digit that does not close them, while BloombergCode holds ASCII to its width and FIGICode folds ASCII case, validates its twelve-character shape and check digit
+pub struct Country  // and Ccy, Mic, Cfi, Isin, Cusip, Sedol, Bbg, Ric, Figi, Side, State, TimeInForce, Unit: one validated code each, SmolStr storage, serde transparent; Isin, Cusip and Sedol fold lower case and refuse a check digit that does not close them, while Bbg holds ASCII to its width, Ric holds one token of printable ASCII to its width with its case kept, and Figi folds ASCII case, validates its twelve-character shape and check digit
   pub fn new(value: impl AsRef<str>) -> Result<Self>
   pub fn as_str(&self) -> &str
   pub const fn storage(&self) -> &SmolStr
-  pub fn prefix(&self) -> &str  // IsinCode only
-  pub fn nsin(&self) -> &str  // IsinCode only
-  pub fn issuer(&self) -> &str  // CusipCode only
-  pub fn issue(&self) -> &str  // CusipCode only
-  pub fn check_digit(&self) -> u8  // IsinCode, CusipCode and SedolCode
-  pub fn is_valid(text: &str) -> bool  // IsinCode, CusipCode and SedolCode
-  pub fn is_canonical(text: &str) -> bool  // IsinCode, CusipCode, SedolCode, BloombergCode and FIGICode
-  pub fn closing_digit(body: &str) -> Option<u8>  // IsinCode, CusipCode and SedolCode
+  pub fn prefix(&self) -> &str  // Isin only
+  pub fn nsin(&self) -> &str  // Isin only
+  pub fn issuer(&self) -> &str  // Cusip only
+  pub fn issue(&self) -> &str  // Cusip only
+  pub fn check_digit(&self) -> u8  // Isin, Cusip and Sedol
+  pub fn is_valid(text: &str) -> bool  // Isin, Cusip and Sedol
+  pub fn is_canonical(text: &str) -> bool  // Isin, Cusip, Sedol, Bbg, Ric and Figi
+  pub fn closing_digit(body: &str) -> Option<u8>  // Isin, Cusip and Sedol
   pub fn rank(&self) -> Option<u8>  // State only
   pub fn is_live(&self) -> bool  // State only
   pub fn is_done(&self) -> bool  // State only
@@ -5138,7 +5153,7 @@ pub struct Country  // and Ccy, MicCode, CfiCode, IsinCode, CusipCode, SedolCode
   pub fn from_spelling(spelling: &str) -> Option<Self>  // Side and State: the FIX wire code (unfolded), the specification's name (folded) or the stored value, onto the one explicit value
   pub fn is_bid(&self) -> bool  // Side only: BUY, BUYMINUS take the bid lane of a quote
   pub fn is_ask(&self) -> bool  // Side only: SELL, SELLPLUS, SSHORT, SSHORTEX, SELLUND take the ask lane; a cross, UNDISC, ASDEF, OPPOSITE and UNKNOWN take neither
-  // CfiCode only: the ISO 10962 semantics, beside the value rather than in `fix`
+  // Cfi only: the ISO 10962 semantics, beside the value rather than in `fix`
   pub const LENGTH: usize = 6
   pub const UNKNOWN: char = 'X'
   pub fn category_of(letter: char) -> Option<&'static CfiCategory>  // 14 categories, 78 groups; `X` is a category letter nowhere
@@ -5162,7 +5177,7 @@ pub struct CfiGroup  (a group letter and its name, under one category)
   pub const fn identifier(&self) -> DataTypeId
   pub const fn datatype(&self) -> DataType
 impl DataType
-  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 3), ("mic", DataType::MicCode, 4), ("cfi", DataType::CfiCode, 6), ("isin", DataType::IsinCode, 12), ("cusip", DataType::CusipCode, 9), ("sedol", DataType::SedolCode, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bloomberg", DataType::BloombergCode, 32), ("figi", DataType::FIGICode, 12)];
+  pub const CODES: &'static [(&'static str, DataType, usize)] = &[("country", DataType::Country, 2), ("ccy", DataType::Ccy, 3), ("mic", DataType::Mic, 4), ("cfi", DataType::Cfi, 6), ("isin", DataType::Isin, 12), ("cusip", DataType::Cusip, 9), ("sedol", DataType::Sedol, 7), ("side", DataType::Side, 8), ("state", DataType::State, 10), ("timeinforce", DataType::TimeInForce, 8), ("bbg", DataType::Bbg, 32), ("figi", DataType::Figi, 12), ("unit", DataType::Unit, 32), ("ric", DataType::Ric, 32)];
   pub const fn country() -> Self
   pub const fn ccy() -> Self
   pub const fn mic() -> Self
@@ -5170,6 +5185,10 @@ impl DataType
   pub const fn isin() -> Self
   pub const fn cusip() -> Self
   pub const fn sedol() -> Self
+  pub const fn bbg() -> Self
+  pub const fn ric() -> Self
+  pub const fn figi() -> Self
+  pub const fn unit() -> Self
   pub const fn code_name(&self) -> Option<&'static str>
   pub const fn code_width(&self) -> Option<usize>  (the most bytes one value may be; a maximum, so fixed_byte_width is None)
   pub const fn is_code(&self) -> bool
@@ -5199,16 +5218,17 @@ impl StringEnum
   pub fn from_logical_name(name: &str) -> Result<Self>
   pub fn prebuilt_values(name: &str) -> &'static [&'static str]
   pub type StringField = FieldOf<StringType>;  (the Field leaf over the eighteen string variants; see yggdryl::field)
-pub struct CountryType  // and CcyType, MicCodeType, CfiCodeType, IsinCodeType, CusipCodeType, SedolCodeType, BloombergCodeType, FIGICodeType, SideType, StateType, TimeInForceType: the twelve code markers (country, ccy, mic, cfi, isin, cusip, sedol, bloomberg, figi, side, state, timeinforce)
+pub struct CountryType  // and CcyType, MicType, CfiType, IsinType, CusipType, SedolType, BbgType, RicType, FigiType, SideType, StateType, TimeInForceType, UnitType: the fourteen code markers (country, ccy, mic, cfi, isin, cusip, sedol, bbg, ric, figi, side, state, timeinforce, unit)
   pub type CountryField = FieldOf<CountryType>;
   pub type CcyField = FieldOf<CcyType>;
-  pub type MicCodeField = FieldOf<MicCodeType>;
-  pub type CfiCodeField = FieldOf<CfiCodeType>;
-  pub type IsinCodeField = FieldOf<IsinCodeType>;
-  pub type CusipCodeField = FieldOf<CusipCodeType>;
-  pub type SedolCodeField = FieldOf<SedolCodeType>;
-  pub type BloombergCodeField = FieldOf<BloombergCodeType>;
-  pub type FIGICodeField = FieldOf<FIGICodeType>;
+  pub type MicField = FieldOf<MicType>;
+  pub type CfiField = FieldOf<CfiType>;
+  pub type IsinField = FieldOf<IsinType>;
+  pub type CusipField = FieldOf<CusipType>;
+  pub type SedolField = FieldOf<SedolType>;
+  pub type BbgField = FieldOf<BbgType>;
+  pub type RicField = FieldOf<RicType>;
+  pub type FigiField = FieldOf<FigiType>;
   pub type SideField = FieldOf<SideType>;
   pub type StateField = FieldOf<StateType>;
   pub type TimeInForceField = FieldOf<TimeInForceType>;

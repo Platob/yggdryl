@@ -139,7 +139,7 @@ mod dataset {
             assert!(!flow.is_empty(), "{isin} is in the capture");
             let mics: Vec<&str> = flow
                 .iter()
-                .filter_map(|held| held.get_miccode().map(yggdryl::MicCode::as_str))
+                .filter_map(|held| held.get_miccode().map(yggdryl::Mic::as_str))
                 .collect();
             assert!(
                 !mics.is_empty() && mics.iter().all(|held| *held == mic),
@@ -147,7 +147,7 @@ mod dataset {
             );
             let cfis: Vec<&str> = flow
                 .iter()
-                .filter_map(|held| held.get_cficode().map(yggdryl::CfiCode::as_str))
+                .filter_map(|held| held.get_cficode().map(yggdryl::Cfi::as_str))
                 .collect();
             assert_eq!(cfis.first().copied(), cfi, "{isin}: {cfis:?}");
             assert!(

@@ -21,9 +21,9 @@ use crate::{DataType, Result, Scalar, Value};
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
-pub struct IsinCode(SmolStr);
+pub struct Isin(SmolStr);
 
-impl IsinCode {
+impl Isin {
     /// Validate and construct a securities identification number.
     ///
     /// Lower case is read as the upper case it spells, because the number
@@ -31,17 +31,17 @@ impl IsinCode {
     /// by its position, which case does not change.
     ///
     /// ```
-    /// use yggdryl::IsinCode;
+    /// use yggdryl::Isin;
     ///
-    /// let apple = IsinCode::new("US0378331005").unwrap();
+    /// let apple = Isin::new("US0378331005").unwrap();
     /// assert_eq!(apple.as_str(), "US0378331005");
     /// assert_eq!(apple.prefix(), "US");
     /// assert_eq!(apple.nsin(), "037833100");
     /// assert_eq!(apple.check_digit(), 5);
-    /// assert_eq!(IsinCode::new("us0378331005").unwrap(), apple);
+    /// assert_eq!(Isin::new("us0378331005").unwrap(), apple);
     /// // One digit off is a typo, not a security.
-    /// assert!(IsinCode::new("US0378331006").is_err());
-    /// assert!(IsinCode::new("US037833100").is_err());
+    /// assert!(Isin::new("US0378331006").is_err());
+    /// assert!(Isin::new("US037833100").is_err());
     /// ```
     ///
     /// # Errors
@@ -185,13 +185,13 @@ impl IsinCode {
     }
 }
 
-impl fmt::Display for IsinCode {
+impl fmt::Display for Isin {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(self.as_str())
     }
 }
 
-code_value!(IsinCode, IsinCode, ISIN_WIDTH);
+code_value!(Isin, Isin, ISIN_WIDTH);
 
 /// The Arrow extension name of the securities identification number.
 pub(crate) const ISIN_EXTENSION_NAME: &str = "yggdryl.isin";
@@ -208,15 +208,15 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert_eq!(DataType::isin(), DataType::IsinCode);
+    /// assert_eq!(DataType::isin(), DataType::Isin);
     /// assert_eq!(DataType::isin().to_string(), "isin");
     /// assert_eq!(DataType::isin().code_width(), Some(12));
     /// ```
     #[must_use]
     pub const fn isin() -> Self {
-        Self::IsinCode
+        Self::Isin
     }
 }
 
 // /// An ISIN-typed field: ISO 6166's securities identification number.
-define_field_types!(IsinCodeType, IsinCode);
+define_field_types!(IsinType, Isin);

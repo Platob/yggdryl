@@ -2921,7 +2921,7 @@ fn a_same_unit_instant_column_shares_its_buffer() {
 /// `Variant` keeps a shared field but no value names it - a variant value
 /// describes itself - so it is the one prebuilt id with nothing to infer.
 fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
-    let seeds: [(DataTypeId, Scalar); 49] = [
+    let seeds: [(DataTypeId, Scalar); 50] = [
         (DataTypeId::Null, Scalar::Null),
         (DataTypeId::Boolean, Scalar::from(true)),
         (DataTypeId::Int8, Scalar::from(1_i64)),
@@ -2963,13 +2963,14 @@ fn prebuilt_values() -> Vec<(DataTypeId, Scalar)> {
         (DataTypeId::LargeCp1252StringView, Scalar::from("AAPL")),
         (DataTypeId::Country, Scalar::from("US")),
         (DataTypeId::Ccy, Scalar::from("USD")),
-        (DataTypeId::MicCode, Scalar::from("XNAS")),
-        (DataTypeId::CfiCode, Scalar::from("ESVUFR")),
-        (DataTypeId::IsinCode, Scalar::from("US0378331005")),
-        (DataTypeId::CusipCode, Scalar::from("037833100")),
-        (DataTypeId::SedolCode, Scalar::from("B0YBKJ7")),
-        (DataTypeId::BloombergCode, Scalar::from("AAPL US EQUITY")),
-        (DataTypeId::FIGICode, Scalar::from("BBG000BLNQ16")),
+        (DataTypeId::Mic, Scalar::from("XNAS")),
+        (DataTypeId::Cfi, Scalar::from("ESVUFR")),
+        (DataTypeId::Isin, Scalar::from("US0378331005")),
+        (DataTypeId::Cusip, Scalar::from("037833100")),
+        (DataTypeId::Sedol, Scalar::from("B0YBKJ7")),
+        (DataTypeId::Bbg, Scalar::from("AAPL US EQUITY")),
+        (DataTypeId::Ric, Scalar::from("AAPL.OQ")),
+        (DataTypeId::Figi, Scalar::from("BBG000BLNQ16")),
         (DataTypeId::Side, Scalar::from("1")),
         (DataTypeId::State, Scalar::from("20NEW")),
         (DataTypeId::TimeInForce, Scalar::from("0")),
@@ -4823,39 +4824,42 @@ fn a_registry_whose_derivations_refuse_compiles_once_and_refuses_every_door() {
 }
 #[test]
 fn instrument_codes_construct_and_classify_without_allocating() {
-    use yggdryl::{BloombergCode, CfiCode, CusipCode, FIGICode, IsinCode, SedolCode};
+    use yggdryl::{Bbg, Cfi, Cusip, Figi, Isin, Ric, Sedol};
     free("long Bloomberg validation", || {
-        assert!(BloombergCode::is_canonical(
-            "AAPL US Equity Long Identifier"
-        ));
+        assert!(Bbg::is_canonical("AAPL US Equity Long Identifier"));
+    });
+    free("RIC construction", || {
+        black_box(Ric::new(black_box("0005.HK")).unwrap());
+    });
+    let ric = Ric::new("VOD.L").unwrap();
+    free("RIC validation and exchange code", || {
+        assert!(Ric::is_canonical(black_box("0#.FTSE")));
+        assert_eq!(black_box(&ric).exchange_code(), Some("L"));
     });
     free("ISIN construction", || {
-        std::hint::black_box(IsinCode::new("us0378331005").unwrap());
+        std::hint::black_box(Isin::new("us0378331005").unwrap());
     });
     free("CUSIP construction", || {
-        std::hint::black_box(CusipCode::new("037833100").unwrap());
+        std::hint::black_box(Cusip::new("037833100").unwrap());
     });
     free("SEDOL construction", || {
-        std::hint::black_box(SedolCode::new("b0swjx3").unwrap());
+        std::hint::black_box(Sedol::new("b0swjx3").unwrap());
     });
-    let figi = FIGICode::new("BBG000BLNQ16").unwrap();
+    let figi = Figi::new("BBG000BLNQ16").unwrap();
     free("FIGI construction", || {
-        black_box(FIGICode::new("bbg000blnq16").unwrap());
+        black_box(Figi::new("bbg000blnq16").unwrap());
     });
     free("FIGI clone", || {
         black_box(figi.clone());
     });
     free("CFI validation", || {
-        assert!(CfiCode::is_classified("ESVUFR"));
+        assert!(Cfi::is_classified("ESVUFR"));
     });
     free("CFI merging", || {
-        assert_eq!(
-            CfiCode::merged("ESXXXX", "ESVUFR").as_deref(),
-            Some("ESVUFR")
-        );
+        assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
     });
     free("CFI inference", || {
-        assert_eq!(CfiCode::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
+        assert_eq!(Cfi::coarse('E', Some('S')).as_deref(), Some("ESXXXX"));
     });
 }
 

@@ -1,7 +1,7 @@
 """Open ASCII vocabularies declared as enums over one packable datatype.
 
-A subclass of one of the four registered code bases - `CountryCode`,
-`CcyCode`, `MicCode`, `CfiCode` - or of the base `fixed_ascii(width)`
+A subclass of one of the four registered code bases - `Country`,
+`Ccy`, `Mic`, `Cfi` - or of the base `fixed_ascii(width)`
 builds, declares its values as ASCII text, and a member *is* the integer that
 value packs into: the value's own storage bytes read big-endian. The code is
 therefore the same in every process, is exactly what the column stores, and is
@@ -15,7 +15,7 @@ bytes the packing does not read.
 
 A width says how many bytes a value may take. A registered code says what the
 value *is*, and carries that identity across Arrow under its own extension
-name, so a vocabulary declared over `CcyCode` builds a `ccy` column
+name, so a vocabulary declared over `Ccy` builds a `ccy` column
 rather than anonymous text.
 
 The vocabulary stays open: a valid value that was not declared reads back as a
@@ -196,7 +196,7 @@ class AsciiCode(enum.IntEnum, metaclass=_AsciiCodeMeta):
 
         raise TypeError(
             f"{cls.__name__} declares no datatype; subclass fixed_ascii(width) "
-            "or one of the codes CountryCode, CcyCode, MicCode, CfiCode"
+            "or one of the codes Country, Ccy, Mic, Cfi"
         )
 
     @classmethod
@@ -307,7 +307,7 @@ def fixed_ascii(width: int) -> type[AsciiCode]:
     return _FixedAscii
 
 
-class CountryCode(AsciiCode):
+class Country(AsciiCode):
     """A vocabulary of ISO 3166-1 alpha-2 country codes, over `country`."""
 
     @classmethod
@@ -315,7 +315,7 @@ class CountryCode(AsciiCode):
         return _COUNTRY
 
 
-class CcyCode(AsciiCode):
+class Ccy(AsciiCode):
     """A vocabulary of ISO 4217 currency codes, over `ccy`."""
 
     @classmethod
@@ -323,7 +323,7 @@ class CcyCode(AsciiCode):
         return _CCY
 
 
-class MicCode(AsciiCode):
+class Mic(AsciiCode):
     """A vocabulary of ISO 10383 market identifier codes, over `mic`."""
 
     @classmethod
@@ -331,7 +331,7 @@ class MicCode(AsciiCode):
         return _MIC
 
 
-class CfiCode(AsciiCode):
+class Cfi(AsciiCode):
     """A vocabulary of ISO 10962 classifications, over `cfi`."""
 
     @classmethod
@@ -341,10 +341,10 @@ class CfiCode(AsciiCode):
 
 #: The base each registered code declares its values under.
 _CODES: Mapping[str, type[AsciiCode]] = {
-    "country": CountryCode,
-    "ccy": CcyCode,
-    "mic": MicCode,
-    "cfi": CfiCode,
+    "country": Country,
+    "ccy": Ccy,
+    "mic": Mic,
+    "cfi": Cfi,
 }
 
 
@@ -365,9 +365,9 @@ def _base_for(dtype: DataType) -> type[AsciiCode] | None:
 
 __all__ = [
     "AsciiCode",
-    "CfiCode",
-    "CountryCode",
-    "CcyCode",
-    "MicCode",
+    "Cfi",
+    "Country",
+    "Ccy",
+    "Mic",
     "fixed_ascii",
 ]

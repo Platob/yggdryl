@@ -82,7 +82,7 @@ fn every_kind_is_reachable() {
 
 #[test]
 fn the_strings_and_the_codes_are_text() {
-    assert_eq!(DataTypeId::ALL.len(), 87);
+    assert_eq!(DataTypeId::ALL.len(), 88);
     for id in [
         DataTypeId::Utf8String,
         DataTypeId::FixedUtf8String,
@@ -260,17 +260,18 @@ fn every_discriminant_is_stated_and_pinned() {
         (DataTypeId::MediaType, 0x68),
         (DataTypeId::Country, 0x71),
         (DataTypeId::Ccy, 0x72),
-        (DataTypeId::MicCode, 0x73),
-        (DataTypeId::CfiCode, 0x74),
+        (DataTypeId::Mic, 0x73),
+        (DataTypeId::Cfi, 0x74),
         (DataTypeId::Side, 0x75),
         (DataTypeId::State, 0x76),
         (DataTypeId::TimeInForce, 0x77),
-        (DataTypeId::IsinCode, 0x78),
-        (DataTypeId::CusipCode, 0x79),
-        (DataTypeId::SedolCode, 0x7a),
-        (DataTypeId::BloombergCode, 0x7b),
-        (DataTypeId::FIGICode, 0x7c),
+        (DataTypeId::Isin, 0x78),
+        (DataTypeId::Cusip, 0x79),
+        (DataTypeId::Sedol, 0x7a),
+        (DataTypeId::Bbg, 0x7b),
+        (DataTypeId::Figi, 0x7c),
         (DataTypeId::Unit, 0x7d),
+        (DataTypeId::Ric, 0x7e),
         (DataTypeId::Uuid, 0x81),
         (DataTypeId::Serie, 0x91),
         (DataTypeId::LargeSerie, 0x92),
@@ -292,10 +293,12 @@ fn every_discriminant_is_stated_and_pinned() {
         assert_eq!(id, held, "declaration order");
         assert_eq!(id.as_u8(), byte, "{id}");
     }
-    assert_eq!(DataTypeId::IsinCode.code_width(), Some(12));
-    assert_eq!(DataTypeId::CusipCode.code_width(), Some(9));
-    assert_eq!(DataTypeId::SedolCode.code_width(), Some(7));
-    assert_eq!(DataTypeId::FIGICode.code_width(), Some(12));
+    assert_eq!(DataTypeId::Isin.code_width(), Some(12));
+    assert_eq!(DataTypeId::Cusip.code_width(), Some(9));
+    assert_eq!(DataTypeId::Sedol.code_width(), Some(7));
+    assert_eq!(DataTypeId::Figi.code_width(), Some(12));
+    assert_eq!(DataTypeId::Bbg.code_width(), Some(32));
+    assert_eq!(DataTypeId::Ric.code_width(), Some(32));
 }
 
 #[test]
@@ -480,17 +483,18 @@ fn a_family_is_the_range_of_bytes_it_owns_and_the_ranges_tile_the_identifiers() 
             &[
                 DataTypeId::Country,
                 DataTypeId::Ccy,
-                DataTypeId::MicCode,
-                DataTypeId::CfiCode,
+                DataTypeId::Mic,
+                DataTypeId::Cfi,
                 DataTypeId::Side,
                 DataTypeId::State,
                 DataTypeId::TimeInForce,
-                DataTypeId::IsinCode,
-                DataTypeId::CusipCode,
-                DataTypeId::SedolCode,
-                DataTypeId::BloombergCode,
-                DataTypeId::FIGICode,
+                DataTypeId::Isin,
+                DataTypeId::Cusip,
+                DataTypeId::Sedol,
+                DataTypeId::Bbg,
+                DataTypeId::Figi,
                 DataTypeId::Unit,
+                DataTypeId::Ric,
             ],
         ),
         (K::Uuid, &[DataTypeId::Uuid]),
@@ -588,9 +592,11 @@ fn fixed_widths_match_their_layout() {
 #[test]
 fn a_code_width_is_a_bound_and_never_a_layout() {
     assert_eq!(DataTypeId::Ccy.code_width(), Some(3));
-    assert_eq!(DataTypeId::CfiCode.code_width(), Some(6));
+    assert_eq!(DataTypeId::Cfi.code_width(), Some(6));
+    assert_eq!(DataTypeId::Ric.code_width(), Some(32));
     assert_eq!(DataTypeId::Ccy.fixed_byte_width(), None);
-    assert_eq!(DataTypeId::CfiCode.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::Cfi.fixed_byte_width(), None);
+    assert_eq!(DataTypeId::Ric.fixed_byte_width(), None);
     // Only a code has one: a width that is a layout is not this fact.
     assert_eq!(DataTypeId::Uuid.code_width(), None);
     assert_eq!(DataTypeId::FixedUtf8String.code_width(), None);

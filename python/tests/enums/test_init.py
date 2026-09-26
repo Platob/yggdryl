@@ -8,15 +8,15 @@ import pytest
 
 from yggdryl import DataType, Field, StringEnum, enums, scalar
 from yggdryl.enums import (
-    AsciiCode,
+    CCY,
     CFI,
-    CfiCode,
-    Country,
-    CountryCode,
-    Ccy,
-    CcyCode,
+    COUNTRY,
     MIC,
-    MicCode,
+    AsciiCode,
+    Ccy,
+    Cfi,
+    Country,
+    Mic,
     fixed_ascii,
 )
 
@@ -138,7 +138,7 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
     class Venue(fixed_ascii(8)):
         XNAS = "XNAS"
 
-    class IsinCode(fixed_ascii(12)):
+    class Isin(fixed_ascii(12)):
         SAMPLE = "US0378331005"
 
     class Wide(fixed_ascii(16)):
@@ -155,9 +155,9 @@ def test_the_widths_pack_into_the_integer_they_name() -> None:
 
     # Twelve bytes need 96 bits and sixteen the whole 128, both of which Python
     # holds natively.
-    assert int(IsinCode.SAMPLE) == 0x555330333738333331303035
-    assert int(IsinCode.SAMPLE).bit_length() > 64
-    assert IsinCode.SAMPLE.into_str() == "US0378331005"
+    assert int(Isin.SAMPLE) == 0x555330333738333331303035
+    assert int(Isin.SAMPLE).bit_length() > 64
+    assert Isin.SAMPLE.into_str() == "US0378331005"
     assert int(Wide.SAMPLE).bit_length() > 96
 
     # One width is one base, built once and cached, so two declarations of the
@@ -321,10 +321,10 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # Each class is the Python spelling of one registered code in the grammar,
     # over the code's own datatype rather than an ASCII width.
     for declared, base, spelling in (
-        (Country, CountryCode, "country"),
-        (Ccy, CcyCode, "ccy"),
-        (MIC, MicCode, "mic"),
-        (CFI, CfiCode, "cfi"),
+        (COUNTRY, Country, "country"),
+        (CCY, Ccy, "ccy"),
+        (MIC, Mic, "mic"),
+        (CFI, Cfi, "cfi"),
     ):
         assert declared.dtype() == DataType(spelling) == base.dtype()
         assert issubclass(declared, base)
@@ -333,8 +333,8 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
 
     # ISO 3166-1 is two bytes, ISO 4217 three and ISO 10962 six, so each packs
     # with none of the padding a wider width would have stored.
-    assert int(Country.US) == 0x5553
-    assert int(Ccy.USD) == 0x555344
+    assert int(COUNTRY.US) == 0x5553
+    assert int(CCY.USD) == 0x555344
     assert int(MIC.XPAR) == DataType.fixed_ascii(4).ascii_packed("XPAR")
     assert int(CFI.ESVUFR) == 0x455356554652
     assert str(CFI.ESVUFR) == "ESVUFR"
@@ -347,10 +347,10 @@ def test_the_registered_vocabularies_are_declared_over_their_own_datatypes() -> 
     # A declaration reads back as the class that wrote it, over the code's
     # datatype: `ccy` and `fixed_ascii(3)` are both three bytes and are not the
     # same vocabulary base.
-    recovered = AsciiCode.from_field(Field.from_arrow(Ccy.into_field("ccy").into_arrow()))
-    assert recovered.__name__ == "Ccy"
+    recovered = AsciiCode.from_field(Field.from_arrow(CCY.into_field("ccy").into_arrow()))
+    assert recovered.__name__ == "CCY"
     assert recovered.dtype() == DataType("ccy")
-    assert int(recovered.USD) == int(Ccy.USD)
+    assert int(recovered.USD) == int(CCY.USD)
     assert not hasattr(enums, "Currency")
     assert not hasattr(enums, "CurrencyCode")
 
@@ -362,20 +362,20 @@ FixedAscii3 = fixed_ascii(3)
 def test_an_annotation_infers_the_vocabulary_it_names() -> None:
     @scalar
     class Trade:
-        ccy: Ccy
+        ccy: CCY
         venue: MIC
-        home: Country
+        home: COUNTRY
         width: FixedAscii3
 
     row = Trade.into_field()
     declared = {child.name: child for child in row}
 
     assert declared["ccy"].dtype == DataType("ccy")
-    assert declared["ccy"].string_enum == Ccy.as_enum()
+    assert declared["ccy"].string_enum == CCY.as_enum()
     assert declared["venue"].dtype == DataType("mic")
     assert declared["venue"].string_enum == MIC.as_enum()
     assert declared["home"].dtype == DataType("country")
-    assert declared["home"].string_enum == Country.as_enum()
+    assert declared["home"].string_enum == COUNTRY.as_enum()
 
     # A bare width base names no members, so it stays a plain ASCII column.
     assert declared["width"].dtype == DataType.fixed_ascii(3)

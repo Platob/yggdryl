@@ -7,12 +7,12 @@ it can never drift from the Rust constants it mirrors.
 
 The vocabularies a caller declares are the other half: subclassing the base
 :func:`fixed_ascii` builds for one width, or one of the four registered code
-bases - :class:`CountryCode`, :class:`CcyCode`, :class:`MicCode`,
-:class:`CfiCode` - names one open ASCII vocabulary whose members are the
+bases - :class:`Country`, :class:`Ccy`, :class:`Mic`,
+:class:`Cfi` - names one open ASCII vocabulary whose members are the
 integers their values pack into.
 
-The four registered codes arrive already declared: :class:`Country`,
-:class:`Ccy`, :class:`MIC`, and :class:`CFI` are those vocabularies over
+The four registered codes arrive already declared: :class:`COUNTRY`,
+:class:`CCY`, :class:`MIC`, and :class:`CFI` are those vocabularies over
 their own datatypes, open for every code they do not name.
 """
 
@@ -23,13 +23,13 @@ from typing import Mapping
 from .._native import _enum_values
 from .string import (
     AsciiCode,
-    CfiCode,
-    CountryCode,
-    CcyCode,
-    MicCode,
+    Cfi,
+    Country,
+    Ccy,
+    Mic,
     fixed_ascii,
 )
-from .codes import CFI, Ccy, Country, MIC
+from .codes import CFI, CCY, COUNTRY, MIC
 
 _LISTING = _enum_values()
 
@@ -108,13 +108,13 @@ MARKET_VIEWS: tuple[str, ...] = tuple(_LISTING["market_views"])
 
 __all__ = [
     "AsciiCode",
-    "CfiCode",
-    "CountryCode",
-    "CcyCode",
-    "MicCode",
-    "CFI",
+    "Cfi",
     "Country",
     "Ccy",
+    "Mic",
+    "CFI",
+    "COUNTRY",
+    "CCY",
     "MIC",
     "fixed_ascii",
     "CHARSETS",

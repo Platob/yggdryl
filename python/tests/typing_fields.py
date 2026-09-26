@@ -17,6 +17,7 @@ from yggdryl import (
     MimeTypeField,
     ProtocolField,
     PythonMetadata,
+    RicField,
     Scalar,
     StructField,
     TimezoneField,
@@ -74,6 +75,7 @@ dynamic_class: type[object] = imported.into_dataclass(
 )
 ccy: CcyField = yggdryl.ccy("currency", nullable=False)
 ccy_default_scalar: Scalar = ccy.default_scalar()
+instrument: RicField = yggdryl.ric("instrument")
 version: VersionField = yggdryl.version("version", nullable=False)
 version_default_scalar: Scalar = version.default_scalar()
 location: UrlField = yggdryl.url("url")

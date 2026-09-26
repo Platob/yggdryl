@@ -5,14 +5,14 @@ use smol_str::SmolStr;
 
 use crate::ascii::ascii_text_sized;
 use crate::{
-    BLOOMBERG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
+    BBG_EXTENSION_NAME, CCY_EXTENSION_NAME, CFI_EXTENSION_NAME, COUNTRY_EXTENSION_NAME,
     CUSIP_EXTENSION_NAME, FIGI_EXTENSION_NAME, ISIN_EXTENSION_NAME, MIC_EXTENSION_NAME,
-    SEDOL_EXTENSION_NAME, SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME, TIMEINFORCE_EXTENSION_NAME,
-    UNIT_EXTENSION_NAME,
+    RIC_EXTENSION_NAME, SEDOL_EXTENSION_NAME, SIDE_EXTENSION_NAME, STATE_EXTENSION_NAME,
+    TIMEINFORCE_EXTENSION_NAME, UNIT_EXTENSION_NAME,
 };
 use crate::{
-    BLOOMBERG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH,
-    MIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
+    BBG_WIDTH, CCY_WIDTH, CFI_WIDTH, COUNTRY_WIDTH, CUSIP_WIDTH, FIGI_WIDTH, ISIN_WIDTH, MIC_WIDTH,
+    RIC_WIDTH, SEDOL_WIDTH, SIDE_WIDTH, STATE_WIDTH, TIMEINFORCE_WIDTH, UNIT_WIDTH,
 };
 use crate::{DataType, Error, Result};
 
@@ -157,16 +157,17 @@ impl DataType {
         match self {
             Self::Country => Some("country"),
             Self::Ccy => Some("ccy"),
-            Self::MicCode => Some("mic"),
-            Self::CfiCode => Some("cfi"),
-            Self::IsinCode => Some("isin"),
-            Self::CusipCode => Some("cusip"),
-            Self::SedolCode => Some("sedol"),
+            Self::Mic => Some("mic"),
+            Self::Cfi => Some("cfi"),
+            Self::Isin => Some("isin"),
+            Self::Cusip => Some("cusip"),
+            Self::Sedol => Some("sedol"),
             Self::Side => Some("side"),
             Self::State => Some("state"),
             Self::TimeInForce => Some("timeinforce"),
-            Self::BloombergCode => Some("bloomberg"),
-            Self::FIGICode => Some("figi"),
+            Self::Bbg => Some("bbg"),
+            Self::Ric => Some("ric"),
+            Self::Figi => Some("figi"),
             Self::Unit => Some("unit"),
             _ => None,
         }
@@ -199,7 +200,7 @@ impl DataType {
     /// ```
     /// use yggdryl::DataType;
     ///
-    /// assert!(DataType::MicCode.is_code());
+    /// assert!(DataType::Mic.is_code());
     /// assert!(!DataType::ascii().is_code());
     /// ```
     #[must_use]
@@ -213,13 +214,14 @@ pub(crate) const fn code_extension_name(dtype: &DataType) -> Option<&'static str
     match dtype {
         DataType::Country => Some(COUNTRY_EXTENSION_NAME),
         DataType::Ccy => Some(CCY_EXTENSION_NAME),
-        DataType::MicCode => Some(MIC_EXTENSION_NAME),
-        DataType::CfiCode => Some(CFI_EXTENSION_NAME),
-        DataType::BloombergCode => Some(BLOOMBERG_EXTENSION_NAME),
-        DataType::FIGICode => Some(FIGI_EXTENSION_NAME),
-        DataType::IsinCode => Some(ISIN_EXTENSION_NAME),
-        DataType::CusipCode => Some(CUSIP_EXTENSION_NAME),
-        DataType::SedolCode => Some(SEDOL_EXTENSION_NAME),
+        DataType::Mic => Some(MIC_EXTENSION_NAME),
+        DataType::Cfi => Some(CFI_EXTENSION_NAME),
+        DataType::Bbg => Some(BBG_EXTENSION_NAME),
+        DataType::Ric => Some(RIC_EXTENSION_NAME),
+        DataType::Figi => Some(FIGI_EXTENSION_NAME),
+        DataType::Isin => Some(ISIN_EXTENSION_NAME),
+        DataType::Cusip => Some(CUSIP_EXTENSION_NAME),
+        DataType::Sedol => Some(SEDOL_EXTENSION_NAME),
         DataType::Side => Some(SIDE_EXTENSION_NAME),
         DataType::State => Some(STATE_EXTENSION_NAME),
         DataType::TimeInForce => Some(TIMEINFORCE_EXTENSION_NAME),
@@ -237,13 +239,14 @@ pub(crate) fn code_for_extension(name: &str) -> Option<DataType> {
     match name {
         COUNTRY_EXTENSION_NAME => Some(DataType::Country),
         CCY_EXTENSION_NAME => Some(DataType::Ccy),
-        MIC_EXTENSION_NAME => Some(DataType::MicCode),
-        CFI_EXTENSION_NAME => Some(DataType::CfiCode),
-        BLOOMBERG_EXTENSION_NAME => Some(DataType::BloombergCode),
-        FIGI_EXTENSION_NAME => Some(DataType::FIGICode),
-        ISIN_EXTENSION_NAME => Some(DataType::IsinCode),
-        CUSIP_EXTENSION_NAME => Some(DataType::CusipCode),
-        SEDOL_EXTENSION_NAME => Some(DataType::SedolCode),
+        MIC_EXTENSION_NAME => Some(DataType::Mic),
+        CFI_EXTENSION_NAME => Some(DataType::Cfi),
+        BBG_EXTENSION_NAME => Some(DataType::Bbg),
+        RIC_EXTENSION_NAME => Some(DataType::Ric),
+        FIGI_EXTENSION_NAME => Some(DataType::Figi),
+        ISIN_EXTENSION_NAME => Some(DataType::Isin),
+        CUSIP_EXTENSION_NAME => Some(DataType::Cusip),
+        SEDOL_EXTENSION_NAME => Some(DataType::Sedol),
         SIDE_EXTENSION_NAME => Some(DataType::Side),
         STATE_EXTENSION_NAME => Some(DataType::State),
         TIMEINFORCE_EXTENSION_NAME => Some(DataType::TimeInForce),
@@ -282,13 +285,14 @@ pub(crate) fn code_cell_text<'a>(dtype: &DataType, bytes: &'a [u8]) -> Result<&'
     match dtype {
         DataType::Country => code_text::<COUNTRY_WIDTH>(bytes),
         DataType::Ccy => code_text::<CCY_WIDTH>(bytes),
-        DataType::MicCode => code_text::<MIC_WIDTH>(bytes),
-        DataType::CfiCode => code_text::<CFI_WIDTH>(bytes),
-        DataType::BloombergCode => code_text::<BLOOMBERG_WIDTH>(bytes),
-        DataType::FIGICode => code_text::<FIGI_WIDTH>(bytes),
-        DataType::IsinCode => code_text::<ISIN_WIDTH>(bytes),
-        DataType::CusipCode => code_text::<CUSIP_WIDTH>(bytes),
-        DataType::SedolCode => code_text::<SEDOL_WIDTH>(bytes),
+        DataType::Mic => code_text::<MIC_WIDTH>(bytes),
+        DataType::Cfi => code_text::<CFI_WIDTH>(bytes),
+        DataType::Bbg => code_text::<BBG_WIDTH>(bytes),
+        DataType::Ric => code_text::<RIC_WIDTH>(bytes),
+        DataType::Figi => code_text::<FIGI_WIDTH>(bytes),
+        DataType::Isin => code_text::<ISIN_WIDTH>(bytes),
+        DataType::Cusip => code_text::<CUSIP_WIDTH>(bytes),
+        DataType::Sedol => code_text::<SEDOL_WIDTH>(bytes),
         DataType::Side => code_text::<SIDE_WIDTH>(bytes),
         DataType::State => code_text::<STATE_WIDTH>(bytes),
         DataType::TimeInForce => code_text::<TIMEINFORCE_WIDTH>(bytes),

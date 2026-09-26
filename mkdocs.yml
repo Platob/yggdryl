@@ -168,8 +168,9 @@ nav:
       - ISIN: types/codes/isin.md
       - CUSIP: types/codes/cusip.md
       - SEDOL: types/codes/sedol.md
-      - Bloomberg: types/codes/bloomberg.md
+      - Bbg: types/codes/bbg.md
       - FIGI: types/codes/figi.md
+      - RIC: types/codes/ric.md
       - Side: types/codes/side.md
       - State: types/codes/state.md
       - Time in force: types/codes/timeinforce.md

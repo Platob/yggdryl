@@ -301,31 +301,39 @@ mod columns {
                 Scalar::from_sequence([Scalar::from("USD"), Scalar::from("EUR"), Scalar::Null]),
             ),
             (
-                Field::new("mic", DataType::MicCode, true),
+                Field::new("mic", DataType::Mic, true),
                 Scalar::from_sequence([Scalar::from("XNYS"), Scalar::Null]),
             ),
             (
-                Field::new("cfi", DataType::CfiCode, true),
+                Field::new("cfi", DataType::Cfi, true),
                 Scalar::from_sequence([Scalar::from("ESVUFR"), Scalar::Null]),
             ),
             (
-                Field::new("isin", DataType::IsinCode, true),
+                Field::new("isin", DataType::Isin, true),
                 Scalar::from_sequence([Scalar::from("US0378331005"), Scalar::Null]),
             ),
             (
-                Field::new("cusip", DataType::CusipCode, true),
+                Field::new("cusip", DataType::Cusip, true),
                 Scalar::from_sequence([Scalar::from("037833100"), Scalar::Null]),
             ),
             (
-                Field::new("sedol", DataType::SedolCode, true),
+                Field::new("sedol", DataType::Sedol, true),
                 Scalar::from_sequence([Scalar::from("B0YBKJ7"), Scalar::Null]),
             ),
             (
-                Field::new("bloomberg", DataType::BloombergCode, true),
+                Field::new("bbg", DataType::Bbg, true),
                 Scalar::from_sequence([Scalar::from("BBG000B9XRY4"), Scalar::Null]),
             ),
             (
-                Field::new("figi", DataType::FIGICode, true),
+                Field::new("ric", DataType::Ric, true),
+                Scalar::from_sequence([
+                    Scalar::from("AAPL.OQ"),
+                    Scalar::from(".SPX"),
+                    Scalar::Null,
+                ]),
+            ),
+            (
+                Field::new("figi", DataType::Figi, true),
                 Scalar::from_sequence([
                     Scalar::from("BBG000BLNQ16"),
                     Scalar::from("BCG000000005"),

@@ -2,10 +2,10 @@
 //!
 //! What a CFI code *is* - its six positions, which letters each accepts, how
 //! two statements merge, when it is detailed - belongs to the value and lives
-//! beside it in [`crate::CfiCode`]. This module is the other half: which FIX
+//! beside it in [`crate::Cfi`]. This module is the other half: which FIX
 //! fields say something about a classification, and what each of them says.
 //!
-//! That split is the point. `CfiCode::merged` is the same fold whether the two
+//! That split is the point. `Cfi::merged` is the same fold whether the two
 //! codes came off a FIX wire, an ISIN registry or two columns of a table, so
 //! a FIX-shaped copy of it would be a second answer to one question. What is
 //! genuinely FIX's is the chain below: that `CFICode(461)` is the
@@ -20,7 +20,7 @@
 
 use smol_str::SmolStr;
 
-use crate::CfiCode;
+use crate::Cfi;
 
 /// The tag FIX publishes the ISO 10962 classification under, since FIX 4.3.
 ///
@@ -54,7 +54,7 @@ impl super::FixMsg {
     /// The instrument's detailed classification, or none.
     ///
     /// The chain, each step merged into the last through
-    /// [`CfiCode::merged`](crate::CfiCode::merged) so a later step can only
+    /// [`Cfi::merged`](crate::Cfi::merged) so a later step can only
     /// *fill* what an earlier one left unknown:
     ///
     /// 1. a stated `CFICode(461)`, which is the instrument's classification
@@ -66,7 +66,7 @@ impl super::FixMsg {
     ///    `OP`, `OM` - rather than an attribute, and so refines a stated
     ///    Others group `OM` and nothing else.
     ///
-    /// The answer is kept only where it is [detailed](crate::CfiCode::is_detailed):
+    /// The answer is kept only where it is [detailed](crate::Cfi::is_detailed):
     /// a code that says nothing past its category and group - `ESXXXX` - is
     /// a coarse fact the market answers none for, and a `SecurityType(167)`
     /// or `Product(460)` alone, which never reach further than that, answer
@@ -74,7 +74,7 @@ impl super::FixMsg {
     ///
     /// A step that names a different instrument than the one established -
     /// a different category or group - does not overwrite it and does not
-    /// merge: [`CfiCode::merged`](crate::CfiCode::merged) answers `None` and
+    /// merge: [`Cfi::merged`](crate::Cfi::merged) answers `None` and
     /// the step is dropped, because the stated classification is the one of
     /// record.
     ///
@@ -149,7 +149,7 @@ impl super::FixMsg {
         // and answers `X` where two steps disagree inside one instrument.
         let mut held: Option<SmolStr> = None;
         let mut fold = |candidate: Option<String>| {
-            let Some(candidate) = candidate.filter(|held| CfiCode::is_classified(held)) else {
+            let Some(candidate) = candidate.filter(|held| Cfi::is_classified(held)) else {
                 return;
             };
             held = match &held {
@@ -157,7 +157,7 @@ impl super::FixMsg {
                 // A step describing a different instrument is dropped rather
                 // than merged: the classification of record stands.
                 Some(current) => {
-                    Some(CfiCode::merged(current, &candidate).unwrap_or_else(|| current.clone()))
+                    Some(Cfi::merged(current, &candidate).unwrap_or_else(|| current.clone()))
                 }
             };
         };
@@ -182,6 +182,6 @@ impl super::FixMsg {
                 .find_map(|name| named(name))
                 .map(refined),
         );
-        held.filter(|held| CfiCode::is_detailed(held))
+        held.filter(|held| Cfi::is_detailed(held))
     }
 }

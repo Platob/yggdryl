@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use yggdryl::CfiCode;
+use yggdryl::Cfi;
 use yggdryl::graph::Market;
 use yggdryl::{FixMsg, FixRegistry};
 
@@ -33,24 +33,12 @@ fn classified(held: &FixMsg) -> Option<String> {
 #[test]
 fn two_readings_of_one_instrument_merge_where_they_agree_and_forget_where_they_do_not() {
     // Same category and group, so the attributes merge position by position.
-    assert_eq!(
-        CfiCode::merged("ESXXXX", "ESVUFR").as_deref(),
-        Some("ESVUFR")
-    );
-    assert_eq!(
-        CfiCode::merged("ESVUFR", "ESXXXX").as_deref(),
-        Some("ESVUFR")
-    );
+    assert_eq!(Cfi::merged("ESXXXX", "ESVUFR").as_deref(), Some("ESVUFR"));
+    assert_eq!(Cfi::merged("ESVUFR", "ESXXXX").as_deref(), Some("ESVUFR"));
     // Two voices, two answers: picking one would be a guess, so the position
     // says it does not know.
-    assert_eq!(
-        CfiCode::merged("ESVUFR", "ESVTFR").as_deref(),
-        Some("ESVXFR")
-    );
-    assert_eq!(
-        CfiCode::merged("ESVUFR", "ESVUFR").as_deref(),
-        Some("ESVUFR")
-    );
+    assert_eq!(Cfi::merged("ESVUFR", "ESVTFR").as_deref(), Some("ESVXFR"));
+    assert_eq!(Cfi::merged("ESVUFR", "ESVUFR").as_deref(), Some("ESVUFR"));
 }
 
 #[test]
@@ -58,30 +46,24 @@ fn a_merge_across_a_different_category_or_group_is_no_merge_at_all() {
     // The attributes of `ES` and `DB` mean different things, so merging them
     // position by position would be reading one standard's answer under
     // another's question.
-    assert_eq!(CfiCode::merged("ESXXXX", "DBXXXX"), None, "two categories");
-    assert_eq!(CfiCode::merged("ESXXXX", "EPXXXX"), None, "two groups");
+    assert_eq!(Cfi::merged("ESXXXX", "DBXXXX"), None, "two categories");
+    assert_eq!(Cfi::merged("ESXXXX", "EPXXXX"), None, "two groups");
     // And a code that is not one is not half of one.
-    assert_eq!(CfiCode::merged("ESXXXX", "nonsense"), None);
-    assert_eq!(CfiCode::merged("", "ESXXXX"), None);
-    assert_eq!(CfiCode::merged("ESXXX", "ESXXXX"), None, "five is not six");
+    assert_eq!(Cfi::merged("ESXXXX", "nonsense"), None);
+    assert_eq!(Cfi::merged("", "ESXXXX"), None);
+    assert_eq!(Cfi::merged("ESXXX", "ESXXXX"), None, "five is not six");
 }
 
 #[test]
 fn a_classification_that_says_nothing_is_not_a_classification() {
-    assert!(CfiCode::is_classified("ESVUFR"));
-    assert!(
-        CfiCode::is_classified("ESXXXX"),
-        "a group is still a reading"
-    );
-    assert!(
-        !CfiCode::is_classified("XXXXXX"),
-        "six unknowns say nothing"
-    );
-    assert!(!CfiCode::is_classified("ESXXX"));
+    assert!(Cfi::is_classified("ESVUFR"));
+    assert!(Cfi::is_classified("ESXXXX"), "a group is still a reading");
+    assert!(!Cfi::is_classified("XXXXXX"), "six unknowns say nothing");
+    assert!(!Cfi::is_classified("ESXXX"));
     // `X` is the standard's "unknown" and is a category letter nowhere, so a
     // code opening on it is not a reading whatever follows.
-    assert!(CfiCode::category_of('X').is_none());
-    assert!(CfiCode::category_of('E').is_some());
+    assert!(Cfi::category_of('X').is_none());
+    assert!(Cfi::category_of('E').is_some());
 }
 
 #[test]

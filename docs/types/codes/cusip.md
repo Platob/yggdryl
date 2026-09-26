@@ -6,7 +6,7 @@ The nine-character North American securities identifier: six of issuer, two of i
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `cusip`, `CusipCodeType`/`CusipCodeField`, the `CusipCode` value and `Scalar::CusipCode` |
+| Owns | `cusip`, `CusipType`/`CusipField`, the `Cusip` value and `Scalar::Cusip` |
 | Validates | Nine ASCII bytes: eight alphanumerics and one digit closing them by modulus-10 double-add-double; lower case folds at the value door |
 | Lazy | Nothing - the whole check runs on the stack, over bounded bytes |
 | Cached | The Arrow projection of its [`Field`](../field.md) |
@@ -21,13 +21,13 @@ The nine-character North American securities identifier: six of issuer, two of i
     ```rust
     use yggdryl::{DataType, DataTypeKind};
 
-    assert_eq!(DataType::cusip(), DataType::CusipCode);
-    assert_eq!(DataType::from_str("cusip")?, DataType::CusipCode);
-    assert_eq!(DataType::CusipCode.to_string(), "cusip");
-    assert_eq!(DataType::CusipCode.kind(), DataTypeKind::Code);
-    assert_eq!(DataType::CusipCode.code_name(), Some("cusip"));
-    assert_eq!(DataType::CusipCode.code_width(), Some(9));
-    assert_eq!(DataType::CusipCode.fixed_byte_width(), None);
+    assert_eq!(DataType::cusip(), DataType::Cusip);
+    assert_eq!(DataType::from_str("cusip")?, DataType::Cusip);
+    assert_eq!(DataType::Cusip.to_string(), "cusip");
+    assert_eq!(DataType::Cusip.kind(), DataTypeKind::Code);
+    assert_eq!(DataType::Cusip.code_name(), Some("cusip"));
+    assert_eq!(DataType::Cusip.code_width(), Some(9));
+    assert_eq!(DataType::Cusip.fixed_byte_width(), None);
     ```
 
 === "Python"
@@ -57,16 +57,16 @@ The nine-character North American securities identifier: six of issuer, two of i
 
 ## Field
 
-`CusipCodeField` is the typed marker; Python and JavaScript name the factory `cusip`.
+`CusipField` is the typed marker; Python and JavaScript name the factory `cusip`.
 
 === "Rust"
 
     ```rust
-    use yggdryl::{CusipCodeField, DataType, Field};
+    use yggdryl::{CusipField, DataType, Field};
 
-    let sid = CusipCodeField::unit("sid", true);
-    assert_eq!(sid.dtype(), &DataType::CusipCode);
-    assert_eq!(sid.to_field(), Field::new("sid", DataType::CusipCode, true));
+    let sid = CusipField::unit("sid", true);
+    assert_eq!(sid.dtype(), &DataType::Cusip);
+    assert_eq!(sid.to_field(), Field::new("sid", DataType::Cusip, true));
     ```
 
 === "Python"
@@ -97,10 +97,10 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 === "Rust"
 
     ```rust
-    use yggdryl::{CusipCode, DataType, Scalar};
+    use yggdryl::{Cusip, DataType, Scalar};
 
     let apple = DataType::cusip().scalar("037833100")?;
-    assert_eq!(apple, Scalar::CusipCode(CusipCode::new("037833100")?));
+    assert_eq!(apple, Scalar::Cusip(Cusip::new("037833100")?));
     assert_eq!(apple.as_str(), Some("037833100"));
     assert_eq!(apple.kind(), "cusip");
     assert_eq!(DataType::cusip().scalar("38259p508")?.as_str(), Some("38259P508"));
@@ -151,7 +151,7 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
     use arrow_schema::DataType as ArrowDataType;
     use yggdryl::{DataType, Field};
 
-    let sid = Field::new("sid", DataType::CusipCode, false);
+    let sid = Field::new("sid", DataType::Cusip, false);
     let arrow = sid.clone().into_arrow_field()?;
     assert_eq!(arrow.data_type(), &ArrowDataType::Utf8);
     assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.cusip");
@@ -188,25 +188,25 @@ The value is the canonical spelling: upper case, closed by its check digit. Lowe
 
 ## The check digit
 
-Each of the eight leading characters reads as a digit or as ten plus its alphabet position; every second value is doubled, the digits of every value are summed, and the digit closes that sum to a multiple of ten. `CusipCode::issuer` and `issue` read the six and two characters before the digit; `is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
+Each of the eight leading characters reads as a digit or as ten plus its alphabet position; every second value is doubled, the digits of every value are summed, and the digit closes that sum to a multiple of ten. `Cusip::issuer` and `issue` read the six and two characters before the digit; `is_valid`, `is_canonical` and `closing_digit` answer the rule without building a value. Rust only.
 
 ```rust
-use yggdryl::CusipCode;
+use yggdryl::Cusip;
 
-let apple = CusipCode::new("037833100")?;
+let apple = Cusip::new("037833100")?;
 assert_eq!(apple.issuer(), "037833");
 assert_eq!(apple.issue(), "10");
 assert_eq!(apple.check_digit(), 0);
 
 // A letter reads as ten plus its alphabet position.
-assert_eq!(CusipCode::new("38259P508")?.check_digit(), 8);
-assert_eq!(CusipCode::closing_digit("38259P50"), Some(8));
+assert_eq!(Cusip::new("38259P508")?.check_digit(), 8);
+assert_eq!(Cusip::closing_digit("38259P50"), Some(8));
 
 // The rule answers without building a value, in either case.
-assert!(CusipCode::is_valid("38259p508"));
-assert!(CusipCode::is_canonical("38259P508"));
-assert!(!CusipCode::is_canonical("38259p508"));
-assert!(!CusipCode::is_valid("037833101"));
+assert!(Cusip::is_valid("38259p508"));
+assert!(Cusip::is_canonical("38259P508"));
+assert!(!Cusip::is_canonical("38259p508"));
+assert!(!Cusip::is_valid("037833101"));
 ```
 
 ## A column holds the canonical spelling
@@ -221,7 +221,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
     use arrow_array::{ArrayRef, StringArray};
     use yggdryl::{ArrowCastOptions, DataType, Field, Serie};
 
-    let sid = Field::new("sid", DataType::CusipCode, true);
+    let sid = Field::new("sid", DataType::Cusip, true);
     let source: ArrayRef = Arc::new(StringArray::from(vec!["38259P508", "38259p508"]));
     let strict = ArrowCastOptions::new().with_safe(false);
     let refused = Serie::from_arrow_array(Some(&sid), source, strict)
@@ -270,7 +270,7 @@ A scalar read folds the case; a column's bytes are what every reader digests, so
 === "Rust"
 
     ```bash
-    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip_code::securities figi_code::securities sedol_code::securities
+    cargo test --features "parquet iceberg" --manifest-path rust/Cargo.toml -p yggdryl --test root -- code::securities cusip::securities figi::securities sedol::securities
     ```
 
 === "Python"

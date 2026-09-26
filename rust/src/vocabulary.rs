@@ -112,20 +112,21 @@ impl DataType {
     /// folds a caller's spelling into, so `UTCTimestamp`, `utc_timestamp`,
     /// and `UTC Timestamp` are one name.
     pub const LOGICAL_NAMES: &'static [(&'static str, DataType)] = &[
-        // The ISO code vocabularies and the three securities identifiers
-        // are datatypes of their own, so their names resolve to themselves
+        // The ISO code vocabularies and the securities identifiers are
+        // datatypes of their own, so their names resolve to themselves
         // and display as themselves; `exchange` is FIX's name for the one
         // ISO 10383 calls `mic`.
         ("ccy", DataType::Ccy),
         ("country", DataType::Country),
-        ("mic", DataType::MicCode),
-        ("exchange", DataType::MicCode),
-        ("cfi", DataType::CfiCode),
-        ("isin", DataType::IsinCode),
-        ("cusip", DataType::CusipCode),
-        ("sedol", DataType::SedolCode),
-        ("bloomberg", DataType::BloombergCode),
-        ("figi", DataType::FIGICode),
+        ("mic", DataType::Mic),
+        ("exchange", DataType::Mic),
+        ("cfi", DataType::Cfi),
+        ("isin", DataType::Isin),
+        ("cusip", DataType::Cusip),
+        ("sedol", DataType::Sedol),
+        ("bbg", DataType::Bbg),
+        ("ric", DataType::Ric),
+        ("figi", DataType::Figi),
         // The remaining codes resolve to themselves. `side` is a FIX code
         // set the standard itself declares, addressed constantly enough to
         // earn a packed datatype.
@@ -270,7 +271,7 @@ impl DataType {
     /// // The same lookup backs the grammar, so a name types a column. Four
     /// // of the names answer a datatype of their own rather than a width.
     /// let row: DataType = "struct<ccy: Ccy, venue: MIC, px: Price, at: UTCTimestamp>".parse()?;
-    /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::MicCode));
+    /// assert_eq!(row.get_field_by_path("venue").map(|field| field.dtype().clone()), Some(DataType::Mic));
     /// assert_eq!(row.get_field_by_path("ccy").map(|field| field.dtype().clone()), Some(DataType::Ccy));
     /// assert_eq!(
     ///     row.get_field_by_path("at").map(|field| field.dtype().clone()),
