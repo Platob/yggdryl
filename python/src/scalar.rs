@@ -4,8 +4,8 @@
 //! the one boundary used by codecs, expressions, and record adapters.
 
 use std::borrow::Cow;
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use pyo3::class::basic::CompareOp;
@@ -16,9 +16,9 @@ use pyo3::exceptions::{
 use pyo3::prelude::*;
 use pyo3::types::{
     PyAny, PyBool, PyByteArray, PyBytes, PyComplex, PyDict, PyFloat, PyFrozenSet, PyInt, PyList,
-    PyMemoryView, PyModule, PySet, PyString, PyTuple, PyType,
+    PyMemoryView, PySet, PyString, PyTuple, PyType, PyWeakrefReference,
 };
-use pyo3::{IntoPyObjectExt, PyTypeInfo};
+use pyo3::{IntoPyObjectExt, PyTypeInfo, intern};
 use yggdryl::bytes::Bytes;
 use yggdryl::decimal::{Decimal32, Decimal64};
 use yggdryl::geospatial::{Geography, Geometry};
@@ -1632,6 +1632,24 @@ pub(crate) fn from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
     Encoder::default().convert(value, 0)
 }
 
+/// Convert one record row: a dictionary names its fields, the way a record
+/// door reads a mapping row, and anything else crosses as [`from_py`] reads it.
+///
+/// # Errors
+///
+/// [`from_py`]'s, and a `TypeError` for a key that is not `str`.
+pub(crate) fn row_from_py(value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    let Ok(mapping) = value.cast::<PyDict>() else {
+        return from_py(value);
+    };
+    let mut encoder = Encoder::default();
+    let pairs = mapping
+        .iter()
+        .map(|(name, item)| Ok((record_name(&name)?, encoder.convert(&item, 1)?)))
+        .collect::<PyResult<Vec<_>>>()?;
+    Scalar::from_struct(pairs).map_err(value_error)
+}
+
 /// Convert one core value into the Python object that names it.
 ///
 /// # Errors
@@ -1949,36 +1967,77 @@ impl Encoder {
         if let Some(value) = native_wrapper_to_value(value) {
             return Ok(value);
         }
-        // A columnar object - a pyarrow container, a pandas or polars frame
-        // or series, a numpy array, an Arrow C exporter - is the column it
-        // already is, held as a serie sharing its buffers rather than rows
-        // walked. A stream is drained into that column; one Arrow scalar is
-        // its row.
-        if let Some(value) = crate::serie::columnar_value(value)? {
-            return Ok(value);
-        }
-        // A path is recognized by its protocol rather than by its class,
-        // because every path-like object answers `__fspath__` and none of them
-        // share a base class.
-        if value.hasattr("__fspath__")? {
-            return path_to_value(value);
-        }
-        let identity = type_identity(value)?;
-        match identity.as_str() {
-            "decimal.Decimal" => decimal_to_value(value),
-            "uuid.UUID" => Ok(Scalar::from(value.str()?.to_str()?)),
-            "datetime.datetime" => datetime_to_value(value),
-            "datetime.time" => time_to_value(value),
-            "datetime.date" => date_to_value(value),
-            "datetime.timedelta" => duration_to_value(value),
-            "builtins.complex" => complex_to_value(value),
-            "builtins.range" | "builtins.slice" => self.convert_triple(value, depth),
-            "collections.deque" => self.convert_iterator(value, depth),
-            "collections.OrderedDict" | "collections.Counter" | "collections.defaultdict" => {
-                self.convert_dict(value, depth)
+        // Everything below is decided by the value's class, which answers the
+        // same way for every instance: it is asked once and remembered.
+        match class_kind(value)? {
+            ClassKind::Record(members) => self.convert_record(value, &members, depth),
+            // An enum member is the value it names: the member's class is the
+            // identity being dropped, and its value is what a schema declares.
+            ClassKind::Enum => {
+                self.convert(&value.getattr(intern!(value.py(), "value"))?, depth + 1)
             }
-            _ => self.convert_other(value, &identity, depth),
+            ClassKind::Stdlib(stdlib) => self.convert_stdlib(value, stdlib, depth),
+            ClassKind::Subclass => self.convert_other(value, depth),
+            ClassKind::Any => {
+                // A columnar object - a pyarrow container, a pandas or polars
+                // frame or series, a numpy array, an Arrow C exporter - is the
+                // column it already is, held as a serie sharing its buffers
+                // rather than rows walked. A stream is drained into that
+                // column; one Arrow scalar is its row.
+                if let Some(value) = crate::serie::columnar_value(value)? {
+                    return Ok(value);
+                }
+                // A path is recognized by its protocol rather than by its
+                // class, because every path-like object answers `__fspath__`
+                // and none of them share a base class.
+                if value.hasattr(intern!(value.py(), "__fspath__"))? {
+                    return path_to_value(value);
+                }
+                self.convert_other(value, depth)
+            }
         }
+    }
+
+    /// Convert one of the standard-library values its class names exactly.
+    fn convert_stdlib(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        stdlib: Stdlib,
+        depth: usize,
+    ) -> PyResult<Scalar> {
+        match stdlib {
+            Stdlib::Decimal => decimal_to_value(value),
+            Stdlib::Uuid => Ok(Scalar::from(value.str()?.to_str()?)),
+            Stdlib::DateTime => datetime_to_value(value),
+            Stdlib::Time => time_to_value(value),
+            Stdlib::Date => date_to_value(value),
+            Stdlib::TimeDelta => duration_to_value(value),
+            Stdlib::Complex => complex_to_value(value),
+            Stdlib::Triple => self.convert_triple(value, depth),
+            Stdlib::Deque => self.convert_iterator(value, depth),
+            Stdlib::Dict => self.convert_dict(value, depth),
+        }
+    }
+
+    /// Convert a record class's instance: its value fields, read by the
+    /// attribute names its class resolved once, filed under their names.
+    fn convert_record(
+        &mut self,
+        value: &Bound<'_, PyAny>,
+        members: &[Member],
+        depth: usize,
+    ) -> PyResult<Scalar> {
+        let py = value.py();
+        self.with_cycle_check(value, |encoder| {
+            let entries = members
+                .iter()
+                .map(|member| {
+                    let item = value.getattr(member.attribute.bind(py))?;
+                    Ok((&*member.name, encoder.convert(&item, depth + 1)?))
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            Scalar::from_struct(entries).map_err(value_error)
+        })
     }
 
     /// Convert the builtin types whose exact class needs no further inspection.
@@ -2050,87 +2109,22 @@ impl Encoder {
         Ok(None)
     }
 
-    /// Convert anything left: a subclass, a dataclass, or a plain object.
-    fn convert_other(
-        &mut self,
-        value: &Bound<'_, PyAny>,
-        identity: &str,
-        depth: usize,
-    ) -> PyResult<Scalar> {
-        if let Some(value) = self.convert_scalar_subclass(value, depth)? {
+    /// Convert anything left: a subclass of a value or collection class, or
+    /// a plain object.
+    fn convert_other(&mut self, value: &Bound<'_, PyAny>, depth: usize) -> PyResult<Scalar> {
+        if let Some(value) = scalar_subclass_to_value(value)? {
             return Ok(value);
         }
         if let Some(value) = self.convert_collection_subclass(value, depth)? {
             return Ok(value);
         }
-        let py = value.py();
-        let dataclasses = py.import("dataclasses")?;
-        let is_dataclass = dataclasses
-            .getattr("is_dataclass")?
-            .call1((value,))?
-            .is_truthy()?;
-        if is_dataclass && value.cast::<PyType>().is_err() {
-            return self.convert_dataclass(value, depth, &dataclasses);
-        }
         if let Some(record) = self.convert_plain_object(value, depth)? {
             return Ok(record);
         }
+        let identity = class_identity(&value.get_type())?;
         Err(PyTypeError::new_err(format!(
             "unsupported value type {identity}; use a dataclass, mapping, or supported scalar"
         )))
-    }
-
-    /// Convert a subclass of a scalar type as the scalar it is.
-    ///
-    /// Every check here is an `isinstance`, so a subclass keeps its base's
-    /// shape instead of decaying into whatever its instance dictionary holds.
-    fn convert_scalar_subclass(
-        &mut self,
-        value: &Bound<'_, PyAny>,
-        depth: usize,
-    ) -> PyResult<Option<Scalar>> {
-        let py = value.py();
-        // An enum member is the value it names: the member's class is the
-        // identity being dropped, and its value is what a schema declares.
-        if value.is_instance(&py.import("enum")?.getattr("Enum")?)? {
-            return self.convert(&value.getattr("value")?, depth + 1).map(Some);
-        }
-        if value.cast::<PyComplex>().is_ok() {
-            return complex_to_value(value).map(Some);
-        }
-        if let Ok(bytes) = value.cast::<PyByteArray>() {
-            return Ok(Some(Scalar::from(bytes.to_vec())));
-        }
-        if value.is_instance(&py.import("decimal")?.getattr("Decimal")?)? {
-            return decimal_to_value(value).map(Some);
-        }
-        let datetime = py.import("datetime")?;
-        // A `datetime` is a `date`, so the narrower class is asked first.
-        if value.is_instance(&datetime.getattr("datetime")?)? {
-            return datetime_to_value(value).map(Some);
-        }
-        if value.is_instance(&datetime.getattr("date")?)? {
-            return date_to_value(value).map(Some);
-        }
-        if value.is_instance(&datetime.getattr("time")?)? {
-            return time_to_value(value).map(Some);
-        }
-        if value.is_instance(&datetime.getattr("timedelta")?)? {
-            return duration_to_value(value).map(Some);
-        }
-        if value.is_instance_of::<PyInt>() {
-            return integer_to_value(value).map(Some);
-        }
-        if value.is_instance_of::<PyFloat>() {
-            return Ok(Some(Scalar::from(Float64::from_f64(value.extract()?))));
-        }
-        if let Ok(text) = value.cast::<PyString>() {
-            return Ok(Some(Scalar::from(text.to_str()?)));
-        }
-        if let Ok(bytes) = value.cast::<PyBytes>() {
-            return Ok(Some(Scalar::from(bytes.as_bytes())));
-        }
-        Ok(None)
     }
 
     /// Convert a subclass of a collection type as the collection it is.
@@ -2140,7 +2134,7 @@ impl Encoder {
         depth: usize,
     ) -> PyResult<Option<Scalar>> {
         let py = value.py();
-        if value.is_instance(&py.import("collections")?.getattr("deque")?)? {
+        if value.is_instance(classes::deque(py)?)? {
             return self.convert_iterator(value, depth).map(Some);
         }
         if let Ok(items) = value.cast::<PyTuple>() {
@@ -2171,7 +2165,7 @@ impl Encoder {
         if value.cast::<PyDict>().is_ok() {
             return self.convert_dict(value, depth).map(Some);
         }
-        if value.is_instance(&py.import("collections.abc")?.getattr("Mapping")?)? {
+        if value.is_instance(classes::mapping(py)?)? {
             return self.convert_mapping(value, depth).map(Some);
         }
         Ok(None)
@@ -2284,11 +2278,7 @@ impl Encoder {
             .and_then(|attributes| attributes.cast_into::<PyDict>().ok());
         // copyreg owns Python's inherited/name-mangled slot discovery for the
         // pickle protocol; reusing it avoids a second, subtly different walk.
-        let names = value
-            .py()
-            .import("copyreg")?
-            .getattr("_slotnames")?
-            .call1((value.get_type(),))?;
+        let names = classes::slot_names(value.py())?.call1((value.get_type(),))?;
         if attributes.is_none() && names.is_none() {
             return Ok(None);
         }
@@ -2337,46 +2327,6 @@ impl Encoder {
         })
     }
 
-    /// Convert a dataclass instance into the record of its declared fields.
-    ///
-    /// The cached tuple a field-decorated dataclass publishes is read first,
-    /// because the encode path must not allocate a `dataclasses.fields` tuple
-    /// per instance.
-    fn convert_dataclass(
-        &mut self,
-        value: &Bound<'_, PyAny>,
-        depth: usize,
-        dataclasses: &Bound<'_, PyModule>,
-    ) -> PyResult<Scalar> {
-        self.with_cycle_check(value, |encoder| {
-            let mut entries = Vec::new();
-            let cached_fields = value
-                .get_type()
-                .getattr("__yggdryl_scalar_fields__")
-                .ok()
-                .and_then(|cached| cached.cast_into::<PyTuple>().ok())
-                .and_then(|cached| cached.get_item(1).ok())
-                .and_then(|fields| fields.cast_into::<PyTuple>().ok());
-            if let Some(fields) = cached_fields {
-                for field in fields.iter() {
-                    push_dataclass_field(encoder, value, &field, depth, &mut entries)?;
-                }
-            } else {
-                let marker = dataclasses.getattr("_FIELD")?;
-                let fields = value
-                    .get_type()
-                    .getattr("__dataclass_fields__")?
-                    .cast_into::<PyDict>()?;
-                for (_, field) in fields.iter() {
-                    if field.getattr("_field_type")?.is(&marker) {
-                        push_dataclass_field(encoder, value, &field, depth, &mut entries)?;
-                    }
-                }
-            }
-            Scalar::from_struct(entries).map_err(value_error)
-        })
-    }
-
     /// Run one conversion with this object marked as being on the stack.
     fn with_cycle_check<F>(&mut self, value: &Bound<'_, PyAny>, convert: F) -> PyResult<Scalar>
     where
@@ -2394,20 +2344,47 @@ impl Encoder {
     }
 }
 
-/// Append one dataclass field's name and converted value.
-fn push_dataclass_field(
-    encoder: &mut Encoder,
-    value: &Bound<'_, PyAny>,
-    field: &Bound<'_, PyAny>,
-    depth: usize,
-    entries: &mut Vec<(String, Scalar)>,
-) -> PyResult<()> {
-    let name = field.getattr("name")?.extract::<String>()?;
-    entries.push((
-        name.clone(),
-        encoder.convert(&value.getattr(name.as_str())?, depth + 1)?,
-    ));
-    Ok(())
+/// Convert a subclass of a scalar type as the scalar it is.
+///
+/// Every check here is an `isinstance`, so a subclass keeps its base's
+/// shape instead of decaying into whatever its instance dictionary holds.
+fn scalar_subclass_to_value(value: &Bound<'_, PyAny>) -> PyResult<Option<Scalar>> {
+    let py = value.py();
+    if value.cast::<PyComplex>().is_ok() {
+        return complex_to_value(value).map(Some);
+    }
+    if let Ok(bytes) = value.cast::<PyByteArray>() {
+        return Ok(Some(Scalar::from(bytes.to_vec())));
+    }
+    if value.is_instance(classes::decimal(py)?)? {
+        return decimal_to_value(value).map(Some);
+    }
+    // A `datetime` is a `date`, so the narrower class is asked first.
+    if value.is_instance(classes::datetime(py)?)? {
+        return datetime_to_value(value).map(Some);
+    }
+    if value.is_instance(classes::date(py)?)? {
+        return date_to_value(value).map(Some);
+    }
+    if value.is_instance(classes::time(py)?)? {
+        return time_to_value(value).map(Some);
+    }
+    if value.is_instance(classes::timedelta(py)?)? {
+        return duration_to_value(value).map(Some);
+    }
+    if value.is_instance_of::<PyInt>() {
+        return integer_to_value(value).map(Some);
+    }
+    if value.is_instance_of::<PyFloat>() {
+        return Ok(Some(Scalar::from(Float64::from_f64(value.extract()?))));
+    }
+    if let Ok(text) = value.cast::<PyString>() {
+        return Ok(Some(Scalar::from(text.to_str()?)));
+    }
+    if let Ok(bytes) = value.cast::<PyBytes>() {
+        return Ok(Some(Scalar::from(bytes.as_bytes())));
+    }
+    Ok(None)
 }
 
 /// Convert a native Yggdryl wrapper into its canonical scalar shape.
@@ -2878,11 +2855,271 @@ const fn nanoseconds_per(unit: TimeUnit) -> Option<i128> {
     }
 }
 
-/// Return the dotted `module.qualname` of a value's class.
-fn type_identity(value: &Bound<'_, PyAny>) -> PyResult<String> {
-    let value_type = value.get_type();
-    let module = value_type.getattr("__module__")?.extract::<String>()?;
-    let qualname = value_type.getattr("__qualname__")?.extract::<String>()?;
+/// What one class's instances convert as.
+///
+/// The encoder's ladder asks a value's class the same questions every time -
+/// is it a dataclass, an enum, one of the standard-library values, a subclass
+/// of a builtin, does it open the Arrow or path protocol - and a class answers
+/// them identically for every instance, so [`class_kind`] asks them on the
+/// class's first value and remembers the answer.
+#[derive(Clone)]
+enum ClassKind {
+    /// A dataclass or a named tuple: its value fields, in declaration order.
+    Record(Arc<[Member]>),
+    /// An `enum.Enum`: a member converts as the value it names.
+    Enum,
+    /// A standard-library value class, named exactly.
+    Stdlib(Stdlib),
+    /// A subclass of a builtin or standard-library value or collection,
+    /// which reads as its base: the subclass ladder in `convert_other`.
+    Subclass,
+    /// Anything else: a columnar object, a path, a plain object - the
+    /// protocols are probed on each value.
+    Any,
+}
+
+/// One value field of a record class.
+struct Member {
+    /// The attribute, interned so every read is one pointer-keyed lookup.
+    attribute: Py<PyString>,
+    /// The name the value is filed under in the record.
+    name: Box<str>,
+}
+
+/// The standard-library classes a value's exact class can name.
+#[derive(Clone, Copy)]
+enum Stdlib {
+    Decimal,
+    Uuid,
+    DateTime,
+    Time,
+    Date,
+    TimeDelta,
+    Complex,
+    Triple,
+    Deque,
+    Dict,
+}
+
+impl Stdlib {
+    /// The class one dotted `module.qualname` names, when it is one of these.
+    fn named(identity: &str) -> Option<Self> {
+        Some(match identity {
+            "decimal.Decimal" => Self::Decimal,
+            "uuid.UUID" => Self::Uuid,
+            "datetime.datetime" => Self::DateTime,
+            "datetime.time" => Self::Time,
+            "datetime.date" => Self::Date,
+            "datetime.timedelta" => Self::TimeDelta,
+            "builtins.complex" => Self::Complex,
+            "builtins.range" | "builtins.slice" => Self::Triple,
+            "collections.deque" => Self::Deque,
+            "collections.OrderedDict" | "collections.Counter" | "collections.defaultdict" => {
+                Self::Dict
+            }
+            _ => return None,
+        })
+    }
+}
+
+/// One class's kind, remembered past its first value.
+struct Known {
+    /// The class, held weakly: a class that dies is never pinned by this
+    /// table, and a new class later allocated at its address fails the
+    /// identity check below and is asked afresh.
+    class: Py<PyWeakrefReference>,
+    kind: ClassKind,
+}
+
+/// Classes remembered at once; past it the dead are dropped, then all.
+const KNOWN_CLASSES: usize = 4096;
+
+/// Every class the encoder has classified, keyed by its address.
+static KNOWN: Mutex<Option<HashMap<usize, Known>>> = Mutex::new(None);
+
+/// Return what `value`'s class converts as, classifying it on first sight.
+///
+/// The table is locked only around the lookup and the insert, never across
+/// a Python call, so a conversion a class's own code starts cannot wait on it.
+fn class_kind(value: &Bound<'_, PyAny>) -> PyResult<ClassKind> {
+    let py = value.py();
+    let class = value.get_type();
+    let key = class.as_ptr() as usize;
+    let remembered = KNOWN
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+        .and_then(|known| known.get(&key))
+        .filter(|entry| {
+            entry
+                .class
+                .bind(py)
+                .upgrade()
+                .is_some_and(|alive| alive.is(&class))
+        })
+        .map(|entry| entry.kind.clone());
+    if let Some(kind) = remembered {
+        return Ok(kind);
+    }
+    let kind = classify(&class)?;
+    let reference = PyWeakrefReference::new(class.as_any())?.unbind();
+    let mut known = KNOWN.lock().unwrap_or_else(PoisonError::into_inner);
+    let known = known.get_or_insert_with(HashMap::new);
+    if known.len() >= KNOWN_CLASSES {
+        known.retain(|_, entry| entry.class.bind(py).upgrade().is_some());
+        if known.len() >= KNOWN_CLASSES {
+            known.clear();
+        }
+    }
+    known.insert(
+        key,
+        Known {
+            class: reference,
+            kind: kind.clone(),
+        },
+    );
+    Ok(kind)
+}
+
+/// Decide what a class's instances convert as, in the order the ladder in
+/// [`Encoder::convert`] would find it.
+fn classify(class: &Bound<'_, PyType>) -> PyResult<ClassKind> {
+    let py = class.py();
+    // A class that opens the Arrow or the path protocol answers through it,
+    // and the ladder asks those before anything else.
+    for protocol in [
+        intern!(py, "__arrow_c_array__"),
+        intern!(py, "__arrow_c_stream__"),
+        intern!(py, "__fspath__"),
+    ] {
+        if class.hasattr(protocol)? {
+            return Ok(ClassKind::Any);
+        }
+    }
+    if let Some(stdlib) = Stdlib::named(&class_identity(class)?) {
+        return Ok(ClassKind::Stdlib(stdlib));
+    }
+    if class.is_subclass(classes::enumeration(py)?)? {
+        return Ok(ClassKind::Enum);
+    }
+    let subclass = is_value_subclass(class)?;
+    if !subclass && classes::is_dataclass(py)?.call1((class,))?.is_truthy()? {
+        let fields = classes::fields(py)?.call1((class,))?;
+        return record_members(
+            fields
+                .try_iter()?
+                .map(|field| field?.getattr(intern!(py, "name"))),
+        )
+        .map(ClassKind::Record);
+    }
+    if class.is_subclass_of::<PyTuple>()? && class.hasattr(intern!(py, "_fields"))? {
+        let fields = class.getattr(intern!(py, "_fields"))?;
+        return record_members(fields.try_iter()?).map(ClassKind::Record);
+    }
+    // `to_reader` and `scanner` are how the ladder recognizes a dataset or a
+    // scanner, so a subclass answering either is left to it.
+    if subclass
+        && !class.hasattr(intern!(py, "to_reader"))?
+        && !class.hasattr(intern!(py, "scanner"))?
+    {
+        return Ok(ClassKind::Subclass);
+    }
+    Ok(ClassKind::Any)
+}
+
+/// Whether a class subclasses one of the value or collection classes the
+/// subclass ladder in `convert_other` reads an instance as.
+fn is_value_subclass(class: &Bound<'_, PyType>) -> PyResult<bool> {
+    let py = class.py();
+    Ok(class.is_subclass_of::<PyComplex>()?
+        || class.is_subclass_of::<PyByteArray>()?
+        || class.is_subclass(classes::decimal(py)?)?
+        || class.is_subclass(classes::date(py)?)?
+        || class.is_subclass(classes::time(py)?)?
+        || class.is_subclass(classes::timedelta(py)?)?
+        || class.is_subclass_of::<PyInt>()?
+        || class.is_subclass_of::<PyFloat>()?
+        || class.is_subclass_of::<PyString>()?
+        || class.is_subclass_of::<PyBytes>()?
+        || class.is_subclass(classes::deque(py)?)?
+        || class.is_subclass_of::<PyTuple>()?
+        || class.is_subclass_of::<PyList>()?
+        || class.is_subclass_of::<PySet>()?
+        || class.is_subclass_of::<PyFrozenSet>()?
+        || class.is_subclass_of::<PyDict>()?
+        || class.is_subclass(classes::mapping(py)?)?)
+}
+
+/// Resolve a record class's field names once: each interned for the reads,
+/// each kept as the name its value is filed under.
+fn record_members<'py>(
+    names: impl Iterator<Item = PyResult<Bound<'py, PyAny>>>,
+) -> PyResult<Arc<[Member]>> {
+    names
+        .map(|name| {
+            let name = name?.cast_into::<PyString>()?;
+            let text = name.to_str()?;
+            Ok(Member {
+                attribute: PyString::intern(name.py(), text).unbind(),
+                name: text.into(),
+            })
+        })
+        .collect()
+}
+
+/// The Python classes the encoder asks about, each imported once per
+/// interpreter rather than once per value.
+mod classes {
+    use pyo3::prelude::*;
+    use pyo3::sync::PyOnceLock;
+    use pyo3::types::PyType;
+
+    macro_rules! classes {
+        ($($name:ident = $module:literal, $class:literal;)*) => {$(
+            #[doc = concat!("`", $module, ".", $class, "`.")]
+            pub(super) fn $name(py: Python<'_>) -> PyResult<&Bound<'_, PyType>> {
+                static CLASS: PyOnceLock<Py<PyType>> = PyOnceLock::new();
+                CLASS.import(py, $module, $class)
+            }
+        )*};
+    }
+
+    macro_rules! callables {
+        ($($name:ident = $module:literal, $attribute:literal;)*) => {$(
+            #[doc = concat!("`", $module, ".", $attribute, "`.")]
+            pub(super) fn $name(py: Python<'_>) -> PyResult<&Bound<'_, PyAny>> {
+                static CALLABLE: PyOnceLock<Py<PyAny>> = PyOnceLock::new();
+                CALLABLE.import(py, $module, $attribute)
+            }
+        )*};
+    }
+
+    callables! {
+        is_dataclass = "dataclasses", "is_dataclass";
+        fields = "dataclasses", "fields";
+        slot_names = "copyreg", "_slotnames";
+    }
+
+    classes! {
+        enumeration = "enum", "Enum";
+        decimal = "decimal", "Decimal";
+        datetime = "datetime", "datetime";
+        date = "datetime", "date";
+        time = "datetime", "time";
+        timedelta = "datetime", "timedelta";
+        deque = "collections", "deque";
+        mapping = "collections.abc", "Mapping";
+    }
+}
+
+/// Return the dotted `module.qualname` of a class.
+fn class_identity(class: &Bound<'_, PyType>) -> PyResult<String> {
+    let module = class
+        .getattr(intern!(class.py(), "__module__"))?
+        .extract::<String>()?;
+    let qualname = class
+        .getattr(intern!(class.py(), "__qualname__"))?
+        .extract::<String>()?;
     Ok(format!("{module}.{qualname}"))
 }
 

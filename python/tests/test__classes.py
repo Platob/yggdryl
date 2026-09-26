@@ -130,6 +130,29 @@ def test_codec_materialization_is_recursive_and_schema_checked() -> None:
     assert isinstance(shallow.legs[0], dict)
 
 
+@scalar(frozen=True)
+class Tick:
+    n: int
+    px: float
+    venue: str | None
+    ok: bool
+
+
+def test_exact_leaves_cross_unchanged_and_other_values_still_cast() -> None:
+    price = 1.5
+    tick = yggdryl._classes.from_dict(Tick, {"n": 1, "px": price, "venue": "X", "ok": True})
+
+    assert tick == Tick(1, 1.5, "X", True)
+    assert tick.px is price
+    # A value that is not its annotation's exact class takes the lossless cast.
+    assert json.loads('{"n": "7", "px": 1, "venue": null, "ok": "yes"}', cls=Tick) == Tick(
+        7, 1.0, None, True
+    )
+    # A bool is not an int here, however Python ranks the two.
+    with pytest.raises(TypeError, match=r"Tick\.n"):
+        yggdryl._classes.from_dict(Tick, {"n": True, "px": 1.0, "venue": None, "ok": True})
+
+
 def test_plain_dataclasses_compile_to_the_same_native_field_model() -> None:
     @dataclasses.dataclass
     class Point:

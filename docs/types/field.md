@@ -646,6 +646,8 @@ No name, `None`/`null`, or the existing name returns the cached native value; an
 
 Python spells the class accessor `into_field` because a `@scalar` class converts only as a struct root and has no leaf form to tell it apart from. On a *value* Python keeps the pair the other two rows have: [`Scalar.into_field`](scalar.md) for the leaf and `Scalar.into_struct_field` for the root.
 
+An instance of such a class - or of any dataclass or named tuple - crosses as the record of its value fields. The class's field names are resolved on its first instance and remembered, so every instance costs one attribute read per field and nothing is re-inferred per value. `Class.into_field().scalar(instance)` is its canonical row, and the Python records writers land a stream of instances through that same value contract under the class's own field: an enum member is the value it names, and a dense union member is refused naming its path, because a bare value does not say which branch it is. `read_records(Class)` and `json.loads(..., cls=Class)` hand a value that already is its annotation's exact class - `int`, `float`, `str`, `bool`, `bytes`, `Decimal`, `UUID`, `date`, or one of them or `None` - to the constructor unchanged, and cast every other value losslessly or refuse it as before.
+
 ## Applying a schema's declarations
 
 A `Field` states more about a batch than its shape. A

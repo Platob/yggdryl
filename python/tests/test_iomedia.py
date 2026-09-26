@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import gc
 import pathlib
 import struct
@@ -444,6 +445,27 @@ class TradeId:
     id: int
 
 
+class Color(enum.Enum):
+    RED = "r"
+    BLUE = "b"
+
+
+class Level(enum.IntEnum):
+    LOW = 1
+    HIGH = 3
+
+
+@scalar
+class Painted:
+    color: Color
+    level: Level
+
+
+@scalar
+class Variant:
+    value: int | str
+
+
 class TestDataclassRecords:
     def test_decorated_dataclass_infers_its_cached_struct_field(
         self, tmp_path: pathlib.Path
@@ -461,6 +483,38 @@ class TestDataclassRecords:
             {"id": 1, "venue": "XNAS"},
             {"id": 2, "venue": None},
         ]
+
+    def test_class_rows_land_under_the_field_their_class_declares(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "painted.parquet")
+
+        # Each instance crosses the core's value contract: an enum member is
+        # the value it names, which a runtime cast of the member refused.
+        handle.overwrite_records([Painted(Color.RED, Level.HIGH), Painted(Color.BLUE, Level.LOW)])
+
+        assert handle.read_arrow_field().dtype == Painted.into_field().dtype
+        assert list(handle.read_records(Painted)) == [
+            Painted(Color.RED, Level.HIGH),
+            Painted(Color.BLUE, Level.LOW),
+        ]
+
+    def test_a_mapping_row_among_class_rows_is_read_by_its_names(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "mixed.parquet")
+
+        handle.overwrite_records([Trade(1, "XNAS"), {"venue": None, "id": 2}])
+
+        assert list(handle.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, None)]
+
+    def test_a_class_row_the_core_refuses_is_named_by_its_path(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "variant.parquet")
+
+        with pytest.raises(ValueError, match=r"\.value: expected union"):
+            handle.overwrite_records([Variant(1)])
 
     def test_plain_dataclass_reads_one_row_at_a_time(
         self, tmp_path: pathlib.Path

@@ -494,7 +494,7 @@ pub(crate) fn batch_reader_from_record_sequence(
         return chain_with_reader(&items, reader, options, None).map(Some);
     }
     if first.cast::<PyMapping>().is_ok() && first.hasattr("keys")? {
-        return row_reader(&items, &first, options).map(Some);
+        return row_reader(&items, &first, options, None).map(Some);
     }
     Ok(None)
 }
@@ -529,9 +529,13 @@ pub(crate) fn batch_reader_from_records(
     };
     if options.field().is_none() && is_dataclass_instance(&first)? {
         let field = core_root_field_from_value(&first, options.name())?;
-        options.set_field(field);
+        options.set_field(field.clone());
+        // The rows are instances of the class whose own field this is, so
+        // each crosses the core's value contract and lands in a column
+        // there, rather than being lowered to a mapping for PyArrow to cast.
+        return row_reader(&items, &first, options, Some(Arc::new(field)));
     }
-    row_reader(&items, &first, options)
+    row_reader(&items, &first, options, None)
 }
 
 /// Report whether `value` is a dataclass instance rather than its class.
@@ -574,7 +578,7 @@ fn chained_reader(
         Some(library) => frame_reader(&first, library)?,
         None => match columnar_reader(&first)? {
             Some(reader) => reader,
-            None => return row_reader(items, &first, options),
+            None => return row_reader(items, &first, options, None),
         },
     };
     chain_with_reader(items, reader, options, only)
@@ -749,6 +753,7 @@ fn row_reader(
     items: &Bound<'_, PyAny>,
     first: &Bound<'_, PyAny>,
     options: &RecordOptions,
+    landed: Option<Arc<CoreField>>,
 ) -> PyResult<BatchReader> {
     let py = items.py();
     let declared = match options.field() {
@@ -757,6 +762,7 @@ fn row_reader(
     };
     let mut rows = Rows {
         items: items.clone().unbind(),
+        landed,
         from_pylist: pyarrow::record_batch(py)?
             .getattr(intern!(py, "from_pylist"))?
             .unbind(),
@@ -821,6 +827,10 @@ impl arrow_array::RecordBatchReader for Head {
 struct Rows {
     /// The Python iterator the rows are pulled from.
     items: Py<PyAny>,
+    /// The root the rows land under through the core, when they are a
+    /// record class's instances under the field that class declares; `None`
+    /// builds each batch with `from_pylist` instead.
+    landed: Option<Arc<CoreField>>,
     /// `pyarrow.RecordBatch.from_pylist`, resolved once rather than per batch.
     from_pylist: Py<PyAny>,
     /// The `pyarrow.Schema` every batch is built under, when one was declared.
@@ -862,8 +872,10 @@ impl Rows {
             // it in place would borrow the reader that the row conversion below
             // has to be able to update.
             let items = self.items.clone_ref(py).into_bound(py);
-            let from_pylist = self.from_pylist.clone_ref(py).into_bound(py);
-            let chunk = PyList::empty(py);
+            let mut chunk = match self.landed {
+                Some(_) => Chunk::Values(Vec::new()),
+                None => Chunk::Mappings(PyList::empty(py)),
+            };
             let mut target = self.commit_row_size.map_or(self.per_batch, |commit| {
                 self.per_batch.min(commit - self.commit_progress)
             });
@@ -872,33 +884,28 @@ impl Rows {
             }
             if let Some(pending) = self.pending.take() {
                 let row = pending.into_bound(py);
-                chunk.append(self.mapping(py, &row)?)?;
+                self.push(py, &mut chunk, &row)?;
             }
             while chunk.len() < target && !self.drained {
                 match next_item(&items)? {
-                    Some(row) => chunk.append(self.mapping(py, &row)?)?,
+                    Some(row) => self.push(py, &mut chunk, &row)?,
                     None => self.drained = true,
                 }
             }
             if chunk.is_empty() {
                 return Ok(None);
             }
-            let built = match self.columns.as_ref() {
-                Some(columns) => {
-                    let arguments = PyDict::new(py);
-                    arguments.set_item("schema", columns.bind(py))?;
-                    from_pylist.call((chunk,), Some(&arguments))?
+            let batch = match (chunk, &self.landed) {
+                (Chunk::Values(rows), Some(root)) => {
+                    let root = Arc::clone(root);
+                    // Landing reads no Python object, so other threads run.
+                    py.detach(move || -> yggdryl::Result<RecordBatch> {
+                        Ok(yggdryl::Serie::from_scalars(root, rows)?.into_arrow_batch()?)
+                    })
+                    .map_err(value_error)?
                 }
-                None => from_pylist.call1((chunk,))?,
+                (chunk, _) => self.build_with_pyarrow(py, chunk)?,
             };
-            let batch = RecordBatch::from_pyarrow_bound(&built)?;
-            validate_batch(&batch).map_err(value_error)?;
-            // The first batch is what names the columns; every later one is
-            // built against it, so an inference that saw only nulls in one
-            // chunk cannot disagree with the chunk before it.
-            if self.columns.is_none() {
-                self.columns = Some(built.getattr("schema")?.unbind());
-            }
             if let Some(commit) = self.commit_row_size {
                 self.commit_progress = (self.commit_progress + batch.num_rows()) % commit;
             }
@@ -907,6 +914,48 @@ impl Rows {
             }
             Ok(Some(batch))
         })
+    }
+
+    /// Add one row to the chunk being built, in the form that chunk takes.
+    fn push(
+        &mut self,
+        py: Python<'_>,
+        chunk: &mut Chunk<'_>,
+        row: &Bound<'_, PyAny>,
+    ) -> PyResult<()> {
+        match chunk {
+            Chunk::Values(rows) => rows.push(crate::scalar::row_from_py(row)?),
+            Chunk::Mappings(rows) => rows.append(self.mapping(py, row)?)?,
+        }
+        Ok(())
+    }
+
+    /// Build one batch from mappings with `pyarrow.RecordBatch.from_pylist`,
+    /// under the declared schema or the one the first batch settled.
+    fn build_with_pyarrow(&mut self, py: Python<'_>, chunk: Chunk<'_>) -> PyResult<RecordBatch> {
+        let Chunk::Mappings(chunk) = chunk else {
+            return Err(PyValueError::new_err(
+                "expected rows lowered to mappings for PyArrow to build",
+            ));
+        };
+        let from_pylist = self.from_pylist.clone_ref(py).into_bound(py);
+        let built = match self.columns.as_ref() {
+            Some(columns) => {
+                let arguments = PyDict::new(py);
+                arguments.set_item("schema", columns.bind(py))?;
+                from_pylist.call((chunk,), Some(&arguments))?
+            }
+            None => from_pylist.call1((chunk,))?,
+        };
+        let batch = RecordBatch::from_pyarrow_bound(&built)?;
+        validate_batch(&batch).map_err(value_error)?;
+        // The first batch is what names the columns; every later one is
+        // built against it, so an inference that saw only nulls in one
+        // chunk cannot disagree with the chunk before it.
+        if self.columns.is_none() {
+            self.columns = Some(built.getattr("schema")?.unbind());
+        }
+        Ok(batch)
     }
 
     /// Return the row as the mapping `from_pylist` reads.
@@ -986,6 +1035,27 @@ impl Rows {
         let names = PyList::new(py, names)?.unbind();
         self.names = Some(names.clone_ref(py));
         Ok(names)
+    }
+}
+
+/// The rows of one batch being built.
+enum Chunk<'py> {
+    /// Rows crossed into core values, to land under the root they declare.
+    Values(Vec<yggdryl::Scalar>),
+    /// Rows lowered to the mappings `from_pylist` reads.
+    Mappings(Bound<'py, PyList>),
+}
+
+impl Chunk<'_> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Values(rows) => rows.len(),
+            Self::Mappings(rows) => rows.len(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

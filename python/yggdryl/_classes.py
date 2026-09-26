@@ -2313,6 +2313,39 @@ def _constructor_fields(
     return tuple(field for field in regular if field.init)
 
 
+_IDENTITY_LEAVES = frozenset((bool, int, float, str, bytes, Decimal, uuid.UUID, dt.date))
+_LEAF_HINTS: dict[Any, tuple[type[Any] | None, bool]] = {}
+
+
+def _leaf_of(hint: Any) -> tuple[type[Any] | None, bool]:
+    """Name the exact leaf class a value converts to itself under.
+
+    The answer is the class and whether ``hint`` is that class or ``None``;
+    any other hint answers ``(None, False)``. A leaf is a class whose exact
+    instances ``_convert`` hands back unchanged. Answers are remembered per
+    hint, because an annotation is resolved once and read for every row.
+    """
+
+    try:
+        return _LEAF_HINTS[hint]
+    except KeyError:
+        pass
+    except TypeError:
+        return None, False
+    answer: tuple[type[Any] | None, bool] = (None, False)
+    if hint in _IDENTITY_LEAVES:
+        answer = (hint, False)
+    elif get_origin(hint) in _UNION_ORIGINS:
+        members = get_args(hint)
+        if len(members) == 2 and _NONE_TYPE in members:
+            other = members[0] if members[1] is _NONE_TYPE else members[1]
+            if other in _IDENTITY_LEAVES:
+                answer = (other, True)
+    if len(_LEAF_HINTS) < 4096:
+        _LEAF_HINTS[hint] = answer
+    return answer
+
+
 def _from_dict(
     cls: type[_T],
     values: Mapping[str, Any],
@@ -2363,15 +2396,23 @@ def _from_dict(
     )
     converted: dict[str, Any] = {}
     for field in schema.constructor_fields:
-        field_path = f"{path}.{field.name}"
         if field.name not in values:
             # Omission follows normal dataclass construction: declared defaults
             # are always honored. The error policy only changes how an invalid
             # value that was actually supplied is handled.
             if _has_default(field):
                 continue
-            raise TypeError(f"{field_path}: missing required value")
+            raise TypeError(f"{path}.{field.name}: missing required value")
         hint = schema.hints.get(field.name, field.type)
+        # A value that already is the exact leaf class its annotation names
+        # converts to itself: every check `_convert` makes would answer it
+        # unchanged, so none is made. An optional leaf is answered here only
+        # under the class's own field, which a union cannot stand behind.
+        leaf, optional = _leaf_of(hint)
+        if type(values[field.name]) is leaf and (physical_root is None or not optional):
+            converted[field.name] = values[field.name]
+            continue
+        field_path = f"{path}.{field.name}"
         if binding_contexts is not None:
             hint = _bind_hint(
                 hint,

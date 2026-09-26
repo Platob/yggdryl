@@ -17,7 +17,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, Serie, json
+from yggdryl import DataType, Field, Scalar, Serie, json, scalar
 
 @dataclass
 class Quote:
@@ -64,6 +64,56 @@ def test_python_records_are_distinct_from_arbitrary_mappings() -> None:
     }
     assert Scalar.from_(SlottedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
     assert Scalar.from_(MixedPoint(2, 1)).as_py() == {"x": 1, "y": 2}
+
+
+@dataclass
+class Scanned:
+    scanner: str
+    to_reader: int
+
+
+class ScannedPoint(NamedTuple):
+    x: int
+    scanner: str
+
+
+@scalar
+class BaseRecord:
+    a: int
+
+
+@scalar
+class ChildRecord(BaseRecord):
+    b: str
+
+
+@dataclass(frozen=True)
+class ArrowRecord:
+    values: tuple[int, ...]
+
+    def __arrow_c_array__(self, requested_schema: object = None) -> object:
+        return pa.array(self.values).__arrow_c_array__(requested_schema)
+
+
+def test_a_record_class_reads_every_field_it_declares() -> None:
+    # A field named like the dataset protocol is a field of the record.
+    assert Scalar.from_(Scanned("s", 1)).as_py() == {"scanner": "s", "to_reader": 1}
+    assert Scalar.from_(ScannedPoint(1, "s")).as_py() == {"scanner": "s", "x": 1}
+    # A subclass carries its own fields, whichever class cached its field first.
+    BaseRecord.into_field()
+    child = ChildRecord(1, "x")
+    assert Scalar.from_(child).as_py() == {"a": 1, "b": "x"}
+    assert ChildRecord.into_field().scalar(child) == ChildRecord.into_field().scalar((1, "x"))
+    # Every instance of a class converts alike, the first and the rest.
+    assert [Scalar.from_(Scanned(str(n), n)).as_py() for n in range(3)] == [
+        {"scanner": str(n), "to_reader": n} for n in range(3)
+    ]
+
+
+def test_a_record_class_opening_the_arrow_protocol_is_the_column_it_exports() -> None:
+    column = Scalar.from_(ArrowRecord((1, 2)))
+
+    assert column == Scalar.from_(pa.array([1, 2]))
 
 
 def test_native_field_and_datatype_wrappers_cross_structurally() -> None:

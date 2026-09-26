@@ -38,7 +38,7 @@ from typing import Callable
 
 import pyarrow as pa
 
-from yggdryl import IOBase
+from yggdryl import IOBase, scalar
 
 ROW_COUNT = 65_536
 BATCH_SIZE = 8_192
@@ -170,6 +170,19 @@ def _optional_frame(package: str) -> object | None:
 PANDAS_FRAME = _optional_frame("pandas")
 POLARS_FRAME = _optional_frame("polars")
 ROW_MAPPINGS = TABLE.to_pylist()
+
+
+@scalar(frozen=True, slots=True)
+class TradeRow:
+    """One fixture row as a record class: the rows land under its own field."""
+
+    id: int
+    symbol: str
+    venue: str
+    price: float
+
+
+CLASS_ROWS = tuple(TradeRow(**row) for row in ROW_MAPPINGS)
 RECORD_BATCH = TABLE.combine_chunks().to_batches(max_chunksize=ROW_COUNT)[0]
 MERGE_OPTIONS = SINK_FILE.record_options()
 MERGE_OPTIONS.merge_by = ["id"]
@@ -233,6 +246,15 @@ def _read_polars_frame() -> object:
 
 def _read_records() -> object:
     return sum(1 for _ in FILE.read_records())
+
+
+def _write_class_records() -> object:
+    SINK_FILE.overwrite_records(CLASS_ROWS)
+    return SINK_FILE.size
+
+
+def _read_class_records() -> object:
+    return sum(1 for _ in FILE.read_records(TradeRow))
 
 
 def _fresh_row_size() -> object:
@@ -389,6 +411,8 @@ BENCHMARKS = tuple(
         Benchmark("parquet read whole", _read_file_whole, ROW_COUNT, "row"),
         Benchmark("parquet read subset", _read_file_subset, ROW_COUNT, "row"),
         Benchmark("parquet read records", _read_records, ROW_COUNT, "row"),
+        Benchmark("parquet write class records", _write_class_records, ROW_COUNT, "row"),
+        Benchmark("parquet read class records", _read_class_records, ROW_COUNT, "row"),
         Benchmark("parquet row size fresh", _fresh_row_size, 1, "lookup"),
         Benchmark("parquet column size fresh", _fresh_column_size, 1, "lookup"),
         Benchmark("parquet row size cached", _cached_row_size, 1, "lookup"),

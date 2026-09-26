@@ -66,7 +66,7 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     import pathlib
     import tempfile
 
-    from yggdryl import IOBase
+    from yggdryl import IOBase, scalar
 
     handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.arrows")
 
@@ -82,6 +82,17 @@ Every record encoding answers the same calls through [`IOMedia`](../holder/index
     rows = list(handle.read_records())
     assert len(rows) == 3
     assert {row["venue"] for row in rows} == {"XNAS", "XPAR", "XLON"}
+
+    # Instances of a record class are rows of the field their class declares,
+    # and each crosses the core's value contract on its way to the column.
+    @scalar(frozen=True)
+    class Trade:
+        id: int
+        venue: str
+
+    classes = IOBase(pathlib.Path(tempfile.mkdtemp()) / "classes.arrows")
+    classes.overwrite_records([Trade(1, "XNAS"), Trade(2, "XNYS")])
+    assert list(classes.read_records(Trade)) == [Trade(1, "XNAS"), Trade(2, "XNYS")]
     ```
 
 === "JavaScript"
