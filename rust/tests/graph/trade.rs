@@ -5,7 +5,7 @@ use yggdryl::graph::{
     Element, Event, ExecutionEvent, Market, MarketData, MarketKind, OperationEvent, OperationKind,
     OrderEvent, TradeEvent,
 };
-use yggdryl::{Decimal18, Side};
+use yggdryl::{Decimal, Side};
 
 fn event<K: OperationKind>(
     unix: i64,
@@ -40,7 +40,7 @@ fn execution(
 ) -> ExecutionEvent {
     let mut event: ExecutionEvent = event(unix, crosscode, symbol, recdunix);
     event.set_side(Side::read(side).unwrap());
-    event.set_price(Some(Decimal18::from_int(price)));
+    event.set_price(Some(Decimal::from_int(price)));
     event.set_seqnum(seqnum);
     event.set_creaunix(creaunix);
     event.set_execunix(execunix);
@@ -207,7 +207,7 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .find(|held| held.get_crosscode() == "E-1")
             .unwrap()
             .get_price(),
-        Some(Decimal18::from_int(101)),
+        Some(Decimal::from_int(101)),
         "the later-recorded child leads its merge"
     );
     assert_eq!(merged.get_seqnum(), 4);
@@ -245,10 +245,10 @@ fn merge_deduplicates_by_crosscode_and_the_latest_recording_leads() {
             .get_price()
     };
     let alone = right.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&alone), Some(Decimal18::from_int(101)));
+    assert_eq!(e1_price(&alone), Some(Decimal::from_int(101)));
     assert_eq!(alone.get_recdunix(), Some(15));
     let folded = merged.merge_with(&third).unwrap();
-    assert_eq!(e1_price(&folded), Some(Decimal18::from_int(105)));
+    assert_eq!(e1_price(&folded), Some(Decimal::from_int(105)));
     assert_eq!(folded.get_recdunix(), Some(10));
 }
 

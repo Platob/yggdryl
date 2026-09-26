@@ -157,7 +157,7 @@ Every one of them ends in the same builder, so a document is typed by the rules 
 |#NOPARTYIDS[0]=PARTYID=BUYSIDE\x04\x03PARTYIDSOURCE=D\x04\x03PARTYROLE=1|";
     let held = reader.parse_line(bridge)?.next().expect("one frame")?;
     assert_eq!(held.by_tag(55)?.as_str(), Some("TTF"));
-    assert_eq!(held.by_tag(44)?, Scalar::from(yggdryl::Decimal18::parse("41.25")?));
+    assert_eq!(held.by_tag(44)?, Scalar::from(yggdryl::Decimal::parse("41.25")?));
     // The packed members became three real fields under one nesting.
     let party = yggdryl::FieldPath::from_str("Parties[0].PartyID")?;
     assert_eq!(held.by_path(&party)?.as_str(), Some("BUYSIDE"));

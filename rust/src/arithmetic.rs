@@ -29,9 +29,20 @@ pub enum Arithmetic {
 
 #[derive(Clone)]
 pub(crate) enum ArithmeticTarget {
-    Integer { signed: bool, bits: u16 },
+    Integer {
+        signed: bool,
+        bits: u16,
+    },
     Float(u8),
-    Decimal { wide: bool, scale: i8 },
+    Decimal {
+        wide: bool,
+        scale: i8,
+    },
+    /// A fixed-scale decimal result: the `decimal` leaf, or `bigdecimal` when
+    /// either operand is one.
+    Fixed {
+        wide: bool,
+    },
     Temporal(DataType),
 }
 
@@ -115,6 +126,9 @@ impl Scalar {
             Self::Float16(value) => Self::Float16(-*value),
             Self::Float32(value) => Self::Float32(-*value),
             Self::Float64(value) => Self::Float64(-*value),
+            // The fixed leaves span a symmetric range, so a negation is a value.
+            Self::Decimal(value) => Self::Decimal(-*value),
+            Self::BigDecimal(value) => Self::BigDecimal(-*value),
             Self::Decimal32(value) => Self::Decimal32(crate::decimal::Decimal32::new(
                 value
                     .coefficient()
@@ -214,6 +228,8 @@ impl Scalar {
                     .ok_or_else(|| overflow("d64"))?,
                 value.scale(),
             )),
+            Self::Decimal(value) => Self::Decimal(value.abs()),
+            Self::BigDecimal(value) => Self::BigDecimal(value.abs()),
             Self::Decimal128(value) => Self::d128(
                 value
                     .coefficient()
@@ -302,6 +318,7 @@ fn checked_arithmetic_target(
         ArithmeticTarget::Decimal { wide, scale } => {
             decimal_arithmetic(left, operation, right, *wide, *scale)
         }
+        ArithmeticTarget::Fixed { wide } => fixed_arithmetic(left, operation, right, *wide),
         ArithmeticTarget::Temporal(dtype) => {
             if matches!(temporal_target(dtype), Some((TemporalKind::Duration, _)))
                 && ((temporal_value_parts(left)
@@ -319,12 +336,85 @@ fn checked_arithmetic_target(
     }
 }
 
+/// An operand restated at the fixed scale: a fixed leaf as it is, an exact
+/// decimal at any scale that restates at eighteen, or a whole number.
+fn fixed_operand(value: &Scalar) -> Option<crate::BigDecimal> {
+    match value {
+        Scalar::Decimal(held) => Some(held.widened()),
+        Scalar::BigDecimal(held) => Some(*held),
+        _ if value.is_decimal() => value
+            .decimal256_unscaled_at(crate::BigDecimal::SCALE)
+            .and_then(crate::BigDecimal::from_units),
+        _ => value
+            .as_i128()
+            .and_then(|whole| i64::try_from(whole).ok())
+            .map(crate::BigDecimal::from_int),
+    }
+}
+
+/// Arithmetic over the fixed leaves: computed wide, then narrowed to
+/// `decimal` unless an operand was `bigdecimal`. The remainder is refused: a
+/// fixed-scale decimal states no remainder.
+fn fixed_arithmetic(
+    left: &Scalar,
+    operation: Arithmetic,
+    right: &Scalar,
+    wide: bool,
+) -> Result<Scalar> {
+    let kind = if wide { "bigdecimal" } else { "decimal" };
+    let operand = |value: &Scalar| {
+        fixed_operand(value).ok_or_else(|| {
+            invalid_binary(
+                operation,
+                left,
+                right,
+                "expected an exact number a fixed-scale decimal restates",
+            )
+        })
+    };
+    let (a, b) = (operand(left)?, operand(right)?);
+    let overflow = || Error::ArithmeticOverflow {
+        operation: operation.name(),
+        kind,
+    };
+    let held = match operation {
+        Arithmetic::Add => a.checked_add(b),
+        Arithmetic::Sub => a.checked_sub(b),
+        Arithmetic::Mul => a.checked_mul(b),
+        Arithmetic::Div => {
+            if b.is_zero() {
+                return Err(invalid_binary(operation, left, right, "division by zero"));
+            }
+            a.checked_div(b)
+        }
+        Arithmetic::Rem => {
+            return Err(invalid_binary(
+                operation,
+                left,
+                right,
+                "a fixed-scale decimal states no remainder",
+            ));
+        }
+    }
+    .ok_or_else(overflow)?;
+    Ok(if wide {
+        Scalar::BigDecimal(held)
+    } else {
+        Scalar::Decimal(held.narrowed().ok_or_else(overflow)?)
+    })
+}
+
 fn target_from_dtype(dtype: &DataType) -> Option<ArithmeticTarget> {
     if let Some((signed, bits)) = integer_kind(dtype) {
         return Some(ArithmeticTarget::Integer { signed, bits });
     }
     if let Some(width) = float_width(dtype) {
         return Some(ArithmeticTarget::Float(width));
+    }
+    match dtype {
+        DataType::Decimal => return Some(ArithmeticTarget::Fixed { wide: false }),
+        DataType::BigDecimal => return Some(ArithmeticTarget::Fixed { wide: true }),
+        _ => {}
     }
     if let Some((wide, scale)) = decimal_target(dtype) {
         return Some(ArithmeticTarget::Decimal { wide, scale });
@@ -429,6 +519,25 @@ fn inferred_target(
             return Ok(ArithmeticTarget::Temporal(parts.dtype));
         }
         _ => {}
+    }
+
+    // A fixed leaf keeps its scale: the other operand meets it there, and
+    // the result is the leaf - the wide one where either side is wide.
+    if matches!(
+        (left, right),
+        (Scalar::Decimal(_) | Scalar::BigDecimal(_), _)
+            | (_, Scalar::Decimal(_) | Scalar::BigDecimal(_))
+    ) {
+        if !is_exact_number(left) || !is_exact_number(right) {
+            return Err(invalid_binary(
+                operation,
+                left,
+                right,
+                "exact decimals cannot mix with approximate or non-numeric values",
+            ));
+        }
+        let wide = matches!(left, Scalar::BigDecimal(_)) || matches!(right, Scalar::BigDecimal(_));
+        return Ok(ArithmeticTarget::Fixed { wide });
     }
 
     let left_decimal = decimal_value_parts(left);

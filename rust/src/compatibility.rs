@@ -396,6 +396,16 @@ fn spark_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> {
         | D::Decimal128 { precision, scale } => {
             narrow_decimal(Target::Spark, dtype, *precision, *scale, path)
         }
+        // The fixed leaf is `decimal128(38, 18)` to the target: the name goes,
+        // the digits stay. Its wide twin has nowhere to go.
+        D::Decimal => narrow_decimal(Target::Spark, dtype, 38, 18, path),
+        D::BigDecimal => incompatible(
+            Target::Spark,
+            path,
+            SmolStr::new_static(
+                "bigdecimal requires a coefficient value cast and Spark precision is limited to 38",
+            ),
+        ),
         D::Decimal256 { precision, scale } => incompatible(
             Target::Spark,
             path,
@@ -538,6 +548,16 @@ fn polars_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Decimal128 { precision, scale } => {
             narrow_decimal(Target::Polars, dtype, *precision, *scale, path)
         }
+        // The fixed leaf is `decimal128(38, 18)` to the target: the name goes,
+        // the digits stay. Its wide twin has nowhere to go.
+        D::Decimal => narrow_decimal(Target::Polars, dtype, 38, 18, path),
+        D::BigDecimal => incompatible(
+            Target::Polars,
+            path,
+            SmolStr::new_static(
+                "bigdecimal requires a coefficient value cast and Polars precision is limited to 38",
+            ),
+        ),
         D::Decimal256 { precision, scale } => incompatible(
             Target::Polars,
             path,
@@ -655,6 +675,16 @@ fn pandas_scalar(dtype: &DataType, path: &Path<'_>) -> Result<(DataType, bool)> 
         | D::Decimal128 { precision, scale } => {
             narrow_decimal(Target::Pandas, dtype, *precision, *scale, path)
         }
+        // The fixed leaf is `decimal128(38, 18)` to the target: the name goes,
+        // the digits stay. Its wide twin has nowhere to go.
+        D::Decimal => narrow_decimal(Target::Pandas, dtype, 38, 18, path),
+        D::BigDecimal => incompatible(
+            Target::Pandas,
+            path,
+            SmolStr::new_static(
+                "bigdecimal requires a coefficient value cast and pandas exchanges 38 digits at most through Arrow",
+            ),
+        ),
         D::Decimal256 { precision, scale } => incompatible(
             Target::Pandas,
             path,
@@ -768,6 +798,14 @@ incompatible(
         | D::Decimal128 { precision, scale } => {
             narrow_decimal(Target::Iceberg, dtype, *precision, *scale, path)
         }
+        // The fixed leaf is `decimal128(38, 18)` to the target: the name goes,
+        // the digits stay. Its wide twin has nowhere to go.
+        D::Decimal => narrow_decimal(Target::Iceberg, dtype, 38, 18, path),
+        D::BigDecimal => incompatible(
+            Target::Iceberg,
+            path,
+            SmolStr::new_static("bigdecimal requires a coefficient value cast and Iceberg precision is limited to 38"),
+        ),
         D::Decimal256 { precision, scale } => incompatible(
             Target::Iceberg,
             path,

@@ -393,18 +393,23 @@ impl Selector {
         if self.is_all() {
             return Tree::leaf("select *");
         }
-        if self.projections().is_empty() {
-            return Tree::node(
-                "select * exclude",
+        let star = self.has_star().then(|| {
+            if self.excluded().is_empty() {
+                return Tree::leaf("*");
+            }
+            Tree::node(
+                "* exclude",
                 self.excluded()
                     .iter()
                     .map(|name| Tree::leaf(name.to_string()))
                     .collect(),
-            );
-        }
+            )
+        });
         Tree::node(
             "select",
-            self.projections().iter().map(Projection::tree).collect(),
+            star.into_iter()
+                .chain(self.projections().iter().map(Projection::tree))
+                .collect(),
         )
     }
 }
@@ -417,21 +422,44 @@ impl BoundSelector {
         if self.is_identity() {
             return Tree::leaf("select * (identity, skipped)").render();
         }
-        Tree::node(
-            "select",
-            self.output()
-                .fields()
-                .iter()
-                .zip(self.projections())
-                .map(|(field, bound)| {
-                    Tree::node(
+        // The published columns in order: one per projection, and an
+        // unnest's item - one column, or one per child - under its serie.
+        let mut fields = self.output().fields().iter();
+        let mut branches = Vec::with_capacity(self.projections().len());
+        for (position, bound) in self.projections().iter().enumerate() {
+            let tree = node_tree(bound.node(), bound.schema());
+            match self
+                .unnested()
+                .filter(|unnested| unnested.position == position)
+            {
+                Some(unnested) => {
+                    let width = if unnested.expand {
+                        unnested.item.field_len()
+                    } else {
+                        1
+                    };
+                    let _ = fields.by_ref().take(width).count();
+                    branches.push(Tree::node(
+                        format!(
+                            "unnest {} : {}",
+                            unnested.item.name(),
+                            typed(&unnested.item)
+                        ),
+                        vec![tree],
+                    ));
+                }
+                None => {
+                    let Some(field) = fields.next() else {
+                        break;
+                    };
+                    branches.push(Tree::node(
                         format!("{} : {}", field.name(), typed(field)),
-                        vec![node_tree(bound.node(), bound.schema())],
-                    )
-                })
-                .collect(),
-        )
-        .render()
+                        vec![tree],
+                    ));
+                }
+            }
+        }
+        Tree::node("select", branches).render()
     }
 }
 

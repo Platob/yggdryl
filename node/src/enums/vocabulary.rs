@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use napi_derive::napi;
-use yggdryl::graph::{EventColumn, MarketColumn, MarketKind, MdUpdateAction, OperationColumn};
+use yggdryl::graph::{
+    EventColumn, MarketColumn, MarketKind, MarketView, MdUpdateAction, OperationColumn,
+};
 use yggdryl::{
     Charset, Codec, DataTypeId, DataTypeKind, DigestAlgorithm, IOKind, IOMode, Level, PythonKind,
     Scheme, TimeUnit, UnionMode,
@@ -67,6 +69,7 @@ pub fn enum_values_native() -> HashMap<String, Vec<String>> {
             "marketKinds".to_owned(),
             spell(&MarketKind::ALL.map(MarketKind::as_str)),
         ),
+        ("marketViews".to_owned(), spell(&MarketView::ALL)),
         (
             "mdUpdateActions".to_owned(),
             spell(&MdUpdateAction::ALL.map(MdUpdateAction::as_str)),

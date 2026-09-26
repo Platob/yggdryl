@@ -5,20 +5,38 @@ use std::iter::FusedIterator;
 
 use smol_str::{SmolStr, format_smolstr};
 
+use super::identity::{BOOK_ENTRY_TAGS, TRADE_SIDE_TAGS};
+use super::msg::{Expanded, Unmapped};
 use super::{FixCodec, FixEntry, FixMsg};
 use crate::arrow::BatchReader;
 use crate::graph::book::{ENTRY_ID, ENTRY_REF_ID};
 use crate::graph::facts::OperationEventFacts;
 use crate::graph::{
     BookIterator, BookRef, Element, Event, ExecutionEvent, ExecutionKind, Market, MarketData,
-    MdUpdateAction, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind, SnapshotEvent,
-    TradeEvent,
+    MdUpdateAction, Metadata, Operation, OperationEvent, OperationKind, OrderKind, QuoteKind,
+    SnapshotEvent, TradeEvent,
 };
-use crate::{Ccy, DataType, Decimal18, Error, Result, Scalar, Side, State, TimeUnit};
+use crate::{Ccy, DataType, Decimal, Error, Result, Scalar, Side, State, TimeUnit};
 
 const MD_ENTRIES: i32 = 268;
 const TRADE_SIDES: i32 = 552;
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
+
+/// A book message becomes one leaf per `NoMDEntries(268)` occurrence, and
+/// its root states the context each of them inherits.
+const BOOK_EXPANSION: Expanded = Expanded {
+    counter: MD_ENTRIES,
+    reads: &BOOK_ENTRY_TAGS,
+    inherited: true,
+};
+
+/// A trade becomes one execution per `NoSides(552)` occurrence, beside the
+/// trade the message is.
+const TRADE_EXPANSION: Expanded = Expanded {
+    counter: TRADE_SIDES,
+    reads: &TRADE_SIDE_TAGS,
+    inherited: false,
+};
 
 #[derive(Clone, Default)]
 struct Facts {
@@ -45,15 +63,12 @@ struct Facts {
     market_segment_id: Option<SmolStr>,
     request_id: Option<SmolStr>,
     depth: Option<SmolStr>,
-    report_sequence: Option<SmolStr>,
-    application_id: Option<SmolStr>,
-    application_sequence: Option<SmolStr>,
-    application_begin_sequence: Option<SmolStr>,
-    application_end_sequence: Option<SmolStr>,
-    application_last_sequence: Option<SmolStr>,
 }
 
 impl Facts {
+    /// Records the first nonempty value of one tag an entry's facts read:
+    /// exactly [`BOOK_ENTRY_TAGS`](super::identity::BOOK_ENTRY_TAGS), which
+    /// is what keeps every other tag an entry states in its leaf's metadata.
     fn record(&mut self, tag: i32, value: &SmolStr) {
         let slot = match tag {
             279 => &mut self.action,
@@ -79,12 +94,6 @@ impl Facts {
             1300 => &mut self.market_segment_id,
             262 => &mut self.request_id,
             264 => &mut self.depth,
-            83 => &mut self.report_sequence,
-            1180 => &mut self.application_id,
-            1181 => &mut self.application_sequence,
-            1182 => &mut self.application_begin_sequence,
-            1183 => &mut self.application_end_sequence,
-            1350 => &mut self.application_last_sequence,
             _ => return,
         };
         if slot.is_none() && !value.is_empty() {
@@ -120,12 +129,6 @@ impl Facts {
             market_segment_id,
             request_id,
             depth,
-            report_sequence,
-            application_id,
-            application_sequence,
-            application_begin_sequence,
-            application_end_sequence,
-            application_last_sequence,
         );
     }
 
@@ -141,16 +144,6 @@ impl Facts {
         self.depth.clone_from(&root.depth);
         self.date.clone_from(&root.date);
         self.time.clone_from(&root.time);
-        self.report_sequence.clone_from(&root.report_sequence);
-        self.application_id.clone_from(&root.application_id);
-        self.application_sequence
-            .clone_from(&root.application_sequence);
-        self.application_begin_sequence
-            .clone_from(&root.application_begin_sequence);
-        self.application_end_sequence
-            .clone_from(&root.application_end_sequence);
-        self.application_last_sequence
-            .clone_from(&root.application_last_sequence);
     }
 }
 
@@ -159,12 +152,12 @@ struct BookEntry {
     position: usize,
     date_days: Option<i64>,
     time_nanos: Option<i64>,
-    price: Option<Decimal18>,
-    size: Option<Decimal18>,
+    price: Option<Decimal>,
+    size: Option<Decimal>,
     /// `MDEntrySpotRate(1026)` and `MDEntryForwardPoints(1027)`: the FX
     /// parts of the level's price, read onto its lane.
-    spotrate: Option<Decimal18>,
-    forwardpoints: Option<Decimal18>,
+    spotrate: Option<Decimal>,
+    forwardpoints: Option<Decimal>,
     empty_snapshot: bool,
 }
 
@@ -185,6 +178,18 @@ impl FixMsg {
     /// missing, repeated or count-mismatched `NoSides(552)` group; a missing
     /// or non-bid/ask `Side(54)`; an invalid side decimal or currency; or a
     /// sided execution that violates the composite trade invariants.
+    ///
+    /// # Metadata
+    ///
+    /// Every leaf carries, in its [`Market::get_metadata`], what the message
+    /// states that no typed column reads: the bridge's namespaced keys, then
+    /// every other field under its name - a group's members under their
+    /// path, `parties[0].partyid` - each as the canonical text it spells. A
+    /// book entry and a trade side add their own occurrence's members,
+    /// keyed bare and leading a message field of the same name. The
+    /// envelope a message's code leaves out stays out, so two hops of one
+    /// message are one leaf. [`FixCodec::with_market_metadata`] turns it off
+    /// for the codec's own doors; this door always carries it.
     pub fn market_operations(&self) -> Result<Vec<MarketData>> {
         operations(self, self.event().clone())
     }
@@ -201,7 +206,7 @@ impl FixMsg {
     ///
     /// Returns the same typed refusals as [`Self::market_operations`].
     pub fn into_market_operations(self) -> Result<Vec<MarketData>> {
-        Ok(expand_message(self)?.into_vec())
+        Ok(expand_message(self, true)?.into_vec())
     }
 }
 
@@ -218,6 +223,8 @@ where
     current: Option<MessageOperations>,
     last_unix: Option<i64>,
     done: bool,
+    /// Whether each leaf carries its message's unmapped fields.
+    market_metadata: bool,
 }
 
 impl<I> FixMarketIterator<I>
@@ -225,7 +232,9 @@ where
     I: Iterator,
     I::Item: Into<Result<FixMsg>>,
 {
-    /// Opens a projection over messages already sorted by event time.
+    /// Opens a projection over messages already sorted by event time,
+    /// each leaf carrying its message's unmapped fields as
+    /// [`FixMsg::market_operations`] does.
     #[must_use]
     pub fn new(source: I) -> Self {
         Self {
@@ -233,7 +242,14 @@ where
             current: None,
             last_unix: None,
             done: false,
+            market_metadata: true,
         }
+    }
+
+    /// This projection with the codec's metadata switch.
+    fn with_market_metadata(mut self, market_metadata: bool) -> Self {
+        self.market_metadata = market_metadata;
+        self
     }
 }
 
@@ -279,7 +295,7 @@ where
                     return None;
                 }
             };
-            match expand_message(message) {
+            match expand_message(message, self.market_metadata) {
                 Ok(operations) => self.current = Some(operations),
                 Err(error) => {
                     self.done = true;
@@ -325,7 +341,8 @@ impl FixCodec {
     /// This method does not run a lifecycle implicitly: callers that need
     /// lifecycle enrichment pass [`Self::lifecycle`] as the source. Input is
     /// pulled lazily; conversion and ordering errors follow the completed
-    /// book prefix and fuse the returned reader.
+    /// book prefix and fuse the returned reader. Each leaf carries its
+    /// message's unmapped fields where [`Self::market_metadata`] says so.
     pub fn book_arrow_reader<I>(
         &self,
         messages: I,
@@ -343,10 +360,86 @@ impl FixCodec {
                 Ok(message) => contributes_to_book(&message).then_some(Ok(message)),
                 Err(error) => Some(Err(error)),
             });
-        let operations = FixMarketIterator::new(admitted);
+        let operations =
+            FixMarketIterator::new(admitted).with_market_metadata(self.market_metadata());
         let books = BookIterator::new(operations, snapshot_millis, global)?;
         MarketData::arrow_reader(
             books.map(|book| book.map(MarketData::from)),
+            Some(self.batch_row_size()),
+            Some(self.batch_byte_size()),
+        )
+    }
+
+    /// A capture of FIX messages as the market operations its book
+    /// messages, orders, quotes, executions and trades are, in the order a
+    /// book folds them.
+    ///
+    /// It admits exactly what [`Self::book_arrow_reader`] admits - orders
+    /// and quotes, actual executions, `W` and `X` book messages and `AE`
+    /// trade reports - and expands each admitted message into its leaves
+    /// as [`FixMsg::into_market_operations`] does, each carrying its
+    /// message's unmapped fields where [`Self::market_metadata`] says so.
+    /// Neither [`Self::lifecycle`] nor [`Self::reads_msgtype`] runs here: a
+    /// caller wanting the walk passes `self.lifecycle(messages)` as the
+    /// source.
+    ///
+    /// The capture is collected, so it is bounded by the capture's own size,
+    /// and the operations are then stably sorted by the instant a book folds
+    /// them at - the snapshot instant a walk states, else the event's own -
+    /// which is the key [`FixMarketIterator`] checks, so the answer never
+    /// regresses: an entry clock a book message states may stand before an
+    /// earlier message's, and sorting the operations rather than the
+    /// messages is what places it. A source error and the refusal of an
+    /// admitted message's expansion are kept in source order and yielded
+    /// first, before every operation, and a refused message drops only its
+    /// own leaves; the iterator is fused.
+    pub fn market_operations<I>(
+        &self,
+        messages: I,
+    ) -> impl FusedIterator<Item = Result<MarketData>> + Send + 'static
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+    {
+        let mut failures = Vec::new();
+        let mut operations = Vec::new();
+        for message in messages {
+            match message.into() {
+                Ok(message) if contributes_to_book(&message) => {
+                    match expand_message(message, self.market_metadata()) {
+                        Ok(expanded) => operations.extend(expanded),
+                        Err(error) => failures.push(error),
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => failures.push(error),
+            }
+        }
+        operations.sort_by_key(effective_unix);
+        failures
+            .into_iter()
+            .map(Err)
+            .chain(operations.into_iter().map(Ok))
+    }
+
+    /// [`Self::market_operations`] as bounded Arrow batches of
+    /// [`MarketData::field`] rows, closing as [`Self::book_arrow_reader`]
+    /// closes them.
+    ///
+    /// The writer yields a failure where it meets it, and every failure is
+    /// met before the first operation: one intake error is the reader's
+    /// only item, and no row follows it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the row field cannot be built.
+    pub fn market_arrow_reader<I>(&self, messages: I) -> Result<BatchReader>
+    where
+        I: IntoIterator,
+        I::Item: Into<Result<FixMsg>>,
+    {
+        MarketData::arrow_reader(
+            self.market_operations(messages),
             Some(self.batch_row_size()),
             Some(self.batch_byte_size()),
         )
@@ -396,19 +489,23 @@ impl Iterator for MessageOperations {
 impl ExactSizeIterator for MessageOperations {}
 impl FusedIterator for MessageOperations {}
 
-fn expand_message(message: FixMsg) -> Result<MessageOperations> {
+/// The leaves one message moves into, each carrying its message's unmapped
+/// fields where `metadata` says so: the one owner of expansion.
+fn expand_message(message: FixMsg, metadata: bool) -> Result<MessageOperations> {
     let category = category(&message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
-        let executions = trade_executions(&message, message.event())?;
-        let trade = TradeEvent::from_facts(OperationEventFacts::from(message), executions)?;
+        let mut unmapped = metadata.then(|| message.unmapped(Some(&TRADE_EXPANSION)));
+        let executions = trade_executions(&message, message.event(), unmapped.as_mut())?;
+        let mut base = OperationEventFacts::from(message);
+        carry(&mut base, unmapped.map(|unmapped| unmapped.message));
+        let trade = TradeEvent::from_facts(base, executions)?;
         return Ok(MessageOperations::One(Some(trade.into())));
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
-        return Ok(MessageOperations::One(Some(operation(
-            kind,
-            OperationEventFacts::from(message),
-            None,
-        ))));
+        let unmapped = metadata.then(|| message.unmapped(None).message);
+        let mut facts = OperationEventFacts::from(message);
+        carry(&mut facts, unmapped);
+        return Ok(MessageOperations::One(Some(operation(kind, facts, None))));
     }
     let msgtype = message.header().msgtype();
     if category != "BOOK" || !matches!(msgtype, "W" | "X") {
@@ -416,8 +513,22 @@ fn expand_message(message: FixMsg) -> Result<MessageOperations> {
     }
     let msgtype = SmolStr::new(msgtype);
     let entries = book_entries(&message)?;
-    let operations = build_book_operations(OperationEventFacts::from(message), &msgtype, &entries)?;
+    let unmapped = metadata.then(|| message.unmapped(Some(&BOOK_EXPANSION)));
+    let operations = build_book_operations(
+        OperationEventFacts::from(message),
+        &msgtype,
+        &entries,
+        unmapped,
+    )?;
     Ok(MessageOperations::Many(operations.into_iter()))
+}
+
+/// States `metadata` on a leaf's facts before the leaf is finalized, where
+/// there is any to state.
+fn carry(facts: &mut OperationEventFacts, metadata: Option<Metadata>) {
+    if let Some(metadata) = metadata {
+        facts.set_metadata(Some(metadata));
+    }
 }
 
 fn effective_unix(input: &MarketData) -> i64 {
@@ -430,7 +541,7 @@ impl TryFrom<FixMsg> for MarketData {
     type Error = Error;
 
     fn try_from(message: FixMsg) -> Result<Self> {
-        let mut operations = expand_message(message)?;
+        let mut operations = expand_message(message, true)?;
         if operations.len() != 1 {
             return Err(invalid(
                 "$.NoMDEntries(268)",
@@ -444,13 +555,18 @@ impl TryFrom<FixMsg> for MarketData {
     }
 }
 
-fn operations(message: &FixMsg, base: OperationEventFacts) -> Result<Vec<MarketData>> {
+/// [`expand_message`] over a borrowed message, every leaf carrying its
+/// unmapped fields.
+fn operations(message: &FixMsg, mut base: OperationEventFacts) -> Result<Vec<MarketData>> {
     let category = category(message)?;
     if category == "TRAD" && message.header().msgtype() == "AE" && message.reports_execution() {
-        let executions = trade_executions(message, &base)?;
+        let mut unmapped = message.unmapped(Some(&TRADE_EXPANSION));
+        let executions = trade_executions(message, &base, Some(&mut unmapped))?;
+        carry(&mut base, Some(unmapped.message));
         return TradeEvent::from_facts(base, executions).map(|trade| vec![trade.into()]);
     }
     if let Some(kind) = direct_kind(category, message.is_execution()) {
+        carry(&mut base, Some(message.unmapped(None).message));
         return Ok(vec![operation(kind, base, None)]);
     }
     let msgtype = message.header().msgtype();
@@ -458,7 +574,8 @@ fn operations(message: &FixMsg, base: OperationEventFacts) -> Result<Vec<MarketD
         return Err(unsupported_message(message));
     }
     let entries = book_entries(message)?;
-    build_book_operations(base, msgtype, &entries)
+    let unmapped = message.unmapped(Some(&BOOK_EXPANSION));
+    build_book_operations(base, msgtype, &entries, Some(unmapped))
 }
 
 fn category(message: &FixMsg) -> Result<&str> {
@@ -526,7 +643,13 @@ fn operation(kind: Direct, data: OperationEventFacts, book: Option<BookRef>) -> 
     }
 }
 
-fn trade_executions(message: &FixMsg, base: &OperationEventFacts) -> Result<Vec<ExecutionEvent>> {
+/// One execution per `NoSides(552)` occurrence, each carrying the message's
+/// unmapped fields and its own side's, where `unmapped` states them.
+fn trade_executions(
+    message: &FixMsg,
+    base: &OperationEventFacts,
+    mut unmapped: Option<&mut Unmapped>,
+) -> Result<Vec<ExecutionEvent>> {
     let mut groups = message
         .entries()
         .iter()
@@ -567,7 +690,10 @@ fn trade_executions(message: &FixMsg, base: &OperationEventFacts) -> Result<Vec<
         .entries()
         .iter()
         .enumerate()
-        .map(|(index, occurrence)| trade_execution(base, occurrence, index))
+        .map(|(index, occurrence)| {
+            let metadata = unmapped.as_deref_mut().map(|unmapped| unmapped.leaf(index));
+            trade_execution(base, occurrence, index, metadata)
+        })
         .collect()
 }
 
@@ -575,6 +701,7 @@ fn trade_execution(
     base: &OperationEventFacts,
     occurrence: &FixEntry,
     index: usize,
+    metadata: Option<Metadata>,
 ) -> Result<ExecutionEvent> {
     let path = |tag: i32, name: &str| format_smolstr!("$.NoSides(552)[{index}].{name}({tag})");
     let raw_side = entry_value(occurrence, 54)
@@ -593,6 +720,7 @@ fn trade_execution(
     }
 
     let mut event = base.clone();
+    carry(&mut event, metadata);
     event.set_side(side);
     // A side's last executed quantity and average price are those facts
     // and nothing more: neither stands in for the price or the quantity the
@@ -659,10 +787,10 @@ fn entry_value(entry: &FixEntry, tag: i32) -> Option<&str> {
         .find_map(|child| entry_value(child, tag))
 }
 
-fn entry_decimal(entry: &FixEntry, tag: i32, path: SmolStr) -> Result<Option<Decimal18>> {
+fn entry_decimal(entry: &FixEntry, tag: i32, path: SmolStr) -> Result<Option<Decimal>> {
     entry_value(entry, tag)
         .map(|value| {
-            value.parse::<Decimal18>().map_err(|_| {
+            value.parse::<Decimal>().map_err(|_| {
                 invalid(
                     path,
                     format_smolstr!("expected an exact decimal, got {value:?}"),
@@ -894,19 +1022,28 @@ fn gather(entry: &FixEntry, facts: &mut Facts) {
     }
 }
 
+/// One leaf per entry, each carrying the message's unmapped fields and its
+/// own occurrence's where `unmapped` states them.
 fn build_book_operations(
     base: OperationEventFacts,
     msgtype: &str,
     entries: &[BookEntry],
+    mut unmapped: Option<Unmapped>,
 ) -> Result<Vec<MarketData>> {
     let mut answer = Vec::with_capacity(entries.len());
     let mut base = Some(base);
     for (index, entry) in entries.iter().enumerate() {
-        let event = if index + 1 == entries.len() {
+        let mut event = if index + 1 == entries.len() {
             base.take().expect("the final entry takes the base")
         } else {
             base.as_ref().expect("the base remains").clone()
         };
+        carry(
+            &mut event,
+            unmapped
+                .as_mut()
+                .map(|unmapped| unmapped.leaf(entry.position)),
+        );
         answer.push(build_book_operation(event, msgtype, entry)?);
     }
     answer.sort_by_key(effective_unix);
@@ -1074,11 +1211,11 @@ fn decimal(
     typed: Option<&Scalar>,
     rendered: Option<&str>,
     path: SmolStr,
-) -> Result<Option<Decimal18>> {
+) -> Result<Option<Decimal>> {
     let Some(value) = typed.filter(|value| !value.is_null()) else {
         return rendered
             .map(|value| {
-                value.parse::<Decimal18>().map_err(|_| {
+                value.parse::<Decimal>().map_err(|_| {
                     invalid(
                         path.clone(),
                         format_smolstr!("expected an exact decimal, got {value:?}"),
@@ -1087,7 +1224,7 @@ fn decimal(
             })
             .transpose();
     };
-    Decimal18::from_scalar(value).map(Some).ok_or_else(|| {
+    Decimal::from_scalar(value).map(Some).ok_or_else(|| {
         invalid(
             path,
             format_smolstr!("expected an exact decimal, got {value:?}"),

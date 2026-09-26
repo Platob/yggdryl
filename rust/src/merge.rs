@@ -852,8 +852,8 @@ const fn decimal_backing(dtype: &DataType) -> Option<u8> {
     match dtype {
         DataType::Decimal32 { .. } => Some(0),
         DataType::Decimal64 { .. } => Some(1),
-        DataType::Decimal128 { .. } => Some(2),
-        DataType::Decimal256 { .. } => Some(3),
+        DataType::Decimal128 { .. } | DataType::Decimal => Some(2),
+        DataType::Decimal256 { .. } | DataType::BigDecimal => Some(3),
         _ => None,
     }
 }
@@ -900,6 +900,8 @@ const fn decimal_parts(dtype: &DataType) -> Option<(u8, i8)> {
         | DataType::Decimal64 { precision, scale }
         | DataType::Decimal128 { precision, scale }
         | DataType::Decimal256 { precision, scale } => Some((*precision, *scale)),
+        DataType::Decimal => Some((crate::Decimal::PRECISION, crate::Decimal::SCALE)),
+        DataType::BigDecimal => Some((crate::BigDecimal::PRECISION, crate::BigDecimal::SCALE)),
         _ => None,
     }
 }

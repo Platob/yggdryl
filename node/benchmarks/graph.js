@@ -5,7 +5,8 @@
 // Every case here is one crossing over the typed market leaves and
 // `MarketData`: building an order event from named facts, reading a fact back
 // typed, dating and undating an element, a book folding a group of
-// operations, the lazy book and event walks, and the lifted Arrow doors. Run
+// operations, its limits and two-sided readings, the lazy book and event
+// walks, the lifted Arrow doors and the named views over them. Run
 // against the release addon with `npm run --prefix node bench:graph`.
 
 const { performance } = require('node:perf_hooks')
@@ -95,3 +96,14 @@ benchmarkStreams(`operations fromArrowReader/${FOLD_OPERATION_COUNT}`, () =>
 benchmarkStreams('book arrowReader', () => graph.MarketData.arrowReader([FOLD_BOOK]).intoIpc())
 benchmarkStreams('book fromArrowReader', () =>
   count(graph.MarketData.fromArrowReader(graph.MarketData.arrowReader([FOLD_BOOK]))))
+// The book readings over the folded side - one limit per tick - and the named
+// views: a plan built from its spelling, and the orders view over the
+// operations' own stream.
+const FOLD_SIDE = FOLD_BOOK.bid
+benchmarkStreams(`book side limits/${FOLD_OPERATION_COUNT}`, () => FOLD_SIDE.limits)
+benchmark('book side depth/10', () => FOLD_SIDE.depth(10))
+benchmark('book spread', () => FOLD_BOOK.spread)
+benchmark('book imbalance/10', () => FOLD_BOOK.imbalance(10))
+benchmark('market view plan', () => graph.MarketData.plan('orders', ["securityids['ISIN'] as isin"]))
+benchmarkStreams(`market view orders/${FOLD_OPERATION_COUNT}`, () =>
+  graph.MarketData.applyView('orders', graph.MarketData.arrowReader(FOLD_OPERATIONS)).intoIpc())

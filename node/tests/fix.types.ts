@@ -513,6 +513,20 @@ const walkedBatches: BatchReader = reader.lifecycleArrowReader(parsedBatches)
 const readBackStream: FixMessages = reader.messages(walkedBatches)
 const rows: BatchReader = reader.arrowReader(field, readBackStream)
 const books: BatchReader = reader.bookArrowReader([fromText], 1000, false)
+// The sorted door answers a stream of `MarketData`, and its Arrow twins
+// batches of lifted rows.
+const sortedOperations: IterableIterator<MarketData> = reader.marketOperations([fromText])
+const nextOperation: IteratorResult<MarketData> = reader.marketOperations(stream).next()
+const operationRows: BatchReader = reader.marketArrowReader([fromText])
+const operationBatches: BatchReader = reader.marketOperationsArrowReader(walkedBatches)
+const operationTable: BatchReader = reader.marketOperationsArrowReader(new Uint8Array())
+const withMetadata: boolean = reader.marketMetadata
+const withoutMetadata: FixCodec = new fix.FixCodec(loaded, { marketMetadata: false })
+// @ts-expect-error the sorted door takes messages, never one message
+reader.marketOperations(fromText)
+// @ts-expect-error the metadata switch is a boolean
+new fix.FixCodec(loaded, { marketMetadata: 'no' })
+void [sortedOperations, nextOperation, operationRows, operationBatches, operationTable, withMetadata, withoutMetadata]
 const written: number = reader.writeArrowReader(rows, { write(chunk: Uint8Array) { void chunk } })
 
 void pinnedSeparator

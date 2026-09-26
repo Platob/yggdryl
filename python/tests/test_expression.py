@@ -205,7 +205,7 @@ def test_the_closed_vocabularies_are_named_rather_than_guessed() -> None:
     assert "=" in COMPARISONS
     assert "is distinct from" in COMPARISONS
     assert "year" in FUNCTIONS
-    assert len(FUNCTIONS) == 19
+    assert len(FUNCTIONS) == 20
     assert VERBS == ("insert into", "insert overwrite", "upsert into", "delete from")
 
     assert str(Term.call("year", [Term.column("event")])) == "year(event)"
@@ -446,6 +446,30 @@ def test_a_selector_is_a_select_clause() -> None:
         {"ccy": "A", "quantity": 1, "doubled": 2},
         {"ccy": "B", "quantity": 2, "doubled": 4},
     ]
+
+
+def test_a_star_may_carry_appended_projections() -> None:
+    # A `*` reads every stored column it does not exclude, whatever it
+    # appends: `has_star` is the question a pushdown asks, `is_all` the
+    # narrower one of a selector that changes nothing.
+    appended = Selector("* exclude (size), size * 2 as doubled")
+    assert str(appended) == "* exclude (size), size * 2 as doubled"
+    assert appended.has_star and not appended.is_all
+    assert appended.excluded == ["size"]
+    # Only what is appended is the selector's to name; the kept columns are
+    # the schema's.
+    assert appended.names == ["doubled"] and len(appended) == 1
+    assert Selector.all().has_star and Selector.all().is_all
+    assert Selector.all_except(["size"]).has_star
+    assert not Selector("ccy").has_star
+    assert Selector.all().with_projection("size * 2 as doubled") == Selector("*, size * 2 as doubled")
+    batch = rows_batch(["A", "B"], [1, 2])
+    projected = appended.apply_arrow_batch(batch)
+    assert projected.schema.names == ["ccy", "doubled"]
+    assert projected.column("doubled").to_pylist() == [2, 4]
+    # A star leads or is not there at all.
+    with pytest.raises(ValueError):
+        Selector("ccy, *")
 
 
 def test_a_selector_declares_columns_like_a_create_table() -> None:

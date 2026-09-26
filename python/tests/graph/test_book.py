@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from yggdryl import graph
+from yggdryl import Scalar, graph
 
 CLOCK = 1_700_000_000_000_000_000
 D = decimal.Decimal
@@ -58,6 +58,48 @@ class TestBookSide:
         assert [entry.crosscode for entry in side.live] == ["O-1", "O-2"]
         assert len(side.deltas) == 2
 
+    def test_limits_of_an_empty_side(self) -> None:
+        side = graph.BookSide("BUY")
+        assert side.limits == []
+        assert side.depth(1) is not None and side.depth(1).as_py() == 0
+        assert side.depth(0).as_py() == 0
+        # A level count is a count: a negative one is not one.
+        with pytest.raises(OverflowError):
+            side.depth(-1)
+
+    def test_one_limit_per_price_best_first(self) -> None:
+        first = order(code="O-1")
+        second = order(clock=CLOCK + 1, code="O-2")
+        lower = order(price="100", code="O-3")
+        side = graph.BookSide("BUY").with_operation(first).with_operation(second).with_operation(lower)
+        limits = side.limits
+        assert all(isinstance(limit, Scalar) for limit in limits)
+        assert [limit["price"].as_py() for limit in limits] == [D("101"), D("100")]
+        # Two entries at one price are one limit holding both, in live order.
+        best = limits[0].as_py()
+        assert best["quantity"] == D("20")
+        assert best["uuids"] == [first.curruuid.as_py(), second.curruuid.as_py()]
+        assert limits[1].as_py() == {"price": D("100"), "quantity": D("10"), "uuids": [lower.curruuid.as_py()]}
+        # The depth walks the limits in that order.
+        assert side.depth(1).as_py() == D("20")
+        assert side.depth(2).as_py() == D("30")
+        assert side.depth(9).as_py() == D("30")
+
+    def test_an_unpriced_entry_rests_at_the_last_limit(self) -> None:
+        unpriced = graph.OrderEvent(CLOCK, crosscode="M-1", side="BUY", quantity=4, ticker="IBM")
+        side = graph.BookSide("BUY").with_operation(unpriced).with_operation(order())
+        # The market order is held rather than refused, after every priced
+        # level, and states no best of its own.
+        assert [entry.crosscode for entry in side.live] == ["O-1", "M-1"]
+        assert side.best_price is not None and side.best_price.as_py() == D("101")
+        last = side.limits[-1]
+        assert last["price"].as_py() is None
+        assert last.as_py() == {"price": None, "quantity": D("4"), "uuids": [unpriced.curruuid.as_py()]}
+        assert side.depth(2).as_py() == D("14")
+        alone = graph.BookSide("BUY").with_operation(unpriced)
+        assert alone.best_price is None and alone.best_quantity is None
+        assert len(alone.limits) == 1
+
     def test_refusals(self) -> None:
         with pytest.raises(ValueError, match="side"):
             graph.BookSide("SIDEWAYS")
@@ -85,6 +127,35 @@ class TestBookEvent:
         assert book.executions == [] and book.snapshot_partitions == []
         assert not book.is_crossed
         assert book.bbo_midpoint is None and book.median_quantity is None
+        assert not book.is_locked
+        assert book.spread is None
+        # Both sides empty: the total is zero, so there is no imbalance.
+        assert book.imbalance(1) is None
+
+    def test_spread_lock_and_imbalance(self) -> None:
+        empty = graph.BookEvent(CLOCK, "IBM")
+        book = empty.with_operations([order(), quote()])
+        assert not book.is_locked
+        assert book.spread is not None and book.spread.as_py() == D("1")
+        # (10 - 30) / (10 + 30) over the first level of each side.
+        deep = graph.QuoteEvent(CLOCK, crosscode="Q-2", side="SELL", price=D("102"), quantity=30, ticker="IBM")
+        leaning = empty.with_operations([order(), deep])
+        assert leaning.imbalance(1) is not None
+        assert leaning.imbalance(1).as_py() == D("-0.5")
+        assert leaning.imbalance(0) is None
+        locked = empty.with_operations([order(price="102"), quote()])
+        assert locked.is_locked and not locked.is_crossed
+        assert locked.spread is not None and locked.spread.as_py() == 0
+        # A crossed book states its spread as the negative fact it is.
+        crossed = empty.with_operations([order(price="103"), quote()])
+        assert crossed.is_crossed and not crossed.is_locked
+        assert crossed.spread is not None and crossed.spread.as_py() == D("-1")
+        # One-sided books lean all the way to their side.
+        bid_only = empty.with_operations([order()])
+        assert bid_only.spread is None and not bid_only.is_locked
+        assert bid_only.imbalance(1) is not None and bid_only.imbalance(1).as_py() == D("1")
+        ask_only = empty.with_operations([quote()])
+        assert ask_only.imbalance(1) is not None and ask_only.imbalance(1).as_py() == D("-1")
 
     def test_with_operations_of_an_order_and_a_quote(self) -> None:
         empty = graph.BookEvent(CLOCK, "IBM")

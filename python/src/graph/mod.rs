@@ -31,7 +31,7 @@ use yggdryl::graph::{
 };
 use yggdryl::idmap::IdMap as CoreIdMap;
 use yggdryl::securityid::SecurityIds as CoreSecurityIds;
-use yggdryl::{Decimal18, Scalar};
+use yggdryl::{Decimal, Scalar};
 
 use crate::scalar::{PyScalar, from_py};
 use crate::value_error;
@@ -523,7 +523,7 @@ where
 }
 
 /// One of the market's numbers, exact, as the decimal `Scalar` it is.
-pub(crate) fn decimal_scalar(held: Decimal18) -> PyScalar {
+pub(crate) fn decimal_scalar(held: Decimal) -> PyScalar {
     PyScalar::from_inner(Scalar::from(held))
 }
 

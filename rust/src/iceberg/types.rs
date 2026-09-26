@@ -157,6 +157,12 @@ impl PrimitiveType {
             DataType::Int64 => Self::Long,
             DataType::Float32 => Self::Float,
             DataType::Float64 => Self::Double,
+            // The fixed leaf is Iceberg's decimal(38, 18); its wide twin exceeds
+            // the format's precision and is refused below with the 256-bit widths.
+            DataType::Decimal => Self::Decimal {
+                precision: crate::Decimal::PRECISION,
+                scale: crate::Decimal::SCALE,
+            },
             DataType::Decimal32 { precision, scale }
             | DataType::Decimal64 { precision, scale }
             | DataType::Decimal128 { precision, scale } => {

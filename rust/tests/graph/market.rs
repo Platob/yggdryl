@@ -4,13 +4,13 @@
 
 use smol_str::SmolStr;
 use yggdryl::graph::{Element, Event, Market, Operation, OrderEvent};
-use yggdryl::{Decimal18, TimeInForce, Uuid};
+use yggdryl::{Decimal, TimeInForce, Uuid};
 
 /// One order at `unix` under the cross code `ORDER`, finalized.
 fn order(unix: i64) -> OrderEvent {
     let mut order = OrderEvent::at(unix);
     order.set_crosscode("ORDER".to_owned());
-    order.set_price(Some(Decimal18::from_int(80)));
+    order.set_price(Some(Decimal::from_int(80)));
     order.finalize();
     order
 }
@@ -31,7 +31,7 @@ fn the_operation_event_digest_feeds_what_the_market_event_digest_does_not() {
         standing.digest_operation_event().as_u64(),
     );
     let mut priced = plain.clone();
-    priced.set_price(Some(Decimal18::from_int(81)));
+    priced.set_price(Some(Decimal::from_int(81)));
     assert_ne!(
         plain.digest_market_event().as_u64(),
         priced.digest_market_event().as_u64(),

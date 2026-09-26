@@ -32,7 +32,7 @@ use crate::CodeValue;
 use crate::idmap::IdMap;
 use crate::securityid::{SecType, SecurityId, SecurityIds, embedded};
 use crate::xxhash::Xxh3;
-use crate::{Ccy, CfiCode, Decimal18, MicCode, Result, Side, TimeInForce, Unit};
+use crate::{Ccy, CfiCode, Decimal, MicCode, Result, Side, TimeInForce, Unit};
 
 /// Free-form facts a market element carries beside its typed ones: never an
 /// identifier, which has a typed home in [`Market::get_securityids`] or an
@@ -71,15 +71,15 @@ pub const FOLLOWED_ALTIDS: [&str; 7] = [
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Lane {
     /// The lane's price.
-    pub price: Option<Decimal18>,
+    pub price: Option<Decimal>,
     /// The spot part of an FX forward price.
-    pub spotrate: Option<Decimal18>,
+    pub spotrate: Option<Decimal>,
     /// The forward points of an FX forward price.
-    pub forwardpoints: Option<Decimal18>,
+    pub forwardpoints: Option<Decimal>,
     /// The currency the lane is priced in.
     pub currency: Option<Ccy>,
     /// The lane's quantity.
-    pub quantity: Option<Decimal18>,
+    pub quantity: Option<Decimal>,
     /// The unit the lane's quantity is counted in.
     pub unit: Option<Unit>,
 }
@@ -147,18 +147,18 @@ impl Lane {
 pub trait Market {
     /// The price the element states; `None` where it states none. Never
     /// defaulted: a last executed price is [`Self::get_lastpx`], not this.
-    fn get_price(&self) -> Option<Decimal18>;
+    fn get_price(&self) -> Option<Decimal>;
     /// Sets [`Self::get_price`].
-    fn set_price(&mut self, price: Option<Decimal18>);
+    fn set_price(&mut self, price: Option<Decimal>);
     /// The currency the element is priced in, [`Ccy::none`] where unstated.
     fn get_currency(&self) -> &Ccy;
     /// Sets [`Self::get_currency`].
     fn set_currency(&mut self, currency: Ccy);
     /// The quantity the element states; `None` where it states none. Never
     /// defaulted: a last executed quantity is [`Self::get_lastqty`], not this.
-    fn get_quantity(&self) -> Option<Decimal18>;
+    fn get_quantity(&self) -> Option<Decimal>;
     /// Sets [`Self::get_quantity`].
-    fn set_quantity(&mut self, quantity: Option<Decimal18>);
+    fn set_quantity(&mut self, quantity: Option<Decimal>);
     /// The unit the quantity is counted in, [`Unit::none`] where unstated.
     fn get_unit(&self) -> &Unit;
     /// Sets [`Self::get_unit`].
@@ -205,42 +205,42 @@ pub trait Market {
     fn set_miccode(&mut self, code: Option<MicCode>);
     /// The last executed price: what the element's last execution traded
     /// at, never the price it states.
-    fn get_lastpx(&self) -> Option<Decimal18>;
+    fn get_lastpx(&self) -> Option<Decimal>;
     /// Sets [`Self::get_lastpx`].
-    fn set_lastpx(&mut self, px: Option<Decimal18>);
+    fn set_lastpx(&mut self, px: Option<Decimal>);
     /// The last executed quantity: what the element's last execution
     /// traded, never the quantity it states.
-    fn get_lastqty(&self) -> Option<Decimal18>;
+    fn get_lastqty(&self) -> Option<Decimal>;
     /// Sets [`Self::get_lastqty`].
-    fn set_lastqty(&mut self, qty: Option<Decimal18>);
+    fn set_lastqty(&mut self, qty: Option<Decimal>);
     /// The average price of what the element has traded.
-    fn get_avgpx(&self) -> Option<Decimal18>;
+    fn get_avgpx(&self) -> Option<Decimal>;
     /// Sets [`Self::get_avgpx`].
-    fn set_avgpx(&mut self, px: Option<Decimal18>);
+    fn set_avgpx(&mut self, px: Option<Decimal>);
     /// How much the element has traded.
-    fn get_cumqty(&self) -> Option<Decimal18>;
+    fn get_cumqty(&self) -> Option<Decimal>;
     /// Sets [`Self::get_cumqty`].
-    fn set_cumqty(&mut self, qty: Option<Decimal18>);
+    fn set_cumqty(&mut self, qty: Option<Decimal>);
     /// How much of the element is left to trade.
-    fn get_leavesqty(&self) -> Option<Decimal18>;
+    fn get_leavesqty(&self) -> Option<Decimal>;
     /// Sets [`Self::get_leavesqty`].
-    fn set_leavesqty(&mut self, qty: Option<Decimal18>);
+    fn set_leavesqty(&mut self, qty: Option<Decimal>);
     /// The price the step before this one settled on.
-    fn get_prevpx(&self) -> Option<Decimal18>;
+    fn get_prevpx(&self) -> Option<Decimal>;
     /// Sets [`Self::get_prevpx`].
-    fn set_prevpx(&mut self, px: Option<Decimal18>);
+    fn set_prevpx(&mut self, px: Option<Decimal>);
     /// The quantity the step before this one settled on.
-    fn get_prevqty(&self) -> Option<Decimal18>;
+    fn get_prevqty(&self) -> Option<Decimal>;
     /// Sets [`Self::get_prevqty`].
-    fn set_prevqty(&mut self, qty: Option<Decimal18>);
+    fn set_prevqty(&mut self, qty: Option<Decimal>);
     /// The spot part of an FX forward price.
-    fn get_spotrate(&self) -> Option<Decimal18>;
+    fn get_spotrate(&self) -> Option<Decimal>;
     /// Sets [`Self::get_spotrate`].
-    fn set_spotrate(&mut self, rate: Option<Decimal18>);
+    fn set_spotrate(&mut self, rate: Option<Decimal>);
     /// The forward points of an FX forward price.
-    fn get_forwardpoints(&self) -> Option<Decimal18>;
+    fn get_forwardpoints(&self) -> Option<Decimal>;
     /// Sets [`Self::get_forwardpoints`].
-    fn set_forwardpoints(&mut self, points: Option<Decimal18>);
+    fn set_forwardpoints(&mut self, points: Option<Decimal>);
     /// The ticker the instrument goes by, where stated.
     fn get_ticker(&self) -> Option<&str>;
     /// Sets [`Self::get_ticker`].

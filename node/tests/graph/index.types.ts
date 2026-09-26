@@ -1,10 +1,13 @@
 import {
   BatchReader,
   Field,
+  FieldPath,
+  Plan,
   Scalar,
   enums,
   graph,
   type BookEvent,
+  type BookLimit,
   type BookSide,
   type ExecutionEvent,
   type Lane,
@@ -63,6 +66,27 @@ const walked: MarketData[] = [...new graph.EventIterator(items, true, 5n)]
 const snapshotNs: bigint | null = new graph.EventIterator([]).snapshotNs
 const followedAltids: readonly string[] = graph.FOLLOWED_ALTIDS
 
+// A side reads its limits, best first, and its depth; a book its two bests.
+const limits: BookLimit[] = bidSide.limits
+const limitPrice: string | null = limits[0].price
+const limitQuantity: string = limits[0].quantity
+const limitUuids: string[] = limits[0].uuids
+const depth: string | null = bidSide.depth(2)
+const locked: boolean = book.isLocked
+const spread: string | null = book.spread
+const imbalance: string | null = book.imbalance(1)
+
+// A named view is one plan, applied to whatever `BatchReader.from` takes.
+const viewPlan: Plan = graph.MarketData.plan('orders', ["securityids['ISIN'] as isin", new FieldPath('ticker')])
+const lifecyclePlan: Plan = graph.MarketData.plan('lifecycle', [], 'C-1')
+const view: BatchReader = graph.MarketData.applyView('trades', reader)
+const liftedView: BatchReader = graph.MarketData.applyView('orders', new Uint8Array(), ["securityids['ISIN'] as isin"])
+const marketViews: readonly string[] = enums.marketViews
+// @ts-expect-error a lift is a path or its text
+graph.MarketData.plan('orders', [1])
+// @ts-expect-error a limit is read, never written
+bidSide.limits = []
+
 // @ts-expect-error the namespace is frozen
 graph.Order = graph.Quote
 // @ts-expect-error an event needs its instant
@@ -93,3 +117,5 @@ void books
 void walked
 void snapshotNs
 void followedAltids
+void [limitPrice, limitQuantity, limitUuids, depth, locked, spread, imbalance]
+void [viewPlan, lifecyclePlan, view, liftedView, marketViews]

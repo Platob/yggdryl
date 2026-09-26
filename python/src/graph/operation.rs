@@ -14,7 +14,7 @@ use yggdryl::graph::{
     MdUpdateAction as CoreMdUpdateAction, Order as CoreOrder, OrderEvent as CoreOrderEvent,
     OrderKind, Quote as CoreQuote, QuoteEvent as CoreQuoteEvent, QuoteKind,
 };
-use yggdryl::{DataType, Decimal18, Field, Scalar};
+use yggdryl::{DataType, Decimal, Field, Scalar};
 
 use super::{code_scalar, decimal_scalar, ellipsis, slot_repr, stated_operation};
 use crate::scalar::{PyScalar, from_py};
@@ -234,16 +234,16 @@ fn stated<'py>(py: Python<'py>, value: &Py<PyAny>) -> Option<Bound<'py, PyAny>> 
 /// `DataType::scalar` door every other decimal slot in the graph binding
 /// crosses, so a float, an out-of-range value or any other value this slot
 /// refuses is refused the same way theirs is.
-fn stated_decimal(py: Python<'_>, name: &str, value: &Py<PyAny>) -> PyResult<Option<Decimal18>> {
+fn stated_decimal(py: Python<'_>, name: &str, value: &Py<PyAny>) -> PyResult<Option<Decimal>> {
     let Some(bound) = stated(py, value) else {
         return Ok(None);
     };
     let scalar = from_py(&bound)?;
-    let checked = DataType::DECIMAL
+    let checked = DataType::Decimal
         .nullable_field(name)
         .scalar(scalar)
         .map_err(value_error)?;
-    Decimal18::from_scalar(&checked)
+    Decimal::from_scalar(&checked)
         .map(Some)
         .ok_or_else(|| PyTypeError::new_err(format!("expected a decimal for {name}")))
 }
@@ -536,13 +536,13 @@ impl PyBookRef {
         let action = action.map(md_update_action_of).transpose()?;
         let entry_px = entry_px
             .map(|value| {
-                Decimal18::from_scalar(&value.inner)
+                Decimal::from_scalar(&value.inner)
                     .ok_or_else(|| PyTypeError::new_err("expected a decimal for entry_px"))
             })
             .transpose()?;
         let entry_size = entry_size
             .map(|value| {
-                Decimal18::from_scalar(&value.inner)
+                Decimal::from_scalar(&value.inner)
                     .ok_or_else(|| PyTypeError::new_err("expected a decimal for entry_size"))
             })
             .transpose()?;

@@ -421,3 +421,563 @@ mod intake {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// A `*` with appended projections
+// ---------------------------------------------------------------------------
+
+mod star {
+
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+    use yggdryl::expression::{Projection, Selector};
+    use yggdryl::{DataType, Field, StructType};
+
+    fn schema() -> Field {
+        StructType::from_fields([
+            DataType::Int64.required_field("a"),
+            DataType::utf8().nullable_field("b"),
+            DataType::utf8().nullable_field("x"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("rows")
+    }
+
+    fn batch() -> RecordBatch {
+        RecordBatch::try_new(
+            schema().into_arrow_schema().unwrap(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2])) as ArrayRef,
+                Arc::new(StringArray::from(vec![Some("p"), None])) as ArrayRef,
+                Arc::new(StringArray::from(vec![Some("q"), Some("r")])) as ArrayRef,
+            ],
+        )
+        .unwrap()
+    }
+
+    fn names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    #[test]
+    fn a_star_carries_its_exclusions_and_appended_projections_through_every_spelling() {
+        for (text, canonical) in [
+            (
+                "* exclude (a, b), securityids['ISIN'] as isin, upper(x) as y",
+                "* exclude (a, b), securityids['ISIN'] as isin, upper(x) as y",
+            ),
+            ("* except (a), x as z", "* exclude (a), x as z"),
+            ("*, upper(x) as y", "*, upper(x) as y"),
+            ("* exclude (a)", "* exclude (a)"),
+            ("*", "*"),
+            ("a, x", "a, x"),
+        ] {
+            let selector: Selector = text
+                .parse()
+                .unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert_eq!(selector.to_string(), canonical, "{text}");
+            assert_eq!(canonical.parse::<Selector>().unwrap(), selector, "{text}");
+            let document = selector.clone().into_json().unwrap();
+            assert_eq!(
+                Selector::from_json(&document).unwrap(),
+                selector,
+                "{text}: {document}"
+            );
+            let clause: yggdryl::Expression = format!("select {text}").parse().unwrap();
+            assert_eq!(clause.to_string(), format!("select {canonical}"), "{text}");
+        }
+        // The document writes each part only when it says something.
+        assert_eq!(Selector::all().into_json().unwrap(), r#"{"star":true}"#);
+        assert_eq!(Selector::from_json("{}").unwrap(), Selector::all());
+        assert_eq!(
+            Selector::all_except(["a"]).into_json().unwrap(),
+            r#"{"star":true,"exclude":["a"]}"#
+        );
+    }
+
+    #[test]
+    fn an_exclusion_without_a_star_is_refused_and_a_trailing_comma_too() {
+        let error = Selector::from_json(r#"{"exclude":["a"]}"#)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("exclude"), "{error}");
+        for text in ["*,", "* exclude (a),", "* exclude ()", "a, *"] {
+            assert!(text.parse::<Selector>().is_err(), "{text} parsed");
+        }
+    }
+
+    #[test]
+    fn a_star_answers_what_it_can_name_and_says_it_reads_everything() {
+        let starred: Selector = "* exclude (a), upper(x) as y".parse().unwrap();
+        assert!(starred.has_star());
+        assert!(!starred.is_all());
+        assert_eq!(starred.excluded(), ["a"]);
+        assert_eq!(starred.len(), 1);
+        assert_eq!(starred.names(), ["y"]);
+        assert_eq!(starred.columns(), ["x"]);
+        assert!(Selector::all().is_all() && Selector::all().has_star());
+        assert!(Selector::all_except(["a"]).has_star());
+        assert!(!Selector::all_except(["a"]).is_all());
+        let plain: Selector = "a, x".parse().unwrap();
+        assert!(!plain.has_star() && !plain.is_all());
+        // The empty list is `*`, and nothing else spells it.
+        assert_eq!(Selector::new([]), Selector::all());
+        assert_eq!(
+            Selector::from_columns::<[&str; 0], &str>([]),
+            Selector::all()
+        );
+        assert_eq!(plain.without_columns(&["a", "x"]), Selector::all());
+        let plan: yggdryl::Plan = "select * exclude (a) where b = 'p'".parse().unwrap();
+        assert_eq!(plan.read_columns(), None, "a star reads every column");
+        let plan: yggdryl::Plan = "select a where b = 'p'".parse().unwrap();
+        assert_eq!(
+            plan.read_columns(),
+            Some(vec!["b".to_owned(), "a".to_owned()])
+        );
+    }
+
+    #[test]
+    fn an_appended_projection_keeps_the_star_and_its_exclusions() {
+        let appended = Selector::all_except(["a"]).with_projection(Projection::column("b"));
+        assert_eq!(appended.to_string(), "* exclude (a), b");
+        assert_eq!(
+            Selector::all()
+                .with_projection("upper(x) as y".parse().unwrap())
+                .to_string(),
+            "*, upper(x) as y"
+        );
+        let plain: Selector = "a".parse().unwrap();
+        assert_eq!(
+            plain.with_projection(Projection::column("x")).to_string(),
+            "a, x"
+        );
+        let kept = appended.without_columns(&["b"]);
+        assert_eq!(kept, Selector::all_except(["a"]));
+    }
+
+    #[test]
+    fn a_star_publishes_what_it_keeps_then_what_it_appends() {
+        let schema = schema();
+        let selector: Selector = "* exclude (B), upper(x) as y".parse().unwrap();
+        assert_eq!(
+            names(&selector.apply_field(&schema).unwrap()),
+            ["a", "x", "y"]
+        );
+        // A name the schema does not hold excludes nothing.
+        let selector: Selector = "* exclude (nothing), a as c".parse().unwrap();
+        assert_eq!(
+            names(&selector.apply_field(&schema).unwrap()),
+            ["a", "b", "x", "c"]
+        );
+        // Two outputs of one name are refused, a kept column included.
+        let twice: Selector = "*, upper(x) as a".parse().unwrap();
+        let error = twice.apply_field(&schema).unwrap_err().to_string();
+        assert!(error.contains("twice"), "{error}");
+
+        let batch = batch();
+        let selector: Selector = "* exclude (b), upper(x) as y".parse().unwrap();
+        let out = selector.apply_arrow_batch(&batch).unwrap();
+        let published: Vec<&str> = out
+            .schema_ref()
+            .fields()
+            .iter()
+            .map(|field| field.name().as_str())
+            .collect();
+        assert_eq!(published, ["a", "x", "y"]);
+        assert!(Arc::ptr_eq(out.column(0), batch.column(0)));
+        assert!(Arc::ptr_eq(out.column(1), batch.column(2)));
+        let upper = out
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(upper.iter().collect::<Vec<_>>(), [Some("Q"), Some("R")]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// `unnest`: the one projection that multiplies rows
+// ---------------------------------------------------------------------------
+
+mod unnest {
+
+    use std::sync::Arc;
+
+    use arrow_array::{ArrayRef, Int64Array, RecordBatch, StringArray};
+    use yggdryl::expression::{Filter, Plan, Selector, Term};
+    use yggdryl::{DataType, Field, Scalar, Serie, StructType};
+
+    fn leg_item() -> Field {
+        StructType::from_fields([
+            DataType::utf8().nullable_field("ccy"),
+            DataType::Int64.nullable_field("size"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .nullable_field("item")
+    }
+
+    fn schema() -> Field {
+        let int = || DataType::Int64.nullable_field("item");
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("tag"),
+            DataType::serie(int()).nullable_field("xs"),
+            DataType::serie(leg_item()).nullable_field("legs"),
+            DataType::serie_view(int()).nullable_field("views"),
+            DataType::large_serie(int()).nullable_field("large"),
+            DataType::fixed_size_serie(int(), 2)
+                .unwrap()
+                .nullable_field("fixed"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("rows")
+    }
+
+    fn ints(items: &[Option<i64>]) -> Scalar {
+        Scalar::from_sequence(
+            items
+                .iter()
+                .map(|item| item.map_or(Scalar::Null, Scalar::from)),
+        )
+    }
+
+    fn leg(ccy: &str, size: Option<i64>) -> Scalar {
+        Scalar::from_sequence([Scalar::from(ccy), size.map_or(Scalar::Null, Scalar::from)])
+    }
+
+    /// Four rows: runs of several elements, an empty run, a null run, a null
+    /// element, and a null struct element.
+    fn rows() -> Vec<Scalar> {
+        vec![
+            Scalar::from_sequence([
+                Scalar::from(1_i64),
+                Scalar::from("a"),
+                ints(&[Some(1), Some(2), Some(3)]),
+                Scalar::from_sequence([leg("EUR", Some(1)), leg("USD", Some(2))]),
+                ints(&[Some(10), Some(20)]),
+                ints(&[Some(5)]),
+                ints(&[Some(1), Some(2)]),
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(2_i64),
+                Scalar::from("b"),
+                ints(&[]),
+                Scalar::Null,
+                ints(&[]),
+                ints(&[]),
+                Scalar::Null,
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(3_i64),
+                Scalar::Null,
+                Scalar::Null,
+                Scalar::from_sequence([Scalar::Null, leg("GBP", None)]),
+                Scalar::Null,
+                Scalar::Null,
+                ints(&[Some(3), Some(4)]),
+            ]),
+            Scalar::from_sequence([
+                Scalar::from(4_i64),
+                Scalar::from("d"),
+                ints(&[None, Some(7)]),
+                Scalar::from_sequence([]),
+                ints(&[Some(30)]),
+                ints(&[Some(6), Some(7)]),
+                ints(&[Some(5), None]),
+            ]),
+        ]
+    }
+
+    fn batch() -> RecordBatch {
+        let schema = schema();
+        let rows = rows();
+        let columns = schema
+            .fields()
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let values: Vec<Scalar> = rows
+                    .iter()
+                    .map(|row| row.as_sequence().unwrap()[index].clone())
+                    .collect();
+                Serie::from_scalars(field.clone(), values)
+                    .unwrap()
+                    .require_arrow_array()
+                    .unwrap()
+            })
+            .collect();
+        RecordBatch::try_new(schema.into_arrow_schema().unwrap(), columns).unwrap()
+    }
+
+    fn names(field: &Field) -> Vec<&str> {
+        field.fields().iter().map(Field::name).collect()
+    }
+
+    fn column<'batch>(batch: &'batch RecordBatch, name: &str) -> &'batch ArrayRef {
+        batch
+            .column_by_name(name)
+            .unwrap_or_else(|| panic!("no column {name}"))
+    }
+
+    fn int64s(array: &ArrayRef) -> Vec<Option<i64>> {
+        array
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap()
+            .iter()
+            .collect()
+    }
+
+    fn texts(array: &ArrayRef) -> Vec<Option<&str>> {
+        array
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap()
+            .iter()
+            .collect()
+    }
+
+    fn drained(reader: yggdryl::arrow::BatchReader) -> yggdryl::Result<RecordBatch> {
+        let schema = reader.schema();
+        let mut batches = Vec::new();
+        for batch in reader {
+            batches.push(batch.map_err(yggdryl::arrow::from_reader_error)?);
+        }
+        Ok(arrow_select::concat::concat_batches(&schema, &batches).unwrap())
+    }
+
+    fn apply(text: &str) -> RecordBatch {
+        let plan: Plan = text
+            .parse()
+            .unwrap_or_else(|error| panic!("{text}: {error}"));
+        let reader = yggdryl::arrow::batch_reader(batch().schema(), [batch()]);
+        drained(plan.apply_arrow_reader(reader).unwrap())
+            .unwrap_or_else(|error| panic!("{text}: {error}"))
+    }
+
+    #[test]
+    fn unnest_anywhere_but_the_whole_term_of_a_projection_is_refused() {
+        let schema = schema();
+        for text in [
+            "unnest(xs) + 1 as y",
+            "coalesce(unnest(xs), 0)",
+            "[unnest(xs)] as ys",
+        ] {
+            let selector: Selector = text.parse().unwrap();
+            let error = selector.apply_field(&schema).unwrap_err().to_string();
+            assert!(error.contains("select-list form"), "{text}: {error}");
+            assert!(error.contains("unnest(xs)"), "{text}: {error}");
+        }
+        let filter: Filter = "unnest(xs) > 1".parse().unwrap();
+        let error = filter.bind(&schema).unwrap_err().to_string();
+        assert!(error.contains("select-list form"), "{error}");
+        let term: Term = "unnest(xs)".parse().unwrap();
+        let error = term.bind(&schema).unwrap_err().to_string();
+        assert!(error.contains("select-list form"), "{error}");
+        let plan: Plan = "select id order by unnest(xs)".parse().unwrap();
+        let reader = yggdryl::arrow::batch_reader(batch().schema(), [batch()]);
+        let error = plan
+            .apply_arrow_reader(reader)
+            .and_then(drained)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("select-list form"), "{error}");
+        // A column declaration is not a select list either.
+        let plan: Plan = "create (unnest(xs) as x)".parse().unwrap();
+        let error = plan.field_from(&schema).unwrap_err().to_string();
+        assert!(error.contains("select-list form"), "{error}");
+    }
+
+    #[test]
+    fn one_unnest_per_select_over_a_serie_and_nothing_else() {
+        let schema = schema();
+        let twice: Selector = "unnest(xs) as x, unnest(legs) as leg".parse().unwrap();
+        let error = twice.apply_field(&schema).unwrap_err().to_string();
+        assert!(
+            error.contains("unnest(xs)") && error.contains("unnest(legs)"),
+            "{error}"
+        );
+        let scalar: Selector = "unnest(id)".parse().unwrap();
+        let error = scalar.apply_field(&schema).unwrap_err().to_string();
+        assert!(
+            error.contains("serie") && error.contains("int64"),
+            "{error}"
+        );
+        // The grammar reads one argument, and a tree built by hand with two
+        // is refused where it is typed.
+        let error = "unnest(xs, legs)"
+            .parse::<Selector>()
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("1 argument"), "{error}");
+        let two = Selector::new([yggdryl::expression::Projection::new(Term::call(
+            yggdryl::expression::Function::Unnest,
+            [Term::column("xs"), Term::column("legs")],
+        ))]);
+        let error = two.apply_field(&schema).unwrap_err().to_string();
+        assert!(error.contains("one serie"), "{error}");
+        // One row in cannot answer the rows an unnest publishes.
+        let selector: Selector = "id, unnest(xs) as x".parse().unwrap();
+        let bound = selector.bind(&schema).unwrap();
+        let error = bound.apply_scalar(&rows()[0]).unwrap_err().to_string();
+        assert!(error.contains("unnest"), "{error}");
+    }
+
+    #[test]
+    fn a_struct_item_publishes_one_column_per_child_and_any_other_item_one() {
+        let schema = schema();
+        for (text, expected) in [
+            (
+                "id, unnest(legs) as leg, tag",
+                vec!["id", "leg.ccy", "leg.size", "tag"],
+            ),
+            ("unnest(legs)", vec!["legs.ccy", "legs.size"]),
+            ("unnest(xs)", vec!["xs"]),
+            ("explode(xs) as x", vec!["x"]),
+            ("unnest(xs) as x int32", vec!["x"]),
+            (
+                "* exclude (xs, legs, views, large, fixed), unnest(xs) as x",
+                vec!["id", "tag", "x"],
+            ),
+        ] {
+            let selector: Selector = text.parse().unwrap();
+            let output = selector
+                .apply_field(&schema)
+                .unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert_eq!(names(&output), expected, "{text}");
+            assert_eq!(
+                selector.to_string().parse::<Selector>().unwrap(),
+                selector,
+                "{text}"
+            );
+            let document = selector.clone().into_json().unwrap();
+            assert_eq!(Selector::from_json(&document).unwrap(), selector, "{text}");
+        }
+        let selector: Selector = "explode(xs) as x".parse().unwrap();
+        assert_eq!(selector.to_string(), "unnest(xs) as x");
+        let selector: Selector = "id, unnest(legs) as leg".parse().unwrap();
+        let output = selector.apply_field(&schema).unwrap();
+        assert!(output.fields()[1..].iter().all(Field::is_nullable));
+        assert_eq!(output.fields()[2].dtype(), &DataType::Int64);
+        let selector: Selector = "unnest(xs) as x int32 not null".parse().unwrap();
+        let output = selector.apply_field(&schema).unwrap();
+        assert_eq!(output.fields()[0].dtype(), &DataType::Int32);
+        assert!(!output.fields()[0].is_nullable());
+        // The output schema is answered before any batch, a late filter
+        // typed against it.
+        let plan: Plan = "select id, unnest(legs) as leg where \"leg.size\" > 1"
+            .parse()
+            .unwrap();
+        let output = plan.field_from(&schema).unwrap();
+        assert_eq!(names(&output), ["id", "leg.ccy", "leg.size"]);
+        assert_eq!(
+            plan.apply_datatype(schema.dtype()).unwrap(),
+            output.dtype().clone()
+        );
+    }
+
+    #[test]
+    fn every_element_is_a_row_beside_its_parent_and_an_empty_or_null_run_none() {
+        let out = apply("select id, unnest(xs) as x, tag");
+        assert_eq!(
+            int64s(column(&out, "id")),
+            [Some(1), Some(1), Some(1), Some(4), Some(4)]
+        );
+        assert_eq!(
+            int64s(column(&out, "x")),
+            [Some(1), Some(2), Some(3), None, Some(7)]
+        );
+        assert_eq!(
+            texts(column(&out, "tag")),
+            [Some("a"), Some("a"), Some("a"), Some("d"), Some("d")]
+        );
+
+        let out = apply("select id, unnest(legs) as leg");
+        assert_eq!(
+            int64s(column(&out, "id")),
+            [Some(1), Some(1), Some(3), Some(3)]
+        );
+        assert_eq!(
+            texts(column(&out, "leg.ccy")),
+            [Some("EUR"), Some("USD"), None, Some("GBP")]
+        );
+        assert_eq!(
+            int64s(column(&out, "leg.size")),
+            [Some(1), Some(2), None, None]
+        );
+
+        // A layout with no offsets takes the row walk; a large and a fixed
+        // run read through their own offsets.
+        let out = apply("select id, unnest(views) as v");
+        assert_eq!(int64s(column(&out, "id")), [Some(1), Some(1), Some(4)]);
+        assert_eq!(int64s(column(&out, "v")), [Some(10), Some(20), Some(30)]);
+        let out = apply("select id, unnest(large) as l");
+        assert_eq!(int64s(column(&out, "id")), [Some(1), Some(4), Some(4)]);
+        assert_eq!(int64s(column(&out, "l")), [Some(5), Some(6), Some(7)]);
+        let out = apply("select id, unnest(fixed) as f");
+        assert_eq!(
+            int64s(column(&out, "id")),
+            [Some(1), Some(1), Some(3), Some(3), Some(4), Some(4)]
+        );
+        assert_eq!(
+            int64s(column(&out, "f")),
+            [Some(1), Some(2), Some(3), Some(4), Some(5), None]
+        );
+        // A declared item type is cast into.
+        let out = apply("select unnest(xs) as x int32");
+        assert_eq!(
+            out.schema_ref().field(0).data_type(),
+            &arrow_schema::DataType::Int32
+        );
+    }
+
+    #[test]
+    fn a_sliced_batch_unnests_only_the_runs_its_rows_cover() {
+        let batch = batch();
+        let selector: Selector = "id, unnest(xs) as x".parse().unwrap();
+        let out = selector.apply_arrow_batch(&batch.slice(2, 2)).unwrap();
+        assert_eq!(int64s(column(&out, "id")), [Some(4), Some(4)]);
+        assert_eq!(int64s(column(&out, "x")), [None, Some(7)]);
+        let out = selector.apply_arrow_batch(&batch.slice(0, 1)).unwrap();
+        assert_eq!(int64s(column(&out, "x")), [Some(1), Some(2), Some(3)]);
+        let out = selector.apply_arrow_batch(&batch.slice(1, 0)).unwrap();
+        assert_eq!(out.num_rows(), 0);
+        assert_eq!(out.num_columns(), 2);
+    }
+
+    #[test]
+    fn a_where_or_an_order_by_that_names_an_unnested_column_runs_after_it() {
+        let out = apply("select id, unnest(legs) as leg where \"leg.ccy\" = 'EUR'");
+        assert_eq!(int64s(column(&out, "id")), [Some(1)]);
+        let out = apply("select id, unnest(xs) as x where x > 1 order by x desc");
+        assert_eq!(int64s(column(&out, "x")), [Some(7), Some(3), Some(2)]);
+        assert_eq!(int64s(column(&out, "id")), [Some(4), Some(1), Some(1)]);
+        // A where over a stored column still runs first, where it prunes.
+        let out = apply("select id, unnest(xs) as x where id = 4");
+        assert_eq!(int64s(column(&out, "x")), [None, Some(7)]);
+        let out = apply("select id, unnest(xs) as x order by id desc limit 2");
+        assert_eq!(int64s(column(&out, "id")), [Some(4), Some(4)]);
+    }
+
+    #[test]
+    fn records_unnest_through_the_stream_they_widen_into() {
+        let schema = schema();
+        let selector: Selector = "id, unnest(xs) as x".parse().unwrap();
+        let records = selector.apply_records(Some(&schema), rows()).unwrap();
+        assert_eq!(names(records.field()), ["id", "x"]);
+        let held = records.collect_rows().unwrap();
+        assert_eq!(held.len(), 5);
+        assert_eq!(
+            held[4],
+            Scalar::from_sequence([Scalar::from(4_i64), Scalar::from(7_i64)])
+        );
+        // A struct array keeps one row per struct, which an unnest cannot.
+        let array: ArrayRef = Arc::new(arrow_array::StructArray::from(batch()));
+        let error = selector.apply_arrow_array(&array).unwrap_err().to_string();
+        assert!(error.contains("unnest"), "{error}");
+    }
+}

@@ -607,12 +607,54 @@ fn evaluate(node: &Node, context: &Context<'_>) -> Result<Vector> {
             }
             Ok(Vector::Column(answered.require_arrow_array()?))
         }
-        // Arithmetic, the string functions, and the constructors have no
-        // kernel available here, so they take the row evaluator. It is the
-        // same code the scalar tier runs, which is why the two cannot
-        // disagree about them.
+        Kind::Serie(items) => serie_of(node, items, context),
+        // Arithmetic, the string functions, and the struct and map
+        // constructors have no kernel available here, so they take the row
+        // evaluator. It is the same code the scalar tier runs, which is why
+        // the two cannot disagree about them.
         _ => fallback(node, context),
     }
+}
+
+/// A serie built from its elements in every row, through one `interleave`.
+///
+/// Row `r` holds each element's value at `r`, in element order, so the
+/// elements are stacked row-major and the offsets are N per row. No row is
+/// null - a serie of null elements is not a null serie, exactly as the row
+/// tier builds it. Elements whose arrays do not all lay out as the item the
+/// node declares take the row walk, which answers the same serie.
+fn serie_of(node: &Node, items: &[Node], context: &Context<'_>) -> Result<Vector> {
+    let rows = context.batch.num_rows();
+    let serie = node.field.as_arrow_field_ref()?;
+    let ArrowDataType::List(item) = serie.data_type() else {
+        return fallback(node, context);
+    };
+    let mut arrays = Vec::with_capacity(items.len());
+    for element in items {
+        let array = evaluate(element, context)?.into_column(rows)?;
+        if array.data_type() != item.data_type() {
+            return fallback(node, context);
+        }
+        arrays.push(array);
+    }
+    if arrays.is_empty() {
+        return fallback(node, context);
+    }
+    let width = arrays.len();
+    let mut indices = Vec::with_capacity(rows * width);
+    for row in 0..rows {
+        indices.extend((0..width).map(|element| (element, row)));
+    }
+    let held: Vec<&dyn Array> = arrays.iter().map(AsRef::as_ref).collect();
+    let values = arrow_select::interleave::interleave(&held, &indices).map_err(Error::Arrow)?;
+    let list = ListArray::try_new(
+        Arc::clone(item),
+        OffsetBuffer::from_lengths(std::iter::repeat_n(width, rows)),
+        values,
+        None,
+    )
+    .map_err(Error::Arrow)?;
+    Ok(Vector::Column(Arc::new(list)))
 }
 
 /// Take one path step through a column, kernel first and row walk otherwise.
@@ -664,11 +706,19 @@ fn segment_array(
                 }
             }
         }
+        FieldSegment::Key(key) => {
+            if let Some(stepped) = map_key(field, reached, array, key)? {
+                return Ok(stepped);
+            }
+        }
         // A predicate reaches here only as a segment bound by no one, which
-        // the binder never produces; the row walk still answers it.
-        FieldSegment::Field(_) | FieldSegment::Key(_) | FieldSegment::Where(_) => {}
+        // the binder never produces; the row walk still answers it. A named
+        // step into a map reads its key ignoring case, which is the row
+        // walk's to answer.
+        FieldSegment::Field(_) | FieldSegment::Where(_) => {}
     }
-    // No kernel: a map key, a dictionary-encoded container, a list layout
+    // No kernel: a map's key by name, a key of a map whose keys are not held
+    // as the text they are, a dictionary-encoded container, a list layout
     // without offsets. The row walk answers over the column landed once,
     // gathered into a column.
     let column = land(Arc::new(field.clone()), Arc::clone(array), &Proof::Unproven)?;
@@ -677,6 +727,78 @@ fn segment_array(
         values.push(segment.apply_scalar(field, &column.scalar(row)?)?);
     }
     Ok(Serie::from_scalars(reached.clone(), values)?.require_arrow_array()?)
+}
+
+/// One key of every map, through one `take` over the map's values.
+///
+/// The column lands once and its keys are checked once to be text held as
+/// the UTF-8 bytes they are; each row's key is then found over its entries'
+/// bytes - by binary search where the field declares the keys sorted, which
+/// the landing proved, and by a walk otherwise - so a row builds nothing,
+/// and the value is one index into the values. A missing key and a null map
+/// are null, as the row walk reads them. Keys of any other storage, a key
+/// that is not text, and an answer that does not lay out as the reached
+/// field are the row walk's.
+fn map_key(
+    field: &Field,
+    reached: &Field,
+    array: &ArrayRef,
+    key: &super::Literal,
+) -> Result<Option<ArrayRef>> {
+    if !matches!(array.data_type(), ArrowDataType::Map(..)) {
+        return Ok(None);
+    }
+    let Some(wanted) = key.value().as_str() else {
+        return Ok(None);
+    };
+    let column = land(Arc::new(field.clone()), Arc::clone(array), &Proof::Unproven)?;
+    let Some(map) = column.as_map() else {
+        return Ok(None);
+    };
+    let keys = map.keys();
+    // A fixed slot keeps its padding and a legacy charset its own bytes;
+    // only the UTF-8 layouts hold the text itself.
+    if !keys.is_string_storage()
+        || !matches!(
+            keys,
+            Serie::Utf8String(_) | Serie::LargeUtf8String(_) | Serie::Utf8ViewString(_)
+        )
+    {
+        return Ok(None);
+    }
+    let wanted = wanted.as_bytes();
+    let sorted = map.keys_sorted();
+    let mut indices: Vec<Option<u64>> = Vec::with_capacity(column.len());
+    for row in 0..column.len() {
+        let found = map.range(row).and_then(|entries| {
+            if sorted {
+                let (mut low, mut high) = (entries.start, entries.end);
+                while low < high {
+                    let middle = low + (high - low) / 2;
+                    match keys.value_bytes(middle)?.cmp(wanted) {
+                        std::cmp::Ordering::Less => low = middle + 1,
+                        std::cmp::Ordering::Greater => high = middle,
+                        std::cmp::Ordering::Equal => return Some(middle),
+                    }
+                }
+                None
+            } else {
+                entries
+                    .into_iter()
+                    .find(|entry| keys.value_bytes(*entry) == Some(wanted))
+            }
+        });
+        indices.push(found.map(|entry| u64::try_from(entry).unwrap_or(u64::MAX)));
+    }
+    let Some(values) = map.values().into_arrow_array() else {
+        return Ok(None);
+    };
+    let taken = arrow_select::take::take(values.as_ref(), &UInt64Array::from(indices), None)
+        .map_err(Error::Arrow)?;
+    if taken.data_type() != reached.as_arrow_field_ref()?.data_type() {
+        return Ok(None);
+    }
+    Ok(Some(taken))
 }
 
 /// The elements of every serie a predicate keeps, as one serie column.
@@ -775,6 +897,109 @@ fn kept_elements(
     )
     .map_err(Error::Arrow)?;
     Ok(Arc::new(list))
+}
+
+/// The rows one serie column unnests into: the parent row of every element,
+/// as the take indices every other column is read by, and the elements in
+/// the same order.
+///
+/// A null or an empty serie keeps no row. A layout with offsets reads its
+/// runs through them: the flattened window the rows cover is shared as it
+/// lies when the kept runs are one contiguous run - a null row that still
+/// covers elements is the one thing that breaks it - and taken otherwise. A
+/// layout with no offsets to read takes the row walk, which answers the same
+/// rows.
+pub(crate) fn unnest(serie: &Field, array: &ArrayRef) -> Result<(UInt64Array, ArrayRef)> {
+    let rows = array.len();
+    let Some(layout) = offsets(array) else {
+        return unnested_rows(serie, array);
+    };
+    let (first, last) = if rows == 0 {
+        (0, 0)
+    } else {
+        (layout.row(0).0, layout.row(rows - 1).1)
+    };
+    let mut parents: Vec<u64> = Vec::with_capacity(last.saturating_sub(first));
+    let mut shared = true;
+    let mut cursor = first;
+    for row in 0..rows {
+        let (start, end) = layout.row(row);
+        if array.is_null(row) {
+            shared &= end <= start;
+            continue;
+        }
+        shared &= start == cursor;
+        cursor = end.max(start);
+        parents.extend(std::iter::repeat_n(
+            u64::try_from(row).unwrap_or(u64::MAX),
+            end.saturating_sub(start),
+        ));
+    }
+    let items = if shared {
+        layout.values().slice(first, cursor.saturating_sub(first))
+    } else {
+        let mut positions: Vec<u64> = Vec::with_capacity(parents.len());
+        for row in (0..rows).filter(|row| array.is_valid(*row)) {
+            let (start, end) = layout.row(row);
+            positions
+                .extend((start..end).map(|position| u64::try_from(position).unwrap_or(u64::MAX)));
+        }
+        arrow_select::take::take(
+            layout.values().as_ref(),
+            &UInt64Array::from(positions),
+            None,
+        )
+        .map_err(Error::Arrow)?
+    };
+    Ok((UInt64Array::from(parents), items))
+}
+
+/// The row walk of [`unnest`]: the column landed once, each row's elements
+/// read as the serie it holds, laid out once under the item field.
+fn unnested_rows(serie: &Field, array: &ArrayRef) -> Result<(UInt64Array, ArrayRef)> {
+    let item = super::typing::unwrap_dictionary(serie.dtype())
+        .serie_item()
+        .ok_or_else(|| {
+            Error::IncompatibleSchema(format!("expected a serie to unnest, got {}", serie.dtype()))
+        })?;
+    let column = land(Arc::new(serie.clone()), Arc::clone(array), &Proof::Unproven)?;
+    let mut parents: Vec<u64> = Vec::new();
+    let mut elements = Vec::new();
+    for row in 0..column.len() {
+        let value = column.scalar(row)?;
+        let Some(items) = value.as_serie() else {
+            continue;
+        };
+        for element in items.iter() {
+            parents.push(u64::try_from(row).unwrap_or(u64::MAX));
+            elements.push(element.into_owned());
+        }
+    }
+    let items = Serie::from_scalars(item.clone(), elements)?.require_arrow_array()?;
+    Ok((UInt64Array::from(parents), items))
+}
+
+/// The children of a struct column, each with the struct's own nulls folded
+/// in: a child of a null struct is null, whatever its own buffer says.
+pub(crate) fn struct_children(array: &ArrayRef) -> Result<Vec<ArrayRef>> {
+    let held = array
+        .as_any()
+        .downcast_ref::<StructArray>()
+        .ok_or_else(|| {
+            Error::IncompatibleSchema(format!(
+                "expected a struct to publish one column per child, got {}",
+                array.data_type()
+            ))
+        })?;
+    held.columns()
+        .iter()
+        .map(|child| match held.nulls() {
+            Some(nulls) if held.null_count() > 0 => {
+                with_nulls(child, NullBuffer::union(child.nulls(), Some(nulls)))
+            }
+            _ => Ok(Arc::clone(child)),
+        })
+        .collect()
 }
 
 /// The same array under another validity mask.

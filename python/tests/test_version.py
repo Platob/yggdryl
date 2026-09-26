@@ -169,7 +169,7 @@ def test_the_datatype_identifiers_are_laid_out_by_family():
     # `fixed_utf8`, and the geospatial pair closes the list. An identifier is
     # a wire contract laid out by family, so a leaf added later lands beside
     # its family and nothing ever moves.
-    assert len(enums.DATA_TYPE_IDS) == 85
+    assert len(enums.DATA_TYPE_IDS) == 87
     assert "figi" in enums.DATA_TYPE_IDS
     ids = list(enums.DATA_TYPE_IDS)
     assert ids.index("url") == ids.index("version") + 1

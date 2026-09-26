@@ -497,7 +497,7 @@ The bytes moved once, together, when the identifiers were laid out by family: ev
 | `Bool` | `boolean` | `0x00` or `0x01` |
 | `I8`..`U128` | `uint128`, or `int128` when negative | magnitude as `u128` little-endian |
 | `F16`/`F32`/`F64` | `float64` | the common `f64` reading's IEEE bits, little-endian |
-| `D32`..`D256` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte |
+| `D32`..`D256`, `Decimal`, `BigDecimal` | `decimal256` | normalized coefficient as `i256` little-endian, then scale as one signed byte - a fixed leaf's units at scale eighteen, so it feeds as the `d128` or `d256` naming the same number |
 | `String` | `utf8` | length `u64` little-endian, then the characters as UTF-8; the leaf - charset, shape and fixed width - never feeds |
 | a registered code | the code's own id | length `u64` little-endian, then the trimmed text |
 | `Uuid` | `uuid` | the 16 big-endian bytes, with no length |

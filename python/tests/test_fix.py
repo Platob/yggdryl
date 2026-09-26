@@ -52,6 +52,7 @@ from yggdryl.fix import (
     global_registry,
     install_global_registry,
 )
+from yggdryl import graph
 from yggdryl.graph import BookEvent, MarketData, OrderEvent
 
 
@@ -437,6 +438,226 @@ def test_book_arrow_reader_streams_lifted_market_data_books(seed_batch: FixRegis
     assert live is not None and live.altids == {"MDENTRYID": "B1"}
     assert live.bid is not None and live.bid.quantity is not None
     assert live.bid.quantity.as_py() == decimal.Decimal("11")
+
+
+# One message of each dated leaf a capture expands into, in time order: an
+# order, a quote, a fill, an initial trade report and an empty snapshot.
+EVERY_KIND = [
+    b"8=FIX.4.4|35=D|52=20260921-10:00:00|11=C1|55=AAPL|54=1|44=100|38=5|40=2|10=0|",
+    b"8=FIX.4.4|35=S|52=20260921-10:00:01|117=Q1|55=AAPL|132=99|134=7|133=101|135=8|10=0|",
+    b"8=FIX.4.4|35=8|52=20260921-10:00:02|17=E1|37=O1|55=AAPL|54=1|31=100|32=2|150=F|10=0|",
+    b"8=FIX.4.4|35=AE|52=20260921-10:00:03|571=T1|487=0|55=AAPL|32=1|31=100|552=1|54=1"
+    b"|1427=E2|1009=1|528=A|10=0|",
+    b"8=FIX.4.4|35=W|52=20260921-10:00:04|55=AAPL|268=0|10=0|",
+]
+
+# An order stating four fields no typed column reads - OrdType(40),
+# ExecInst(18), HandlInst(21) and DisplayQty(111) - beside the header, the
+# trailer and its typed facts.
+UNMAPPED_ORDER = (
+    b"8=FIX.4.4|9=120|35=D|49=BUYER|56=VENUE|34=12|52=20260921-10:00:00|11=C1|1=ACC1|55=AAPL"
+    b"|54=1|44=100.5|38=5|40=2|18=G|21=1|111=3|60=20260921-10:00:00|10=123|"
+)
+
+
+def test_market_operations_answer_the_sorted_captures_leaves(seed_batch: FixRegistry) -> None:
+    codec = _fixed_batch(seed_batch)
+    unsorted = [
+        codec.parse_fix_line(line)
+        for line in (
+            b"8=FIX.4.4|35=D|52=20260921-10:00:02|11=C2|55=AAPL|54=1|44=100|38=5|10=0|",
+            b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|",
+            b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|",
+        )
+    ]
+    ordered = sorted(unsorted, key=lambda message: message.currunix)
+    operations = codec.market_operations(iter(unsorted))
+    assert isinstance(operations, graph.MarketDataRowIterator)
+    assert iter(operations) is operations
+    leaves = list(operations)
+    # The same leaves the message door answers over the sorted capture.
+    assert leaves == [leaf for message in ordered for leaf in message.market_operations()]
+    assert [leaf.crosscode for leaf in leaves][1:] == ["C1", "C2"]
+    assert next(operations, None) is None
+    # The book door stays strict over the same unsorted capture, and the
+    # sorted operations fold through the stateful book, one book a leaf.
+    with pytest.raises(Exception, match=r"\$\.operations"):
+        codec.book_arrow_reader(unsorted).read_all()
+    assert len(list(graph.BookIterator(leaves))) == 3
+
+
+def test_market_operations_place_an_entry_clock_before_an_earlier_message(
+    seed_batch: FixRegistry,
+) -> None:
+    codec = _fixed_batch(seed_batch)
+    # The update's entry clock, 10:00:00.5, stands before the order sent at
+    # 10:00:01, though the update itself was sent after it.
+    capture = [
+        codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=99|38=5|10=0|"),
+        codec.parse_fix_line(
+            b"8=FIX.4.4|35=X|52=20260921-10:00:02|55=AAPL|268=1|279=0|269=0|278=B1|270=100|271=10"
+            b"|272=20260921|273=10:00:00.500|10=0|"
+        ),
+    ]
+    leaves = list(codec.market_operations(capture))
+    assert [leaf.kind for leaf in leaves] == ["quote_event", "order_event"]
+    assert len(list(graph.BookIterator(leaves))) == 2
+
+
+def test_a_refused_expansion_raises_first_and_drops_only_its_message(seed_batch: FixRegistry) -> None:
+    codec = _fixed_batch(seed_batch)
+    capture = [
+        codec.parse_fix_line(b"8=FIX.4.4|35=D|52=20260921-10:00:01|11=C1|55=AAPL|54=1|44=100|38=5|10=0|"),
+        codec.parse_fix_line(b"8=FIX.4.4|35=W|52=20260921-10:00:02|55=AAPL|10=0|"),
+        codec.parse_fix_line(b"8=FIX.4.4|35=S|52=20260921-10:00:00|117=Q1|55=AAPL|54=2|133=101|135=7|10=0|"),
+    ]
+    operations = codec.market_operations(capture)
+    with pytest.raises(ValueError, match=r"NoMDEntries\(268\)"):
+        next(operations)
+    assert [leaf.kind for leaf in operations] == ["quote_event", "order_event"]
+    # The Arrow door meets the refusal before any row: it is the whole answer.
+    reader = codec.market_arrow_reader(capture)
+    with pytest.raises(Exception, match=r"NoMDEntries\(268\)"):
+        reader.read_next_batch()
+
+
+def test_a_python_failure_ends_the_capture_and_surfaces_at_its_end(seed_batch: FixRegistry) -> None:
+    codec = _fixed_batch(seed_batch)
+
+    def messages() -> Iterator[FixMsg]:
+        yield codec.parse_fix_line(EVERY_KIND[0])
+        raise RuntimeError("the source gave up")
+
+    operations = codec.market_operations(messages())
+    assert next(operations).kind == "order_event"
+    with pytest.raises(RuntimeError, match="the source gave up"):
+        next(operations)
+    assert next(operations, None) is None
+    # The Arrow door carries it as the reader's own error, before any row.
+    with pytest.raises(Exception, match="the source gave up"):
+        codec.market_arrow_reader(messages()).read_all()
+    # An item that is not a message is the pull's own failure.
+    with pytest.raises(TypeError):
+        list(codec.market_operations([17]))
+    with pytest.raises(TypeError):
+        codec.market_operations(5)
+
+
+def test_market_arrow_reader_rows_state_every_kind_and_the_twin_agrees(seed_batch: FixRegistry) -> None:
+    codec = _fixed_batch(seed_batch, batch_row_size=2)
+    capture = [codec.parse_fix_line(line) for line in EVERY_KIND]
+    reader = codec.market_arrow_reader(capture)
+    assert isinstance(reader, pa.RecordBatchReader)
+    assert reader.schema == MarketData.field().into_arrow_schema()
+    batches = list(reader)
+    assert [batch.num_rows for batch in batches] == [2, 2, 1]
+    table = pa.Table.from_batches(batches)
+    assert table.column("kind").to_pylist() == [
+        "order_event",
+        "quote_event",
+        "execution_event",
+        "trade_event",
+        "snapshot_event",
+    ]
+    direct = list(codec.market_operations(capture))
+    assert list(MarketData.from_arrow_reader(table)) == direct
+
+    # The Arrow twin reads each FIX row as the message it holds.
+    rows = codec.arrow_reader(fix_schema(seed_batch), capture)
+    twin = codec.market_operations_arrow_reader(rows)
+    assert twin.schema == reader.schema
+    assert list(MarketData.from_arrow_reader(twin)) == direct
+
+    # A schema making no FIX row is refused before a row is read, as the
+    # lifecycle twin refuses it.
+    def foreign() -> pa.Table:
+        return pa.Table.from_arrays([pa.array([1]), pa.array([2])], names=["a", "a"])
+
+    with pytest.raises(ValueError) as refused:
+        codec.market_operations_arrow_reader(foreign())
+    with pytest.raises(ValueError) as lifecycle:
+        codec.lifecycle_arrow_reader(foreign())
+    assert str(refused.value) == str(lifecycle.value)
+
+
+def test_market_metadata_carries_what_no_typed_column_reads(seed_batch: FixRegistry) -> None:
+    on = _fixed_batch(seed_batch)
+    off = _fixed_batch(seed_batch, market_metadata=False)
+    assert on.market_metadata is True
+    assert off.market_metadata is False
+    assert copy.copy(off).market_metadata is False
+    message = on.parse_fix_line(UNMAPPED_ORDER)
+    # The message itself holds no metadata: the map is computed per leaf.
+    assert message.metadata == {}
+    [stated] = on.market_operations([message])
+    [bare] = off.market_operations([message])
+    assert stated.metadata == {
+        # A quantity spells its decimal at the scale it is stored at.
+        "displayqty": "3.000000000000000000",
+        "execinst": "G",
+        "handlinst": "1",
+        "ordtype": "2",
+    }
+    assert bare.metadata == {}
+    # The map is part of the leaf, so it is part of its identity.
+    assert stated.curruuid != bare.curruuid
+    assert stated.currhashcode != bare.currhashcode
+    # The message door always carries it; the book door honours the switch.
+    assert message.market_operations() == [stated]
+    [book] = MarketData.from_arrow_reader(off.book_arrow_reader([message]))
+    [live] = book.as_book_event().bid.live  # type: ignore[union-attr]
+    assert live.metadata == {}
+
+
+ULBRIDGE_LOG = pathlib.Path(__file__).resolve().parent.parent.parent / "rust" / "tests" / "fix" / "ulbridge.log"
+
+
+def test_the_bridge_capture_reads_as_market_operations_and_folds_into_books(
+    seed_batch: FixRegistry,
+) -> None:
+    # The capture exactly as the bridge wrote it, read off an in-memory
+    # handle so no file's modification time dates a line.
+    options = TextOptions()
+    options.rowheader = ULBRIDGE_ROWHEADER
+    options.timezone = "UTC"
+    options.start_rownum = 1
+    source = IOBase.from_bytes(ULBRIDGE_LOG.read_bytes())
+    source.media_type = Url("file:///ulbridge.log").media_type
+    lines = list(source.read_text_lines(options=options))
+    assert len(lines) == 144
+    codec = _fixed_batch(seed_batch, capture_names=list(options.capture_names))
+    messages = list(codec.parse_text_lines(lines))
+    assert len(messages) == 94
+    walked = list(codec.lifecycle(messages))
+    assert len(walked) == 28
+
+    # Eleven deliveries reach a book - eight fills and three orders - and
+    # the one admitted message refused, the trade capture of line 112 whose
+    # single side states no Side(54), leads.
+    stream = codec.market_operations(walked)
+    with pytest.raises(ValueError, match=r"\$\.NoSides\(552\)\[0\]\.Side\(54\): expected a bid or ask side"):
+        next(stream)
+    operations = list(stream)
+    assert len(operations) == 11
+    assert sorted(operation.kind for operation in operations) == ["execution_event"] * 8 + ["order_event"] * 3
+
+    # Every operation folds; the unpriced sell order of 2454 rests at its
+    # side's unpriced level and leaves at the same instant, so the last of
+    # the seven books holds nothing and states both as deltas.
+    books = list(graph.BookIterator(operations))
+    assert len(books) == 7
+    last = books[-1]
+    assert last.ticker == "2454"
+    assert last.bid.is_empty and last.ask.is_empty
+    assert [delta.price for delta in last.ask.deltas] == [None, None]
+    assert last.currhashcode == 4_619_727_780_541_450_139
+
+    # No leaf keys a typed fact; the fill line 105 carries states its
+    # bridge's own namespaced key.
+    for operation in operations:
+        for typed in ("symbol", "side", "price", "orderqty", "clordid", "account", "sendingtime"):
+            assert typed not in operation.metadata
+    assert any(operation.metadata.get("tech.clientid") == "OMSX1" for operation in operations)
 
 
 def test_lifecycled_two_sided_trade_streams_executions_without_depth(

@@ -94,7 +94,7 @@ from yggdryl._native import (
     StringParameters,
 )
 from yggdryl.coding import Coded, Gzip, Identity, Zlib, Zstd
-from yggdryl.enums import AsciiCode, CcyCode, fixed_ascii
+from yggdryl.enums import MARKET_VIEWS, AsciiCode, CcyCode, fixed_ascii
 from yggdryl.holder import (
     Buffer,
     Buffered,
@@ -522,6 +522,11 @@ typed_bloomberg_kind: Literal["bloomberg"] = typed_bloomberg.dtype.id
 typed_uuid: UuidField = yggdryl.uuid("id", nullable=False)
 typed_uuid_kind: Literal["uuid"] = typed_uuid.dtype.id
 typed_uuid_default_scalar: Scalar = typed_uuid.dtype.default_scalar()
+typed_decimal: yggdryl.DecimalField = yggdryl.decimal("px")
+typed_decimal_kind: Literal["decimal"] = typed_decimal.dtype.id
+typed_bigdecimal: yggdryl.BigDecimalField = yggdryl.bigdecimal("n")
+typed_bigdecimal_kind: Literal["bigdecimal"] = typed_bigdecimal.dtype.id
+typed_decimal_width: yggdryl.DecimalWidthField = yggdryl.decimal("px", 10, 2)
 typed_ascii_default_scalar: Scalar = typed_ascii.dtype.default_scalar()
 typed_ascii_sedol: StringField = yggdryl.fixed_ascii("sedol", 7)
 # Reading one is the generic conversion, so it lands as ``object``.
@@ -1222,6 +1227,7 @@ selector_names: list[str] = selector.names
 selector_projections: list[str] = selector.projections
 selector_excluded: list[str] = selector_except.excluded
 selector_is_all: bool = selector_all.is_all
+selector_has_star: bool = selector_except.has_star
 selector_field: Field = selector.apply_field(expression_schema)
 selector_stored: Field = selector.into_field(expression_schema)
 bound_selector: BoundSelector = selector.bind(expression_schema)
@@ -1654,6 +1660,12 @@ fix_rows: pa.RecordBatchReader = fix_reader.arrow_reader(fix_root, fix_read_back
 fix_book_rows: pa.RecordBatchReader = fix_reader.book_arrow_reader(
     [fix_read_text], snapshot_millis=0, global_=False
 )
+fix_reader_market_metadata: bool = fix_reader.market_metadata
+fix_reader_bare: fix.FixCodec = fix.FixCodec(fix_registry_from_fields, market_metadata=False)
+fix_market_operations: graph.MarketDataRowIterator = fix_reader.market_operations([fix_read_text])
+fix_market_operation_list: list[graph.MarketData] = list(fix_market_operations)
+fix_market_rows: pa.RecordBatchReader = fix_reader.market_arrow_reader(iter([fix_read_text]))
+fix_market_twin: pa.RecordBatchReader = fix_reader.market_operations_arrow_reader(fix_parsed)
 fix_written: int = fix_reader.write_arrow_reader(fix_rows, io.BytesIO())
 
 fix_counter: Field = Field("nopartyids", "int32")
@@ -2039,6 +2051,8 @@ graph_side_best_price: Scalar | None = graph_side_with_operation.best_price
 graph_side_best_quantity: Scalar | None = graph_side_with_operation.best_quantity
 graph_side_side: Scalar = graph_side.side
 graph_side_with_previous: graph.BookSide | None = graph_side.with_previous(graph_side)
+graph_side_limits: list[Scalar] = graph_side_with_operation.limits
+graph_side_depth: Scalar | None = graph_side_with_operation.depth(1)
 
 graph_book: graph.BookEvent = graph.BookEvent(graph_order_event.currunix, "IBM")
 graph_book_with_operations: graph.BookEvent = graph_book.with_operations(
@@ -2049,6 +2063,9 @@ graph_book_ask: graph.BookSide = graph_book_with_operations.ask
 graph_book_executions: list[graph.ExecutionEvent] = graph_book.executions
 graph_book_snapshot_partitions: list[graph.SnapshotPartition] = graph_book.snapshot_partitions
 graph_book_crossed: bool = graph_book_with_operations.is_crossed
+graph_book_locked: bool = graph_book_with_operations.is_locked
+graph_book_spread: Scalar | None = graph_book_with_operations.spread
+graph_book_imbalance: Scalar | None = graph_book_with_operations.imbalance(1)
 graph_book_midpoint: Scalar | None = graph_book_with_operations.bbo_midpoint
 graph_book_median_quantity: Scalar | None = graph_book_with_operations.median_quantity
 graph_book_restated: graph.BookEvent = graph_book.restating(graph_book)
@@ -2075,6 +2092,18 @@ graph_data_rows: graph.MarketDataRowIterator = graph.MarketData.from_arrow_reade
     graph_data_arrow_reader
 )
 graph_data_rows_list: list[graph.MarketData] = list(graph_data_rows)
+graph_view_names: tuple[str, ...] = MARKET_VIEWS
+graph_view_plan: Plan = graph.MarketData.plan("orders", ["securityids['ISIN'] as isin"])
+graph_view_plan_path: Plan = graph.MarketData.plan(
+    "trades", (yggdryl.FieldPath("securityids['ISIN'] as isin"),)
+)
+graph_view_plan_lifecycle: Plan = graph.MarketData.plan("lifecycle", crosscode="C-1")
+graph_view_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
+    "books", graph.MarketData.arrow_reader([graph_book_with_operations])
+)
+graph_view_lifecycle_rows: pa.RecordBatchReader = graph.MarketData.apply_view(
+    "lifecycle", graph.MarketData.arrow_reader([graph_order_event]), (), crosscode="G-1"
+)
 
 graph_book_iterator: graph.BookIterator = graph.BookIterator(
     [graph_order_event, graph_data], snapshot_millis=0, global_=False

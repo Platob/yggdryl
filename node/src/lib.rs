@@ -152,6 +152,17 @@ pub(crate) fn napi_error(error: impl std::fmt::Display) -> Error {
     Error::from_reason(error.to_string())
 }
 
+/// One fact answered, or `null` where the core holds nothing.
+///
+/// A plain object states every fact it declares: an absent one is `null`,
+/// as every absence at this boundary is, rather than a property left out.
+pub(crate) fn or_null<T>(
+    value: Option<T>,
+) -> napi::bindgen_prelude::Either<T, napi::bindgen_prelude::Null> {
+    use napi::bindgen_prelude::{Either, Null};
+    value.map_or(Either::B(Null), Either::A)
+}
+
 /// Throw a real JavaScript `TypeError`, then report the pending exception.
 ///
 /// An `Error` returned from a binding method always arrives as a plain

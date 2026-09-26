@@ -1,12 +1,12 @@
 # Decimal
 
-One exact base-10 datatype over four backing widths: a precision, a scale, and a coefficient that is an integer whatever it is written as.
+One exact base-10 family: four parameterized backing widths - a precision, a scale, and a coefficient that is an integer whatever it is written as - and two fixed leaves, [`decimal`](#decimal) and [`bigdecimal`](#bigdecimal), whose scale is eighteen already.
 
 ## Contract
 
 | Aspect | Rule |
 | --- | --- |
-| Owns | `decimal32`, `decimal64`, `decimal128`, `decimal256`, the `Decimal32`..`Decimal256` values, the `i256`/`u256` pair they compute in, and `Decimal18` |
+| Owns | `decimal32`, `decimal64`, `decimal128`, `decimal256`, the `Decimal32`..`Decimal256` values, the `i256`/`u256` pair they compute in, and the two fixed leaves `decimal` and `bigdecimal` with their values `Decimal` and `BigDecimal` |
 | Validates | Once at construction: precision `1..=max` of the width (9, 18, 38, 76), a positive scale `<= precision`; a bad parameter never becomes a value |
 | Lazy | Nothing - a decimal holds a coefficient and a scale and resolves neither later |
 | Cached | The Arrow projection of a [`Field`](../field.md), built once per field |
@@ -97,7 +97,8 @@ One exact base-10 datatype over four backing widths: a precision, a scale, and a
 | `decimal(10..=18, s)` | `decimal64(p,s)` | 18 |
 | `decimal(19..=38, s)` | `decimal128(p,s)` | 38 |
 | `decimal(39..=76, s)` | `decimal256(p,s)` | 76 |
-| `numeric(p,s)` (parser) | same as `decimal(p,s)`; `bignumeric` is `decimal256` | |
+| `numeric(p,s)` (parser) | same as `decimal(p,s)`; `bignumeric` is `decimal256`; bare `numeric` is SQL's `decimal128(38,0)` | |
+| bare `decimal`, `bigdecimal` (parser) | the fixed leaves [`decimal`](#decimal) and [`bigdecimal`](#bigdecimal), never a width | 38, 76 |
 
 ## Field
 
@@ -155,7 +156,7 @@ One exact base-10 datatype over four backing widths: a precision, a scale, and a
 
 ## Scalar
 
-A decimal value is a coefficient and a scale - `D32`, `D64`, `D128`, `D256` - and the number it names is `coefficient * 10^-scale`. `as_decimal` is the cross-width reader that widens the coefficient to 256 bits; `as_d128` and `as_d256` read one width. Equality, order and hashing normalize first, so one number written at two scales is one value.
+A decimal value is a coefficient and a scale - `D32`, `D64`, `D128`, `D256` - and the number it names is `coefficient * 10^-scale`; the [fixed leaves](#decimal) hold their units alone. `as_decimal` is the cross-width reader that widens the coefficient to 256 bits; `as_d128` and `as_d256` read one width. Equality, order and hashing normalize first, so one number written at two scales is one value.
 
 === "Rust"
 
@@ -227,6 +228,8 @@ Each width is Arrow's own decimal, carrying the same precision and scale, and im
 | `decimal64(p,s)` | `Decimal64(p, s)` | 8 |
 | `decimal128(p,s)` | `Decimal128(p, s)` | 16 |
 | `decimal256(p,s)` | `Decimal256(p, s)` | 32 |
+| [`decimal`](#decimal) | `Decimal128(38, 18)` under `yggdryl.decimal` | 16 |
+| [`bigdecimal`](#bigdecimal) | `Decimal256(76, 18)` under `yggdryl.bigdecimal` | 32 |
 
 === "Rust"
 
@@ -399,25 +402,442 @@ assert_eq!(i256::from_i128(-5).unsigned_abs(), u256::from_u128(5));
 assert_eq!(i256::from_le_bytes(i256::from_i128(9).into_le_bytes()), i256::from_i128(9));
 ```
 
-## Decimal18
+## Decimal { #decimal }
 
-`Decimal18` is `decimal128(38, 18)` preapplied: one `i128` of units at eighteen fractional digits, bounded to thirty-eight digits, so a price and a quantity add, multiply and compare as integers do and land in a `decimal128(38, 18)` column exactly. `DataType::DECIMAL` is that datatype, and `Scalar::from` lands one in the `Decimal128` leaf; the decimal family is the range of the four widths' identifiers ([Scalar](../scalar.md#families)), not a type of its own. Multiplication and division widen to 256 bits and truncate the rest toward zero; a result past the precision is an overflow the checked operations answer as `None` and the operators refuse as the integers' do. Text reads leniently - whitespace, an empty text as nothing, grouping with `,` `_` `'` or a space, a leading or trailing point, an exponent, extra fractional digits truncated - and refuses only what states no number or a value past the precision. Rust only: a market element's price and quantity are held as it.
+`decimal` is the family's fixed leaf: `decimal128(38, 18)` preapplied, one datatype, field and scalar of its own, and the value [a market](../../graph.md#market) holds its prices and quantities as.
 
-```rust
-use yggdryl::Decimal18;
-use yggdryl::{DataType, Scalar};
+### Contract
 
-let px: Decimal18 = "82.5".parse()?;
-let qty = Decimal18::from_int(1_000);
-assert_eq!((px * qty).to_string(), "82500");
-assert_eq!((px / Decimal18::from_int(4)).to_string(), "20.625");
-assert_eq!(Decimal18::parse(" 1,250.50 ")?.to_string(), "1250.5");
-assert_eq!(Decimal18::parse("")?, Decimal18::ZERO);
-assert_eq!(Decimal18::dtype(), DataType::DECIMAL);
-assert_eq!(Scalar::from(px).as_d128(), Some((82_500_000_000_000_000_000, 18)));
-assert_eq!(Decimal18::from_scalar(&Scalar::d128(825, 1)), Some(px));
-assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
-```
+| Aspect | Rule |
+| --- | --- |
+| Value | `yggdryl::Decimal`: one `i128` of units at scale eighteen, bounded to thirty-eight digits, `MIN` to `MAX`; add, subtract and compare are the integer's, and multiply and divide widen to 256 bits for the one product |
+| Arithmetic | `checked_add`, `checked_sub`, `checked_mul`, `checked_div` answer `None` past thirty-eight digits, the last also for a divisor of nothing; `checked_mul` and `checked_div` keep eighteen fractional digits and truncate the rest toward zero; the operators refuse an overflow as the integers' do |
+| Text | `Decimal::parse` (and `FromStr`) is lenient and one pass: surrounding whitespace, an empty text as zero, a sign, grouping with `,` `_` `'` or a space ahead of the point, a leading or trailing point, an exponent, and digits past the eighteenth fractional one truncated toward zero; it refuses only text stating no number and a value past thirty-eight digits. The value door - `DataType::Decimal.scalar`, `Field::scalar` - is strict: a nineteenth fractional digit is refused, never truncated |
+| Width | `widened()` is the lossless way into [`BigDecimal`](#bigdecimal); `DataType::DECIMAL` is the `decimal128(38, 18)` storage the leaf rides and the spelling a FIX dictionary types a price with, a parameterized width and not the leaf |
+| Identity | `DataTypeId::Decimal`, `0x2d`, inside the decimal family's [range](../scalar.md#families): `is_decimal` answers it and `is_parameterized` does not |
+
+### DataType
+
+Bare `decimal` is the leaf; a parenthesis names the parameterized family, so `decimal(38, 18)` is the narrowest width holding it, and SQL's bare `numeric` keeps its own meaning.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, DataTypeId, DataTypeKind, Decimal};
+
+    let leaf: DataType = "decimal".parse()?;
+    assert_eq!(leaf, DataType::Decimal);
+    assert_eq!(leaf.to_string(), "decimal");
+    assert_eq!(leaf.id(), DataTypeId::Decimal);
+    assert_eq!(DataTypeId::Decimal.as_u8(), 0x2d);
+    assert_eq!(leaf.kind(), DataTypeKind::Decimal);
+    assert!(!leaf.id().is_parameterized());
+    assert_eq!(Decimal::dtype(), leaf);
+
+    // A parenthesis is the parameterized family; `numeric` is SQL's.
+    assert_eq!("decimal(38,18)".parse::<DataType>()?, DataType::decimal128(38, 18)?);
+    assert_eq!("numeric".parse::<DataType>()?, DataType::decimal128(38, 0)?);
+
+    // `DataType::DECIMAL` is the storage the leaf rides, not the leaf.
+    assert_eq!(DataType::DECIMAL, DataType::decimal128(38, 18)?);
+    assert_ne!(DataType::DECIMAL, DataType::Decimal);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    leaf = DataType("decimal")
+    assert leaf.id == "decimal"
+    assert str(leaf) == "decimal"
+    assert leaf.kind == "decimal"
+
+    # A parenthesis is the parameterized family.
+    assert DataType("decimal(38,18)") == DataType("decimal128(38,18)")
+    assert DataType("decimal(38,18)") != leaf
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const leaf = DataType.from('decimal')
+    assert.equal(leaf.id, 'decimal')
+    assert.equal(leaf.toString(), 'decimal')
+    assert.equal(leaf.kind, 'decimal')
+
+    // A parenthesis is the parameterized family.
+    assert.equal(DataType.from('decimal(38,18)').toString(), 'decimal128(38,18)')
+    ```
+
+### Field
+
+`DecimalField` carries the payload `DecimalType::Decimal`, whose precision and scale are the leaf's. Python's `yggdryl.decimal(name)` is the leaf, typed `DecimalField`, and `yggdryl.decimal(name, precision, scale)` the width, typed `DecimalWidthField`; JavaScript's `fields.decimal(name)` and `fields.decimal(name, precision, scale)` split the same way.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::FieldValue as _;
+    use yggdryl::{DataType, DecimalField, DecimalType, Field};
+
+    let px = DecimalField::new("px", DecimalType::Decimal, false);
+    assert_eq!(px.dtype(), &DataType::Decimal);
+    assert_eq!((DecimalType::Decimal.precision(), DecimalType::Decimal.scale()), (38, 18));
+
+    let root: Field = px.into_field();
+    assert!(DecimalField::from_field(&root).is_some());
+    ```
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    px = yggdryl.decimal("px", nullable=False)
+    assert str(px.dtype) == "decimal"
+    assert not px.nullable
+
+    # A precision names the width instead.
+    assert str(yggdryl.decimal("amount", 38, 4).dtype) == "decimal128(38,4)"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { fields } = require('yggdryl')
+
+    const px = fields.decimal('px', { nullable: false })
+    assert.equal(px.dtype.toString(), 'decimal')
+    assert.equal(px.nullable, false)
+
+    // A precision names the width instead.
+    assert.equal(fields.decimal('amount', 38, 4).dtype.toString(), 'decimal128(38,4)')
+    ```
+
+### Scalar
+
+`Scalar::Decimal` holds the value; its wire tag is `decimal`, carrying the units. It equals, orders and hashes as the `d128` twin naming the same number, and digests alike, so a value is one value whichever leaf holds it. `as_decimal` reads it as its units at scale eighteen, and `Display` trims the zeros behind the point. Arithmetic over a leaf keeps the leaf: the other operand meets it at scale eighteen, a `bigdecimal` on either side answers a `bigdecimal`, and a remainder is refused because a fixed scale states none.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{DataType, Decimal, Scalar};
+
+    let px: Decimal = "82.5".parse()?;
+    let qty = Decimal::from_int(1_000);
+    assert_eq!((px * qty).to_string(), "82500");
+    assert_eq!((px / Decimal::from_int(4)).to_string(), "20.625");
+    assert_eq!(px + Decimal::from_int(1), "83.5".parse::<Decimal>()?);
+    // Eighteen digits kept, the rest truncated toward zero.
+    assert_eq!((Decimal::ONE / Decimal::from_int(3)).to_string(), "0.333333333333333333");
+    assert_eq!(px.units(), 82_500_000_000_000_000_000);
+    assert_eq!(Decimal::MAX.checked_add(Decimal::ONE), None);
+
+    // The text door reads leniently and truncates.
+    assert_eq!(Decimal::parse(" 1,250.50 ")?.to_string(), "1250.5");
+    assert_eq!(Decimal::parse("")?, Decimal::ZERO);
+    assert_eq!(Decimal::parse("2.5e3")?.to_string(), "2500");
+    assert_eq!(Decimal::parse("0.1234567890123456789")?.to_string(), "0.123456789012345678");
+    assert!(Decimal::parse("1.2.3").is_err() && Decimal::parse("NaN").is_err());
+
+    // The scalar is the leaf's own, and one number whichever leaf holds it.
+    let value = Scalar::from(px);
+    assert_eq!(value, Scalar::Decimal(px));
+    assert_eq!(value.kind(), "decimal");
+    assert_eq!(value, Scalar::d128(825, 1));
+    assert_eq!(value.as_decimal().map(|(_, scale)| scale), Some(18));
+    assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+
+    // The value door restates and is strict.
+    assert_eq!(DataType::Decimal.scalar(Scalar::d128(825, 1))?, value);
+    assert!(DataType::Decimal.scalar(Scalar::d128(1, 19)).is_err(), "a nineteenth digit");
+
+    // Arithmetic keeps the leaf; a remainder is refused.
+    assert_eq!(value.checked_mul(&Scalar::from(1_000_i64))?, Scalar::Decimal(Decimal::from_int(82_500)));
+    assert!(value.checked_rem(&Scalar::from(2_i64)).is_err());
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    import pytest
+
+    from yggdryl import Field, Scalar
+
+    px = Field("px", "decimal").scalar(Decimal("82.5"))
+    assert px.kind == "decimal"
+    assert px.as_py() == Decimal("82.5")
+    assert px == Scalar.decimal(825, 1)
+
+    # The value door refuses a nineteenth fractional digit.
+    with pytest.raises(ValueError):
+        Field("px", "decimal").scalar(Decimal("0.1234567890123456789"))
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Scalar } = require('yggdryl')
+
+    const px = DataType.from('decimal').scalar('82.5')
+    assert.equal(px.id, 'decimal')
+    assert.ok(px.equals(Scalar.decimal(825n, 1)))
+
+    // The value door refuses a nineteenth fractional digit.
+    assert.throws(() => DataType.from('decimal').scalar(Scalar.decimal(1n, 19)))
+    ```
+
+### Arrow storage
+
+A `decimal` column is `Decimal128(38, 18)` under the `yggdryl.decimal` extension name with an empty document, and a field carrying the name imports back as the leaf. Bare `Decimal128(38, 18)` storage imports as the parameterized width, and the cast between the two is the identity; `yggdryl.decimal` over any other storage imports as that storage. Where a format has no extension - Avro, Iceberg, Spark, Polars, pandas - the leaf crosses as their `decimal(38, 18)` and the name stays behind.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, DataType, Decimal, Field, Scalar, Serie};
+
+    let px = Field::new("px", DataType::Decimal, false);
+    let arrow = px.clone().into_arrow_field()?;
+    assert_eq!(arrow.data_type(), &arrow_schema::DataType::Decimal128(38, 18));
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.decimal");
+    assert_eq!(Field::from_arrow_field(&arrow)?, px);
+
+    // Bare storage is the width, and casts onto the leaf by identity.
+    assert_eq!(
+        DataType::from_arrow_datatype(&arrow_schema::DataType::Decimal128(38, 18))?,
+        DataType::DECIMAL,
+    );
+    let value = Scalar::Decimal("82.5".parse::<Decimal>()?);
+    let stored = Serie::from_scalars(Field::new("px", DataType::DECIMAL, false), [value.clone()])?;
+    assert_eq!(stored.cast(&px, ArrowCastOptions::new())?.scalar(0)?, value);
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Field
+
+    px = Field("px", "decimal", nullable=False)
+    arrow = px.into_arrow()
+    assert arrow.type == pa.decimal128(38, 18)
+    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.decimal"
+    assert Field.from_arrow(arrow) == px
+
+    # Bare storage is the width.
+    bare = Field.from_arrow(pa.field("px", pa.decimal128(38, 18), nullable=False))
+    assert str(bare.dtype) == "decimal128(38,18)"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar, Serie, fields } = require('yggdryl')
+
+    const px = fields.decimal('px', { nullable: false })
+    const batch = Serie.fromScalars(px, [Scalar.decimal(825n, 1)]).intoArrowBatch()
+    const column = batch.schema.fields[0]
+    assert.equal(column.type.precision, 38)
+    assert.equal(column.type.scale, 18)
+    assert.equal(column.metadata.get('ARROW:extension:name'), 'yggdryl.decimal')
+    ```
+
+## BigDecimal { #bigdecimal }
+
+`bigdecimal` is the wide twin of [`decimal`](#decimal): the same scale, so every `Decimal` widens into it losslessly, and seventy-six digits for the notional a book of them sums to.
+
+### Contract
+
+| Aspect | Rule |
+| --- | --- |
+| Value | `yggdryl::BigDecimal`: one 256-bit integer of units at scale eighteen, bounded to seventy-six digits - `decimal256(76, 18)` preapplied; add, subtract and compare are the integer's, and multiply and divide run through a 512-bit product so the one truncation is the scale's |
+| Arithmetic | the four checked operations answer `None` past seventy-six digits, `checked_div` also for a divisor of nothing; the operators refuse an overflow |
+| Text | `BigDecimal::parse` reads exactly as `Decimal::parse` does, with seventy-six digits to fill; the value door is as strict as the narrow leaf's |
+| Width | `Decimal::widened()` and `From<Decimal>` come in losslessly; `narrowed()` answers the `Decimal` within thirty-eight digits and `None` past them |
+| Identity | `DataTypeId::BigDecimal`, `0x2e`, inside the decimal family's range |
+
+### DataType
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{BigDecimal, DataType, DataTypeId, DataTypeKind};
+
+    let wide: DataType = "bigdecimal".parse()?;
+    assert_eq!(wide, DataType::BigDecimal);
+    assert_eq!(wide.to_string(), "bigdecimal");
+    assert_eq!(DataTypeId::BigDecimal.as_u8(), 0x2e);
+    assert!(DataTypeKind::Decimal.contains(wide.id()));
+    assert_eq!(BigDecimal::dtype(), wide);
+    ```
+
+=== "Python"
+
+    ```python
+    from yggdryl import DataType
+
+    wide = DataType("bigdecimal")
+    assert wide.id == "bigdecimal"
+    assert str(wide) == "bigdecimal"
+    assert wide.kind == "decimal"
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType } = require('yggdryl')
+
+    const wide = DataType.from('bigdecimal')
+    assert.equal(wide.id, 'bigdecimal')
+    assert.equal(wide.toString(), 'bigdecimal')
+    assert.equal(wide.kind, 'decimal')
+    ```
+
+### Field
+
+`DecimalField` with the payload `DecimalType::BigDecimal`; Python's `yggdryl.bigdecimal(name)` answers a `BigDecimalField`, JavaScript's is `fields.bigdecimal(name)`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::FieldValue as _;
+    use yggdryl::{DataType, DecimalField, DecimalType};
+
+    let notional = DecimalField::new("notional", DecimalType::BigDecimal, false);
+    assert_eq!(notional.dtype(), &DataType::BigDecimal);
+    assert_eq!((DecimalType::BigDecimal.precision(), DecimalType::BigDecimal.scale()), (76, 18));
+    ```
+
+=== "Python"
+
+    ```python
+    import yggdryl
+
+    notional = yggdryl.bigdecimal("notional", nullable=False)
+    assert str(notional.dtype) == "bigdecimal"
+    assert not notional.nullable
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { fields } = require('yggdryl')
+
+    const notional = fields.bigdecimal('notional', { nullable: false })
+    assert.equal(notional.dtype.toString(), 'bigdecimal')
+    assert.equal(notional.nullable, false)
+    ```
+
+### Scalar
+
+`Scalar::BigDecimal` holds the value under the wire tag `bigdecimal`, and, like the narrow leaf, equals, orders, hashes and digests as the `d256` or `d128` twin naming the same number.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{BigDecimal, Decimal, Scalar};
+
+    let notional: BigDecimal = "123456789012345678901234567890.5".parse()?;
+    let px = Decimal::from_int(3).widened();
+    assert_eq!((notional * px).to_string(), "370370367037037036703703703671.5");
+    assert_eq!((notional / px).to_string(), "41152263004115226300411522630.166666666666666666");
+    assert_eq!(px.narrowed(), Some(Decimal::from_int(3)));
+    assert_eq!(notional.narrowed(), None, "forty-eight digits do not narrow");
+    assert_eq!(BigDecimal::MAX.checked_add(BigDecimal::ONE), None);
+
+    let value = Scalar::from(notional);
+    assert_eq!(value, Scalar::BigDecimal(notional));
+    assert_eq!(value.kind(), "bigdecimal");
+    // A narrow leaf meeting a wide one answers the wide one.
+    let product = Scalar::from(Decimal::from_int(2)).checked_mul(&Scalar::from(px))?;
+    assert!(matches!(product, Scalar::BigDecimal(_)));
+    assert_eq!(product, Scalar::from(BigDecimal::from_int(6)));
+    ```
+
+=== "Python"
+
+    ```python
+    from decimal import Decimal
+
+    from yggdryl import DataType
+
+    notional = DataType("bigdecimal").scalar(Decimal("123456789012345678901234567890.5"))
+    assert notional.kind == "bigdecimal"
+    assert notional.as_py() == Decimal("123456789012345678901234567890.5")
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { DataType, Scalar } = require('yggdryl')
+
+    const notional = DataType.from('bigdecimal').scalar('1.5')
+    assert.equal(notional.id, 'bigdecimal')
+    assert.ok(notional.equals(Scalar.decimal(15n, 1)))
+    ```
+
+### Arrow storage
+
+A `bigdecimal` column is `Decimal256(76, 18)` under `yggdryl.bigdecimal`, bare `Decimal256(76, 18)` importing as the parameterized width. A cast from `decimal` widens every value; one back narrows under the cast's [`safe`](../cast.md) rule. Avro, Iceberg, Spark, Polars and pandas state at most thirty-eight digits, so a `bigdecimal` column is refused by each of them by name rather than narrowed.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::{ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie};
+
+    let notional = Field::new("notional", DataType::BigDecimal, false);
+    let arrow = notional.clone().into_arrow_field()?;
+    assert_eq!(arrow.data_type(), &arrow_schema::DataType::Decimal256(76, 18));
+    assert_eq!(arrow.metadata()["ARROW:extension:name"], "yggdryl.bigdecimal");
+    assert_eq!(Field::from_arrow_field(&arrow)?, notional);
+
+    // A decimal column widens, value for value.
+    let px: Decimal = "82.5".parse()?;
+    let narrow = Serie::from_scalars(Field::new("notional", DataType::Decimal, false), [Scalar::Decimal(px)])?;
+    let widened = narrow.cast(&notional, ArrowCastOptions::new())?;
+    assert_eq!(widened.scalar(0)?, Scalar::BigDecimal(px.widened()));
+    assert_eq!(BigDecimal::from(px), px.widened());
+    ```
+
+=== "Python"
+
+    ```python
+    import pyarrow as pa
+
+    from yggdryl import Field
+
+    notional = Field("notional", "bigdecimal", nullable=False)
+    arrow = notional.into_arrow()
+    assert arrow.type == pa.decimal256(76, 18)
+    assert arrow.metadata[b"ARROW:extension:name"] == b"yggdryl.bigdecimal"
+    assert Field.from_arrow(arrow) == notional
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const { Scalar, Serie, fields } = require('yggdryl')
+
+    const notional = fields.bigdecimal('notional', { nullable: false })
+    const batch = Serie.fromScalars(notional, [Scalar.decimal(15n, 1)]).intoArrowBatch()
+    const column = batch.schema.fields[0]
+    assert.equal(column.type.precision, 76)
+    assert.equal(column.type.scale, 18)
+    assert.equal(column.metadata.get('ARROW:extension:name'), 'yggdryl.bigdecimal')
+    ```
 
 ## Edges
 
@@ -427,7 +847,12 @@ assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
 - An inexact quotient -> refused, not rounded; a quotient whose exact scale would exceed the width's maximum is the same refusal.
 - [Merged](../field.md#merging-two-schemas) widening -> the widest backing either side declared: `decimal128(10,2)` beside `int16` stays `decimal128(10,2)`. Narrowing takes the backing the merged precision needs.
 - A decimal beside a float -> refused; an exact number and an approximate one have no meeting point that is not a re-encoding.
-- `Decimal18::MAX.checked_add(Decimal18::ONE)` -> `None`; the operator form refuses as the integers' do.
+- `Decimal::MAX.checked_add(Decimal::ONE)` and `BigDecimal::MAX.checked_add(BigDecimal::ONE)` -> `None`; the operator form refuses as the integers' do.
+- `Decimal::parse("0.1234567890123456789")` -> truncated to eighteen digits; `DataType::Decimal.scalar` of the same number -> refused, because the value door restates exactly or not at all.
+- A `decimal` or `bigdecimal` value under `%` -> refused: a fixed scale states no remainder. Beside a float -> refused, as every exact decimal is.
+- `BigDecimal::narrowed()` past thirty-eight digits -> `None`; a `bigdecimal` column cast onto `decimal` narrows under the cast's `safe` rule.
+- `yggdryl.decimal` or `yggdryl.bigdecimal` over another storage, or with a nonempty document -> imports as that storage, a foreign field wearing the name.
+- A `bigdecimal` column into Avro, Iceberg, Spark, Polars or pandas -> refused by name; a `decimal` column crosses as their `decimal(38, 18)`.
 - Python has no `DataType.decimal128`: `DataType.decimal(precision, scale)` is the one constructor, and the exact widths are field factories (`yggdryl.decimal128`). JavaScript has no `DataType.decimal` at all, only `fields.decimal*`.
 
 ## Commands
@@ -452,6 +877,6 @@ assert_eq!(Decimal18::MAX.checked_add(Decimal18::ONE), None);
 === "JavaScript"
 
     ```bash
-    node --test --test-name-pattern="defaulted temporal and decimal overloads share exact option handling" node/tests/fields.test.js
+    node --test --test-name-pattern="defaulted temporal and decimal overloads share exact option handling|the fixed decimal leaves" node/tests/fields.test.js
     npm run --prefix node bench:types
     ```

@@ -133,10 +133,10 @@ macro_rules! delegate_event {
 macro_rules! delegate_market {
     ($type:ty, $($field:ident).+) => {
         impl $crate::graph::Market for $type {
-            fn get_price(&self) -> Option<$crate::Decimal18> {
+            fn get_price(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_price(&self.$($field).+)
             }
-            fn set_price(&mut self, price: Option<$crate::Decimal18>) {
+            fn set_price(&mut self, price: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_price(&mut self.$($field).+, price);
             }
             fn get_currency(&self) -> &$crate::Ccy {
@@ -145,10 +145,10 @@ macro_rules! delegate_market {
             fn set_currency(&mut self, currency: $crate::Ccy) {
                 $crate::graph::Market::set_currency(&mut self.$($field).+, currency);
             }
-            fn get_quantity(&self) -> Option<$crate::Decimal18> {
+            fn get_quantity(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_quantity(&self.$($field).+)
             }
-            fn set_quantity(&mut self, quantity: Option<$crate::Decimal18>) {
+            fn set_quantity(&mut self, quantity: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_quantity(&mut self.$($field).+, quantity);
             }
             fn get_unit(&self) -> &$crate::Unit {
@@ -199,58 +199,58 @@ macro_rules! delegate_market {
             fn set_miccode(&mut self, code: Option<$crate::MicCode>) {
                 $crate::graph::Market::set_miccode(&mut self.$($field).+, code);
             }
-            fn get_lastpx(&self) -> Option<$crate::Decimal18> {
+            fn get_lastpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_lastpx(&self.$($field).+)
             }
-            fn set_lastpx(&mut self, px: Option<$crate::Decimal18>) {
+            fn set_lastpx(&mut self, px: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_lastpx(&mut self.$($field).+, px);
             }
-            fn get_lastqty(&self) -> Option<$crate::Decimal18> {
+            fn get_lastqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_lastqty(&self.$($field).+)
             }
-            fn set_lastqty(&mut self, qty: Option<$crate::Decimal18>) {
+            fn set_lastqty(&mut self, qty: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_lastqty(&mut self.$($field).+, qty);
             }
-            fn get_avgpx(&self) -> Option<$crate::Decimal18> {
+            fn get_avgpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_avgpx(&self.$($field).+)
             }
-            fn set_avgpx(&mut self, px: Option<$crate::Decimal18>) {
+            fn set_avgpx(&mut self, px: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_avgpx(&mut self.$($field).+, px);
             }
-            fn get_cumqty(&self) -> Option<$crate::Decimal18> {
+            fn get_cumqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_cumqty(&self.$($field).+)
             }
-            fn set_cumqty(&mut self, qty: Option<$crate::Decimal18>) {
+            fn set_cumqty(&mut self, qty: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_cumqty(&mut self.$($field).+, qty);
             }
-            fn get_leavesqty(&self) -> Option<$crate::Decimal18> {
+            fn get_leavesqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_leavesqty(&self.$($field).+)
             }
-            fn set_leavesqty(&mut self, qty: Option<$crate::Decimal18>) {
+            fn set_leavesqty(&mut self, qty: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_leavesqty(&mut self.$($field).+, qty);
             }
-            fn get_prevpx(&self) -> Option<$crate::Decimal18> {
+            fn get_prevpx(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_prevpx(&self.$($field).+)
             }
-            fn set_prevpx(&mut self, px: Option<$crate::Decimal18>) {
+            fn set_prevpx(&mut self, px: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_prevpx(&mut self.$($field).+, px);
             }
-            fn get_prevqty(&self) -> Option<$crate::Decimal18> {
+            fn get_prevqty(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_prevqty(&self.$($field).+)
             }
-            fn set_prevqty(&mut self, qty: Option<$crate::Decimal18>) {
+            fn set_prevqty(&mut self, qty: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_prevqty(&mut self.$($field).+, qty);
             }
-            fn get_spotrate(&self) -> Option<$crate::Decimal18> {
+            fn get_spotrate(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_spotrate(&self.$($field).+)
             }
-            fn set_spotrate(&mut self, rate: Option<$crate::Decimal18>) {
+            fn set_spotrate(&mut self, rate: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_spotrate(&mut self.$($field).+, rate);
             }
-            fn get_forwardpoints(&self) -> Option<$crate::Decimal18> {
+            fn get_forwardpoints(&self) -> Option<$crate::Decimal> {
                 $crate::graph::Market::get_forwardpoints(&self.$($field).+)
             }
-            fn set_forwardpoints(&mut self, points: Option<$crate::Decimal18>) {
+            fn set_forwardpoints(&mut self, points: Option<$crate::Decimal>) {
                 $crate::graph::Market::set_forwardpoints(&mut self.$($field).+, points);
             }
             fn get_ticker(&self) -> Option<&str> {
@@ -367,6 +367,7 @@ pub mod market_data;
 pub mod operation;
 pub mod operation_column;
 pub mod trade;
+pub mod view;
 
 pub use book::{
     BookEvent, BookIterator, BookSide, GLOBAL_SYMBOL, SnapshotEvent, SnapshotPartition,
@@ -384,3 +385,4 @@ pub use operation::{
 };
 pub use operation_column::OperationColumn;
 pub use trade::TradeEvent;
+pub use view::MarketView;
