@@ -1,15 +1,12 @@
 'use strict'
 
 // The replay's walk: operations folded into books by the native
-// `BookIterator`, the books indexed by symbol and instant, and a scenario's
-// inserted events merged into the base stream. Nothing here folds, sorts
-// within an instant, or decides what a book holds - the iterator does, and
-// refuses what it cannot walk. What this file owns is bookkeeping over what
-// it answered: where a book sits, and which stream a re-run reads.
+// `BookIterator`, and the books indexed by symbol and instant. Nothing here
+// folds, sorts within an instant, or decides what a book holds - the
+// iterator does, and refuses what it cannot walk. What this file owns is
+// bookkeeping over what it answered: where a book sits.
 
 const { graph } = require('../binding.js')
-
-const web = require('./web.js')
 
 /** The leaf a stream item holds: a `MarketData` answers its own. */
 function leafOf(item) {
@@ -90,73 +87,4 @@ function bookAt(index, symbol, at) {
   return end === 0 ? null : held.books[end - 1]
 }
 
-/**
- * One stream of `base` and `inserted`, both already in walk order, by instant:
- * a tie keeps the base item first, so an inserted event lands after every
- * base statement of its instant, and an undated base item keeps its place.
- */
-function merged(base, inserted) {
-  const out = []
-  let at = 0
-  for (const item of inserted) {
-    const instant = instantOf(item)
-    while (at < base.length) {
-      const held = instantOf(base[at])
-      if (held !== null && instant !== null && held > instant) break
-      out.push(base[at])
-      at += 1
-    }
-    out.push(item)
-  }
-  for (; at < base.length; at += 1) out.push(base[at])
-  return out
-}
-
-/** The native leaf an event holds, rebuilt from its `toJSON` text by `MarketData.fromJSON`, which refuses a text that is none. */
-function eventLeaf(event) {
-  if (event === null || typeof event !== 'object' || typeof event.native !== 'string') {
-    throw new TypeError('expected an event holding its native leaf text')
-  }
-  return graph.MarketData.fromJSON(event.native)
-}
-
-/**
- * The native values a scenario's events hold: `operations`, one per event in
- * the same order, when the caller holds them - as `load` answers them - and
- * otherwise each rebuilt from its `toJSON` text.
- */
-function eventsOf(scenario, operations) {
-  if (operations === undefined) return scenario.events.map(eventLeaf)
-  if (operations.length !== scenario.events.length) {
-    throw new TypeError(
-      `expected one operation per scenario event: ${scenario.events.length} events, ${operations.length} operations`,
-    )
-  }
-  return operations
-}
-
-/**
- * `leaf`, when the native walk folds it alone; its refusal, verbatim,
- * otherwise. What a scenario holds is what a re-run can walk.
- */
-function admit(leaf) {
-  walk([leaf])
-  return leaf
-}
-
-/**
- * Re-run the replay with a scenario's events inserted: the whole merged
- * stream walked through a fresh `BookIterator`, and `from`, the earliest
- * instant the scenario affects - before it every book is the base's - or
- * `null` for a scenario with no event. `operations` are the events' native
- * leaves when the caller holds them, as `load` answers them; each event is
- * decoded from its text otherwise.
- */
-async function rerun(base, scenario, options = {}, operations = undefined) {
-  const { createScenario, earliestAffected } = await web()
-  const books = walk(merged(base, eventsOf(scenario, operations)), options)
-  const from = earliestAffected(createScenario(scenario.name), scenario)
-  return { books, from: from ?? null }
-}
-
-module.exports = { walk, indexBooks, booksBetween, bookAt, merged, rerun, admit, eventsOf, instantOf, leafOf }
+module.exports = { walk, indexBooks, booksBetween, bookAt, instantOf, leafOf }

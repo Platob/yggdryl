@@ -6,17 +6,18 @@ hide:
 
 # Replay
 
-The trading replay as the package answered it: the application below walks two recorded sources book by book, and shows one scenario's re-run against the base.
+The order book along its timeline, as the package walked it: one component, `BookTimeline`, over the books the native `BookIterator` answers - a scrubber over their instants, the live limits standing at the chosen one, and an audit of the whole book.
 
 ## Contract
 
 | | |
 | --- | --- |
-| Source | `scripts/build_docs_replay.js` runs [`yggdryl/replay`](components.md#the-replay-service) over the synthetic scenario and over `rust/tests/fix/ulbridge.log`, read from its bytes under `config/fix` with the seed clock 2024-01-02T10:15:30Z |
-| Manifest | `docs/assets/replay.json`, committed and checked for drift by the addon build job, beside the component library the same script copies into `docs/assets/web/` |
-| Browser | Renders the manifest only; every book, limit, spread and diff is what the package answered when the manifest was built |
-| Application | The package's own `yggdryl/web/app/app.js`, mounted read-only in a frame over an `api` that answers from the manifest with the method surface [`createApi`](components.md#the-application) has; a route the manifest does not hold is refused, and says so |
-| Manifest keys | `listing` and `field`: what the service itself answered at `/api/sources` (the sources, their symbols, the view names) and `/api/field`; `sources.<id>`: `operations` (every leaf's row), `books` (per symbol and `GLOBAL`, each in walk order), `lifecycle` (`columns` once, `rows` per cross code), `views` (every view bare and `orders` also with two lifts, each answer - or the refusal - with the walks it holds for), `calls` (the JavaScript and the route behind each answer); `sources.synthetic` adds `scenario` (`name`, `inserted`, `events`, `from`, `books`) and `diff` per symbol |
+| Component | `yggdryl/web/book-timeline.js`: `new BookTimeline({ books, index, title }).mount(parent)`, `update({ books, index })`, `select(index)`, `openAudit()`, `destroy()`; each book is `bookJson` of a walk's `BookEvent`, in walk order. Emits `ygg:book-select` with `{ index, curruuid, currunix }` when the instant moves |
+| Timeline | A scrubber and previous/next buttons over the walk, one mark per book at its instant's place in the walk's span (every n-th past 400 books); `←`, `→`, `Home` and `End` move it. It stands at the last book when books arrive |
+| Live limits | Bid and ask side by side, best first as the native side answers them: price, quantity and the live entries resting there, each bar as deep as its quantity against the deepest limit of the book; a limit new since the book before, or whose quantity or live entries moved, is marked. The unpriced limit, where market orders rest, reads `market` |
+| Audit | `Audit book` opens the book standing now in a dialog sized to the viewport - at most 90% of its height, its body scrolling: the book's facts, each side with each limit and the live entries at it (joined by `curruuid`), the executions and the deltas, every one a collapsible item built when it first opens; `Expand all` and `Collapse all` act on every item |
+| Service | `node node/replay.js <source>` serves `GET /api/sources` and `GET /api/sources/:source/books?symbol=` (server-sent `book` events in walk order, then `end` with `{ count }`), and the page at `/web/app/`: a source and a symbol chosen in its header, the component below |
+| Facts | Every price, quantity, instant, spread, midpoint and hash is what the package answered; the page folds, orders and computes nothing |
 
 ## The replay
 
@@ -24,38 +25,28 @@ The trading replay as the package answered it: the application below walks two r
 This section runs the recorded replay from `assets/replay.json` and needs JavaScript.
 </div>
 
-Choose the source in the header. `synthetic` is 23 operations over `ALPHA` and `BETA` at fixed instants - quote ladders, limit orders two of which stand one nanosecond apart, a market order resting at the unpriced limit, executions, a composite trade, an order that expires, a full snapshot of `BETA` - walked into 6 `ALPHA` books, 5 `BETA` books and 9 consolidated ones. `ulbridge` is the ULBridge capture the Rust suite reads: 11 market operations and one refusal, `invalid record value at $.NoSides(552)[0].Side(54): expected a bid or ask side, got no value`, walked into 7 books whose last `stableHash`, 4619727780541450139, is the one `rust/tests/fix/ulbridge.rs` pins.
+`synthetic` is 23 operations over `ALPHA` and `BETA` at fixed instants - quote ladders, limit orders two of which stand one nanosecond apart, a market order resting at the unpriced limit, executions, a composite trade, an order that expires, a full snapshot of `BETA` - walked into 6 `ALPHA` books, 5 `BETA` books and 9 consolidated ones. `ulbridge` is the ULBridge capture the Rust suite reads: 11 market operations and one refusal, walked into 7 books whose last `stableHash`, 4619727780541450139, is the one `rust/tests/fix/ulbridge.rs` pins.
 
-## Views
+## Serve a source
 
-<div class="ygg-rp" data-replay="views" markdown="1">
-This section renders `assets/replay.json` and needs JavaScript.
-</div>
+```bash
+node node/replay.js synthetic
+node node/replay.js rust/tests/fix/ulbridge.log --registry config/fix
+node node/replay.js marketdata.parquet --global
+```
 
-The `orders` view with two lifts, each a map key read as a column of its own: `securityids['ISIN'] as isin` and `metadata['tech.clientid'] as clientid`. The dotted key is one key. No order in either source states `tech.clientid`, so that column is null in every row: an absent key is a null cell, never a refusal. The view keeps the order kinds alone, so it answers the same whichever walk the replay reads.
-
-## Scenario
-
-<div class="ygg-rp" data-replay="scenario" markdown="1">
-This section renders `assets/replay.json` and needs JavaScript.
-</div>
-
-`alpha-lock` inserts two events into the synthetic stream, each built by its own constructor and admitted by the walk before it is stored: a bid at 82.25 two milliseconds in, which narrows the `ALPHA` spread to 0.25, and an ask at that same price at 3.5 milliseconds, which locks the book. The re-run starts at the earliest instant the scenario touches; before it every book is the base's, and a diff row names each change by the fact it changed - a limit by its price, an entry or a delta by its `curruuid`.
+A source is a `.arrow`/`.ipc`/`.feather`/`.parquet` file of `marketdata` rows, the word `synthetic`, or any other file as a FIX capture read under the row header (the ULBridge one by default) and dated by `--sending-time` where a line states none. `--snapshot-millis` walks on a grid, `--global` walks one consolidated book, `--port` picks the port; the command prints the URL it serves at.
 
 ## Edges
 
-- The page inserts nothing: the insert modal says why, and saving, renaming, deleting or removing an event is refused. [`node node/replay.js synthetic`](components.md#the-replay-service) is the same application with the service behind it.
-- The manifest holds the walks without a snapshot grid: turning the grid on is refused, and the grid, the symbol and every panel stay on the walk shown.
-- The manifest holds every view bare, and `orders` also with the two lifts above; other lifts are refused. The `lifecycle` tab follows the chain chosen in the ladder or the tape - the lifecycle the manifest records for that cross code, which is what the view answers for it - and with none chosen asks nothing and says how to choose one.
-- An operation read from the capture names the lines it came from in `srcuuids`. A line's identity is seeded by the name of the buffer the capture is read into, which differs on every read, so those identities differ between two builds of the manifest in everything but their millisecond and row sequence; the drift check compares that part alone.
-- The scenario is recorded over `synthetic` only; asked of `ulbridge`, it is refused.
-- The application follows the page's colour scheme when it opens; its own theme switch decides after that.
+- A capture's refused messages are counted in the header's status, whose tooltip lists each as the package worded it; the walk reads the rest.
+- An operation read from a capture names the lines it came from in `srcuuids`. A line's identity is seeded by the name of the buffer the capture is read into, which differs on every read, so the recorded identities differ between two builds in everything but their millisecond and row sequence; the drift check compares that part alone.
+- The page follows the documentation's colour scheme when it opens.
 
 ## Commands
 
-Change a source, the scenario or the application, then regenerate and check for drift.
-
 ```bash
+node --test node/tests/web/book-timeline.test.js node/tests/web/app.test.js node/tests/replay/server.test.js
 node scripts/build_docs_replay.js
 node scripts/build_docs_replay.js --check
 ```

@@ -220,7 +220,6 @@ nav:
   - Graph:
     - graph/index.md
     - Replay: graph/replay.md
-    - Components: graph/components.md
   - FIX:
     - fix/index.md
     - Explorer: fix/explorer.md

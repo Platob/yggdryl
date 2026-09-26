@@ -1,37 +1,26 @@
 import { graph, type BookEvent, type MarketData } from '..'
 import {
-  DEFAULT_STATE_DIR,
   bookAt,
   bookJson,
   booksBetween,
   booksJson,
   createReplayServer,
-  eventJson,
   indexBooks,
-  leafFromJson,
-  leafJson,
-  leavesJson,
   loadSource,
   main,
-  merged,
-  openScenarios,
   parseArgs,
   refusalText,
-  rerun,
   rowsOf,
   synthetic,
   toJson,
   walk,
   type BookJson,
-  type EventJson,
-  type FieldAnswer,
-  type LeafJson,
+  type LimitJson,
   type Pairs,
   type ReplayServer,
   type Rows,
-  type Scenario,
-  type ScenariosAnswer,
   type Source,
+  type SourcesAnswer,
 } from 'yggdryl/replay'
 
 // A source's operations are native values; its symbols and refusals text.
@@ -47,7 +36,6 @@ const walked: BookEvent[] = walk(operations, { snapshotMillis: 2, global: false 
 const index = indexBooks(walked)
 const window: BookEvent[] = booksBetween(index, 'ALPHA', synthetic.T0, synthetic.T0 + 1n)
 const standing: BookEvent | null = bookAt(index, 'ALPHA')
-const stream = merged(operations, [new graph.OrderEvent(synthetic.T0, { crosscode: 'X' })])
 // @ts-expect-error an instant is a bigint, never a number
 booksBetween(index, 'ALPHA', 1, 2)
 
@@ -57,68 +45,41 @@ const book: BookJson = bookJson(walked[0])
 const at: string = book.currunix
 const hash: string = book.stableHash
 const depth: string | null = book.bid.depth['1']
-const price: string | null = book.ask.limits[0].price
+const limit: LimitJson = book.ask.limits[0]
+const price: string | null = limit.price
+const uuids: string[] = limit.uuids
 const tick: boolean = book.isTick
 const imbalance: string | null = book.imbalance['10']
 const served: BookJson[] = booksJson(synthetic.books())
 const rows: Rows = rowsOf(graph.MarketData.arrowReader(operations))
 const firstColumn: string = rows.columns[0].name
-
-// An inserted event is built by the native constructor; a scenario holds its JSON.
-const leaf = leafFromJson({ kind: 'order_event', currunix: '1700000000000000000', facts: { price: '82.5' } })
-const event: EventJson = eventJson(leaf)
-const native: string = event.native
-const kindOf: string = leafJson(leaf).kind
-const leaves: LeafJson[] = leavesJson(operations)
-// A map crosses as its [key, value] pairs, both ways.
+// A map crosses as its [key, value] pairs.
 const pairs: Pairs = [['7117', 'b'], ['__proto__', 'p']]
-leafFromJson({ kind: 'order_event', currunix: '1700000000000000000', facts: { metadata: pairs } })
-// @ts-expect-error a kind is one of the six leaves a form can state
-leafFromJson({ kind: 'book_event' })
-
-async function scenarios(): Promise<void> {
-  const store = await openScenarios('state')
-  const scenario: Scenario = store.save({ name: 'what-if', events: [event] })
-  const names: string[] = store.list()
-  const loaded = store.load('what-if')
-  if (loaded !== null) {
-    const again: MarketData[] = loaded.operations
-    // What the load decoded is handed on, never decoded again.
-    store.save(loaded.scenario, again)
-    await rerun(operations, loaded.scenario, {}, again)
-  }
-  const held: Scenario | null = store.read('what-if')
-  // The routes' answers: the insert form's vocabulary, and every scenario whole.
-  const field: FieldAnswer = { columns: rows.columns, kinds: ['order_event', 'execution'] }
-  // @ts-expect-error a kind is one of the six an inserted event may name
-  const unknownKind: FieldAnswer = { columns: [], kinds: ['book_event'] }
-  const listed: ScenariosAnswer = { scenarios: [scenario] }
-  void [field, unknownKind, listed]
-  const stored: EventJson = store.insert(held ?? { name: 'what-if', events: [] }, leaf)
-  const removed: boolean = store.remove('what-if')
-  const { books, from } = await rerun(operations, scenario, { global: true })
-  const first: BookEvent | undefined = books[0]
-  const since: bigint | null = from
+const listed: SourcesAnswer = {
+  snapshotMillis: 0,
+  global: false,
+  sources: [{ id: 'synthetic', kind: 'synthetic', name: 'synthetic', operations: 23, symbols: ['ALPHA'], refusals: [] }],
 }
+// @ts-expect-error a source's kind is one of the four the loader reads
+const unknownKind: SourcesAnswer['sources'][number]['kind'] = 'csv'
 
 async function serve(): Promise<void> {
-  const service: ReplayServer = createReplayServer({ sources: [source], stateDir: 'state', snapshotMillis: 0 })
+  const service: ReplayServer = createReplayServer({ sources: [source], snapshotMillis: 0 })
   const byId: ReplayServer = createReplayServer({ sources: new Map([['synthetic', source]]) })
   const url: string = await service.listen(0)
-  const kept: string = service.stateDir
   await service.close()
   await byId.listen()
   const cli = await main(['synthetic', '--port', '0'])
   const cliUrl: string = cli.url
   await cli.close()
+  void [url, cliUrl]
 }
 
 const args = parseArgs(['synthetic', '--global'])
 const port: number = args.port
-const state: string = DEFAULT_STATE_DIR
 const text: string = toJson({ at: 1n }) + refusalText(new Error('x'))
 const synthetic2: MarketData[] = synthetic()
 const symbols: readonly string[] = synthetic.SYMBOLS
 
-void [refusals, window, standing, stream, at, hash, depth, price, tick, imbalance, served, firstColumn, native, kindOf, leaves]
-void [scenarios, serve, port, state, text, synthetic2, symbols]
+void [refusals, window, standing, at, hash, depth, price, uuids, tick, imbalance, served, firstColumn, pairs, listed, unknownKind]
+void [serve, port, text, synthetic2, symbols]

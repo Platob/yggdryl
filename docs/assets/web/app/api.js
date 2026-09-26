@@ -1,12 +1,12 @@
 // The replay service's wire and nothing else: one method per route, each
 // answering the served JSON untouched - instants, decimals and 64-bit
 // integers stay the text they crossed as - and a refusal as `{ refusal }`,
-// the service's own text verbatim, with its `status`. The book streams are
+// the service's own text verbatim, with its `status`. The book stream is
 // server-sent events: `onBook` sees each book in walk order and the promise
-// answers the `end` event's `{ count, from }`; the source is closed on `end`,
-// so the browser never reconnects and replays it. This object is the app's
-// whole contract with the wire: a recorded manifest answering the same
-// methods stands in for it (the docs page's read-only replay does).
+// answers the `end` event's `{ count }`; the source is closed on `end`, so
+// the browser never reconnects and replays it. This object is the page's
+// whole contract with the wire: a recorded manifest answering the same two
+// methods stands in for it (the docs page's replay does).
 
 const segment = encodeURIComponent
 
@@ -24,14 +24,9 @@ export function createApi(baseUrl = globalThis.location?.origin) {
     return target
   }
 
-  /** One request: the served JSON, `{}` for an empty answer, `{ refusal, status }` for a refused one. */
-  async function request(method, path, { query, body } = {}) {
-    const init = { method, headers: { accept: 'application/json' } }
-    if (body !== undefined) {
-      init.headers['content-type'] = 'application/json'
-      init.body = JSON.stringify(body)
-    }
-    const response = await fetch(url(path, query), init)
+  /** One request: the served JSON, `{ refusal, status }` for a refused one. */
+  async function request(method, path, { query } = {}) {
+    const response = await fetch(url(path, query), { method, headers: { accept: 'application/json' } })
     const text = await response.text()
     let json
     try {
@@ -107,38 +102,11 @@ export function createApi(baseUrl = globalThis.location?.origin) {
   }
 
   const source = (id) => `/api/sources/${segment(id)}`
-  const scenario = (name) => `/api/scenarios/${segment(name)}`
 
   return Object.freeze({
-    /** `{ snapshotMillis, global, views, sources: [{ id, kind, name, operations, symbols, refusals }] }`. */
+    /** `{ snapshotMillis, global, sources: [{ id, kind, name, operations, symbols, refusals }] }`. */
     sources: () => request('GET', '/api/sources'),
-    /**
-     * `{ views }`: the view names alone. `sources()` answers them in the same
-     * listing, which is where the app reads them; this method keeps the
-     * surface a recorded `api` (the docs page's) answers whole.
-     */
-    views: async () => ({ views: (await request('GET', '/api/sources')).views }),
-    /** `{ columns: [{ name, dtype, nullable }], kinds }`: what an inserted event may state. */
-    field: () => request('GET', '/api/field'),
     /** The walk's books: `query` = `{ symbol, global, snapshotMillis, from, to }`. */
     books: (id, query, handlers) => stream(url(`${source(id)}/books`, query), handlers),
-    /** The book standing at `query.at`. */
-    book: (id, query) => request('GET', `${source(id)}/book`, { query }),
-    /** `{ columns, rows }`: the lifecycle view of one chain. */
-    lifecycle: (id, crosscode) => request('GET', `${source(id)}/lifecycle`, { query: { crosscode } }),
-    /** `{ columns, rows }`: a named view with its lifts, over the walk `query` names. */
-    view: (id, { view, lifts = [], ...query }) => request('GET', `${source(id)}/view`, { query: { ...query, view, lift: lifts } }),
-    /** `{ scenarios: [{ name, events }] }`. */
-    scenarios: () => request('GET', '/api/scenarios'),
-    /** Store a scenario whole: `{ name, events }` as the service answers it. */
-    saveScenario: (name, body) => request('PUT', scenario(name), { body }),
-    deleteScenario: (name) => request('DELETE', scenario(name)),
-    /** Insert `{ kind, currunix, facts }`: the stored event, or the native refusal. */
-    insert: (name, event) => request('POST', `${scenario(name)}/events`, { body: event }),
-    removeEvent: (name, curruuid) => request('DELETE', `${scenario(name)}/events/${segment(curruuid)}`),
-    /** The scenario's books, from `query.from`, else from the earliest instant it affects. */
-    scenarioBooks: (id, name, query, handlers) => stream(url(`${source(id)}/scenarios/${segment(name)}/books`, query), handlers),
-    /** `{ symbol, from, instants: [{ at, base, scenario, changes }] }`. */
-    diff: (id, name, query) => request('GET', `${source(id)}/scenarios/${segment(name)}/diff`, { query }),
   })
 }
