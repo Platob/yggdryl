@@ -90,7 +90,7 @@ fn rows(count: usize) -> Vec<Scalar> {
             let index = i64::try_from(row).expect("the row index fits an i64");
             Scalar::from_sequence([
                 Scalar::from(SYMBOLS[row % SYMBOLS.len()]),
-                Scalar::d128(i128::from(index % 20_000) * 25, 4),
+                Scalar::decimal128(i128::from(index % 20_000) * 25, 4),
                 Scalar::from(index % 500 + 1),
                 Scalar::datetime64(EPOCH + index * 1_000, TimeUnit::Microsecond, Timezone::UTC)
                     .expect("microseconds under a named zone are an instant"),
@@ -221,7 +221,7 @@ fn natural_rows(root: &Field, batch: &RecordBatch) -> Scalar {
 fn construction_benchmarks(criterion: &mut Criterion) {
     let root = Arc::new(root());
     let price = Arc::new(price_field());
-    let one = Scalar::d128(632_500, 4);
+    let one = Scalar::decimal128(632_500, 4);
     let options = ArrowCastOptions::new();
 
     let mut group = criterion.benchmark_group("arrow_serie_construct");

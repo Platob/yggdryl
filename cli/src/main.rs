@@ -11,6 +11,25 @@
 //! | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively |
 //! | `xmla` | the XML for Analysis provider: serve folders of record media as catalogs over HTTP |
 
+/// Print to standard output, as `print!` does, ending quietly when the reader
+/// has gone - see [`style::write_out`].
+macro_rules! out {
+    ($($arg:tt)*) => {
+        $crate::style::write_out(format_args!($($arg)*))
+    };
+}
+
+/// Print a line to standard output, as `println!` does, ending quietly when
+/// the reader has gone - see [`style::write_out`].
+macro_rules! outln {
+    () => {
+        $crate::style::write_out(format_args!("\n"))
+    };
+    ($($arg:tt)*) => {
+        $crate::style::write_out(format_args!("{}\n", format_args!($($arg)*)))
+    };
+}
+
 mod diff;
 mod fix;
 mod quality;

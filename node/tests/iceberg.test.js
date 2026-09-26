@@ -571,6 +571,38 @@ test('a schema evolves through one recorded chain, committed once', (t) => {
   assert.equal(table.version, version + 1)
 })
 
+test('a schema update replays onto the schema a rival committed', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const location = path.join(root, 'trades')
+
+  const first = iceberg.Table.create(location, schema())
+  const second = iceberg.Table.open(location)
+  const version = first.version
+  const current = first.schemas.length - 1
+
+  // Nothing recorded commits nothing and answers the current schema.
+  assert.equal(first.updateSchema().commit(), current)
+  assert.equal(first.version, version)
+
+  // Both handles record against the same schema; the second commits first,
+  // and the first replays onto what the second made current rather than
+  // dropping its column.
+  const late = first.updateSchema().addColumn('', 'late: int64')
+  const earlyId = second.updateSchema().addColumn('', 'early: int64').commit()
+  const lateId = late.commit()
+
+  assert.ok(lateId > earlyId && earlyId > current)
+  assert.deepEqual(
+    Array.from(first.schema.dtype, (child) => child.name),
+    ['id', 'venue', 'early', 'late'],
+  )
+  assert.deepEqual(
+    Array.from(iceberg.Table.open(location).schema.dtype, (child) => child.name),
+    ['id', 'venue', 'early', 'late'],
+  )
+})
+
 test('updateProperties commits once, and nothing when there is nothing', (t) => {
   const root = scratch()
   t.after(() => fs.rmSync(root, { recursive: true, force: true }))

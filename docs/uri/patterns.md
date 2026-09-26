@@ -14,7 +14,7 @@ This page reads a query off a URL path: glob detection and decomposition, `.giti
 | Glob in a URL | Spelled with `*`; the full syntax is for `matches_glob` text |
 | `glob_parts` | Deepest fixed root, then the rest |
 | `hive_partitions` | `column=value` directories, in path order; read back by [Partitions](../holder/index.md#partitions) |
-| Bindings | Python answers all three, as `glob_parts`, `is_recursive_glob`, and `full_match_under`; JavaScript is Rust-only here |
+| Bindings | Python answers every call here: `is_glob`, `is_recursive_glob`, `glob_parts`, `match`/`full_match` (`matches_glob`), `full_match_under` (`matches_glob_under`), `partition`/`partitions` (`hive_partition`/`hive_partitions`). JavaScript answers `isGlob`, `match`/`fullMatch`, `partition`, `partitions`; `glob_parts`, `is_recursive_glob` and `matches_glob_under` are Rust and Python only |
 
 ## Use
 

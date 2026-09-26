@@ -449,7 +449,7 @@ pub(crate) fn unscaled_at(value: &Scalar, scale: i8) -> Option<i256> {
         .as_i128()
         .map(i256::from_i128)
         .or_else(|| value.as_u128().map(i256::from_u128))?;
-    Scalar::d256(whole, 0).decimal256_unscaled_at(scale)
+    Scalar::decimal256(whole, 0).decimal256_unscaled_at(scale)
 }
 
 /// This value's temporal count in one family's unit, dates included.
@@ -964,11 +964,13 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal256 { .. } | DataType::BigDecimal => Scalar::d256(unscaled, scale),
+            DataType::Decimal256 { .. } | DataType::BigDecimal => {
+                Scalar::decimal256(unscaled, scale)
+            }
             // Every other width holds at most thirty-eight digits, which the
             // precision above has already held the coefficient to.
             _ => match unscaled.as_i128() {
-                Some(unscaled) => Scalar::d128(unscaled, scale),
+                Some(unscaled) => Scalar::decimal128(unscaled, scale),
                 None => return refuse("a number within the declared precision"),
             },
         };

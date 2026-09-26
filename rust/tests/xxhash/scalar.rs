@@ -83,11 +83,11 @@ mod xxhash {
                 Scalar::from(Float64::from_f64(-0.0)),
                 Scalar::from(Float64::from_f64(0.0)),
                 Scalar::from(Float64::from_f64(f64::NAN)),
-                Scalar::d128(100, 2),
+                Scalar::decimal128(100, 2),
                 Scalar::Decimal32(Decimal32::new(100, 2)),
                 Scalar::Decimal64(Decimal64::new(100, 2)),
-                Scalar::d128(-1, 0),
-                Scalar::d256(i256::from_i128(1), 0),
+                Scalar::decimal128(-1, 0),
+                Scalar::decimal256(i256::from_i128(1), 0),
                 Scalar::from(""),
                 Scalar::from("1"),
                 Scalar::from("AAPL"),
@@ -147,14 +147,17 @@ mod xxhash {
                     Scalar::from(Float16::from_f16(half::f16::from_f32(1.5))),
                     Scalar::from(Float64::from_f64(1.5)),
                 ),
-                (Scalar::d128(100, 2), Scalar::d256(i256::from_i128(1), 0)),
+                (
+                    Scalar::decimal128(100, 2),
+                    Scalar::decimal256(i256::from_i128(1), 0),
+                ),
                 (
                     Scalar::Decimal32(Decimal32::new(100, 2)),
-                    Scalar::d128(1, 0),
+                    Scalar::decimal128(1, 0),
                 ),
                 (
                     Scalar::Decimal64(Decimal64::new(100, 2)),
-                    Scalar::d256(i256::from_i128(1), 0),
+                    Scalar::decimal256(i256::from_i128(1), 0),
                 ),
                 (
                     stored("AAPL", StringType::LargeUtf8String),
@@ -268,7 +271,7 @@ mod xxhash {
                 (Scalar::from(1), DataTypeId::UInt128),
                 (Scalar::from(-1), DataTypeId::Int128),
                 (Scalar::from(Float32::from_f32(1.5)), DataTypeId::Float64),
-                (Scalar::d128(1, 0), DataTypeId::Decimal256),
+                (Scalar::decimal128(1, 0), DataTypeId::Decimal256),
                 (Scalar::from("AAPL"), DataTypeId::Utf8String),
                 (
                     Scalar::from(Arc::from(b"AAPL".as_slice())),
@@ -480,7 +483,7 @@ mod xxhash {
                 &1.5_f64.to_bits().to_le_bytes()
             );
             assert_eq!(
-                Scalar::d256(i256::from_i128(1), 3)
+                Scalar::decimal256(i256::from_i128(1), 3)
                     .as_value_bytes()
                     .unwrap()
                     .len(),

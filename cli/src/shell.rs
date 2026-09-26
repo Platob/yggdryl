@@ -83,12 +83,12 @@ pub fn read_line(
     history: &mut Vec<String>,
     completions: &Completions,
 ) -> std::io::Result<Option<String>> {
-    print!("{prompt}");
+    out!("{prompt}");
     stdout().flush()?;
     enable_raw_mode()?;
     let held = edit(prompt, history, completions);
     disable_raw_mode()?;
-    println!();
+    outln!();
     held
 }
 
@@ -187,7 +187,7 @@ fn redraw(prompt: &str, line: &str, at: usize) -> std::io::Result<()> {
         cursor::MoveToColumn(0),
         terminal::Clear(terminal::ClearType::UntilNewLine),
     )?;
-    print!("{prompt}{line}");
+    out!("{prompt}{line}");
     let column = prompt.chars().count() + line[..at].chars().count();
     let column = u16::try_from(column).unwrap_or(u16::MAX);
     execute!(stdout(), cursor::MoveToColumn(column))?;
@@ -196,7 +196,7 @@ fn redraw(prompt: &str, line: &str, at: usize) -> std::io::Result<()> {
 
 /// Shows what a prefix could still become, in columns.
 fn show(candidates: &[String]) -> std::io::Result<()> {
-    println!();
+    outln!();
     let widest = candidates.iter().map(String::len).max().unwrap_or(0) + 2;
     let columns = (terminal::size().map_or(80, |(width, _)| width) as usize / widest).max(1);
     for chunk in candidates.chunks(columns) {
@@ -204,10 +204,10 @@ fn show(candidates: &[String]) -> std::io::Result<()> {
             .iter()
             .map(|held| format!("{held:<widest$}"))
             .collect();
-        print!("\r{}\n", style::dim(&cells.concat()));
+        out!("\r{}\n", style::dim(&cells.concat()));
     }
     if candidates.len() >= 200 {
-        print!("\r{}\n", style::dim("… and more"));
+        out!("\r{}\n", style::dim("… and more"));
     }
     stdout().flush()
 }

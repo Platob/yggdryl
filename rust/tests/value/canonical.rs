@@ -176,6 +176,45 @@ mod value {
         }
     }
 
+    #[test]
+    fn a_temporal_of_the_column_s_family_that_does_not_fit_says_why() {
+        let refusal = |dtype: DataType, value: Scalar| dtype.scalar(value).unwrap_err().to_string();
+        let utc = DataType::datetime64(TimeUnit::Nanosecond, Timezone::UTC).unwrap();
+
+        // A naive value into a zoned column: the zone is what is missing.
+        let message = refusal(
+            utc.clone(),
+            Scalar::datetime64(1, TimeUnit::Second, Timezone::NAIVE).unwrap(),
+        );
+        assert!(
+            message.contains("expected datetime64(ns,\"UTC\")"),
+            "{message}"
+        );
+        assert!(
+            message.contains("a naive value states no zone"),
+            "{message}"
+        );
+
+        // A zoned value into a naive column, and one zone into another.
+        let naive = DataType::datetime64(TimeUnit::Second, Timezone::NAIVE).unwrap();
+        let message = refusal(
+            naive,
+            Scalar::datetime64(1, TimeUnit::Second, Timezone::UTC).unwrap(),
+        );
+        assert!(message.contains("naive wall-clock times"), "{message}");
+
+        // A count the column's unit cannot state exactly names the count.
+        let seconds = DataType::duration64(TimeUnit::Second).unwrap();
+        let message = refusal(
+            seconds,
+            Scalar::duration64(1_500, TimeUnit::Millisecond).unwrap(),
+        );
+        assert!(
+            message.contains("1500 ms is not a whole count of s"),
+            "{message}"
+        );
+    }
+
     /// The spellings a value takes on the way into a datatype, and the ones it
     /// prints on the way out - the same readings a column takes and prints.
     mod readings {
@@ -200,7 +239,7 @@ mod value {
             );
             assert_eq!(
                 dtype("decimal128(10, 2)").scalar("10.50").unwrap(),
-                Scalar::d128(1_050, 2)
+                Scalar::decimal128(1_050, 2)
             );
             assert_eq!(
                 DataType::date32().scalar("1970-01-02").unwrap(),
@@ -221,13 +260,13 @@ mod value {
         #[test]
         fn every_spelling_of_one_number_reaches_a_decimal_column_at_its_scale() {
             let column = dtype("decimal128(12, 2)");
-            let hundred = Scalar::d128(10_000, 2);
+            let hundred = Scalar::decimal128(10_000, 2);
 
             // A whole number is a decimal of scale zero, so writing it into a
             // column of scale two is one hundred, not one: the coefficient is
             // restated, never taken as though it were already unscaled.
             assert_eq!(column.scalar(100_i64).unwrap(), hundred);
-            assert_eq!(column.scalar(Scalar::d128(100, 0)).unwrap(), hundred);
+            assert_eq!(column.scalar(Scalar::decimal128(100, 0)).unwrap(), hundred);
             assert_eq!(column.scalar("100.00").unwrap(), hundred);
             assert_eq!(column.scalar(Scalar::from(100_u8)).unwrap(), hundred);
 
@@ -240,14 +279,14 @@ mod value {
                         .required_field("size")
                         .scalar(100_i64)
                         .unwrap(),
-                    column.scalar(Scalar::d128(100, 0)).unwrap(),
+                    column.scalar(Scalar::decimal128(100, 0)).unwrap(),
                     "{spelling}"
                 );
             }
 
             // A negative scale removes digits, and only exactly.
             let tens = dtype("decimal128(12, -1)");
-            assert_eq!(tens.scalar(100_i64).unwrap(), Scalar::d128(10, -1));
+            assert_eq!(tens.scalar(100_i64).unwrap(), Scalar::decimal128(10, -1));
             assert!(tens.scalar(105_i64).is_err());
         }
 

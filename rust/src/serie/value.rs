@@ -408,7 +408,7 @@ pub(crate) fn read_decimal64(dtype: &DataType, value: i64) -> Result<Scalar> {
 
 pub(crate) fn read_decimal128(dtype: &DataType, value: i128) -> Result<Scalar> {
     match dtype {
-        DataType::Decimal128 { scale, .. } => Ok(Scalar::d128(value, *scale)),
+        DataType::Decimal128 { scale, .. } => Ok(Scalar::decimal128(value, *scale)),
         // The fixed leaf reads its own value off the same slot; a coefficient
         // past thirty-eight digits is one the storage held and the datatype
         // does not.
@@ -421,7 +421,7 @@ pub(crate) fn read_decimal128(dtype: &DataType, value: i128) -> Result<Scalar> {
 
 pub(crate) fn read_decimal256(dtype: &DataType, value: ArrowI256) -> Result<Scalar> {
     match dtype {
-        DataType::Decimal256 { scale, .. } => Ok(Scalar::d256(
+        DataType::Decimal256 { scale, .. } => Ok(Scalar::decimal256(
             i256::from_le_bytes(value.to_le_bytes()),
             *scale,
         )),

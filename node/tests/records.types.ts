@@ -107,7 +107,12 @@ const batches: ArrowRecordBatch[] = [...fromBatches]
 
 const handle = IOBase.fromBytes()
 handle.mediaType = MimeType.ARROW_STREAM
-const handleOptions: RecordOptions = handle.recordOptions()
+const handleOptions: TextOptions | RecordOptions = handle.recordOptions()
+void handleOptions
+const lines: IterableIterator<TextLine> = handle.readTextLines({ startRownum: 1n })
+const linesUnder: Iterable<TextLine> = handle.readTextLines(new TextOptions(), { maxRowSize: 1 })
+void lines
+void linesUnder
 const storedField: Field = handle.readArrowField()
 const withOptions: Field = handle.readArrowField(named)
 const reader: BatchReader = handle.readArrowReader()

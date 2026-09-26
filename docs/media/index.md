@@ -20,7 +20,7 @@ A handle's name picks the encoding, the compression and the charset; the read an
 
 ## Read and write
 
-Every record encoding answers the same calls through [`IOMedia`](../holder/index.md#records): `overwrite_records`, `append_records`, `merge_records`, `read_records` for native rows, and the `*_arrow_*` twins for Arrow batches.
+Every record encoding answers the same calls through [`IOMedia`](../holder/index.md#records): `overwrite_records`, `append_records` and `merge_records` write native rows, and the `*_arrow_*` twins read and write Arrow batches. Rows come back as native values through Python `read_records` and JavaScript `readRecords`; Rust has no `read_records` and reads rows through `read_arrow`, a `SerieReader` of one record `Serie` per batch.
 
 === "Rust"
 
@@ -220,7 +220,7 @@ A read returns an [`arrow::BatchReader`](../arrow/readers.md); only the current 
 
 ### Options
 
-One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, plus the settings one encoding owns. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default.
+One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`, `batch_row_size`, `merge_by`, `safe`, `level`, the row bounds `row_offset`, `max_row_size` and `max_byte_size` ([Limits](../holder/index.md#limits)), plus the settings one encoding owns. A JSON, YAML, TOML or XML document is one value rather than a stream of batches, so it has no `RecordOptions`: it reads through `read_arrow` or `read_scalar` and writes, whole, through `write_arrow` or `write_scalar`. The declared `field` and the field a write completes onto are both declarations and cast by [one rule](../types/cast.md#required-columns): a nullable column takes a value it cannot convert as null while `safe` (the default) holds, and a not-null column refuses that value, a null and a missing column by name rather than storing its canonical default.
 
 === "Rust"
 
@@ -313,7 +313,7 @@ One `RecordOptions` drives every encoding: the root `field`, `select`, `filter`,
 
 ## Arrow IPC
 
-The stream carries its schema. A narrower `field` is a column pushdown: skipped columns are never decoded.
+The stream carries its schema. A narrower `field` is a column pushdown: skipped columns are never decoded. A stored batch reads back as long as its writer made it unless `batch_row_size` or `batch_byte_size` bounds the read, which cuts it into views over its own buffers.
 
 === "Rust"
 
@@ -745,7 +745,7 @@ YGGDRYL_BENCH_FILTER=records/read_parquet_geospatial_statistics npm run --prefix
 
 ## Avro
 
-A container carries its writer schema; a reader schema resolves renames, promotions and defaults.
+A container carries its writer schema; a reader schema resolves renames, promotions and defaults. Avro has no dictionary encoding, so a dictionary column is written as the values it encodes.
 
 === "Rust"
 
@@ -1787,6 +1787,95 @@ A scan decodes its files side by side once two of at least 64 KiB qualify (`read
     // Reopening finds the table again, with no catalog in between.
     const reopened = iceberg.Table.open(root)
     assert.equal(reopened.scan().intoTable().numRows, 2)
+
+    fs.rmSync(path.dirname(root), { recursive: true, force: true })
+    ```
+
+### Iceberg schema evolution
+
+A `SchemaUpdate` records column operations - add, rename, drop, promote - and one commit replays them onto the schema that commit attempt reads, so a commit beaten by another writer rebases onto the winner's schema rather than overwriting it. Field IDs are kept and a dropped one is never reused; promotions are `int32 -> int64`, `float32 -> float64` and same-scale decimal widening. The commit answers the schema id it made current, and an update that recorded nothing writes nothing and answers the current one.
+
+=== "Rust"
+
+    ```rust
+    use std::sync::Arc;
+
+    use arrow_array::{Int32Array, RecordBatch};
+    use yggdryl::iceberg::{assign_field_ids, FormatVersion, PartitionSpec, SchemaUpdate, Table};
+    use yggdryl::local::LocalFolder;
+    use yggdryl::{arrow, DataType, StructType};
+
+    let mut schema = DataType::from(StructType::from_fields([DataType::Int32.required_field("id")])?)
+        .required_field("row");
+    assign_field_ids(&mut schema, 1)?;
+    let path = LocalFolder::temporary()?.path()?.join("yggdryl-docs-iceberg-evolve");
+    let _ = std::fs::remove_dir_all(&path);
+    let mut table = Table::create(LocalFolder::new(&path)?, FormatVersion::V2, schema.clone(), PartitionSpec::unpartitioned())?;
+    let batch = RecordBatch::try_new(schema.into_arrow_schema()?, vec![Arc::new(Int32Array::from(vec![1]))])?;
+    table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
+
+    let mut update = SchemaUpdate::from_metadata(table.metadata())?;
+    update.add_column("", DataType::utf8().nullable_field("note"));
+    update.update_type("id", DataType::Int64);
+    assert_eq!(table.update_schema(&update)?, 1);
+
+    // Nothing recorded, nothing written: the current id comes back.
+    let unchanged = SchemaUpdate::from_metadata(table.metadata())?;
+    assert_eq!(table.update_schema(&unchanged)?, 1);
+
+    let first = table.scan(None)?.next().expect("one batch")?;
+    assert_eq!(first.column(0).data_type(), &arrow_schema::DataType::Int64);
+    assert_eq!(first.column(1).null_count(), 1);
+    let _ = std::fs::remove_dir_all(&path);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    import pyarrow as pa
+
+    from yggdryl import Field, IOBase
+    from yggdryl.iceberg import Table
+
+    root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
+    table = Table.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
+    table.append(pa.table({"id": pa.array([1], pa.int32())}))
+
+    schema_id = table.update_schema().add_column("", Field("note", "utf8")).update_type("id", "int64").commit()
+    assert schema_id == 1
+
+    # Nothing recorded, nothing written: the current id comes back.
+    assert table.update_schema().commit() == 1
+
+    assert [child.name for child in table.schema.dtype] == ["id", "note"]
+    assert table.scan().read_all().column("note").to_pylist() == [None]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const arrow = require('apache-arrow')
+    const { Field, fields, iceberg } = require('yggdryl')
+
+    const root = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-')), 'trades')
+    const table = iceberg.Table.create(root, fields.struct('row', [new Field('id', 'int32', false)], { nullable: false }))
+    table.append(new arrow.Table({ id: arrow.vectorFromArray([1], new arrow.Int32()) }))
+
+    const schemaId = table.updateSchema().addColumn('', Field.from('note: utf8')).updateType('id', 'int64').commit()
+    assert.equal(schemaId, 1)
+
+    // Nothing recorded, nothing written: the current id comes back.
+    assert.equal(table.updateSchema().commit(), 1)
+
+    assert.deepEqual([...table.schema.dtype].map((child) => child.name), ['id', 'note'])
+    assert.deepEqual([...table.scan().intoTable().getChild('note')], [null])
 
     fs.rmSync(path.dirname(root), { recursive: true, force: true })
     ```

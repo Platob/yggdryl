@@ -305,7 +305,7 @@ impl DatumCodec<'_> {
                             ),
                         )
                     })?;
-                    node_scalar(node, Scalar::d128(unscaled, decimal.scale as i8))?
+                    node_scalar(node, Scalar::decimal128(unscaled, decimal.scale as i8))?
                 }
                 Node::Duration(fixed) => {
                     let (months, days, nanoseconds) =

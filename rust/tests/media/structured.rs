@@ -217,7 +217,7 @@ fn a_declared_root_types_the_documents_natural_strings() {
         Scalar::from(column),
         Scalar::from_sequence([Scalar::from_sequence([
             Scalar::from("AAPL"),
-            Scalar::d128(10_000, 2),
+            Scalar::decimal128(10_000, 2),
         ])])
     );
 }
@@ -426,14 +426,14 @@ fn nested_children_keep_their_values_in_every_document_that_carries_them() {
             Scalar::from_sequence([Scalar::from("XPAR"), Scalar::from(1_i64)]),
             Scalar::from_sequence([Scalar::from(100_i64), Scalar::from(250_i64)]),
             Scalar::from("lit"),
-            Scalar::d128(12_550, 2),
+            Scalar::decimal128(12_550, 2),
             Scalar::date32(19_876),
         ]),
         Scalar::from_sequence([
             Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i64)]),
             Scalar::from_sequence([]),
             Scalar::Null,
-            Scalar::d128(1, 2),
+            Scalar::decimal128(1, 2),
             Scalar::date32(0),
         ]),
     ];

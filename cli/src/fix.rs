@@ -592,7 +592,7 @@ fn dispatch(store: &mut registry::Store, line: &str) -> Result<()> {
     }
     if line == "help" {
         ShellCommand::command().print_long_help()?;
-        println!();
+        outln!();
         style::note(
             "save writes pending changes; quit leaves. Category commands use the same flags as ygg fix.",
         );

@@ -979,13 +979,25 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.equal(legs.at(1), null)
     assert.throws(() => legs.at(-1), /non-negative/)
 
-    const nested = record.path('legs.0.at')
+    // A path is the one FieldPath grammar: `.name`, `[i]` counting back
+    // when negative, `['key']`, `[a:b]` - text parsed once, or the path.
+    const nested = record.path('legs[0].at')
     assert.ok(nested instanceof Scalar)
     assert.equal(nested.kind, 'datetime64')
     assert.equal(nested.count, 1700000000123456789n)
     assert.equal(nested.unit, 'ns')
     assert.equal(nested.zone, 'Europe/Paris')
-    assert.equal(record.path('legs.9.at'), null)
+    assert.equal(record.path('legs[9].at'), null)
+    assert.ok(record.path('legs[-1].at').equals(nested))
+    const { FieldPath } = require('yggdryl')
+    assert.ok(record.path(new FieldPath('legs[0].at')).equals(nested))
+    assert.equal(record.path("['z']").asJs(), 2)
+    assert.equal(record.path('legs[0:1]').length, 1)
+    assert.equal(record.path('legs[1:]').length, 0)
+    // The dotted-number form is retired: `0` is a name, which no sequence
+    // holds, and text that is not a path is refused where it stopped.
+    assert.equal(record.path('legs.0.at'), null)
+    assert.throws(() => record.path('legs['), /path/)
 
     // Record iteration is deterministic field-name order and yields values.
     assert.deepEqual([...record].map((value) => value.kind), ['serie', 'i64'])
@@ -2351,37 +2363,6 @@ const nativeYamlDumpAll = require('../../index.js').yamlDumpAllNative
     assert.throws(() => yaml.dumps(cyclic), /cyclic/)
     assert.throws(() => json.loads('{"missing":]'), /JSON/i)
     assert.throws(() => yaml.loads('value: [unterminated'), /YAML/i)
-  })
-
-  test('the byte codings round-trip and read node:zlib output', () => {
-    const zlibNative = require('node:zlib')
-    const { gzip, zlib, zstd } = require('yggdryl')
-    const payload = Buffer.from('{"id":1}\n'.repeat(512))
-
-    assert.deepEqual(gzip.loads(gzip.dumps(payload)), payload)
-    assert.deepEqual(gzip.loads(zlibNative.gzipSync(payload)), payload)
-    assert.deepEqual(zlibNative.gunzipSync(gzip.dumps(payload, 9)), payload)
-    assert.deepEqual(zlib.loads(zlib.dumps(payload)), payload)
-    assert.deepEqual(zstd.loads(zstd.dumps(payload, 9)), payload)
-  })
-
-  test('raw DEFLATE round-trips, reads node:zlib, and shares no framing with zlib', () => {
-    const zlibNative = require('node:zlib')
-    const { zlib } = require('yggdryl')
-    const payload = Buffer.from('{"id":1}\n'.repeat(512))
-
-    assert.deepEqual(zlib.loadsRaw(zlib.dumpsRaw(payload)), payload)
-    assert.deepEqual(zlib.loadsRaw(zlibNative.deflateRawSync(payload)), payload)
-    assert.deepEqual(zlibNative.inflateRawSync(zlib.dumpsRaw(payload, 9)), payload)
-    // The raw output is the framed output without the two-byte header and the
-    // four-byte checksum, which is the whole of the difference.
-    assert.equal(zlib.dumpsRaw(payload).length + 6, zlib.dumps(payload).length)
-
-    // Nothing in unframed bytes says which framing they are, so the pair is
-    // named rather than sniffed - and each half refuses the other's output
-    // instead of decoding it into something plausible.
-    assert.throws(() => zlib.loads(zlib.dumpsRaw(payload)), /deflate/)
-    assert.throws(() => zlib.loadsRaw(zlib.dumps(payload)), /deflate/)
   })
 
   test('value bytes carry any value and read back as itself', () => {

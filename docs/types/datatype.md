@@ -343,15 +343,19 @@ to the outer node and Arrow's values are a bare datatype.
 
     ```javascript
     const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
     const { DataType } = require('yggdryl')
 
-    // Any Apache Arrow JS type is read through its own textual form.
-    const arrowLike = { toString: () => 'map<string,array<decimal(38,18)>>' }
-    const value = DataType.fromArrow(arrowLike)
+    // An Apache Arrow JS type crosses as a one-field IPC schema.
+    const entries = new arrow.Struct([
+      new arrow.Field('key', new arrow.Utf8(), false),
+      new arrow.Field('value', new arrow.List(new arrow.Field('item', new arrow.Decimal(18, 38, 128), true)), true),
+    ])
+    const value = DataType.fromArrow(new arrow.Map_(new arrow.Field('entries', entries, false)))
 
     assert.equal(value.id, 'map')
     assert.ok(DataType.fromArrow(value).equals(value))
-    assert.throws(() => DataType.fromArrow({}), /own textual representation/)
+    assert.throws(() => DataType.fromArrow({}), TypeError)
     ```
 
 Every conversion re-checks parameters; whole schemas cross through [Schema](../arrow/schema.md).
@@ -659,7 +663,7 @@ assert_eq!(DataType::PARSE_RECURSION_LIMIT, 64);
 - nesting past 64 -> error, in parsing, default construction, and compatibility walks alike.
 - `into_scheme_compat("duckdb")` -> refused by name, listing the accepted targets.
 - `datetime64(ns)` to `spark` -> refused with `got ns` and the node path; scale never clamped, extension metadata never relabeled.
-- `DataType.fromArrow({})` -> `own textual representation` error, never `[object Object]`.
+- `DataType.fromArrow({})` -> `TypeError`: only a `DataType`, datatype text or an Apache Arrow JS type is read, and an arbitrary object is never stringified.
 - `int`, `float`, `char`, `String`, `Boolean` -> grammar meanings (`int32`, `float32`, `utf8`, `boolean`), not FIX.
 - `TZTimestamp` -> the instant, offset dropped; read under `datetime64(ns,"<zone>")` for the local value.
 - `TZTimeOnly` -> the same instant under the date it does not state: the epoch day supplies one, so `07:39+05:30` is `1970-01-01T02:09:00Z` and `00:30+05:30` is the evening of 1969-12-31. The date is not data and a reading is not confined to one day, so a day filter is the wrong tool on the column; two readings still subtract.

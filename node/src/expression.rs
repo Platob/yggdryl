@@ -45,6 +45,9 @@ use crate::text::codec::JsScalar;
 
 /// A term, or the text of one.
 pub(crate) type TermInput<'a> = Either<ClassInstance<'a, JsTerm>, String>;
+/// One operand of a builder: a term, a value, or the text of a term.
+pub(crate) type OperandInput<'a> =
+    Either3<ClassInstance<'a, JsTerm>, ClassInstance<'a, JsScalar>, String>;
 /// A filter, a term, or the text of a predicate.
 pub(crate) type FilterInput<'a> =
     Either3<ClassInstance<'a, JsFilter>, ClassInstance<'a, JsTerm>, String>;
@@ -77,6 +80,18 @@ pub(crate) fn term_from_input(value: TermInput<'_>) -> Result<CoreTerm> {
     match value {
         Either::A(term) => Ok(term.inner.clone()),
         Either::B(text) => text.parse().map_err(napi_error),
+    }
+}
+
+/// Read one operand the way every binding reads it: a term as it is, text
+/// through the term grammar, and a value as [`CoreTerm::from_scalar`] reads
+/// one - text parses, every other value is the literal it is. The loader
+/// makes a `Scalar` of any other JavaScript value before this redirect.
+pub(crate) fn operand_from_input(value: OperandInput<'_>) -> Result<CoreTerm> {
+    match value {
+        Either3::A(term) => Ok(term.inner.clone()),
+        Either3::B(scalar) => CoreTerm::from_scalar(&scalar.inner).map_err(napi_error),
+        Either3::C(text) => text.parse().map_err(napi_error),
     }
 }
 
@@ -307,19 +322,17 @@ impl JsTerm {
         Self::from_core(CoreTerm::column(name))
     }
 
-    /// Hold one constant.
-    ///
-    /// The constant is a `Scalar`, which is the JavaScript spelling of the
-    /// values JavaScript itself has none of - an exact decimal, a date, a
-    /// timestamp at a resolution a `Date` cannot hold. `Scalar.fromJs` makes
-    /// one out of an ordinary JavaScript value.
-    #[napi(factory)]
+    /// Hold one constant: a `Scalar`, or any JavaScript value, which the
+    /// loader reads through `Scalar.from` - text included, which stays the
+    /// text it is rather than parsing.
+    #[napi(factory, ts_args_type = "value: unknown")]
     pub fn literal(value: &JsScalar) -> Self {
         Self::from_core(CoreTerm::literal(value.inner.clone()))
     }
 
-    /// Hold a constant in an explicitly named datatype, checked against it.
-    #[napi(factory)]
+    /// Hold a constant in an explicitly named datatype, checked against it;
+    /// a JavaScript value is read through `Scalar.from` first.
+    #[napi(factory, ts_args_type = "dtype: DataTypeInput, value: unknown")]
     pub fn typed_literal(dtype: DataTypeInput<'_>, value: &JsScalar) -> Result<Self> {
         CoreTerm::typed_literal(dtype_from_input(dtype)?, value.inner.clone())
             .map(Self::from_core)
@@ -345,35 +358,39 @@ impl JsTerm {
     }
 
     /// Conjoin many terms into one flattened node; empty is true.
-    #[napi(factory)]
-    pub fn all(operands: Vec<Either<ClassInstance<'_, JsTerm>, String>>) -> Result<Self> {
+    #[napi(factory, ts_args_type = "operands: Iterable<unknown>")]
+    pub fn all(
+        operands: Vec<Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>>,
+    ) -> Result<Self> {
         let operands = operands
             .into_iter()
-            .map(term_from_input)
+            .map(operand_from_input)
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_core(CoreTerm::all(operands)))
     }
 
     /// Disjoin many terms into one flattened node; empty is false.
-    #[napi(factory)]
-    pub fn any(operands: Vec<Either<ClassInstance<'_, JsTerm>, String>>) -> Result<Self> {
+    #[napi(factory, ts_args_type = "operands: Iterable<unknown>")]
+    pub fn any(
+        operands: Vec<Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>>,
+    ) -> Result<Self> {
         let operands = operands
             .into_iter()
-            .map(term_from_input)
+            .map(operand_from_input)
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_core(CoreTerm::any(operands)))
     }
 
     /// Call one function of the closed scalar set over terms or their text.
-    #[napi(factory)]
+    #[napi(factory, ts_args_type = "name: string, arguments: Iterable<unknown>")]
     pub fn call(
         name: String,
-        arguments: Vec<Either<ClassInstance<'_, JsTerm>, String>>,
+        arguments: Vec<Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>>,
     ) -> Result<Self> {
         let function = CoreFunction::resolve(&name).map_err(napi_error)?;
         let arguments = arguments
             .into_iter()
-            .map(term_from_input)
+            .map(operand_from_input)
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_core(CoreTerm::call(function, arguments)))
     }
@@ -455,18 +472,24 @@ impl JsTerm {
     }
 
     /// Build `this and other`.
-    #[napi]
-    pub fn and(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn and(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().and(term_from_input(other)?),
+            self.inner.clone().and(operand_from_input(other)?),
         ))
     }
 
     /// Build `this or other`.
-    #[napi]
-    pub fn or(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn or(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().or(term_from_input(other)?),
+            self.inner.clone().or(operand_from_input(other)?),
         ))
     }
 
@@ -480,90 +503,110 @@ impl JsTerm {
     ///
     /// The vocabulary is the grammar's own - `=`, `<>`, `<`, `<=`, `>`, `>=`,
     /// `is distinct from`, `is not distinct from`.
-    #[napi]
+    #[napi(ts_args_type = "comparison: string, other: unknown")]
     pub fn comparison(
         &self,
         comparison: String,
-        other: Either<ClassInstance<'_, JsTerm>, String>,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
     ) -> Result<Self> {
         let comparison = comparison_from_text(&comparison)?;
         Ok(Self::from_core(
             self.inner
                 .clone()
-                .compare(comparison, term_from_input(other)?),
+                .compare(comparison, operand_from_input(other)?),
         ))
     }
 
     /// `this = other`.
-    #[napi]
-    pub fn eq(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn eq(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().eq(term_from_input(other)?),
+            self.inner.clone().eq(operand_from_input(other)?),
         ))
     }
 
     /// `this <> other`.
-    #[napi]
-    pub fn ne(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn ne(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ne(term_from_input(other)?),
+            self.inner.clone().ne(operand_from_input(other)?),
         ))
     }
 
     /// `this < other`.
-    #[napi]
-    pub fn lt(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn lt(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().lt(term_from_input(other)?),
+            self.inner.clone().lt(operand_from_input(other)?),
         ))
     }
 
     /// `this <= other`.
-    #[napi]
-    pub fn le(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn le(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().le(term_from_input(other)?),
+            self.inner.clone().le(operand_from_input(other)?),
         ))
     }
 
     /// `this > other`.
-    #[napi]
-    pub fn gt(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn gt(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().gt(term_from_input(other)?),
+            self.inner.clone().gt(operand_from_input(other)?),
         ))
     }
 
     /// `this >= other`.
-    #[napi]
-    pub fn ge(&self, other: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "other: unknown")]
+    pub fn ge(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ge(term_from_input(other)?),
+            self.inner.clone().ge(operand_from_input(other)?),
         ))
     }
 
     /// `this in (...)`, over the terms or texts given.
-    #[napi]
-    pub fn is_in(&self, values: Vec<Either<ClassInstance<'_, JsTerm>, String>>) -> Result<Self> {
+    #[napi(ts_args_type = "values: Iterable<unknown>")]
+    pub fn is_in(
+        &self,
+        values: Vec<Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>>,
+    ) -> Result<Self> {
         let values = values
             .into_iter()
-            .map(term_from_input)
+            .map(operand_from_input)
             .collect::<Result<Vec<_>>>()?;
         Ok(Self::from_core(self.inner.clone().is_in(values)))
     }
 
     /// `this between low and high`, inclusive at both ends.
-    #[napi]
+    #[napi(ts_args_type = "low: unknown, high: unknown")]
     pub fn between(
         &self,
-        low: Either<ClassInstance<'_, JsTerm>, String>,
-        high: Either<ClassInstance<'_, JsTerm>, String>,
+        low: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+        high: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
     ) -> Result<Self> {
-        Ok(Self::from_core(
-            self.inner
-                .clone()
-                .between(term_from_input(low)?, term_from_input(high)?),
-        ))
+        Ok(Self::from_core(self.inner.clone().between(
+            operand_from_input(low)?,
+            operand_from_input(high)?,
+        )))
     }
 
     /// `this is null`, which answers true or false and never unknown.
@@ -579,26 +622,35 @@ impl JsTerm {
     }
 
     /// `this like pattern`, with SQL's `%` and `_` wildcards.
-    #[napi]
-    pub fn like(&self, pattern: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "pattern: unknown")]
+    pub fn like(
+        &self,
+        pattern: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().like(term_from_input(pattern)?),
+            self.inner.clone().like(operand_from_input(pattern)?),
         ))
     }
 
     /// `this ilike pattern`, folding ASCII case.
-    #[napi]
-    pub fn ilike(&self, pattern: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "pattern: unknown")]
+    pub fn ilike(
+        &self,
+        pattern: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().ilike(term_from_input(pattern)?),
+            self.inner.clone().ilike(operand_from_input(pattern)?),
         ))
     }
 
     /// `this glob pattern`, under the `.gitignore` path rule.
-    #[napi]
-    pub fn glob(&self, pattern: Either<ClassInstance<'_, JsTerm>, String>) -> Result<Self> {
+    #[napi(ts_args_type = "pattern: unknown")]
+    pub fn glob(
+        &self,
+        pattern: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
         Ok(Self::from_core(
-            self.inner.clone().glob(term_from_input(pattern)?),
+            self.inner.clone().glob(operand_from_input(pattern)?),
         ))
     }
 
@@ -639,8 +691,9 @@ impl JsTerm {
         Self::from_core(self.inner.clone().slice(start, end))
     }
 
-    /// Read a map value by key.
-    #[napi]
+    /// Read a map value by key: a `Scalar`, or any JavaScript value read
+    /// through `Scalar.from`.
+    #[napi(ts_args_type = "key: unknown")]
     pub fn key(&self, key: &JsScalar) -> Result<Self> {
         let segment = CoreSegment::key(key.inner.clone()).map_err(napi_error)?;
         Ok(Self::from_core(
@@ -650,52 +703,67 @@ impl JsTerm {
 
     /// Build `this + other` after the loader has inferred the public input.
     #[napi(js_name = "_addNative", skip_typescript)]
-    pub fn add_native(&self, other: &JsTerm) -> Self {
-        Self::from_core(
+    pub fn add_native(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
+        Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Add, other.inner.clone()),
-        )
+                .arithmetic(Operator::Add, operand_from_input(other)?),
+        ))
     }
 
     /// Build `this - other` after the loader has inferred the public input.
     #[napi(js_name = "_subtractNative", skip_typescript)]
-    pub fn subtract_native(&self, other: &JsTerm) -> Self {
-        Self::from_core(
+    pub fn subtract_native(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
+        Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Sub, other.inner.clone()),
-        )
+                .arithmetic(Operator::Sub, operand_from_input(other)?),
+        ))
     }
 
     /// Build `this * other` after the loader has inferred the public input.
     #[napi(js_name = "_multiplyNative", skip_typescript)]
-    pub fn multiply_native(&self, other: &JsTerm) -> Self {
-        Self::from_core(
+    pub fn multiply_native(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
+        Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Mul, other.inner.clone()),
-        )
+                .arithmetic(Operator::Mul, operand_from_input(other)?),
+        ))
     }
 
     /// Build `this / other` after the loader has inferred the public input.
     #[napi(js_name = "_divideNative", skip_typescript)]
-    pub fn divide_native(&self, other: &JsTerm) -> Self {
-        Self::from_core(
+    pub fn divide_native(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
+        Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Div, other.inner.clone()),
-        )
+                .arithmetic(Operator::Div, operand_from_input(other)?),
+        ))
     }
 
     /// Build `this % other` after the loader has inferred the public input.
     #[napi(js_name = "_remainderNative", skip_typescript)]
-    pub fn remainder_native(&self, other: &JsTerm) -> Self {
-        Self::from_core(
+    pub fn remainder_native(
+        &self,
+        other: Either3<ClassInstance<'_, JsTerm>, ClassInstance<'_, JsScalar>, String>,
+    ) -> Result<Self> {
+        Ok(Self::from_core(
             self.inner
                 .clone()
-                .arithmetic(Operator::Rem, other.inner.clone()),
-        )
+                .arithmetic(Operator::Rem, operand_from_input(other)?),
+        ))
     }
 
     /// Build `-this`, folding a numeric literal in the native core.
@@ -835,8 +903,10 @@ impl JsBound {
         self.inner.reads_rows()
     }
 
-    /// Evaluate this term for one row of column values, in schema order.
-    #[napi]
+    /// Evaluate this term for one row: the column values in schema order, or
+    /// a named record the schema orders, refusing a name it does not declare.
+    /// A JavaScript row is read through `Scalar.from` first.
+    #[napi(ts_args_type = "row: unknown")]
     pub fn eval(&self, row: &JsScalar) -> Result<JsScalar> {
         self.inner
             .eval(&row.inner)
@@ -847,8 +917,8 @@ impl JsBound {
     /// Answer this predicate for one row, reading unknown as "no".
     ///
     /// Unknown is not true, so a row whose value is null does not pass a
-    /// comparison against it.
-    #[napi]
+    /// comparison against it. The row is read as `eval` reads one.
+    #[napi(ts_args_type = "row: unknown")]
     pub fn matches(&self, row: &JsScalar) -> Result<bool> {
         self.inner.matches(&row.inner).map_err(napi_error)
     }

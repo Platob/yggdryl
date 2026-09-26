@@ -35,13 +35,13 @@ let field = DataType::from(StructType::from_fields([
 .required_field("trade");
 
 let row = from_json_scalar_with_field(r#"{"n":7,"day":"2024-01-02","px":"12.50"}"#, &field)?;
-assert_eq!(row.get(0).as_deref(), Some(&Scalar::d128(1250, 2)));
+assert_eq!(row.get(0).as_deref(), Some(&Scalar::decimal128(1250, 2)));
 assert_eq!(row.get(1).expect("a day").dtype()?, DataType::date32());
 assert_eq!(row.get(2).as_deref(), Some(&Scalar::from(7_i8)));
 
 // The same field reads every format the same way.
 let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
-assert_eq!(from_yaml_scalar_with_field("'12.50'\n", &amount)?, Scalar::d128(1250, 2));
+assert_eq!(from_yaml_scalar_with_field("'12.50'\n", &amount)?, Scalar::decimal128(1250, 2));
 
 // A value the field cannot hold is refused with its location.
 let refused = from_json_scalar_with_field(r#"{"n":700,"day":"2024-01-02","px":"1"}"#, &field).unwrap_err();

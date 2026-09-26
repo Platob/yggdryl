@@ -388,8 +388,15 @@ impl IOBase for LocalFolder {
 
     fn child_by_path(&self, name: &str) -> Result<Holder> {
         // Resolve through the URL so `.` and `..` behave as they do everywhere
-        // else in the crate.
-        Self::hold(&self.url.joinpath(name)?)
+        // else in the crate. A trailing slash spells a folder; any other name
+        // is the path role, resolved without touching the disk as on every
+        // other backend, so a name that does not exist yet still takes the
+        // next segment.
+        let url = self.url.joinpath(name)?;
+        if url.has_trailing_slash() {
+            return Ok(Holder::LocalFolder(Self { url }));
+        }
+        Ok(Holder::LocalPath(crate::local::LocalPath::from_url(url)?))
     }
 
     fn ls(&self, recursive: bool, include_private: bool) -> Listing {

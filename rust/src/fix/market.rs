@@ -275,8 +275,10 @@ where
                     self.current = None;
                     return Some(Err(invalid(
                         "$.operations",
+                        // The same words the book walk refuses an unsorted
+                        // stream with, so one mistake reads one way.
                         format_smolstr!(
-                            "expected nondecreasing effective timestamps, got {unix} after {}",
+                            "expected a sorted operation timestamp at or after {}, got {unix}",
                             self.last_unix.expect("the prior timestamp was checked")
                         ),
                     )));

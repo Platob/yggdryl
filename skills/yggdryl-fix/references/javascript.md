@@ -302,10 +302,12 @@ assert.deepEqual([...rows.getChild('level')], ['IN', 'OUT'])
 // The line's clock became each message's instant; no SendingTime was invented.
 assert.equal(rows.getChild('sendingtime').nullCount, 2)
 
-// Line by line: pass the options again, and tell the codec what the captures are called.
-const lines = [...handle.readTextLines(options)]
+// Line by line: the handle reads under its own options, and the codec learns
+// what the captures are called from them.
+const lines = [...handle.readTextLines()]
 assert.equal(lines.length, 3)
-const codec = new fix.FixCodec(registry, { captureNames: ['mtime', 'level'] })
+assert.deepEqual(options.captureNames, ['mtime', 'level'])
+const codec = new fix.FixCodec(registry, { captureNames: options.captureNames })
 const messages = [...codec.parseTextLines(lines)]
 assert.deepEqual(messages.map((message) => message.recdunix), [1_767_348_930_250_000_000n, 1_767_348_930_500_000_000n])
 
@@ -417,7 +419,7 @@ assert.equal(books.length, 2)
 assert.equal(books[1].bid.bestPrice, '101')
 
 // The book door is strict: the same capture out of order is refused.
-assert.throws(() => codec.bookArrowReader(capture).intoTable(), /nondecreasing/)
+assert.throws(() => codec.bookArrowReader(capture).intoTable(), /sorted operation timestamp/)
 // The sorted operations as `marketdata` rows.
 assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
 // The same operations off the capture's FIX rows.
@@ -516,10 +518,7 @@ fs.rmSync(folder, { recursive: true, force: true })
 - Arrow JS interop is copied IPC with bounded cursors, never zero copy; keep
   bulk work inside `parseTextArrowReader` / `arrowReader` / `writeArrowReader`
   and cross into Arrow JS once at the end (`intoTable()`).
-- `TextOptions` has no `captureNames` getter here: pass the capture names you
-  wrote in the row header to `{ captureNames }`, or read them off
-  `options.sourceField()` - the children after `body`.
-- `handle.readTextLines()` with no argument reads under default text options
-  even on an `intoText(options)` handle - no row header, no captures; pass the
-  options (`readTextLines(options)`). `readArrowReader()` does apply them.
+- `handle.readTextLines()` reads under the handle's own text options, row
+  header included, and takes other options or a property bag like every
+  record read; `options.captureNames` is what `{ captureNames }` wants.
 - `snapshotNs` is a `bigint`; `null`, zero or negative disables the grid.

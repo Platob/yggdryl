@@ -116,7 +116,7 @@ fn row_field() -> Field {
 #[test]
 fn a_field_directed_read_types_the_document_element_whatever_it_is_called() {
     let source = "<anything><id>7</id><amount>12.50</amount></anything>";
-    let expected = Scalar::from_sequence([Scalar::from(7_i64), Scalar::d128(1250, 2)]);
+    let expected = Scalar::from_sequence([Scalar::from(7_i64), Scalar::decimal128(1250, 2)]);
     assert_eq!(
         from_xml_scalar_with_field(source, &row_field()).unwrap(),
         expected

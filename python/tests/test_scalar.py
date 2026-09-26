@@ -17,7 +17,7 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from yggdryl import DataType, Field, Scalar, Serie, json, scalar
+from yggdryl import DataType, Field, FieldPath, Scalar, Serie, json, scalar
 
 @dataclass
 class Quote:
@@ -403,9 +403,9 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
         "ns",
         "UTC",
     )
-    assert tree.path("legs.0.price") is not None
-    assert tree.path("legs.0.price").kind == "f32"  # type: ignore[union-attr]
-    assert tree.path("legs.9.price") is None
+    assert tree.path("legs[0].price") is not None
+    assert tree.path("legs[0].price").kind == "f32"  # type: ignore[union-attr]
+    assert tree.path("legs[9].price") is None
     assert tree.get("missing") is None
     assert tree.has("legs") and "legs" in tree
 
@@ -415,6 +415,37 @@ def test_native_scalar_traversal_keeps_exact_children() -> None:
     assert [child.kind for child in sequence] == ["map", "null"]
     with pytest.raises(IndexError):
         _ = sequence[9]
+
+
+def test_a_scalar_path_speaks_the_one_field_path_grammar() -> None:
+    order = Scalar.from_struct(
+        {
+            "legs": [{"price": 10}, {"price": 12}, {"price": 14}],
+            "tags": {"desk": "fx"},
+        }
+    )
+
+    leg = order.path("legs[1].price")
+    assert leg is not None and leg.as_py() == 12
+    # A negative index counts back from the end of the sequence.
+    last = order.path("legs[-1].price")
+    assert last is not None and last.as_py() == 14
+    # A parsed FieldPath is the same path, read without parsing again.
+    first = order.path(FieldPath("legs[0].price"))
+    assert first is not None and first.as_py() == 10
+    keyed = order.path("tags['desk']")
+    assert keyed is not None and keyed.as_str() == "fx"
+    window = order.path("legs[1:3]")
+    assert window is not None and [row["price"].as_py() for row in window] == [12, 14]
+    # The dotted-number spelling is retired: `.0` names a key, which a
+    # sequence does not have.
+    assert order.path("legs.0.price") is None
+    assert order.path("legs[9].price") is None
+
+    with pytest.raises(ValueError, match="at byte 5"):
+        order.path("legs[")
+    with pytest.raises(TypeError, match="FieldPath or a path string"):
+        order.path(0)  # type: ignore[arg-type]
 
 
 def test_native_scalar_mapping_and_record_updates_are_persistent() -> None:

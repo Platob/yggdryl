@@ -155,10 +155,10 @@ pub fn annotate(changes: &[Change]) {
     for held in changes {
         match held {
             Change::Added(tag, name) | Change::Removed(tag, name) => {
-                println!("::notice title=fix {}::{name} ({tag})", held.word());
+                outln!("::notice title=fix {}::{name} ({tag})", held.word());
             }
             Change::Changed { tag, name, details } => {
-                println!(
+                outln!(
                     "::notice title=fix changed::{name} ({tag}): {}",
                     details.join("; ")
                 );

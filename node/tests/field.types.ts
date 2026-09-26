@@ -8,6 +8,7 @@ import {
   intoField,
   type MetadataEntry,
 } from '..'
+import { Field as ArrowField, Utf8 as ArrowUtf8 } from 'apache-arrow'
 
 class TypedRow {
   static get intoStructField(): Field {
@@ -40,9 +41,11 @@ field.update(metadata)
 field.update(new Map([['session', 'regular']]))
 const fieldHash: bigint = field.stableHash()
 const fieldJson: unknown = field.toJSON()
-const arrowField: Field = Field.fromArrow({
-  toString: () => field.toString(),
-})
+const arrowField: Field = Field.fromArrow(new ArrowField('venue', new ArrowUtf8(), false))
+const textField: Field = Field.fromArrow('venue: utf8')
+const copiedField: Field = Field.fromArrow(field)
+void textField
+void copiedField
 const entries: Array<readonly [string, string]> = [...field]
 const dictionaryId: bigint | null = field.dictionaryId
 const dictionaryOrdered: boolean | null = field.dictionaryIsOrdered

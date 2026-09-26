@@ -90,15 +90,18 @@ pub struct IpcOptions {
     /// convert as null, `true` by default; a not-null column refuses it by
     /// name either way.
     pub safe: bool,
-    /// Rows per batch, when a reader should bound them.
     /// Bytes per batch, whichever of this and `batch_row_size` binds first.
     ///
     /// A target rather than a ceiling, and a non-zero bound always yields at
     /// least one row.
     pub batch_byte_size: Option<u64>,
+    /// Rows per batch a reader yields; a stored batch longer than this is
+    /// cut into views over its own buffers.
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
+    /// Leading result rows skipped before `max_row_size` counts.
+    pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
@@ -120,6 +123,7 @@ impl IpcOptions {
             batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
+            row_offset: None,
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,
@@ -529,8 +533,13 @@ fn finish_batch_reader(
         return empty_batch_reader(field, options);
     };
     let reader = StreamReader::try_new(source, indices.clone())?;
+    // A stored batch is as long as its writer made it; the read bounds cut it
+    // into views over its own buffers rather than re-encoding it.
+    let rebatched = |reader: BatchReader| {
+        crate::arrow::rebatched_reader(reader, options.batch_row_size(), options.batch_byte_size())
+    };
     let Some(indices) = indices else {
-        return Ok(Box::new(reader));
+        return Ok(rebatched(Box::new(reader)));
     };
     let projected = Arc::new(
         stored
@@ -541,7 +550,9 @@ fn finish_batch_reader(
     // A projected `StreamReader` yields projected batches but still reports the
     // full stream schema, so the projected one is restated here rather than
     // leaving a reader whose schema disagrees with its batches.
-    Ok(Box::new(RecordBatchIterator::new(reader, projected)))
+    Ok(rebatched(Box::new(RecordBatchIterator::new(
+        reader, projected,
+    ))))
 }
 
 /// Build the typed empty reader used for an absent IPC resource.

@@ -598,21 +598,51 @@ test('datatype JSON remains structural and native-owned', () => {
   assert.ok(DataType.fromJSON(typeJson).equals(type))
 })
 
-test('datatype Arrow-compatible input delegates through the native parser', () => {
-  const type = DataType.fromString('timestamp[us, UTC]')
+test('an Apache Arrow JS datatype crosses as a one-field IPC schema', () => {
+  const arrow = require('apache-arrow')
 
-  assert.ok(DataType.fromArrow({ toString: () => type.toString() }).equals(type))
-  assert.ok(DataType.fromArrow(type).equals(type))
   assert.ok(
-    DataType.fromArrow({
-      [Symbol.toPrimitive]() {
-        throw new Error('generic string coercion must not run')
-      },
-      toString: () => type.toString(),
-    }).equals(type),
+    DataType.fromArrow(new arrow.TimestampMicrosecond('UTC')).equals(
+      DataType.fromString('timestamp[us, UTC]'),
+    ),
   )
-  assert.throws(() => DataType.fromArrow({}), /own textual representation/)
-  assert.throws(() => DataType.fromArrow({ toString: () => 42 }), /must return a string/)
+  assert.equal(DataType.fromArrow(new arrow.Int32()).id, 'int32')
+  // Nested children keep their names and nullability.
+  const struct = DataType.fromArrow(
+    new arrow.Struct([
+      new arrow.Field('id', new arrow.Int64(), false),
+      new arrow.Field('tags', new arrow.List(new arrow.Field('item', new arrow.Utf8(), true)), true),
+    ]),
+  )
+  assert.equal(struct.id, 'struct')
+  assert.deepEqual(Array.from(struct, (child) => [child.name, child.nullable]), [
+    ['id', false],
+    ['tags', true],
+  ])
+  const map = DataType.fromArrow(
+    new arrow.Map_(
+      new arrow.Field(
+        'entries',
+        new arrow.Struct([
+          new arrow.Field('key', new arrow.Utf8(), false),
+          new arrow.Field('value', new arrow.Float64(), true),
+        ]),
+        false,
+      ),
+    ),
+  )
+  assert.equal(map.id, 'map')
+
+  // A native DataType is copied, text parses, and nothing else is guessed at.
+  const type = DataType.fromString('timestamp[us, UTC]')
+  assert.ok(DataType.fromArrow(type).equals(type))
+  assert.ok(DataType.fromArrow('timestamp[us, UTC]').equals(type))
+  assert.throws(() => DataType.fromArrow({ toString: () => type.toString() }), TypeError)
+  assert.throws(() => DataType.fromArrow({}), /Apache Arrow JS DataType/)
+  assert.throws(
+    () => DataType.fromArrow(new arrow.Field('x', new arrow.Int32(), true)),
+    /Apache Arrow JS DataType/,
+  )
 })
 
 test('datatype direct structural JSON rejects invalid parameter states', () => {

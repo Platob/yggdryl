@@ -79,7 +79,7 @@ pub fn from_json_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 ///
 /// let field = Field::new("amount", DataType::decimal128(10, 2)?, false);
 /// let value = from_json_scalar_with_field(r#""12.50""#, &field)?;
-/// assert_eq!(value, Scalar::d128(1250, 2));
+/// assert_eq!(value, Scalar::decimal128(1250, 2));
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
 pub fn from_json_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar> {

@@ -108,6 +108,10 @@ let ids_of = |options| -> Result<Vec<i64>, Box<dyn std::error::Error>> {
 let picked = plain.clone().with_select(["id"])?.with_filter("id > 3")?.with_max_row_size(2);
 assert_eq!(ids_of(&picked)?, [4, 5]);
 
+// A row offset skips leading rows before the row bound counts.
+let page = plain.clone().with_select(["id"])?.with_row_offset(3).with_max_row_size(2);
+assert_eq!(ids_of(&page)?, [3, 4]);
+
 // The same sections spelled as one plan.
 let planned = plain.clone().with_plan("select id where venue = 'XNYS' limit 3")?;
 assert_eq!(ids_of(&planned)?, [1, 3, 5]);
@@ -274,7 +278,7 @@ assert!(refused.to_string().contains("expected overwrite, got append"), "{refuse
 
 ## Bound memory on large writes
 
-`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches a Parquet read yields.
+`with_commit_row_size(N)` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `with_batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
 
 ```rust
 use std::sync::Arc;
@@ -535,7 +539,7 @@ let _ = std::fs::remove_dir_all(&path);
 
 ## Evolve an Iceberg schema
 
-`SchemaUpdate` replays column operations onto the current schema, keeping field IDs and never reusing a dropped one; `evolve_schema` commits the result as one metadata document.
+`SchemaUpdate` records column operations; `Table::update_schema` replays them onto the schema each commit attempt reads - so a commit beaten by another writer rebases rather than overwrites - keeps field IDs, never reuses a dropped one, and answers the schema id it made current. `evolve_schema(field)` replaces the schema whole.
 
 ```rust
 use std::sync::Arc;
@@ -557,7 +561,8 @@ table.commit_append(arrow::batch_reader(batch.schema(), [batch]))?;
 let mut update = SchemaUpdate::from_metadata(table.metadata())?;
 update.add_column("", DataType::utf8().nullable_field("note"));
 update.update_type("id", DataType::Int64);
-table.evolve_schema(update.into_field()?)?;
+let schema_id = table.update_schema(&update)?;
+assert_eq!(schema_id, table.metadata().current_schema_id());
 
 assert_eq!(table.schema()?.field_len(), 2);
 let first = table.scan(None)?.next().expect("one batch")?;
@@ -617,7 +622,7 @@ std::fs::remove_dir_all(&root)?;
 - `IOBase`, `IOMedia` and `IORecordOptions` are traits: import them or the methods do not resolve.
 - Every record verb takes `&RecordOptions`; get it from `handle.record_options()?` so the variant matches the encoding. `read_arrow`/`write_arrow` take `Option<&RecordOptions>`.
 - `with_select`, `with_filter`, `with_merge_by` and `with_plan` parse and return `Result`; `with_field`, `with_max_row_size`, `with_commit_row_size` do not.
-- `RecordOptions` has no offset: `with_plan` keeps a plan's `limit` as `max_row_size` and drops its `offset`. Use `Plan::apply_arrow_reader` or `Plan::execute`.
+- `with_plan` keeps a plan's `limit` as `max_row_size` and its `offset` as `row_offset`; a merge with a `row_offset` is refused.
 - `write_arrow` on a JSON, JSON Lines, YAML, TOML or XML handle takes `IOMode::Overwrite` only: a document is written whole.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; `with_safe(false)` refuses it.
 - There is no `read_records` in Rust: rows out are `read_arrow` columns (`child`, `scalar(i)`) or the `RecordBatch`es themselves.

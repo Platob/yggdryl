@@ -969,6 +969,36 @@ class TestSchemaUpdates:
 
         assert narrow.version == before
 
+    def test_commit_answers_the_schema_id_it_made_current(self, narrow: Table) -> None:
+        before = narrow.version
+
+        schema_id = narrow.update_schema().add_column("", "price: float64").commit()
+
+        assert schema_id == 1
+        assert narrow.version == before + 1
+        assert len(narrow.schemas) == 2
+        # A snapshot written now is written under the schema the commit named.
+        narrow.append(
+            pa.record_batch(
+                {"id": [2], "venue": ["XNYS"], "price": [1.5]},
+                schema=pa.schema(
+                    [
+                        pa.field("id", pa.int32(), nullable=False),
+                        pa.field("venue", pa.string()),
+                        pa.field("price", pa.float64()),
+                    ]
+                ),
+            )
+        )
+        current = narrow.current_snapshot
+        assert current is not None and current.schema_id == schema_id
+
+        # An empty update writes no metadata version and answers the id that
+        # is current, not a fresh one.
+        assert narrow.update_schema().commit() == schema_id
+        assert narrow.version == before + 2
+        assert len(narrow.schemas) == 2
+
     def test_an_illegal_promotion_is_refused_naming_both_sides(
         self, narrow: Table
     ) -> None:
@@ -1002,7 +1032,9 @@ class TestSchemaUpdates:
     def test_a_spent_update_is_refused(self, narrow: Table) -> None:
         update = narrow.update_schema()
         update.add_column("", "price: float64")
+        assert repr(update) == "SchemaUpdate(empty=False, open=True)"
         update.commit()
+        assert repr(update) == "SchemaUpdate(empty=True, open=False)"
 
         with pytest.raises(ValueError, match="already committed or discarded"):
             update.commit()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import gc
 import pathlib
+import pickle
 import struct
 import sys
 import unittest.mock
@@ -17,7 +18,17 @@ import pyarrow as pa
 import pyarrow.dataset as pads
 import pytest
 
-from yggdryl import ChunkedSerie, DataType, Field, IOBase, Serie, SerieReader, scalar
+from yggdryl import (
+    ChunkedSerie,
+    DataType,
+    Field,
+    IOBase,
+    RecordOptions,
+    Serie,
+    SerieReader,
+    TextOptions,
+    scalar,
+)
 
 SCHEMA = pa.schema(
     [
@@ -199,6 +210,81 @@ class TestTypedArrowWrites:
         handle.overwrite_arrow_table(table)
 
         assert handle.read_arrow_reader().read_all() == handle.read_arrow_reader().read_all()
+
+
+class TestRowOffset:
+    """`row_offset` skips leading result rows before `max_row_size` counts."""
+
+    @pytest.fixture
+    def twenty(self, tmp_path: pathlib.Path) -> IOBase:
+        handle = IOBase(tmp_path / "twenty.arrows")
+        handle.overwrite_arrow_table(pa.table({"id": pa.array(range(20), pa.int64())}))
+        return handle
+
+    def test_the_offset_is_a_property_of_both_option_kinds(self) -> None:
+        for options in (RecordOptions("trades.arrows"), TextOptions()):
+            assert options.row_offset is None
+            options.row_offset = 3
+            assert options.row_offset == 3
+            options.row_offset = None
+            assert options.row_offset is None
+
+    def test_a_read_skips_the_offset_then_counts_the_limit(self, twenty: IOBase) -> None:
+        rows = twenty.read_arrow_reader(row_offset=5, max_row_size=3).read_all()
+
+        assert rows.column("id").to_pylist() == [5, 6, 7]
+        # Past the end is the empty stream, never an error.
+        assert twenty.read_arrow_reader(row_offset=25).read_all().num_rows == 0
+
+    def test_a_plan_offset_sets_the_row_offset(self, twenty: IOBase) -> None:
+        options = twenty.record_options()
+        options.plan = "select id limit 3 offset 2"
+
+        assert (options.row_offset, options.max_row_size) == (2, 3)
+        assert twenty.read_arrow_reader(options=options).read_all().column(
+            "id"
+        ).to_pylist() == [2, 3, 4]
+
+    def test_pickle_keeps_the_offset(self) -> None:
+        options = RecordOptions("trades.arrows")
+        options.row_offset = 7
+
+        restored = pickle.loads(pickle.dumps(options))
+        assert restored.row_offset == 7
+        assert restored == options
+
+    def test_a_record_write_pulls_only_the_skipped_and_the_kept_rows(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        handle = IOBase(tmp_path / "offset.arrows")
+        pulled: list[int] = []
+
+        def records() -> Iterator[dict[str, int]]:
+            for index in range(4):
+                pulled.append(index)
+                yield {"id": index}
+            raise AssertionError("a row past row_offset + max_row_size was pulled")
+
+        handle.overwrite_records(records(), row_offset=2, max_row_size=2)
+
+        # The conversion stops once the skip and the bound are both covered,
+        # and the third and fourth rows are what lands.
+        assert pulled == [0, 1, 2, 3]
+        assert handle.read_arrow_reader().read_all().column("id").to_pylist() == [2, 3]
+
+    def test_an_offset_beside_a_merge_key_is_refused_naming_it(
+        self, twenty: IOBase
+    ) -> None:
+        options = twenty.record_options()
+        options.row_offset = 2
+        options.merge_by = ["id"]
+
+        with pytest.raises(ValueError, match="row_offset = 2 with merge_by"):
+            twenty.merge_arrow_table(
+                pa.table({"id": pa.array([1], pa.int64())}), options=options
+            )
+        assert twenty.read_arrow_reader().read_all().num_rows == 20
+
 
 class TestExplicitIntent:
     """Every held Arrow shape exposes overwrite, append, and keyed merge."""

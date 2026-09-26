@@ -30,7 +30,9 @@ const field = fields.decimal256('price', 40, 4, { nullable: false })
 const restored = json.loads(json.dumps(price), { field })
 
 console.assert(restored.equals(price))
-console.assert(price.kind === 'd256')
+// Inference picks the narrowest width; the field restores the declared one.
+console.assert(price.kind === 'd128')
+console.assert(restored.kind === 'd256')
 console.assert(typeof price.stableHash() === 'bigint')
 console.assert(price.clone().compare(price) === 0)
 console.assert(price.intoJson() === '"12345678901234567890.1234"')
@@ -130,7 +132,6 @@ const type = DataType.fromString('struct<symbol:string,price:decimal(18,4)>')
 const coarseClock = DataType.time('milliseconds')
 const preciseClock = DataType.time('nanoseconds')
 const field = new Field('trade', type, false, { source: 'book' })
-field.setTableName('trades')
 field.setParquetFieldId(17)
 field.setLocation('s3://warehouse/trades/data.arrow')
 field.setProperty('postgres', 'type', 'jsonb')
@@ -139,8 +140,8 @@ const encoded = Uri.fromString('https://example.test/trades.csv.gz')
 const partition = Uri.fromString('s3://warehouse/trades').joinPath('day=2026-08-23')
 
 console.assert(Field.fromString(field.toString()).equals(field))
-console.assert(coarseClock.kind === 'time32')
-console.assert(preciseClock.kind === 'time64')
+console.assert(coarseClock.id === 'time32' && coarseClock.kind === 'temporal')
+console.assert(preciseClock.id === 'time64' && preciseClock.kind === 'temporal')
 console.assert(field.parquetFieldId === 17)
 console.assert(field.get('PARQUET:field_id') === '17')
 console.assert(field.location.scheme === 's3')
@@ -183,7 +184,7 @@ class Trade {
 const trade = intoField(Trade)
 console.assert(intoField(new Trade()) === trade)
 console.assert(builds === 1)
-console.assert(trade.dtype.kind === 'struct')
+console.assert(trade.dtype.id === 'struct' && trade.dtype.kind === 'nested')
 ```
 
 `intoField(value, name?)` is the one dynamic field converter. A class exposes
@@ -205,8 +206,8 @@ through that same reader path. `serie.cast` casts a column in hand,
 `SerieReader.fromArrowReader` casts a stream batch by batch under one plan,
 `SerieReader.fromSerie` streams a held column as the one record serie it is,
 and `ArrowCastPlan.compile` holds one cast for every column of a layout.
-Each takes `{ safe, nullability, representation }`, an absent answer taking the
-core's default: a safe cast that repairs a required hole. Run
+Each takes `{ safe, representation }`, an absent answer taking the core's
+default; whether a value may be absent is the target field's nullability. Run
 `npm run bench:records` for the copied-IPC read, projection, cast, and write
 paths.
 

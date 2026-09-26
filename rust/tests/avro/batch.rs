@@ -361,8 +361,8 @@ mod avro {
             .required_field("row");
             let row = Scalar::from_struct([
                 ("id", Scalar::from("00112233-4455-6677-8899-aabbccddeeff")),
-                ("small", Scalar::d128(123, 2)),
-                ("large", Scalar::d128(456, 2)),
+                ("small", Scalar::decimal128(123, 2)),
+                ("large", Scalar::decimal128(456, 2)),
                 ("raw", Scalar::from([1_u8, 2, 3].as_slice())),
                 (
                     "span",
@@ -1283,7 +1283,7 @@ mod avro {
                 Some(
                     &DataType::decimal(10, 2)
                         .unwrap()
-                        .scalar(yggdryl::Scalar::d128(-99, 2))
+                        .scalar(yggdryl::Scalar::decimal128(-99, 2))
                         .unwrap()
                 )
             );

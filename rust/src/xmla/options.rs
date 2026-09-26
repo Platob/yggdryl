@@ -33,6 +33,8 @@ pub struct XmlaOptions {
     pub batch_row_size: Option<usize>,
     /// Most result rows in total - a count of rows, not a per-row byte cap.
     pub max_row_size: Option<u64>,
+    /// Leading result rows skipped before `max_row_size` counts.
+    pub row_offset: Option<u64>,
     /// Most Arrow in-memory bytes of result rows, never encoded bytes.
     pub max_byte_size: Option<u64>,
     /// Rows published per streamed-write commit; `None` publishes once.
@@ -63,6 +65,7 @@ impl XmlaOptions {
             batch_byte_size: None,
             batch_row_size: None,
             max_row_size: None,
+            row_offset: None,
             max_byte_size: None,
             commit_row_size: None,
             level: Level::DEFAULT,

@@ -165,7 +165,7 @@ pub fn read(store: &Store, category: FixCategory, key: &str, json: bool) -> Resu
     if json {
         // The shape a store writes, so what this prints can be edited and
         // handed back through `--input` or dropped into a store tree.
-        println!(
+        outln!(
             "{}",
             yggdryl::into_json_scalar(&yggdryl::into_fix_document(field.clone())?)?
         );
@@ -247,7 +247,7 @@ pub fn list_codesets(store: &Store, filter: Option<&str>, limit: usize) {
 pub fn read_codeset(store: &Store, name: &str, json: bool) -> Result<()> {
     let set = store.registry().codeset(name)?;
     if json {
-        println!(
+        outln!(
             "{}",
             yggdryl::into_json_scalar(&yggdryl::Scalar::from_struct([
                 ("name", yggdryl::Scalar::from(set.name())),

@@ -327,9 +327,9 @@ impl DataType {
     /// assert_eq!(currency.id(), DataTypeId::Ccy);
     /// assert_eq!(currency.as_str(), Some("USD"));
     /// // A decimal is restated at the scale the column declares.
-    /// let decimal = DataType::decimal64(18, 8)?.scalar(Scalar::d128(10_125, 2))?;
+    /// let decimal = DataType::decimal64(18, 8)?.scalar(Scalar::decimal128(10_125, 2))?;
     /// assert_eq!(decimal.id(), DataTypeId::Decimal64);
-    /// assert_eq!(decimal, Scalar::d128(10_125_000_000, 8));
+    /// assert_eq!(decimal, Scalar::decimal128(10_125_000_000, 8));
     /// // An integer narrows to the width it is declared at.
     /// assert_eq!(DataType::Int32.scalar(7_i64)?, Scalar::from(7_i32));
     /// assert_eq!(DataType::Int32.scalar(Scalar::Null)?, Scalar::Null);
@@ -1237,23 +1237,15 @@ mod arrow {
     };
 
     impl DataType {
-        /// Projects this datatype as the Arrow storage its family lays out.
+        /// The borrowing half of [`Self::into_arrow_datatype`]: the Arrow
+        /// storage a family lays out, cloning what a consumed datatype would
+        /// move. A caller outside the crate borrows through
+        /// `ArrowDataType::try_from(&dtype)`.
         ///
         /// This enum owns no projection: each arm names the family that does,
         /// and the family answers for every leaf it holds - which is why a new
         /// leaf never reaches this match.
-        ///
-        /// An extension type projects as its *storage*: an Arrow datatype has
-        /// nowhere to carry the `ARROW:extension:*` entries, which is what
-        /// [`Self::arrow_extension`] answers and what the field projection and
-        /// [`Self::into_arrow_datatype_ffi`] carry.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error when the datatype states something Arrow cannot
-        /// lay out: a unit a width does not carry, a precision wider than its
-        /// backing integer, a negative fixed length.
-        pub fn to_arrow_datatype(&self) -> Result<ArrowDataType> {
+        pub(crate) fn arrow_datatype(&self) -> Result<ArrowDataType> {
             use DataType as R;
             Ok(match self {
                 R::Null => NullType::arrow_storage(),
@@ -1334,15 +1326,23 @@ mod arrow {
             })
         }
 
-        /// Consumes this datatype and returns its Arrow storage.
+        /// Projects this datatype as the Arrow storage its family lays out,
+        /// consuming it.
         ///
-        /// The same projection [`Self::to_arrow_datatype`] makes, except that a
-        /// family holding uniquely shared children consumes them rather than
-        /// cloning a subtree it is about to drop.
+        /// A family holding uniquely shared children consumes them rather than
+        /// cloning a subtree it is about to drop; `ArrowDataType::try_from(&dtype)`
+        /// is the same projection from a borrow.
+        ///
+        /// An extension type projects as its *storage*: an Arrow datatype has
+        /// nowhere to carry the `ARROW:extension:*` entries, which is what
+        /// [`Self::arrow_extension`] answers and what the field projection and
+        /// [`Self::into_arrow_datatype_ffi`] carry.
         ///
         /// # Errors
         ///
-        /// [`Self::to_arrow_datatype`] carries the rule.
+        /// Returns an error when the datatype states something Arrow cannot
+        /// lay out: a unit a width does not carry, a precision wider than its
+        /// backing integer, a negative fixed length.
         pub fn into_arrow_datatype(self) -> Result<ArrowDataType> {
             use DataType as R;
             match self {
@@ -1372,7 +1372,7 @@ mod arrow {
                     mapping.into_arrow_storage()
                 }
                 R::RunEndEncoded(encoded) => RunEndEncodedType::into_arrow_storage(encoded),
-                ref other => other.to_arrow_datatype(),
+                ref other => other.arrow_datatype(),
             }
         }
 
@@ -1508,7 +1508,7 @@ mod arrow {
         ///
         /// # Errors
         ///
-        /// [`Self::to_arrow_datatype`] carries the rule.
+        /// [`Self::into_arrow_datatype`] carries the rule.
         pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema> {
             use DataType as R;
             let parts = match &self {
@@ -1549,7 +1549,7 @@ mod arrow {
                 // crosses the C Data Interface as anonymous storage, which is
                 // exactly what this arm exists to prevent.
                 other => {
-                    let storage = other.to_arrow_datatype()?;
+                    let storage = other.arrow_datatype()?;
                     let schema = FFI_ArrowSchema::try_from(&storage)?;
                     let Some((name, document)) = other.arrow_extension() else {
                         return Ok(schema);
@@ -1708,7 +1708,7 @@ mod arrow {
         type Error = Error;
 
         fn try_from(value: &DataType) -> Result<Self> {
-            value.to_arrow_datatype()
+            value.arrow_datatype()
         }
     }
 

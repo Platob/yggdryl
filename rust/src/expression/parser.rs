@@ -1753,7 +1753,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
             Scalar::from(float_from_text(text).ok_or_else(|| fail("a floating-point number"))?)
         }
         D::Decimal32 { scale, .. } | D::Decimal64 { scale, .. } | D::Decimal128 { scale, .. } => {
-            Scalar::d128(
+            Scalar::decimal128(
                 decimal_from_text(text, *scale).ok_or_else(|| {
                     fail("an exact decimal that fits the declared precision and scale")
                 })?,
@@ -1764,7 +1764,7 @@ pub(crate) fn value_from_text(dtype: &DataType, text: &str, position: usize) -> 
         // refuses a digit their scale cannot hold.
         D::Decimal | D::BigDecimal => Scalar::from_decimal_text(dtype, text)
             .map_err(|_| fail("an exact decimal that fits the declared precision and scale"))?,
-        D::Decimal256 { scale, .. } => Scalar::d256(
+        D::Decimal256 { scale, .. } => Scalar::decimal256(
             i256::from_i128(decimal_from_text(text, *scale).ok_or_else(|| {
                 fail("an exact decimal that fits the declared precision and scale")
             })?),

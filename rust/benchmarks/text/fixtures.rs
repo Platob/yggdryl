@@ -24,7 +24,7 @@ pub(crate) fn typed() -> (Scalar, Field) {
     let value = Scalar::from_struct([
         (
             "amount",
-            Scalar::d256(i256::from_str("1234500").unwrap(), 4),
+            Scalar::decimal256(i256::from_str("1234500").unwrap(), 4),
         ),
         (
             "at",

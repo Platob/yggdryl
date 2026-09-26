@@ -124,5 +124,5 @@ ygg fix --root config/fix diff ../desk/config/fix --annotate
 - The stored tree is generated: prefer these commands (or `FixRegistry.commit`)
   over hand edits, and run `check` before committing a change.
 - Output is a table for people; for tools use `read --json`, `codesets read
-  --json` or `schema --out FILE`. Piping a long table into `head` can end the
-  process with a broken-pipe panic: redirect to a file instead.
+  --json` or `schema --out FILE`. A reader closing the pipe early (`| head`)
+  ends the command quietly with status 0.

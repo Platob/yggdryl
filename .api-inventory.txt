@@ -2398,6 +2398,7 @@ pub enum Holder
   HttpSession(crate::http::Session), HttpRequest(crate::http::Request), HttpResponse(crate::http::Response), HttpStream(crate::http::Stream)  (behind the `http` feature)
   ZipNode(crate::zip::ZipNode), ZipPath(crate::zip::ZipPath), ZipLeaf(crate::zip::ZipLeaf)
   Buffered(Box<Buffered<Self>>), Coded(Box<Coded>), Text(Box<crate::text::Text<Self>>), Media(Box<crate::media::Media>)  (each wraps another Holder, so each is boxed)
+  pub fn exists(&self) -> bool  (each role's own answer; a buffer always, a wrapper its handle's)
   pub const fn buffer(buffer: Buffer) -> Self
   pub fn folder(path: impl AsRef<std::path::Path>) -> Result<Self>
   pub fn file(path: impl AsRef<std::path::Path>) -> Result<Self>
@@ -2651,6 +2652,8 @@ pub fn can_promote(from: &DataType, to: &DataType) -> Result<()>
   pub fn update_doc(&mut self, path: &str, doc: &str)
   pub fn make_nullable(&mut self, path: &str)
   pub fn update_type(&mut self, path: &str, dtype: DataType)
+  pub fn is_empty(&self) -> bool
+  pub fn replay(&self, metadata: &TableMetadata) -> Result<Field>  (the recorded operations over another document's current schema)
   pub fn into_field(self) -> Result<Field>
 
 ### yggdryl::iceberg::field  [rust/src/iceberg/field.rs]
@@ -2886,6 +2889,7 @@ pub struct Table<H: IOBase>
   pub fn commit_append(&mut self, batches: BatchReader) -> Result<()>
   pub fn commit_overwrite(&mut self, batches: BatchReader) -> Result<()>
   pub fn evolve_schema(&mut self, schema: Field) -> Result<i32>
+  pub fn update_schema(&mut self, update: &crate::iceberg::SchemaUpdate) -> Result<i32>  (rebase-safe; nothing recorded commits nothing)
 
 ### yggdryl::iceberg::table (additions)  [rust/src/iceberg/table.rs]
 pub fn manifests_at(&self, snapshot: &Snapshot) -> Result<Vec<ManifestFile>>
@@ -2986,6 +2990,8 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn write_batch_row_size(&self) -> Option<usize>
   fn max_row_size(&self) -> Option<u64>
   fn set_max_row_size(&mut self, max_row_size: Option<u64>)
+  fn row_offset(&self) -> Option<u64>
+  fn set_row_offset(&mut self, row_offset: Option<u64>)
   fn max_byte_size(&self) -> Option<u64>
   fn set_max_byte_size(&mut self, max_byte_size: Option<u64>)
   fn commit_row_size(&self) -> Option<usize>
@@ -3021,6 +3027,7 @@ pub const DEFAULT_RECORD_BATCH_ROW_SIZE: usize = 65_536
   fn with_safe(mut self, safe: bool) -> Self
   fn with_batch_byte_size(mut self, batch_byte_size: u64) -> Self
   fn with_batch_row_size(mut self, batch_row_size: usize) -> Self
+  fn with_row_offset(mut self, row_offset: u64) -> Self
   fn with_max_row_size(mut self, max_row_size: u64) -> Self
   fn with_max_byte_size(mut self, max_byte_size: u64) -> Self
   fn with_commit_row_size(mut self, commit_row_size: usize) -> Self
@@ -4233,7 +4240,6 @@ pub struct Timezone
 
 ### yggdryl::datatype::arrow  [rust/src/datatype.rs]  (DataType's Arrow projection; each arm names the family that answers)
 pub fn from_arrow_datatype(value: &ArrowDataType) -> Result<Self>
-  pub fn to_arrow_datatype(&self) -> Result<ArrowDataType>
   pub fn into_arrow_datatype(self) -> Result<ArrowDataType>
   pub fn into_arrow_schema(self) -> crate::arrow::Result<arrow_schema::SchemaRef>
   pub fn into_arrow_datatype_ffi(self) -> Result<FFI_ArrowSchema>
@@ -4376,10 +4382,10 @@ pub enum DecimalType { Decimal32 { precision: u8, scale: i8 }, Decimal64 { .. },
   pub const fn precision(self) -> u8; pub const fn scale(self) -> i8; pub const fn maximum(self) -> u8
   pub const fn narrowest(precision: u8, scale: i8) -> Self  (never a fixed leaf: bare `decimal` in the grammar names the leaf, `decimal(p, s)` this rule)
 pub fn from_decimal(unscaled: i256, scale: i8) -> Self
-  pub const fn d128(unscaled: i128, scale: i8) -> Self
-  pub const fn d256(unscaled: i256, scale: i8) -> Self
-  pub const fn as_d128(&self) -> Option<(i128, i8)>
-  pub const fn as_d256(&self) -> Option<(i256, i8)>
+  pub const fn decimal128(unscaled: i128, scale: i8) -> Self
+  pub const fn decimal256(unscaled: i256, scale: i8) -> Self
+  pub const fn as_decimal128(&self) -> Option<(i128, i8)>
+  pub const fn as_decimal256(&self) -> Option<(i256, i8)>
   pub fn as_decimal(&self) -> Option<(i256, i8)>
   pub const fn is_decimal(&self) -> bool  (DataTypeKind::Decimal.contains(self.id()))
   pub fn decimal_unscaled_at(&self, scale: i8) -> Option<i128>
@@ -5038,7 +5044,7 @@ pub struct ProtocolField<'field>
   pub fn as_protocol(&self) -> PythonField<'_>
 
 ### yggdryl::scalar  [rust/src/scalar.rs]  (the Value contract and the leaf contracts a scalar's leaves answer are under yggdryl::value; a family is no value type, only the DataTypeId range its DataTypeKind owns)
-  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their d128/d256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the fourteen registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
+  pub enum Scalar  (#[non_exhaustive]; Null, Boolean, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Int128, UInt128, Float16, Float32, Float64, Decimal32, Decimal64, Decimal128, Decimal256, Decimal, BigDecimal (the fixed leaves' units at scale eighteen, wire tags `decimal` and `bigdecimal`, equal to and hashing as their Decimal128/Decimal256 twins), Date32, Date64, Time32, Time64, DateTime64, Duration32, Duration64, Interval, Utf8String .. SizedCp1252String (the eighteen string leaves, each its Str and, fixed or sized, its u32), Country, Ccy, Mic, Cfi, Side, State, TimeInForce, Isin, Cusip, Sedol, Bbg, Ric, Figi, Unit, Uuid, Version, Url, Urn, Timezone, MimeType, MediaType, Binary .. SizedBinary (the six byte leaves, each its Bytes and, fixed or sized, its u32), Geometry, Geography, Serie, SerieView, FixedSizeSerie, LargeSerie, LargeSerieView (each a Serie: a schema-free run or a column, the variant the layout the value is declared under; kind() and the serde tag the layout's name, the old list tags still read), Map, SortedMap (each a Map), Struct, Variant (one Parquet Variant value: its metadata dictionary and its value payload); a held Arrow column is the serie it is, Scalar::from(serie), and a stream is never a Scalar; 48 bytes; every variant holds its leaf directly, the fourteen registered codes included; Eq/Ord/Hash across widths: integers by sign and magnitude, floats by the f64 reading, decimals normalized, temporals of one family by normalized count then zone)
   pub const fn id(&self) -> DataTypeId
   pub const fn family(&self) -> DataTypeKind  (the family whose DataTypeKind::range id() is in; which temporal family is id().temporal_family())
   pub const fn kind(&self) -> &'static str
@@ -5070,7 +5076,7 @@ pub struct ProtocolField<'field>
   pub const fn is_container(&self) -> bool
   pub fn is_truthy(&self) -> bool  (coercion, not a reading: absence, zero at any width, empty text/bytes, and a container with nothing set are false; text spelling false/no/off/0/f/n is false, wider than Python because values arrive as text)
   pub const fn is_number(&self) -> bool  (self.family().is_numeric())
-  pub fn path(&self, path: &str) -> Option<Cow<'_, Self>>  (borrowed for a run's walk, owned once a step reached a row a column built)
+  pub fn path(&self, path: &crate::FieldPath) -> Option<Cow<'_, Self>>  (the one path grammar; borrowed for a run's walk, owned once a step reached a row a column built)
   pub fn get_or<'value>(&'value self, key: &str, default: &'value Self) -> &'value Self
   pub fn entries(&self) -> std::slice::Iter<'_, (Self, Self)>
   pub fn keys(&self) -> Vec<&str>

@@ -647,14 +647,14 @@ pub(crate) fn scalar_from_pickle_state(state: &Bound<'_, PyAny>, depth: usize) -
             let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<i128>()
-                .map(|coefficient| Scalar::d128(coefficient, scale))
+                .map(|coefficient| Scalar::decimal128(coefficient, scale))
                 .map_err(|_| PyOverflowError::new_err("D128 coefficient is out of range"))
         }
         "d256" => {
             let (coefficient, scale) = pickle_decimal(&payload()?)?;
             coefficient
                 .parse::<i256>()
-                .map(|coefficient| Scalar::d256(coefficient, scale))
+                .map(|coefficient| Scalar::decimal256(coefficient, scale))
                 .map_err(|error| PyOverflowError::new_err(error.to_string()))
         }
         "decimal" => {
@@ -1437,12 +1437,18 @@ impl PyScalar {
         Ok(Self::from_inner(self.inner.get_or(key, &default).clone()))
     }
 
-    /// Walk a dotted mapping/record/sequence path.
-    fn path(&self, path: &str) -> Option<Self> {
-        self.inner
-            .path(path)
+    /// Walk a `FieldPath` - `legs[0].price`, `[-1]`, `['key']`, `[1:3]` -
+    /// through mappings, records and sequences.
+    ///
+    /// `path` is a `FieldPath` or its text, parsed once here. A segment that
+    /// does not resolve answers `None`.
+    fn path(&self, path: &Bound<'_, PyAny>) -> PyResult<Option<Self>> {
+        let path = crate::text::line::core_path_from_value(path)?;
+        Ok(self
+            .inner
+            .path(&path)
             .map(Cow::into_owned)
-            .map(Self::from_inner)
+            .map(Self::from_inner))
     }
 
     /// Return whether a mapping key, record name, or sequence value exists.
@@ -1687,6 +1693,13 @@ pub(crate) fn from_py_under(field: &CoreField, value: &Bound<'_, PyAny>) -> PyRe
         return Encoder::default().convert_under(field.dtype(), value, 0);
     }
     from_py(value)
+}
+
+/// Convert one cell of a row under its column's datatype, as the record
+/// doors read it: a dictionary under a record is read by that record's
+/// children's names, and a union position spells the pair naming its member.
+pub(crate) fn from_py_cell(dtype: &CoreDataType, value: &Bound<'_, PyAny>) -> PyResult<Scalar> {
+    Encoder::default().cell(dtype, directs(dtype), value)
 }
 
 /// Whether a union sits in `dtype` or anywhere below it.

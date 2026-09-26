@@ -23,11 +23,11 @@ mod internal {
         fn text_is_restated_exactly_at_the_declared_scale() {
             assert_eq!(
                 from_decimal_text(&money(), "10.50").unwrap(),
-                Scalar::d128(1_050, 2)
+                Scalar::decimal128(1_050, 2)
             );
             assert_eq!(
                 from_decimal_text(&money(), "1.05e1").unwrap(),
-                Scalar::d128(1_050, 2)
+                Scalar::decimal128(1_050, 2)
             );
             // A digit the scale cannot hold is refused rather than rounded away,
             // and that refusal is a reading rather than a parse failure, so no
@@ -190,9 +190,9 @@ mod exact {
 
         #[test]
         fn a_decimal_keeps_the_coefficient_and_the_scale_it_was_given() {
-            let price = Scalar::d128(1_050, 2);
+            let price = Scalar::decimal128(1_050, 2);
 
-            assert_eq!(price.as_d128(), Some((1_050, 2)));
+            assert_eq!(price.as_decimal128(), Some((1_050, 2)));
             assert!(price.is_decimal());
             assert_eq!(price.kind(), "d128");
             assert!(!Scalar::from(10.5).is_decimal());
@@ -202,30 +202,33 @@ mod exact {
         fn a_decimal_holds_a_fraction_no_double_can_hold() {
             // The point of the variant: one tenth has no finite binary expansion,
             // so a float can only ever hold the nearest double to it.
-            let exact = Scalar::d128(1, 1);
-            assert_eq!(exact.as_d128(), Some((1, 1)));
+            let exact = Scalar::decimal128(1, 1);
+            assert_eq!(exact.as_decimal128(), Some((1, 1)));
             assert_ne!(f64::from(0.1_f32), 0.1_f64);
 
             // The full 128-bit coefficient survives, which is what a float cannot do.
-            assert_eq!(Scalar::d128(i128::MAX, 0).as_d128(), Some((i128::MAX, 0)));
+            assert_eq!(
+                Scalar::decimal128(i128::MAX, 0).as_decimal128(),
+                Some((i128::MAX, 0))
+            );
         }
 
         #[test]
         fn one_renderer_restores_the_exact_plain_text() {
             assert_eq!(
-                Scalar::d128(1_050, 2).into_decimal_utf8().as_deref(),
+                Scalar::decimal128(1_050, 2).into_decimal_utf8().as_deref(),
                 Some("10.50")
             );
             assert_eq!(
-                Scalar::d128(-5, 3).into_decimal_utf8().as_deref(),
+                Scalar::decimal128(-5, 3).into_decimal_utf8().as_deref(),
                 Some("-0.005")
             );
             assert_eq!(
-                Scalar::d128(12, -2).into_decimal_utf8().as_deref(),
+                Scalar::decimal128(12, -2).into_decimal_utf8().as_deref(),
                 Some("1200")
             );
             assert_eq!(
-                Scalar::d256(yggdryl::i256::from_i128(1_050), 2)
+                Scalar::decimal256(yggdryl::i256::from_i128(1_050), 2)
                     .into_decimal_utf8()
                     .as_deref(),
                 Some("10.50")
@@ -245,10 +248,10 @@ mod exact {
                 -3,
             );
 
-            assert!(narrow.as_d128().is_some());
-            assert!(wide.as_d256().is_some());
-            assert!(narrow_minimum.as_d128().is_some());
-            assert!(wide_negative.as_d256().is_some());
+            assert!(narrow.as_decimal128().is_some());
+            assert!(wide.as_decimal256().is_some());
+            assert!(narrow_minimum.as_decimal128().is_some());
+            assert!(wide_negative.as_decimal256().is_some());
             assert_eq!(narrow.as_decimal(), Some((i256::from_i128(i128::MAX), 2)));
             assert_eq!(wide.as_decimal().map(|parts| parts.1), Some(3));
             assert_eq!(wide_negative.as_decimal().map(|parts| parts.1), Some(-3));
@@ -270,10 +273,10 @@ mod exact {
         #[test]
         fn two_spellings_of_one_number_are_one_value() {
             for (left, right) in [
-                (Scalar::d128(1_050, 2), Scalar::d128(105, 1)),
-                (Scalar::d128(0, 7), Scalar::d128(0, -7)),
-                (Scalar::d128(-1_050, 2), Scalar::d128(-105, 1)),
-                (Scalar::d128(100, 0), Scalar::d128(1, -2)),
+                (Scalar::decimal128(1_050, 2), Scalar::decimal128(105, 1)),
+                (Scalar::decimal128(0, 7), Scalar::decimal128(0, -7)),
+                (Scalar::decimal128(-1_050, 2), Scalar::decimal128(-105, 1)),
+                (Scalar::decimal128(100, 0), Scalar::decimal128(1, -2)),
             ] {
                 assert_eq!(left, right, "{left:?} == {right:?}");
                 assert_eq!(hash(&left), hash(&right), "{left:?} hashes as {right:?}");
@@ -282,21 +285,21 @@ mod exact {
 
         #[test]
         fn decimals_order_by_the_number_they_name() {
-            assert!(Scalar::d128(1, 1) < Scalar::d128(2, 1));
-            assert!(Scalar::d128(-1, 0) < Scalar::d128(1, 5));
+            assert!(Scalar::decimal128(1, 1) < Scalar::decimal128(2, 1));
+            assert!(Scalar::decimal128(-1, 0) < Scalar::decimal128(1, 5));
             // 0.001 is smaller than 1 even though its coefficient is not.
-            assert!(Scalar::d128(1, 3) < Scalar::d128(1, 0));
+            assert!(Scalar::decimal128(1, 3) < Scalar::decimal128(1, 0));
             // A coefficient too wide to restate is by that fact the larger one.
-            assert!(Scalar::d128(i128::MAX, 0) > Scalar::d128(1, -30));
-            assert!(Scalar::d128(i128::MIN, 0) < Scalar::d128(-1, -30));
+            assert!(Scalar::decimal128(i128::MAX, 0) > Scalar::decimal128(1, -30));
+            assert!(Scalar::decimal128(i128::MIN, 0) < Scalar::decimal128(-1, -30));
         }
 
         #[test]
         fn a_decimal_is_its_own_kind_and_never_an_integer() {
             // A decimal carries a scale, an integer does not, and Arrow keeps them
             // apart too - so equality does not quietly merge them.
-            assert_ne!(Scalar::d128(1, 0), Scalar::from(1_i64));
-            assert!(Scalar::from(1_i64) < Scalar::d128(1, 0));
+            assert_ne!(Scalar::decimal128(1, 0), Scalar::from(1_i64));
+            assert!(Scalar::from(1_i64) < Scalar::decimal128(1, 0));
         }
     }
 
@@ -305,7 +308,7 @@ mod exact {
 
         #[test]
         fn restating_adds_digits_freely_and_drops_none() {
-            let price = Scalar::d128(1_050, 2);
+            let price = Scalar::decimal128(1_050, 2);
 
             assert_eq!(price.decimal_unscaled_at(2), Some(1_050));
             assert_eq!(price.decimal_unscaled_at(4), Some(105_000));
@@ -315,7 +318,10 @@ mod exact {
             assert_eq!(price.decimal_unscaled_at(0), None);
 
             // A coefficient that would no longer fit is refused, not wrapped.
-            assert_eq!(Scalar::d128(i128::MAX, 0).decimal_unscaled_at(1), None);
+            assert_eq!(
+                Scalar::decimal128(i128::MAX, 0).decimal_unscaled_at(1),
+                None
+            );
             // Only a decimal restates at all.
             assert_eq!(Scalar::from(105_i64).decimal_unscaled_at(1), None);
         }
@@ -345,7 +351,7 @@ mod exact {
             assert_eq!(scalar, Scalar::Decimal(px));
             assert_eq!(scalar.as_decimal(), Some((px.units().into(), 18)));
             assert_eq!(Decimal::from_scalar(&scalar), Some(px));
-            assert_eq!(Decimal::from_scalar(&Scalar::d128(825, 1)), Some(px));
+            assert_eq!(Decimal::from_scalar(&Scalar::decimal128(825, 1)), Some(px));
             assert_eq!(Decimal::from_scalar(&Scalar::from(82.5_f64)), Some(px));
             assert_eq!(
                 Decimal::from_scalar(&Scalar::from(100_i64)),
@@ -444,7 +450,7 @@ mod exact {
             assert_eq!(field.dtype(), &DataType::Decimal);
             let px: Decimal = "82.5".parse().unwrap();
             assert_eq!(
-                field.scalar(Scalar::d128(825, 1)).unwrap(),
+                field.scalar(Scalar::decimal128(825, 1)).unwrap(),
                 Scalar::Decimal(px)
             );
             assert_eq!(
@@ -456,7 +462,7 @@ mod exact {
                 Scalar::Decimal(px)
             );
             assert!(
-                field.scalar(Scalar::d128(1, 19)).is_err(),
+                field.scalar(Scalar::decimal128(1, 19)).is_err(),
                 "a nineteenth digit is refused"
             );
             assert!(
@@ -492,9 +498,9 @@ mod exact {
             };
             assert_eq!(
                 hashed(&Scalar::Decimal(px)),
-                hashed(&Scalar::d128(px.units(), 18))
+                hashed(&Scalar::decimal128(px.units(), 18))
             );
-            assert_eq!(Scalar::Decimal(px), Scalar::d128(825, 1));
+            assert_eq!(Scalar::Decimal(px), Scalar::decimal128(825, 1));
         }
 
         #[test]
@@ -542,7 +548,10 @@ mod exact {
             let bare = Field::new("px", DataType::DECIMAL, false);
             let stored =
                 Serie::from_arrow_array(Some(&bare), array, ArrowCastOptions::new()).unwrap();
-            assert_eq!(stored.scalar(0).unwrap(), Scalar::d128(px.units(), 18));
+            assert_eq!(
+                stored.scalar(0).unwrap(),
+                Scalar::decimal128(px.units(), 18)
+            );
             let cast = stored.cast(&field, ArrowCastOptions::new()).unwrap();
             assert_eq!(cast.scalar(0).unwrap(), Scalar::Decimal(px));
             // The wide leaf the same way.
@@ -592,7 +601,7 @@ mod exact {
             );
             // A parameterized decimal meets the leaf at the leaf's scale.
             assert_eq!(
-                px.checked_add(&Scalar::d128(5, 1)).unwrap(),
+                px.checked_add(&Scalar::decimal128(5, 1)).unwrap(),
                 Scalar::Decimal(Decimal::from_int(83))
             );
             // The wide leaf wins where either side is wide.
@@ -682,7 +691,10 @@ mod exact {
             );
             assert_eq!(
                 Scalar::Decimal(Decimal::ONE)
-                    .checked_add(&Scalar::d256(yggdryl::i256::from_i128(10_i128.pow(30)), 0))
+                    .checked_add(&Scalar::decimal256(
+                        yggdryl::i256::from_i128(10_i128.pow(30)),
+                        0
+                    ))
                     .unwrap(),
                 big("1000000000000000000000000000001")
             );
@@ -737,16 +749,16 @@ mod exact {
             // Twenty integer digits hold; a twenty-first is refused, however
             // the number arrives.
             let twenty: yggdryl::i256 = "99999999999999999999".parse().unwrap();
-            assert!(px.scalar(Scalar::d256(twenty, 0)).is_ok());
+            assert!(px.scalar(Scalar::decimal256(twenty, 0)).is_ok());
             let twenty_one = yggdryl::i256::from_i128(10_i128.pow(20));
-            assert!(px.scalar(Scalar::d256(twenty_one, 0)).is_err());
+            assert!(px.scalar(Scalar::decimal256(twenty_one, 0)).is_err());
             assert!(px.scalar(Scalar::from(10_u128.pow(20))).is_err());
             assert!(px.scalar(Scalar::from("100000000000000000000")).is_err());
             let notional = Field::new("notional", DataType::BigDecimal, false);
             let fifty_eight: yggdryl::i256 = "9".repeat(58).parse().unwrap();
-            assert!(notional.scalar(Scalar::d256(fifty_eight, 0)).is_ok());
+            assert!(notional.scalar(Scalar::decimal256(fifty_eight, 0)).is_ok());
             let fifty_nine: yggdryl::i256 = format!("1{}", "0".repeat(58)).parse().unwrap();
-            assert!(notional.scalar(Scalar::d256(fifty_nine, 0)).is_err());
+            assert!(notional.scalar(Scalar::decimal256(fifty_nine, 0)).is_err());
             assert!(
                 notional
                     .scalar(Scalar::from(format!("1{}", "0".repeat(58)).as_str()))
@@ -853,7 +865,7 @@ mod exact {
                 (-1_i128).into()
             );
             assert_eq!(
-                BigDecimal::from_scalar(&Scalar::d256(yggdryl::i256::from_i128(15), 1)),
+                BigDecimal::from_scalar(&Scalar::decimal256(yggdryl::i256::from_i128(15), 1)),
                 Some("1.5".parse().unwrap())
             );
             assert_eq!(BigDecimal::dtype(), DataType::BigDecimal);

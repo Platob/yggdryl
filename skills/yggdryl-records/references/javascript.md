@@ -1,6 +1,6 @@
 # yggdryl-records in JavaScript
 
-`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, commitRowSize, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
+`const { IOBase, BatchReader, RecordOptions, TextOptions, iceberg } = require('yggdryl')` with `apache-arrow` for tables. Every record method takes a trailing `options?` - a `RecordOptions`, or a plain object of option properties (`{ select, filter, field, mergeBy, maxRowSize, rowOffset, commitRowSize, compression, rowheader }`) set on a copy of the handle's options. Batches cross as copied Arrow IPC, one self-contained batch at a time.
 
 ## Which encoding will this handle use?
 
@@ -90,6 +90,10 @@ const picked = handle.readArrowReader({ select: ['id'], filter: 'id > 3', maxRow
 assert.deepEqual(picked.schema.fields.map((field) => field.name), ['id'])
 assert.deepEqual([...picked.getChild('id')], [4n, 5n])
 
+// rowOffset skips leading rows before maxRowSize counts.
+const page = handle.readArrowReader({ select: ['id'], rowOffset: 3, maxRowSize: 2 }).intoTable()
+assert.deepEqual([...page.getChild('id')], [3n, 4n])
+
 // A declared field projects and casts in one pass.
 const narrow = fields.struct('row', [new Field('id', 'int32', false)], { nullable: false })
 assert.equal(handle.readArrowReader(handle.recordOptions().withField(narrow)).intoTable().numCols, 1)
@@ -125,7 +129,7 @@ assert.throws(() => handle.readArrowReader({ field, safe: false }).intoTable(), 
 
 ## Write and read plain rows or class instances
 
-`*Records` takes plain objects; `readRecords()` yields plain objects and `readRecords(Cls)` instances built from each row. Declare a `field` when writing: Arrow JS infers strings as dictionaries otherwise.
+`*Records` takes plain objects; `readRecords()` yields plain objects and `readRecords(Cls)` instances built from each row. Declare a `field` when writing: Arrow JS infers strings as `dictionary(int32,utf8)` otherwise.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -487,7 +491,7 @@ fs.rmSync(root, { recursive: true, force: true })
 - Arrow JS interop is copied IPC: cross in whole batches or tables, never row by row; `intoTable()` drains the reader.
 - `int64` columns come back as `bigint`; build Arrow JS `Int64` vectors from `bigint` (`1n`). `*Records` under a declared field accepts `number` or `bigint`, but not both in one call: Arrow JS infers the rows from the first row before the field applies, so `[{ id: 1 }, { id: 2n }]` throws a `TypeError`.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `{ safe: false }` to have it refused.
-- Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro cannot store that. Pass `{ field }` on the write.
+- Plain-object rows infer strings as `dictionary(int32,utf8)`; Avro stores them as the plain values. Pass `{ field }` on the write to state the column instead.
 - A `RecordOptions` `with*` call returns a new value; setters (`options.filter = ...`) mutate that one object.
-- `RecordOptions` has no offset: a plan's `offset` given through `withPlan` is dropped. Use `Plan.applyArrowReader(reader)` or `Plan.execute()`.
+- A plan's `offset` given through `withPlan` is the options' `rowOffset`; a merge with one is refused.
 - No `readArrow`/`writeArrow` and no `scanPolars`: structured-text rows go through the codecs in `yggdryl-documents`.

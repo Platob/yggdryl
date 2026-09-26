@@ -60,7 +60,7 @@ pub fn from_toml_scalar(input: impl AsRef<[u8]>) -> Result<Scalar> {
 /// let amount = Field::new("amount", DataType::decimal128(10, 2)?, false);
 /// let field = Field::new("row", DataType::from(StructType::from_fields([amount])?), false);
 /// let value = from_toml_scalar_with_field("amount = \"12.50\"\n", &field)?;
-/// assert_eq!(value, Scalar::from_sequence([Scalar::d128(1250, 2)]));
+/// assert_eq!(value, Scalar::from_sequence([Scalar::decimal128(1250, 2)]));
 /// # Ok::<(), yggdryl::Error>(())
 /// ```
 pub fn from_toml_scalar_with_field(input: impl AsRef<[u8]>, field: &Field) -> Result<Scalar> {

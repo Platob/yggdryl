@@ -382,15 +382,26 @@ impl Bound {
     }
 }
 
-/// One row's column values: lent by a run, built once by a column.
+/// One row's column values: lent by a run, built once by a column, and a
+/// named record ordered by the schema's own canonicalization - which refuses
+/// a name the schema does not declare.
 pub(crate) fn row_values<'row>(
     row: &'row Scalar,
     schema: &Field,
 ) -> Result<std::borrow::Cow<'row, [Scalar]>> {
+    if row.as_struct().is_some() {
+        let ordered = schema.canonicalize_value(row.clone())?;
+        let values = ordered
+            .sequence_rows()
+            .map(std::borrow::Cow::into_owned)
+            .unwrap_or_default();
+        sized(&values, schema)?;
+        return Ok(std::borrow::Cow::Owned(values));
+    }
     let values = row.sequence_rows().ok_or_else(|| Error::InvalidRecord {
         path: SmolStr::new(schema.name()),
         reason: format_smolstr!(
-            "expected an ordered sequence of {} column values, got {}",
+            "expected an ordered sequence of {} column values or a named record, got {}",
             schema.field_len(),
             row.kind()
         ),

@@ -155,6 +155,19 @@ fn a_signature_is_a_struct_field_both_ways() {
     );
     assert_eq!(FunctionSignature::from_field(&field).unwrap(), signature);
     assert_eq!(signature.arity(), (1, 2));
+    // A required return is two trailing words, and reads back as required.
+    let required = FunctionSignature::new(
+        UserRef::new("rs", "strict").unwrap(),
+        [DataType::Int64.required_field("a")],
+        DataType::Int64.required_field("returns"),
+    )
+    .unwrap();
+    let field = required.as_field().unwrap();
+    assert_eq!(
+        field.get_metadata("FUNCTION:returns"),
+        Some("int64 not null")
+    );
+    assert_eq!(FunctionSignature::from_field(&field).unwrap(), required);
     // A default has to trail.
     let leading = FunctionSignature::new(
         UserRef::new("rs", "wrong").unwrap(),

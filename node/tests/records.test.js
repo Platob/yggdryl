@@ -916,3 +916,97 @@ test('a declared name roots the schema inferred from plain records', (t) => {
   assert.equal(textField.name, 'events')
   assert.deepEqual(textField.entries(), [])
 })
+
+function numbered(count) {
+  return rows(
+    Array.from({ length: count }, (_, index) => BigInt(index)),
+    Array.from({ length: count }, () => 'AAPL'),
+    Array.from({ length: count }, () => 'XNAS'),
+  )
+}
+
+test('a row offset in a property bag skips rows before the limit counts', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  handle.overwriteArrowTable(numbered(10))
+
+  const table = handle.readArrowReader({ rowOffset: 5, maxRowSize: 3 }).intoTable()
+  assert.deepEqual([...table.getChild('id')], [5n, 6n, 7n])
+  // The offset is a plan's `offset`, spelled the same way through one.
+  const planned = handle.readArrowReader({ plan: 'select id limit 2 offset 8' }).intoTable()
+  assert.deepEqual([...planned.getChild('id')], [8n, 9n])
+})
+
+test('a write skips its leading rows and converts no row past the limit', () => {
+  const handle = IOBase.fromBytes()
+  handle.mediaType = MimeType.ARROW_STREAM
+  let pulled = 0
+  function* records() {
+    for (let id = 1n; id <= 6n; id += 1n) {
+      pulled += 1
+      yield { id, venue: 'XNAS' }
+    }
+  }
+
+  handle.overwriteRecords(records(), { rowOffset: 2, maxRowSize: 2 })
+  const table = handle.readArrowReader().intoTable()
+  assert.deepEqual([...table.getChild('id')], [3n, 4n])
+  // The rows kept are the ones after the skip, so conversion stops once both
+  // are covered: the fifth record is never pulled.
+  assert.equal(pulled, 4)
+})
+
+test('a text handle answers its own options, and a bag lands on them', (t) => {
+  const root = scratch()
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+
+  // With no options at all, a text write resolves the handle's own.
+  const log = new IOBase(path.join(root, 'r.log'))
+  log.overwriteRecords([{ body: 'hello' }])
+  assert.equal(log.readBytes().toString(), 'hello\n')
+  log.appendRecords([{ body: 'again' }], { batchRowSize: 1 })
+  assert.equal(log.readBytes().toString(), 'hello\nagain\n')
+
+  // The row header a handle retains is what its options answer, and what a
+  // property bag is set over.
+  const retained = new TextOptions()
+  retained.rowheader = '^\\[(?<level>[A-Z]+)\\] '
+  const source = IOBase.fromBytes(Buffer.from('[INFO] first\n[WARN] second\n'))
+  source.intoText(retained)
+  const own = source.recordOptions()
+  assert.ok(own instanceof TextOptions)
+  assert.equal(own.rowheader, retained.rowheader)
+  const table = source.readArrowReader({ maxRowSize: 1 }).intoTable()
+  assert.deepEqual([...table.getChild('level')], ['INFO'])
+  assert.deepEqual([...table.getChild('body')], ['first'])
+})
+
+test('a text line read takes the options a record read takes', () => {
+  const retained = new TextOptions()
+  retained.rowheader = '^\\[(?<level>[A-Z]+)\\] '
+  const source = IOBase.fromBytes(Buffer.from('[INFO] first\n[WARN] second\n'))
+  source.intoText(retained)
+
+  // Absent options are the handle's own, row header included.
+  const own = [...source.readTextLines()]
+  assert.deepEqual(own.map((line) => line.body), ['first', 'second'])
+  assert.deepEqual(own.map((line) => line.captures), [['INFO'], ['WARN']])
+
+  // A property bag lands on a copy of the handle's own options, and beside a
+  // given value on a copy of that one.
+  const started = [...source.readTextLines({ startRownum: 10n })]
+  assert.deepEqual(started.map((line) => line.seqnum), [10n, 11n])
+  const plain = [...source.readTextLines(new TextOptions(), { rowheader: null })]
+  assert.deepEqual(plain.map((line) => line.body), ['[INFO] first', '[WARN] second'])
+  assert.equal(retained.startRownum, new TextOptions().startRownum)
+  assert.equal(retained.rowheader, '^\\[(?<level>[A-Z]+)\\] ')
+
+  // Options of another encoding are refused by name, before a byte is read.
+  assert.throws(
+    () => source.readTextLines(RecordOptions.from('trades.parquet')),
+    /readTextLines expects plain-text record options, got application\/vnd\.apache\.parquet options/,
+  )
+  const parquet = IOBase.fromBytes()
+  parquet.mediaType = 'application/vnd.apache.parquet'
+  assert.throws(() => parquet.readTextLines(), /plain-text record options/)
+})

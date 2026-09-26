@@ -217,6 +217,49 @@ mod records {
         yggdryl::arrow::batch_reader(field.clone().into_arrow_schema().unwrap(), [])
     }
 
+    #[test]
+    fn a_read_cuts_a_stored_batch_to_its_bounds_as_views_of_its_buffers() {
+        const ROWS: usize = 128 * 1024;
+        let mut handle = Buffer::new().with_media_type(yggdryl::MimeType::ARROW_STREAM.into());
+        let options = handle.record_options().unwrap();
+        handle
+            .overwrite_arrow_reader(large_reader(), &options)
+            .unwrap();
+        let read = |options: &RecordOptions| -> Vec<RecordBatch> {
+            handle
+                .read_arrow_reader(options)
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+
+        // Unbounded, a stored batch reads back as long as it was written.
+        let whole = read(&options);
+        assert_eq!(whole.len(), 1);
+        assert_eq!(whole[0].num_rows(), ROWS);
+
+        // A row bound cuts it, each piece a view over the one decoded batch:
+        // the second piece's values begin exactly one piece into the first's.
+        let cut = read(&options.clone().with_batch_row_size(50_000));
+        let lengths: Vec<usize> = cut.iter().map(RecordBatch::num_rows).collect();
+        assert_eq!(lengths, [50_000, 50_000, ROWS - 100_000]);
+        let start = |batch: &RecordBatch| batch.column(0).to_data().buffers()[0].as_ptr() as usize;
+        assert_eq!(start(&cut[1]) - start(&cut[0]), 50_000 * 8);
+
+        // A byte target cuts by the rows those bytes cover: a quarter of the
+        // rows' own bytes - eight per id, four per string offset - is four
+        // pieces or a few more, the validity words counting too.
+        let quarter = u64::try_from(ROWS * 12 / 4).unwrap();
+        let cut = read(&options.clone().with_batch_byte_size(quarter));
+        assert!((4..=6).contains(&cut.len()), "{} pieces", cut.len());
+        assert_eq!(cut.iter().map(RecordBatch::num_rows).sum::<usize>(), ROWS);
+        // It is a target, never a ceiling that empties a batch: one byte is
+        // one row a piece.
+        let one_byte = read(&options.clone().with_batch_byte_size(1));
+        assert_eq!(one_byte.len(), ROWS);
+        assert!(one_byte.iter().all(|batch| batch.num_rows() == 1));
+    }
+
     /// A handle whose media type comes from a name, so codings are declared.
     fn handle(name: &str) -> Buffer {
         Buffer::new().with_media_type(

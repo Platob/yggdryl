@@ -140,13 +140,16 @@ assert Order.into_field().name == "Order"
 assert toml.loads(payload, cls=Order) == order
 ```
 
-`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` expose byte-first `dumps`/`loads`
-plus declared `os.PathLike` and typed text/binary file-object `dump`/`load`.
+`yggdryl.json`, `yggdryl.toml`, and `yggdryl.yaml` expose `dumps`, `dump` and
+`loads`, and no `load`: `dumps` answers bytes, `dump` writes to an `os.PathLike`,
+a path string or a text/binary file object (and answers the bytes, or UTF-8 text
+with `utf8=True`, when given none), and `loads` reads bytes, string content, an
+`os.PathLike` or a text/binary file object.
 A source `str` is always document content; use `pathlib.Path` to name a source
 location. String destinations remain paths because output has no content/path
 ambiguity. JSON Lines and YAML
-also expose document-stream `dump_all`/`load_all`; TOML is deliberately one
-document. String content uses the borrowed native text path; paths and named or
+also expose the document streams `dumps_all`/`dump_all` and
+`loads_all`/`load_all`; TOML is deliberately one document. String content uses the borrowed native text path; paths and named or
 explicitly formatted I/O redirect to the native reader/writer paths without
 staging a whole encoded document. For `load_all`, Python supplies only its
 `read(size)`/`readline(size)` protocol: the owning Rust iterator decides JSON

@@ -2281,14 +2281,14 @@ mod record_columns {
                 Scalar::from_sequence([Scalar::from("XPAR"), Scalar::from(1_i64)]),
                 Scalar::from_sequence([Scalar::from(100_i64), Scalar::from(250_i64)]),
                 Scalar::from("lit"),
-                Scalar::d128(12_550, 2),
+                Scalar::decimal128(12_550, 2),
                 Scalar::date32(19_876),
             ]),
             Scalar::from_sequence([
                 Scalar::from_sequence([Scalar::from("XNAS"), Scalar::from(2_i64)]),
                 Scalar::from_sequence([]),
                 Scalar::Null,
-                Scalar::d128(1, 2),
+                Scalar::decimal128(1, 2),
                 Scalar::date32(0),
             ]),
         ]
@@ -2352,8 +2352,8 @@ mod record_columns {
         assert_eq!(
             drained(read),
             Scalar::from_sequence([
-                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::d128(1_000_000, 4)]),
-                Scalar::from_sequence([Scalar::from("MSFT"), Scalar::d128(2_500_000, 4)]),
+                Scalar::from_sequence([Scalar::from("AAPL"), Scalar::decimal128(1_000_000, 4)]),
+                Scalar::from_sequence([Scalar::from("MSFT"), Scalar::decimal128(2_500_000, 4)]),
             ])
         );
     }

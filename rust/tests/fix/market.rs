@@ -1149,7 +1149,7 @@ fn a_typed_price_outside_decimal18_is_refused_instead_of_becoming_zero() {
         .map(DataType::from)
         .unwrap()
         .required_field("fix");
-    let too_wide = Scalar::d256(
+    let too_wide = Scalar::decimal256(
         "170141183460469231731687303715884105728".parse().unwrap(),
         0,
     );

@@ -5,6 +5,44 @@
 //! caller can observe is beside it here and in the other files under
 //! `rust/tests/avro/`.
 
+#[test]
+fn a_dictionary_column_writes_as_the_values_it_encodes() {
+    use std::sync::Arc;
+
+    use arrow_array::cast::AsArray;
+    use arrow_array::types::Int32Type;
+    use arrow_array::{Array, DictionaryArray, RecordBatch};
+    use yggdryl::holder::Buffer;
+    use yggdryl::{IOMedia, Url};
+
+    // Avro has no dictionary encoding, and a dictionary is only an encoding
+    // of its values: the container spells the values, and reads them back.
+    let venues: DictionaryArray<Int32Type> = ["XNAS", "XNYS", "XNAS"].into_iter().collect();
+    let schema = Arc::new(arrow_schema::Schema::new(vec![arrow_schema::Field::new(
+        "venue",
+        venues.data_type().clone(),
+        false,
+    )]));
+    let batch = RecordBatch::try_new(Arc::clone(&schema), vec![Arc::new(venues)]).unwrap();
+    let mut handle =
+        Buffer::new().with_media_type(Url::from_str("file:///t.avro").unwrap().media_type());
+    let options = handle.record_options().unwrap();
+    handle
+        .overwrite_arrow_reader(yggdryl::arrow::batch_reader(schema, [batch]), &options)
+        .unwrap();
+
+    let back: Vec<RecordBatch> = handle
+        .read_arrow_reader(&options)
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    let read = back[0].column(0).as_string::<i32>();
+    assert_eq!(
+        read.iter().collect::<Vec<_>>(),
+        [Some("XNAS"), Some("XNYS"), Some("XNAS")]
+    );
+}
+
 #[cfg(feature = "internals")]
 mod internal {
     use yggdryl::DataType;
@@ -230,7 +268,7 @@ mod avro {
                 1_234_567_890_123_456_789_012_345_678,
             ] {
                 for sign in [1, -1] {
-                    let value = Scalar::d128(unscaled * sign, 2);
+                    let value = Scalar::decimal128(unscaled * sign, 2);
                     assert_eq!(
                         round_trip(
                             r#"{"type":"bytes","logicalType":"decimal","precision":38,"scale":2}"#,
@@ -241,7 +279,7 @@ mod avro {
                 }
             }
             // Over fixed, sign-extended to the declared width.
-            let value = Scalar::d128(-12_345, 2);
+            let value = Scalar::decimal128(-12_345, 2);
             assert_eq!(
                 round_trip(
                     r#"{"type":"fixed","name":"amount","size":16,"logicalType":"decimal","precision":20,"scale":2}"#,
@@ -259,8 +297,8 @@ mod avro {
             ]}"#,
             )
             .unwrap();
-            let row =
-                Scalar::from_mapping([(Scalar::from("v"), Scalar::d128(123_456, 0))]).unwrap();
+            let row = Scalar::from_mapping([(Scalar::from("v"), Scalar::decimal128(123_456, 0))])
+                .unwrap();
             let mut handle = super::buffer();
             let message = avro::write_container(&mut handle, &schema, &[], &[row])
                 .unwrap_err()
@@ -307,7 +345,7 @@ mod avro {
                     &format!(
                         r#"{{"type":"bytes","logicalType":"decimal","precision":{precision},"scale":2}}"#
                     ),
-                    Scalar::d128(12_345, 2),
+                    Scalar::decimal128(12_345, 2),
                 );
                 assert_eq!(decoded.id(), expected, "precision {precision}");
             }

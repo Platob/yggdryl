@@ -903,7 +903,11 @@ fn official_uuid_partition_literals_use_the_exact_uuid_shape() {
     assert!(contains_fixed_uuid(&container.schema.into_json()));
     assert_eq!(
         container.rows[0]
-            .path("data_file.partition.token")
+            .path(
+                &"data_file.partition.token"
+                    .parse::<yggdryl::FieldPath>()
+                    .unwrap()
+            )
             .as_deref(),
         Some(&expected)
     );

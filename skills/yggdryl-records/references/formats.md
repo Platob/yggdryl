@@ -6,7 +6,7 @@ answers the same `IOMedia` calls; this table is what differs.
 
 | Encoding | Declared by | Build (Rust) | Reads | Writes |
 | --- | --- | --- | --- | --- |
-| Arrow IPC stream | `application/vnd.apache.arrow.stream`, `.arrows` | default | batches as stored; the stream carries its schema | every Arrow layout, union and dictionary included |
+| Arrow IPC stream | `application/vnd.apache.arrow.stream`, `.arrows` | default | batches as stored, re-cut to `batch_row_size` / `batch_byte_size` when set; the stream carries its schema | every Arrow layout, union and dictionary included |
 | Arrow IPC file | `application/vnd.apache.arrow.file`, `.arrow`, `.feather`, `.ipc` | default | as the stream | as the stream |
 | Parquet | `application/vnd.apache.parquet`, `.parquet` | `parquet` feature | 65,536-row batches (or `batch_row_size`), row groups and columns decoded on every thread, batches in file order | row groups encoded in parallel, byte-identical to a one-thread write; a union column is refused by name |
 | Avro container | `application/avro`, `.avro` | default (`snappy` blocks need `parquet`) | blocks decoded in parallel, batches in file order; the container carries its writer schema | blocks of about 1 MB, encoded and compressed in parallel |
@@ -35,7 +35,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 
 ## Pushdown
 
-| Encoding | `select` / narrower `field` | `filter` | `max_row_size` / `max_byte_size` |
+| Encoding | `select` / narrower `field` | `filter` | `row_offset`, `max_row_size` / `max_byte_size` |
 | --- | --- | --- | --- |
 | Arrow IPC | skipped columns are never decoded | rows filtered after decode | stops pulling; the boundary batch is sliced |
 | Parquet | unprojected column chunks are never fetched (footer-first read above 1 MB; chunks under 1 MB apart share a request) | row groups whose footer statistics rule it out are skipped, then rows filtered; float min/max never prune (NaN), null counts do | decodes lazily, one file at a time, on one thread |
@@ -46,7 +46,7 @@ A setting of another encoding reads as `None`/`null`; setting it is an error.
 
 ## Limits and edges
 
-- `max_row_size` counts result rows, `max_byte_size` their uncompressed Arrow bytes; both apply last and stop pulling. `0` is a valid read (schema, no batch); a non-zero byte bound yields at least one row. On a write, a limit truncates the input and never pulls past it.
+- `row_offset` skips leading result rows first; `max_row_size` then counts result rows, `max_byte_size` their uncompressed Arrow bytes; all three apply last and stop pulling. `0` is a valid read (schema, no batch); a non-zero byte bound yields at least one row. On a write, a limit truncates the input and never pulls past it.
 - `commit_row_size`: unset commits once; `N` publishes every `N` rows then the remainder; `0` is refused. A plain folder publishes each leaf on its own; Iceberg commits a snapshot.
 - Merge: keys by Arrow row format (null matches null, last arrival wins); holds only the stored side in memory. Iceberg merge keys are the identity partition columns plus `merge_by`; a table with neither is refused; merge on format v3 is refused.
 - Parquet reads copy the bytes they keep into reader-owned memory, so rewriting the file while a reader lives is safe.

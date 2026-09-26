@@ -235,6 +235,27 @@ impl SchemaUpdate {
         });
     }
 
+    /// Whether nothing has been recorded, so committing would change nothing.
+    pub fn is_empty(&self) -> bool {
+        self.ops.is_empty()
+    }
+
+    /// Play the recorded operations back over `metadata`'s current schema
+    /// rather than the one this update captured.
+    ///
+    /// This is what a commit that was beaten replays onto the winner's
+    /// document: the columns another writer added survive, and new columns
+    /// are numbered above the winner's `last-column-id`.
+    ///
+    /// # Errors
+    ///
+    /// [`Self::into_field`] carries the rule, over the new starting point.
+    pub fn replay(&self, metadata: &TableMetadata) -> Result<Field> {
+        let mut rebased = Self::from_metadata(metadata)?;
+        rebased.ops.clone_from(&self.ops);
+        rebased.into_field()
+    }
+
     /// Play the recorded operations back, in call order, and return the
     /// evolved schema root, validated and ready for
     /// [`TableMetadata::add_schema`].

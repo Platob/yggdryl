@@ -26,7 +26,7 @@ The closed function set, and its one door: a user-defined function is registered
     use yggdryl::expression::{
         FunctionSignature, UserFunction, UserRef, register_function, unregister_function,
     };
-    use yggdryl::{DataType, Field, Filter, Result, Scalar, Selector, StructType};
+    use yggdryl::{DataType, Filter, Result, Scalar, Selector, StructType};
 
     struct Double(FunctionSignature);
 
@@ -45,7 +45,7 @@ The closed function set, and its one door: a user-defined function is registered
         [DataType::Int64.required_field("value")],
         DataType::Int64.nullable_field("returns"),
     )?;
-    register_function(Arc::new(Double(signature)))?;
+    register_function(Arc::new(Double(signature.clone())))?;
 
     let rows = DataType::from(StructType::from_fields([DataType::Int64.nullable_field("size")])?).required_field("rows");
     let batch = RecordBatch::try_from_iter([(
@@ -61,11 +61,14 @@ The closed function set, and its one door: a user-defined function is registered
     assert_eq!(doubled.column(0).as_ref(), &Int64Array::from(vec![Some(2), None, Some(6)]) as &dyn arrow_array::Array);
     assert_eq!("docs.double(size) > 2".parse::<Filter>()?.apply_arrow_batch(&batch)?.num_rows(), 1);
 
-    // The signature is a field, and the stored column knows its function.
+    // The signature is a field and reads back from it; the stored column
+    // knows its function.
+    let declared = signature.as_field()?;
+    assert_eq!(declared.name(), "docs.double");
+    assert_eq!(declared.get_metadata("FUNCTION:returns"), Some("int64 null"));
+    assert_eq!(FunctionSignature::from_field(&declared)?, signature);
     let stored = selector.into_field(&rows)?;
     assert_eq!(stored.fields()[0].get_metadata("TRANSFORM:function"), Some("docs.double"));
-    let field = FunctionSignature::from_field(&Field::from_str(&stored.fields()[0].to_string()).unwrap_or(stored.fields()[0].clone()));
-    assert!(field.is_err() || field.is_ok());
 
     assert!(unregister_function(&UserRef::parse("docs.double")?));
     assert!("docs.double(size)".parse::<yggdryl::expression::Term>()?.field(&rows).is_err());
@@ -76,7 +79,7 @@ The closed function set, and its one door: a user-defined function is registered
     ```python
     import pyarrow as pa
     from yggdryl import Field, Filter, Selector, Term
-    from yggdryl.expression import user_defined_filter, user_defined_function
+    from yggdryl.expression import user_defined_filter, user_defined_function, user_function_signature
 
     @user_defined_function(namespace="docs")
     def double(value: int) -> int:
@@ -100,6 +103,7 @@ The closed function set, and its one door: a user-defined function is registered
     assert str(double.term("size")) == "docs.double(size)"
     assert double.signature.name == "docs.double"
     assert double.signature.metadata["FUNCTION:returns"] == "int64 not null"
+    assert user_function_signature("docs.double") == double.signature
 
     projected = Selector("docs.double(size) as doubled, docs.shout(ccy) as loud").apply_arrow_batch(batch)
     assert projected.column("doubled").to_pylist() == [2, None, 6]

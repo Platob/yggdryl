@@ -878,9 +878,13 @@ impl JsIOBase {
     }
 
     /// Return whether anything is here now, as `fs.existsSync`.
+    ///
+    /// Each role answers its own question - a folder whether its container
+    /// is there, a file whether its leaf is - so a folder `mkdir` made and
+    /// `remove` deleted answers `false`.
     #[napi]
     pub fn exists(&self) -> bool {
-        self.inner.kind() != yggdryl::IOKind::Unknown
+        self.inner.exists()
     }
 
     /// Return whether this resource contains others, as `Stats.isDirectory`.
@@ -1627,13 +1631,16 @@ impl JsIOBase {
     /// Return the record settings this handle's media type names.
     ///
     /// The encoding is never guessed: it is whatever the handle already says it
-    /// holds, which is why no record method below takes a format argument.
-    #[napi]
-    pub fn record_options(&self) -> Result<JsRecordOptions> {
-        self.inner
-            .record_options()
-            .map(JsRecordOptions::from_core)
-            .map_err(napi_error)
+    /// holds, which is why no record method below takes a format argument. A
+    /// plain-text handle answers the `TextOptions` its own settings live on -
+    /// the row header `intoText` retained included - and every other handle
+    /// its encoding's `RecordOptions`.
+    #[napi(ts_return_type = "TextOptions | RecordOptions")]
+    pub fn record_options(&self) -> Result<Either<JsTextOptions, JsRecordOptions>> {
+        Ok(match self.inner.record_options().map_err(napi_error)? {
+            yggdryl::media::RecordOptions::Text(text) => Either::A(JsTextOptions::from_core(*text)),
+            options => Either::B(JsRecordOptions::from_core(options)),
+        })
     }
 
     /// Read one Parquet leaf's footer statistics without decoding rows.
@@ -1706,15 +1713,22 @@ impl JsIOBase {
     /// and the options' `where`, `select` and row bounds are the record
     /// surface's - a `where` may name a column the `select` builds, which no
     /// line states. A caller wanting the clauses answered reads records.
+    ///
+    /// Absent options are the handle's own - the row header `intoText`
+    /// retained included - and options of another encoding are refused.
     #[napi(ts_return_type = "TextLineIterator")]
     pub fn read_text_lines(
         &self,
-        options: Option<&crate::text::options::JsTextOptions>,
+        options: Option<&JsRecordOptions>,
     ) -> Result<crate::text::line::JsTextLineIterator> {
-        let defaulted = crate::text::options::JsTextOptions::new();
-        let options = options.map_or(&defaulted, |options| options);
-        let lines =
-            yggdryl::text::read_text_lines(&self.inner, &options.inner).map_err(napi_error)?;
+        let options = JsRecordOptions::resolved(options, &self.inner)?;
+        let yggdryl::media::RecordOptions::Text(text) = &options else {
+            return Err(napi_error(format!(
+                "readTextLines expects plain-text record options, got {} options",
+                options.mime_type()
+            )));
+        };
+        let lines = yggdryl::text::read_text_lines(&self.inner, text).map_err(napi_error)?;
         Ok(crate::text::line::JsTextLineIterator::from_core(lines))
     }
 

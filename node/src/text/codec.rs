@@ -231,13 +231,13 @@ impl JsScalar {
                     .ok_or_else(|| napi_error("decimal64 coefficient must fit signed 64 bits"))?,
                 scale,
             )),
-            DataTypeId::Decimal128 => Scalar::d128(
+            DataTypeId::Decimal128 => Scalar::decimal128(
                 unscaled
                     .as_i128()
                     .ok_or_else(|| napi_error("decimal128 coefficient must fit signed 128 bits"))?,
                 scale,
             ),
-            DataTypeId::Decimal256 => Scalar::d256(unscaled, scale),
+            DataTypeId::Decimal256 => Scalar::decimal256(unscaled, scale),
             // The fixed leaves carry their units at their one scale.
             DataTypeId::Decimal => {
                 if scale != yggdryl::Decimal::SCALE {
@@ -358,13 +358,21 @@ impl JsScalar {
             .map(crate::serie::JsSerie::from_core)
     }
 
-    /// Look up a dotted mapping/record key and sequence-index path.
+    /// Look one value up by a `FieldPath`, or the text of one: `.name` a key
+    /// of a mapping or a record, `[i]` a row (negative from the end),
+    /// `['key']` a mapping entry, `[a:b]` a run of rows. A segment that does
+    /// not resolve answers `null`; text that is not a path throws.
     #[napi]
-    pub fn path(&self, path: String) -> Option<JsScalar> {
-        self.inner
+    pub fn path(
+        &self,
+        path: Either<String, &crate::text::line::JsFieldPath>,
+    ) -> Result<Option<JsScalar>> {
+        let path = crate::text::line::path_from_input(path)?;
+        Ok(self
+            .inner
             .path(&path)
             .map(Cow::into_owned)
-            .map(Self::from_core)
+            .map(Self::from_core))
     }
 
     /// Iterate direct children under the core convention.

@@ -69,7 +69,7 @@ fn an_embedded_placeholder_substitutes_textually_and_stays_a_string() {
     let placeholders = Placeholders::new()
         .with_variable("ROOT", Scalar::from("/var/log"))
         .with_variable("PORT", Scalar::from(8080))
-        .with_variable("PRICE", Scalar::d128(150, 2));
+        .with_variable("PRICE", Scalar::decimal128(150, 2));
 
     for value in resolved("{{ ROOT }}/app", placeholders.clone()) {
         assert_eq!(value.unwrap(), Scalar::from("/var/log/app"));

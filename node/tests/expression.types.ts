@@ -94,6 +94,17 @@ const boundIndices: Array<number> = bound.columnIndices
 const readsRows: boolean = bound.readsRows
 const answered: Scalar = bound.eval(Scalar.from(['EUR']))
 const kept: boolean = bound.matches(Scalar.from(['EUR']))
+// A JavaScript row is read through Scalar.from: an array in schema order, or
+// a named record.
+const keptPlain: boolean = bound.matches(['EUR'])
+const keptNamed: boolean = bound.matches({ ccy: 'EUR' })
+const answeredPlain: Scalar = bound.eval({ ccy: 'EUR' })
+// Every operand is a term, its text, or any value; a literal holds any value.
+const valued: Term = named.gt(100).and(named.isIn([1, 2n])).or(named.between(1, 9))
+const plainLiteral: Term = Term.literal('EUR')
+const typedPlain: Term = Term.typedLiteral('int64', 5)
+const everyValue: Term = Term.all(new Set<unknown>([named.eq(true), 'price > 1']))
+void [keptPlain, keptNamed, answeredPlain, valued, plainLiteral, typedPlain, everyValue]
 const boundText: string = bound.toString()
 const boundExplained: string = bound.explain()
 const split: { answerable: Filter; remaining: Filter } = bound.partitionSplit()

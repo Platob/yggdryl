@@ -25,7 +25,7 @@ fn field_recovers_an_exact_natural_value() {
     let loading = Loading::new().with_field(amount_field());
     let value =
         yggdryl::text::from_utf8_with("\"12.50\"", Format::Json, &loading).expect("typed JSON");
-    assert_eq!(value, Scalar::d128(1_250, 2));
+    assert_eq!(value, Scalar::decimal128(1_250, 2));
     assert_eq!(loading.field().map(Field::name), Some("amount"));
 
     let (_, inferred_utf8) =
@@ -45,7 +45,7 @@ fn placeholders_are_resolved_before_field_interpretation() {
         .with_field(amount_field());
     let value = yggdryl::text::from_utf8_with("\"{{ AMOUNT }}\"\n", Format::Yaml, &loading)
         .expect("filled typed YAML");
-    assert_eq!(value, Scalar::d128(1_250, 2));
+    assert_eq!(value, Scalar::decimal128(1_250, 2));
 }
 
 #[test]

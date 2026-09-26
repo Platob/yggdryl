@@ -156,6 +156,8 @@ import {
   EventIterator,
 } from './index'
 import type {
+  DataType as ArrowDataType,
+  Field as ArrowField,
   RecordBatch as ArrowRecordBatch,
   Schema as ArrowSchema,
   Table as ArrowTable,
@@ -2989,6 +2991,43 @@ export declare const charset: {
   readonly canonicalName: (charset: Charset | string) => Charset
 }
 
+/**
+ * gzip (RFC 1952) over one whole buffer: the wire format a `.gz` handle
+ * applies by name and `node:zlib` reads and writes. `level` is the shared
+ * 0-9 scale, a level above it clamping to its top; absent or `null` is the
+ * coding's default.
+ */
+export declare const gzip: {
+  /** Decode one whole gzip value. */
+  readonly loads: (data: Uint8Array) => Buffer
+  /** Encode one whole gzip value at `level`. */
+  readonly dumps: (data: Uint8Array, level?: number | null) => Buffer
+}
+
+/**
+ * zlib (RFC 1950) over one whole buffer, and raw DEFLATE (RFC 1951) - no
+ * header and no checksum, what `node:zlib` spells `inflateRaw`/`deflateRaw` -
+ * named apart because unframed bytes carry nothing to sniff a framing from.
+ */
+export declare const zlib: {
+  /** Decode one whole zlib value. */
+  readonly loads: (data: Uint8Array) => Buffer
+  /** Encode one whole zlib value at `level`, on the shared 0-9 scale. */
+  readonly dumps: (data: Uint8Array, level?: number | null) => Buffer
+  /** Decode one whole raw DEFLATE value. */
+  readonly loadsRaw: (data: Uint8Array) => Buffer
+  /** Encode one whole raw DEFLATE value at `level`, on the shared 0-9 scale. */
+  readonly dumpsRaw: (data: Uint8Array, level?: number | null) => Buffer
+}
+
+/** Zstandard over one whole buffer; `level` is the shared 0-9 scale. */
+export declare const zstd: {
+  /** Decode one whole Zstandard value. */
+  readonly loads: (data: Uint8Array) => Buffer
+  /** Encode one whole Zstandard value at `level`. */
+  readonly dumps: (data: Uint8Array, level?: number | null) => Buffer
+}
+
 /** One xxHash algorithm, spelled the same way in every language. */
 export type DigestAlgorithm = 'xxh32' | 'xxh64' | 'xxh3-64' | 'xxh3-128'
 
@@ -3091,10 +3130,6 @@ declare const digests: {
 export declare const xxhash: typeof digests.xxhash
 export declare const txhash: typeof digests.txhash
 
-export interface ArrowStringCompatible {
-  toString(): string
-}
-
 declare module './index' {
   /** A native MIME wrapper or canonical MIME/extension string. */
   type MimeTypeInput = MimeType | string
@@ -3111,9 +3146,11 @@ declare module './index' {
     scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace DataType {
-    function fromArrow(
-      value: DataType | string | ArrowStringCompatible,
-    ): DataType
+    /**
+     * Read an Apache Arrow JS DataType through a one-field IPC schema, so
+     * every nested child crosses; a DataType is copied and text parses.
+     */
+    function fromArrow(value: DataType | string | ArrowDataType): DataType
     function fromFields(fields: Iterable<Field>): DataType
     // The parenthesis disambiguates: bare `variant()` is the self-describing
     // Variant datatype; `variant(fields)` stays the dense-union sugar.
@@ -3138,7 +3175,12 @@ declare module './index' {
     scalar(value: unknown, options?: CodecOptions): Scalar
   }
   namespace Field {
-    function fromArrow(value: Field | string | ArrowStringCompatible): Field
+    /**
+     * Read an Apache Arrow JS Field through a one-field IPC schema, keeping
+     * its nullability, metadata and extension identity; a Field is copied
+     * and text parses.
+     */
+    function fromArrow(value: Field | string | ArrowField): Field
   }
   interface ProtocolField extends Iterable<readonly [string, string]> {
     update(values: FieldMetadataInput): void
@@ -3248,8 +3290,11 @@ declare module './index' {
     get(key: unknown): Scalar | null
     /** Whether a sequence index, mapping key, or record field resolves. */
     has(key: unknown): boolean
-    /** Resolve a dotted mapping/record key and sequence-index path. */
-    path(path: string): Scalar | null
+    /**
+     * Resolve a `FieldPath` or its text - `legs[0].price`, `[-1]`, `['key']`,
+     * `[1:3]` - answering `null` where a segment does not resolve.
+     */
+    path(path: string | FieldPath): Scalar | null
     /** Return a mapping or record with one persistent replacement. */
     set(key: unknown, value: unknown): Scalar
     /** Return a mapping or record without one string key. */
@@ -3370,6 +3415,12 @@ declare module './index' {
 
     /** Read the canonical non-null struct root `Field` of this resource. */
     readArrowField(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): Field
+    /**
+     * Decode this resource's lines under its own text options, the given
+     * ones, or a copy carrying the given properties; options of another
+     * encoding are refused.
+     */
+    readTextLines(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): TextLineIterator
     /** Read this resource's rows, selecting and casting as the options say. */
     readArrowReader(options?: RecordOptionsInput | RecordProperties | null, properties?: RecordProperties | null): BatchReader
     /** Replace this resource's rows with one native reader. */

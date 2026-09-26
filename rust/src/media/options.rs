@@ -254,6 +254,21 @@ pub trait IORecordOptions: Sized {
     /// Set the bound on how many result rows flow in total.
     fn set_max_row_size(&mut self, max_row_size: Option<u64>);
 
+    /// Return how many leading result rows a read or write skips, if any -
+    /// the plan's `offset`.
+    ///
+    /// The skip is the same last transform as
+    /// [`max_row_size`](Self::max_row_size), taken first: it counts *result*
+    /// rows, and the row bound then counts the rows after it, so an offset of
+    /// two under a bound of three yields result rows two to four. A batch the
+    /// skip covers is dropped and the batch it lands inside is cut with
+    /// [`RecordBatch::slice`](arrow_array::RecordBatch::slice), a view over
+    /// the same buffers. `None` and `Some(0)` skip nothing.
+    fn row_offset(&self) -> Option<u64>;
+
+    /// Set how many leading result rows a read or write skips.
+    fn set_row_offset(&mut self, row_offset: Option<u64>);
+
     /// Return the bound on the result rows' Arrow in-memory bytes, if any.
     ///
     /// Bytes are counted as
@@ -325,9 +340,10 @@ pub trait IORecordOptions: Sized {
     /// The plan these properties are the sections of.
     ///
     /// The declared field is its `create` section, the filter its `where`,
-    /// the selector its `select`, the merge key its `upsert by (...)`, and
-    /// the row bound its `limit`. This is what an options value spells as
-    /// one expression, and what [`with_plan`](Self::with_plan) reads back.
+    /// the selector its `select`, the merge key its `upsert by (...)`, the
+    /// row bound its `limit` and the row skip its `offset`. This is what an
+    /// options value spells as one expression, and what
+    /// [`with_plan`](Self::with_plan) reads back.
     fn plan(&self) -> Plan {
         let mut plan = match self.field() {
             Some(field) => Plan::from_field(&field),
@@ -336,7 +352,7 @@ pub trait IORecordOptions: Sized {
         plan.set_filter(self.filter().clone());
         plan.set_selector(self.select().clone());
         plan.set_merge_by(self.merge_by().clone());
-        plan.limit(self.max_row_size())
+        plan.limit(self.max_row_size()).offset(self.row_offset())
     }
 
     /// Set every property from the sections of one plan.
@@ -344,7 +360,8 @@ pub trait IORecordOptions: Sized {
     /// A plan's `create` section declares the field, its `where` clause is
     /// the filter, its `select` clause the selector, its upsert keys the
     /// merge key; a section the plan does not spell clears the property. A
-    /// `limit` is the row bound. The plan's targets and source are not read:
+    /// `limit` is the row bound and an `offset` the row skip. The plan's
+    /// targets and source are not read:
     /// the handle these options are given to is both.
     ///
     /// # Errors
@@ -352,9 +369,9 @@ pub trait IORecordOptions: Sized {
     /// Returns an error when the `create` section declares a column that
     /// cannot be typed without rows, the merge key names a column twice, or
     /// the plan carries a section these options have no property for - an
-    /// `order by` or an `offset` - which is refused by name rather than
-    /// dropped: a plan that orders or skips rows is applied to the rows
-    /// themselves, through the expression layer.
+    /// `order by` - which is refused by name rather than dropped: a plan that
+    /// orders rows is applied to the rows themselves, through the expression
+    /// layer.
     fn set_plan(&mut self, plan: Plan) -> Result<()> {
         // Everything that can refuse does so before the first write, so a
         // refused plan leaves every section as it was.
@@ -368,20 +385,15 @@ pub trait IORecordOptions: Sized {
                 ),
             });
         }
-        if plan.row_offset().is_some() {
-            return Err(Error::InvalidRecord {
-                path: SmolStr::new_static("$.offset"),
-                reason: SmolStr::new_static(
-                    "record options hold no `offset` section; apply the plan to the rows instead",
-                ),
-            });
-        }
         self.set_declared(declared);
         self.set_filter(plan.filter_section().clone());
         self.set_select(plan.selector().clone());
         self.set_merge_by(plan.merge_by().clone());
         if let Some(limit) = plan.row_limit() {
             self.set_max_row_size(Some(limit));
+        }
+        if let Some(offset) = plan.row_offset() {
+            self.set_row_offset(Some(offset));
         }
         Ok(())
     }
@@ -643,6 +655,13 @@ pub trait IORecordOptions: Sized {
         self
     }
 
+    /// Return these options skipping the given leading result rows.
+    #[must_use]
+    fn with_row_offset(mut self, row_offset: u64) -> Self {
+        self.set_row_offset(Some(row_offset));
+        self
+    }
+
     /// Return these options with a bound on how many result rows flow.
     #[must_use]
     fn with_max_row_size(mut self, max_row_size: u64) -> Self {
@@ -762,7 +781,8 @@ pub trait IORecordOptions: Sized {
         }
     }
 
-    /// Bound a reader by [`max_row_size`](Self::max_row_size) and
+    /// Skip [`row_offset`](Self::row_offset) rows of a reader, then bound it
+    /// by [`max_row_size`](Self::max_row_size) and
     /// [`max_byte_size`](Self::max_byte_size).
     ///
     /// This is one more transform of the same option-driven shaping seam as
@@ -776,22 +796,23 @@ pub trait IORecordOptions: Sized {
     /// the exact count happens only here.
     ///
     /// The wrapper holds at most one batch and stops pulling the moment it is
-    /// satisfied, so the rest of the source is never decoded. With neither
-    /// bound set the reader is returned as it stands.
+    /// satisfied, so the rest of the source is never decoded. With no skip
+    /// and neither bound set the reader is returned as it stands.
     ///
     /// # Errors
     ///
-    /// Returns an error naming both settings when a limit is combined with a
-    /// non-empty [`merge_by`](Self::merge_by): a truncated merge
-    /// would update the matched keys it kept and silently drop the rest,
-    /// which corrupts the resource rather than shortening the write.
+    /// Returns an error naming both settings when a limit or a skip is
+    /// combined with a non-empty [`merge_by`](Self::merge_by): a truncated
+    /// merge would update the matched keys it kept and silently drop the
+    /// rest, which corrupts the resource rather than shortening the write.
     fn limit_arrow_reader(
         &self,
         reader: crate::arrow::BatchReader,
     ) -> Result<crate::arrow::BatchReader> {
         let max_rows = self.max_row_size();
         let max_bytes = self.max_byte_size();
-        if max_rows.is_none() && max_bytes.is_none() {
+        let skip = self.row_offset().unwrap_or(0);
+        if max_rows.is_none() && max_bytes.is_none() && skip == 0 {
             return Ok(reader);
         }
         self.require_write_limits()?;
@@ -800,7 +821,7 @@ pub trait IORecordOptions: Sized {
         Ok(Box::new(Limited {
             inner: reader,
             schema,
-            state: WriteLimitState::new(max_rows, max_bytes),
+            state: WriteLimitState::new(skip, max_rows, max_bytes),
         }))
     }
 
@@ -813,26 +834,28 @@ pub trait IORecordOptions: Sized {
     fn require_write_limits(&self) -> Result<()> {
         let max_rows = self.max_row_size();
         let max_bytes = self.max_byte_size();
-        if max_rows.is_none() && max_bytes.is_none() {
+        let skip = self.row_offset().filter(|rows| *rows != 0);
+        if max_rows.is_none() && max_bytes.is_none() && skip.is_none() {
             return Ok(());
         }
         if !self.merge_by().is_empty() {
-            let mut limits = String::new();
+            let mut limits = Vec::new();
             if let Some(rows) = max_rows {
-                limits.push_str(&format!("max_row_size = {rows}"));
+                limits.push(format!("max_row_size = {rows}"));
             }
             if let Some(bytes) = max_bytes {
-                if !limits.is_empty() {
-                    limits.push_str(" and ");
-                }
-                limits.push_str(&format!("max_byte_size = {bytes}"));
+                limits.push(format!("max_byte_size = {bytes}"));
             }
+            if let Some(rows) = skip {
+                limits.push(format!("row_offset = {rows}"));
+            }
+            let limits = limits.join(" and ");
             return Err(Error::InvalidRecord {
                 path: SmolStr::new_static("$"),
                 reason: crate::text::expected_got(
-                    "max_row_size and max_byte_size without merge_by - a truncated merge \
-                     updates the matched keys it kept and silently drops the rest, corrupting \
-                     rather than shortening",
+                    "max_row_size, max_byte_size and row_offset without merge_by - a truncated \
+                     merge updates the matched keys it kept and silently drops the rest, \
+                     corrupting rather than shortening",
                     format!("{limits} with merge_by `{}`", self.merge_by()),
                 ),
             });
@@ -1119,6 +1142,14 @@ macro_rules! record_options_fields {
 
         fn set_max_row_size(&mut self, max_row_size: Option<u64>) {
             self.max_row_size = max_row_size;
+        }
+
+        fn row_offset(&self) -> Option<u64> {
+            self.row_offset
+        }
+
+        fn set_row_offset(&mut self, row_offset: Option<u64>) {
+            self.row_offset = row_offset;
         }
 
         fn max_byte_size(&self) -> Option<u64> {
@@ -1522,16 +1553,28 @@ impl RecordOptions {
         if base == &MimeType::XMLA {
             return Ok(Self::Xmla(crate::xmla::XmlaOptions::new()));
         }
-        Err(Error::InvalidRecord {
-            path: SmolStr::new_static("$"),
-            reason: crate::text::expected_got(
-                if cfg!(feature = "parquet") {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml)"
-                } else {
-                    "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml; the `parquet` feature is not enabled)"
-                },
+        let encodings = if cfg!(feature = "parquet") {
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/vnd.apache.parquet, application/avro, text/plain, application/xmla+xml)"
+        } else {
+            "a record encoding this build implements (application/vnd.apache.arrow.stream, application/avro, text/plain, application/xmla+xml; the `parquet` feature is not enabled)"
+        };
+        // A structured text document is one value around its rows, not a
+        // stream of batches: it has doors of its own, and the refusal names
+        // them rather than leaving a caller to guess.
+        let reason = match crate::text::Format::from_mime_type(base) {
+            Ok(format) => crate::text::expected_got(
+                format_args!(
+                    "{encodings}; a {} document is one value, read with read_arrow or \
+                     read_scalar and written with write_arrow (overwrite) or write_scalar",
+                    format.as_str()
+                ),
                 base,
             ),
+            Err(_) => crate::text::expected_got(encodings, base),
+        };
+        Err(Error::InvalidRecord {
+            path: SmolStr::new_static("$"),
+            reason,
         })
     }
 

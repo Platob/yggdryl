@@ -130,7 +130,11 @@ pub fn check(registry: &FixRegistry) -> Report {
                     });
                 }
             }
-            shaped_group(&mut report, field, &named);
+            // Only a group is read item by item; a field whose value is a
+            // serie of scalars - the crate's own `srcuuids` - is not one.
+            if category == FixCategory::Groups {
+                shaped_group(&mut report, field, &named);
+            }
         }
         report.categories.push((category, count));
     }
@@ -275,7 +279,7 @@ pub fn annotate(report: &Report) {
         } else {
             format!("{}: ", held.subject)
         };
-        println!(
+        outln!(
             "::{} title=fix {}::{subject}{}",
             held.level.word(),
             held.check,

@@ -214,7 +214,7 @@ mod pairing {
             DataType::Float64.shared_field().unwrap()
         ));
 
-        let decimal = FieldScalar::infer(Scalar::d128(150, 2)).unwrap();
+        let decimal = FieldScalar::infer(Scalar::decimal128(150, 2)).unwrap();
         assert_eq!(decimal.field().id(), yggdryl::DataTypeId::Decimal128);
         assert_eq!(decimal.as_decimal().map(|(_, scale)| scale), Some(2));
 
@@ -310,7 +310,10 @@ mod pairing {
             (FieldScalar::infer(Scalar::from(7_i64)).unwrap(), "7"),
             (FieldScalar::infer(Scalar::from("AAPL")).unwrap(), "AAPL"),
             (FieldScalar::infer(Scalar::from(true)).unwrap(), "true"),
-            (FieldScalar::infer(Scalar::d128(150, 2)).unwrap(), "1.50"),
+            (
+                FieldScalar::infer(Scalar::decimal128(150, 2)).unwrap(),
+                "1.50",
+            ),
             (
                 FieldScalar::infer(Scalar::date32(19_723)).unwrap(),
                 "2024-01-01",
@@ -584,7 +587,7 @@ mod records {
         Scalar::from_sequence([
             Scalar::from(7_i64),
             Scalar::from("AAPL"),
-            Scalar::d128(150, 2),
+            Scalar::decimal128(150, 2),
         ])
     }
 
@@ -665,7 +668,7 @@ mod records {
     fn a_named_record_and_an_ordered_sequence_read_alike() {
         let schema = schema();
         let named = Scalar::from_struct([
-            ("price", Scalar::d128(150, 2)),
+            ("price", Scalar::decimal128(150, 2)),
             ("symbol", Scalar::from("AAPL")),
             ("id", Scalar::from(7)),
         ])
@@ -976,7 +979,11 @@ mod records {
             let schema = schema();
             let rows = [
                 row(),
-                Scalar::from_sequence([Scalar::from(8_i64), Scalar::Null, Scalar::d128(1, 2)]),
+                Scalar::from_sequence([
+                    Scalar::from(8_i64),
+                    Scalar::Null,
+                    Scalar::decimal128(1, 2),
+                ]),
             ];
             let batch = lay_out(&schema, rows).unwrap();
             let second = read_back(&schema, &batch, 1).unwrap();
@@ -985,7 +992,7 @@ mod records {
             assert_eq!(second.as_str("symbol"), None);
             // A physically spelled reading is held canonically: the decimal is
             // at the field's scale, so it is the value the row was built from.
-            assert_eq!(second["price"].value(), &Scalar::d128(1, 2));
+            assert_eq!(second["price"].value(), &Scalar::decimal128(1, 2));
 
             let past = read_back(&schema, &batch, 2).unwrap_err().to_string();
             assert!(past.contains("row 2 is past the 2 rows"), "{past}");

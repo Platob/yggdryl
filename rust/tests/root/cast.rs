@@ -3523,7 +3523,7 @@ mod fixed_decimal_text {
         }
         // The parameterized width keeps its full-scale text on both paths.
         let storage = Field::new("x", DataType::DECIMAL, true);
-        let value = Scalar::d128(1_125_000_000_000_000_000, 18);
+        let value = Scalar::decimal128(1_125_000_000_000_000_000, 18);
         let column = Serie::from_scalars(storage, [value.clone()]).unwrap();
         let cast = column
             .cast(
@@ -3580,9 +3580,9 @@ mod float_decimals {
         assert_eq!(
             rows(cast(DataType::decimal(10, 2).unwrap(), true).unwrap()),
             [
-                Scalar::d128(115, 2),
-                Scalar::d128(13, 2),
-                Scalar::d128(-13, 2),
+                Scalar::decimal128(115, 2),
+                Scalar::decimal128(13, 2),
+                Scalar::decimal128(-13, 2),
                 Scalar::Null,
                 Scalar::Null,
             ]
@@ -3601,9 +3601,9 @@ mod float_decimals {
                     .unwrap()
             ),
             [
-                Scalar::d128(3, 0),
-                Scalar::d128(-3, 0),
-                Scalar::d128(2, 0),
+                Scalar::decimal128(3, 0),
+                Scalar::decimal128(-3, 0),
+                Scalar::decimal128(2, 0),
                 Scalar::Null,
             ]
         );

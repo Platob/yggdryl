@@ -5,6 +5,7 @@ import {
   Field,
   IOBase,
   RecordOptions,
+  TextOptions,
   type RecordSource,
   type StructRecord,
   type IOMode,
@@ -14,7 +15,10 @@ const handle: IOBase = IOBase.fromBytes()
 const table: Table = tableFromJSON([{ id: 1, venue: 'XNAS' }])
 const batch: RecordBatch = table.batches[0]
 const reader: BatchReader = BatchReader.from(table)
-const options: RecordOptions = handle.recordOptions()
+// A plain-text handle answers its TextOptions, every other one RecordOptions.
+const own: TextOptions | RecordOptions = handle.recordOptions()
+if (!(own instanceof RecordOptions)) throw new TypeError('an Arrow stream answers RecordOptions')
+const options: RecordOptions = own
 options.field = Field.from('row: struct<id: int32> not null')
 const merging: RecordOptions = options.withMergeBy(['id'])
 const overIOMode: IOMode = 'overwrite'

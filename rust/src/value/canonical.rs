@@ -697,6 +697,57 @@ fn read_text_as(dtype: &DataType, text: &str) -> Option<Result<Scalar>> {
     })
 }
 
+/// Say why a temporal value of the column's own family did not fit it.
+///
+/// A value of another family, or a non-temporal, answers `None` and keeps
+/// the ordinary refusal. Of the column's own family, only two things stop a
+/// value that [`restated`] could not restate: a zone the column does not hold,
+/// or a count its unit and width cannot state exactly. Either is named,
+/// rather than left to read as the family's name refused by itself.
+fn temporal_refusal(dtype: &DataType, value: &Scalar) -> Option<ValidationFailure> {
+    use DataType as D;
+    let (family, unit, zone) = match dtype {
+        D::DateTime64 { unit, timezone } => (TemporalKind::DateTime, *unit, Some(timezone)),
+        D::Duration32(unit) | D::Duration64(unit) => (TemporalKind::Duration, *unit, None),
+        D::Time32(unit) | D::Time64(unit) => (TemporalKind::Time, *unit, None),
+        D::Date32 => (TemporalKind::Date, TimeUnit::Day, None),
+        D::Date64 => (TemporalKind::Date, TimeUnit::Millisecond, None),
+        _ => return None,
+    };
+    if value.temporal_kind() != Some(family) {
+        return None;
+    }
+    let held = value.temporal_timezone()?;
+    let reason = match zone {
+        Some(expected) if held != *expected => {
+            if held.is_naive() {
+                format_smolstr!(
+                    "a naive value states no zone, and this column holds instants in {expected}"
+                )
+            } else if expected.is_naive() {
+                format_smolstr!(
+                    "a value in {held} is an instant, and this column holds naive wall-clock times"
+                )
+            } else {
+                format_smolstr!("a value in {held} is not one in {expected}")
+            }
+        }
+        _ => format_smolstr!(
+            "{} {} is not a whole count of {unit} this column can hold",
+            value.temporal_count()?,
+            value.temporal_unit()?
+        ),
+    };
+    let got = value.dtype().map_or_else(
+        |_| SmolStr::new(value.kind()),
+        |dtype| format_smolstr!("{dtype}"),
+    );
+    Some(ValidationFailure::new(crate::text::expected_got(
+        dtype,
+        format_args!("{got}: {reason}"),
+    )))
+}
+
 /// Check the logical temporal family and the zone a datatype can preserve.
 fn temporal_matches(
     value: &Scalar,
@@ -732,7 +783,7 @@ fn decimal_coefficient_at(value: &Scalar, scale: i8) -> Option<crate::i256> {
     }
     // Scale zero is the whole number's own scale, so the one restatement
     // implementation answers this too rather than being written out again.
-    Scalar::d256(crate::i256::from_i128(value.as_i128()?), 0).decimal256_unscaled_at(scale)
+    Scalar::decimal256(crate::i256::from_i128(value.as_i128()?), 0).decimal256_unscaled_at(scale)
 }
 
 #[allow(clippy::too_many_lines)]
@@ -806,7 +857,7 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
                 .and_then(|wide| wide.as_i128())
                 .ok_or_else(|| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
-                    reason: format_smolstr!("expected a d128 representable at scale {scale}"),
+                    reason: format_smolstr!("expected a decimal128 representable at scale {scale}"),
                 })?;
             let canonical = Scalar::Decimal128(Decimal128::new(coefficient, *scale));
             let changed = !same_decimal_representation(value, &canonical);
@@ -816,9 +867,9 @@ fn canonicalize_dtype_value(dtype: &DataType, value: &Scalar) -> Result<(Scalar,
             let coefficient =
                 decimal_coefficient_at(value, *scale).ok_or_else(|| Error::InvalidRecord {
                     path: SmolStr::new_static("$"),
-                    reason: format_smolstr!("expected a d256 representable at scale {scale}"),
+                    reason: format_smolstr!("expected a decimal256 representable at scale {scale}"),
                 })?;
-            let canonical = Scalar::d256(coefficient, *scale);
+            let canonical = Scalar::decimal256(coefficient, *scale);
             let changed = !same_decimal_representation(value, &canonical);
             return Ok((canonical, changed));
         }
@@ -1735,25 +1786,30 @@ fn validate_dtype_value(
             i128::from(i64::MIN),
             i128::from(i64::MAX),
             dtype.name(),
-        ),
+        )
+        .map_err(|failure| temporal_refusal(dtype, value).unwrap_or(failure)),
         D::Duration32(_) => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
-        ),
+        )
+        .map_err(|failure| temporal_refusal(dtype, value).unwrap_or(failure)),
         D::Date32 => validate_signed(
             value,
             i128::from(i32::MIN),
             i128::from(i32::MAX),
             dtype.name(),
-        ),
-        D::Date64 => validate_date64(value),
+        )
+        .map_err(|failure| temporal_refusal(dtype, value).unwrap_or(failure)),
+        D::Date64 => validate_date64(value)
+            .map_err(|failure| temporal_refusal(dtype, value).unwrap_or(failure)),
         leaf_dtype @ (D::Time32(_) | D::Time64(_)) => {
             let leaf = &leaf_dtype
                 .time_type()
                 .expect("the variant was just matched");
             validate_time(value, leaf.unit())
+                .map_err(|failure| temporal_refusal(dtype, value).unwrap_or(failure))
         }
         D::Interval(leaf) => validate_interval_value(value, *leaf),
         // Bytes are checked the way they are built, against the column's

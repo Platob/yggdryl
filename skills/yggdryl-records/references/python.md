@@ -1,6 +1,6 @@
 # yggdryl-records in Python
 
-`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `commit_row_size=`, `compression=`, `rowheader=`, ...), each set on a copy.
+`from yggdryl import IOBase, RecordOptions, TextOptions`; Iceberg is `from yggdryl.iceberg import Table`. Every record method takes keyword-only `options=` plus the option properties by name (`select=`, `filter=`, `field=`, `merge_by=`, `max_row_size=`, `row_offset=`, `commit_row_size=`, `compression=`, `rowheader=`, ...), each set on a copy.
 
 ## Which encoding will this handle use?
 
@@ -81,6 +81,10 @@ handle.overwrite_arrow_table(
 picked = handle.read_arrow_reader(select=["id"], filter="id > 3", max_row_size=2).read_all()
 assert picked.column_names == ["id"]
 assert picked.column("id").to_pylist() == [4, 5]
+
+# row_offset skips leading rows before max_row_size counts.
+page = handle.read_arrow_reader(select=["id"], row_offset=3, max_row_size=2).read_all()
+assert page.column("id").to_pylist() == [3, 4]
 
 # A declared field projects and casts in one pass.
 narrow = pa.schema([pa.field("id", pa.int32(), nullable=False)])
@@ -204,7 +208,7 @@ except ValueError as refused:
 
 ## Bound memory on large writes
 
-`commit_row_size=N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet read yields.
+`commit_row_size=N` publishes every N rows (a committed prefix survives a later failure); unset commits once; `0` is refused before any input is pulled. `batch_row_size` bounds the batches a Parquet or Arrow IPC read yields.
 
 ```python
 import pathlib
@@ -409,7 +413,7 @@ assert reopened.read_arrow_reader(select=["id"], filter="venue = 'XNYS'").read_a
 
 ## Evolve an Iceberg schema
 
-`update_schema()` records a chain and `commit()` writes one new schema; field IDs are kept and never reused. `evolve_schema(field)` replaces the schema whole.
+`update_schema()` records a chain and `commit()` writes one new schema and returns its id - an empty chain writes nothing and returns the current id; field IDs are kept and never reused. `evolve_schema(field)` replaces the schema whole.
 
 ```python
 import pathlib
@@ -424,7 +428,8 @@ root = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades")
 table = Table.create(root, pa.schema([pa.field("id", pa.int32(), nullable=False)]))
 table.append(pa.table({"id": pa.array([1], pa.int32())}))
 
-table.update_schema().add_column("", Field("note", "utf8")).update_type("id", "int64").commit()
+schema_id = table.update_schema().add_column("", Field("note", "utf8")).update_type("id", "int64").commit()
+assert schema_id == 1
 assert [child.name for child in table.schema.dtype] == ["id", "note"]
 assert table.scan().read_all().column("note").to_pylist() == [None]
 ```
@@ -503,9 +508,8 @@ assert read.execute().read_all().column("name").to_pylist() == ["b"]
 ## Gotchas in Python
 
 - Options are keyword-only: `read_arrow_reader(options=o)` or `read_arrow_reader(select=[...])`; a positional options argument is a `TypeError`.
-- `RecordOptions` has no `offset`: a plan's `offset` assigned through `options.plan` is dropped. Use `Plan(...).apply_arrow_reader(reader)` or `Plan.execute()` for an offset.
+- A plan's `offset` assigned through `options.plan` is the options' `row_offset`; a merge with one is refused.
 - JSON, JSON Lines, YAML, TOML and XML handles are not `*_records`/`*_arrow_*` targets; use `write_arrow`/`read_arrow`, or the codecs in `yggdryl-documents`. `write_arrow` on them accepts `"overwrite"` only - a document is written whole.
 - A declared nullable column reads a value it cannot convert as null under the default `safe`; pass `safe=False` to have it refused.
 - A folder's partition columns come from the path: a leaf read alone does not carry them.
 - `Table` objects cache their metadata; after writing through another handle, `Table.open(...)` again.
-- `update_schema().commit()` returns `None` in Python (JavaScript returns the schema id).

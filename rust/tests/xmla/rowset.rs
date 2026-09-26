@@ -1080,7 +1080,7 @@ fn leaves() -> (Field, Scalar, &'static str) {
         ("u64", Scalar::from(u64::MAX)),
         ("f32", Scalar::from(1.5_f32)),
         ("f64", Scalar::from(0.1_f64)),
-        ("amount", Scalar::d128(1250, 2)),
+        ("amount", Scalar::decimal128(1250, 2)),
         ("day", Scalar::date32(19_723)),
         (
             "clock",
@@ -2514,7 +2514,7 @@ fn a_decimal_column_reads_back_through_its_schema_as_its_exact_text() {
         .unwrap()
         .required_field("amount")]);
     let rowset = Rowset::new(field.clone()).unwrap();
-    let batch = rows(&field, [row([("amount", Scalar::d128(1250, 2))])]);
+    let batch = rows(&field, [row([("amount", Scalar::decimal128(1250, 2))])]);
     let (read, back) = read_root(&root_text(&rowset, vec![batch], true, true), None)
         .expect("the rowset reads back");
     let text = record([DataType::utf8().required_field("amount")]);
@@ -2544,9 +2544,9 @@ fn an_xsd_integer_column_reads_as_a_scale_free_decimal() {
             [
                 row([(
                     "big",
-                    Scalar::d128(12_345_678_901_234_567_890_123_456_789_012_345_678, 0)
+                    Scalar::decimal128(12_345_678_901_234_567_890_123_456_789_012_345_678, 0)
                 )]),
-                row([("big", Scalar::d128(-7, 0))]),
+                row([("big", Scalar::decimal128(-7, 0))]),
             ]
         )
     );

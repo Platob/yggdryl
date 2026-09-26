@@ -227,9 +227,10 @@ Each width is Arrow's own - `Float16`, `Float32`, `Float64` - and imports back a
 
     ```javascript
     const assert = require('node:assert/strict')
+    const arrow = require('apache-arrow')
     const { DataType } = require('yggdryl')
 
-    assert.equal(DataType.fromArrow({ toString: () => 'float32' }).toString(), 'float32')
+    assert.equal(DataType.fromArrow(new arrow.Float32()).toString(), 'float32')
     assert.equal(DataType.from('float16').fixedByteWidth, 2)
     assert.equal(DataType.from('float64').fixedByteWidth, 8)
     ```

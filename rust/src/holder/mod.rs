@@ -134,6 +134,49 @@ pub enum Holder {
 }
 
 impl Holder {
+    /// Return whether anything is at this handle's location now.
+    ///
+    /// Each role answers its own question - a folder whether its container is
+    /// there, a file whether its leaf is, a path whether either is - so a
+    /// handle `mkdir` made a folder and `remove` then deleted answers `false`,
+    /// while its [`kind`](IOBase::kind) still names the role it was built as.
+    /// A buffer always holds its bytes, as an HTTP session, response or stream
+    /// holds what it answers; an HTTP request asks its resource with one
+    /// `HEAD`, and a wrapper answers for the handle it wraps.
+    ///
+    /// This answers a caller's question; nothing in the crate asks it before
+    /// acting, because every operation acts once and branches on the typed
+    /// result instead.
+    pub fn exists(&self) -> bool {
+        use crate::{IOFile, IOFolder, IOPath};
+        match self {
+            Self::Buffer(_) => true,
+            Self::LocalFolder(inner) => inner.folder_exists(),
+            Self::LocalPath(inner) => inner.path_exists(),
+            Self::LocalFile(inner) => inner.file_exists(),
+            Self::FsFolder(inner) => inner.folder_exists(),
+            Self::FsPath(inner) => inner.path_exists(),
+            Self::FsFile(inner) => inner.file_exists(),
+            #[cfg(feature = "s3")]
+            Self::S3Folder(inner) => inner.folder_exists(),
+            #[cfg(feature = "s3")]
+            Self::S3Path(inner) => inner.path_exists(),
+            #[cfg(feature = "s3")]
+            Self::S3File(inner) => inner.file_exists(),
+            #[cfg(feature = "http")]
+            Self::HttpSession(_) | Self::HttpResponse(_) | Self::HttpStream(_) => true,
+            #[cfg(feature = "http")]
+            Self::HttpRequest(inner) => inner.file_exists(),
+            Self::ZipNode(inner) => inner.folder_exists(),
+            Self::ZipPath(inner) => inner.path_exists(),
+            Self::ZipLeaf(inner) => inner.file_exists(),
+            Self::Buffered(inner) => inner.handle().exists(),
+            Self::Coded(inner) => inner.handle().exists(),
+            Self::Text(inner) => inner.handle().exists(),
+            Self::Media(inner) => inner.handle().exists(),
+        }
+    }
+
     /// Hold an in-memory buffer.
     pub const fn buffer(buffer: Buffer) -> Self {
         Self::Buffer(buffer)

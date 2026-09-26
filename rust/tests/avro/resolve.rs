@@ -359,10 +359,17 @@ mod avro {
                 &[r#"{"value":1,"label":"a","next":{"value":2,"label":"b","next":null}}"#],
             );
             assert_eq!(
-                rows[0].path("next.value").and_then(|value| value.as_i64()),
+                rows[0]
+                    .path(&yggdryl::FieldPath::from_str("next.value").unwrap())
+                    .and_then(|value| value.as_i64()),
                 Some(2)
             );
-            assert!(rows[0].path("next.label").is_none(), "projected away");
+            assert!(
+                rows[0]
+                    .path(&yggdryl::FieldPath::from_str("next.label").unwrap())
+                    .is_none(),
+                "projected away"
+            );
         }
 
         #[test]
@@ -406,9 +413,17 @@ mod avro {
             ]}
         ]}"#;
             let rows = resolved(writer, reader, &[r#"{"f1":{"x":7},"f2":{"x":"hi"}}"#]);
-            assert_eq!(rows[0].path("f1.x").and_then(|x| x.as_i64()), Some(7));
             assert_eq!(
-                rows[0].path("f2.x").as_deref().and_then(Scalar::as_str),
+                rows[0]
+                    .path(&yggdryl::FieldPath::from_str("f1.x").unwrap())
+                    .and_then(|x| x.as_i64()),
+                Some(7)
+            );
+            assert_eq!(
+                rows[0]
+                    .path(&yggdryl::FieldPath::from_str("f2.x").unwrap())
+                    .as_deref()
+                    .and_then(Scalar::as_str),
                 Some("hi")
             );
         }

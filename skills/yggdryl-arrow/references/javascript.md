@@ -421,7 +421,7 @@ assert.ok(column.equals(Serie.fromScalars(fields.int32('size'), [125, 126])))
 JavaScript has no schema projection of its own. Read an Arrow JS schema
 exactly - nullability included - through the IPC doors (`BatchReader.from`,
 `Serie.fromArrowBatch`, `ArrowCastPlan.compile`); `DataType.fromArrow` and
-`Field.fromArrow` read an Arrow JS value's text, which states no nullability.
+`Field.fromArrow` cross one Arrow JS type or field the same way.
 
 ```javascript
 const assert = require('node:assert/strict')
@@ -441,7 +441,7 @@ const root = BatchReader.from(table).field
 assert.ok(root.equals(Field.from('row: struct<id: int64 not null> not null')))
 
 assert.equal(DataType.fromArrow(new arrow.Int32()).toString(), 'int32')
-assert.equal(Field.fromArrow(schema.fields[0]).nullable, true) // the text drops `not null`
+assert.equal(Field.fromArrow(schema.fields[0]).nullable, false)
 ```
 
 ## Merge two streams

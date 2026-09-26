@@ -160,6 +160,53 @@ test('a row answers, and unknown is not true', () => {
   assert.equal(bound.matches(Scalar.from(['EUR', null, null])), false)
 })
 
+test('every operand is read once: a term, text that parses, or a value', () => {
+  const price = Term.column('price')
+  // A JavaScript value is the literal it is; text is term text, a column.
+  assert.equal(price.gt(100).toString(), 'price > 100')
+  assert.equal(price.eq('size').toString(), 'price = size')
+  assert.equal(price.le(2.5).toString(), 'price <= 2.5')
+  assert.equal(price.ne(true).toString(), 'price <> true')
+  assert.equal(price.comparison('is distinct from', 7).toString(), 'price is distinct from 7')
+  assert.equal(price.isIn([1, 2]).toString(), 'price in (1, 2)')
+  assert.equal(price.between(10, 20).toString(), 'price between 10 and 20')
+  assert.equal(price.gt(1).and(price.lt(9)).toString(), 'price > 1 and price < 9')
+  assert.equal(price.gt(1).or(false).toString(), 'price > 1 or false')
+  assert.equal(Term.all([price.gt(1), true]).toString(), 'price > 1 and true')
+  assert.equal(Term.any(new Set(['a', 'b'])).toString(), 'a or b')
+  assert.equal(Term.call('coalesce', [price, 0]).toString(), 'coalesce(price, 0)')
+  // A Scalar is read the way a JavaScript value is: text in it parses.
+  assert.equal(price.eq(Scalar.from('size')).toString(), 'price = size')
+  assert.equal(price.eq(Scalar.from(3)).toString(), 'price = 3')
+  assert.throws(() => price.eq('price ='), /expression/)
+})
+
+test('a literal holds the value it is given, text included', () => {
+  assert.equal(Term.literal('x').toString(), "'x'")
+  assert.equal(Term.literal(1).isLiteral, true)
+  assert.equal(Term.literal(1).toString(), '1')
+  assert.equal(Term.literal(Scalar.from('x')).toString(), "'x'")
+  // A typed literal reads its value under the datatype it names.
+  assert.equal(Term.typedLiteral('int8', 5).toString(), "int8 '5'")
+  assert.equal(Term.typedLiteral('decimal(9,2)', '1.5').toString(), "decimal32(9,2) '1.50'")
+  assert.throws(() => Term.typedLiteral('int8', 1000), /int8/)
+  assert.equal(Term.column('tags').key('venue').toString(), "tags['venue']")
+})
+
+test('a bound term answers a plain row, ordered or named', () => {
+  const bound = new Term("ccy = 'EUR' and size > 1").bind(TRADES)
+  assert.equal(bound.matches(['EUR', null, 5]), true)
+  assert.equal(bound.matches(['USD', null, 5]), false)
+  // A named record is the same row, ordered by the schema; a name it does
+  // not declare is refused rather than ignored.
+  assert.equal(bound.matches({ size: 5, ccy: 'EUR', price: null }), true)
+  assert.equal(bound.matches({ ccy: 'EUR', size: 5 }), true)
+  assert.throws(() => bound.matches({ ccy: 'EUR', desk: 'fx' }), /desk/)
+  const computed = Term.column('size').add(1).bind(TRADES)
+  assert.ok(computed.eval({ size: 4 }).equals(Scalar.from(5)))
+  assert.ok(computed.eval(['EUR', null, 4]).equals(Scalar.from(5)))
+})
+
 test('a partition column is the half a path answers', () => {
   const mixed = new Term("ccy = 'EUR' and size > 0").bind(TRADES.withPartitionFields(['ccy']))
   const split = mixed.partitionSplit()

@@ -212,7 +212,7 @@ impl<H: IOBase> Table<H> {
             metadata_file_name: SmolStr::new_static(""),
             options: None,
         };
-        table.commit_metadata(None)?;
+        table.create_metadata()?;
         log::info!(
             "created iceberg table at {} (format v{}, {} columns)",
             table.metadata.location(),
@@ -1595,6 +1595,36 @@ impl<H: IOBase> Table<H> {
         Ok(schema_id)
     }
 
+    /// Commit a recorded [`SchemaUpdate`](crate::iceberg::SchemaUpdate) and
+    /// return the schema identifier it made current.
+    ///
+    /// The operations replay onto the metadata each attempt reads, so a
+    /// commit beaten by another writer rebases onto the winner's schema
+    /// rather than overwriting it. An update that recorded nothing commits
+    /// nothing and answers the current schema's identifier.
+    ///
+    /// # Errors
+    ///
+    /// Returns an operation's failure against the current schema - a path
+    /// that does not resolve, a name collision, an illegal promotion - or a
+    /// commit failure.
+    pub fn update_schema(&mut self, update: &crate::iceberg::SchemaUpdate) -> Result<i32> {
+        if update.is_empty() {
+            return Ok(self.metadata.current_schema_id());
+        }
+        let mut schema_id = 0;
+        self.commit_metadata_changes(|metadata| {
+            schema_id = metadata.add_schema(update.replay(metadata)?)?;
+            metadata.set_current_schema(schema_id)?;
+            Ok(())
+        })?;
+        log::info!(
+            "evolved iceberg schema of {} to id {schema_id}",
+            self.metadata.location(),
+        );
+        Ok(schema_id)
+    }
+
     /// Create a branch at one retained snapshot, as one metadata commit.
     ///
     /// This is [`TableMetadata::create_branch`] committed through the
@@ -1741,6 +1771,43 @@ impl<H: IOBase> Table<H> {
     pub(super) fn child_at(&self, location: &str) -> Result<Holder> {
         let relative = relative_location(&self.metadata.location, location)?;
         leaf(self.root.child_by_path(&relative)?)
+    }
+
+    /// Write the first document, trying again while every racing creator
+    /// yielded.
+    ///
+    /// A creator that finds another's attempt at version one removes its own
+    /// and yields, so creators writing side by side can all yield and leave no
+    /// table. Storage has no compare-and-swap to break that tie; but each
+    /// removes its own attempt before looking again, so the last to look finds
+    /// the version free and tries once more after a jittered wait, under the
+    /// commit retry budget. A creator that finds a document there - published
+    /// or still in flight - was beaten and reports the typed conflict.
+    fn create_metadata(&mut self) -> Result<()> {
+        let settings = IcebergOptions::commit_settings(self.options.as_ref(), &self.metadata)?;
+        let metadata_dir = container(self.root.child_by_path(METADATA_DIR)?)?;
+        let mut beaten = 0_u32;
+        let mut backoff_spent_ms = 0_u64;
+        loop {
+            let conflict = match self.commit_metadata(None) {
+                Err(error) if error.is_conflict() => error,
+                done => return done,
+            };
+            if !metadata_names_at_version(&metadata_dir, 1)?.is_empty() {
+                return Err(conflict);
+            }
+            let Ok(wait) = retry_wait_ms(&settings, &mut beaten, &mut backoff_spent_ms, 1, 0)
+            else {
+                return Err(conflict);
+            };
+            log::debug!(
+                "iceberg create of {} yielded to a racing creator; retry {beaten}, waiting {wait} ms",
+                self.metadata.location(),
+            );
+            if wait > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(wait));
+            }
+        }
     }
 
     /// Write the current metadata as the next numbered document.

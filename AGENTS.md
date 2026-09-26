@@ -1803,8 +1803,10 @@ The core settles first (§1). Rules shared by both extensions:
   value entering a datatype or field crosses `DataType::scalar` or
   `Field::scalar`, never the host runtime's casting - PyArrow and Arrow JS know
   none of the value rules this crate owns.
-- Conversion pairs are Python `as_py`/`from_py` and JS `asJs`/`fromJs`; native
-  and Arrow values map through `Scalar` losslessly where the runtime allows.
+- Conversion pairs are Python `Scalar.from_`/`as_py` and JS
+  `Scalar.from`/`asJs`, the inferring constructor and the native reading;
+  native and Arrow values map through `Scalar` losslessly where the runtime
+  allows.
 - Coerce only documented wrappers, strings, path-like values, mappings, native
   scalars, enums, and Arrow values; never stringify arbitrary objects.
 - Preserve argument order, defaults, error semantics, and native error messages

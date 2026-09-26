@@ -65,7 +65,7 @@ fn partition_format() -> FormatOptions<'static> {
 /// # fn main() -> yggdryl::Result<()> {
 /// assert_eq!(partition_text(&Scalar::from("XNAS"))?, "XNAS");
 /// assert_eq!(partition_text(&Scalar::date32(19_723))?, "2024-01-01");
-/// assert_eq!(partition_text(&Scalar::d128(150, 2))?, "1.50");
+/// assert_eq!(partition_text(&Scalar::decimal128(150, 2))?, "1.50");
 /// assert_eq!(partition_text(&Scalar::Null)?, "null");
 /// # Ok(())
 /// # }
@@ -699,12 +699,14 @@ fn leaf_options(options: &RecordOptions, pairs: &[(String, String)]) -> Result<R
     if options.max_row_size().is_some() {
         leaf.set_file_threads(1);
     }
-    // The row and byte limits were already applied to the whole operation at
-    // the record-method seam, so a leaf must not apply them again: a limit on
-    // the tree re-applied per leaf would become one bound per partition, and
-    // a byte bound would re-cut a sliced batch whose buffers still report
-    // their full size.
+    // The row skip and the row and byte limits were already applied to the
+    // whole operation at the record-method seam, so a leaf must not apply them
+    // again: a limit on the tree re-applied per leaf would become one bound
+    // per partition, a skip would drop the head of every partition, and a
+    // byte bound would re-cut a sliced batch whose buffers still report their
+    // full size.
     leaf.set_max_row_size(None);
+    leaf.set_row_offset(None);
     leaf.set_max_byte_size(None);
     leaf.set_commit_row_size(None);
     if pairs.is_empty() {

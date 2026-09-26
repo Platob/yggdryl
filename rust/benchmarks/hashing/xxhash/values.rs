@@ -20,13 +20,13 @@ fn corpus() -> Vec<(&'static str, Scalar)> {
     let row = Scalar::from_sequence([
         Scalar::from("AAPL"),
         Scalar::from(100),
-        Scalar::d128(18_723, 2),
+        Scalar::decimal128(18_723, 2),
         Scalar::from("XNAS"),
     ]);
     vec![
         ("leaf", Scalar::from("AAPL")),
         ("integer", Scalar::from(18_723)),
-        ("decimal", Scalar::d128(18_723, 2)),
+        ("decimal", Scalar::decimal128(18_723, 2)),
         ("row", row),
         ("wide_record", wide),
         ("deep_nest", deep),
