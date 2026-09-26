@@ -46,7 +46,7 @@ test file at the matching path.
 | `rust/src/iobase.rs`, `rust/src/iobase/`, the `rust/src/io*.rs` roles, `rust/src/holder/`, and one root folder per backend: `rust/src/local/`, `fs/`, `zip/`, `s3/` | [Holder](holder/index.md) |
 | `rust/src/codec.rs`, `rust/src/coding/`, `rust/src/gzip.rs`, `zlib.rs`, `zstd.rs` | [Media: compression](media/index.md#compression) |
 | `rust/src/charset.rs`, `rust/src/charset/`, `rust/src/utf8.rs`, `ascii.rs`, `cp1252.rs` | [Media: charsets](media/index.md#charsets) |
-| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/` | [Media](media/index.md) |
+| `rust/src/media_type.rs`, `mime_type.rs`, `rust/src/media/`, and one root folder per medium: `rust/src/ipc/`, `parquet/`, `avro/`, `iceberg/`, `text/`, `xmla/` | [Media](media/index.md) |
 | `rust/src/json/`, `toml/`, `yaml/`, `xml/` over the codec machinery in `rust/src/text/` | [Structured documents](media/index.md#json) |
 | `rust/src/uri/` | [URI](uri/index.md) |
 | `rust/src/arrow/` | [Arrow](arrow/index.md) |

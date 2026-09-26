@@ -7,10 +7,16 @@
 //! only under the `internals` feature, and the file that reaches it is
 //! declared behind that feature here.
 
+#[path = "xml/element.rs"]
+mod element;
 #[path = "xml/mod_.rs"]
 mod mod_;
 #[path = "xml/parser.rs"]
 mod parser;
+#[path = "xml/soap/mod_.rs"]
+mod soap;
+#[path = "xml/soap/http.rs"]
+mod soap_http;
 #[cfg(all(feature = "s3", feature = "internals"))]
 #[path = "xml/scanner.rs"]
 mod scanner;

@@ -135,6 +135,7 @@ pub mod version;
 mod vocabulary;
 pub mod wkb;
 pub mod xml;
+pub mod xmla;
 pub mod xxhash;
 pub mod yaml;
 pub mod zip;

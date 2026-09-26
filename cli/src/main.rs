@@ -1,13 +1,15 @@
 //! `ygg` - the yggdryl command line.
 //!
 //! One binary over the core's namespaces, each a subcommand that owns its own
-//! verbs and its own state. Today there is one: [`fix`], the FIX dictionary
-//! tool. The top level parses, dispatches, and prints a refusal; every verb
-//! lives in the namespace it belongs to.
+//! verbs and its own state. There are two: [`fix`], the FIX dictionary tool,
+//! and [`xmla`], the XML for Analysis provider. The top level parses,
+//! dispatches, and prints a refusal; every verb lives in the namespace it
+//! belongs to.
 //!
 //! | namespace | what it is |
 //! | --- | --- |
 //! | `fix` | a FIX dictionary: read it, change it, ingest a counterparty's configuration, check what came out - and with no verb, all of that interactively |
+//! | `xmla` | the XML for Analysis provider: serve folders of record media as catalogs over HTTP |
 
 mod diff;
 mod fix;
@@ -16,6 +18,7 @@ mod registry;
 mod schema;
 mod shell;
 mod style;
+mod xmla;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -49,6 +52,11 @@ enum Command {
         #[command(subcommand)]
         command: Option<fix::Command>,
     },
+    /// Serve catalogs of record media over XML for Analysis.
+    Xmla {
+        #[command(subcommand)]
+        command: xmla::Command,
+    },
 }
 
 fn main() -> ExitCode {
@@ -63,6 +71,7 @@ fn main() -> ExitCode {
             *annotate || std::env::var_os("GITHUB_ACTIONS").is_some(),
             command.as_ref(),
         ),
+        Command::Xmla { command } => xmla::run(command),
     };
     match outcome {
         Ok(code) => code,

@@ -68,6 +68,10 @@ fn the_name_picks_the_implementation() {
         Media::open(handle("events.log")).unwrap(),
         Media::Text(_)
     ));
+    assert!(matches!(
+        Media::open(handle("catalog.xmla")).unwrap(),
+        Media::Xmla(_)
+    ));
 }
 
 #[test]
@@ -107,7 +111,7 @@ fn an_unimplemented_encoding_is_named_rather_than_guessed() {
 
 #[test]
 fn every_variant_round_trips_batches_through_the_same_calls() {
-    let mut names = vec!["trades.arrows", "trades.arrows.gz"];
+    let mut names = vec!["trades.arrows", "trades.arrows.gz", "trades.xmla"];
     if cfg!(feature = "parquet") {
         names.push("trades.parquet");
     }
@@ -148,6 +152,7 @@ fn generic_media_preserves_commit_cadence_through_variant_redirection() {
             Media::Parquet(parquet) => parquet.options_mut().set_commit_row_size(Some(1)),
             Media::Avro(avro) => avro.options_mut().set_commit_row_size(Some(1)),
             Media::Text(text) => text.options_mut().set_commit_row_size(Some(1)),
+            Media::Xmla(xmla) => xmla.options_mut().set_commit_row_size(Some(1)),
         }
 
         let options = media.record_options().unwrap();

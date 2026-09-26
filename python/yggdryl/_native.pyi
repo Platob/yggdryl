@@ -3614,6 +3614,9 @@ class Parquet(Media):
 class Avro(Media):
     """An Apache Avro object container."""
 
+class Xmla(Media):
+    """An XML for Analysis rowset document."""
+
 class Text(IOBase):
     """Plain-text rows under one retained flat configuration."""
 

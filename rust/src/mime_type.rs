@@ -42,6 +42,7 @@ enum MimeTypeWire {
     Css,
     JavaScript,
     Xml,
+    Xmla,
     Pdf,
     Cbor,
     MessagePack,
@@ -202,6 +203,9 @@ impl MimeType {
     pub const JAVASCRIPT: Self = Self(MimeTypeWire::JavaScript);
     /// XML structured data.
     pub const XML: Self = Self(MimeTypeWire::Xml);
+    /// An XML for Analysis document: a SOAP message carrying a rowset, or
+    /// the bare rowset `root`.
+    pub const XMLA: Self = Self(MimeTypeWire::Xmla);
     /// A PDF document.
     pub const PDF: Self = Self(MimeTypeWire::Pdf);
     /// CBOR structured data.
@@ -452,6 +456,7 @@ impl MimeType {
             MimeTypeWire::Css => "text/css",
             MimeTypeWire::JavaScript => "text/javascript",
             MimeTypeWire::Xml => "application/xml",
+            MimeTypeWire::Xmla => "application/xmla+xml",
             MimeTypeWire::Pdf => "application/pdf",
             MimeTypeWire::Cbor => "application/cbor",
             MimeTypeWire::MessagePack => "application/vnd.msgpack",
@@ -552,6 +557,7 @@ impl MimeType {
             MimeTypeWire::Css => Some("css"),
             MimeTypeWire::JavaScript => Some("js"),
             MimeTypeWire::Xml => Some("xml"),
+            MimeTypeWire::Xmla => Some("xmla"),
             MimeTypeWire::Pdf => Some("pdf"),
             MimeTypeWire::Cbor => Some("cbor"),
             MimeTypeWire::MessagePack => Some("msgpack"),
@@ -625,6 +631,9 @@ impl MimeType {
             MimeTypeWire::Yaml => Some(Format::Yaml),
             MimeTypeWire::Toml => Some(Format::Toml),
             MimeTypeWire::Xml => Some(Format::Xml),
+            // A rowset document is XML, and a record encoding rather than a
+            // structured document: its rows are read through the XMLA medium.
+            MimeTypeWire::Xmla => None,
             _ => match self.structured_suffix() {
                 Some("json") => Some(Format::Json),
                 Some("xml") => Some(Format::Xml),
@@ -699,6 +708,7 @@ impl MimeType {
                     | MimeTypeWire::Yaml
                     | MimeTypeWire::Toml
                     | MimeTypeWire::Xml
+                    | MimeTypeWire::Xmla
                     | MimeTypeWire::Svg
             )
             || matches!(
@@ -739,6 +749,7 @@ impl MimeType {
                 | MimeTypeWire::ArrowFile
                 | MimeTypeWire::ArrowStream
                 | MimeTypeWire::Avro
+                | MimeTypeWire::Xmla
                 | MimeTypeWire::Orc
                 | MimeTypeWire::Xls
                 | MimeTypeWire::Xlsx

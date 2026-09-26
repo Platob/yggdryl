@@ -934,6 +934,7 @@ pub(crate) fn leaf_reader(
         }
         RecordOptions::Avro(avro) => crate::avro::read_batch_reader(handle, declared, avro)?,
         RecordOptions::Text(text) => crate::text::arrow::read_arrow_reader(handle, text)?,
+        RecordOptions::Xmla(xmla) => crate::xmla::read_batch_reader(handle, declared, xmla)?,
     };
     match declared {
         // A declared root is applied, not merely cast: a `PARTITION:` or
@@ -963,6 +964,7 @@ pub(crate) fn leaf_row_size(
         RecordOptions::Parquet(parquet) => crate::parquet::row_size(handle, parquet),
         RecordOptions::Avro(avro) => crate::avro::row_size(handle, avro),
         RecordOptions::Text(text) => crate::text::arrow::row_size(handle, text),
+        RecordOptions::Xmla(xmla) => crate::xmla::row_size(handle, xmla),
     }
 }
 
@@ -986,6 +988,7 @@ pub(crate) fn leaf_field(
         RecordOptions::Parquet(parquet) => Ok(crate::parquet::read_field(handle, parquet)?),
         RecordOptions::Avro(avro) => Ok(crate::avro::read_field(handle, avro)?),
         RecordOptions::Text(text) => text.source_field(),
+        RecordOptions::Xmla(xmla) => crate::xmla::read_field(handle, xmla),
     }
 }
 
@@ -1009,6 +1012,7 @@ pub(crate) fn leaf_writer(
         RecordOptions::Text(text) => {
             crate::text::arrow::write_arrow_reader(handle, batches, text)?;
         }
+        RecordOptions::Xmla(xmla) => crate::xmla::overwrite_arrow_reader(handle, batches, xmla)?,
     }
     Ok(())
 }

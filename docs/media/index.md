@@ -11,6 +11,8 @@ A handle's name picks the encoding, the compression and the charset; the read an
 | [JSON](#json) | `application/json`, `application/x-ndjson`, `.json`, `.jsonl` | default |
 | [YAML](#yaml) | `application/yaml`, `.yaml` | default |
 | [TOML](#toml) | `application/toml`, `.toml` | default |
+| [XML](#xml) | `application/xml`, `.xml` | default |
+| [XML for Analysis](#xml-for-analysis) | `application/xmla+xml`, `.xmla`; the provider serves catalogs over HTTP | default |
 | [Iceberg](#iceberg) | a table folder | `iceberg` feature |
 | [Compression](#compression) | `.gz`, `.zz`, `.zst` suffix | default |
 | [Charsets](#charsets) | `;charset=` parameter | default |
@@ -1439,6 +1441,158 @@ XML is measured where the other formats are: `codec/xml` in the Rust `text` benc
 cargo bench -p yggdryl --bench text -- codec/xml
 python/.venv/bin/python python/benchmarks/text.py --iterations 10000
 npm run --prefix node bench:text
+```
+
+## XML for Analysis
+
+A `.xmla` handle holds one XML for Analysis 1.1 rowset document - the `xsd:schema` naming its columns and one `<row>` element per row, inside the SOAP 1.1 `DiscoverResponse` a provider would answer or as the bare rowset `root` - and reads and writes it through the same calls as every other medium. The schema travels with the rows: a nullable column is `minOccurs="0"` and absent where its cell is null, a sequence column is `maxOccurs="unbounded"` and one element per item, a struct is the element's children, and a column whose name is not an XML name is written under its `_xHHHH_` escape with `sql:field` keeping the original. Every value is spelled as the XML Schema type its datatype maps to (`xsd:long`, `xsd:double`, `xsd:dateTime`, `uuid`, `xsd:base64Binary`), so a client reads the document without this crate. A declared field types a document written without its schema; without one, the document's own schema is what a read answers, and a `dateTime` column whose values spell a zone lands as `datetime64(us, UTC)`.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Buffer;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::{DataType, IOBase, IOMedia, MimeType, Scalar, StructType};
+
+    let field = DataType::from(StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::utf8().nullable_field("symbol"),
+    ])?)
+    .required_field("row");
+    let mut handle = Buffer::new().with_media_type(MimeType::XMLA.into());
+    let options = handle.record_options()?.with_field(field.clone());
+    handle.overwrite_records(
+        [
+            Scalar::from_sequence([Scalar::from(1_i64), Scalar::from("AAPL")]),
+            Scalar::from_sequence([Scalar::from(2_i64), Scalar::Null]),
+        ],
+        &options,
+    )?;
+
+    // The document carries its schema and one `<row>` per row; a null cell
+    // is an absent element.
+    let document = String::from_utf8(handle.read_all_bytes()?)?;
+    assert!(document.contains("<xsd:element sql:field=\"symbol\" name=\"symbol\" type=\"xsd:string\" minOccurs=\"0\"/>"));
+    assert!(document.contains("<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>"));
+
+    // It reads back through the calls every medium answers.
+    let mut rows = 0;
+    for batch in handle.read_arrow_reader(&handle.record_options()?)? {
+        rows += batch?.num_rows();
+    }
+    assert_eq!(rows, 2);
+    assert_eq!(handle.read_arrow_field(&handle.record_options()?)?.fields().len(), 2);
+    ```
+
+=== "Python"
+
+    ```python
+    import pathlib
+    import tempfile
+
+    from yggdryl import IOBase
+
+    handle = IOBase(pathlib.Path(tempfile.mkdtemp()) / "trades.xmla")
+
+    # The `.xmla` suffix picks the rowset document; a None makes the column nullable.
+    handle.overwrite_records([{"id": 1, "symbol": "AAPL"}, {"id": 2, "symbol": None}])
+
+    document = handle.read_bytes().decode()
+    assert "<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>" in document
+    assert list(handle.read_records()) == [
+        {"id": 1, "symbol": "AAPL"},
+        {"id": 2, "symbol": None},
+    ]
+    ```
+
+=== "JavaScript"
+
+    ```javascript
+    const assert = require('node:assert/strict')
+    const fs = require('node:fs')
+    const os = require('node:os')
+    const path = require('node:path')
+    const { IOBase } = require('yggdryl')
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'yggdryl-docs-'))
+    const handle = new IOBase(path.join(root, 'trades.xmla'))
+
+    // The `.xmla` suffix picks the rowset document; a null makes the column nullable.
+    handle.overwriteRecords([{ id: 1n, symbol: 'AAPL' }, { id: 2n, symbol: null }])
+
+    const document = handle.readBytes().toString()
+    assert.ok(document.includes('<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id></row>'))
+    assert.deepEqual([...handle.readRecords()], [
+      { id: 1n, symbol: 'AAPL' },
+      { id: 2n, symbol: null },
+    ])
+
+    fs.rmSync(root, { recursive: true, force: true })
+    ```
+
+### Provider
+
+`yggdryl::xmla` is also the provider side of the protocol, Rust-only: a [`Service`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Service.html) serves catalogs - a folder of record media is a catalog, each file the folder holds a table, each folder inside it a schema of tables - answering `Discover` with the XMLA schema rowsets (`DISCOVER_DATASOURCES`, `DISCOVER_SCHEMA_ROWSETS`, `DBSCHEMA_CATALOGS`, `DBSCHEMA_SCHEMATA`, `DBSCHEMA_TABLES`, `DBSCHEMA_COLUMNS` and the rest, restrictions applied) and `Execute` by running the statement through the [expression grammar](../expression/index.md) against the table it names, `catalog.schema.table` or the `Catalog` property, refusing a write unless the service was made writable. Every refusal is a SOAP fault carrying the XMLA `<Error>` with a code, a description and the source. A [`Server`](https://docs.rs/yggdryl/latest/yggdryl/xmla/struct.Server.html) puts a service on a socket with the SOAP 1.1 HTTP binding - `POST`, `text/xml; charset=utf-8`, the `SOAPAction` header, one request per connection or keep-alive, a rowset streamed as a chunked body - and `ygg xmla serve` does the same from a terminal, printing the endpoint first.
+
+=== "Rust"
+
+    ```rust
+    use yggdryl::holder::Holder;
+    use yggdryl::media::IORecordOptions;
+    use yggdryl::xmla::{
+        Catalog, Discover, Execute, Request, RequestType, Response, Service, ServiceOptions,
+    };
+    use yggdryl::{DataType, IOBase, IOMedia, Scalar, Serie, StructType};
+
+    let root = std::env::temp_dir().join(format!("yggdryl-xmla-docs-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    let field = DataType::from(StructType::from_fields([
+        DataType::utf8().required_field("symbol"),
+        DataType::Float64.required_field("price"),
+    ])?)
+    .required_field("row");
+    let mut trades = Holder::folder(&root)?.child_by_path("trades.arrows")?;
+    let options = trades.record_options()?.with_field(field);
+    trades.overwrite_records(
+        [
+            Scalar::from_sequence([Scalar::from("AAPL"), Scalar::from(187.5_f64)]),
+            Scalar::from_sequence([Scalar::from("MSFT"), Scalar::from(410.25_f64)]),
+        ],
+        &options,
+    )?;
+
+    // A folder is a catalog; the service answers a request's bytes with a
+    // response's bytes, which is what the server puts on the socket.
+    let service = Service::new(ServiceOptions::new())
+        .with_catalog(Catalog::new("market", Holder::folder(&root)?));
+    let discover = Request::from(Discover::new(RequestType::DbschemaTables));
+    let answer = service.handle(&discover.into_bytes()?, Vec::new())?;
+    let tables = Response::from_bytes(&answer, None)?;
+    let names = tables.rows().and_then(|rows| rows.child("TABLE_NAME").cloned());
+    assert_eq!(names.map(|column| column.scalar(0)).transpose()?, Some(Scalar::from("trades")));
+
+    // A statement runs through the expression grammar against the table it names.
+    let execute = Request::from(Execute::statement(
+        "select symbol from market.trades where price > 200",
+    ));
+    let answer = service.handle(&execute.into_bytes()?, Vec::new())?;
+    let selected = Response::from_bytes(&answer, None)?;
+    assert_eq!(selected.rows().map(Serie::len), Some(1));
+    std::fs::remove_dir_all(&root)?;
+    ```
+
+The server is bound the same way in Rust, `Server::bind(service, "127.0.0.1:8080")?.serve()`, and from the command line over any folders a holder resolves:
+
+```bash
+ygg xmla serve market=/data/market reference=s3://bucket/reference --bind 0.0.0.0:8080 --path /xmla
+```
+
+### XML for Analysis performance
+
+The rowset document and the request envelope are measured in the Rust `media` bench, `media/xmla` and `media/xmla/request`, over a ten-thousand-row table. A table is stated once a release run on the machine the tables above name produces one, and not before.
+
+```bash
+cargo bench -p yggdryl --bench media -- media/xmla
 ```
 
 ## Iceberg

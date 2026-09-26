@@ -619,6 +619,23 @@ mod records {
     }
 
     #[test]
+    fn xmla_costs() {
+        // A rowset document is held whole, as every structured text document
+        // is: XML has no frame to read a prefix of. So the schema, the row
+        // count and the rows are each one read of the whole handle, and the
+        // column count is the schema's read - never a second one to break a
+        // tie, and never a per-row call.
+        surfaces(
+            "xmla",
+            "file:///lake/part.xmla",
+            "read_all_bytes=1 media_type=2 is_container=1",
+            "read_all_bytes=1 media_type=2 is_container=1",
+            "read_all_bytes=1 size=1 media_type=3 is_container=2",
+            "read_all_bytes=1 media_type=3 is_container=2",
+        );
+    }
+
+    #[test]
     fn text_costs() {
         // Plain-text rows are the sixteen event columns and `body`, so this
         // one is read rather than written from a batch. The one `mtime` call

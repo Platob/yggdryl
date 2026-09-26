@@ -116,6 +116,64 @@ fn write_root<W: Write>(
     write_element(writer, name, value, layout, 1, false, max_depth)
 }
 
+/// Write `<name>` holding the natural value `value` as one element, on one
+/// line, at the depth of a document element's child.
+///
+/// This is the codec's element writer opened to the protocols built over it -
+/// a SOAP header block, a rowset row's nested column - so a fragment inside a
+/// larger document is spelled exactly as the document writer would spell it.
+///
+/// # Errors
+///
+/// Returns the writer's refusals for the value: what has no XML spelling.
+pub(crate) fn write_fragment<W: Write>(writer: &mut W, name: &str, value: &Scalar) -> Result<()> {
+    write_element(
+        writer,
+        name,
+        value,
+        Layout { unit: None },
+        2,
+        false,
+        crate::text::Limits::default().max_depth(),
+    )
+}
+
+/// Write one leaf value as the character data of an element, in the
+/// spelling the document writer gives it: `true`, decimal text, ISO 8601,
+/// base64 bytes, `INF` and `NaN`.
+///
+/// `context` names the column or element a refusal is reported for.
+///
+/// # Errors
+///
+/// Returns [`Error::Codec`] for a value that is not a leaf, or a leaf with no
+/// XML spelling.
+pub(crate) fn write_leaf_text<W: Write>(
+    writer: &mut W,
+    value: &Scalar,
+    context: &str,
+) -> Result<()> {
+    write_leaf(writer, value, Escape::Content, context)
+}
+
+/// Write text as element character data, escaped.
+///
+/// # Errors
+///
+/// Returns [`Error::Codec`] for a character XML 1.0 cannot carry.
+pub(crate) fn write_element_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
+    write_escaped(writer, text, Escape::Content)
+}
+
+/// Write text as a quoted attribute's value, escaped, without the quotes.
+///
+/// # Errors
+///
+/// Returns [`Error::Codec`] for a character XML 1.0 cannot carry.
+pub(crate) fn write_attribute_text<W: Write>(writer: &mut W, text: &str) -> Result<()> {
+    write_escaped(writer, text, Escape::Attribute)
+}
+
 /// Write `<name>` holding `value`, at `depth` (the document element is 1),
 /// on its own line when `separated` and the layout indents.
 fn write_element<W: Write>(
@@ -493,10 +551,11 @@ fn write_float<W: Write>(writer: &mut W, value: f64) -> Result<()> {
     } else if value == f64::NEG_INFINITY {
         writer.write_all(b"-INF")?;
     } else {
-        let spelling = serde_json::Number::from_f64(value)
-            .ok_or_else(|| codec_error("float has no XML spelling"))?
-            .to_string();
-        writer.write_all(spelling.as_bytes())?;
+        // The spelling serde_json writes for a finite float - the shortest
+        // text that reads back as the same value - into a stack buffer, so a
+        // float cell costs the sink alone.
+        let mut buffer = ryu::Buffer::new();
+        writer.write_all(buffer.format_finite(value).as_bytes())?;
     }
     Ok(())
 }
@@ -634,7 +693,7 @@ pub(super) fn is_name(name: &str) -> bool {
 }
 
 /// `NameStartChar` of XML 1.0, fifth edition.
-const fn is_name_start(character: char) -> bool {
+pub(crate) const fn is_name_start(character: char) -> bool {
     matches!(
         character,
         ':' | 'A'..='Z'
@@ -656,7 +715,7 @@ const fn is_name_start(character: char) -> bool {
 }
 
 /// `NameChar` of XML 1.0, fifth edition.
-const fn is_name_char(character: char) -> bool {
+pub(crate) const fn is_name_char(character: char) -> bool {
     is_name_start(character)
         || matches!(
             character,

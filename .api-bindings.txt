@@ -105,8 +105,8 @@
     S3Path / S3File / S3Folder: the same three roles on Amazon S3, Google Cloud Storage, and Azure Blob Storage, each constructible as (location) or as (container, key, provider=) for the raw name a store uses - a raw name, unlike a location, does not say which store holds it - with an optional options= mapping in PyIceberg's s3./gcs./adls. names, PyArrow's, or each store's own environment names
     Buffered: cached_bytes, cached_pages, has_cached_page, clear_cache, into_handle, and the normalized
       configuration the core clamped to: page_size, max_bytes, ttl, page_index, page_start
-  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
-  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet and Avro under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
+  media: Avro, DEFAULT_RECORD_BATCH_ROW_SIZE, Ipc, Media, NULL_PARTITION, Parquet, RecordOptions, Text, Xmla, partition_text, with_partitions, without_partitions; what every medium shares - avro and iceberg are modules of their own at the root
+  media roles: Media is the IOBase subclass retaining a record implementation, with Ipc, Parquet, Avro and Xmla under it; Text is its own holder variant and sits directly under IOBase. Media, Text: into_handle
   text: TextEntries, TextEntry, TextLine, TextLines, TextOptions, codec; json, toml, yaml and xml are modules of their own at the root
   IOBase text decode: read_text_lines(*, options) answers a lazy TextLines iterator; every record method routes through the same decode
   field: pure Field builder for native/Arrow/dataclass shapes, with optional name

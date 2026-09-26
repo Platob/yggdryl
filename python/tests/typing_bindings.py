@@ -105,7 +105,7 @@ from yggdryl.holder import (
     LocalFolder,
     LocalPath,
 )
-from yggdryl.media import Avro, Ipc, Media, Parquet, Text
+from yggdryl.media import Avro, Ipc, Media, Parquet, Text, Xmla
 
 numeric_version: Version = Version(5, 0, 2)
 parsed_version: Version = Version.from_str("255.255.65535")
@@ -588,7 +588,7 @@ role_fs_file: FsFile = FsFile(pa_fs.LocalFileSystem(), "trades.bin")
 role_fs_folder: FsFolder = FsFolder(pa_fs.LocalFileSystem(), "lake")
 role_created: FsFolder = role_fs_folder.create_dir(recursive=True)
 coding_roles: list[type[Coded]] = [Identity, Gzip, Zlib, Zstd]
-encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro]
+encoding_roles: list[type[Media]] = [Ipc, Parquet, Avro, Xmla]
 storage_roles: list[type[IOBase]] = [Buffer, Buffered, Text]
 
 # These are deliberate negative checks. Under ``mypy --strict``, each ignore

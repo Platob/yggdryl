@@ -35,6 +35,7 @@ use yggdryl::graph::{
 };
 use yggdryl::holder::Buffer;
 use yggdryl::text::{TextBytes, TextEntries, TextLine, TextOptions, read_text_lines};
+use yggdryl::xmla::Rowset;
 use yggdryl::{
     ArrowCastOptions, ArrowCastPlan, Charset, ChunkedSerie, DataType, DataTypeId, Decimal18, Field,
     FieldPath, FieldRecord, FieldScalar, FixCode, FixCodec, FixId, FixMsg, FixRegistry, Int64,
@@ -4284,4 +4285,60 @@ fn securityid_construction_is_inline_for_every_checked_code() {
         assert_eq!(ids.get(black_box("bbgsymb")), Some(widest.as_str()));
         assert_eq!(ids.get(black_box("sedol")), None);
     });
+}
+
+/// A rowset row is written cell by cell off the column leaves - a text cell
+/// lends its bytes where they lie, a number, a boolean or a null is spelled
+/// straight into the sink - so the per-row path allocates nothing, and what a
+/// document costs beyond its sink is the same at every corpus size.
+#[test]
+fn a_rowset_write_allocates_nothing_per_row() {
+    let field = DataType::from(
+        StructType::from_fields([
+            DataType::Int64.required_field("id"),
+            DataType::utf8().nullable_field("symbol"),
+            DataType::Float64.required_field("price"),
+            DataType::Boolean.required_field("live"),
+        ])
+        .expect("a valid root"),
+    )
+    .required_field("row");
+    let rowset = Rowset::new(field.clone()).expect("a rowset over a record field");
+    let cost = |rows: usize| {
+        let batch = Serie::from_scalars(
+            field.clone(),
+            (0..rows).map(|index| {
+                Scalar::from_sequence([
+                    Scalar::from(index as i64),
+                    if index % 5 == 0 {
+                        Scalar::Null
+                    } else {
+                        Scalar::from(format!("SYM{index:04}"))
+                    },
+                    Scalar::from(index as f64 * 0.25),
+                    Scalar::from(index % 2 == 0),
+                ])
+            }),
+        )
+        .expect("rows under the field");
+        // Reserved past what the rows take, so the sink never grows and the
+        // count is the row path's alone.
+        let mut document = Vec::with_capacity(rows * 160);
+        let (allocations, ()) = counted(|| {
+            rowset
+                .write_rows(&mut document, black_box(&batch))
+                .expect("the rows are written");
+        });
+        assert!(
+            document.len() < rows * 160,
+            "{rows} rows filled the reserved sink"
+        );
+        assert!(document.ends_with(b"</row>"));
+        allocations
+    };
+    let (small, large) = (cost(64), cost(4_096));
+    assert_eq!(
+        small, large,
+        "64 rows cost {small} allocations, 4096 cost {large}; a rowset row must be written off its leaves"
+    );
 }

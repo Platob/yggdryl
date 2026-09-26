@@ -108,7 +108,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `holder` | byte streams, listings, buffering, and foreign-filesystem boundaries |
 | `charset` | the borrow an all-ASCII payload answers with, the transcode a mixed one pays for, and the three streaming doors |
 | `coding` | content codings beside their standard-library baselines on the same wire |
-| `media` | record round trips, text projection, Avro, Parquet, Iceberg, and pushdown |
+| `media` | record round trips, text projection, Avro, Parquet, Iceberg, XML for Analysis, and pushdown |
 | `text` | natural whole-value and streaming codecs, field-directed parsing, and placeholders |
 | `uri` | URI parsing and component access |
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |

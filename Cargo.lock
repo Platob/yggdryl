@@ -4317,6 +4317,7 @@ dependencies = [
  "regex-automata",
  "regex-syntax",
  "ring",
+ "ryu",
  "saphyr-parser",
  "serde",
  "serde_json",
