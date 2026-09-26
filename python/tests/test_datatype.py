@@ -10,8 +10,11 @@ import inspect
 import json
 import operator
 import pickle
+import struct
+import subprocess
+import sys
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Optional
 
 import pyarrow as pa
@@ -20,6 +23,7 @@ import pytest
 import yggdryl
 from yggdryl import (
     BytesParameters,
+    ChunkedSerie,
     DataType,
     Field,
     Serie,
@@ -446,15 +450,12 @@ def test_url_is_a_validated_canonical_location_over_utf8_text() -> None:
             field.arrow_scalar(relative)
 
     # The empty text names nothing at all, so it is not a spelling to refuse
-    # but an absence: null before the reader runs, which this required column
-    # repairs with its default, or refuses by path when strict.
-    assert Serie.from_arrow_array(
-        pa.array([""]), field
-    ).into_arrow_array().to_pylist() == ["file:///"]
+    # but an absence: null before the reader runs, and this required column
+    # refuses it by path rather than filling in a default.
     with pytest.raises(
         ValueError, match=r"required Arrow field \$\.url holds 1 null values"
     ):
-        Serie.from_arrow_array(pa.array([""]), field, nullability="strict").into_arrow_array()
+        Serie.from_arrow_array(pa.array([""]), field).into_arrow_array()
     with pytest.raises(ValueError, match="null"):
         field.arrow_scalar("")
     assert dtype.scalar("").is_null()
@@ -513,11 +514,11 @@ def test_urn_is_a_validated_canonical_name_over_utf8_text() -> None:
             pa.array(["urn:isbn:0451450523"]), Field("url", DataType("url"), nullable=False)
         ).into_arrow_array()
 
-    # The empty text is an absence, as it is for every non-text column, and
-    # a name has no zero: the default is the nil name.
-    assert Serie.from_arrow_array(
-        pa.array([""]), field
-    ).into_arrow_array().to_pylist() == ["urn:nil:nil"]
+    # The empty text is an absence, as it is for every non-text column, so a
+    # required column refuses it; a name has no zero: the default is the nil
+    # name.
+    with pytest.raises(ValueError, match=r"required Arrow field \$\.urn holds 1 null values"):
+        Serie.from_arrow_array(pa.array([""]), field)
     assert dtype.scalar("").is_null()
     assert field.default_scalar().as_py() == "urn:nil:nil"
 
@@ -943,11 +944,9 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
     padded = Serie.from_arrow_array(pa.array(["USD", None]), ccy).into_arrow_array()
     assert padded.type == pa.binary(4)
     assert padded.to_pylist() == [b"USD\x00", None]
-    # A datatype casts as a required column: nulls fill with the default.
-    filled = Serie.from_arrow_array(
-        pa.array(["USD", None]), Field("value", ascii32, nullable=False)
-    ).into_arrow_array()
-    assert filled.to_pylist() == [b"USD\x00", b"\x00" * 4]
+    # A required column refuses a null by path rather than writing its default.
+    with pytest.raises(ValueError, match=r"required Arrow field \$\.value holds 1 null values"):
+        Serie.from_arrow_array(pa.array(["USD", None]), Field("value", ascii32, nullable=False))
 
     row = DataType.from_fields([Field("ccy", "utf8")])
     stored = pa.record_batch([padded], schema=pa.schema([arrow_field]))
@@ -955,16 +954,14 @@ def test_a_fixed_ascii_width_pads_into_arrow_storage_and_trims_out_of_it() -> No
         stored, Field("row", row, nullable=False)
     ).into_arrow_batch().column(0).to_pylist() == ["USD", None]
 
-    # A safe cast nulls the cell it cannot write - the required column then
-    # fills it with the default - and a strict one names the row.
-    assert Serie.from_arrow_array(
-        pa.array(["EURO!"]), Field("value", ascii32, nullable=False)
-    ).into_arrow_array().to_pylist() == [b"\x00" * 4]
+    # A safe cast nulls the cell a nullable column cannot write; a required
+    # column refuses it by the row, whatever `safe` says.
     assert Serie.from_arrow_array(pa.array(["EURO!"]), ccy).into_arrow_array().to_pylist() == [None]
-    with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
-        Serie.from_arrow_array(
-            pa.array(["EURO!"]), Field("value", ascii32, nullable=False), safe=False
-        ).into_arrow_array()
+    for safe in (True, False):
+        with pytest.raises(ValueError, match="row 0: expected at most 4 bytes"):
+            Serie.from_arrow_array(
+                pa.array(["EURO!"]), Field("value", ascii32, nullable=False), safe=safe
+            )
     with pytest.raises(ValueError, match="at most 4 bytes"):
         ascii32.arrow_scalar("EURO!")
     with pytest.raises(ValueError, match="non-ASCII"):
@@ -1760,3 +1757,105 @@ def test_dictionary_and_map_of_infer_python_and_pyarrow_type_inputs() -> None:
     assert mapping.dtype.id == "map"
     entries = mapping.dtype[0].dtype
     assert [field.dtype.id for field in entries] == ["utf8", "int16"]
+
+
+# Every Arrow export the binding makes, run with pyarrow's raw-address import
+# replaced by a refusal: the capsule import is the only one allowed.
+CAPSULE_ONLY = """
+import pyarrow as pa
+
+def guarded(real):
+    class Guarded:
+        @staticmethod
+        def _import_from_c(*arguments):
+            raise AssertionError(f"{real.__name__} crossed as a raw address")
+
+        _import_from_c_capsule = staticmethod(real._import_from_c_capsule)
+
+    return Guarded
+
+for name in ("Array", "RecordBatch", "RecordBatchReader", "Schema", "Field", "DataType"):
+    setattr(pa, name, guarded(getattr(pa.lib, name)))
+
+from yggdryl import ChunkedSerie, DataType, Field, Serie, SerieReader
+
+root = Field("row", "struct<id: int64, lookup: map<utf8, int64>>", nullable=False)
+records = Serie.from_scalars(root, [(1, {"a": 1})])
+column = Serie.from_scalars(Field("id", "int64"), [1, 2])
+exports = [
+    DataType("int64").into_arrow(),
+    DataType("struct<id: int64>").into_arrow_schema(),
+    root.into_arrow(),
+    root.into_arrow_schema(),
+    column.into_arrow_array(),
+    column.slice(0, 1).into_arrow_scalar(),
+    records.into_arrow_batch(),
+    records.into_arrow_reader().read_all(),
+    SerieReader.from_serie(records).into_arrow_reader().read_all(),
+    ChunkedSerie.from_series([column, column]).into_arrow_chunked_array(),
+    ChunkedSerie.from_series([records]).into_arrow_table(),
+]
+assert all(type(export).__module__.startswith("pyarrow") for export in exports), exports
+print("capsules only")
+"""
+
+
+def test_every_export_crosses_as_a_capsule_never_a_raw_address() -> None:
+    finished = subprocess.run(
+        [sys.executable, "-c", CAPSULE_ONLY],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert finished.returncode == 0, finished.stderr
+    assert finished.stdout.strip() == "capsules only"
+
+
+def test_a_datatype_exports_its_arrow_c_schema() -> None:
+    mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+    dtype = DataType.from_arrow(mapping)
+    exported = pa.DataType._import_from_c_capsule(dtype.__arrow_c_schema__())
+    assert exported == mapping
+    assert exported.keys_sorted
+    # A native column names two datatypes - the serie it is and the rows it
+    # holds - so its own capsule is no spelling of either.
+    with pytest.raises(TypeError, match="type hint"):
+        DataType(Serie.from_(pa.array([1, 2])))
+
+
+def invalid_offsets() -> pa.Array:
+    """Binary offsets that step backwards, which pyarrow's cheap check passes."""
+    offsets = pa.py_buffer(struct.pack("<4i", 0, 4, 1, 4))
+    array = pa.Array.from_buffers(pa.binary(), 3, [None, offsets, pa.py_buffer(b"abcd")])
+    array.validate()
+    return array
+
+
+@pytest.mark.parametrize(
+    "door",
+    [
+        Serie.from_,
+        Serie.from_arrow_array,
+        lambda array: Serie.from_arrow_array(array, Field("payload", "large_binary")),
+        lambda array: Serie.from_(pa.record_batch({"payload": array})),
+        lambda array: Serie.from_arrow_batch(pa.record_batch({"payload": array})),
+        lambda array: ChunkedSerie.from_(pa.chunked_array([array])),
+        lambda array: ChunkedSerie.from_arrow_chunked_array([array]),
+    ],
+    ids=[
+        "Serie.from_",
+        "from_arrow_array",
+        "from_arrow_array-declared",
+        "batch-from_",
+        "from_arrow_batch",
+        "ChunkedSerie.from_",
+        "from_arrow_chunked_array",
+    ],
+)
+def test_foreign_array_data_is_proven_before_a_row_is_read(
+    door: Callable[[pa.Array], object],
+) -> None:
+    # Landed unproven, reading these rows would read past the value buffer.
+    with pytest.raises(ValueError, match="non-monotonic offset"):
+        door(invalid_offsets())

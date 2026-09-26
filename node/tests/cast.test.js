@@ -23,7 +23,7 @@ test('one plan casts every column of its source layout', () => {
 
   assert.ok(plan.source.equals(source))
   assert.ok(plan.target.equals(target))
-  assert.deepEqual(plan.options, { safe: true, nullability: 'default', representation: 'value' })
+  assert.deepEqual(plan.options, { safe: true, representation: 'value' })
   assert.equal(plan.isIdentity, false)
   plan.preflight()
 
@@ -49,20 +49,16 @@ test('one plan casts every column of its source layout', () => {
   assert.ok(same.apply(ids).equals(ids))
 })
 
-test('the three cast answers are the plan own', () => {
+test('the two cast answers are the plan own; absence is the target field own', () => {
   const source = fields.int64('quantity')
   const target = fields.int8('quantity', { nullable: false })
   const overflowing = Serie.fromScalars(source, [7n, 130n, null])
 
-  assert.deepEqual(ArrowCastPlan.compile(source, target).apply(overflowing).asJs(), [7, 0, 0])
-
-  const strict = ArrowCastPlan.compile(source, target, { nullability: 'strict' })
-  assert.deepEqual(strict.options, {
-    safe: true,
-    nullability: 'strict',
-    representation: 'value',
-  })
-  assert.throws(() => strict.apply(overflowing), /required Arrow field \$\.quantity holds 2 null values/)
+  // A required column refuses a value it cannot convert by the value itself,
+  // and a null by its path - whatever `safe` says.
+  const plan = ArrowCastPlan.compile(source, target)
+  assert.deepEqual(plan.options, { safe: true, representation: 'value' })
+  assert.throws(() => plan.apply(overflowing), /Can't cast value 130 to type Int8/)
 
   const unsafe = ArrowCastPlan.compile(source, target, { safe: false })
   assert.equal(unsafe.options.safe, false)
@@ -78,12 +74,20 @@ test('the three cast answers are the plan own', () => {
   )
 
   assert.throws(
-    () => ArrowCastPlan.compile(source, target, { nullability: 'lenient' }),
-    /expected one of default, strict/,
-  )
-  assert.throws(
     () => ArrowCastPlan.compile(source, target, { strict: true }),
-    /cast options take safe, nullability and representation/,
+    /cast options take safe and representation/,
+  )
+})
+
+test('a nullable target takes a value it cannot convert as null under safe', () => {
+  const source = fields.int64('quantity')
+  const target = fields.int8('quantity')
+  const overflowing = Serie.fromScalars(source, [7n, 130n, null])
+
+  assert.deepEqual(ArrowCastPlan.compile(source, target).apply(overflowing).asJs(), [7, null, null])
+  assert.throws(
+    () => ArrowCastPlan.compile(source, target, { safe: false }).apply(overflowing),
+    /Can't cast value 130 to type Int8/,
   )
 })
 
@@ -114,7 +118,7 @@ test('an Arrow JS schema, table or batch is a record source named row', () => {
     { nullable: false },
   )
   assert.throws(
-    () => ArrowCastPlan.compile(table.schema, required, { nullability: 'strict' }),
+    () => ArrowCastPlan.compile(table.schema, required),
     /required Arrow field \$\.venue is missing from the source/,
   )
 })

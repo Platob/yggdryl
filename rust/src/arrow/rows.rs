@@ -341,11 +341,11 @@ where
 }
 
 /// Lay rows the field's row contract already canonicalized out as one batch
-/// under `schema`, its projection: they land proven, so none is read again,
-/// and the batch takes the buffers as they were laid out.
+/// under `schema`, its projection: transport, so no row is read again and
+/// nothing is landed - the batch takes the buffers as they were laid out.
 fn batch_of_rows(field: &Arc<Field>, schema: SchemaRef, values: &[Scalar]) -> Result<RecordBatch> {
     let refs: Vec<&Scalar> = values.iter().collect();
-    let (_, records) = crate::serie::canonical_rows(Arc::clone(field), &refs)?;
+    let records = crate::serie::canonical_rows(field, &refs)?;
     batch_from_record_array(schema, &records)
 }
 

@@ -988,9 +988,8 @@ fn a_stated_limit_that_differs_is_refused_on_its_row() {
     ));
     assert!(error.contains("$[0].bidside.limits"), "{error}");
 
-    // A null quantity, where a foreign schema lets one stand, is repaired
-    // to the required field's zero by the cast, and that limit is one no
-    // side derives.
+    // A null quantity, where a foreign schema lets one stand, is refused by
+    // the cast under the required field, naming its path.
     let quantity = Arc::new(
         Decimal128Array::from(vec![
             Some(Decimal::from_int(3).units()),
@@ -1006,7 +1005,10 @@ fn a_stated_limit_that_differs_is_refused_on_its_row() {
         "limits",
         with_limit_child(&limits, "quantity", quantity, true),
     ));
-    assert!(error.contains("$[0].bidside.limits"), "{error}");
+    assert!(
+        error.contains("required Arrow field $.bidside.limits[].quantity holds 1 null values"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -933,6 +933,44 @@ mod records {
         yggdryl::impl_default_iomedia!();
     }
 
+    #[test]
+    fn a_union_column_is_refused_by_name_before_the_writer_is_built() {
+        let union = DataType::union(
+            [
+                (0, DataType::Int64.required_field("int")),
+                (1, DataType::utf8().required_field("str")),
+            ],
+            yggdryl::UnionMode::Dense,
+        )
+        .unwrap();
+        let root =
+            DataType::from(StructType::from_fields([union.nullable_field("value")]).unwrap())
+                .required_field("row");
+        // A bare value is the member its datatype names, so this row lands.
+        let rows = yggdryl::Serie::from_scalars(
+            root,
+            [yggdryl::Scalar::from_sequence([yggdryl::Scalar::from(
+                7_i64,
+            )])],
+        )
+        .unwrap();
+        let batch = rows.into_arrow_batch().unwrap();
+        let mut media = Parquet::new(
+            Buffer::new()
+                .with_media_type(Url::from_str("file:///union.parquet").unwrap().media_type()),
+        );
+        let options = media.record_options().unwrap();
+
+        let refused = media
+            .overwrite_arrow_reader(
+                yggdryl::arrow::batch_reader(batch.schema(), [batch]),
+                &options,
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(refused.contains("union column \"value\""), "{refused}");
+    }
+
     impl IOBase for Shared {
         fn pread(&self, offset: u64, buffer: &mut [u8]) -> yggdryl::Result<usize> {
             self.handle.lock().unwrap().pread(offset, buffer)
@@ -2767,7 +2805,7 @@ mod pruning {
     }
 
     #[test]
-    fn a_stored_null_read_as_a_default_is_not_pruned_by_the_statistics() {
+    fn a_stored_null_under_a_declared_required_column_is_refused_whatever_the_filter() {
         let batch = RecordBatch::try_new(
             Arc::new(arrow_schema::Schema::new(vec![
                 arrow_schema::Field::new("x", arrow_schema::DataType::Int64, true),
@@ -2780,7 +2818,9 @@ mod pruning {
         )
         .unwrap();
         let media = file_of(&batch);
-        // Declared non-null, the stored null reads as the default zero.
+        // Declared non-null, the stored null is refused by the column's path,
+        // and the statistics never prune the group holding it out of sight -
+        // a filter its extremes rule out included.
         let root = StructType::from_fields([
             DataType::Int64.required_field("x"),
             DataType::Int64.required_field("i"),
@@ -2788,15 +2828,32 @@ mod pruning {
         .map(DataType::from)
         .unwrap()
         .required_field("row");
-        for filter in ["x = 0", "x < 5", "x is not null"] {
-            let unpruned = filter.replacen('x', "(x + 0)", 1);
-            assert_eq!(
-                kept(&media, Some(root.clone()), filter),
-                kept(&media, Some(root.clone()), &unpruned),
-                "{filter}"
-            );
+        for filter in ["x = 0", "x < 5", "x is not null", "x = 20"] {
+            let options = media
+                .record_options()
+                .unwrap()
+                .with_field(root.clone())
+                .with_filter(filter)
+                .unwrap();
+            let refused = match media.read_arrow_reader(&options) {
+                Err(error) => error.to_string(),
+                Ok(mut reader) => reader
+                    .find_map(|batch| batch.err())
+                    .expect("the stored null is refused")
+                    .to_string(),
+            };
+            assert!(refused.contains("$.x"), "{filter}: {refused}");
         }
-        assert_eq!(kept(&media, Some(root), "x = 0"), vec![2]);
+        // Declared nullable, the null stays null and the filter prunes by it.
+        let nullable = StructType::from_fields([
+            DataType::Int64.nullable_field("x"),
+            DataType::Int64.required_field("i"),
+        ])
+        .map(DataType::from)
+        .unwrap()
+        .required_field("row");
+        assert_eq!(kept(&media, Some(nullable.clone()), "x is null"), vec![2]);
+        assert!(kept(&media, Some(nullable), "x = 20").is_empty());
     }
 
     #[test]

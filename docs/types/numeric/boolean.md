@@ -343,7 +343,7 @@ A column keeps Arrow's wider reading behind the strict value door: `yes`, `no`, 
 
 ## Edges
 
-- The canonical default of `boolean` is `false`, which is what a [strict-nullability](../cast.md#strict-nullability) cast writes where a required column holds a null.
+- The canonical default of `boolean` is `false`. A cast never writes it for a null: a required column refuses the null by path ([Required columns](../cast.md#required-columns)).
 - `as_bool` answers `None` for every non-boolean, including `0`, `1` and the text `"true"`; `is_truthy` answers for all of them. Nothing falls back between the two.
 - `null` is a kind of its own and not a numeric one: it carries only nulls, has no fixed byte width, and yields to the defined side when two schemas [merge](../field.md#merging-two-schemas).
 - A null operand propagates through every binary arithmetic operation ([Scalar](../scalar.md#variants-and-arithmetic)).

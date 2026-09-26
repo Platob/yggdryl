@@ -116,42 +116,41 @@ test('an Arrow JS vector of two Data lands as two chunks and comes back as two',
   assert.throws(() => ChunkedSerie.fromArrowArray([1, 2]), /Apache Arrow Vector/)
 })
 
-test('the three cast answers reach the core', () => {
+test('the two cast answers reach the core; absence is the target field own', () => {
   const overflowing = arrow
     .vectorFromArray([7, 130], new arrow.Int32())
     .concat(arrow.vectorFromArray([null], new arrow.Int32()))
   const required = fields.int8('quantity', { nullable: false })
 
-  // Safe by default: the value the target cannot hold is null, and the
-  // required column repairs every absent row with its default.
-  const repaired = ChunkedSerie.fromArrowArray(overflowing, required)
-  assert.equal(repaired.numChunks, 2)
-  assert.deepEqual(repaired.asJs(), [7, 0, 0])
-
+  // A required column refuses a value it cannot convert, by that value,
+  // whatever `safe` says.
   assert.throws(
-    () => ChunkedSerie.fromArrowArray(overflowing, required, { nullability: 'strict' }),
-    /required Arrow field \$\.quantity holds 1 null values/,
+    () => ChunkedSerie.fromArrowArray(overflowing, required),
+    /Can't cast value 130 to type Int8/,
   )
   assert.throws(
     () => ChunkedSerie.fromArrowArray(overflowing, required, { safe: false }),
     /Can't cast value 130 to type Int8/,
   )
-  assert.throws(
-    () => ChunkedSerie.fromArrowArray(overflowing, required, { nullability: 'lenient' }),
-    /expected one of default, strict/,
-  )
+
+  // A nullable target takes the value it cannot convert as null under the
+  // safe default.
+  const nullable = ChunkedSerie.fromArrowArray(overflowing, fields.int8('quantity'))
+  assert.equal(nullable.numChunks, 2)
+  assert.deepEqual(nullable.asJs(), [7, null, null])
+
   assert.throws(
     () => ChunkedSerie.fromArrowArray(overflowing, required, { nullable: 'strict' }),
-    /cast options take safe, nullability and representation/,
+    /cast options take safe and representation/,
   )
   // An absent answer is skipped.
-  assert.deepEqual(
-    ChunkedSerie.fromArrowArray(overflowing, required, {
-      safe: undefined,
-      nullability: undefined,
-      representation: undefined,
-    }).asJs(),
-    [7, 0, 0],
+  assert.throws(
+    () =>
+      ChunkedSerie.fromArrowArray(overflowing, required, {
+        safe: undefined,
+        representation: undefined,
+      }),
+    /Can't cast value 130 to type Int8/,
   )
   const unsigned = arrow.vectorFromArray([2 ** 32 - 1], new arrow.Uint32())
   assert.deepEqual(
@@ -368,23 +367,26 @@ test('pushChunk appends as it stands or cast, and a refusal changes nothing', ()
   assert.equal(chunked.numChunks, 3)
   assert.deepEqual(chunked.asJs(), [1, 2, 3])
 
+  // A required column refuses the absent row, by path, whatever `safe`
+  // says.
   const absent = Serie.fromScalars(fields.int32('id'), [null])
   assert.throws(
-    () => chunked.pushChunk(absent, { nullability: 'strict' }),
+    () => chunked.pushChunk(absent),
+    /required Arrow field \$\.id holds 1 null values/,
+  )
+  assert.throws(
+    () => chunked.pushChunk(absent, { safe: false }),
     /required Arrow field \$\.id holds 1 null values/,
   )
   assert.throws(() => chunked.pushChunk(new Serie([4n])), /a schema-free run declares no field/)
   assert.throws(() => chunked.pushChunk([4n]), /ChunkedSerie\.pushChunk takes a Serie/)
   assert.throws(
     () => chunked.pushChunk(absent, { strict: true }),
-    /cast options take safe, nullability and representation/,
+    /cast options take safe and representation/,
   )
   assert.equal(chunked.numChunks, 3)
   assert.equal(chunked.length, 3)
-
-  // Under the default policy the required column repairs the absent row.
-  chunked.pushChunk(absent)
-  assert.deepEqual(chunked.asJs(), [1, 2, 3, 0])
+  assert.deepEqual(chunked.asJs(), [1, 2, 3])
 })
 
 test('intoSerie joins once and hands the column out as its leaf class', () => {
@@ -410,13 +412,25 @@ test('a cast is one plan applied to every chunk', () => {
   assert.ok(chunked.cast(chunked.field).equals(chunked))
   assert.ok(chunked.cast('id: int64').field.equals(fields.int64('id')))
 
-  // A DataType is its required `value` field.
-  const typed = chunked.cast(DataType.from('int64'))
+  // A DataType is its required `value` field, so the null it cannot hold is
+  // refused by path, whatever `safe` says.
+  assert.throws(
+    () => chunked.cast(DataType.from('int64')),
+    /required Arrow field \$\.value holds 1 null values/,
+  )
+  const typed = ChunkedSerie.fromSeries([Serie.fromScalars(fields.int32('id'), [1, 2])]).cast(
+    DataType.from('int64'),
+  )
   assert.equal(typed.field.name, 'value')
   assert.equal(typed.field.nullable, false)
-  assert.deepEqual(typed.asJs(), [1, 2, 0])
+  assert.deepEqual(typed.asJs(), [1, 2])
+
   assert.throws(
-    () => chunked.cast(fields.int64('id', { nullable: false }), { nullability: 'strict' }),
+    () => chunked.cast(fields.int64('id', { nullable: false })),
+    /required Arrow field \$\.id holds 1 null values/,
+  )
+  assert.throws(
+    () => chunked.cast(fields.int64('id', { nullable: false }), { safe: false }),
     /required Arrow field \$\.id holds 1 null values/,
   )
 })

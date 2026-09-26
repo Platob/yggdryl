@@ -56,6 +56,7 @@ _ErrorPolicy = Literal["raise", "default"]
 _NONE_TYPE = type(None)
 _MISSING_KEY = object()
 _MISSING_INTO_FIELD_DESCRIPTOR = object()
+_MISSING = object()
 _UNION_ORIGINS = (typing.Union, types.UnionType)
 _SELF_HINTS = tuple(
     value
@@ -102,16 +103,6 @@ class _UnknownFieldError(TypeError):
     def __init__(self, message: str, *, matched: bool) -> None:
         super().__init__(message)
         self.matched = matched
-
-
-class _PhysicalUnionValue:
-    """Private Arrow-default value retaining one selected physical branch."""
-
-    __slots__ = ("field_index", "value")
-
-    def __init__(self, field_index: int, value: object) -> None:
-        self.field_index = field_index
-        self.value = value
 
 
 class _Schema(typing.NamedTuple):
@@ -1074,6 +1065,24 @@ def _validate_physical_temporal(
         )
 
 
+# A physical field reached by descent is a fresh native wrapper, and every row
+# of a class descends the same way, so each answer is remembered against the
+# field it was asked of. The entry holds that field, so its id cannot be taken
+# by another object while the entry stands.
+_PHYSICAL_ANSWERS: dict[tuple[object, ...], tuple[NativeField, object]] = {}
+
+
+def _remembered(key: tuple[object, ...], field: NativeField) -> object:
+    entry = _PHYSICAL_ANSWERS.get(key)
+    return entry[1] if entry is not None and entry[0] is field else _MISSING
+
+
+def _remember(key: tuple[object, ...], field: NativeField, answer: object) -> None:
+    if len(_PHYSICAL_ANSWERS) >= 4096:
+        _PHYSICAL_ANSWERS.clear()
+    _PHYSICAL_ANSWERS[key] = (field, answer)
+
+
 def _physical_named_child(
     field: NativeField | None,
     name: str,
@@ -1082,6 +1091,21 @@ def _physical_named_child(
 ) -> NativeField | None:
     if field is None:
         return None
+    key = ("child", id(field), name)
+    remembered = _remembered(key, field)
+    if remembered is not _MISSING:
+        return typing.cast(NativeField, remembered)
+    child = _physical_named_child_uncached(field, name, path=path)
+    _remember(key, field, child)
+    return child
+
+
+def _physical_named_child_uncached(
+    field: NativeField,
+    name: str,
+    *,
+    path: str,
+) -> NativeField:
     dtype = _physical_dtype(field)
     if dtype.id != "struct":
         raise TypeError(
@@ -1104,19 +1128,23 @@ def _validate_physical_struct_names(
 ) -> None:
     if field is None:
         return
+    logical = frozenset(names)
+    key = ("names", id(field), logical)
+    if _remembered(key, field) is not _MISSING:
+        return
     dtype = _physical_dtype(field)
     if dtype.id != "struct":
         raise TypeError(
             f"{path}: logical structured annotation is incompatible with "
             f"physical arrow_type {dtype}"
         )
-    logical = frozenset(names)
     physical = frozenset(child.name for child in dtype)
     if logical != physical:
         raise TypeError(
             f"{path}: logical struct fields {sorted(logical)!r} do not match "
             f"physical struct children {sorted(physical)!r}"
         )
+    _remember(key, field, True)
 
 
 def _validate_physical_tuple_arity(
@@ -1159,6 +1187,16 @@ def _physical_serie_child(
 ) -> NativeField | None:
     if field is None:
         return None
+    key = ("item", id(field))
+    remembered = _remembered(key, field)
+    if remembered is not _MISSING:
+        return typing.cast(NativeField, remembered)
+    child = _physical_serie_child_uncached(field, path=path)
+    _remember(key, field, child)
+    return child
+
+
+def _physical_serie_child_uncached(field: NativeField, *, path: str) -> NativeField:
     dtype = _physical_dtype(field)
     if dtype.id == "map":
         # Nested Arrow map keys are represented at the Python boundary as an
@@ -1217,109 +1255,6 @@ def _physical_union_child_for_hint(
     return field
 
 
-def _hint_value_members(hint: Any, owner: type[Any]) -> tuple[Any, ...]:
-    """Return flattened non-null Python alternatives in declaration order."""
-
-    hint = _unwrap_hint(hint, owner)
-    if get_origin(hint) in _UNION_ORIGINS:
-        return tuple(
-            member
-            for member in get_args(hint)
-            if not _is_none_branch(member, owner)
-        )
-    return () if _is_none_branch(hint, owner) else (hint,)
-
-
-def _physical_union_hint_groups(
-    fields: tuple[NativeField, ...], owner: type[Any]
-) -> tuple[tuple[Any, ...], tuple[tuple[int, ...], ...], tuple[Any, ...]]:
-    """Mirror Python Union flattening while retaining each physical child."""
-
-    from ._arrow import _hint_from_field
-
-    raw_hints = tuple(
-        _hint_from_field(
-            field,
-            module=__name__,
-            owner_name="_PhysicalUnionProjection",
-            path=(field.name,),
-            materialize_schema=False,
-        )
-        for field in fields
-    )
-    unique: list[Any] = []
-    groups: list[tuple[int, ...]] = []
-    for raw_hint in raw_hints:
-        indices: list[int] = []
-        for member in _hint_value_members(raw_hint, owner):
-            try:
-                index = unique.index(member)
-            except ValueError:
-                index = len(unique)
-                unique.append(member)
-            if index not in indices:
-                indices.append(index)
-        groups.append(tuple(indices))
-    return tuple(unique), tuple(groups), raw_hints
-
-
-def _convert_physical_union_value(
-    value: _PhysicalUnionValue,
-    hint: Any,
-    owner: type[Any],
-    path: str,
-    errors: str,
-    physical_field: NativeField | None,
-) -> tuple[Any, Any]:
-    """Convert an Arrow default through its selected physical Union child."""
-
-    physical_children = _physical_union_children(physical_field)
-    if not physical_children:
-        raise TypeError(f"{path}: physical Union default has no Union schema")
-    if value.field_index < 0 or value.field_index >= len(physical_children):
-        raise TypeError(
-            f"{path}: physical Union branch index {value.field_index} is out of range"
-        )
-    selected_field = physical_children[value.field_index]
-    if value.value is None:
-        if selected_field.nullable or selected_field.dtype.id == "null":
-            return None, _NONE_TYPE
-        raise TypeError(f"{path}: selected physical Union child is not nullable")
-
-    logical_members = _hint_value_members(hint, owner)
-    unique, groups, raw_hints = _physical_union_hint_groups(
-        physical_children, owner
-    )
-    if len(logical_members) != len(unique):
-        raise TypeError(
-            f"{path}: physical Union default has {len(unique)} Python value "
-            f"branches but its projected hint has {len(logical_members)}"
-        )
-    selected_indices = groups[value.field_index]
-    if not selected_indices:
-        raise TypeError(f"{path}: selected physical Union child has no value hint")
-    selected_members = tuple(logical_members[index] for index in selected_indices)
-
-    from ._hints import _allows_none
-
-    if _allows_none(raw_hints[value.field_index]):
-        selected_members = (*selected_members, _NONE_TYPE)
-    selected_hint = (
-        selected_members[0]
-        if len(selected_members) == 1
-        else typing.Union[selected_members]
-    )
-    converted = _convert(
-        value.value,
-        selected_hint,
-        owner,
-        path,
-        errors,
-        physical_field=selected_field,
-    )
-    return converted, selected_hint
-
-
 def _is_none_branch(hint: Any, conversion_owner: type[Any] | None) -> bool:
     if conversion_owner is not None and any(
         hint is self_hint for self_hint in _SELF_HINTS
@@ -1342,7 +1277,30 @@ def _accept_schema_null(
     raise TypeError(f"{path}: field is not nullable")
 
 
+_UNWRAPPED: dict[tuple[Any, type[Any]], Any] = {}
+
+
 def _unwrap_hint(hint: Any, owner: type[Any]) -> Any:
+    """Resolve an annotation to the hint that decides its conversion.
+
+    The answer depends on the hint and its owner alone, and every row of a
+    class asks the same question, so it is remembered for both.
+    """
+
+    try:
+        return _UNWRAPPED[hint, owner]
+    except KeyError:
+        pass
+    except TypeError:
+        return _unwrap_hint_uncached(hint, owner)
+    unwrapped = _unwrap_hint_uncached(hint, owner)
+    if len(_UNWRAPPED) >= 4096:
+        _UNWRAPPED.clear()
+    _UNWRAPPED[hint, owner] = unwrapped
+    return unwrapped
+
+
+def _unwrap_hint_uncached(hint: Any, owner: type[Any]) -> Any:
     while True:
         if any(hint is self_hint for self_hint in _SELF_HINTS):
             hint = owner
@@ -1463,10 +1421,6 @@ def _convert_union_branch(
     errors: str,
     physical_field: NativeField | None = None,
 ) -> tuple[Any, Any]:
-    if isinstance(value, _PhysicalUnionValue):
-        return _convert_physical_union_value(
-            value, hint, owner, path, errors, physical_field
-        )
     alternatives = get_args(hint)
     if _accept_schema_null(value, physical_field, path):
         return None, _NONE_TYPE
@@ -1865,10 +1819,6 @@ def _convert(
     *,
     physical_field: NativeField | None = None,
 ) -> Any:
-    if isinstance(value, _PhysicalUnionValue):
-        return _convert_physical_union_value(
-            value, hint, owner, path, errors, physical_field
-        )[0]
     if _accept_schema_null(value, physical_field, path):
         return None
     hint = _unwrap_hint(hint, owner)
@@ -2313,6 +2263,595 @@ def _constructor_fields(
     return tuple(field for field in regular if field.init)
 
 
+_IDENTITY_LEAVES = frozenset((bool, int, float, str, bytes, Decimal, uuid.UUID, dt.date))
+_LEAF_HINTS: dict[Any, tuple[type[Any] | None, bool]] = {}
+
+
+def _leaf_of(hint: Any) -> tuple[type[Any] | None, bool]:
+    """Name the exact leaf class a value converts to itself under.
+
+    The answer is the class and whether ``hint`` is that class or ``None``;
+    any other hint answers ``(None, False)``. A leaf is a class whose exact
+    instances ``_convert`` hands back unchanged. Answers are remembered per
+    hint, because an annotation is resolved once and read for every row.
+    """
+
+    try:
+        return _LEAF_HINTS[hint]
+    except KeyError:
+        pass
+    except TypeError:
+        return None, False
+    answer: tuple[type[Any] | None, bool] = (None, False)
+    if hint in _IDENTITY_LEAVES:
+        answer = (hint, False)
+    elif get_origin(hint) in _UNION_ORIGINS:
+        members = get_args(hint)
+        if len(members) == 2 and _NONE_TYPE in members:
+            other = members[0] if members[1] is _NONE_TYPE else members[1]
+            if other in _IDENTITY_LEAVES:
+                answer = (other, True)
+    if len(_LEAF_HINTS) < 4096:
+        _LEAF_HINTS[hint] = answer
+    return answer
+
+
+class _ReadPlan(typing.NamedTuple):
+    """One class's safe mapping read, compiled once per owner and physical root.
+
+    ``names`` are the constructor's names: a mapping holding exactly those takes
+    the plan, and any other falls back to the general read, which owns every
+    refusal and its wording. Each reader answers what ``_convert`` would.
+    """
+
+    names: frozenset[str]
+    readers: tuple[tuple[str, Callable[[object, str], object]], ...]
+    # Whether the constructor takes the readers' answers by position: its
+    # parameters are exactly the constructor names, in order, and none is
+    # keyword-only.
+    positional: bool
+
+
+_READ_PLANS: dict[tuple[object, ...], tuple[object, _ReadPlan | None]] = {}
+
+
+def _read_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+) -> _ReadPlan | None:
+    key = (cls, owner, id(physical_root))
+    entry = _READ_PLANS.get(key)
+    if entry is not None and entry[0] is physical_root:
+        return entry[1]
+    try:
+        plan = _compile_read_plan(cls, schema, owner, physical_root)
+    except (TypeError, ValueError):
+        # The general read refuses the same way, naming the row it reached.
+        return None
+    if len(_READ_PLANS) >= 4096:
+        _READ_PLANS.clear()
+    _READ_PLANS[key] = (physical_root, plan)
+    return plan
+
+
+def _compile_read_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+) -> _ReadPlan | None:
+    if physical_root is not None:
+        _validate_physical_struct_names(
+            physical_root,
+            (field.name for field in schema.value_fields),
+            path=cls.__name__,
+        )
+    names = frozenset(field.name for field in schema.constructor_fields)
+    if any(field.name not in names for field in schema.value_fields):
+        # An init=False field is validated after construction, which the
+        # general read does.
+        return None
+    readers = []
+    for field in schema.constructor_fields:
+        if field.name not in schema.field_lookup:
+            physical_field = None
+        elif physical_root is None:
+            physical_field = schema.field_lookup[field.name]
+        else:
+            physical_field = _physical_named_child(
+                physical_root, field.name, path=cls.__name__
+            )
+        readers.append(
+            (
+                field.name,
+                _value_reader(
+                    schema.hints.get(field.name, field.type),
+                    owner,
+                    physical_field,
+                    own=physical_root is None,
+                ),
+            )
+        )
+    return _ReadPlan(names, tuple(readers), _takes_positions(cls, readers))
+
+
+def _takes_positions(
+    cls: type[Any], readers: cabc.Sequence[tuple[str, object]]
+) -> bool:
+    try:
+        parameters = list(inspect.signature(cls).parameters.values())
+    except (TypeError, ValueError):
+        return False
+    return [parameter.name for parameter in parameters] == [
+        name for name, _ in readers
+    ] and all(
+        parameter.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        for parameter in parameters
+    )
+
+
+def _value_reader(
+    hint: Any,
+    owner: type[Any],
+    physical_field: NativeField | None,
+    *,
+    own: bool,
+) -> Callable[[object, str], object]:
+    """Compile what ``_convert`` does for one hint into a reader.
+
+    An exact leaf answers itself, a mapping under a record class is that
+    class's own read, and a list is read item by item; every other value takes
+    ``_convert``. An optional leaf answers itself only under the class's own
+    field (``own``), which a union cannot stand behind.
+    """
+
+    def general(value: object, path: str) -> object:
+        return _convert(value, hint, owner, path, "raise", physical_field=physical_field)
+
+    leaf, optional = _leaf_of(hint)
+    if leaf is not None and (own or not optional):
+        exact = leaf
+        # `None` under an optional leaf is `None` wherever the field holds a
+        # null - or has no physical field to refuse one - exactly as
+        # `_convert` answers it; a required field refuses it there.
+        takes_none = optional and (physical_field is None or physical_field.nullable)
+
+        def read_leaf(value: object, path: str) -> object:
+            if type(value) is exact or (value is None and takes_none):
+                return value
+            return general(value, path)
+
+        return read_leaf
+    unwrapped = _unwrap_hint(hint, owner)
+    if (
+        isinstance(unwrapped, type)
+        and issubclass(unwrapped, enum.Enum)
+        and type(unwrapped).__call__ is enum.EnumMeta.__call__
+    ):
+        # `_convert` answers a member as itself and any other value as
+        # `hint(value)`, whose first answer is this very lookup; a miss takes
+        # the whole ladder, `_missing_` and the lookup by name included.
+        enum_members: Mapping[object, object] = unwrapped._value2member_map_
+        exact_enum = unwrapped
+
+        def read_enum(value: object, path: str) -> object:
+            if type(value) is exact_enum:
+                return value
+            try:
+                member = enum_members.get(value, _MISS)
+            except TypeError:
+                member = _MISS
+            return general(value, path) if member is _MISS else member
+
+        return read_enum
+    if own and get_origin(unwrapped) in _UNION_ORIGINS:
+        members = [
+            member
+            for member in get_args(unwrapped)
+            if not _is_none_branch(member, owner)
+        ]
+        exact_members = frozenset(member for member in members if member in _IDENTITY_LEAVES)
+        # The checks the union read makes of its physical field, made once:
+        # where they pass, a value of one member's exact class is that
+        # member's, and converts to itself.
+        physical_children = _physical_union_children(physical_field)
+        physical_ok = physical_field is None or (
+            (len(members) <= 1 or _physical_dtype(physical_field).id == "union")
+            and (
+                not physical_children
+                or sum(child.dtype.id != "null" for child in physical_children)
+                == len(members)
+            )
+        )
+        if exact_members and physical_ok:
+
+            def read_member(value: object, path: str) -> object:
+                return value if type(value) in exact_members else general(value, path)
+
+            return read_member
+    if (
+        isinstance(unwrapped, type)
+        and dc.is_dataclass(unwrapped)
+        and not issubclass(unwrapped, (enum.Enum, dict))
+    ):
+        record = unwrapped
+        owner_schema = _ensure_schema(owner)
+
+        def read_record(value: object, path: str) -> object:
+            if type(value) is not dict:
+                return general(value, path)
+            entry = _READ_PLANS.get((record, owner, id(physical_field)))
+            plan = entry[1] if entry is not None and entry[0] is physical_field else None
+            if plan is not None and value.keys() == plan.names:
+                if plan.positional:
+                    return record(
+                        *[read(value[name], f"{path}.{name}") for name, read in plan.readers]
+                    )
+                return record(
+                    **{name: read(value[name], f"{path}.{name}") for name, read in plan.readers}
+                )
+            return _from_dict(
+                record,
+                value,
+                safe=True,
+                errors="raise",
+                path=path,
+                resolved_hints=owner_schema.nested_hints.get(record),
+                resolved_cache=owner_schema.nested_hints,
+                conversion_owner=owner,
+                physical_root=physical_field,
+            )
+
+        return read_record
+    if get_origin(unwrapped) is list:
+        arguments = get_args(unwrapped)
+        item_field = _physical_serie_child(physical_field, path=owner.__name__)
+        read_item = _value_reader(
+            arguments[0] if arguments else Any, owner, item_field, own=own
+        )
+
+        def read_list(value: object, path: str) -> object:
+            if type(value) is not list:
+                return general(value, path)
+            result = [read_item(item, f"{path}[{index}]") for index, item in enumerate(value)]
+            _validate_physical_serie_length(result, physical_field, path=path)
+            return result
+
+        return read_list
+    return general
+
+
+# The rows a batch read converts at once. A window bounds the Python values
+# held beside the landed batch, and converts each of its columns in one native
+# call rather than one per row.
+_READ_WINDOW = 1024
+# Leaves whose exact class a column of the class's own layout hands back as
+# `_convert` would: the identity leaves, and the temporals, whose unit and zone
+# that layout already proved.
+_COLUMN_LEAVES = _IDENTITY_LEAVES | frozenset((dt.datetime, dt.time, dt.timedelta))
+
+
+class _Pending:
+    """A value a column pass could not answer, read at its own row."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: object) -> None:
+        self.value = value
+
+
+class _BatchMember(typing.NamedTuple):
+    """One constructor argument of a batch read, and how its column is read."""
+
+    name: str
+    # The mapping plan's reader: every value a column pass leaves is read by
+    # it, at its row and under its path, exactly as a mapping read reads it.
+    read: Callable[[object, str], object]
+    # "leaf", "enum", "record", "records", or "value" (read by `read` alone).
+    kind: str
+    exact: type[Any] | None
+    takes_none: bool
+    lookup: Mapping[object, object] | None
+    nested: _BatchPlan | None
+
+
+class _BatchPlan(typing.NamedTuple):
+    """One class's columnar read over batches of its own layout.
+
+    It is derived from the class's mapping plan - the one reading of its
+    annotations - and adds only how each member's column is read at once.
+    """
+
+    cls: type[Any]
+    names: tuple[str, ...]
+    members: tuple[_BatchMember, ...]
+    positional: bool
+
+
+_BATCH_PLANS: dict[tuple[object, ...], tuple[NativeField, _BatchPlan | None]] = {}
+_MISS = object()
+
+
+def _batch_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+    record_field: NativeField,
+) -> _BatchPlan | None:
+    """The batch plan of ``cls`` over ``record_field``, or ``None``.
+
+    ``record_field`` is the landed column's field. The plan applies only
+    where each child is exactly the class's own member field - name,
+    nullability and layout, compared per child because the root's own name
+    is the reader's, never the class's - and is compiled once per layout.
+    """
+
+    key = (cls, owner, id(physical_root), record_field.stable_layout_hash())
+    entry = _BATCH_PLANS.get(key)
+    if entry is not None and entry[0].layout_eq(record_field):
+        return entry[1]
+    try:
+        plan = _compile_batch_plan(cls, schema, owner, physical_root, record_field)
+    except (TypeError, ValueError):
+        plan = None
+    if len(_BATCH_PLANS) >= 4096:
+        _BATCH_PLANS.clear()
+    _BATCH_PLANS[key] = (record_field, plan)
+    return plan
+
+
+def _column_leaf(hint: Any) -> tuple[type[Any] | None, bool]:
+    if hint in _COLUMN_LEAVES:
+        return hint, False
+    if get_origin(hint) in _UNION_ORIGINS:
+        members = get_args(hint)
+        if len(members) == 2 and _NONE_TYPE in members:
+            other = members[0] if members[1] is _NONE_TYPE else members[1]
+            if other in _COLUMN_LEAVES:
+                return other, True
+    return None, False
+
+
+def _optional_member(hint: Any) -> tuple[Any, bool]:
+    if get_origin(hint) in _UNION_ORIGINS:
+        members = [member for member in get_args(hint) if member is not _NONE_TYPE]
+        if len(members) == 1 and len(get_args(hint)) == 2:
+            return members[0], True
+    return hint, False
+
+
+def _compile_batch_plan(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    physical_root: NativeField | None,
+    record_field: NativeField,
+) -> _BatchPlan | None:
+    mapping = _read_plan(cls, schema, owner, physical_root)
+    names = tuple(field.name for field in schema.constructor_fields)
+    if (
+        mapping is None
+        or names != tuple(field.name for field in schema.value_fields)
+        or len(record_field) != len(names)
+    ):
+        return None
+    lookup = (
+        schema.field_lookup
+        if physical_root is None
+        else {
+            name: _physical_named_child(physical_root, name, path=cls.__name__)
+            for name in names
+        }
+    )
+    readers = dict(mapping.readers)
+    members = []
+    for index, name in enumerate(names):
+        child = record_field.field_at(index)
+        own = lookup.get(name)
+        if own is None or child.name != name or not child.layout_eq(own):
+            return None
+        members.append(_batch_member(cls, schema, owner, name, readers[name], own))
+    return _BatchPlan(cls, names, tuple(members), mapping.positional)
+
+
+def _batch_member(
+    cls: type[Any],
+    schema: _Schema,
+    owner: type[Any],
+    name: str,
+    read: Callable[[object, str], object],
+    own: NativeField,
+) -> _BatchMember:
+    declared = next(field for field in schema.constructor_fields if field.name == name)
+    hint = schema.hints.get(name, declared.type)
+    value = _BatchMember(name, read, "value", None, False, None, None)
+    leaf, optional = _column_leaf(hint)
+    if leaf is not None:
+        return value._replace(kind="leaf", exact=leaf, takes_none=optional and own.nullable)
+    inner, optional = _optional_member(_unwrap_hint(hint, owner))
+    inner = _unwrap_hint(inner, owner)
+    if (
+        isinstance(inner, type)
+        and issubclass(inner, enum.Enum)
+        and type(inner).__call__ is enum.EnumMeta.__call__
+    ):
+        return value._replace(
+            kind="enum",
+            takes_none=optional and own.nullable,
+            lookup=inner._value2member_map_,
+        )
+    owner_schema = _ensure_schema(owner)
+    record: Any = inner
+    kind = "record"
+    item_field = own
+    if get_origin(inner) is list and not optional:
+        arguments = get_args(inner)
+        record = _unwrap_hint(arguments[0], owner) if arguments else None
+        kind = "records"
+        if _physical_dtype(own).id != "serie":
+            return value
+        items = _physical_serie_child(own, path=owner.__name__)
+        if items is None:
+            return value
+        item_field = items
+    if not (
+        isinstance(record, type)
+        and dc.is_dataclass(record)
+        and not issubclass(record, (enum.Enum, dict))
+        and _physical_dtype(item_field).id == "struct"
+    ):
+        return value
+    record_schema = _ensure_schema(
+        record,
+        resolved_hints=owner_schema.nested_hints.get(record),
+        resolved_cache=owner_schema.nested_hints,
+    )
+    nested = _batch_plan(record, record_schema, owner, item_field, item_field)
+    if nested is None:
+        return value
+    return value._replace(kind=kind, takes_none=optional and own.nullable, nested=nested)
+
+
+def _column_values(
+    member: _BatchMember, column: Any
+) -> tuple[list[object] | cabc.Iterator[object], bool]:
+    """One member's values for every row of ``column``, and whether any of
+    them is left for the member's reader at its row."""
+
+    kind = member.kind
+    if kind in ("record", "records") and member.nested is not None:
+        if column.null_count() == 0:
+            if kind == "record":
+                built = _instances(member.nested, column, None)
+                if built is not None:
+                    return built, False
+            else:
+                items = column.items()
+                built = _instances(member.nested, items, None)
+                if built is not None:
+                    offsets = column.offsets
+                    return (
+                        list(itertools.islice(built, end - start))
+                        for start, end in zip(offsets, offsets[1:])
+                    ), False
+        kind = "value"
+    values = column.as_py()
+    if kind == "value":
+        return [_Pending(value) for value in values], True
+    pending = False
+    if kind == "leaf":
+        exact = member.exact
+        takes_none = member.takes_none
+        for index, value in enumerate(values):
+            if type(value) is not exact and not (takes_none and value is None):
+                values[index] = _Pending(value)
+                pending = True
+        return values, pending
+    lookup = member.lookup
+    assert lookup is not None
+    takes_none = member.takes_none
+    for index, value in enumerate(values):
+        if value is None and takes_none:
+            continue
+        try:
+            answer = lookup.get(value, _MISS)
+        except TypeError:
+            answer = _MISS
+        if answer is _MISS:
+            values[index] = _Pending(value)
+            pending = True
+        else:
+            values[index] = answer
+    return values, pending
+
+
+def _instances(
+    plan: _BatchPlan, rows: Any, path: str | None
+) -> cabc.Iterator[object] | None:
+    """Every row of the record column ``rows`` as an instance, built lazily
+    in row order, or ``None`` when a value would have to be read under a path
+    this nested read does not track."""
+
+    columns = []
+    pending = []
+    for index, member in enumerate(plan.members):
+        values, left = _column_values(member, rows.child(member.name))
+        if left:
+            if path is None:
+                return None
+            pending.append(index)
+        columns.append(values)
+    cls = plan.cls
+    if not pending and plan.positional:
+        return map(cls, *columns)
+    return _built(plan, columns, pending, path or cls.__name__)
+
+
+def _built(
+    plan: _BatchPlan,
+    columns: list[Any],
+    pending: list[int],
+    path: str,
+) -> cabc.Iterator[object]:
+    cls = plan.cls
+    members = plan.members
+    names = plan.names
+    for row in zip(*columns):
+        arguments: cabc.Sequence[object] = row
+        if pending:
+            read = list(row)
+            for index in pending:
+                value = read[index]
+                if type(value) is _Pending:
+                    member = members[index]
+                    read[index] = member.read(value.value, f"{path}.{member.name}")
+            arguments = read
+        if plan.positional:
+            yield cls(*arguments)
+        else:
+            yield cls(**dict(zip(names, arguments)))
+
+
+def _read_rows(cls: type[Any], rows: Any) -> cabc.Iterator[object] | None:
+    """Read one landed record batch as instances of ``cls``, or ``None``.
+
+    The batch is read a window at a time, each member's column converted in
+    one native call, and instances are built lazily one row at a time in
+    declaration order, so a refusal names the same path at the same row a
+    mapping read would. ``None`` means the batch is not the class's own
+    layout and the caller reads it row by row.
+    """
+
+    field = rows.field
+    if field is None:
+        return None
+    schema = _ensure_schema(cls)
+    plan = _batch_plan(cls, schema, cls, None, field)
+    if plan is None:
+        return None
+    return _windows(plan, rows)
+
+
+def _windows(plan: _BatchPlan, rows: Any) -> cabc.Iterator[object]:
+    total = len(rows)
+    for start in range(0, total, _READ_WINDOW):
+        window = rows.slice(start, min(_READ_WINDOW, total - start))
+        try:
+            built = _instances(plan, window, plan.cls.__name__)
+        except (TypeError, ValueError, OverflowError):
+            built = None
+        if built is None:
+            # A column that cannot be read at once is read the mapping way,
+            # row by row, so a refusal is raised at its own row.
+            for index in range(len(window)):
+                yield from_dict(plan.cls, window.slice(index, 1).as_py()[0])
+            continue
+        yield from built
+
+
 def _from_dict(
     cls: type[_T],
     values: Mapping[str, Any],
@@ -2339,6 +2878,16 @@ def _from_dict(
         resolved_hints=resolved_hints,
         resolved_cache=resolved_cache,
     )
+    if errors == "raise" and not bindings and type(values) is dict:
+        plan = _read_plan(cls, schema, conversion_owner or cls, physical_root)
+        if plan is not None and values.keys() == plan.names:
+            if plan.positional:
+                return cls(
+                    *[read(values[name], f"{path}.{name}") for name, read in plan.readers]
+                )
+            return cls(
+                **{name: read(values[name], f"{path}.{name}") for name, read in plan.readers}
+            )
     if physical_root is not None:
         _validate_physical_struct_names(
             physical_root,
@@ -2363,15 +2912,23 @@ def _from_dict(
     )
     converted: dict[str, Any] = {}
     for field in schema.constructor_fields:
-        field_path = f"{path}.{field.name}"
         if field.name not in values:
             # Omission follows normal dataclass construction: declared defaults
             # are always honored. The error policy only changes how an invalid
             # value that was actually supplied is handled.
             if _has_default(field):
                 continue
-            raise TypeError(f"{field_path}: missing required value")
+            raise TypeError(f"{path}.{field.name}: missing required value")
         hint = schema.hints.get(field.name, field.type)
+        # A value that already is the exact leaf class its annotation names
+        # converts to itself: every check `_convert` makes would answer it
+        # unchanged, so none is made. An optional leaf is answered here only
+        # under the class's own field, which a union cannot stand behind.
+        leaf, optional = _leaf_of(hint)
+        if type(values[field.name]) is leaf and (physical_root is None or not optional):
+            converted[field.name] = values[field.name]
+            continue
+        field_path = f"{path}.{field.name}"
         if binding_contexts is not None:
             hint = _bind_hint(
                 hint,

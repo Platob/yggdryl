@@ -134,7 +134,14 @@ impl<'line> LineInference<'line> {
 /// carry Ullink `MSGTYPE=` before an embedded `8=FIX...` frame. The returned
 /// value is borrowed and bounded by the first common entry separator.
 fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u8]> {
-    for (_, key, equals) in pairs(line) {
+    // A name key is exactly the bytes in front of its `=`, so an `=` not
+    // preceded by the wanted name, folded, is never read as a pair.
+    let named = |equals: usize| {
+        equals
+            .checked_sub(wanted.len())
+            .is_some_and(|start| line[start..equals].eq_ignore_ascii_case(wanted))
+    };
+    for (_, key, equals) in pairs_where(line, named) {
         let LineKey::Name(name) = key else {
             continue;
         };
@@ -187,18 +194,25 @@ fn find_named_value<'line>(line: &'line [u8], wanted: &[u8]) -> Option<&'line [u
 }
 
 fn locate_frame(line: &[u8]) -> Option<LineFrame> {
-    let mut first = None;
-    let mut msgtype = None;
-    for (start, key, _) in pairs(line) {
-        let candidate = (start, matches!(key, LineKey::Tag(_)));
-        first.get_or_insert(candidate);
+    let (start, key, opened) = pairs(line).next()?;
+    let first = (start, matches!(key, LineKey::Tag(_)));
+    let mut msgtype = match key {
+        LineKey::Tag(8) => return Some(frame(line, first)),
+        LineKey::Tag(35) => Some(first),
+        LineKey::Tag(_) | LineKey::Name(_) => None,
+    };
+    // Past the first pair only a tag moves the answer, and a tag's key is
+    // digits up to its `=`, so an `=` behind any other byte is never read.
+    let tagged = |equals: usize| equals > opened && line[equals - 1].is_ascii_digit();
+    for (start, key, _) in pairs_where(line, tagged) {
+        let candidate = (start, true);
         match key {
             LineKey::Tag(8) => return Some(frame(line, candidate)),
             LineKey::Tag(35) if msgtype.is_none() => msgtype = Some(candidate),
             LineKey::Tag(_) | LineKey::Name(_) => {}
         }
     }
-    msgtype.or(first).map(|candidate| frame(line, candidate))
+    Some(frame(line, msgtype.unwrap_or(first)))
 }
 
 fn frame(line: &[u8], (start, numeric): (usize, bool)) -> LineFrame {
@@ -1082,22 +1096,39 @@ fn has_any_pair(line: &[u8]) -> bool {
 /// and [`pair_at`] then reads it exactly as it reads a pair anywhere, so
 /// what this yields is what a byte-by-byte scan yielded, in the same order.
 fn pairs(line: &[u8]) -> impl Iterator<Item = (usize, LineKey<'_>, usize)> + '_ {
-    memchr::memchr_iter(b'=', line).filter_map(move |equals| {
-        let mut run = equals;
-        while run > 0 && is_name_continue(line[run - 1]) {
-            run -= 1;
-        }
-        let before = run.checked_sub(1).map(|at| line[at]);
-        let candidates = [
-            run.checked_sub(1).filter(|_| before == Some(b'#')),
-            Some(run),
-            (before == Some(b'^') && line.get(run) == Some(&b'A')).then_some(run + 1),
-            (before == Some(b'\\') && line[run..].starts_with(b"x01")).then_some(run + 3),
-        ];
-        candidates.into_iter().flatten().find_map(|start| {
-            let (key, at) = pair_at(line, start)?;
-            (at == equals).then_some((start, key, at))
-        })
+    memchr::memchr_iter(b'=', line).filter_map(move |equals| pair_ending_at(line, equals))
+}
+
+/// [`pairs`], reading a pair only at the `=` signs `admits` lets through.
+///
+/// For a caller that knows which key it is after: an `=` whose preceding
+/// bytes cannot close that key is skipped at the cost of a comparison, and
+/// the pairs it admits come out exactly as [`pairs`] yields them.
+fn pairs_where(
+    line: &[u8],
+    admits: impl Fn(usize) -> bool,
+) -> impl Iterator<Item = (usize, LineKey<'_>, usize)> {
+    memchr::memchr_iter(b'=', line)
+        .filter(move |equals| admits(*equals))
+        .filter_map(move |equals| pair_ending_at(line, equals))
+}
+
+/// The pair whose key closes at the `=` standing at `equals`, if one does.
+fn pair_ending_at(line: &[u8], equals: usize) -> Option<(usize, LineKey<'_>, usize)> {
+    let mut run = equals;
+    while run > 0 && is_name_continue(line[run - 1]) {
+        run -= 1;
+    }
+    let before = run.checked_sub(1).map(|at| line[at]);
+    let candidates = [
+        run.checked_sub(1).filter(|_| before == Some(b'#')),
+        Some(run),
+        (before == Some(b'^') && line.get(run) == Some(&b'A')).then_some(run + 1),
+        (before == Some(b'\\') && line[run..].starts_with(b"x01")).then_some(run + 3),
+    ];
+    candidates.into_iter().flatten().find_map(|start| {
+        let (key, at) = pair_at(line, start)?;
+        (at == equals).then_some((start, key, at))
     })
 }
 

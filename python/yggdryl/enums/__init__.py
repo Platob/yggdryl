@@ -78,9 +78,6 @@ PYTHON_KINDS: tuple[str, ...] = tuple(_LISTING["python_kinds"])
 #: The compatibility targets ``into_scheme_compat`` accepts, e.g. ``"arrow"``.
 COMPATIBILITY_SCHEMES: tuple[str, ...] = tuple(_LISTING["compatibility_schemes"])
 
-#: What a cast does with a declared value the source cannot fill.
-NULLABILITIES: tuple[str, ...] = tuple(_LISTING["nullabilities"])
-
 #: What a cast makes a same-width pair carry.
 REPRESENTATIONS: tuple[str, ...] = tuple(_LISTING["representations"])
 
@@ -134,7 +131,6 @@ __all__ = [
     "MARKET_KINDS",
     "MARKET_VIEWS",
     "MD_UPDATE_ACTIONS",
-    "NULLABILITIES",
     "OPERATION_COLUMNS",
     "REPRESENTATIONS",
     "TIME_UNITS",

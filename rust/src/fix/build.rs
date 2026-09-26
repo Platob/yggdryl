@@ -666,7 +666,7 @@ fn lookup(registry: &FixRegistry, memo: &Memo, key: &str) -> Lookup {
 }
 
 /// A key as a child is named: [`folded_name`], from bytes.
-pub(super) fn folded_key(key: &[u8]) -> String {
+pub(super) fn folded_key(key: &[u8]) -> SmolStr {
     folded_name(&String::from_utf8_lossy(key))
 }
 
@@ -797,7 +797,9 @@ impl<'registry> Builder<'registry> {
             memo,
             groups: Vec::new(),
             version,
-            slots: Vec::with_capacity(capacity),
+            // One past the pairs: the `BeginString` `finish` states where
+            // none arrived is a slot the line did not count.
+            slots: Vec::with_capacity(capacity + 1),
             hashes: Vec::with_capacity(capacity),
             recorded: Vec::with_capacity(capacity),
             outer: None,
@@ -1436,13 +1438,14 @@ impl<'registry> Builder<'registry> {
                 .as_fix()
                 .names()
                 .position(|name| crate::folds_equal(name, key))
-                .map(|rank| (SmolStr::from(folded_name(key)), rank))
+                .map(|rank| (folded_name(key), rank))
         });
         // A market an alias spells is an ISO 10383 MIC or no statement of
         // the field: a venue's own short code there stays its own child,
         // refused by name, and the market ladder answers instead.
-        if let Some((spelling, _)) = alias
+        if let Some(((spelling, _), declared)) = alias
             .as_ref()
+            .zip(source)
             .filter(|_| tag == super::MICCODE_TAG_NAME.0 && !crate::MicCode::is_iso(text.trim()))
         {
             self.anomalies.push(super::FixAnomaly::new(
@@ -1450,10 +1453,7 @@ impl<'registry> Builder<'registry> {
                 format!("expected an ISO 10383 MIC, got {text:?}"),
             ));
             self.record(unresolved(0));
-            let mut own = DataType::utf8().nullable_field(spelling.clone());
-            // A plain key and value: the one refusal a metadata insert has
-            // is a shape no spelling here takes.
-            let _ = own.insert_metadata(super::field::ALIAS_OF, field.name());
+            let own = self.alias_field(spelling.clone(), declared);
             self.slot_for(own, 0, false).values.push(Scalar::from(text));
             return;
         }
@@ -1516,17 +1516,14 @@ impl<'registry> Builder<'registry> {
                 }
             }
         };
-        match demoted {
+        match demoted.zip(source) {
             None => self.record(if known { tag } else { unresolved(tag) }),
-            Some((spelling, values)) => {
+            Some(((spelling, values), declared)) => {
                 self.record(unresolved(0));
                 // Its own spelling would resolve back to the field it did
                 // not fill, so the child says what it is: an alias that lost,
                 // which the tag resolution leaves where it stands.
-                let mut own = DataType::utf8().nullable_field(spelling);
-                // A plain key and value: the one refusal a metadata insert has
-                // is a shape no spelling here takes.
-                let _ = own.insert_metadata(super::field::ALIAS_OF, field.name());
+                let own = self.alias_field(spelling, declared);
                 let own = self.slot_for(own, 0, false);
                 for held in values.as_slice() {
                     own.values.push(held.clone());
@@ -1690,6 +1687,23 @@ impl<'registry> Builder<'registry> {
         answer
     }
 
+    /// A child aliasing `declared`: the spelling that arrived, nullable
+    /// text, carrying `FIX:alias` naming the field it resolved to. The
+    /// metadata is the memo's, shared by every message that builds such a
+    /// child, so those messages have one shape and the column plan compiled
+    /// for the first is found again for the rest.
+    fn alias_field(&self, spelling: SmolStr, declared: &'registry Field) -> Field {
+        let facts = self
+            .memo
+            .facts(declared, || self.registry.codes_document_shared(declared));
+        Field::new_with_metadata(
+            spelling,
+            DataType::utf8(),
+            true,
+            facts.alias_metadata(declared),
+        )
+    }
+
     /// One member of one occurrence of a repeating group, at any depth.
     ///
     /// `member` may itself address a group nested in the occurrence -
@@ -1709,12 +1723,11 @@ impl<'registry> Builder<'registry> {
     ) {
         // The path, resolved: the group at the top, every nested group under
         // it beside the occurrence it addresses, and the leaf.
-        let mut levels: Vec<(Field, i32, bool, usize)> = Vec::new();
-        let (group_field, group_tag, known) = self.group_field(group);
-        if self.shadowed(group_field.name()) {
+        let (top_field, top_tag, top_known) = self.group_field(group);
+        if self.shadowed(top_field.name()) {
             return;
         }
-        levels.push((group_field, group_tag, known, occurrence));
+        let mut nested: Vec<(Field, i32, bool, usize)> = Vec::new();
         let mut leaf = member;
         loop {
             let located = Key::parse(leaf);
@@ -1725,7 +1738,7 @@ impl<'registry> Builder<'registry> {
                     member: rest,
                 } => {
                     let (field, tag, known) = self.group_field(sub);
-                    levels.push((field, tag, known, index));
+                    nested.push((field, tag, known, index));
                     leaf = rest;
                 }
                 Located::Repeated {
@@ -1735,7 +1748,7 @@ impl<'registry> Builder<'registry> {
                     // An occurrence stating one bare value: the value is what
                     // the sub-occurrence holds, under the group's own name.
                     let (field, tag, known) = self.group_field(name);
-                    levels.push((field, tag, known, index));
+                    nested.push((field, tag, known, index));
                     leaf = "";
                     break;
                 }
@@ -1747,10 +1760,10 @@ impl<'registry> Builder<'registry> {
         // counter resolves, through the dictionary's nested half first.
         let mut source = None;
         let mut leaf_known = false;
+        let level = nested.last().map_or(&top_field, |level| &level.0);
         let (leaf_field, leaf_tag, nested_counter) = if leaf.is_empty() {
             (
-                DataType::utf8()
-                    .nullable_field(occurrence_name(&levels.last().expect("a level").0)),
+                DataType::utf8().nullable_field(occurrence_name(level)),
                 0,
                 false,
             )
@@ -1767,7 +1780,7 @@ impl<'registry> Builder<'registry> {
                 // only the level declares is read directly, because the
                 // level is this line's own.
                 source = located.field.map(|(field, _)| field);
-                let scope = Scope::Members(member_fields(&levels.last().expect("a level").0));
+                let scope = Scope::Members(member_fields(level));
                 let (field, tag, declaration) = self.field_from(leaf, located.field, scope);
                 leaf_known = declaration.is_some();
                 (field, tag, false)
@@ -1784,11 +1797,10 @@ impl<'registry> Builder<'registry> {
         } else {
             unresolved(leaf_tag)
         });
-        let (top_field, top_tag, top_known, _) = levels.remove(0);
         let mut slot = self.slot_for(top_field, top_tag, top_known);
         slot.group = true;
         let mut at = occurrence;
-        for (field, tag, known, index) in levels {
+        for (field, tag, known, index) in nested {
             slot = slot.nested(at, field, tag, known);
             at = index;
         }
@@ -1926,33 +1938,33 @@ impl<'registry> Builder<'registry> {
                 filler: None,
             });
         }
-        // Each slot's place is read once, as a rank, rather than once per
-        // comparison inside the sort.
-        let mut ordered: Vec<(usize, Slot)> = Vec::with_capacity(slots.len());
-        let mut rest: Vec<Slot> = Vec::with_capacity(slots.len());
-        let mut trailing: Vec<(usize, Slot)> = Vec::new();
-        for slot in slots {
-            if let Some(rank) = rank_in(&STANDARD_HEADER_TAGS, slot.tag) {
-                ordered.push((rank, slot));
+        // Each slot's place is read once, as a rank - the standard header in
+        // its order, then the rest as they arrived, then the standard
+        // trailer in its order - and the ranks are what is sorted: the slots
+        // are then taken in rank order out of the vector they arrived in,
+        // which holds them as options of the same width.
+        let count = slots.len();
+        let mut ranks: Vec<(usize, usize)> = Vec::with_capacity(count);
+        for (index, slot) in slots.iter().enumerate() {
+            let rank = if let Some(rank) = rank_in(&STANDARD_HEADER_TAGS, slot.tag) {
+                rank
             } else if let Some(rank) = rank_in(&STANDARD_TRAILER_TAGS, slot.tag) {
-                trailing.push((rank, slot));
+                STANDARD_HEADER_TAGS.len() + count + rank
             } else {
-                rest.push(slot);
-            }
+                STANDARD_HEADER_TAGS.len() + index
+            };
+            ranks.push((rank, index));
         }
-        ordered.sort_by_key(|(rank, _)| *rank);
-        trailing.sort_by_key(|(rank, _)| *rank);
-        let count = ordered.len() + rest.len() + trailing.len();
-        let ordered = ordered
-            .into_iter()
-            .map(|(_, slot)| slot)
-            .chain(rest)
-            .chain(trailing.into_iter().map(|(_, slot)| slot));
+        ranks.sort_unstable();
+        let mut slots: Vec<Option<Slot>> = slots.into_iter().map(Some).collect();
 
         let mut fields = Vec::with_capacity(count);
         let mut values = Vec::with_capacity(count);
         let mut tags = Vec::with_capacity(count);
-        for (index, slot) in ordered.enumerate() {
+        for (index, (_, at)) in ranks.into_iter().enumerate() {
+            let slot = slots[at]
+                .take()
+                .expect("each rank names one slot, taken once");
             if slot.known {
                 tags.push((slot.tag, index));
             }
@@ -1962,21 +1974,26 @@ impl<'registry> Builder<'registry> {
         }
         // A group's counter counts the occurrences the group holds, once
         // they are merged: a bridge stating six restated parties beside two
-        // bare ones counts eight.
-        let counted: Vec<(i32, usize)> = fields
+        // bare ones counts eight. Each field's tag and counter are read once
+        // for both sides of that match.
+        let facts: Vec<(Option<i32>, Option<i32>)> = fields
             .iter()
-            .zip(&values)
-            .filter_map(|(field, value)| {
-                let counter = super::schema::tag_and_counter(registry, field).1?;
-                let held = value.as_sequence()?.len();
-                Some((counter, held))
-            })
+            .map(|field| super::schema::tag_and_counter(registry, field))
             .collect();
-        for (counter, held) in counted {
-            if let Some(at) = fields.iter().position(|field| {
-                let (tag, counts) = super::schema::tag_and_counter(registry, field);
-                tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
-            }) {
+        for (index, (_, counter)) in facts.iter().enumerate() {
+            let Some(counter) = *counter else {
+                continue;
+            };
+            let Some(held) = values[index].as_sequence().map(<[Scalar]>::len) else {
+                continue;
+            };
+            if let Some(at) = facts
+                .iter()
+                .zip(&fields)
+                .position(|((tag, counts), field)| {
+                    *tag == Some(counter) && counts.is_none() && !field.dtype().is_nested()
+                })
+            {
                 let count = i32::try_from(held).unwrap_or(i32::MAX);
                 // The number that arrived and the occurrences the group
                 // holds are two readings of one line: where they disagree,
@@ -2246,45 +2263,54 @@ impl Slot {
                 member_fields.push(member);
             }
         }
-        let mut item = DataType::from(StructType::from_fields(member_fields.clone())?)
-            .required_field(occurrence_name(&self.field));
         // A gapped index leaves an occurrence nobody stated, which is null.
-        if finished.iter().any(Option::is_none) {
-            item.set_nullable(true);
-        }
+        let gapped = finished.iter().any(Option::is_none);
         // An occurrence nobody stated is a gap and is dropped; the rest are
         // sorted by what they state and an occurrence restating another is
         // dropped, so two sources of one group - a wire and a bridge's
         // restatement of it - merge into one serie a consumer compares
-        // whatever order either wrote.
+        // whatever order either wrote. Each row is written straight into
+        // the run it is stored in, its members moved out of the occurrence
+        // they arrived in - typed already, where they were pushed - and the
+        // key that orders the rows is rendered only where a second
+        // occurrence exists to order against.
+        let keyed = finished.iter().flatten().count() > 1;
         let mut rows: Vec<(String, Scalar)> = Vec::with_capacity(finished.len());
-        for occurrence in finished.into_iter().flatten() {
-            let mut row = Vec::with_capacity(member_fields.len());
+        for mut occurrence in finished.into_iter().flatten() {
             let mut key = String::new();
-            for field in &member_fields {
-                let held = occurrence
-                    .iter()
+            let row = Scalar::try_fill_sequence(member_fields.len(), |index, slot| {
+                let field = &member_fields[index];
+                if let Some((_, held)) = occurrence
+                    .iter_mut()
                     .find(|(held, _)| held.name() == field.name())
-                    .map(|(_, value)| value.clone())
-                    .unwrap_or(Scalar::Null);
-                if !held.is_null() {
+                {
+                    *slot = std::mem::replace(held, Scalar::Null);
+                }
+                if keyed && !slot.is_null() {
+                    use std::fmt::Write as _;
                     key.push_str(field.name());
                     key.push('=');
-                    key.push_str(&format!("{held:?}"));
+                    let _ = write!(key, "{slot:?}");
                     key.push('\u{1f}');
                 }
-                row.push(held);
-            }
-            rows.push((key, Scalar::from_sequence(row)));
+                Ok(())
+            })?;
+            rows.push((key, row));
         }
-        rows.sort_by(|left, right| left.0.cmp(&right.0));
-        rows.dedup_by(|left, right| left.0 == right.0);
-        if rows.iter().any(|(_, row)| row.is_null()) {
+        if keyed {
+            rows.sort_by(|left, right| left.0.cmp(&right.0));
+            rows.dedup_by(|left, right| left.0 == right.0);
+        }
+        let mut item = DataType::from(StructType::from_fields(member_fields)?)
+            .required_field(occurrence_name(&self.field));
+        if gapped {
             item.set_nullable(true);
         }
-        let rows: Vec<Scalar> = rows.into_iter().map(|(_, row)| row).collect();
         let serie = serie_of(&self.field, item);
-        Ok((serie, Scalar::from_sequence(rows)))
+        Ok((
+            serie,
+            Scalar::from_sequence(rows.into_iter().map(|(_, row)| row)),
+        ))
     }
 }
 
@@ -2636,10 +2662,10 @@ const fn is_binary(dtype: &DataType) -> bool {
 /// side of that split. The fold is the crate's one name fold; a key the fold
 /// empties - separators alone - keeps its own spelling, because a child has
 /// to be called something.
-fn folded_name(key: &str) -> String {
-    let name = crate::normalized(key);
+fn folded_name(key: &str) -> SmolStr {
+    let name: SmolStr = crate::parser::folded(key).collect();
     if name.is_empty() {
-        key.to_owned()
+        SmolStr::new(key)
     } else {
         name
     }

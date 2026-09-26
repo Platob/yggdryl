@@ -64,6 +64,13 @@ CHUNKED_TABLE = pa.Table.from_batches(
 )
 SCALAR = pa.scalar(125, pa.int64())
 ONE_ROW = pa.array([125], type=pa.int64())
+# A wide record: 64 int64 columns of 1,024 rows, one batch of it and a table
+# of 64 such batches, so a per-column or per-batch cost shows at its width.
+WIDE_BATCH = pa.RecordBatch.from_arrays(
+    [pa.array(range(1_024), pa.int64()) for _ in range(64)],
+    names=[f"c{index}" for index in range(64)],
+)
+WIDE_TABLE = pa.Table.from_batches([WIDE_BATCH] * 64)
 
 # The declared field is built once: parsing an expression is measured by the
 # field benchmarks, and what these rows compare is the cast.
@@ -123,6 +130,7 @@ MAP_BATCH = pa.RecordBatch.from_arrays(
     schema=MAP_SCHEMA,
 )
 HELD_MAP_BATCH = Serie.from_(MAP_BATCH)
+HELD_WIDE_BATCH = Serie.from_(WIDE_BATCH)
 
 STORE = pathlib.Path(tempfile.mkdtemp(prefix="yggdryl-arrow-bench-"))
 # The store is made at import, before any argument is read, so its removal is
@@ -239,6 +247,9 @@ def _cases(
         # `(pyarrow)` partner are read that way.
         ("from RecordBatch", lambda: Serie.from_(BATCH), small),
         ("from Array", lambda: Serie.from_(COLUMN), small),
+        # The same array through its own door, which skips the recognition
+        # ladder: the difference is what `Serie.from_` costs to recognize it.
+        ("Serie.from_arrow_array", lambda: Serie.from_arrow_array(COLUMN), small),
         ("from ChunkedArray (yggdryl)", lambda: Serie.from_(CHUNKED), bulk),
         # `Serie.from_` lands each chunk and joins them once - what
         # `ChunkedSerie.into_serie` is - so combining is the same join minus
@@ -362,6 +373,13 @@ def _cases(
             lambda: next(SerieReader.from_(HELD_READER_COLUMN, READER_COLUMN_ROOT)),
             bulk,
         ),
+        # One held column as a stream, then cast under the declared root: the
+        # plan compiled at the call, the record cast there.
+        (
+            "SerieReader.cast, declared root",
+            lambda: SerieReader.from_serie(HELD_READER_COLUMN).cast(READER_COLUMN_ROOT),
+            small,
+        ),
         # The Serie doors pair with the two PyArrow casts above: the same
         # array or batch, cast onto the same declared field.
         (
@@ -388,6 +406,23 @@ def _cases(
             small,
         ),
         ("into_arrow_batch", lambda: HELD_BATCH.into_arrow_batch(), small),
+        (
+            "into_arrow_batch, 64 columns",
+            lambda: HELD_WIDE_BATCH.into_arrow_batch(),
+            bulk,
+        ),
+        # 64 batches of 64 columns pulled C to C through the exported stream,
+        # beside PyArrow draining its own table's stream.
+        (
+            "64x64 reader read_all (yggdryl)",
+            lambda: SerieReader.from_(WIDE_TABLE).into_arrow_reader().read_all(),
+            bulk,
+        ),
+        (
+            "64x64 reader read_all (pyarrow)",
+            lambda: pa.RecordBatchReader.from_stream(WIDE_TABLE).read_all(),
+            bulk,
+        ),
         ("sorted Map batch export", lambda: HELD_MAP_BATCH.into_arrow_batch(), small),
         (
             "sorted Map reader construction",

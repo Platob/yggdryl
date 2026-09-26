@@ -591,7 +591,7 @@ A message speaks no dialect of its own: the registry is one namespace, and a bar
 | `get_by_name` / `by_name` | folds through the registry to the canonical spelling - a typed field answers its holder - then matches a root child exactly |
 | `get_by_path` / `by_path` | the first segment as a name, then segment by segment: into a Struct child by name, into a Serie entry by a decimal index |
 | `get` / `value` | takes a `FixKey` and redirects; a name that reaches nothing and spells more than one segment is read as a path |
-| `event`, `header`, `capture`, `text`, `metadata` | the holders themselves, borrowed without a lookup |
+| `header`, `capture`, `text`, `metadata` | the holders themselves, borrowed without a lookup; the event's facts are the trait getters, and the leaves a message expands to are [`market_operations`](#market-operations) |
 
 Every lookup answers an owned `Scalar`: a holder's fact is rendered into the column's type on the way out, and a row child cloned.
 

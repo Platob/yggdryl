@@ -1572,7 +1572,8 @@ impl<H: IOBase> Table<H> {
     ///
     /// Returns the new schema's identifier. Data written under the previous
     /// schema stays readable: [`Self::scan`] casts every file to the scan root,
-    /// so a column added here reads as null in the files that predate it.
+    /// so a column added here reads as its v3 `initial-default` in the files
+    /// that predate it, or as null where it declares none.
     ///
     /// # Errors
     ///

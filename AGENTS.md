@@ -238,7 +238,7 @@ it skipped a check.
 does what the text asks whenever one reading does it, and refuses only what no
 reading can, naming the column, the value, or the section it could not honour.
 A constant coerces into the operand it meets, operands with no common type
-compare as text, a declared column casts safely unless it is `not null`, an
+compare as text, a column casts safely unless it is `not null`, an
 empty text cell entering a non-text column is null and the column's
 nullability is what may refuse it, a missing store reads as the empty stream,
 a `select *` or a same-type cast costs nothing. Never a technical error a
@@ -1510,12 +1510,12 @@ machinery they share in `text/`.
   IPC dictionary sidecar and the bounded row-to-batch reader, at most one
   source batch held, never JSON.
 - `cast.rs` owns recursive casting and is reached through `Serie`: Struct
-  casts reconcile names, reject ambiguous folds, follow target order, fill
-  valid missing fields, and preserve exact buffers; wrapper exposure
-  propagates, so hidden child failures and nulls stay hidden. A null under a
-  required field is absence, repaired under `Nullability::Default` and refused
-  under `Strict` - except where null is the datatype's own canonical default,
-  the one exception, stated once in the engine and once in the landing.
+  casts reconcile names, reject ambiguous folds, follow target order, fill a
+  missing nullable field with nulls, and preserve exact buffers; wrapper
+  exposure propagates, so hidden child failures and nulls stay hidden. A null
+  under a required field is absence and is refused by path - except where null
+  is the datatype's own canonical default, the one exception, stated once in
+  the engine and once in the landing.
 - Hidden-span compaction and noncompact list-view gathering draw on the landing's
   one materialization budget. A root run-end gather searches each selected span
   once, and a nested run-end uses indexed take unless its tree also contains a
@@ -1523,12 +1523,20 @@ machinery they share in `text/`.
   to preserve the zero-width row count and may rescan the nested runs once per
   selected span; retain its explicit cost caveat until one recursive gather
   replaces it.
-- `ArrowCastOptions` carries the three independent answers a cast needs and every
-  entry point takes it: `safe` = may a present value convert, `Nullability` = may
-  a declared value be absent, `Representation` = what a same-width pair carries.
-  `Representation::Bits` shares the value buffer between two fixed-width layouts
-  of one byte width; it is a preference, so an unlike pair or a rule-governed
-  target converts as it always did.
+- `ArrowCastOptions` carries the two independent answers a cast needs and every
+  entry point takes it: `safe` = may a present value convert, `Representation` =
+  what a same-width pair carries. Whether a value may be absent is no option: it
+  is the target field's nullability, one rule at every door. A nullable column
+  takes a failed conversion as null under `safe`; a required column refuses a
+  value it cannot convert by that value whatever `safe` says, and a null, an
+  empty text cell entering a non-text column and a column the source does not
+  carry by path, never writing its canonical default. The one repair is
+  internal: a column a declaring protocol fills after the cast - a digest
+  holder, a `TRANSFORM:` or `PARTITION:` column - may arrive absent for that
+  protocol, and the finished batch is checked again. `Representation::Bits`
+  shares the value buffer between two fixed-width layouts of one byte width;
+  it is a preference, so an unlike pair or a rule-governed target converts as
+  it always did.
 - `ArrowCastPlan` is the schema-dependent half, compiled once from a source
   `Field` to a target `Field` (a foreign source is planned from its Arrow
   field, never imported): immutable, `Send + Sync`, `compile`/`preflight`/
@@ -1610,8 +1618,8 @@ python scripts/check_charset_interop.py             # every code page against Py
 ```
 
 ```bash
-cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix>
-npm run --prefix node bench:<coding|fix|hashing:txhash|hashing:xxhash|holder|media|text|types>
+cargo bench -p yggdryl --bench <types|arrow|uri|text|coding|charset|media|holder|hashing|expression|fix|fix_allocations>
+npm run --prefix node bench:<coding|fix|graph|hashing:txhash|hashing:xxhash|holder|media|text|types>
 python python/benchmarks/<name>.py                  # boundary benchmarks, release wheel
 YGGDRYL_S3TABLES_ARN=<table bucket ARN> python python/benchmarks/media/s3tables.py  # a real table bucket and pyiceberg; SKIPPED otherwise
 ```
@@ -1705,7 +1713,7 @@ Python-only:
   `SerieReader.from_serie` and `SerieReader.from_chunked` make a held column or
   a held chunked one a stream, and `IOBase.read_arrow` answers a `SerieReader`.
   A cast is `Serie.cast`, `ChunkedSerie.cast` or an `ArrowCastPlan`, passing
-  the caller's `safe`, `nullability` and `representation`. No binding casts,
+  the caller's `safe` and `representation`. No binding casts,
   rebuilds rows from, or walks an Arrow array itself.
 - Structured codec facades stay byte-oriented and native, `cls=` is explicit
   reconstruction, and encoders never close caller-owned streams.
@@ -1764,7 +1772,7 @@ JavaScript-only:
   `SerieReader.fromArrowReader(reader, root?, options?)`,
   `SerieReader.fromSerie(serie)`, `SerieReader.fromChunked(chunked)`,
   `serie.cast(field, options?)`, `chunked.cast(field, options?)` and
-  `ArrowCastPlan`; `{ safe, nullability, representation }` reach the core. A
+  `ArrowCastPlan`; `{ safe, representation }` reach the core. A
   `Scalar` has no Arrow door of its own: a value crosses as
   `Serie.fromScalars(field, rows)` and comes back as `scalar(0)` or
   `intoScalar()`. A chunked input is one reader door and one cast, never a

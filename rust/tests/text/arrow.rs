@@ -282,6 +282,87 @@ mod text {
         }
     }
 
+    // --- The row header the cut reads ---
+
+    mod header {
+        use std::sync::Arc;
+
+        use yggdryl::text::{TextBytes, TextLine, TextOptions, read_text_lines};
+
+        use super::named;
+
+        /// The bodies and captures a read states, line by line.
+        fn read(source: &[u8], options: &TextOptions) -> Vec<(String, Vec<Option<String>>)> {
+            read_text_lines(&named("app.log", source), options)
+                .expect("a settled configuration")
+                .map(|line| stated(&line.expect("a line")))
+                .collect()
+        }
+
+        /// What the line built from `bytes` alone states: its own match.
+        fn own(bytes: &[u8], options: &TextOptions) -> (String, Vec<Option<String>>) {
+            let body = TextBytes::from_bytes(bytes).expect("a page");
+            stated(&TextLine::from_bytes(0, body, Arc::new(options.clone())).expect("a line"))
+        }
+
+        fn stated(line: &TextLine) -> (String, Vec<Option<String>>) {
+            let captures = (0..line.captures().len())
+                .map(|at| line.capture(at).map(str::to_owned))
+                .collect();
+            (line.body().to_owned(), captures)
+        }
+
+        #[test]
+        fn a_line_the_header_does_not_match_keeps_its_body_and_captures_nothing() {
+            // The reader matches the header where the line would, so a line
+            // it does not match reads exactly as the line's own match
+            // answers: the body whole and every capture empty, beside lines
+            // that match with and without their optional group.
+            let options = TextOptions::new()
+                .try_with_rowheader(r"^\[(?<level>[A-Z]+)\] (?:(?<code>\d+) )?")
+                .expect("a header");
+            let source = b"[WARN] 7 first\nsecond [INFO]\n[INFO] third\n";
+            let lines = read(source, &options);
+            assert_eq!(
+                lines,
+                [
+                    (
+                        "first".to_owned(),
+                        vec![Some("WARN".to_owned()), Some("7".to_owned())]
+                    ),
+                    ("second [INFO]".to_owned(), vec![None, None]),
+                    ("third".to_owned(), vec![Some("INFO".to_owned()), None]),
+                ]
+            );
+            for (line, bytes) in lines.iter().zip(source.split(|byte| *byte == b'\n')) {
+                assert_eq!(*line, own(bytes, &options));
+            }
+        }
+
+        #[test]
+        fn a_leading_fragment_is_matched_over_the_record_it_opens() {
+            // A framed record joins the lines behind the one it opens with,
+            // so a fragment no single line matches is matched over the whole
+            // record it became - the joined lines here - never over its first
+            // line alone.
+            let options = TextOptions::new()
+                .try_with_rowheader(r"^(?<first>[a-z]+)\s+(?<second>[a-z]+) ")
+                .expect("a header")
+                .with_framing(true);
+            assert_eq!(
+                read(b"abc\ndef ghi\n", &options),
+                [own(b"abc\ndef ghi", &options)]
+            );
+            assert_eq!(
+                read(b"abc\ndef ghi\n", &options),
+                [(
+                    "ghi".to_owned(),
+                    vec![Some("abc".to_owned()), Some("def".to_owned())]
+                )]
+            );
+        }
+    }
+
     // --- The clauses and the one decode ---
 
     mod clauses {

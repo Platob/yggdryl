@@ -87,7 +87,14 @@ mod dataset {
         let RecordOptions::Text(options) = reading() else {
             panic!("a text read")
         };
-        read_text_lines(source(), &options)
+        framed(&options)
+    }
+
+    /// Every line the capture holds, decoded under `options`: the read
+    /// alone, the options - the row header's regex among them - built
+    /// before it.
+    fn framed(options: &TextOptions) -> Vec<TextLine> {
+        read_text_lines(source(), options)
             .expect("a line reader")
             .map(|line| line.expect("a line"))
             .collect()
@@ -404,6 +411,25 @@ mod dataset {
         second
     }
 
+    /// Run a stage twice with its output dropped inside the section, and
+    /// assert the second pass left nothing allocated: what a stage keeps
+    /// after its first pass is a cache filling, and what it keeps after the
+    /// second is a retention - a plan table growing per message, a root
+    /// kept alive by the plan compiled for it.
+    fn retains_nothing<T>(stage: &str, body: impl Fn() -> T) {
+        let ((), first) = super::allocations::measure(|| drop(body()));
+        let ((), second) = super::allocations::measure(|| drop(body()));
+        eprintln!(
+            "{stage}: first live_bytes={} second live_bytes={}",
+            first.live_bytes, second.live_bytes
+        );
+        assert!(
+            second.live_bytes <= 0,
+            "{stage} retained {} bytes on its second pass",
+            second.live_bytes
+        );
+    }
+
     #[test]
     fn ulbridge_dataset_allocation_profile_is_sequential_and_staged() {
         // Settle the shared dictionary, schema, and source before the measured
@@ -418,9 +444,13 @@ mod dataset {
             .with_threads(1);
         assert_eq!(default.threads(), 1);
         assert_eq!(every.threads(), 1);
+        let RecordOptions::Text(options) = reading() else {
+            panic!("a text read")
+        };
 
-        let lines = profiled("ulbridge text framing", text_lines);
+        let lines = profiled("ulbridge text framing", || framed(&options));
         assert_eq!(lines.len(), LINES);
+        retains_nothing("ulbridge text framing", || framed(&options));
 
         let messages = profiled("ulbridge codec parse default", || {
             default
@@ -436,6 +466,12 @@ mod dataset {
                 .expect("the prepared lines parse with no refusals")
         });
         assert_eq!(all_messages.len(), EVERY_ROW);
+        retains_nothing("ulbridge codec parse default", || {
+            default
+                .parse_text_lines(lines.iter().cloned())
+                .collect::<yggdryl::Result<Vec<_>>>()
+                .expect("the prepared lines parse")
+        });
 
         let canonical_rows = profiled("ulbridge message into_row format_target", || {
             messages
@@ -444,6 +480,12 @@ mod dataset {
                 .collect::<Vec<_>>()
         });
         assert_eq!(canonical_rows.len(), ROWS);
+        retains_nothing("ulbridge message into_row format_target", || {
+            messages
+                .iter()
+                .map(|message| message.into_row(&target).expect("the fixed row"))
+                .collect::<Vec<_>>()
+        });
 
         let residual_column = target.index_of("fixentries").expect("the residual column");
         let residual_count = target.index_of("nofixentries").expect("the residual count");
@@ -499,8 +541,29 @@ mod dataset {
         });
         assert_eq!(record_batches.len(), ROWS);
         assert!(record_batches.iter().all(|batch| batch.num_rows() == 1));
+        retains_nothing("ulbridge FieldRecord one-row Serie batch", || {
+            records
+                .iter()
+                .cloned()
+                .map(|record| {
+                    yggdryl::Serie::from_scalars(Arc::clone(&root), [record.into_scalar()])
+                        .expect("a canonical record")
+                        .into_arrow_batch()
+                        .expect("a one-row batch")
+                })
+                .collect::<Vec<_>>()
+        });
 
         let parsed_batches = profiled("ulbridge batch door", || batches(&default));
+        // The batch door builds its fixed root per reader, and the column
+        // plan table remembers the last sixteen roots by address so a door
+        // held across its rows finds its plan without a digest: sixteen
+        // readers in, the seventeenth evicts one root of the same shape as
+        // the one it enters, and the door retains nothing.
+        for _ in 0..16 {
+            drop(batches(&default));
+        }
+        retains_nothing("ulbridge batch door", || batches(&default));
         assert_eq!(
             parsed_batches
                 .iter()

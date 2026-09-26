@@ -53,12 +53,13 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 
+use smallvec::SmallVec;
 use smol_str::SmolStr;
 
 use crate::arrow::BatchReader;
 use crate::arrow::rows::{Closing, appended_bytes, canonical_closing_reader};
 use crate::graph::EventColumn;
-use crate::serie::{Proof, land_batch};
+use crate::serie::{Proof, Resolved, land_batch};
 use crate::text::TextOptions;
 use crate::{DataType, DataTypeKind, Error, Field, Result, Scalar, Serie, Utf8StringSerie};
 
@@ -130,7 +131,7 @@ impl FixCodec {
                     self.threads(),
                     1,
                     move |held| -> Vec<Result<Charged>> {
-                        match held.and_then(|batch| reader.land(&batch)) {
+                        match held.and_then(|batch| reader.land(batch)) {
                             Err(error) => vec![Err(error)],
                             Ok(batch) => {
                                 let mut rows = Vec::with_capacity(batch.records.len());
@@ -222,7 +223,7 @@ impl FixCodec {
             threads,
             1,
             move |held| -> Vec<Result<FixMsg>> {
-                match held.and_then(|batch| reader.land(&batch)) {
+                match held.and_then(|batch| reader.land(batch)) {
                     Err(error) => vec![Err(error)],
                     Ok(batch) => {
                         let mut messages = Vec::with_capacity(batch.records.len());
@@ -257,7 +258,7 @@ impl FixCodec {
         let kept = super::schema::carried(carrier, read);
         let columns = Columns::resolve(carrier, self.payload_column(), &kept, self)?;
         Ok(Arc::new(RowReader {
-            root: Arc::new(carrier.clone()),
+            root: Resolved::of(Arc::new(carrier.clone())),
             columns,
             codec: self.clone(),
             options: Arc::new(TextOptions::new()),
@@ -347,7 +348,7 @@ impl FixCodec {
             Err(error) => (DataType::Null.required_field(ROOT_NAME), Some(error)),
         };
         let registry = Arc::clone(self.registry());
-        let root = Arc::new(schema.clone());
+        let root = Resolved::of(Arc::new(schema.clone()));
         let read = crate::parallel::ordered(
             StructRows::over(source, root, refused),
             self.threads(),
@@ -856,7 +857,7 @@ fn carried_messages(held: Result<(FixMessages, Cells)>) -> impl Iterator<Item = 
 /// the row actually reads.
 struct RowReader {
     /// The carrier every batch lands under, resolved once off the source.
-    root: Arc<Field>,
+    root: Resolved,
     columns: Columns,
     codec: FixCodec,
     /// The options every row's line is read under, shared once: a row
@@ -866,7 +867,7 @@ struct RowReader {
 
 impl RowReader {
     /// Land one batch under the carrier, narrowing its payload column once.
-    fn land(&self, batch: &RecordBatch) -> Result<Landed> {
+    fn land(&self, batch: RecordBatch) -> Result<Landed> {
         let records = land_batch(&self.root, batch, &Proof::Unproven)?;
         let payload = Payload::of(&records.children()[self.columns.payload]);
         Ok(Landed { records, payload })
@@ -904,15 +905,17 @@ impl RowReader {
                     .and_then(|text| codec.msgdirection().code(text))
             })
             .map(SmolStr::new);
-        // The cells that fill fields, read only where the row states them.
-        let mut cells: Vec<(&Field, i32, Scalar)> = Vec::with_capacity(columns.fills.len());
+        // The cells that fill fields, read only where the row states them,
+        // on the stack while the carrier fills at most eight fields.
+        let mut cells: SmallVec<[(&Field, i32, Scalar); 8]> =
+            SmallVec::with_capacity(columns.fills.len());
         for (at, field, tag) in &columns.fills {
             let Some(value) = stated(Some(*at))? else {
                 continue;
             };
             cells.push((field, *tag, value));
         }
-        let fills: Vec<Fill<'_>> = cells
+        let fills: SmallVec<[Fill<'_>; 8]> = cells
             .iter()
             .map(|(field, tag, value)| Fill {
                 field,
@@ -1025,7 +1028,7 @@ impl Iterator for BatchRows {
             }
             // The batch is spent, or none is held yet: the next validated one
             // is pulled, landed, and the spent one dropped.
-            match self.source.next().map(|batch| self.reader.land(&batch?)) {
+            match self.source.next().map(|batch| self.reader.land(batch?)) {
                 Some(Ok(batch)) => self.held = Some((Arc::new(batch), 0)),
                 Some(Err(error)) => {
                     self.held = None;
@@ -1043,7 +1046,7 @@ impl Iterator for BatchRows {
 struct StructRows {
     source: BatchReader,
     /// The root every batch lands under, resolved once off the source.
-    root: Arc<Field>,
+    root: Resolved,
     /// The refusal the source's schema earned, yielded once and first.
     refused: Option<Error>,
     /// The record column being read, beside the row the next pull reads.
@@ -1052,7 +1055,7 @@ struct StructRows {
 }
 
 impl StructRows {
-    const fn over(source: BatchReader, root: Arc<Field>, refused: Option<Error>) -> Self {
+    const fn over(source: BatchReader, root: Resolved, refused: Option<Error>) -> Self {
         Self {
             source,
             root,
@@ -1093,7 +1096,7 @@ impl Iterator for StructRows {
                 }
                 // Each batch lands once, proving the rows its schema's
                 // layout does not: a row it refuses is named here.
-                Some(Ok(batch)) => match land_batch(&self.root, &batch, &Proof::Unproven) {
+                Some(Ok(batch)) => match land_batch(&self.root, batch, &Proof::Unproven) {
                     Ok(records) => self.held = Some((Arc::new(records), 0)),
                     Err(error) => {
                         self.done = true;

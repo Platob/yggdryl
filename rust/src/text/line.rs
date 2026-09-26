@@ -1654,6 +1654,15 @@ impl fmt::Display for TextLine {
     }
 }
 
+/// The borrowed line made owned: the one clone a caller holding a reference
+/// pays where an owned line is wanted, and the conversion an owned line
+/// skips by moving.
+impl From<&TextLine> for TextLine {
+    fn from(line: &TextLine) -> Self {
+        line.clone()
+    }
+}
+
 impl From<TextLine> for Result<TextLine> {
     fn from(value: TextLine) -> Self {
         Ok(value)

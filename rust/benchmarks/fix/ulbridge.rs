@@ -11,21 +11,27 @@
 //! message emits.
 //!
 //! The lines are read once, outside every timer, so the row header's
-//! captures are a fact the lines carry and never a cost the codec pays.
-//! The capture is repeated in the release corpus so a run measures
-//! hundreds of messages rather than a hundred; a repeat is the same
-//! messages again, which the walk reads as a message logged at another
-//! hop, restating the live one.
+//! captures are a fact the lines carry and never a cost the codec pays;
+//! the text stage is that read, measured on its own. The capture is
+//! repeated in the release corpus so a run measures hundreds of messages
+//! rather than a hundred; a repeat is the same messages again, which the
+//! walk reads as a message logged at another hop, restating the live one.
+//!
+//! The stages are written once over any Criterion measurement: timed under
+//! `fix/ulbridge`, and counted - every allocation, every requested byte -
+//! under `fix/allocations` and `fix/allocated_bytes` in the
+//! `fix_allocations` target, whose allocator counts.
 
 use std::hint::black_box;
 use std::sync::Arc;
 
+use criterion::measurement::Measurement;
 use criterion::{BatchSize, Criterion, Throughput};
 use yggdryl::graph::{Event, Market};
 use yggdryl::holder::Buffer;
 use yggdryl::securityid::{SecType, SecurityId};
 use yggdryl::text::{TextLine, TextOptions, read_text_lines};
-use yggdryl::{FixCodec, FixMsg, Scalar, Timezone, Url, fix_schema};
+use yggdryl::{FixCodec, FixMsg, Scalar, Serie, Timezone, Url, fix_schema};
 
 use super::seed;
 
@@ -59,35 +65,56 @@ fn options() -> TextOptions {
     options
 }
 
-/// The capture's lines, decoded and framed under the row header, each
-/// owning its page.
-fn lines(options: &TextOptions) -> Vec<TextLine> {
-    let source = Buffer::from_bytes(LOG.repeat(REPEATS)).with_media_type(
+/// The capture, `repeats` times over, as the `.log` handle a reader opens.
+fn source(repeats: usize) -> Buffer {
+    Buffer::from_bytes(LOG.repeat(repeats)).with_media_type(
         Url::from_str("file:///ulbridge.log")
             .expect("a URL")
             .media_type(),
-    );
-    read_text_lines(&source, options)
+    )
+}
+
+/// The capture's lines, decoded and framed under the row header, each
+/// owning its page.
+fn lines(source: &Buffer, options: &TextOptions) -> Vec<TextLine> {
+    read_text_lines(source, options)
         .expect("a decoded line stream")
         .map(|line| line.expect("a line"))
         .collect()
 }
 
 pub fn benchmarks(criterion: &mut Criterion) {
+    stages(criterion, "fix/ulbridge", REPEATS, None);
+}
+
+/// Every stage under one measurement: `repeats` copies of the capture,
+/// the codec on `threads` workers or its own default. Counted, the stages
+/// run one copy on one thread, because the counting allocator observes the
+/// thread it is armed on and a pool's workers would allocate unseen.
+pub(crate) fn stages<M: Measurement>(
+    criterion: &mut Criterion<M>,
+    group: &str,
+    repeats: usize,
+    threads: Option<usize>,
+) {
     let registry = Arc::new(seed());
     let options = options();
-    let codec = FixCodec::new(Arc::clone(&registry))
+    let mut codec = FixCodec::new(Arc::clone(&registry))
         .with_capture_names(options.capture_names())
         .with_exclude_msgtypes::<[&str; 0], &str>([]);
+    if let Some(threads) = threads {
+        codec = codec.with_threads(threads);
+    }
     let schema = fix_schema(&registry, "fix").expect("the fixed schema");
-    let lines = lines(&options);
+    let source = source(repeats);
+    let lines = lines(&source, &options);
 
     // The parse, once, outside every timer: what the row and wire stages
     // read, and the check that the capture is what the numbers say it is.
     let parsed: Vec<yggdryl::Result<FixMsg>> = codec.parse_text_lines(lines.iter()).collect();
     assert!(parsed.iter().all(Result::is_ok), "the capture parses whole");
     let messages: Vec<FixMsg> = parsed.into_iter().filter_map(Result::ok).collect();
-    assert_eq!(messages.len(), MESSAGES * REPEATS, "the corpus");
+    assert_eq!(messages.len(), MESSAGES * repeats, "the corpus");
     let rows: Vec<Scalar> = messages
         .iter()
         .map(|message| message.into_row(&schema).expect("a row"))
@@ -109,8 +136,19 @@ pub fn benchmarks(criterion: &mut Criterion) {
         .count();
     assert!(chained > 0, "the walk chains the capture");
 
-    let mut group = criterion.benchmark_group("fix/ulbridge");
+    let mut group = criterion.benchmark_group(group);
     group.throughput(Throughput::Elements(messages.len() as u64));
+
+    // The text reader over the capture: each line cut, framed under the
+    // row header, numbered and classified, and nothing parsed.
+    group.bench_function("text", |bencher| {
+        bencher.iter(|| {
+            read_text_lines(black_box(&source), black_box(&options))
+                .expect("a decoded line stream")
+                .filter(Result::is_ok)
+                .count()
+        });
+    });
 
     // The codec over the framed lines: every message built, settled and
     // identified, and nothing else.
@@ -220,6 +258,42 @@ pub fn benchmarks(criterion: &mut Criterion) {
                 held.iter()
                     .map(|message| black_box(message).into_bytes(b'|').len())
                     .sum::<usize>()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The rows landed in one batch under the fixed schema: what a reader
+    // pays past `into_row` to hand a batch on. The root's projection is a
+    // fact of the schema, so it is settled outside the timer.
+    let root = Arc::new(schema.clone());
+    drop(
+        Serie::from_scalars(Arc::clone(&root), rows.iter().cloned())
+            .expect("the rows land")
+            .into_arrow_batch()
+            .expect("a batch"),
+    );
+    group.bench_function("batch", |bencher| {
+        bencher.iter_batched(
+            || rows.clone(),
+            |held| {
+                Serie::from_scalars(Arc::clone(&root), held)
+                    .expect("the rows land")
+                    .into_arrow_batch()
+                    .expect("a batch")
+                    .num_rows()
+            },
+            BatchSize::LargeInput,
+        );
+    });
+    // The arrival record's hash, over fresh clones: the digest a message
+    // derives on first ask, so each is the derivation and not a read.
+    group.bench_function("digest", |bencher| {
+        bencher.iter_batched(
+            || messages.clone(),
+            |held| {
+                held.iter().fold(0_u128, |digest, message| {
+                    digest ^ black_box(message).digest()
+                })
             },
             BatchSize::LargeInput,
         );

@@ -8,9 +8,9 @@ Results live beside the method they measure. Each page's Performance section nam
 | --- | --- | --- |
 | Arrow | [Schema](arrow/schema.md) | The `types` Criterion target times only the three Struct-root methods over one nested fixture built outside... |
 | Expression | [Evaluate](expression/evaluate.md) | `benchmarks/expression.rs` writes each predicate by hand against `arrow-ord` / `arrow-select`, and `express... |
-| FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec, including `fix/ulbridge/step/set_bloombergcode` for synchronizing a normalized Bloomberg identifier into `secaltids` |
-| FIX | [Arrow](fix/arrow.md) | Historical `fix/pipeline` release estimates and a current debug counting-allocator ULBridge profile for row and Arrow-batch requests; the latter makes no CPU or throughput claim |
-| FIX | [Message](fix/message.md) | `fix/ulbridge/step/set_bloombergcode` measures one `FixMsg` identifier setter including `secaltids` synchronization |
+| FIX | [FIX](fix/index.md) | Field setters and the `FixId` codec, including `fix/ulbridge/step/insert_securityid` for one normalized identifier written with its `secaltids` occurrence |
+| FIX | [Arrow](fix/arrow.md) | Historical `fix/pipeline` release estimates; the `fix_allocations` target, whose `fix/allocations` and `fix/allocated_bytes` groups count what each `fix/ulbridge` stage allocates per message rather than timing it; and the per-stage allocation pins over three real capture lines in `rust/tests/allocations.rs`, which make no CPU or throughput claim |
+| FIX | [Message](fix/message.md) | the `fix/ulbridge/step/*` cases measure one `FixMsg` step each - `with_registry`, `set_text`, `insert_securityid` with its `secaltids` occurrence, and `entries` |
 | FIX | [Registry](fix/registry.md) | Lookups and mutations over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | FIX | [Store](fix/store.md) | Folder loads, snapshots and writes over the tracked seed: the Rust column one release run of the Criterion target on a Linux x86_64 container, the Python and Node columns an earlier Windows run, so a row compares a language against its own boundary |
 | Hashing | [Hashing](hashing.md) | The `hashing` Criterion target, `python/benchmarks/digest.py` and `txhash.py`, and `node/benchmarks/hashing/`: digest throughput per algorithm and size, handle reads and write-through, the value feed, Arrow row digests, the coupling beside the digest it wraps, and coupled column and holder costs, with both bindings; containerized x86_64 Linux runs on one host |
@@ -53,6 +53,7 @@ Results live beside the method they measure. Each page's Performance section nam
     cargo bench --bench coding
     cargo bench --bench hashing
     cargo bench --bench fix
+    cargo bench --bench fix_allocations
     cargo bench --bench holder --features "parquet s3"
     cargo bench --bench media --features "parquet iceberg"
     ```
@@ -78,6 +79,7 @@ Results live beside the method they measure. Each page's Performance section nam
     python/.venv/bin/python python/benchmarks/digest.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/txhash.py --min-time 0.2 --repeat 5
     python/.venv/bin/python python/benchmarks/fix.py --iterations 2000
+    python/.venv/bin/python python/benchmarks/graph.py --iterations 2000
     python/.venv/bin/python scripts/bench_avro_baseline.py
     ```
 
@@ -97,6 +99,7 @@ Results live beside the method they measure. Each page's Performance section nam
     npm run --prefix node bench:hashing:xxhash
     npm run --prefix node bench:hashing:txhash
     npm run --prefix node bench:fix
+    npm run --prefix node bench:graph
     ```
 
 ## What each Rust target isolates
@@ -113,6 +116,7 @@ Results live beside the method they measure. Each page's Performance section nam
 | `uri` | URI parsing and component access |
 | `expression` | binding, row and Arrow evaluation, and statistics pushdown |
 | `fix` | registry lookup, mutation, storage, and binding crossings |
+| `fix_allocations` | what each `fix/ulbridge` stage allocates per message - requests under `fix/allocations`, bytes under `fix/allocated_bytes` - counted through the test binaries' allocator, never timed |
 | `hashing` | digest throughput per algorithm and size, wrapper overhead, handle reads, the value feed, Arrow row digests, the time coupling beside the digest it wraps, the value's projections, instant intake, coupled columns, and the coupled holder fill |
 
 ## Rules

@@ -538,6 +538,7 @@ pub(crate) fn column_of(
     parent: Option<&NullBuffer>,
     proof: &super::arrow::Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&super::arrow::Resolved>,
 ) -> crate::arrow::Result<Option<Serie>> {
     if !matches!(array.data_type(), ArrowDataType::RunEndEncoded(..)) {
         return Ok(None);
@@ -563,19 +564,24 @@ pub(crate) fn column_of(
         DataType::Int64 => parts!(Int64Type),
         _ => return Err(internal()),
     };
+    let (run_ends_field, run_ends_below) =
+        super::arrow::resolved_child(resolved, 1, encoded.run_ends());
     let run_ends = super::arrow::child_of(
-        Arc::new(encoded.run_ends().clone()),
+        run_ends_field,
         run_ends,
         None,
         &super::arrow::Proof::Proven,
         budget,
+        run_ends_below,
     )?;
+    let (values_field, values_below) = super::arrow::resolved_child(resolved, 0, encoded.values());
     let values = super::arrow::child_of(
-        Arc::new(encoded.values().clone()),
+        values_field,
         values,
         hidden.as_ref(),
         proof.child(0),
         budget,
+        values_below,
     )?;
     Ok(Some(
         RunEndEncodedSerie::new(field, run_ends, values, len).into_serie(),

@@ -1484,7 +1484,7 @@ cargo bench --bench media --features parquet -- io_scalar
 
 ## Records
 
-One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=`, JavaScript a trailing `options?`.
+One Arrow batch read and three explicit write intents on every handle. The handle's media type picks the encoding through `record_options()`; one [`RecordOptions`](../media/index.md#options) is the only settings argument - Rust requires it, Python takes keyword-only `options=`, JavaScript a trailing `options?`. A write completes its rows onto the field the resource already stores by the [declared-column rule](../types/cast.md): a required stored column refuses a value it cannot hold, a null or a missing column by name, and the resource is left as it was.
 
 === "Rust"
 

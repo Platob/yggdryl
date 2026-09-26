@@ -579,7 +579,9 @@ struct RawRows<R> {
     capture_values: bool,
     /// Whether the cut itself reads the row header: a framed read decides
     /// its records by it, a bounded one matches it over bytes the record
-    /// may not retain, and adjacent deduplication digests what follows it.
+    /// may not retain, adjacent deduplication digests what follows it, and
+    /// a read taking captures off bodies no strip rewrites matches it into
+    /// the locations below rather than into a fresh match per line.
     /// Otherwise the header is the line's to match, once, when asked.
     resolves_header: bool,
     /// Where the row header's groups land, reused across every line.
@@ -843,7 +845,8 @@ impl<R: Read> RawRows<R> {
         let resolves_header = options.rowheader().is_some()
             && (options.framing()
                 || options.max_record_byte_size().is_some()
-                || options.dedup_adjacent);
+                || options.dedup_adjacent
+                || (capture_values && !options.rewrites_body()));
         Self {
             lines: Lines::new(source),
             header_dfa,
@@ -884,6 +887,18 @@ impl<R: Read> RawRows<R> {
                 let scan = bytes.len();
                 match header_match(options, &bytes, scan, capture_values, locations)? {
                     Some(found) => (Some((found.range.end, found.captures)), true),
+                    // A line whose body is exactly the bytes just scanned -
+                    // no strip, no limit, no record joining the lines behind
+                    // it - is answered for good by a miss: every capture
+                    // empty, which is what its own match would state, so it
+                    // never matches again.
+                    None if capture_values
+                        && !options.framing()
+                        && options.max_record_byte_size().is_none()
+                        && !options.rewrites_body() =>
+                    {
+                        (Some((0, vec![None; options.capture_names().len()])), false)
+                    }
                     None => (None, false),
                 }
             }

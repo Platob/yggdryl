@@ -78,7 +78,7 @@ test('a handle names its own encoding and round-trips Arrow batches', () => {
   const options = handle.recordOptions()
   assert.equal(options.toString(), 'application/vnd.apache.arrow.stream')
   assert.equal(options.name, 'row')
-  assert.equal(options.safe, false)
+  assert.equal(options.safe, true)
   assert.equal(options.batchRowSize, null)
 
   handle.overwriteArrowReader(BatchReader.from(trades()))
@@ -337,13 +337,13 @@ test('record options are values, and a setting is set or carried forward', () =>
   assert.equal(options.mimeType.toString(), 'application/vnd.apache.parquet')
   assert.equal(options.field, null)
 
-  const declared = options.withField(schema()).withBatchRowSize(1024).withSafe(true)
+  const declared = options.withField(schema()).withBatchRowSize(1024).withSafe(false)
   assert.ok(declared.field.equals(schema()))
   assert.equal(declared.batchRowSize, 1024)
-  assert.equal(declared.safe, true)
+  assert.equal(declared.safe, false)
   // `with*` returns a new value, so the one it was built from is untouched.
   assert.equal(options.batchRowSize, null)
-  assert.equal(options.safe, false)
+  assert.equal(options.safe, true)
 
   options.name = 'trade'
   options.level = 9
@@ -421,7 +421,7 @@ test('text options value protocols include every flat text setting', () => {
   assert.ok(clone.equals(options))
   assert.equal(clone.compare(options), 0)
   assert.equal(clone.stableHash(), options.stableHash())
-  clone.safe = true
+  clone.safe = false
   assert.ok(!clone.equals(options))
   assert.notEqual(clone.compare(options), 0)
 
@@ -727,8 +727,10 @@ test('an ASCII column pads on the way in and trims on the way out', () => {
     ['USD', 'EUR'],
   )
 
+  // A nullable declared column takes a value it cannot hold as null unless
+  // the write says `safe: false`, which refuses it by the width.
   assert.throws(
-    () => handle.overwriteArrowTable(codes(['EURO!']), options),
+    () => handle.overwriteArrowTable(codes(['EURO!']), options.withSafe(false)),
     /expected at most 4 bytes of us-ascii, got 5/,
   )
 })
@@ -757,7 +759,7 @@ test('a variable ASCII column stores the bytes it is given', () => {
 
   // The value contract is the width's, minus the width itself.
   assert.throws(
-    () => handle.overwriteArrowTable(notes(['\u20ac']), options),
+    () => handle.overwriteArrowTable(notes(['\u20ac']), options.withSafe(false)),
     /non-ASCII byte/,
   )
 })

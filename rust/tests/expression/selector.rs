@@ -335,6 +335,22 @@ mod grammar {
             fits.apply_scalar(&schema, &rows[0]).unwrap(),
             Scalar::from_sequence([Scalar::from(1_i8)])
         );
+        // A null crossing into a required column of another datatype is
+        // refused by both tiers, as one of the column's own datatype is,
+        // rather than repaired to the canonical default by the cast.
+        let crossing: Selector = "i as wide int32 not null".parse().unwrap();
+        let error = crossing.apply_arrow_batch(&batch).unwrap_err().to_string();
+        assert!(error.contains("wide"), "{error}");
+        assert!(crossing.apply_scalar(&schema, &rows[2]).is_err());
+        // So is an empty text cell, which is a null before it is read.
+        let empty: Selector = "s as count int64 not null".parse().unwrap();
+        let only_empty = batch_of(&schema, &rows[4..]);
+        let error = empty
+            .apply_arrow_batch(&only_empty)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("count"), "{error}");
+        assert!(empty.apply_scalar(&schema, &rows[4]).is_err());
     }
 
     #[test]

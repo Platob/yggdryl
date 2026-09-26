@@ -6,16 +6,11 @@ use std::sync::Arc;
 
 use arrow_array::types::Int32Type;
 use arrow_array::{Array, ArrayRef, Int32Array, RunArray, StringArray};
-use yggdryl::{
-    ArrowCastOptions, DataType, Field, Nullability, RunEndEncodedSerie, Scalar, Serie, SerieValue,
-};
+use yggdryl::{ArrowCastOptions, DataType, Field, RunEndEncodedSerie, Scalar, Serie, SerieValue};
 
-/// The options a refusal is pinned under: a present value is never nulled
-/// and an absent one never repaired.
+/// The options a refusal is pinned under: a present value is never nulled.
 fn strict() -> ArrowCastOptions {
-    ArrowCastOptions::new()
-        .with_safe(false)
-        .with_nullability(Nullability::Strict)
+    ArrowCastOptions::new().with_safe(false)
 }
 
 /// A run-end field of states, with `run_ends` of `width` over nullable

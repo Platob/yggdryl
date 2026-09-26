@@ -26,7 +26,7 @@ use super::{
     Serie, boolean, bytes, enums, mapping, null, primitive, runend, sequence, structure, union,
     variant,
 };
-use arrow_schema::{ArrowError, Field as ArrowField, SchemaRef};
+use arrow_schema::{ArrowError, DataType as ArrowDataType, Field as ArrowField, SchemaRef};
 
 use crate::arrow::{
     BatchReader, Error, Result, arrow_schema_from_field, batch_reader, field_from_arrow_schema,
@@ -174,13 +174,15 @@ pub(crate) fn proven_cell(field: &Field, serie: &Serie, index: usize) -> crate::
 /// disagreeing with itself rather than a caller handing over the wrong
 /// array.
 pub(crate) fn held<A: Array + Clone + 'static>(array: &ArrayRef) -> Result<A> {
-    array
-        .as_any()
-        .downcast_ref::<A>()
-        .cloned()
-        .ok_or(Error::Internal {
-            site: "serie::arrow::held",
-        })
+    held_ref::<A>(array).cloned()
+}
+
+/// Borrow the typed array behind one Arrow array, for a module that reads
+/// its parts and keeps none of it.
+pub(crate) fn held_ref<A: Array + 'static>(array: &ArrayRef) -> Result<&A> {
+    array.as_any().downcast_ref::<A>().ok_or(Error::Internal {
+        site: "serie::arrow::held",
+    })
 }
 
 /// Rebase a cut onto exactly the items it reaches.
@@ -498,6 +500,165 @@ impl Proof {
     }
 }
 
+/// The boxed field every level of one root lands under, resolved once.
+///
+/// A record's children lie in one shared `Arc<[Field]>`, and a landed
+/// column holds an `Arc<Field>` of its own, so a landing boxes a clone of
+/// every child field it passes: one allocation per child per batch, under a
+/// root that never changes. A holder landing many batches under one root -
+/// a plan, a reader - resolves those boxes once here, and every landing
+/// borrows them; a one-off landing passes `None` and boxes as it goes. A
+/// node hands a child out only for the very slot it was resolved from,
+/// compared by address in the root's shared storage, so a tree built from
+/// another root mislabels nothing: it is simply not asked.
+///
+/// Bounded by the root's node count, which [`Field::validate_bounded`]
+/// caps, and built once per plan or per holder.
+pub(crate) struct Resolved {
+    field: Arc<Field>,
+    /// The address of the slot `field` was resolved from: its place in the
+    /// parent's shared storage, or the root's own box.
+    origin: usize,
+    /// The children in the order their module lands them: a record's
+    /// fields, a serie's item, a map's entries, a union's members, a
+    /// run-end encoding's values then its run ends, a dictionary's values
+    /// then its keys.
+    children: Box<[Resolved]>,
+}
+
+impl Resolved {
+    /// Resolve `root` and every level below it, once.
+    ///
+    /// The root is one its holder already proved bounded - at its Arrow
+    /// import, at the plan's compile, or by [`Field::validate_bounded`]
+    /// at a one-off door - so the walk here is bounded by that proof.
+    pub(crate) fn of(root: Arc<Field>) -> Self {
+        Self::from_arc(&root)
+    }
+
+    fn from_arc(field: &Arc<Field>) -> Self {
+        Self {
+            field: Arc::clone(field),
+            origin: Arc::as_ptr(field) as usize,
+            children: Self::children_of(field),
+        }
+    }
+
+    /// A child boxed from the slot it lies in; its own children are read
+    /// off the box, which shares the slot's nested storage.
+    fn from_slot(slot: &Field) -> Self {
+        let field = Arc::new(slot.clone());
+        Self {
+            children: Self::children_of(&field),
+            field,
+            origin: std::ptr::from_ref(slot) as usize,
+        }
+    }
+
+    /// A child built for a level whose module builds its field - a
+    /// dictionary's keys and values - keyed by the address of what it is
+    /// built from.
+    fn built(field: Field, origin: usize) -> Self {
+        let field = Arc::new(field);
+        Self {
+            children: Self::children_of(&field),
+            field,
+            origin,
+        }
+    }
+
+    fn children_of(field: &Field) -> Box<[Self]> {
+        match field.dtype() {
+            DataType::Struct(children) => {
+                children.as_fields().iter().map(Self::from_slot).collect()
+            }
+            serie @ (DataType::Serie(_)
+            | DataType::SerieView(_)
+            | DataType::FixedSizeSerie(..)
+            | DataType::LargeSerie(_)
+            | DataType::LargeSerieView(_)) => {
+                // The views hand out the shared boxes the datatype holds,
+                // so an address read through them is the storage's own.
+                let sequence = serie.as_serie_type().expect("the variant was just matched");
+                Box::new([Self::from_arc(sequence.item_ref())])
+            }
+            map @ (DataType::Map(_) | DataType::SortedMap(_)) => {
+                let mapping = map.as_mapping().expect("the variant was just matched");
+                Box::new([Self::from_slot(mapping.entries())])
+            }
+            DataType::Union(members, _) => members
+                .iter()
+                .map(|(_, member)| Self::from_slot(member))
+                .collect(),
+            DataType::RunEndEncoded(encoded) => Box::new([
+                Self::from_slot(encoded.values()),
+                Self::from_slot(encoded.run_ends()),
+            ]),
+            DataType::Dictionary(dictionary) => {
+                let origin = std::ptr::from_ref(dictionary) as usize;
+                Box::new([
+                    Self::built(
+                        Field::new(field.name(), dictionary.value().clone(), true),
+                        origin,
+                    ),
+                    Self::built(
+                        Field::new(field.name(), dictionary.key().clone(), true),
+                        origin,
+                    ),
+                ])
+            }
+            _ => Box::new([]),
+        }
+    }
+
+    /// The child at `index`, when it was resolved from the slot at `origin`.
+    fn child(&self, index: usize, origin: usize) -> Option<&Self> {
+        self.children
+            .get(index)
+            .filter(|child| child.origin == origin)
+    }
+}
+
+/// The box child `index` lands under and the node below it: the one
+/// resolved for `slot`, else - for a one-off landing, or a tree built from
+/// another root - a box of the slot's field, as every landing paid before.
+pub(crate) fn resolved_child<'a>(
+    resolved: Option<&'a Resolved>,
+    index: usize,
+    slot: &Field,
+) -> (Arc<Field>, Option<&'a Resolved>) {
+    resolved_or(resolved, index, std::ptr::from_ref(slot) as usize, || {
+        slot.clone()
+    })
+}
+
+/// [`resolved_child`] for a level whose module builds the child's field
+/// itself, keyed by the address of what it builds it from.
+pub(crate) fn resolved_or(
+    resolved: Option<&Resolved>,
+    index: usize,
+    origin: usize,
+    build: impl FnOnce() -> Field,
+) -> (Arc<Field>, Option<&Resolved>) {
+    match resolved.and_then(|node| node.child(index, origin)) {
+        Some(child) => (Arc::clone(&child.field), Some(child)),
+        None => (Arc::new(build()), None),
+    }
+}
+
+/// [`resolved_child`] for a serie's item, which its datatype already boxes:
+/// the box is the item's own either way, and only the node below it is
+/// what the tree answers.
+pub(crate) fn resolved_item<'a>(
+    resolved: Option<&'a Resolved>,
+    item: &Arc<Field>,
+) -> (Arc<Field>, Option<&'a Resolved>) {
+    (
+        Arc::clone(item),
+        resolved.and_then(|node| node.child(0, Arc::as_ptr(item) as usize)),
+    )
+}
+
 /// One module's door: the column its layout is, or `None` for another's.
 type ColumnOf = fn(
     Arc<Field>,
@@ -505,7 +666,20 @@ type ColumnOf = fn(
     Option<&NullBuffer>,
     &Proof,
     &mut crate::budget::MaterializationBudget,
+    Option<&Resolved>,
 ) -> Result<Option<Serie>>;
+
+/// Whether an array laid out as `layout` is exactly the column `field`
+/// declares, so it lands as it stands: a layout that is its datatype's
+/// whole contract, under the field's own projection. The one rule every
+/// exact door - an array, a batch, a chunked array - answers.
+///
+/// # Errors
+///
+/// Returns an error when `field` has no Arrow projection.
+pub(crate) fn lands_exactly(field: &Field, layout: &ArrowDataType) -> Result<bool> {
+    Ok(lands_as_is(field.dtype()) && field.as_arrow_field_ref()?.data_type() == layout)
+}
 
 /// Build the column `field` types out of buffers that already hold it.
 ///
@@ -530,6 +704,7 @@ pub(crate) fn column_of(
         parent,
         proof,
         &mut crate::budget::MaterializationBudget::default(),
+        None,
     )
 }
 
@@ -544,6 +719,7 @@ pub(crate) fn child_of(
     parent: Option<&NullBuffer>,
     proof: &Proof,
     budget: &mut crate::budget::MaterializationBudget,
+    resolved: Option<&Resolved>,
 ) -> Result<Serie> {
     require_present(&field, array.as_ref(), parent)?;
     // A public child must also be readable independently of its parent.
@@ -582,6 +758,7 @@ pub(crate) fn child_of(
             parent,
             proof,
             budget,
+            resolved,
         )
         .map_err(|refusal| match refusal {
             Error::PhysicalLimit { .. } => Error::Core(crate::Error::InvalidRecord {
@@ -690,8 +867,28 @@ pub(crate) fn land_resolved(field: Arc<Field>, array: ArrayRef, proof: &Proof) -
         None,
         proof,
         &mut crate::budget::MaterializationBudget::default(),
+        None,
     )
     .map_err(|refusal| located(&field, array.as_ref(), refusal))
+}
+
+/// Land an array whose layout its caller already proved against the
+/// root's projection: the output of a compiled plan, which asserts at every
+/// node it applies that what it hands back lays out as the target's
+/// projection, or an array an exact door compared itself. The root's shape
+/// was proved once when the tree was resolved, so neither is compared
+/// again here: only absence and the values are this array's own, and the
+/// boxes every level lands under are the tree's.
+pub(crate) fn land_planned(resolved: &Resolved, array: ArrayRef, proof: &Proof) -> Result<Serie> {
+    child_of(
+        Arc::clone(&resolved.field),
+        Arc::clone(&array),
+        None,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+        Some(resolved),
+    )
+    .map_err(|refusal| located(&resolved.field, array.as_ref(), refusal))
 }
 
 /// Land one child array beneath the validity of the record it sits in: a
@@ -713,10 +910,26 @@ pub(crate) fn land_under(
 ///
 /// A value a leaf refuses is named by the batch row it lies in and the path
 /// below it: `$[3].bid.live[0].miccode`.
-pub(crate) fn land_batch(root: &Arc<Field>, batch: &RecordBatch, proof: &Proof) -> Result<Serie> {
-    let records = crate::cast::struct_array_from_batch(batch.clone());
-    column_of(Arc::clone(root), Arc::clone(&records), None, proof)
-        .map_err(|refusal| located(root, records.as_ref(), refusal))
+pub(crate) fn land_batch(root: &Resolved, batch: RecordBatch, proof: &Proof) -> Result<Serie> {
+    let records = crate::cast::struct_array_from_batch(batch);
+    crate::arrow::require_projection(&root.field, records.as_ref())?;
+    child_of(
+        Arc::clone(&root.field),
+        Arc::clone(&records),
+        None,
+        proof,
+        &mut crate::budget::MaterializationBudget::default(),
+        Some(root),
+    )
+    .map_err(|refusal| located(&root.field, records.as_ref(), refusal))
+}
+
+/// [`land_batch`] for a root landed once: proved whole here, and boxed as
+/// it goes rather than resolved for batches that never come.
+fn land_once(root: Arc<Field>, batch: RecordBatch, proof: &Proof) -> Result<Serie> {
+    let records = crate::cast::struct_array_from_batch(batch);
+    column_of(Arc::clone(&root), Arc::clone(&records), None, proof)
+        .map_err(|refusal| located(&root, records.as_ref(), refusal))
 }
 
 /// Restate a leaf's value refusal in the rows of the array that was landed.
@@ -853,20 +1066,16 @@ fn refused_cell(
 /// [`Field::scalar`] or its canonicalization - and land them proven, so no
 /// row is checked or read a second time.
 pub(crate) fn from_canonical_rows(field: Arc<Field>, rows: &[&Scalar]) -> crate::Result<Serie> {
-    canonical_rows(field, rows).map(|(serie, _)| serie)
+    let array = canonical_rows(&field, rows)?;
+    Ok(column_of(field, array, None, &Proof::Proven)?)
 }
 
-/// [`from_canonical_rows`], answering the buffers as they were laid out
-/// beside the landed column: a caller handing the buffers on - a batch
-/// reader - takes them as built rather than reassembling them from the
-/// column, which would validate every level of a nested layout again.
-pub(crate) fn canonical_rows(
-    field: Arc<Field>,
-    rows: &[&Scalar],
-) -> crate::Result<(Serie, ArrayRef)> {
-    let array = crate::serie::value::array_of_rows(&field, rows)?;
-    let serie = column_of(field, Arc::clone(&array), None, &Proof::Proven)?;
-    Ok((serie, array))
+/// Canonical rows laid out as the array they are, and nothing landed: the
+/// transport a batch reader hands on takes the buffers as built, because
+/// landing them would only prove again what [`Field::scalar`] proved when
+/// the rows were canonicalized, and read no cell of them.
+pub(crate) fn canonical_rows(field: &Field, rows: &[&Scalar]) -> crate::Result<ArrayRef> {
+    Ok(crate::serie::value::array_of_rows(field, rows)?)
 }
 
 /// A field's canonical default - [`Field::default_value`] - as a one-row
@@ -948,17 +1157,16 @@ impl Serie {
     /// no evidence. With a field, an array already laid out as the field
     /// lands as it stands, proven exactly as the identity plan would prove it
     /// and with no plan compiled; any other layout - or an exact one the
-    /// landing refuses, whose absent rows a required field repairs or whose
-    /// values a safe cast nulls - compiles one [`ArrowCastPlan`] and is
-    /// converted under `options`. A loop over many arrays holds one plan
+    /// landing refuses, whose values a safe cast nulls where the field is
+    /// nullable and names where it is not - compiles one [`ArrowCastPlan`]
+    /// and is converted under `options`. A loop over many arrays holds one plan
     /// instead.
     ///
     /// # Errors
     ///
     /// Returns an error naming the column and the row for a value the field
-    /// refuses (nulled instead under `safe`), an absent row a required field
-    /// refuses under [`Nullability::Strict`](crate::Nullability::Strict), or
-    /// a layout no column holds.
+    /// refuses (nulled instead under `safe` where the field is nullable), an
+    /// absent row a required field refuses, or a layout no column holds.
     pub fn from_arrow_array(
         field: Option<&Field>,
         array: ArrayRef,
@@ -968,9 +1176,7 @@ impl Serie {
             let item = item_field(array.data_type(), array.logical_null_count() != 0)?;
             return land(Arc::new(item), array, &Proof::Unproven);
         };
-        if lands_as_is(field.dtype())
-            && field.as_arrow_field_ref()?.data_type() == array.data_type()
-        {
+        if lands_exactly(field, array.data_type())? {
             let exact = land(
                 Arc::new(field.clone()),
                 Arc::clone(&array),
@@ -1119,10 +1325,29 @@ impl Serie {
     ) -> Result<Self> {
         let Some(root) = root else {
             let root = field_from_arrow_schema(DEFAULT_ROOT_NAME, batch.schema().as_ref())?;
-            return land_batch(&Arc::new(root), batch, &Proof::Unproven);
+            return land_once(Arc::new(root), batch.clone(), &Proof::Unproven);
         };
+        // An exact batch lands as it stands, proven as the identity plan would
+        // prove it and with no plan compiled; one the landing refuses - an
+        // absent row under a required child, a value a narrower leaf will
+        // not take - goes to the plan, which repairs or refuses it under
+        // `options` exactly as before.
+        if !root.is_nullable()
+            && root.dtype().as_fields().is_some()
+            && lands_exactly(
+                root,
+                &ArrowDataType::Struct(batch.schema_ref().fields().clone()),
+            )?
+        {
+            root.validate_bounded()?;
+            let resolved = Resolved::of(Arc::new(root.clone()));
+            let records = crate::cast::struct_array_from_batch(batch.clone());
+            if let Ok(serie) = land_planned(&resolved, records, &Proof::Unproven) {
+                return Ok(serie);
+            }
+        }
         ArrowCastPlan::compile_schema(batch.schema_ref(), root, options, Deferred::default())?
-            .cast_batch(batch)
+            .cast_batch(batch.clone())
     }
 
     /// Drain one Arrow batch stream into the record column of its rows.
@@ -1220,22 +1445,28 @@ impl Serie {
 /// would - and the reader is fused.
 pub struct SerieReader {
     inner: Option<Source>,
-    plan: ArrowCastPlan,
     root: Arc<Field>,
     schema: SchemaRef,
 }
 
 /// What a [`SerieReader`] yields its columns from.
 enum Source {
-    /// A stream, each batch cast by the reader's plan as it arrives.
-    Stream(BatchReader),
+    /// A stream: each batch cast by the plan the stream was opened under as
+    /// it arrives, then - where the reader was [cast](SerieReader::cast)
+    /// again - by the plan that cast landed. A held source compiles no
+    /// plan at all, so the plans live here and not on the reader.
+    Stream(BatchReader, Box<ArrowCastPlan>, Option<Box<ArrowCastPlan>>),
     /// Record columns already held, each yielded as it stands.
     Held(std::vec::IntoIter<Serie>),
 }
 
-/// The record root a held column of `field` streams under, shared.
+/// The record root a held column of `field` streams under, shared, and
+/// proved bounded once: a column at the nesting ceiling wrapped one level
+/// deeper is refused here, where no plan compiles to refuse it.
 fn held_root(field: &Field) -> crate::Result<Arc<Field>> {
-    Ok(Arc::new(SerieReader::root_of(field)?))
+    let root = SerieReader::root_of(field)?;
+    root.validate_bounded()?;
+    Ok(Arc::new(root))
 }
 
 /// One held column as the record column it streams as under `root`,
@@ -1285,9 +1516,8 @@ impl SerieReader {
             ArrowCastPlan::compile_schema(schema.as_ref(), root, options, Deferred::default())?;
         let schema = Arc::clone(plan.target_schema()?);
         Ok(Self {
-            inner: Some(Source::Stream(reader)),
+            inner: Some(Source::Stream(reader, Box::new(plan), None)),
             root: Arc::new(root.clone()),
-            plan,
             schema,
         })
     }
@@ -1296,8 +1526,8 @@ impl SerieReader {
     ///
     /// A record column is the one batch it is; any other column is the one
     /// child of a [`DEFAULT_ROOT_NAME`] record, named as it is - the rule
-    /// [`Serie::into_arrow_batch`] states. Nothing is cast, copied or read:
-    /// the plan is the identity, and the column is yielded as it stands.
+    /// [`Serie::into_arrow_batch`] states. Nothing is cast, copied or read,
+    /// and no plan is compiled: the column is yielded as it stands.
     ///
     /// # Errors
     ///
@@ -1333,12 +1563,69 @@ impl SerieReader {
 
     /// The stream of `records`, each already a record column under `root`.
     fn held(root: Arc<Field>, records: Vec<Serie>) -> Result<Self> {
-        let plan = ArrowCastPlan::compile(&root, &root, ArrowCastOptions::default())?;
         let schema = arrow_schema_from_field(&root)?;
         Ok(Self {
             inner: Some(Source::Held(records.into_iter())),
             root,
-            plan,
+            schema,
+        })
+    }
+
+    /// Every record this reader yields, cast into `target` - a non-null
+    /// record root, or a column named as the one child of one, the rule
+    /// [`Self::root_of`] states - under one plan.
+    ///
+    /// A target that is this reader's own root hands the reader back as it
+    /// stands. Held records are cast here, once each. A stream's batches
+    /// are cast by the plan the stream was opened under and then landed
+    /// under `target`, so what the first plan repaired or nulled is what the
+    /// second reads - two plans in sequence, never one that skips the
+    /// middle - except over an identity first plan, where the one plan from
+    /// the stream's own schema says exactly the same.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `target` is not a bounded record root the
+    /// reader's root can be planned into, and, for held records, the first
+    /// record a value or an absent row refuses, naming the column.
+    pub fn cast(self, target: &Field, options: ArrowCastOptions) -> Result<Self> {
+        let target = Self::root_of(target)?;
+        if target == *self.root {
+            return Ok(self);
+        }
+        let plan = ArrowCastPlan::compile(&self.root, &target, options)?;
+        let root = Arc::new(target);
+        let schema = arrow_schema_from_field(&root)?;
+        let inner = match self.inner {
+            Some(Source::Held(records)) => {
+                let cast = records
+                    .map(|record| plan.apply(&record))
+                    .collect::<Result<Vec<_>>>()?;
+                Some(Source::Held(cast.into_iter()))
+            }
+            Some(Source::Stream(reader, first, None))
+                if first.is_identity() && first.source_schema().is_some() =>
+            {
+                let source = first
+                    .source_schema()
+                    .expect("the identity plan was compiled from a schema");
+                let direct =
+                    ArrowCastPlan::compile_schema(source, &root, options, Deferred::default())?;
+                Some(Source::Stream(reader, Box::new(direct), None))
+            }
+            Some(Source::Stream(reader, first, then)) => {
+                // A second cast lands what the first two cast, in order.
+                let then = match then {
+                    Some(then) => ArrowCastPlan::compile(then.as_target(), &root, options)?,
+                    None => plan,
+                };
+                Some(Source::Stream(reader, first, Some(Box::new(then))))
+            }
+            None => None,
+        };
+        Ok(Self {
+            inner,
+            root,
             schema,
         })
     }
@@ -1377,10 +1664,11 @@ impl SerieReader {
     /// Over an identity plan it is the inner reader, handed back untouched.
     pub fn into_arrow_reader(self) -> BatchReader {
         match self.inner {
-            Some(Source::Stream(inner)) if self.plan.is_identity() => inner,
-            Some(Source::Stream(inner)) => Box::new(Reconciled {
+            Some(Source::Stream(inner, plan, None)) if plan.is_identity() => inner,
+            Some(Source::Stream(inner, plan, then)) => Box::new(Reconciled {
                 inner: Some(inner),
-                plan: self.plan,
+                plan: *plan,
+                then: then.map(|then| *then),
                 schema: self.schema,
             }),
             Some(Source::Held(records)) => {
@@ -1400,8 +1688,8 @@ impl Iterator for SerieReader {
     type Item = Result<Serie>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let reader = match self.inner.as_mut()? {
-            Source::Stream(reader) => reader,
+        let (reader, plan, then) = match self.inner.as_mut()? {
+            Source::Stream(reader, plan, then) => (reader, &**plan, then.as_deref()),
             Source::Held(records) => {
                 let next = records.next();
                 if next.is_none() {
@@ -1412,7 +1700,10 @@ impl Iterator for SerieReader {
         };
         let pulled = reader.next();
         let landed = match pulled {
-            Some(Ok(batch)) => self.plan.cast_batch(&batch),
+            Some(Ok(batch)) => plan.cast_batch(batch).and_then(|landed| match then {
+                Some(then) => then.apply(&landed),
+                None => Ok(landed),
+            }),
             Some(Err(error)) => Err(from_reader_error(error)),
             None => {
                 self.inner = None;
@@ -1443,6 +1734,9 @@ impl std::fmt::Debug for SerieReader {
 struct Reconciled {
     inner: Option<BatchReader>,
     plan: ArrowCastPlan,
+    /// The plan a later [`SerieReader::cast`] landed the first's output
+    /// under, applied as transport after it.
+    then: Option<ArrowCastPlan>,
     schema: SchemaRef,
 }
 
@@ -1457,7 +1751,14 @@ impl Iterator for Reconciled {
                 return other;
             }
         };
-        match self.plan.reconcile_batch(batch) {
+        let cast = self
+            .plan
+            .reconcile_batch(batch)
+            .and_then(|cast| match &self.then {
+                Some(then) => then.reconcile_batch(cast),
+                None => Ok(cast),
+            });
+        match cast {
             Ok(cast) => Some(Ok(cast)),
             Err(error) => {
                 self.inner = None;

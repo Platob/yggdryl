@@ -1019,22 +1019,26 @@ mod fields {
     }
 
     #[test]
-    fn a_required_ascii_field_fills_nulls_with_the_all_nul_default() {
+    fn a_required_ascii_field_refuses_a_null_and_defaults_to_all_nul() {
         let field = StringField::try_new("ccy", DataType::fixed_ascii(4).unwrap(), false).unwrap();
         let source: ArrayRef = Arc::new(StringArray::from(vec![Some("USD"), None]));
 
-        let cast = Serie::from_arrow_array(
+        // A cast never invents the default for a null it was handed.
+        let refused = Serie::from_arrow_array(
             Some(&field.clone().into_field()),
             source,
             ArrowCastOptions::new().with_safe(false),
         )
-        .unwrap()
-        .require_arrow_array()
-        .unwrap();
-        let cast = fixed_cells(&cast);
-        assert_eq!(cast.null_count(), 0);
-        assert_eq!(cast.value(0), b"USD\0");
-        assert_eq!(cast.value(1), b"\0\0\0\0");
+        .unwrap_err()
+        .to_string();
+        assert_eq!(refused, "required Arrow field $.ccy holds 1 null values");
+
+        // The canonical default is the all-NUL slot.
+        let default = Serie::from_default(field.into_field(), 1)
+            .unwrap()
+            .require_arrow_array()
+            .unwrap();
+        assert_eq!(fixed_cells(&default).value(0), b"\0\0\0\0");
     }
 
     #[test]

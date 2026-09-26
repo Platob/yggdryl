@@ -17,27 +17,33 @@ use crate::{
 use crate::{DataType, Field, Scalar, TimeUnit, Timezone, UnionMode, i256};
 use arrow_array::builder::{BinaryBuilder, LargeStringBuilder, StringBuilder, StringViewBuilder};
 use arrow_array::types::{
-    Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
+    ArrowPrimitiveType, Date32Type, Date64Type, Decimal32Type, Decimal64Type, Decimal128Type,
+    Decimal256Type, DurationMicrosecondType, DurationMillisecondType, DurationNanosecondType,
+    DurationSecondType, Float16Type, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type,
+    Int64Type, IntervalDayTimeType, IntervalMonthDayNanoType, IntervalYearMonthType,
+    Time32MillisecondType, Time32SecondType, Time64MicrosecondType, Time64NanosecondType,
+    TimestampMicrosecondType, TimestampMillisecondType, TimestampNanosecondType,
+    TimestampSecondType, UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow_array::{
     Array, ArrayRef, BinaryArray, BinaryViewArray, BooleanArray, Date32Array, Date64Array,
     Decimal32Array, Decimal64Array, Decimal128Array, Decimal256Array, DictionaryArray,
     DurationMicrosecondArray, DurationMillisecondArray, DurationNanosecondArray,
     DurationSecondArray, FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array,
-    Float64Array, GenericBinaryArray, Int8Array, Int16Array, Int16RunArray, Int32Array,
-    Int32RunArray, Int64Array, Int64RunArray, IntervalDayTimeArray, IntervalMonthDayNanoArray,
-    IntervalYearMonthArray, LargeBinaryArray, LargeListArray, LargeListViewArray, LargeStringArray,
-    ListArray, ListViewArray, MapArray, NullArray, PrimitiveArray, StringArray, StringViewArray,
-    StructArray, Time32MillisecondArray, Time32SecondArray, Time64MicrosecondArray,
-    Time64NanosecondArray, TimestampMicrosecondArray, TimestampMillisecondArray,
-    TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
-    UInt64Array, UnionArray, make_array, new_empty_array,
+    Float64Array, GenericBinaryArray, GenericListArray, GenericListViewArray, Int8Array,
+    Int16Array, Int16RunArray, Int32Array, Int32RunArray, Int64Array, Int64RunArray,
+    IntervalDayTimeArray, IntervalMonthDayNanoArray, IntervalYearMonthArray, LargeBinaryArray,
+    LargeListArray, LargeListViewArray, LargeStringArray, ListArray, ListViewArray, MapArray,
+    NullArray, PrimitiveArray, StringArray, StringViewArray, StructArray, Time32MillisecondArray,
+    Time32SecondArray, Time64MicrosecondArray, Time64NanosecondArray, TimestampMicrosecondArray,
+    TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
+    UInt16Array, UInt32Array, UInt64Array, UnionArray, make_array, new_empty_array,
 };
 use arrow_buffer::{
-    Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer, NullBufferBuilder, OffsetBuffer,
-    ScalarBuffer, i256 as ArrowI256,
+    BooleanBufferBuilder, Buffer, IntervalDayTime, IntervalMonthDayNano, NullBuffer,
+    NullBufferBuilder, OffsetBuffer, ScalarBuffer, i256 as ArrowI256,
 };
-use arrow_schema::DataType as ArrowDataType;
+use arrow_schema::{DataType as ArrowDataType, FieldRef};
 use half::f16;
 
 use crate::arrow::{Error, Result};
@@ -45,120 +51,99 @@ use crate::arrow::{Error, Result};
 #[allow(clippy::too_many_lines)]
 pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRef> {
     let dtype = field.dtype();
-    let arrow_type = field.clone().into_arrow_field_ref()?.data_type().clone();
+    // The field's own projection, built once into its cache and borrowed
+    // here: every nested layout below takes its child fields out of it,
+    // so no child is projected again on the way down.
+    let arrow_type = field.as_arrow_field_ref()?.data_type();
     // Arrow owns the canonical empty representation for every validated
     // datatype. Taking this path before schema-directed value materialization
     // avoids inventing defaults for children that have no physical slots.
     if values.is_empty() {
-        return Ok(new_empty_array(&arrow_type));
+        return Ok(new_empty_array(arrow_type));
     }
     macro_rules! primitive {
-        ($array:ty, $conversion:expr) => {{
-            let values = values
-                .iter()
-                .map(|value| {
-                    if matches!(value, Scalar::Null) {
-                        Ok(None)
-                    } else {
-                        ($conversion)(value).map(Some)
-                    }
-                })
-                .collect::<Result<Vec<_>>>()?;
-            Arc::new(<$array>::from(values)) as ArrayRef
-        }};
-    }
-    macro_rules! physical_primitive {
-        ($array:ty, $conversion:expr) => {{
-            let array = primitive!($array, $conversion);
-            let array = downcast::<$array>(&array)?
-                .clone()
-                .with_data_type(arrow_type.clone());
-            Arc::new(array) as ArrayRef
-        }};
+        ($native:ty, $conversion:expr) => {
+            primitive_array::<$native>(values, arrow_type, $conversion)?
+        };
     }
     let array = match dtype {
         DataType::Null => Arc::new(NullArray::new(values.len())) as ArrayRef,
-        DataType::Boolean => Arc::new(BooleanArray::from(
-            values
-                .iter()
-                .map(|value| optional_bool(value))
-                .collect::<Result<Vec<_>>>()?,
-        )),
-        DataType::Int8 => primitive!(Int8Array, |value: &&Scalar| exact_i128(value)
+        DataType::Boolean => boolean_array(values)?,
+        DataType::Int8 => primitive!(Int8Type, |value: &Scalar| exact_i128(value)
             .and_then(|value| i8::try_from(value).map_err(|_| invalid_value("int8", value)))),
-        DataType::Int16 => primitive!(Int16Array, |value: &&Scalar| exact_i128(value)
+        DataType::Int16 => primitive!(Int16Type, |value: &Scalar| exact_i128(value)
             .and_then(|value| i16::try_from(value).map_err(|_| invalid_value("int16", value)))),
-        DataType::Int32 => primitive!(Int32Array, |value: &&Scalar| exact_i128(value)
+        DataType::Int32 => primitive!(Int32Type, |value: &Scalar| exact_i128(value)
             .and_then(|value| i32::try_from(value).map_err(|_| invalid_value("int32", value)))),
-        DataType::Int64 => primitive!(Int64Array, |value: &&Scalar| exact_i128(value)
+        DataType::Int64 => primitive!(Int64Type, |value: &Scalar| exact_i128(value)
             .and_then(|value| i64::try_from(value).map_err(|_| invalid_value("int64", value)))),
-        DataType::UInt8 => primitive!(UInt8Array, |value: &&Scalar| exact_u128(value)
+        DataType::UInt8 => primitive!(UInt8Type, |value: &Scalar| exact_u128(value)
             .and_then(|value| u8::try_from(value).map_err(|_| invalid_value("uint8", value)))),
-        DataType::UInt16 => primitive!(UInt16Array, |value: &&Scalar| exact_u128(value)
+        DataType::UInt16 => primitive!(UInt16Type, |value: &Scalar| exact_u128(value)
             .and_then(|value| u16::try_from(value).map_err(|_| invalid_value("uint16", value)))),
-        DataType::UInt32 => primitive!(UInt32Array, |value: &&Scalar| exact_u128(value)
+        DataType::UInt32 => primitive!(UInt32Type, |value: &Scalar| exact_u128(value)
             .and_then(|value| u32::try_from(value).map_err(|_| invalid_value("uint32", value)))),
-        DataType::UInt64 => primitive!(UInt64Array, |value: &&Scalar| exact_u128(value)
+        DataType::UInt64 => primitive!(UInt64Type, |value: &Scalar| exact_u128(value)
             .and_then(|value| u64::try_from(value).map_err(|_| invalid_value("uint64", value)))),
-        DataType::Float16 => primitive!(Float16Array, |value: &&Scalar| exact_f64(value)
+        DataType::Float16 => primitive!(Float16Type, |value: &Scalar| exact_f64(value)
             .map(f16::from_f64)),
-        DataType::Float32 => primitive!(Float32Array, narrow_f32),
-        DataType::Float64 => primitive!(Float64Array, |value: &&Scalar| exact_f64(value)),
+        DataType::Float32 => primitive!(Float32Type, narrow_f32),
+        DataType::Float64 => primitive!(Float64Type, |value: &Scalar| exact_f64(value)),
         DataType::DateTime64 { unit, .. } => match unit {
-            TimeUnit::Second => physical_primitive!(TimestampSecondArray, temporal_i64(*unit)),
+            TimeUnit::Second => primitive!(TimestampSecondType, temporal_i64(*unit)),
             TimeUnit::Millisecond => {
-                physical_primitive!(TimestampMillisecondArray, temporal_i64(*unit))
+                primitive!(TimestampMillisecondType, temporal_i64(*unit))
             }
             TimeUnit::Microsecond => {
-                physical_primitive!(TimestampMicrosecondArray, temporal_i64(*unit))
+                primitive!(TimestampMicrosecondType, temporal_i64(*unit))
             }
             TimeUnit::Nanosecond => {
-                physical_primitive!(TimestampNanosecondArray, temporal_i64(*unit))
+                primitive!(TimestampNanosecondType, temporal_i64(*unit))
             }
             _ => return Err(unsupported(dtype, "invalid timestamp unit")),
         },
-        DataType::Date32 => primitive!(Date32Array, date_i32),
-        DataType::Date64 => primitive!(Date64Array, date_i64),
+        DataType::Date32 => primitive!(Date32Type, date_i32),
+        DataType::Date64 => primitive!(Date64Type, date_i64),
         DataType::Time32(unit) => match unit {
-            TimeUnit::Second => primitive!(Time32SecondArray, temporal_i32(*unit)),
-            TimeUnit::Millisecond => primitive!(Time32MillisecondArray, temporal_i32(*unit)),
+            TimeUnit::Second => primitive!(Time32SecondType, temporal_i32(*unit)),
+            TimeUnit::Millisecond => primitive!(Time32MillisecondType, temporal_i32(*unit)),
             _ => return Err(unsupported(dtype, "invalid time32 unit")),
         },
         DataType::Time64(unit) => match unit {
-            TimeUnit::Microsecond => primitive!(Time64MicrosecondArray, temporal_i64(*unit)),
-            TimeUnit::Nanosecond => primitive!(Time64NanosecondArray, temporal_i64(*unit)),
+            TimeUnit::Microsecond => primitive!(Time64MicrosecondType, temporal_i64(*unit)),
+            TimeUnit::Nanosecond => primitive!(Time64NanosecondType, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid time64 unit")),
         },
         DataType::Duration32(unit) => match unit {
-            TimeUnit::Second => primitive!(DurationSecondArray, |value: &&Scalar| {
+            TimeUnit::Second => primitive!(DurationSecondType, |value: &Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
-            TimeUnit::Millisecond => primitive!(DurationMillisecondArray, |value: &&Scalar| {
+            TimeUnit::Millisecond => primitive!(DurationMillisecondType, |value: &Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
-            TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, |value: &&Scalar| {
+            TimeUnit::Microsecond => primitive!(DurationMicrosecondType, |value: &Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
-            TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, |value: &&Scalar| {
+            TimeUnit::Nanosecond => primitive!(DurationNanosecondType, |value: &Scalar| {
                 temporal_i32(*unit)(value).map(i64::from)
             }),
             _ => return Err(unsupported(dtype, "invalid duration32 unit")),
         },
         DataType::Duration64(unit) => match unit {
-            TimeUnit::Second => primitive!(DurationSecondArray, temporal_i64(*unit)),
-            TimeUnit::Millisecond => primitive!(DurationMillisecondArray, temporal_i64(*unit)),
-            TimeUnit::Microsecond => primitive!(DurationMicrosecondArray, temporal_i64(*unit)),
-            TimeUnit::Nanosecond => primitive!(DurationNanosecondArray, temporal_i64(*unit)),
+            TimeUnit::Second => primitive!(DurationSecondType, temporal_i64(*unit)),
+            TimeUnit::Millisecond => primitive!(DurationMillisecondType, temporal_i64(*unit)),
+            TimeUnit::Microsecond => primitive!(DurationMicrosecondType, temporal_i64(*unit)),
+            TimeUnit::Nanosecond => primitive!(DurationNanosecondType, temporal_i64(*unit)),
             _ => return Err(unsupported(dtype, "invalid duration64 unit")),
         },
         DataType::Interval(TimeUnit::YearMonth) => {
-            primitive!(IntervalYearMonthArray, interval_year_month)
+            primitive!(IntervalYearMonthType, interval_year_month)
         }
         DataType::Interval(TimeUnit::DayTime) => {
-            primitive!(IntervalDayTimeArray, interval_day_time)
+            primitive!(IntervalDayTimeType, interval_day_time)
         }
         DataType::Interval(TimeUnit::MonthDayNano) => {
-            primitive!(IntervalMonthDayNanoArray, interval_month_day_nano)
+            primitive!(IntervalMonthDayNanoType, interval_month_day_nano)
         }
         DataType::Interval(_) => return Err(unsupported(dtype, "invalid interval layout")),
         crate::bytes_dtypes!() => {
@@ -243,44 +228,44 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
                 })
                 .collect::<Result<Vec<_>>>()?,
         )),
-        DataType::Serie(child) => list_array::<i32>(child, values, ListKind::List)?,
-        DataType::SerieView(child) => list_view_array::<i32>(child, values, ListKind::ListView)?,
-        DataType::FixedSizeSerie(child, size) => fixed_size_list_array(child, *size, values)?,
-        DataType::LargeSerie(child) => list_array::<i64>(child, values, ListKind::LargeList)?,
-        DataType::LargeSerieView(child) => {
-            list_view_array::<i64>(child, values, ListKind::LargeListView)?
+        DataType::Serie(child) => list_array::<i32>(child, arrow_type, values)?,
+        DataType::SerieView(child) => list_view_array::<i32>(child, arrow_type, values)?,
+        DataType::FixedSizeSerie(child, size) => {
+            fixed_size_list_array(child, arrow_type, *size, values)?
         }
-        DataType::Struct(fields) => struct_array(fields, values)?,
+        DataType::LargeSerie(child) => list_array::<i64>(child, arrow_type, values)?,
+        DataType::LargeSerieView(child) => list_view_array::<i64>(child, arrow_type, values)?,
+        DataType::Struct(fields) => struct_array(fields, arrow_type, values)?,
         DataType::Union(fields, mode) => union_array(fields, *mode, values)?,
         DataType::Dictionary(dictionary) => dictionary_array(dictionary, values)?,
         DataType::Decimal32 { scale, .. } => {
-            physical_primitive!(Decimal32Array, |value: &&Scalar| i32::try_from(
+            primitive!(Decimal32Type, |value: &Scalar| i32::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal32", value.kind())))
         }
         DataType::Decimal64 { scale, .. } => {
-            physical_primitive!(Decimal64Array, |value: &&Scalar| i64::try_from(
+            primitive!(Decimal64Type, |value: &Scalar| i64::try_from(
                 unscaled_i128(value, *scale)?
             )
             .map_err(|_| invalid_value("decimal64", value.kind())))
         }
         DataType::Decimal128 { scale, .. } => {
-            physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
+            primitive!(Decimal128Type, |value: &Scalar| unscaled_i128(
                 value, *scale
             ))
         }
         DataType::Decimal256 { scale, .. } => {
-            physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(value, *scale))
+            primitive!(Decimal256Type, |value: &Scalar| decimal256(value, *scale))
         }
         DataType::Decimal => {
-            physical_primitive!(Decimal128Array, |value: &&Scalar| unscaled_i128(
+            primitive!(Decimal128Type, |value: &Scalar| unscaled_i128(
                 value,
                 crate::Decimal::SCALE
             ))
         }
         DataType::BigDecimal => {
-            physical_primitive!(Decimal256Array, |value: &&Scalar| decimal256(
+            primitive!(Decimal256Type, |value: &Scalar| decimal256(
                 value,
                 crate::BigDecimal::SCALE
             ))
@@ -289,9 +274,9 @@ pub(crate) fn array_of_rows(field: &Field, values: &[&Scalar]) -> Result<ArrayRe
             let map = &map_dtype
                 .as_mapping()
                 .expect("the variant was just matched");
-            map_array(map, values)?
+            map_array(map, arrow_type, values)?
         }
-        DataType::RunEndEncoded(encoded) => run_array(encoded, values)?,
+        DataType::RunEndEncoded(encoded) => run_array(encoded, arrow_type, values)?,
         // A geospatial value *is* its WKB payload, so the array is the bytes;
         // both the canonical `Geospatial` spelling and plain bytes build it.
         DataType::Geometry(_) | DataType::Geography(_) => Arc::new(BinaryArray::from(
@@ -959,12 +944,57 @@ fn nulls(validity: Vec<bool>) -> Option<NullBuffer> {
     validity.iter().any(|valid| !valid).then(|| validity.into())
 }
 
-#[derive(Clone, Copy)]
-enum ListKind {
-    List,
-    LargeList,
-    ListView,
-    LargeListView,
+/// One primitive column, its values written straight into the buffer it
+/// publishes and its absence into the bitmap - sized once, with no vector
+/// of options between the rows and the array, and no bitmap at all for a
+/// column with nothing absent. `arrow_type` is the field's projection,
+/// which names the datatype a physical storage carries - a decimal's
+/// precision and scale, a timestamp's zone - where it is not the native
+/// type's own.
+fn primitive_array<T: ArrowPrimitiveType>(
+    values: &[&Scalar],
+    arrow_type: &ArrowDataType,
+    conversion: impl Fn(&Scalar) -> Result<T::Native>,
+) -> Result<ArrayRef> {
+    let mut native = Vec::with_capacity(values.len());
+    let mut validity = NullBufferBuilder::new(values.len());
+    for value in values {
+        if matches!(value, Scalar::Null) {
+            native.push(T::Native::default());
+            validity.append_null();
+        } else {
+            native.push(conversion(value)?);
+            validity.append_non_null();
+        }
+    }
+    let array = PrimitiveArray::<T>::try_new(ScalarBuffer::from(native), validity.finish())?;
+    Ok(Arc::new(if arrow_type == &T::DATA_TYPE {
+        array
+    } else {
+        array.with_data_type(arrow_type.clone())
+    }))
+}
+
+/// One boolean column, written bit by bit into the two bitmaps it is.
+fn boolean_array(values: &[&Scalar]) -> Result<ArrayRef> {
+    let mut bits = BooleanBufferBuilder::new(values.len());
+    let mut validity = NullBufferBuilder::new(values.len());
+    for value in values {
+        match optional_bool(value)? {
+            Some(bit) => {
+                bits.append(bit);
+                validity.append_non_null();
+            }
+            None => {
+                bits.append(false);
+                validity.append_null();
+            }
+        }
+    }
+    Ok(Arc::new(BooleanArray::new(
+        bits.finish(),
+        validity.finish(),
+    )))
 }
 
 trait Offset: arrow_array::OffsetSizeTrait + TryFrom<usize> {}
@@ -995,22 +1025,22 @@ fn list_items<'a>(
     values: &[&'a Scalar],
     what: &'static str,
 ) -> Result<Vec<Option<Items<'a>>>> {
-    values
-        .iter()
-        .map(|value| {
-            if matches!(value, Scalar::Null) {
-                return Ok(None);
-            }
-            let serie = value
-                .as_serie()
-                .ok_or_else(|| invalid_value_kind(what, value))?;
-            let held = crate::value::column_fits_item(serie, child)
-                .then(|| serie.into_arrow_array())
-                .flatten()
-                .map_or_else(|| Items::Rows(serie.rows()), Items::Column);
-            Ok(Some(held))
-        })
-        .collect()
+    let mut items = Vec::with_capacity(values.len());
+    for value in values {
+        if matches!(value, Scalar::Null) {
+            items.push(None);
+            continue;
+        }
+        let serie = value
+            .as_serie()
+            .ok_or_else(|| invalid_value_kind(what, value))?;
+        let held = crate::value::column_fits_item(serie, child)
+            .then(|| serie.into_arrow_array())
+            .flatten()
+            .map_or_else(|| Items::Rows(serie.rows()), Items::Column);
+        items.push(Some(held));
+    }
+    Ok(items)
 }
 
 /// The child array under a list, assembled in element order: runs of rows
@@ -1079,12 +1109,29 @@ impl<'a, 'f> ItemsArray<'a, 'f> {
 
 type ListParts<O> = (Vec<O>, Vec<O>, ArrayRef, Option<NullBuffer>);
 
-fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<O>> {
+/// The offsets, the sizes - filled only where `with_sizes` says a view
+/// wants them - the child array and the validity of a list column.
+fn list_parts<O: Offset>(
+    child: &Field,
+    values: &[&Scalar],
+    with_sizes: bool,
+) -> Result<ListParts<O>> {
     let items = list_items(child, values, "a sequence for a serie column")?;
     let mut offsets = Vec::with_capacity(values.len() + 1);
-    let mut sizes = Vec::with_capacity(values.len());
+    let mut sizes = Vec::with_capacity(if with_sizes { values.len() } else { 0 });
     let mut validity = Vec::with_capacity(values.len());
     let mut array = ItemsArray::new(child);
+    // Every lent run is laid out from one vector, reserved once for all of
+    // them rather than grown a doubling at a time.
+    let lent = items
+        .iter()
+        .flatten()
+        .filter_map(|held| match held {
+            Items::Rows(rows) => Some(rows.len()),
+            Items::Column(_) => None,
+        })
+        .sum::<usize>();
+    array.reserve(lent, "serie child slots")?;
     let mut total = 0_usize;
     offsets.push(
         O::try_from(0).map_err(|_| invalid_value("a list offset within the offset type", 0))?,
@@ -1104,10 +1151,12 @@ fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<
                 held.len()
             }
         };
-        sizes.push(
-            O::try_from(size)
-                .map_err(|_| invalid_value("a list size within the offset type", size))?,
-        );
+        if with_sizes {
+            sizes.push(
+                O::try_from(size)
+                    .map_err(|_| invalid_value("a list size within the offset type", size))?,
+            );
+        }
         total += size;
         offsets.push(
             O::try_from(total)
@@ -1117,79 +1166,57 @@ fn list_parts<O: Offset>(child: &Field, values: &[&Scalar]) -> Result<ListParts<
     Ok((offsets, sizes, array.finish()?, nulls(validity)))
 }
 
-fn list_array<O: Offset>(child: &Field, values: &[&Scalar], kind: ListKind) -> Result<ArrayRef> {
-    let (offsets, _, child_array, nulls) = list_parts::<O>(child, values)?;
-    let child = child.clone().into_arrow_field_ref()?;
-    let offsets = OffsetBuffer::new(ScalarBuffer::from(offsets));
-    match kind {
-        ListKind::List => Ok(Arc::new(ListArray::try_new(
-            child,
-            cast_offsets(&offsets)?,
-            child_array,
-            nulls,
-        )?)),
-        ListKind::LargeList => Ok(Arc::new(LargeListArray::try_new(
-            child,
-            cast_offsets(&offsets)?,
-            child_array,
-            nulls,
-        )?)),
-        _ => Err(Error::internal("list_array::list_kind")),
+/// The item field an Arrow list layout carries, taken off the parent's own
+/// projection rather than projected again.
+fn list_item(arrow_type: &ArrowDataType) -> Result<&FieldRef> {
+    match arrow_type {
+        ArrowDataType::List(item)
+        | ArrowDataType::LargeList(item)
+        | ArrowDataType::ListView(item)
+        | ArrowDataType::LargeListView(item)
+        | ArrowDataType::FixedSizeList(item, _) => Ok(item),
+        _ => Err(Error::internal("list_item::projection")),
     }
+}
+
+fn list_array<O: Offset>(
+    child: &Field,
+    arrow_type: &ArrowDataType,
+    values: &[&Scalar],
+) -> Result<ArrayRef> {
+    let (offsets, _, child_array, nulls) = list_parts::<O>(child, values, false)?;
+    // The offsets are already the layout's own width, refused where they
+    // were computed if the width could not hold them.
+    Ok(Arc::new(GenericListArray::<O>::try_new(
+        Arc::clone(list_item(arrow_type)?),
+        OffsetBuffer::new(ScalarBuffer::from(offsets)),
+        child_array,
+        nulls,
+    )?))
 }
 
 fn list_view_array<O: Offset>(
     child: &Field,
+    arrow_type: &ArrowDataType,
     values: &[&Scalar],
-    kind: ListKind,
 ) -> Result<ArrayRef> {
-    let (offsets, sizes, child_array, nulls) = list_parts::<O>(child, values)?;
-    let offsets = offsets.into_iter().take(values.len()).collect::<Vec<_>>();
-    let child = child.clone().into_arrow_field_ref()?;
-    match kind {
-        ListKind::ListView => Ok(Arc::new(ListViewArray::try_new(
-            child,
-            cast_scalar(offsets)?,
-            cast_scalar(sizes)?,
-            child_array,
-            nulls,
-        )?)),
-        ListKind::LargeListView => Ok(Arc::new(LargeListViewArray::try_new(
-            child,
-            cast_scalar(offsets)?,
-            cast_scalar(sizes)?,
-            child_array,
-            nulls,
-        )?)),
-        _ => Err(Error::internal("list_view_array::list_kind")),
-    }
+    let (mut offsets, sizes, child_array, nulls) = list_parts::<O>(child, values, true)?;
+    offsets.truncate(values.len());
+    Ok(Arc::new(GenericListViewArray::<O>::try_new(
+        Arc::clone(list_item(arrow_type)?),
+        ScalarBuffer::from(offsets),
+        ScalarBuffer::from(sizes),
+        child_array,
+        nulls,
+    )?))
 }
 
-fn cast_offsets<O: Offset, T: Offset>(value: &OffsetBuffer<O>) -> Result<OffsetBuffer<T>> {
-    let values = value
-        .iter()
-        .map(|value| {
-            T::try_from(value.as_usize()).map_err(|_| {
-                invalid_value("a list offset within the offset type", value.as_usize())
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(OffsetBuffer::new(ScalarBuffer::from(values)))
-}
-
-fn cast_scalar<O: Offset, T: Offset>(values: Vec<O>) -> Result<ScalarBuffer<T>> {
-    values
-        .into_iter()
-        .map(|value| {
-            T::try_from(value.as_usize()).map_err(|_| {
-                invalid_value("a list offset within the offset type", value.as_usize())
-            })
-        })
-        .collect::<Result<Vec<_>>>()
-        .map(ScalarBuffer::from)
-}
-
-fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result<ArrayRef> {
+fn fixed_size_list_array(
+    child: &Field,
+    arrow_type: &ArrowDataType,
+    size: i32,
+    values: &[&Scalar],
+) -> Result<ArrayRef> {
     let size_usize = usize::try_from(size)
         .map_err(|_| invalid_value("a fixed serie size within usize", size))?;
     let physical_len = values.len().checked_mul(size_usize).ok_or_else(|| {
@@ -1241,7 +1268,7 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     }
     let child_array = array.finish()?;
     Ok(Arc::new(FixedSizeListArray::try_new_with_length(
-        child.clone().into_arrow_field_ref()?,
+        Arc::clone(list_item(arrow_type)?),
         size,
         child_array,
         nulls(validity),
@@ -1249,7 +1276,14 @@ fn fixed_size_list_array(child: &Field, size: i32, values: &[&Scalar]) -> Result
     )?))
 }
 
-fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayRef> {
+fn struct_array(
+    fields: &crate::StructType,
+    arrow_type: &ArrowDataType,
+    values: &[&Scalar],
+) -> Result<ArrayRef> {
+    let ArrowDataType::Struct(arrow_fields) = arrow_type else {
+        return Err(Error::internal("struct_array::projection"));
+    };
     let null_rows = values
         .iter()
         .filter(|value| matches!(value, Scalar::Null))
@@ -1261,56 +1295,68 @@ fn struct_array(fields: &crate::StructType, values: &[&Scalar]) -> Result<ArrayR
         }
     }
     let has_parent_null = null_rows != 0;
-    let rows = values
-        .iter()
-        .map(|value| {
-            if matches!(value, Scalar::Null) {
-                return Ok(None);
-            }
-            value
-                .sequence_rows()
-                .map(Some)
-                .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let validity = rows.iter().map(Option::is_some).collect::<Vec<_>>();
-    let arrow_fields = fields
-        .iter()
-        .cloned()
-        .map(Field::into_arrow_field_ref)
-        .collect::<crate::Result<Vec<_>>>()?;
+    let mut rows: Vec<Option<Cow<'_, [Scalar]>>> = Vec::with_capacity(values.len());
+    let mut validity = NullBufferBuilder::new(values.len());
+    for value in values {
+        if matches!(value, Scalar::Null) {
+            rows.push(None);
+            validity.append_null();
+            continue;
+        }
+        let row = value
+            .sequence_rows()
+            .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))?;
+        rows.push(Some(row));
+        validity.append_non_null();
+    }
     if fields.is_empty() {
         return Ok(Arc::new(StructArray::new_empty_fields(
             values.len(),
-            nulls(validity),
+            validity.finish(),
         )));
     }
-    let columns = fields
-        .iter()
-        .enumerate()
-        .map(|(column, field)| {
-            let placeholder = has_parent_null
+    // A hidden slot under an absent row is null in every layout that owns
+    // a bitmap; only a union and a run-end encoding, which own none, need
+    // a physical filler built for them.
+    let null = Scalar::Null;
+    let placeholders: Vec<Option<Scalar>> = if has_parent_null {
+        fields
+            .iter()
+            .map(|field| {
+                matches!(
+                    field.dtype(),
+                    DataType::Union(..) | DataType::RunEndEncoded(_)
+                )
                 .then(|| physical_placeholder_for_field(field))
-                .transpose()?;
-            let column_values = rows
-                .iter()
-                .zip(values)
-                .map(|(row, value)| match row {
-                    None => placeholder
-                        .as_ref()
-                        .ok_or_else(|| Error::internal("struct_array::null_placeholder")),
-                    Some(row) => row
-                        .get(column)
-                        .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value)),
-                })
-                .collect::<Result<Vec<_>>>()?;
-            array_of_rows(field, &column_values)
-        })
-        .collect::<Result<Vec<_>>>()?;
+                .transpose()
+            })
+            .collect::<Result<_>>()?
+    } else {
+        Vec::new()
+    };
+    // One scratch of cell references, sized once and refilled per column.
+    let mut cells: Vec<&Scalar> = Vec::with_capacity(values.len());
+    let mut columns = Vec::with_capacity(fields.len());
+    for (column, field) in fields.iter().enumerate() {
+        cells.clear();
+        let placeholder = placeholders
+            .get(column)
+            .and_then(Option::as_ref)
+            .unwrap_or(&null);
+        for (row, value) in rows.iter().zip(values) {
+            cells.push(match row {
+                None => placeholder,
+                Some(row) => row
+                    .get(column)
+                    .ok_or_else(|| invalid_value_kind("a sequence for a struct column", value))?,
+            });
+        }
+        columns.push(array_of_rows(field, &cells)?);
+    }
     Ok(Arc::new(StructArray::try_new_with_length(
-        arrow_fields.into(),
+        arrow_fields.clone(),
         columns,
-        nulls(validity),
+        validity.finish(),
         values.len(),
     )?))
 }
@@ -1497,7 +1543,17 @@ fn dictionary_array(dictionary: &crate::DictionaryType, values: &[&Scalar]) -> R
     }
 }
 
-fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
+fn map_array(
+    map: &crate::MappingType,
+    arrow_type: &ArrowDataType,
+    values: &[&Scalar],
+) -> Result<ArrayRef> {
+    let ArrowDataType::Map(entries_field, keys_sorted) = arrow_type else {
+        return Err(Error::internal("map_array::projection"));
+    };
+    let ArrowDataType::Struct(entry_fields) = entries_field.data_type() else {
+        return Err(Error::internal("map_array::entries_projection"));
+    };
     let mut offsets = Vec::with_capacity(values.len() + 1);
     let mut validity = Vec::with_capacity(values.len());
     let mut entries = Vec::new();
@@ -1527,11 +1583,7 @@ fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
     let keys = entries.iter().map(|(key, _)| key).collect::<Vec<_>>();
     let vals = entries.iter().map(|(_, value)| value).collect::<Vec<_>>();
     let entries_array = StructArray::try_new_with_length(
-        vec![
-            fields[0].clone().into_arrow_field_ref()?,
-            fields[1].clone().into_arrow_field_ref()?,
-        ]
-        .into(),
+        entry_fields.clone(),
         vec![
             array_of_rows(&fields[0], &keys)?,
             array_of_rows(&fields[1], &vals)?,
@@ -1540,15 +1592,19 @@ fn map_array(map: &crate::MappingType, values: &[&Scalar]) -> Result<ArrayRef> {
         entries.len(),
     )?;
     Ok(Arc::new(MapArray::try_new(
-        map.entries().clone().into_arrow_field_ref()?,
+        Arc::clone(entries_field),
         OffsetBuffer::new(ScalarBuffer::from(offsets)),
         entries_array,
         nulls(validity),
-        map.keys_sorted(),
+        *keys_sorted,
     )?))
 }
 
-fn run_array(encoded: &crate::RunEndEncodedType, values: &[&Scalar]) -> Result<ArrayRef> {
+fn run_array(
+    encoded: &crate::RunEndEncodedType,
+    arrow_type: &ArrowDataType,
+    values: &[&Scalar],
+) -> Result<ArrayRef> {
     let mut run_values = Vec::new();
     let mut run_ends = Vec::new();
     for (index, value) in values.iter().enumerate() {
@@ -1560,10 +1616,6 @@ fn run_array(encoded: &crate::RunEndEncodedType, values: &[&Scalar]) -> Result<A
         }
     }
     let values_array = array_of_rows(encoded.values(), &run_values)?;
-    let arrow_type = ArrowDataType::RunEndEncoded(
-        encoded.run_ends().clone().into_arrow_field_ref()?,
-        encoded.values().clone().into_arrow_field_ref()?,
-    );
     macro_rules! run {
         ($key:ty, $array:ty) => {{
             let run_ends = run_ends
@@ -1817,10 +1869,10 @@ fn optional_bytes(value: &Scalar) -> Result<Option<&[u8]>> {
 /// it builds the slots.
 fn bytes_array(parameters: BytesType, values: &[&Scalar]) -> Result<ArrayRef> {
     parameters.validate()?;
-    let cells = values
-        .iter()
-        .map(|value| optional_bytes(value))
-        .collect::<Result<Vec<_>>>()?;
+    let mut cells = Vec::with_capacity(values.len());
+    for value in values {
+        cells.push(optional_bytes(value)?);
+    }
     if let Some(width) = parameters.fixed() {
         let width =
             i32::try_from(width).map_err(|_| invalid_value("a byte width within i32", width))?;

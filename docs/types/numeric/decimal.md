@@ -329,7 +329,7 @@ Addition, subtraction and remainder meet at the wider scale; multiplication adds
 
 ## Casts
 
-Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact and is cut. The declared precision and scale are the target, and `safe` and `nullability` decide what a failure becomes, on [Cast](../cast.md).
+Text reads into a decimal without passing through a float, and an integer converts into one by rescaling its coefficient. A float reads as the number it names - its shortest decimal text, `1.15` and never the `1.149999999999999872` its binary fraction is - rounded half away from zero at the declared scale, in a column as in a row: `0.125` into `decimal(10, 2)` is `0.13`. A float is an inexact reading and is rounded; text is exact and is cut. The declared precision and scale are the target, and `safe` and the column's nullability decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 

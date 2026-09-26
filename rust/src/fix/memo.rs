@@ -24,14 +24,14 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use smol_str::SmolStr;
 
 use super::FixId;
 use super::registry::FixMap;
-use crate::Field;
 use crate::xxhash::Xxh64;
+use crate::{Field, Metadata};
 
 /// A table keyed by text, hashed by the crate's own function: a key is a
 /// bridge's spelling or a wire value, read a million times per run.
@@ -71,6 +71,10 @@ type Translations = FixMap<usize, TextMap<SmolStr, Option<SmolStr>>>;
 pub struct Facts {
     nulls: Box<[SmolStr]>,
     codes: Option<Arc<str>>,
+    /// The metadata a child aliasing the field carries, built the first
+    /// time one is and shared after: one storage, so every message that
+    /// builds such a child has the shape the first one had.
+    alias: OnceLock<Metadata>,
 }
 
 impl Facts {
@@ -85,6 +89,23 @@ impl Facts {
     /// when the field was first asked about.
     pub(super) fn codes(&self) -> Option<&str> {
         self.codes.as_deref()
+    }
+
+    /// The metadata a child aliasing `source` - the field these facts are
+    /// of - carries: `FIX:alias` naming it. Built once and shared, so a
+    /// message building the child neither allocates the map nor changes the
+    /// shape its column plan is found by.
+    pub(super) fn alias_metadata(&self, source: &Field) -> Metadata {
+        self.alias
+            .get_or_init(|| {
+                let mut metadata = Metadata::new();
+                // A plain key and value: the one refusal a metadata insert
+                // has is a shape no field name takes.
+                let _ =
+                    metadata.insert(super::field::ALIAS_OF.to_owned(), source.name().to_owned());
+                metadata
+            })
+            .clone()
     }
 }
 
@@ -215,6 +236,7 @@ impl Memo {
                     // once per entry: a run translates a million spellings
                     // through one document and looks its name up once.
                     codes: codes(),
+                    alias: OnceLock::new(),
                 });
                 let mut table = held(&self.facts);
                 if table.len() < Self::CAPACITY {

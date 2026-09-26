@@ -599,7 +599,8 @@ A source with a `yggdryl.string` document is read under its own leaf and
 restated under the target's; a code source is read as its trimmed text; bare
 text storage is read as text; bare binary storage is read as bytes already in
 the target charset (a fixed source trimmed of NUL first). Under `safe` a
-failing cell becomes null, under strict an error names the row and the column.
+failing cell becomes null where the column may hold one; under `safe = false`,
+or in a required column, an error names the row and the column.
 A fixed leaf pads on the way in, and the stored column read back under `utf8`
 trims.
 
@@ -923,7 +924,7 @@ stays `utf8`.
 - A `yggdryl.string` document over a storage it does not describe -> imports as the storage.
 - A stored column carrying `yggdryl.msgdirection` or `yggdryl.direction` -> imports as the `fixed_size_binary(4)` it is: the datatype was retired, and which way a message moved is FIX's tag 385, text over its code set.
 - Arrow JS rows carry no extension identity, so a `fixed_ascii(n)` column arrives as its padded bytes through `readRecords`; declare `utf8` to read text.
-- A `StringIngest` refusal under `safe` -> null, which a required column then fills with the default; under strict -> `field "<name>" row <n>: expected ..., got ...`.
+- A `StringIngest` refusal -> null in a nullable column under `safe`; in a required column whatever `safe` says, or under `safe=False` -> `field "<name>" row <n>: expected ..., got ...`, never the default.
 - Avro and Iceberg -> a UTF-8 or US-ASCII leaf crosses as `string`, a fixed one trimmed of padding; a windows-1252 leaf is refused by name.
 - Merging follows [Field](../field.md): two strings meet parameter by parameter, and a string never meets a byte column.
 - `from_regex(pattern, false)` -> every capture stays `utf8`; invalid regex syntax or an expression past the recursion limit -> datatype error.

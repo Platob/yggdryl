@@ -24,7 +24,7 @@ from ._native import (
     Urn,
     Version,
 )
-from ._classes import _PhysicalUnionValue, _adopt_materialized_schema
+from ._classes import _adopt_materialized_schema
 
 _INTEGER_KINDS = frozenset(
     ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")

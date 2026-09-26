@@ -25,6 +25,12 @@ const trades = () =>
     nullable: false,
   })
 
+// The trades root with its `id` declared as `dtype`.
+const tradesWith = (dtype) =>
+  fields.struct('row', [Field.from(`id: ${dtype}`), Field.from('symbol: utf8')], {
+    nullable: false,
+  })
+
 function narrow(ids, symbols) {
   return new arrow.Table({
     id: arrow.vectorFromArray(ids, new arrow.Int32()),
@@ -48,6 +54,7 @@ test('the private Arrow bridges stay outside the public surface', () => {
   assert.equal(Object.hasOwn(SerieReader, '_fromSerieNative'), false)
   assert.equal(Object.hasOwn(SerieReader, '_fromChunkedNative'), false)
   assert.equal('_nextNative' in SerieReader.prototype, false)
+  assert.equal('_castNative' in SerieReader.prototype, false)
   // The retired Field and DataType casts have no alias.
   for (const name of [
     'cast',
@@ -128,27 +135,27 @@ test('a vector crossing as several batches is cast once, as one column', () => {
   assert.deepEqual(serie.asJs(), [1, 2, 3])
 })
 
-test('the three cast answers reach the core', () => {
+test('the two cast answers reach the core; absence is the target field own', () => {
   const overflowing = arrow.vectorFromArray([7, 130, null], new arrow.Int32())
   const required = fields.int8('quantity', { nullable: false })
 
-  // Safe by default: the value the target cannot hold is null, and the
-  // required column repairs every absent row with its default.
-  assert.deepEqual(Serie.fromArrowArray(overflowing, required).asJs(), [7, 0, 0])
-
-  // Strict nullability refuses the absent row by path.
+  // A required column refuses a value it cannot convert, by that value,
+  // whatever `safe` says.
   assert.throws(
-    () => Serie.fromArrowArray(overflowing, required, { nullability: 'strict' }),
-    /required Arrow field \$\.quantity holds 2 null values/,
+    () => Serie.fromArrowArray(overflowing, required),
+    /Can't cast value 130 to type Int8/,
+  )
+  assert.throws(
+    () => Serie.fromArrowArray(overflowing, required, { safe: false }),
+    /Can't cast value 130 to type Int8/,
   )
 
-  // `safe: false` refuses the conversion itself, whatever the policy.
-  for (const nullability of ['default', 'strict']) {
-    assert.throws(
-      () => Serie.fromArrowArray(overflowing, required, { safe: false, nullability }),
-      /Can't cast value 130 to type Int8/,
-    )
-  }
+  // A nullable target takes the value it cannot convert as null under the
+  // safe default, and its null rows stay null.
+  assert.deepEqual(
+    Serie.fromArrowArray(overflowing, fields.int8('quantity')).asJs(),
+    [7, null, null],
+  )
 
   // The bits reading shares a same-width buffer instead of converting it.
   const unsigned = arrow.vectorFromArray([2 ** 32 - 1], new arrow.Uint32())
@@ -160,24 +167,20 @@ test('the three cast answers reach the core', () => {
   // Each answer is a name, refused by its vocabulary; an unknown key is
   // refused rather than silently doing nothing, and an absent one is skipped.
   assert.throws(
-    () => Serie.fromArrowArray(overflowing, required, { nullability: 'lenient' }),
-    /expected one of default, strict/,
-  )
-  assert.throws(
     () => Serie.fromArrowArray(unsigned, fields.int32('digest'), { representation: 'raw' }),
     /expected one of value, bits/,
   )
   assert.throws(
     () => Serie.fromArrowArray(overflowing, required, { nullable: 'strict' }),
-    /cast options take safe, nullability and representation/,
+    /cast options take safe and representation/,
   )
-  assert.deepEqual(
-    Serie.fromArrowArray(overflowing, required, {
-      safe: undefined,
-      nullability: undefined,
-      representation: undefined,
-    }).asJs(),
-    [7, 0, 0],
+  assert.throws(
+    () =>
+      Serie.fromArrowArray(overflowing, required, {
+        safe: undefined,
+        representation: undefined,
+      }),
+    /Can't cast value 130 to type Int8/,
   )
 })
 
@@ -201,16 +204,15 @@ test('an Arrow JS batch or table lands as the record column of its rows', () => 
     assert.deepEqual([...batch.getChild('id')], [1n, 2n])
   }
 
-  // A column the root never declared is dropped; a required one the source
-  // cannot fill is repaired by default and refused by path when strict.
+  // A column the root never declared is dropped; a required one the
+  // source cannot fill is refused by path, whatever `safe` says.
   const required = fields.struct(
     'row',
     [Field.from('id: int64'), Field.from('venue: utf8 not null')],
     { nullable: false },
   )
-  assert.deepEqual(Serie.fromArrowBatch(table, required).child('venue').asJs(), ['', ''])
   assert.throws(
-    () => Serie.fromArrowBatch(table, required, { nullability: 'strict' }),
+    () => Serie.fromArrowBatch(table, required),
     /required Arrow field \$\.venue is missing from the source/,
   )
   assert.throws(() => Serie.fromArrowBatch([], root), TypeError)
@@ -228,15 +230,8 @@ test('a required field inside a struct is refused by its whole path', () => {
     })
 
   const without = accounts([{ id: 1n }, { id: 2n }], [identifier])
-  assert.deepEqual(
-    Serie.fromArrowBatch(without, target)
-      .child('account')
-      .child('zip')
-      .asJs(),
-    ['', ''],
-  )
   assert.throws(
-    () => Serie.fromArrowBatch(without, target, { nullability: 'strict' }),
+    () => Serie.fromArrowBatch(without, target),
     /required Arrow field \$\.account\.zip is missing from the source/,
   )
 
@@ -245,7 +240,7 @@ test('a required field inside a struct is refused by its whole path', () => {
     [identifier, postcode],
   )
   assert.throws(
-    () => Serie.fromArrowBatch(withNull, target, { nullability: 'strict' }),
+    () => Serie.fromArrowBatch(withNull, target),
     /required Arrow field \$\.account\.zip holds 1 null values/,
   )
 })
@@ -299,9 +294,12 @@ test('a cast failure inside a stream reports the failure, not the envelope', () 
       return true
     })
   }
-  // Under the safe default the failing cell is null, which the non-null
-  // column fills with its default rather than raising.
-  assert.deepEqual(Serie.fromArrowBatch(source, target).child('ccy').asJs(), [''])
+  // A required column refuses the cell it cannot convert, by that value,
+  // even under the safe default.
+  assert.throws(
+    () => Serie.fromArrowBatch(source, target),
+    /expected US-ASCII text, got a non-ASCII byte/,
+  )
 })
 
 test('a SerieReader yields one record serie per batch under one root', () => {
@@ -354,7 +352,7 @@ test('a SerieReader hands its stream back as a reader, read once', () => {
     { nullable: false },
   )
   assert.throws(
-    () => SerieReader.fromArrowReader(BatchReader.from(source), required, { nullability: 'strict' }),
+    () => SerieReader.fromArrowReader(BatchReader.from(source), required),
     /required Arrow field \$\.venue is missing from the source/,
   )
   // A null is a property of rows, so the reader is built and refuses at the
@@ -363,9 +361,7 @@ test('a SerieReader hands its stream back as a reader, read once', () => {
     id: arrow.vectorFromArray([1n, 2n], new arrow.Int64()),
     venue: arrow.vectorFromArray(['XNAS', null], new arrow.Utf8()),
   })
-  const strict = SerieReader.fromArrowReader(BatchReader.from(partial), required, {
-    nullability: 'strict',
-  })
+  const strict = SerieReader.fromArrowReader(BatchReader.from(partial), required)
   assert.throws(() => [...strict], /required Arrow field \$\.venue holds 1 null values/)
   assert.throws(() => new SerieReader(), /no `constructor`/)
   assert.throws(
@@ -472,6 +468,128 @@ test('a held chunked column is a stream of one record serie per chunk', () => {
   )
 })
 
+test('a SerieReader cast under its own root yields the same records', () => {
+  const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
+  const held = SerieReader.fromSerie(records)
+  const same = held.cast(trades())
+  assert.ok(same instanceof SerieReader)
+  assert.ok(same.field.equals(trades()))
+  const series = [...same]
+  assert.equal(series.length, 1)
+  assert.ok(series[0] instanceof StructSerie)
+  assert.ok(series[0].equals(records))
+  // The cast took the reader it was asked of; a stream is read once.
+  assert.throws(() => [...held], /already been consumed/)
+  assert.throws(() => held.cast(trades()), /already been consumed/)
+  assert.throws(() => held.intoArrowReader(), /already been consumed/)
+
+  // A stream under its own root yields every batch as it would have.
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  const stream = SerieReader.fromArrowReader(BatchReader.from(source), trades()).cast(trades())
+  assert.deepEqual(
+    [...stream].map((serie) => serie.child('id').asJs()),
+    [[1, 2], [3]],
+  )
+
+  // An option the cast refuses leaves the reader as it was.
+  const kept = SerieReader.fromSerie(records)
+  assert.throws(() => kept.cast(trades(), { bogus: true }), /got "bogus"/)
+  assert.equal([...kept].length, 1)
+})
+
+test('a SerieReader cast into a wider root casts every record, held or streamed', () => {
+  const wide = tradesWith('float64')
+  const records = Serie.fromArrowBatch(narrow([1, 2], ['AAPL', 'MSFT']), trades())
+  const held = SerieReader.fromSerie(records).cast(wide)
+  assert.ok(held.field.equals(wide))
+  const [cast, ...rest] = [...held]
+  assert.deepEqual(rest, [])
+  assert.equal(cast.child('id').field.dtype.toString(), 'float64')
+  assert.deepEqual(cast.asJs(), [
+    { id: 1, symbol: 'AAPL' },
+    { id: 2, symbol: 'MSFT' },
+  ])
+
+  // A stream opened under its own schema, and one opened under a cast of
+  // its own: every batch lands under the wider root as it is pulled.
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  for (const reader of [
+    SerieReader.fromArrowReader(BatchReader.from(source)),
+    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
+  ]) {
+    const streamed = reader.cast(wide)
+    assert.ok(streamed.field.equals(wide))
+    const series = [...streamed]
+    assert.deepEqual(
+      series.map((serie) => serie.child('id').field.dtype.toString()),
+      ['float64', 'float64'],
+    )
+    assert.deepEqual(
+      series.map((serie) => serie.child('id').asJs()),
+      [[1, 2], [3]],
+    )
+  }
+
+  // A DataType is the required `value` field, a record root of that name.
+  const typed = SerieReader.fromSerie(records).cast(
+    DataType.from('struct<id: float64, symbol: utf8>'),
+  )
+  assert.equal(typed.field.name, 'value')
+  assert.deepEqual(
+    [...typed].map((serie) => serie.child('id').field.dtype.toString()),
+    ['float64'],
+  )
+})
+
+test('a SerieReader cast into a narrower root refuses naming the column', () => {
+  const tight = tradesWith('int8')
+  const records = Serie.fromArrowBatch(narrow([1, 300], ['AAPL', 'MSFT']), trades())
+  // The refusal names the column and the value it could not hold.
+  const refusal = /\$\.id\b.*\b300\b/
+  // Held records are cast where the cast is asked for.
+  assert.throws(() => SerieReader.fromSerie(records).cast(tight, { safe: false }), refusal)
+  // A stream's batches are cast as they are pulled, landed or handed on.
+  const stream = () =>
+    SerieReader.fromArrowReader(BatchReader.from(narrow([1, 300], ['AAPL', 'MSFT'])), trades())
+  const pulled = stream().cast(tight, { safe: false })
+  assert.throws(() => [...pulled], refusal)
+  const moved = stream().cast(tight, { safe: false }).intoArrowReader()
+  assert.throws(() => moved.intoTable(), refusal)
+  // Under the safe default the value that does not fit is null.
+  assert.deepEqual(
+    [...SerieReader.fromSerie(records).cast(tight)].map((serie) => serie.child('id').asJs()),
+    [[1, null]],
+  )
+})
+
+test('a cast SerieReader hands its stream back under the cast schema', () => {
+  const wide = tradesWith('float64')
+  const source = new arrow.Table([
+    ...narrow([1, 2], ['AAPL', 'MSFT']).batches,
+    ...narrow([3], ['NVDA']).batches,
+  ])
+  for (const reader of [
+    SerieReader.fromArrowReader(BatchReader.from(source), trades()),
+    SerieReader.fromSerie(Serie.fromArrowBatch(source, trades())),
+  ]) {
+    const batches = reader.cast(wide).intoArrowReader()
+    assert.ok(batches instanceof BatchReader)
+    assert.ok(batches.field.equals(wide))
+    const table = batches.intoTable()
+    assert.deepEqual(
+      table.schema.fields.map((field) => `${field.name}: ${field.type}`),
+      ['id: Float64', 'symbol: Utf8'],
+    )
+    assert.deepEqual([...table.getChild('id')], [1, 2, 3])
+  }
+})
+
 test('a column casts once under another field, and a run is refused', () => {
   const ids = Serie.fromScalars(fields.int32('id'), [1, 2, null])
   const wide = ids.cast(fields.int64('id'))
@@ -479,14 +597,25 @@ test('a column casts once under another field, and a run is refused', () => {
   assert.deepEqual(wide.asJs(), [1, 2, null])
   assert.ok(ids.cast(ids.field).equals(ids))
   assert.ok(ids.cast('id: int64').field.equals(fields.int64('id')))
-  const typed = ids.cast(DataType.from('int64'))
+
+  // A DataType target is the required `value` field.
+  const present = Serie.fromScalars(fields.int32('id'), [1, 2])
+  const typed = present.cast(DataType.from('int64'))
   assert.equal(typed.field.name, 'value')
   assert.equal(typed.field.nullable, false)
-  assert.deepEqual(typed.asJs(), [1, 2, 0])
+  assert.deepEqual(typed.asJs(), [1, 2])
 
-  assert.deepEqual(ids.cast(fields.int64('id', { nullable: false })).asJs(), [1, 2, 0])
+  // A required column refuses a null, by path, whatever `safe` says.
   assert.throws(
-    () => ids.cast(fields.int64('id', { nullable: false }), { nullability: 'strict' }),
+    () => ids.cast(DataType.from('int64')),
+    /required Arrow field \$\.value holds 1 null values/,
+  )
+  assert.throws(
+    () => ids.cast(fields.int64('id', { nullable: false })),
+    /required Arrow field \$\.id holds 1 null values/,
+  )
+  assert.throws(
+    () => ids.cast(fields.int64('id', { nullable: false }), { safe: false }),
     /required Arrow field \$\.id holds 1 null values/,
   )
 

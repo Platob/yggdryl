@@ -30,7 +30,6 @@ DIGEST_ALGORITHMS: tuple[str, ...]
 IO_KINDS: tuple[str, ...]
 PYTHON_KINDS: tuple[str, ...]
 COMPATIBILITY_SCHEMES: tuple[str, ...]
-NULLABILITIES: tuple[str, ...]
 REPRESENTATIONS: tuple[str, ...]
 LEVELS: Mapping[str, int]
 MARKET_KINDS: tuple[str, ...]
@@ -65,7 +64,6 @@ __all__ = [
     "MARKET_KINDS",
     "MARKET_VIEWS",
     "MD_UPDATE_ACTIONS",
-    "NULLABILITIES",
     "OPERATION_COLUMNS",
     "REPRESENTATIONS",
     "TIME_UNITS",

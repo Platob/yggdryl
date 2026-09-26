@@ -236,13 +236,13 @@ default_field_scalar: pa.Scalar = default_field_serie.into_arrow_scalar()
 source_array = pa.array([1, 2], type=pa.int32())
 landed_array: Serie = Serie.from_arrow_array(source_array)
 cast_field_array: pa.Array = Serie.from_arrow_array(
-    source_array, Field("value", "int64"), safe=False, nullability="strict"
+    source_array, Field("value", "int64"), safe=False
 ).into_arrow_array()
 bit_cast_field_array: pa.Array = Serie.from_arrow_array(
     pa.array([2**64 - 1], type=pa.uint64()), Field("value", "int64"), representation="bits"
 ).into_arrow_array()
 cast_dtype_serie: Serie = landed_array.cast(DataType("int64"))
-cast_field_serie: Serie = landed_array.cast(Field("value", "int64"), nullability="strict")
+cast_field_serie: Serie = landed_array.cast(Field("value", "int64"))
 source_batch = pa.record_batch([source_array], names=["value"])
 cast_root = Field("rows", DataType.from_fields([Field("value", "int64")]), nullable=False)
 landed_batch: Serie = Serie.from_arrow_batch(source_batch)
@@ -260,11 +260,19 @@ serie_reader_batches: list[Serie] = list(serie_reader)
 serie_reader_stream: pa.RecordBatchReader = SerieReader.from_arrow_reader(
     pa.RecordBatchReader.from_batches(source_batch.schema, [source_batch])
 ).into_arrow_reader()
-cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True, nullability="default")
+cast_plan = ArrowCastPlan(source_batch.schema, cast_root, safe=True)
 cast_plan_source: pa.Field = cast_plan.source
 cast_plan_target: Field = cast_plan.target
 cast_plan_identity: bool = cast_plan.is_identity
 cast_plan_serie: Serie = cast_plan.apply(source_batch)
+capsule_schema: object = landed_array.__arrow_c_schema__()
+capsule_array: tuple[object, object] = landed_array.__arrow_c_array__()
+capsule_requested: tuple[object, object] = landed_array.__arrow_c_array__(
+    pa.int64().__arrow_c_schema__()
+)
+field_capsule: object = Field("value", "int64").__arrow_c_schema__()
+dtype_capsule: object = DataType("int64").__arrow_c_schema__()
+reader_capsule: object = SerieReader.from_(source_batch).__arrow_c_stream__()
 cast_plan_column: Serie = ArrowCastPlan(Field("value", "int32"), Field("value", "int64")).apply(
     landed_array
 )
@@ -2227,6 +2235,7 @@ serie_books = yggdryl.Serie.from_arrow_array(
 assert isinstance(serie_books, yggdryl.MapSerie)
 serie_entries: yggdryl.StructSerie = serie_books.entries
 serie_names: list[str] = serie_entries.names
+serie_entries_capsule: object = serie_entries.__arrow_c_stream__()
 serie_scalar_serie: yggdryl.Serie | None = Scalar.from_([1]).as_serie()
 assert len(serie_run) == 3 and serie_row is not None and serie_window is not None
 assert serie_arrow is not None and serie_rows and serie_field is not None
@@ -2239,7 +2248,7 @@ chunked_prices: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_chunked_a
     pa.chunked_array([[1, 2], [3]]), Field("price", "int64"), safe=False
 )
 chunked_table: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_arrow_reader(
-    pa.Table.from_batches([source_batch, source_batch]), nullability="strict"
+    pa.Table.from_batches([source_batch, source_batch])
 )
 chunked_from: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_(source_batch)
 chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
@@ -2247,6 +2256,7 @@ chunked_series: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_series(
 )
 chunked_empty: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.empty(Field("price", "int64"))
 chunked_one: yggdryl.ChunkedSerie = yggdryl.ChunkedSerie.from_serie(serie_column)
+chunked_capsule: object = chunked_one.__arrow_c_stream__()
 chunked_chunks: list[yggdryl.Serie] = chunked_prices.chunks
 chunked_chunk: yggdryl.Serie | None = chunked_prices.chunk(0)
 chunked_count: int = chunked_prices.num_chunks
@@ -2266,7 +2276,7 @@ chunked_arrow_reader: pa.RecordBatchReader = chunked_table.into_arrow_reader()
 chunked_rows: list[Scalar] = chunked_prices.rows()
 chunked_values: list[Any] = chunked_prices.as_py()
 chunked_get: Scalar | None = chunked_prices.get(5)
-chunked_prices.push_chunk(serie_column, nullability="strict")
+chunked_prices.push_chunk(serie_column, safe=False)
 chunked_reader: SerieReader = SerieReader.from_chunked(chunked_prices)
 chunked_plan: yggdryl.ChunkedSerie = ArrowCastPlan(
     Field("price", "int64"), Field("price", "float64")

@@ -204,8 +204,6 @@ class TestConstruction:
         assert ChunkedSerie.from_series([text], Field("size", "int64")).as_py() == [None]
         with pytest.raises(ValueError, match="Cannot cast"):
             ChunkedSerie.from_series([text], Field("size", "int64"), safe=False)
-        with pytest.raises(ValueError, match="nullability"):
-            ChunkedSerie.from_series([text], Field("size", "int64"), nullability="lenient")
 
     def test_empty_and_from_serie(self) -> None:
         empty = ChunkedSerie.empty(price())
@@ -444,11 +442,15 @@ class TestCast:
         assert wide.field == Field("price", "float64")
         assert wide.as_py() == [1.0, 2.0, 3.0]
 
-        typed = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [None]])).cast(
+        typed = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [2]])).cast(
             DataType("int64")
         )
         assert typed.field == Field("value", "int64", nullable=False)
-        assert typed.as_py() == [1, 0]
+        assert typed.as_py() == [1, 2]
+        # A datatype target is a required column, so a null is refused by path.
+        absent = ChunkedSerie.from_arrow_chunked_array(pa.chunked_array([[1], [None]]))
+        with pytest.raises(ValueError, match=r"required Arrow field \$\.value holds 1 null values"):
+            absent.cast(DataType("int64"))
 
         # A chunked serie already under the target is itself, chunks shared.
         same = prices().cast(price())
@@ -558,3 +560,37 @@ class TestFrom:
         with pytest.raises(TypeError, match="cyclic Python values") as actual:
             ChunkedSerie.from_(cyclic)
         assert str(actual.value) == str(expected.value)
+
+
+class TestPyCapsule:
+    """A chunked serie streams to any Arrow consumer, one array per chunk."""
+
+    def test_a_column_streams_as_its_chunks_sharing_their_buffers(self) -> None:
+        source = pa.chunked_array([pa.array([1, 2], pa.int64()), pa.array([3], pa.int64())])
+        chunked = ChunkedSerie.from_(source)
+        exported = pa.chunked_array(chunked)
+        assert exported.equals(source)
+        assert exported.num_chunks == 2
+        for original, chunk in zip(source.chunks, exported.chunks):
+            assert buffer_locations(chunk) == buffer_locations(original)
+        # A requested type is applied by the one cast.
+        assert pa.chunked_array(chunked, type=pa.float64()).to_pylist() == [1.0, 2.0, 3.0]
+
+    def test_a_record_streams_one_batch_per_chunk_under_its_exact_schema(self) -> None:
+        mapping = pa.map_(pa.string(), pa.int64(), keys_sorted=True)
+        source = pa.Table.from_batches(
+            [
+                pa.record_batch({"lookup": pa.array([[("a", 1)]], mapping)}),
+                pa.record_batch({"lookup": pa.array([[("b", 2)]], mapping)}),
+            ]
+        ).replace_schema_metadata({"owner": "table"})
+        chunked = ChunkedSerie.from_(source)
+        exported = pa.table(chunked)
+        assert exported.equals(source, check_metadata=True)
+        assert exported.schema.field("lookup").type.keys_sorted
+        assert [batch.num_rows for batch in exported.to_batches()] == [1, 1]
+        for original, batch in zip(source.to_batches(), exported.to_batches()):
+            assert buffer_locations(batch.column(0)) == buffer_locations(original.column(0))
+        # A native chunked serie never crosses its own capsule inside the
+        # binding: it lands as what it holds, the sorted keys kept.
+        assert ChunkedSerie.from_arrow_reader(chunked).field == chunked.field

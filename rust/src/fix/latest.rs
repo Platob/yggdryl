@@ -43,7 +43,7 @@ use std::sync::Arc;
 
 use smol_str::SmolStr;
 
-use super::build::{stated as stated_field, typed_spelling};
+use super::build::{stated as stated_field, typed_spelling_remembered};
 use super::entry::wire_text;
 use super::msg::FixMsg;
 use super::registry::{FixMap, name_key};
@@ -699,19 +699,23 @@ fn occurrence_members(term: &Term) -> Option<Vec<(SmolStr, &Term)>> {
 /// which state `D` is for *this* field. Anything else goes through the value
 /// contract first - an instant lands in an instant column as itself - and
 /// through its wire text only where that refuses.
-fn converted(registry: &FixRegistry, target: &Field, value: &Scalar) -> Scalar {
+/// `known` is the registry's own field, never a stated clone of it: the
+/// translation is read off the registry's memo, which is keyed by the
+/// field's address, and a clone would miss it on every call. Only a null
+/// reading tells the two apart, and a null is answered as null either way.
+fn converted(registry: &FixRegistry, known: &Field, value: &Scalar) -> Scalar {
     if value.is_null() {
         return Scalar::Null;
     }
     if !matches!(value, crate::string_scalars!(_)) {
-        if let Ok(typed) = target.scalar(value.clone()) {
+        if let Ok(typed) = known.scalar(value.clone()) {
             if !typed.is_null() {
                 return typed;
             }
         }
     }
     match wire_text(value) {
-        Some(text) => typed_spelling(registry, target, &text),
+        Some(text) => typed_spelling_remembered(registry, known, &text),
         None => Scalar::Null,
     }
 }
@@ -921,7 +925,6 @@ impl<'msg> Restater<'msg> {
         member: bool,
         ruled: &mut Vec<(&'msg Field, &'values Scalar)>,
     ) -> bool {
-        let mut reached: Vec<*const Field> = Vec::new();
         for (field, value) in fields.iter().zip(values) {
             if tag_and_counter(self.registry, field).1.is_some() {
                 if let (Some(members), Some(rows)) =
@@ -955,19 +958,12 @@ impl<'msg> Restater<'msg> {
             if member && !field.is_nullable() {
                 return false;
             }
+            // Two children reaching one registry field would have to share
+            // its exact name, which no struct holds, so the name test below
+            // is what keeps each field reached once.
             let Some(known) = self.resolve(field) else {
                 continue;
             };
-            if reached.iter().any(|held| std::ptr::eq(*held, known)) {
-                return false;
-            }
-            // Sized once, on the first field reached, for every child the
-            // level has: a level reaching nothing allocates nothing here,
-            // and one reaching a hundred grows the list once.
-            if reached.capacity() == 0 {
-                reached.reserve_exact(fields.len());
-            }
-            reached.push(known);
             let nullable = if member {
                 field.is_nullable()
             } else {
@@ -1245,7 +1241,7 @@ impl<'msg> Restater<'msg> {
         // A write replaces the child it reached or appends a field no child
         // is named as, so the level's children stay named once.
         let root = DataType::from(StructType::from_unique_fields(fields)).required_field("row");
-        let shape = shape_digest(&root, false);
+        let shape = shape_digest(&root);
         Some((root, Scalar::from_sequence(values), shape))
     }
 
@@ -1370,21 +1366,21 @@ impl<'msg> Restater<'msg> {
         value: Scalar,
         rooted: bool,
     ) -> Option<Write> {
-        let target = stated_field(self.msg.known_by_name(name)?);
-        let tag = target.as_fix().tag().ok().flatten()?;
+        let known = self.msg.known_by_name(name)?;
+        let tag = known.as_fix().tag().ok().flatten()?;
         let own = source.is_some_and(|source| source.tag == tag);
         let value = match (source, term) {
             (Some(source), Term::Literal(literal)) if own => match literal.value().as_str() {
-                Some(text) => typed_spelling(
+                Some(text) => typed_spelling_remembered(
                     self.registry,
-                    &target,
+                    known,
                     &restated_tokens(source.value, named, text),
                 ),
-                None => converted(self.registry, &target, &value),
+                None => converted(self.registry, known, &value),
             },
-            _ => converted(self.registry, &target, &value),
+            _ => converted(self.registry, known, &value),
         };
-        self.column_write(writes, own, tag, target, value, rooted)
+        self.column_write(writes, own, tag, stated_field(known), value, rooted)
     }
 
     /// Every write one of the specification's rules makes at `level`, or
@@ -1435,41 +1431,43 @@ impl<'msg> Restater<'msg> {
         rooted: bool,
         owning: bool,
     ) -> Option<Write> {
-        let target_of = |tag: i32| self.msg.known_by_tag(tag).map(stated_field);
+        // The registry's own field types the value, so the memo answers;
+        // the stated clone is what the column is written under.
+        let known_of = |tag: i32| self.msg.known_by_tag(tag);
         match *fill {
             Fill::Constant { tag, text } => {
-                let target = target_of(tag)?;
+                let known = known_of(tag)?;
                 let own = owning && source.tag == tag;
                 let value = if own {
-                    typed_spelling(
+                    typed_spelling_remembered(
                         self.registry,
-                        &target,
+                        known,
                         &restated_tokens(source.value, named, text),
                     )
                 } else {
-                    typed_spelling(self.registry, &target, text)
+                    typed_spelling_remembered(self.registry, known, text)
                 };
-                self.column_write(writes, own, tag, target, value, rooted)
+                self.column_write(writes, own, tag, stated_field(known), value, rooted)
             }
             Fill::Source { tag } => {
-                let target = target_of(tag)?;
-                let value = converted(self.registry, &target, source.value);
+                let known = known_of(tag)?;
+                let value = converted(self.registry, known, source.value);
                 self.column_write(
                     writes,
                     owning && source.tag == tag,
                     tag,
-                    target,
+                    stated_field(known),
                     value,
                     rooted,
                 )
             }
             Fill::From { tag, source: other } => {
-                let target = target_of(tag)?;
-                let value = converted(self.registry, &target, self.stated_at(reads, other)?);
-                self.column_write(writes, false, tag, target, value, rooted)
+                let known = known_of(tag)?;
+                let value = converted(self.registry, known, self.stated_at(reads, other)?);
+                self.column_write(writes, false, tag, stated_field(known), value, rooted)
             }
             Fill::Join { tag, parts } => {
-                let target = target_of(tag)?;
+                let known = known_of(tag)?;
                 let mut joined = String::new();
                 for part in parts {
                     match *part {
@@ -1481,8 +1479,8 @@ impl<'msg> Restater<'msg> {
                         }
                     }
                 }
-                let value = typed_spelling(self.registry, &target, &joined);
-                self.column_write(writes, false, tag, target, value, rooted)
+                let value = typed_spelling_remembered(self.registry, known, &joined);
+                self.column_write(writes, false, tag, stated_field(known), value, rooted)
             }
             Fill::Occurrence { group, members } => {
                 self.occurrence_write(writes, reads, source, group, members)
@@ -1579,10 +1577,7 @@ impl<'msg> Restater<'msg> {
             };
             let known = self.msg.known_by_name(name)?;
             let tag = known.as_fix().tag().ok().flatten()?;
-            constants.push((
-                tag,
-                converted(self.registry, &stated_field(known), literal.value()),
-            ));
+            constants.push((tag, converted(self.registry, known, literal.value())));
         }
         let matched = occurrences.iter().position(|occurrence| {
             occurrence.as_ref().is_some_and(|held| {
@@ -1670,10 +1665,7 @@ impl<'msg> Restater<'msg> {
         for member in members {
             if let Fill::Constant { tag, text } = *member {
                 let known = self.msg.known_by_tag(tag)?;
-                constants.push((
-                    tag,
-                    typed_spelling(self.registry, &stated_field(known), text),
-                ));
+                constants.push((tag, typed_spelling_remembered(self.registry, known, text)));
             }
         }
         let matched = occurrences.iter().position(|occurrence| {
@@ -1927,20 +1919,21 @@ pub(super) fn sync_group_occurrence(
     let Some(counter_tag) = definition.as_fix().counter()? else {
         return Ok(());
     };
-    let Some(selector_field) = registry.get_field_by_tag(selector_tag).map(stated_field) else {
+    let Some(selector_known) = registry.get_field_by_tag(selector_tag) else {
         return Ok(());
     };
-    let Some(value_field) = registry.get_field_by_tag(value_tag).map(stated_field) else {
+    let Some(value_known) = registry.get_field_by_tag(value_tag) else {
         return Ok(());
     };
     let Some(counter_field) = registry.get_field_by_tag(counter_tag).map(stated_field) else {
         return Ok(());
     };
-    let selector = typed_spelling(&registry, &selector_field, selector);
+    let selector = typed_spelling_remembered(&registry, selector_known, selector);
     if selector.is_null() {
         return Ok(());
     }
-    let value = value.map(|held| typed_spelling(&registry, &value_field, held));
+    let value = value.map(|held| typed_spelling_remembered(&registry, value_known, held));
+    let (selector_field, value_field) = (stated_field(selector_known), stated_field(value_known));
     if value.as_ref().is_some_and(Scalar::is_null) {
         return Ok(());
     }
@@ -2212,7 +2205,7 @@ pub(super) fn restate(msg: &mut FixMsg) -> Result<()> {
         // retype or replace, so nothing is rebuilt. One a rule applies to
         // is that message but for the rule's writes, which land on the
         // level as it arrived.
-        let shape = shape_digest(root, false);
+        let shape = shape_digest(root);
         match restater.shape(children, values, shape) {
             Shape::Canonical => return Ok(()),
             Shape::Ruled => {

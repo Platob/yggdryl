@@ -1520,23 +1520,18 @@ mod arrow {
         if evaluated.data_type() == field.as_arrow_field_ref()?.data_type() {
             return Ok(evaluated);
         }
-        // The projection declared a datatype the term does not produce. A
-        // value the column cannot hold becomes null, the best-effort reading
-        // of a cast - unless the column is declared `not null`, where a null
-        // is refused anyway and the cast says which value could not be held.
-        cast.reconcile(
-            field,
-            None,
-            evaluated,
-            ArrowCastOptions::new().with_safe(field.is_nullable()),
-        )
-        .map_err(|error| Error::InvalidRecord {
-            path: smol_str::format_smolstr!("$.{}", field.name()),
-            reason: smol_str::format_smolstr!(
-                "expected every value to fit the required column {:?}, got {error}",
-                field.name()
-            ),
-        })
+        // The projection declared a datatype the term does not produce, so it
+        // casts by the column's own rule: a value a nullable column cannot
+        // hold becomes null, and a `not null` column refuses that value or a
+        // null by name.
+        cast.reconcile(field, None, evaluated, ArrowCastOptions::new())
+            .map_err(|error| Error::InvalidRecord {
+                path: smol_str::format_smolstr!("$.{}", field.name()),
+                reason: smol_str::format_smolstr!(
+                    "expected every value to fit the required column {:?}, got {error}",
+                    field.name()
+                ),
+            })
     }
 
     /// One struct's projected columns, laid back out at the struct's own

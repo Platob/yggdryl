@@ -178,6 +178,11 @@ path = "benchmarks/graph.rs"
 harness = false
 
 [[bench]]
+name = "fix_allocations"
+path = "benchmarks/fix_allocations.rs"
+harness = false
+
+[[bench]]
 name = "uri"
 path = "benchmarks/uri.rs"
 harness = false

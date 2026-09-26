@@ -1369,7 +1369,7 @@ impl FixMsg {
             .then(|| derived_marketoperationid(&self.registry, self.header.msgtype()));
         let text = |value: Option<Scalar>| {
             value
-                .and_then(|held| held.as_str().map(str::trim).map(str::to_owned))
+                .and_then(|held| held.as_str().map(str::trim).map(SmolStr::new))
                 .filter(|held| !held.is_empty())
         };
         let by_tag = |tag: i32| self.get_by_tag(tag).filter(|held| !held.is_null());
@@ -1431,12 +1431,12 @@ impl FixMsg {
         // instrument key names, else the one it is listed on - each an ISO
         // 10383 MIC or the Reuters mnemonic FIX 4.2 spelled it in, a code
         // neither reading resolves naming none.
-        let market = |held: String| MicCode::from_market(&held);
+        let market = |held: &str| MicCode::from_market(held);
         let miccode = word(30)
-            .and_then(market)
-            .or_else(|| word(100).and_then(market))
-            .or_else(|| named.map(|named| named.mic).and_then(market))
-            .or_else(|| word(207).and_then(market));
+            .and_then(|held| market(&held))
+            .or_else(|| word(100).and_then(|held| market(&held)))
+            .or_else(|| named.as_ref().and_then(|named| market(&named.mic)))
+            .or_else(|| word(207).and_then(|held| market(&held)));
         // Whether it could trade, from whichever status says so, in the
         // codes FIX's own enumerations state. A status that is about
         // something else - a code neither list names - says nothing either
@@ -1545,7 +1545,7 @@ impl FixMsg {
                 .unwrap_or_else(Unit::none),
         );
         event.set_tif(tif.and_then(|held| TimeInForce::from_spelling(&held)));
-        event.set_ticker(symbolticker.map(SmolStr::from));
+        event.set_ticker(symbolticker);
         event.set_cficode(cficode);
         for id in self.derived.iter() {
             securityids.insert(id.clone());
@@ -1632,9 +1632,9 @@ impl FixMsg {
             self.get_by_tag(22).as_ref().and_then(scalar_text),
             self.get_by_tag(48).as_ref().and_then(scalar_text),
         );
-        for occurrence in self.group_members("secaltids", &["securityaltidsource", "securityaltid"])
+        for [source, code] in self.group_rows("secaltids", ["securityaltidsource", "securityaltid"])
         {
-            state("secaltids", occurrence[0].clone(), occurrence[1].clone());
+            state("secaltids", source, code);
         }
         // A crated column's row-stated entry is the crate's own statement,
         // ranked after the wire's and before a name a bridge happened to
@@ -1705,41 +1705,30 @@ impl FixMsg {
     }
 
     /// The stated members of each occurrence of a root repeating group, in
-    /// occurrence order; empty where the message carries no such group.
-    fn group_members(&self, group: &str, members: &[&str]) -> Vec<Vec<Option<SmolStr>>> {
-        let Some(at) = self.field.index_of(group) else {
-            return Vec::new();
-        };
-        let Some(sequence) = self
-            .field
-            .fields()
-            .get(at)
-            .and_then(|column| column.dtype().as_serie_type())
-        else {
-            return Vec::new();
-        };
-        let item = sequence.item();
-        let positions: Vec<Option<usize>> =
-            members.iter().map(|name| item.index_of(name)).collect();
-        let Some(rows) = self
-            .value
-            .as_sequence()
-            .and_then(|values| values.get(at))
-            .and_then(Scalar::as_serie)
-        else {
-            return Vec::new();
-        };
-        rows.iter()
-            .filter_map(|occurrence| {
+    /// occurrence order, the members' positions resolved once; nothing where
+    /// the message carries no such group.
+    fn group_rows<const N: usize>(
+        &self,
+        group: &str,
+        members: [&str; N],
+    ) -> impl Iterator<Item = [Option<SmolStr>; N]> + '_ {
+        let group = self.field.index_of(group).and_then(|at| {
+            let sequence = self.field.fields().get(at)?.dtype().as_serie_type()?;
+            let positions = members.map(|name| sequence.item().index_of(name));
+            let rows = self.value.as_sequence()?.get(at)?.as_serie()?;
+            Some((rows, positions))
+        });
+        group.into_iter().flat_map(|(rows, positions)| {
+            // The row lives inside the closure, so a column-backed group's
+            // owned row is read here rather than borrowed out.
+            rows.iter().filter_map(move |occurrence| {
                 let held = occurrence.as_sequence()?;
                 Some(
                     positions
-                        .iter()
-                        .map(|position| position.and_then(|at| held.get(at)).and_then(scalar_text))
-                        .collect(),
+                        .map(|position| position.and_then(|at| held.get(at)).and_then(scalar_text)),
                 )
             })
-            .collect()
+        })
     }
 
     /// Rebuilds the account, user and alternate identifier maps from the
@@ -1750,28 +1739,13 @@ impl FixMsg {
     /// different one states nothing and is kept as an anomaly.
     fn rebuild_idmaps(&mut self) {
         let mut maps = [IdMap::new(), IdMap::new(), IdMap::new()];
-        let mut parties: Option<Vec<Vec<Option<SmolStr>>>> = None;
         let mut dropped = Vec::new();
         let registry = Arc::clone(&self.registry);
         for (tag, source) in registry.idmap_sources() {
-            let stated: Vec<SmolStr> = match source.role() {
-                None => self
-                    .get_by_tag(*tag)
-                    .as_ref()
-                    .and_then(scalar_text)
-                    .into_iter()
-                    .collect(),
-                Some(role) => parties
-                    .get_or_insert_with(|| self.group_members(PARTIES, &[PARTYROLE, PARTYID]))
-                    .iter()
-                    .filter(|occurrence| occurrence[0].as_deref() == Some(role))
-                    .filter_map(|occurrence| occurrence[1].clone())
-                    .collect(),
-            };
             let map = &mut maps[source.map() as usize];
-            for value in stated {
-                if crate::code::is_null_like(&value) {
-                    continue;
+            let mut admit = |value: &str| {
+                if crate::code::is_null_like(value) {
+                    return;
                 }
                 match map.get(source.key()) {
                     Some(held) if held != value => {
@@ -1791,7 +1765,22 @@ impl FixMsg {
                     }
                     Some(_) => {}
                     None => {
-                        let _ = map.insert(source.key(), &value);
+                        let _ = map.insert(source.key(), value);
+                    }
+                }
+            };
+            match source.role() {
+                None => {
+                    if let Some(value) = self.get_by_tag(*tag).as_ref().and_then(scalar_text) {
+                        admit(&value);
+                    }
+                }
+                Some(role) => {
+                    for [partyrole, partyid] in self.group_rows(PARTIES, [PARTYROLE, PARTYID]) {
+                        if let Some(value) = partyid.filter(|_| partyrole.as_deref() == Some(role))
+                        {
+                            admit(&value);
+                        }
                     }
                 }
             }
@@ -2048,8 +2037,9 @@ impl FixMsg {
     fn currhashcode(&self) -> u64 {
         let mut state = crate::xxhash::Xxh3::new();
         crate::graph::element::feed_event_facts(&mut state, &*self.event);
-        let mut cells: Vec<(SmolStr, Scalar)> =
-            Vec::with_capacity(self.field.fields().len() + identity::LIFTED_TAGS.len() + 2);
+        // Inline: text, msgtype, msgcat and the lifted facts are 26 cells,
+        // leaving six metadata keys before a message spills to the heap.
+        let mut cells: SmallVec<[(SmolStr, Scalar); 32]> = SmallVec::new();
         if let Some(text) = self.text.as_deref() {
             cells.push((SmolStr::new_static("text"), Scalar::from(text)));
         }

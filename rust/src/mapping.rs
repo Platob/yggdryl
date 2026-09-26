@@ -378,7 +378,7 @@ mod arrow {
         pub(crate) fn arrow_storage(&self) -> Result<ArrowDataType> {
             validate_map_entries(self.entries())?;
             Ok(ArrowDataType::Map(
-                self.entries().clone().into_arrow_field_ref()?,
+                Arc::clone(self.entries().as_arrow_field_ref()?),
                 self.keys_sorted(),
             ))
         }
@@ -397,7 +397,7 @@ mod arrow {
                 }
                 Err(parameters) => {
                     validate_map_entries(&parameters.entries)?;
-                    parameters.entries.clone().into_arrow_field_ref()?
+                    Arc::clone(parameters.entries.as_arrow_field_ref()?)
                 }
             };
             Ok(ArrowDataType::Map(entries, keys_sorted))

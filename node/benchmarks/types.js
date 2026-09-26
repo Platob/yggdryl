@@ -11,6 +11,7 @@ const {
   MimeType,
   Scalar,
   Serie,
+  SerieReader,
   Plan,
   Term,
   StringEnum,
@@ -138,6 +139,12 @@ benchmark('chunked_serie/into_serie', () => heldChunked.intoSerie())
 benchmark('chunked_serie/into_arrow_array', () => heldChunked.intoArrowArray())
 benchmark('chunked_serie/into_arrow_table', () => heldChunkedTable.intoArrowTable())
 benchmark('chunked_serie/child', () => heldChunkedTable.child('id'))
+// A held record column streams with no plan compiled; a cast is one plan
+// over every record the reader holds, applied as the cast is asked for.
+const heldRecords = Serie.fromArrowBatch(chunkedTable)
+const heldRecordsWide = fields.struct('row', [fields.float64('id')], { nullable: false })
+benchmark('serie_reader/from_serie', () => SerieReader.fromSerie(heldRecords))
+benchmark('serie_reader/cast', () => SerieReader.fromSerie(heldRecords).cast(heldRecordsWide))
 benchmark('schema/map_of', () => fields.mapOf('labels', 'utf8', 'int32'))
 benchmark('schema/time_infer_time32', () => DataType.time('ms'))
 benchmark('schema/time_infer_time64', () => DataType.time('ns'))

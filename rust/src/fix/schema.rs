@@ -54,6 +54,7 @@ use crate::StructType;
 use crate::{DataType, Field, Result};
 
 use super::FixRegistry;
+use smallvec::{SmallVec, smallvec};
 
 /// The standard header, in the order FIX 4.4 declares it.
 ///
@@ -708,8 +709,9 @@ thread_local! {
 const REMEMBERED_COLUMN_PLANS: usize = 4_096;
 
 /// How many schemas of one shape one thread remembers plans for - one
-/// per registry they were planned against - past which the oldest is
-/// forgotten. These are plans, not retained registries.
+/// per registry they were planned against, or per metadata a root of that
+/// shape carries - past which the oldest is forgotten. These are plans,
+/// not retained registries.
 const REMEMBERED_SCHEMAS_PER_SHAPE: usize = 4;
 
 /// The schemas this thread planned last, by the address of each one's
@@ -760,7 +762,13 @@ pub(super) fn column_plan_of(schema: &Field, registry: &Arc<FixRegistry>) -> Res
     if let Some(plan) = planned {
         return Ok(plan);
     }
-    let shape = shape_digest(schema, true);
+    // The shape names the bucket and never the metadata's storage: a door
+    // builds its fixed root per reader, each column's metadata edited into
+    // storage of its own, and a digest of those addresses filed every
+    // reader's root as a new shape and retained it. What the bucket holds
+    // is verified by content below, so a root of one shape under other
+    // metadata is another entry of the bucket, never a plan reused wrongly.
+    let shape = shape_digest(schema);
     let plan = COLUMN_PLANS.with(|held| -> Result<ColumnPlan> {
         if let Some(planned) = held.borrow().get(&shape) {
             for (known, resolver, plan) in planned {
@@ -820,35 +828,32 @@ pub(super) fn tag_and_counter(registry: &FixRegistry, field: &Field) -> (Option<
 }
 
 /// A digest of one root's shape: its children's names, datatype
-/// identifiers and nullability, nested children included, and each
-/// child's metadata storage where `metadata` says so.
+/// identifiers and nullability, nested children included, and never their
+/// metadata, which is verified by content wherever the digest is believed.
 ///
 /// Two roots of one shape digest alike, so a table keyed by the digest
 /// finds what was read against a root of this shape; two of different
 /// shapes may collide, so what the table holds says whether it is the
 /// same shape - [`same_shape`], or the schema equality a caller compares.
-pub(super) fn shape_digest(root: &Field, metadata: bool) -> u64 {
+pub(super) fn shape_digest(root: &Field) -> u64 {
     // The dictionary's own fold rather than a keyed hash: a root is a
     // hundred children, each a few writes, read once per message, and
     // what the digest names is verified before it is believed.
     let mut state = super::registry::Mix::default();
-    digest_shape(root.fields(), metadata, &mut state);
+    digest_shape(root.fields(), &mut state);
     state.finish()
 }
 
-fn digest_shape(fields: &[Field], metadata: bool, state: &mut super::registry::Mix) {
+fn digest_shape(fields: &[Field], state: &mut super::registry::Mix) {
     state.write_usize(fields.len());
     for field in fields {
         state.write(field.name().as_bytes());
         field.dtype().id().hash(state);
         state.write_u8(u8::from(field.is_nullable()));
-        if metadata {
-            state.write_usize(field.as_metadata().storage_address());
-        }
         match field.dtype() {
-            DataType::Struct(children) => digest_shape(children.as_fields(), metadata, state),
+            DataType::Struct(children) => digest_shape(children.as_fields(), state),
             DataType::Serie(item) | DataType::LargeSerie(item) => {
-                digest_shape(std::slice::from_ref(&**item), metadata, state);
+                digest_shape(std::slice::from_ref(&**item), state);
             }
             _ => {}
         }
@@ -1321,14 +1326,19 @@ fn covers_members(
     if fields.len() != values.len() {
         return false;
     }
-    let mut owned = vec![false; fields.len()];
+    // One bit per member, on the stack for a level of up to 128 of them:
+    // this runs once per occurrence of every group a row states.
+    let mut owned: SmallVec<[u64; 2]> = smallvec![0; fields.len().div_ceil(64)];
+    let bit = |index: usize| (index / 64, 1_u64 << (index % 64));
     for entry in entries {
         let Some(index) = covered_member_index(fields, facts, entry) else {
             return false;
         };
-        if std::mem::replace(&mut owned[index], true) {
+        let (word, mask) = bit(index);
+        if owned[word] & mask != 0 {
             return false;
         }
+        owned[word] |= mask;
         if !covers_entry(registry, &fields[index], &values[index], entry) {
             return false;
         }
@@ -1339,7 +1349,8 @@ fn covers_members(
         .enumerate()
         .filter(|(_, (value, _))| !value.is_null())
         .all(|(index, (value, (tag, counter)))| {
-            if owned[index] {
+            let (word, mask) = bit(index);
+            if owned[word] & mask != 0 {
                 return true;
             }
             // A group's scalar counter is represented by the same entry
@@ -2162,126 +2173,140 @@ impl super::FixMsg {
         if !has_residual_columns {
             return crate::Scalar::try_sequence(columns.len(), fitted_cell);
         }
-        let mut values = Vec::with_capacity(columns.len());
-        for index in 0..columns.len() {
-            values.push(fitted_cell(index)?);
-        }
-        // A group occurrence none of the fixed Serie's members can represent
-        // belongs wholly to the residual record. Its scalar counter must stay
-        // there with it: projecting the count beside a null Serie would claim
-        // that the fixed group represented occurrences it cannot describe.
-        // A bare scalar counter with no group still stands as stated.
-        for (group_index, group) in plan.iter().enumerate() {
-            let Some(counter) = group.counter else {
-                continue;
-            };
-            if !values[group_index].is_null() || self.index_of_group(counter).is_none() {
-                continue;
+        // The row is written where it is stored: every fitted cell first,
+        // then the counters, the record and the count decided over them.
+        crate::Scalar::try_build_sequence(columns.len(), |values| {
+            for (index, slot) in values.iter_mut().enumerate() {
+                *slot = fitted_cell(index)?;
             }
-            if let Some(counter_index) = plan
-                .iter()
-                .position(|held| held.tag == Some(counter) && held.counter.is_none())
-            {
-                values[counter_index] = crate::Scalar::Null;
-            }
-        }
-        let entries = self.entries();
-        let prunes = plan.iter().any(|column| column.entries);
-        let mut represented = Vec::with_capacity(if prunes {
-            columns.len().min(entries.len())
-        } else {
-            0
-        });
-        if prunes {
-            for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
-                let Some(tag) = planned.counter.or(planned.tag) else {
+            // A group occurrence none of the fixed Serie's members can represent
+            // belongs wholly to the residual record. Its scalar counter must stay
+            // there with it: projecting the count beside a null Serie would claim
+            // that the fixed group represented occurrences it cannot describe.
+            // A bare scalar counter with no group still stands as stated.
+            for (group_index, group) in plan.iter().enumerate() {
+                let Some(counter) = group.counter else {
                     continue;
                 };
-                if planned.shared || values[index].is_null() {
+                if !values[group_index].is_null() || self.index_of_group(counter).is_none() {
                     continue;
                 }
-                let source = match planned.counter {
-                    Some(counter) => self.index_of_group(counter),
-                    None => self.unique_index_of_tag(tag),
-                };
-                let Some(source) = source else {
-                    continue;
-                };
-                let Some(source_field) = self.as_field().get_field_at(source) else {
-                    continue;
-                };
-                let Some(source_value) = self.as_value().get(source) else {
-                    continue;
-                };
-                let mut matching = entries
+                if let Some(counter_index) = plan
                     .iter()
-                    .enumerate()
-                    .filter(|(_, entry)| entry.tag() == tag);
-                let Some((entry_index, entry)) = matching.next() else {
-                    continue;
-                };
-                if matching.next().is_some() {
-                    continue;
+                    .position(|held| held.tag == Some(counter) && held.counter.is_none())
+                {
+                    values[counter_index] = crate::Scalar::Null;
                 }
-                if column.dtype().is_nested() {
-                    if planned.counter.is_some()
-                        && plan
-                            .iter()
-                            .filter(|held| held.counter == planned.counter)
-                            .count()
-                            != 1
-                    {
+            }
+            let entries = self.entries();
+            let prunes = plan.iter().any(|column| column.entries);
+            let mut represented = Vec::with_capacity(if prunes {
+                columns.len().min(entries.len())
+            } else {
+                0
+            });
+            if prunes {
+                for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
+                    let Some(tag) = planned.counter.or(planned.tag) else {
+                        continue;
+                    };
+                    if planned.shared || values[index].is_null() {
                         continue;
                     }
-                    if !source_field.dtype().is_nested()
+                    let source = match planned.counter {
+                        Some(counter) => self.index_of_group(counter),
+                        None => self.unique_index_of_tag(tag),
+                    };
+                    let Some(source) = source else {
+                        continue;
+                    };
+                    let Some(source_field) = self.as_field().get_field_at(source) else {
+                        continue;
+                    };
+                    let Some(source_value) = self.as_value().get(source) else {
+                        continue;
+                    };
+                    let mut matching = entries
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, entry)| entry.tag() == tag);
+                    let Some((entry_index, entry)) = matching.next() else {
+                        continue;
+                    };
+                    if matching.next().is_some() {
+                        continue;
+                    }
+                    if column.dtype().is_nested() {
+                        if planned.counter.is_some()
+                            && plan
+                                .iter()
+                                .filter(|held| held.counter == planned.counter)
+                                .count()
+                                != 1
+                        {
+                            continue;
+                        }
+                        if !source_field.dtype().is_nested()
+                            || !covers_entry(self.registry(), column, &values[index], entry)
+                        {
+                            continue;
+                        }
+                    } else if source_field.dtype().is_nested()
+                        || !crate::folds_equal(source_field.name(), entry.name())
+                        || !entry.entries().is_empty()
+                        || *source_value != values[index]
                         || !covers_entry(self.registry(), column, &values[index], entry)
                     {
                         continue;
                     }
-                } else if source_field.dtype().is_nested()
-                    || !crate::folds_equal(source_field.name(), entry.name())
-                    || !entry.entries().is_empty()
-                    || *source_value != values[index]
-                    || !covers_entry(self.registry(), column, &values[index], entry)
-                {
-                    continue;
+                    represented.push(entry_index);
                 }
-                represented.push(entry_index);
+                represented.sort_unstable();
+                represented.dedup();
             }
-            represented.sort_unstable();
-            represented.dedup();
-        }
-        let mut residual = Vec::with_capacity(entries.len() - represented.len());
-        for (index, entry) in entries.iter().enumerate() {
-            if represented.binary_search(&index).is_err() {
-                residual.push(entry);
-            }
-        }
-        let record = columns
-            .iter()
-            .any(|column| column.name() == FIXENTRIES_COLUMN)
-            .then(|| {
-                crate::Scalar::try_sequence(residual.len(), |index| {
-                    entry_scalar(residual[index], 1)
+            // The residual record is every entry no column represents,
+            // written straight into the run it is stored in: `represented`
+            // is sorted and holds each index once, so the count is exact.
+            let residual = entries.len() - represented.len();
+            let record = columns
+                .iter()
+                .any(|column| column.name() == FIXENTRIES_COLUMN)
+                .then(|| {
+                    let mut kept = entries
+                        .iter()
+                        .enumerate()
+                        .filter(|(index, _)| represented.binary_search(index).is_err())
+                        .map(|(_, entry)| entry);
+                    crate::Scalar::try_fill_sequence(residual, |index, slot| {
+                        let Some(entry) = kept.next() else {
+                            return Err(crate::Error::Codec {
+                                format: "fix",
+                                position: index,
+                                reason: "the residual entries ran short of their count".into(),
+                            });
+                        };
+                        *slot = entry_scalar(entry, 1)?;
+                        Ok(())
+                    })
                 })
-            })
-            .transpose()?;
-        let count = crate::Scalar::from(i32::try_from(residual.len()).unwrap_or(i32::MAX));
-        for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
-            values[index] = match column.name() {
-                FIXENTRIES_COLUMN => {
-                    let record = record.clone().unwrap_or(crate::Scalar::Null);
-                    if planned.entries {
-                        record
-                    } else {
-                        fitted(column, record)?
+                .transpose()?;
+            let count = crate::Scalar::from(i32::try_from(residual).unwrap_or(i32::MAX));
+            for (index, (column, planned)) in columns.iter().zip(plan.iter()).enumerate() {
+                values[index] = match column.name() {
+                    FIXENTRIES_COLUMN => {
+                        let record = record.clone().unwrap_or(crate::Scalar::Null);
+                        if planned.entries {
+                            record
+                        } else {
+                            fitted(column, record)?
+                        }
                     }
-                }
-                NOFIXENTRIES_COLUMN => fitted(column, count.clone())?,
-                _ => continue,
-            };
-        }
-        Ok(crate::Scalar::from_sequence(values))
+                    NOFIXENTRIES_COLUMN => fitted(column, count.clone())?,
+                    _ => continue,
+                };
+            }
+            Ok(())
+        })
     }
 
     /// One group's value, laid out the way the fixed column declares it.
@@ -2685,9 +2710,9 @@ pub mod internals {
         super::ordered_group_union(union, &stated, group)
     }
 
-    /// The digest of a row's shape, with or without the documents it carries.
+    /// The digest of a row's shape.
     #[must_use]
-    pub fn shape_digest(root: &Field, metadata: bool) -> u64 {
-        super::shape_digest(root, metadata)
+    pub fn shape_digest(root: &Field) -> u64 {
+        super::shape_digest(root)
     }
 }

@@ -1,4 +1,5 @@
-//! Test-binary allocation observation for the sequential ULBridge profile.
+//! Allocation observation for the sequential ULBridge profile and the
+//! allocation-counting benchmark: one counting allocator, armed per thread.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -6,12 +7,16 @@ use std::cell::Cell;
 /// Allocation requests observed on the armed thread.
 ///
 /// `requested_bytes` sums allocation sizes and each reallocation's requested
-/// new size. It is not a live-byte or peak-memory measurement.
+/// new size. It is not a live-byte or peak-memory measurement; `live_bytes`
+/// is what the section left allocated - every allocation's size less every
+/// release's, a reallocation counted as its growth - so a section that
+/// drops what it made and retains nothing ends at zero or below.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Counts {
     pub(crate) allocations: u64,
     pub(crate) reallocations: u64,
     pub(crate) requested_bytes: u64,
+    pub(crate) live_bytes: i64,
 }
 
 thread_local! {
@@ -39,12 +44,13 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        record_release(layout.size());
         // SAFETY: this pointer and layout came from the same System allocator.
         unsafe { System.dealloc(pointer, layout) }
     }
 
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        record_reallocation(new_size);
+        record_reallocation(layout.size(), new_size);
         // SAFETY: the original allocation and requested size pass unchanged.
         unsafe { System.realloc(pointer, layout, new_size) }
     }
@@ -58,18 +64,33 @@ fn record_allocation(size: usize) {
         };
         counts.allocations += 1;
         counts.requested_bytes = counts.requested_bytes.saturating_add(size as u64);
+        counts.live_bytes = counts.live_bytes.saturating_add(size as i64);
         active.set(Some(counts));
     });
 }
 
 #[inline]
-fn record_reallocation(new_size: usize) {
+fn record_reallocation(old_size: usize, new_size: usize) {
     ACTIVE.with(|active| {
         let Some(mut counts) = active.get() else {
             return;
         };
         counts.reallocations += 1;
         counts.requested_bytes = counts.requested_bytes.saturating_add(new_size as u64);
+        counts.live_bytes = counts
+            .live_bytes
+            .saturating_add(new_size as i64 - old_size as i64);
+        active.set(Some(counts));
+    });
+}
+
+#[inline]
+fn record_release(size: usize) {
+    ACTIVE.with(|active| {
+        let Some(mut counts) = active.get() else {
+            return;
+        };
+        counts.live_bytes = counts.live_bytes.saturating_sub(size as i64);
         active.set(Some(counts));
     });
 }
@@ -101,11 +122,27 @@ impl Drop for Scope {
     }
 }
 
+/// One armed section a caller closes itself: what a Criterion measurement
+/// drives, arming before its iterations and finishing after them.
+pub(crate) struct Armed(Scope);
+
+/// Arm this thread's counter; [`Armed::finish`] answers what ran meanwhile.
+pub(crate) fn arm() -> Armed {
+    Armed(Scope::arm())
+}
+
+impl Armed {
+    /// Close the section and answer its counts.
+    pub(crate) fn finish(self) -> Counts {
+        self.0.finish()
+    }
+}
+
 /// Run one non-nested section and return its value with the thread-local
 /// allocation requests it made. The scope resets during unwinding too.
 pub(crate) fn measure<T>(body: impl FnOnce() -> T) -> (T, Counts) {
-    let scope = Scope::arm();
+    let armed = arm();
     let value = body();
-    let counts = scope.finish();
+    let counts = armed.finish();
     (value, counts)
 }

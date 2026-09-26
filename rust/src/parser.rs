@@ -2055,7 +2055,11 @@ pub(crate) fn folds_equal(left: &str, right: &str) -> bool {
 }
 
 pub(crate) fn normalized(value: &str) -> String {
-    folded(value).collect()
+    // Sized to the input once: a fold drops separators and lowercases the
+    // rest, so the folded name is the input's length or near it.
+    let mut name = String::with_capacity(value.len());
+    name.extend(folded(value));
+    name
 }
 
 pub(crate) fn precision_to_unit(precision: i64, position: usize) -> Result<TimeUnit> {

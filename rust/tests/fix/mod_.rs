@@ -5109,7 +5109,7 @@ mod internal {
                 .collect();
             (
                 names,
-                yggdryl::internals::fix_schema::shape_digest(msg.as_field(), false),
+                yggdryl::internals::fix_schema::shape_digest(msg.as_field()),
             )
         };
         let mut compared = 0;

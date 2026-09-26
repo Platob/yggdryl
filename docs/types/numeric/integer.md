@@ -265,7 +265,7 @@ Every width is one of Arrow's own and imports back as itself, so the round trip 
 
 ## Casts and overflow
 
-The declared width is the target: text reads into it, another number converts into it by the value it spells, and a magnitude it cannot hold is an error rather than a wrap. `safe` and `nullability` then decide what a failure becomes, on [Cast](../cast.md).
+The declared width is the target: text reads into it, another number converts into it by the value it spells, and a magnitude it cannot hold is an error rather than a wrap. `safe` and the column's nullability then decide what a failure becomes, on [Cast](../cast.md#required-columns).
 
 === "Rust"
 

@@ -21,7 +21,6 @@ def refresh_logging() -> None: ...
 
 CompatibilityScheme = Literal["arrow", "spark", "polars", "pandas", "iceberg"]
 IOMode = Literal["overwrite", "append", "merge", "readonly", "random"]
-Nullability = Literal["default", "strict"]
 Representation = Literal["value", "bits"]
 
 # Anything an Iceberg write takes: every Arrow holder the record surface reads,
@@ -455,7 +454,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -464,7 +462,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -473,7 +470,6 @@ class Serie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @staticmethod
@@ -490,7 +486,6 @@ class Serie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     @property
@@ -534,7 +529,6 @@ class Serie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> Serie: ...
     def into_arrow_scalar(self) -> pyarrow.Scalar: ...
@@ -545,6 +539,14 @@ class Serie:
     def into_pandas(self) -> Any: ...
     def into_polars(self) -> Any: ...
     def into_numpy(self) -> Any: ...
+    # The Arrow PyCapsule Interface, buffers shared: a record column under
+    # the exchange schema of the root it is a batch of, any other column
+    # under its own field; a `requested_schema` capsule is applied by the one
+    # cast, best effort. A run has no layout and raises.
+    def __arrow_c_schema__(self) -> object: ...
+    def __arrow_c_array__(
+        self, requested_schema: object | None = None
+    ) -> tuple[object, object]: ...
     def __len__(self) -> int: ...
     @overload
     def __getitem__(self, key: SupportsIndex) -> Scalar: ...
@@ -622,6 +624,9 @@ class StructSerie(Serie):
     @property
     def names(self) -> list[str]: ...
     def without_child(self, name: str) -> StructSerie: ...
+    # A record column is also the stream of its one batch - what
+    # `SerieReader.from_serie` reads - as a `pyarrow.RecordBatch` is.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 class SerieReader(Iterator[Serie]):
     """One record ``Serie`` per batch of an Arrow stream, each cast by one plan.
@@ -639,7 +644,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A stream - a reader, a table, a frame, a dataset, rows - is not pulled
@@ -652,7 +656,6 @@ class SerieReader(Iterator[Serie]):
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> SerieReader: ...
     # A record column is the batch it is; any other column the one child of
@@ -663,11 +666,24 @@ class SerieReader(Iterator[Serie]):
     # copied or read, and no chunk is the empty stream of its root.
     @staticmethod
     def from_chunked(chunked: ChunkedSerie) -> SerieReader: ...
+    # The records not yet pulled, each cast into `field` by one plan, as a
+    # new reader; this one is spent. A refused option or target leaves it.
+    def cast(
+        self,
+        field: object,
+        *,
+        safe: bool = True,
+        representation: Representation = "value",
+    ) -> SerieReader: ...
     @property
     def field(self) -> Field: ...
     def __iter__(self) -> SerieReader: ...
     def __next__(self) -> Serie: ...
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
+    # The batches not yet pulled as the Arrow PyCapsule Interface's stream,
+    # cast into a `requested_schema` capsule by the one cast; the reader is
+    # spent afterwards, as `into_arrow_reader` spends it.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
 
 class ChunkedSerie:
     """Many columns under one field, held apart: a chunked array, or a table.
@@ -696,7 +712,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # A `pyarrow.ChunkedArray` is its chunks, an Arrow array its one chunk,
@@ -708,7 +723,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # One chunk per batch of anything that streams batches, none joined.
@@ -718,7 +732,6 @@ class ChunkedSerie:
         root: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     # `Serie.from_`'s ladder read as chunks: a chunked array is its chunks, a
@@ -731,7 +744,6 @@ class ChunkedSerie:
         field: object | None = None,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     @property
@@ -761,7 +773,6 @@ class ChunkedSerie:
         chunk: Serie,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     def into_serie(self) -> Serie: ...
@@ -771,7 +782,6 @@ class ChunkedSerie:
         field: object,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> ChunkedSerie: ...
     def into_arrow_chunked_array(self) -> pyarrow.ChunkedArray: ...
@@ -779,6 +789,11 @@ class ChunkedSerie:
     # A record chunk holding an absent row is refused.
     def into_arrow_reader(self) -> pyarrow.RecordBatchReader: ...
     def into_arrow_table(self) -> pyarrow.Table: ...
+    # The Arrow PyCapsule Interface's stream, one array per chunk: a record's
+    # chunks as batches, any other field's as the column a
+    # `pyarrow.ChunkedArray` streams; a `requested_schema` capsule is applied
+    # by the one cast.
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object: ...
     def into_pandas(self) -> Any: ...
     def into_polars(self) -> Any: ...
     def into_numpy(self) -> Any: ...
@@ -1246,6 +1261,7 @@ class DataType:
         self, value: object, *, safe: bool = True
     ) -> pyarrow.Scalar: ...
     def into_arrow(self) -> Any: ...
+    def __arrow_c_schema__(self) -> object: ...
     def with_fields(self, fields: Iterable[Field]) -> DataType: ...
     def into_arrow_schema(self) -> pyarrow.Schema: ...
     # Three formats, one structural model: `into_dict` is the model every
@@ -1652,7 +1668,6 @@ class ArrowCastPlan:
         target: FieldLike,
         *,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> None: ...
     @property
@@ -1661,8 +1676,6 @@ class ArrowCastPlan:
     def target(self) -> Field: ...
     @property
     def safe(self) -> bool: ...
-    @property
-    def nullability(self) -> Nullability: ...
     @property
     def representation(self) -> Representation: ...
     @property
@@ -1735,7 +1748,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatch: ...
     # The applied shape, derived from the two schemas without reading a row.
@@ -1747,7 +1759,6 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.Schema: ...
     def apply_arrow_reader(
@@ -1758,10 +1769,10 @@ class Field:
         transform: bool = True,
         cast: bool = True,
         safe: bool = True,
-        nullability: Nullability = "default",
         representation: Representation = "value",
     ) -> pyarrow.RecordBatchReader: ...
     def into_arrow(self) -> Any: ...
+    def __arrow_c_schema__(self) -> object: ...
     # Three formats, one structural model: `into_dict` is the model every
     # serialized form is expressed over, so the three agree by construction.
     # `indent=None` means no layout - compact JSON, flow-style YAML; an
@@ -3657,7 +3668,10 @@ class RecordOptions:
     @field.setter
     def field(self, field: FieldLike | None) -> None: ...
     @property
-    def safe(self) -> bool: ...
+    def safe(self) -> bool:
+        """Whether a declared or stored nullable column takes a value it cannot
+        convert as null, ``True`` by default; a not-null column refuses it by
+        name either way."""
     @safe.setter
     def safe(self, safe: bool) -> None: ...
     @property

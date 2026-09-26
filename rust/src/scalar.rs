@@ -1594,9 +1594,10 @@ impl Scalar {
     /// stored in. A `Vec` on the way would allocate a second buffer and copy
     /// the whole run between the two, which is what a row build pays per row.
     pub fn from_sequence(values: impl IntoIterator<Item = Self>) -> Self {
-        shared_children(values.into_iter()).map_or_else(Self::empty_sequence, |values| {
-            Self::Serie(Serie::Run(Run::new(values)))
-        })
+        shared_children(values.into_iter(), || Self::Null)
+            .map_or_else(Self::empty_sequence, |values| {
+                Self::Serie(Serie::Run(Run::new(values)))
+            })
     }
 
     /// Build a known-width sequence in its final shared storage.
@@ -1627,42 +1628,70 @@ impl Scalar {
         len: usize,
         mut fill: impl FnMut(usize, &mut Self) -> Result<()>,
     ) -> Result<Self> {
+        Self::try_build_sequence(len, |slots| {
+            slots
+                .iter_mut()
+                .enumerate()
+                .try_for_each(|(index, slot)| fill(index, slot))
+        })
+    }
+
+    /// Build a known-width sequence in place, the whole run at once.
+    ///
+    /// `build` is handed the run's slots - every one still `Null` - and
+    /// writes them in whatever order it reads its sources, revisiting a slot
+    /// as often as it needs; its first refusal stops the build. A row whose
+    /// later cells are decided by its earlier ones is built here, straight
+    /// into the storage it keeps, rather than in a vector copied into it.
+    pub(crate) fn try_build_sequence(
+        len: usize,
+        build: impl FnOnce(&mut [Self]) -> Result<()>,
+    ) -> Result<Self> {
         if len == 0 {
             return Ok(Self::empty_sequence());
         }
         let mut values = (0..len).map(|_| Self::Null).collect::<Arc<[_]>>();
         let unique =
             Arc::get_mut(&mut values).expect("newly collected sequence storage has one owner");
-        for (index, slot) in unique.iter_mut().enumerate() {
-            fill(index, slot)?;
-        }
+        build(unique)?;
         Ok(Self::Serie(Serie::Run(Run::new(values))))
+    }
+
+    /// Build a known-width mapping by writing each entry where it is stored.
+    ///
+    /// `at` is called once per index, in ascending order, and the first
+    /// refusal stops the build; the entries are then held to the one
+    /// duplicate-key rule [`from_mapping`](Self::from_mapping) reads by. A
+    /// map cell read off a column is built here, its entries written
+    /// straight into the storage the mapping keeps.
+    pub(crate) fn try_mapping(
+        len: usize,
+        mut at: impl FnMut(usize) -> Result<(Self, Self)>,
+    ) -> Result<Self> {
+        if len == 0 {
+            return Ok(Self::empty_mapping());
+        }
+        let mut entries = (0..len)
+            .map(|_| (Self::Null, Self::Null))
+            .collect::<Arc<[_]>>();
+        let unique =
+            Arc::get_mut(&mut entries).expect("newly collected mapping storage has one owner");
+        for (index, slot) in unique.iter_mut().enumerate() {
+            *slot = at(index)?;
+        }
+        unique_keys(&entries)?;
+        Ok(Self::Map(Map::new(entries)))
     }
 
     /// Construct an insertion-ordered mapping, rejecting duplicate keys.
     pub fn from_mapping(entries: impl IntoIterator<Item = (Self, Self)>) -> Result<Self> {
         // The duplicate check reads the entries in place, so they are
         // collected once into the storage the mapping keeps.
-        let Some(entries) = shared_children(entries.into_iter()) else {
+        let Some(entries) = shared_children(entries.into_iter(), || (Self::Null, Self::Null))
+        else {
             return Ok(Self::empty_mapping());
         };
-        if entries.len() <= 16 {
-            for (index, (key, _)) in entries.iter().enumerate() {
-                if entries[..index].iter().any(|(existing, _)| existing == key) {
-                    return Err(duplicate_key_error(index));
-                }
-            }
-        } else {
-            // `Scalar`'s hash reads canonical content only, never the
-            // interior-mutable caches a datatype holds, so the key is stable.
-            #[allow(clippy::mutable_key_type)]
-            let mut seen = HashSet::with_capacity(entries.len());
-            for (index, (key, _)) in entries.iter().enumerate() {
-                if !seen.insert(key) {
-                    return Err(duplicate_key_error(index));
-                }
-            }
-        }
+        unique_keys(&entries)?;
         Ok(Self::Map(Map::new(entries)))
     }
 
@@ -2274,17 +2303,76 @@ impl Scalar {
 /// still keep its children. Every other source is written straight into the
 /// slice - one allocation, where a `Vec` on the way costs two and a copy of
 /// the whole run between them.
-fn shared_children<T>(values: impl Iterator<Item = T>) -> Option<Arc<[T]>> {
-    let values: Arc<[T]> = if values.size_hint().1 == Some(0) {
+/// The shared storage of `values`, in one allocation wherever the count is
+/// known.
+///
+/// An iterator that states an exact size - a run's or a column's rows, a
+/// map's entries, a slice - is written straight into storage of that size,
+/// built full of `filler` and overwritten in place, because the standard
+/// library builds a shared slice in one allocation only from the few
+/// iterators it trusts and copies every other through a vector first. A
+/// size that turns out wrong is caught, never trusted: the storage is
+/// rebuilt from what was written and whatever the iterator still yields.
+fn shared_children<T>(
+    mut values: impl Iterator<Item = T>,
+    filler: impl Fn() -> T,
+) -> Option<Arc<[T]>> {
+    let (lower, upper) = values.size_hint();
+    if upper == Some(0) {
         let drained = values.collect::<Vec<_>>();
-        if drained.is_empty() {
-            return None;
+        return (!drained.is_empty()).then(|| Arc::from(drained));
+    }
+    if upper != Some(lower) {
+        let values: Arc<[T]> = values.collect();
+        return (!values.is_empty()).then_some(values);
+    }
+    let mut storage = std::iter::repeat_with(&filler)
+        .take(lower)
+        .collect::<Arc<[T]>>();
+    let slots = Arc::get_mut(&mut storage).expect("newly collected storage has one owner");
+    let mut written = 0;
+    for slot in slots.iter_mut() {
+        let Some(value) = values.next() else {
+            break;
+        };
+        *slot = value;
+        written += 1;
+    }
+    let overflow = values.next();
+    if written == lower && overflow.is_none() {
+        return Some(storage);
+    }
+    let mut rebuilt = Vec::with_capacity(written + usize::from(overflow.is_some()));
+    for slot in slots.iter_mut().take(written) {
+        rebuilt.push(std::mem::replace(slot, filler()));
+    }
+    rebuilt.extend(overflow);
+    rebuilt.extend(values);
+    (!rebuilt.is_empty()).then(|| Arc::from(rebuilt))
+}
+
+/// The one duplicate-key rule a mapping is held to, naming the index of the
+/// first entry restating an earlier key: a scan for a short mapping, a set
+/// past sixteen entries.
+fn unique_keys(entries: &[(Scalar, Scalar)]) -> Result<()> {
+    if entries.len() <= 16 {
+        for (index, (key, _)) in entries.iter().enumerate() {
+            if entries[..index].iter().any(|(existing, _)| existing == key) {
+                return Err(duplicate_key_error(index));
+            }
         }
-        Arc::from(drained)
-    } else {
-        values.collect()
-    };
-    (!values.is_empty()).then_some(values)
+        return Ok(());
+    }
+    // `Scalar`'s hash reads canonical content only, never the
+    // interior-mutable caches a datatype holds, so the key is stable.
+    #[allow(clippy::mutable_key_type)]
+    let mut seen = HashSet::with_capacity(entries.len());
+    for (index, (key, _)) in entries.iter().enumerate() {
+        if !seen.insert(key) {
+            return Err(duplicate_key_error(index));
+        }
+    }
+    Ok(())
 }
 
 fn duplicate_key_error(index: usize) -> Error {

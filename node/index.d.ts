@@ -5838,9 +5838,16 @@ export declare class RecordOptions {
   get name(): string
   /** Set the root Field name. */
   set name(name: string)
-  /** Whether a cast may null a value it cannot convert. */
+  /**
+   * Whether a declared or stored nullable column takes a value it cannot
+   * convert as null, `true` by default; a not-null column refuses it by name
+   * either way.
+   */
   get safe(): boolean
-  /** Set whether a cast may null a value it cannot convert. */
+  /**
+   * Set whether a declared or stored nullable column takes a value it cannot
+   * convert as null; `false` refuses it too.
+   */
   set safe(safe: boolean)
   /** The rows-per-batch bound, when one is set. */
   get batchRowSize(): number | null
@@ -5973,7 +5980,10 @@ export declare class RecordOptions {
   withField(field: Field): RecordOptions
   /** Return these options with a different root Field name. */
   withName(name: string): RecordOptions
-  /** Return these options with a different cast strictness. */
+  /**
+   * Return a copy whose declared or stored nullable columns take a value
+   * they cannot convert as null (`true`) or refuse it (`false`).
+   */
   withSafe(safe: boolean): RecordOptions
   /** Return these options with a rows-per-batch bound. */
   withBatchRowSize(batchRowSize: number): RecordOptions
@@ -6417,8 +6427,9 @@ export type JsSerieIterator = SerieIterator
  * one plan the core compiled from the stream's schema, or the one record
  * serie a held column is.
  *
- * The reader is a stream, read once: iterating it and `intoArrowReader`
- * both consume it, and a batch's failure surfaces at the pull that read it.
+ * The reader is a stream, read once: iterating it, `cast` and
+ * `intoArrowReader` each consume it, and a batch's failure surfaces at the
+ * pull that read it.
  */
 export declare class SerieReader {
   /** The record every yielded serie is typed by. */
@@ -7462,9 +7473,16 @@ export declare class TextOptions {
   get name(): string
   /** Replace the root name. */
   set name(name: string)
-  /** Return whether casts may null incompatible values. */
+  /**
+   * Whether a declared or stored nullable column takes a value it cannot
+   * convert as null, `true` by default; a not-null column refuses it by name
+   * either way.
+   */
   get safe(): boolean
-  /** Set whether casts may null incompatible values. */
+  /**
+   * Set whether a declared or stored nullable column takes a value it cannot
+   * convert as null; `false` refuses it too.
+   */
   set safe(safe: boolean)
   /** Return the row-per-batch bound. */
   get batchRowSize(): number | null
@@ -7592,7 +7610,10 @@ export declare class TextOptions {
   withField(field: Field): TextOptions
   /** Return a copy with a different root name. */
   withName(name: string): TextOptions
-  /** Return a copy with different cast strictness. */
+  /**
+   * Return a copy whose declared or stored nullable columns take a value
+   * they cannot convert as null (`true`) or refuse it (`false`).
+   */
   withSafe(safe: boolean): TextOptions
   /** Return a copy with a row-per-batch bound. */
   withBatchRowSize(size: number): TextOptions

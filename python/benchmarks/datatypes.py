@@ -32,6 +32,7 @@ from yggdryl import (
     MediaType,
     MimeType,
     PythonMetadata,
+    Scalar,
     Serie,
     StringEnum,
     field,
@@ -119,6 +120,7 @@ CLASS_PAYLOAD = {
 }
 CLASS_PAYLOAD_BYTES = json.dumps(CLASS_PAYLOAD)
 CLASS_VALUE = json.loads(CLASS_PAYLOAD_BYTES, cls=Order)
+ORDER_FIELD = Order.into_field()
 VARIANT_PAYLOAD = {"value": "42"}
 VARIANT_PAYLOAD_BYTES = json.dumps(VARIANT_PAYLOAD)
 VARIANT_VALUE = json.loads(VARIANT_PAYLOAD_BYTES, cls=VariantValue)
@@ -452,6 +454,16 @@ def main() -> None:
         _measure(
             "cached class child",
             lambda: Order.into_field().dtype["order_id"],
+            args.iterations,
+        )
+        _measure(
+            "class instance crossing",
+            lambda: Scalar.from_(CLASS_VALUE),
+            args.iterations,
+        )
+        _measure(
+            "class instance under its field",
+            lambda: ORDER_FIELD.scalar(CLASS_VALUE),
             args.iterations,
         )
         _measure(

@@ -251,7 +251,7 @@ def test_record_options_stable_hash_does_not_lock_mutation() -> None:
     options = RecordOptions("trades.arrows")
     before = options.stable_hash()
 
-    options.safe = True
+    options.safe = False
 
     assert options.stable_hash() != before
 

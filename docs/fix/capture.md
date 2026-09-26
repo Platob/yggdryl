@@ -128,7 +128,7 @@ The verb is `parse`, and no reader takes a flag. A parse builds the whole messag
 | `parse_line` | one captured line, the verb and prose around the frame included | `FixMessages`, a lazy fallible iterator: [none, one or many](decode.md#a-line-yields-none-one-or-many-messages) - one per frame, one for a JSON document, none for a line that states no message |
 | `parse_lines` | any iterator of lines | a lazy iterator of `Result<FixMsg>`; a line that is not a row is an `Err` item and the stream continues |
 | `parse_text_line` | one [decoded line](../media/index.md#plain-text), its body, its [row-header captures](arrow.md#a-column-is-the-caller-speaking-per-row) and its clock, the [sending clock](#every-message-is-dated) of a message stating none | `FixMessages` |
-| `parse_text_lines` | any iterator of owned or borrowed lines, or `Result`s of them | a lazy iterator of `Result<FixMsg>`; lines are borrowed without cloning and a source error is moved into the stream unchanged |
+| `parse_text_lines` | any iterator of owned or borrowed lines, or `Result`s of them | a lazy iterator of `Result<FixMsg>`; an owned line is never cloned, a borrowed one only to cross to a worker thread, and a source error is moved into the stream unchanged |
 | `parse_text_arrow_reader` | a `BatchReader` of text records | a `BatchReader` of [fixed rows](arrow.md) |
 | `parse_fix_line`, `parse_fixml_line`, `parse_ullink_line`, `parse_pairs` | one body of that dialect, or pairs already split | one `FixMsg`; a body holding [a second frame](decode.md#a-line-yields-none-one-or-many-messages) is refused |
 

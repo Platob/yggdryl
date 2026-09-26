@@ -924,6 +924,14 @@ declare module './index' {
   interface SerieReader extends Iterable<Serie> {
     /** One record serie per batch, each cast as it is pulled. */
     [Symbol.iterator](): Generator<Serie, void, undefined>
+    /**
+     * Every record this reader yields cast into `field` by one plan: a
+     * record root, or a column - a DataType as its required `value` field -
+     * as the one child of a record named `row`. This reader's own root
+     * answers it as it stands; held records are cast here, once each, and a
+     * stream's batches as they are pulled. The reader is consumed.
+     */
+    cast(field: Field | DataType | string, options?: ArrowCastOptions): SerieReader
   }
 
   namespace ChunkedSerie {
@@ -1038,7 +1046,7 @@ declare module './index' {
     apply(serie: Serie): Serie
     /** Cast every chunk of a chunked column laid out as `source`, kept apart. */
     apply(chunked: ChunkedSerie): ChunkedSerie
-    /** The three cast answers this plan was compiled under. */
+    /** The two cast answers this plan was compiled under. */
     readonly options: Readonly<Required<ArrowCastOptions>>
   }
 
@@ -3586,12 +3594,6 @@ declare module './index' {
 export type IcebergSource = BatchSource | RecordSource
 
 /**
- * What a cast does about a non-nullable target field the source cannot fill:
- * `"default"` writes its canonical default, `"strict"` refuses by path.
- */
-export type Nullability = 'default' | 'strict'
-
-/**
  * What a cast carries across two datatypes of the same physical width:
  * `"value"` the number they spell, `"bits"` the bytes under it - so an
  * `int64`, a `uint64`, a `float64` and a `fixed_size_binary(8)` are one buffer
@@ -3600,14 +3602,16 @@ export type Nullability = 'default' | 'strict'
 export type Representation = 'value' | 'bits'
 
 /**
- * The three independent answers every Arrow cast needs: `safe` decides whether
- * a present value may be converted, `nullability` whether a declared value may
- * be absent, `representation` what a same-width pair carries. An absent answer
- * takes the core's default: safe, `"default"`, `"value"`.
+ * The two independent answers every Arrow cast needs: `safe` decides whether
+ * a present value may be converted, `representation` what a same-width pair
+ * carries. Whether a value may be absent is not an option here: it is the
+ * target field's own nullability, answered the same way everywhere - a
+ * nullable column takes a value it cannot convert as null, a required
+ * column refuses one by path. An absent answer takes the core's default:
+ * safe, `"value"`.
  */
 export interface ArrowCastOptions {
   safe?: boolean
-  nullability?: Nullability
   representation?: Representation
 }
 
