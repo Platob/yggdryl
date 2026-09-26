@@ -223,11 +223,7 @@ impl Client {
     /// certificate.
     pub fn with_options(options: &HttpOptions) -> Result<Self> {
         let tls = tls_config(options)?;
-        let agent = if tls.is_none() && !has_custom_transport(options) {
-            shared_agent().clone()
-        } else {
-            build_agent(options, tls)?
-        };
+        let agent = agent_for(options, tls)?;
         Ok(Self {
             inner: Arc::new(Inner {
                 agent,
@@ -487,6 +483,24 @@ fn transport_failure(method: Method, url: &Url, error: &ureq::Error) -> Error {
     Error::Io(std::io::Error::other(format!(
         "http {method} {url} failed: {error}"
     )))
+}
+
+/// The pool `options` and `tls` call for: the process-wide one when every
+/// transport knob is the default and no bundle is named, else one of its
+/// own. The one door every client in the crate - the S3 backend's included -
+/// takes its connections through.
+///
+/// # Errors
+///
+/// [`Error::Parse`] when the proxy URL does not parse.
+pub(crate) fn agent_for(
+    options: &HttpOptions,
+    tls: Option<ureq::tls::TlsConfig>,
+) -> Result<ureq::Agent> {
+    if tls.is_none() && !has_custom_transport(options) {
+        return Ok(shared_agent().clone());
+    }
+    build_agent(options, tls)
 }
 
 /// Whether `options` ask for a pool other than the shared one.

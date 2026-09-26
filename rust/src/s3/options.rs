@@ -504,14 +504,6 @@ impl S3Options {
             .payload_signing()
             .unwrap_or(!scheme.eq_ignore_ascii_case("https"))
     }
-
-    /// Whether the transport differs from the process-wide default, in which
-    /// case the client needs a connection pool of its own.
-    pub(super) fn has_custom_transport(&self) -> bool {
-        self.timeout != DEFAULT_TIMEOUT
-            || self.connect_timeout != DEFAULT_CONNECT_TIMEOUT
-            || self.proxy.is_some()
-    }
 }
 
 impl std::fmt::Debug for S3Options {

@@ -287,7 +287,7 @@ impl Client {
         let endpoint_account = endpoint.account.clone();
         let region = Self::region_of(url, &options, &session);
         Ok(Self {
-            agent: Self::agent(&options, tls),
+            agent: Self::agent(&options, tls)?,
             provider,
             endpoint,
             scheme: url.scheme().clone(),
@@ -313,16 +313,19 @@ impl Client {
         })
     }
 
-    /// The connection pool this client sends on.
-    ///
-    /// A client whose transport matches the defaults shares one process-wide
-    /// agent, so many handles against one store share connections rather than
-    /// each opening its own.
-    fn agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> ureq::Agent {
-        if !options.has_custom_transport() && tls.is_none() {
-            return shared_agent().clone();
+    /// The connection pool this client sends on: the crate's one HTTP pool,
+    /// shared process-wide when the transport knobs are the defaults, built
+    /// for these options otherwise. The store's knobs are the HTTP client's
+    /// own, so they are restated as such rather than read a second time.
+    fn agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> Result<ureq::Agent> {
+        let mut transport = crate::http::HttpOptions::default()
+            .with_timeout(options.timeout())
+            .with_connect_timeout(options.connect_timeout())
+            .with_read_environment(options.reads_environment());
+        if let Some(proxy) = options.proxy() {
+            transport = transport.with_proxy(proxy);
         }
-        build_agent(options, tls)
+        crate::http::client::agent_for(&transport, tls)
     }
 
     /// Bytes per part, clamped to what this store accepts.
@@ -2452,50 +2455,6 @@ const POOLED_DRAIN_LIMIT: usize = 1024 * 1024;
 /// A listing page of a thousand keys is tens of kilobytes; this bound exists so
 /// a store answering something unexpected cannot make the client hold it.
 const MAX_DOCUMENT: u64 = 32 * 1024 * 1024;
-
-/// The process-wide connection pool, shared by every default-configured client.
-fn shared_agent() -> &'static ureq::Agent {
-    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    AGENT.get_or_init(|| build_agent(&S3Options::default(), None))
-}
-
-/// Build an agent for `options`.
-///
-/// The request budget is applied per phase rather than as one global deadline.
-/// Both bound the same hazard - a store that accepts a connection and then
-/// stops answering - but a global deadline is re-checked around every read and
-/// write, which costs more per request than the whole of signing one. Per
-/// phase, the bound is free.
-fn build_agent(options: &S3Options, tls: Option<ureq::tls::TlsConfig>) -> ureq::Agent {
-    let mut builder = ureq::Agent::config_builder()
-            // Statuses are read, never raised: a store says what it means in
-            // the status and a document, and this client maps both itself.
-            .http_status_as_error(false)
-            // Nor is a 3xx a redirect to follow. The one redirect that matters
-            // - a bucket answering with the region it is in - is handled here,
-            // where the signing region can be corrected; and Google's resumable
-            // upload answers 308 for its own reasons, which is not a redirect
-            // at all and has no location to follow.
-            .max_redirects(0)
-            .max_redirects_will_error(false)
-            .timeout_connect(Some(options.connect_timeout()))
-            .timeout_send_request(Some(options.timeout()))
-            .timeout_recv_response(Some(options.timeout()))
-            .timeout_recv_body(Some(options.timeout()))
-            .user_agent(concat!("yggdryl/", env!("CARGO_PKG_VERSION")));
-    // A named proxy replaces what the environment says; `.proxy` is left
-    // untouched otherwise so `HTTPS_PROXY` and `NO_PROXY` keep deciding.
-    if let Some(proxy) = options.proxy().and_then(|uri| ureq::Proxy::new(uri).ok()) {
-        builder = builder.proxy(Some(proxy));
-    }
-    // The bundle `AWS_CA_BUNDLE` names is trusted in place of the platform's
-    // roots, which is what reaching a private endpoint through a private
-    // authority needs.
-    if let Some(tls) = tls {
-        builder = builder.tls_config(tls);
-    }
-    ureq::Agent::new_with_config(builder.build())
-}
 
 /// A body that re-opens itself when the transfer dies part way through.
 ///
