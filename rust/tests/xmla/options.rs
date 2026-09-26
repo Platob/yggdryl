@@ -2,11 +2,12 @@
 //! and written with - the shared record settings, the envelope, the method
 //! and the content - and the one `RecordOptions` variant they are.
 
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use arrow_array::{Array, Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, Int64Array, RecordBatch, RecordBatchReader, StringArray};
 
 use yggdryl::arrow::BatchReader;
 use yggdryl::holder::Buffer;
@@ -14,8 +15,8 @@ use yggdryl::media::{IORecordOptions, RecordOptions};
 use yggdryl::soap::ENVELOPE_NAMESPACE;
 use yggdryl::xmla::{Content, Method, NAMESPACE, ROWSET_NAMESPACE, XmlaOptions};
 use yggdryl::{
-    DataType, Field, Filter, IOBase, IOMedia, IOMode, Level, MediaType, MimeType, Plan, Scalar,
-    Selector, StructType, Timezone, Url,
+    Codec, DataType, Field, Filter, IOBase, IOMedia, IOMode, Level, MediaType, MimeType, Plan,
+    Scalar, Selector, StructType, Timezone, Url,
 };
 
 /// The rowset the fixtures read and write: `id` and a nullable `symbol`.
@@ -332,6 +333,9 @@ fn an_encoding_no_variant_covers_names_the_xmla_media_type_among_those_that_are(
 #[test]
 fn new_and_default_are_one_value() {
     assert_eq!(XmlaOptions::new(), XmlaOptions::default());
+    // The module path and the re-export name one type.
+    let options: yggdryl::xmla::options::XmlaOptions = XmlaOptions::default();
+    assert_eq!(options, XmlaOptions::new());
 }
 
 #[test]
@@ -1076,4 +1080,698 @@ fn the_root_name_names_a_schema_read_from_the_document() {
         ))
         .unwrap();
     assert_eq!(declared, schema().with_name("declared"));
+}
+
+// What the shared settings steer through an XMLA handle.
+
+/// A rowset schema another writer could have saved, under the `xs` prefix
+/// rather than this crate's `xsd`: a required `id` of `xs:long` and a
+/// nullable `symbol` of `xs:string`.
+const STATED_SCHEMA: &str = concat!(
+    "<xs:schema targetNamespace=\"urn:schemas-microsoft-com:xml-analysis:rowset\" ",
+    "xmlns:sql=\"urn:schemas-microsoft-com:xml-sql\" elementFormDefault=\"qualified\">",
+    "<xs:complexType name=\"row\"><xs:sequence>",
+    "<xs:element sql:field=\"id\" name=\"id\" type=\"xs:long\"/>",
+    "<xs:element sql:field=\"symbol\" name=\"symbol\" type=\"xs:string\" minOccurs=\"0\"/>",
+    "</xs:sequence></xs:complexType>",
+    "</xs:schema>",
+);
+
+/// Three rows: `AAPL`, a null symbol, `MSFT`.
+const THREE_ROWS: &str = concat!(
+    "<row><id>1</id><symbol>AAPL</symbol></row>",
+    "<row><id>2</id></row>",
+    "<row><id>3</id><symbol>MSFT</symbol></row>",
+);
+
+/// A bare rowset `root` stating [`STATED_SCHEMA`] and holding `rows`.
+fn stated(rows: &str) -> String {
+    format!(
+        "<root xmlns=\"{ROWSET_NAMESPACE}\" \
+         xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">{STATED_SCHEMA}{rows}</root>"
+    )
+}
+
+/// Every batch a reader yields.
+fn batches(reader: BatchReader) -> Vec<RecordBatch> {
+    reader.map(|batch| batch.unwrap()).collect()
+}
+
+/// The column names of a reader's schema.
+fn names(reader: &BatchReader) -> Vec<String> {
+    reader
+        .schema()
+        .fields()
+        .iter()
+        .map(|field| field.name().clone())
+        .collect()
+}
+
+/// The `id` column of every batch a reader yields, the first column.
+fn ids(reader: BatchReader) -> Vec<i64> {
+    batches(reader)
+        .iter()
+        .flat_map(|batch| {
+            batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .values()
+                .to_vec()
+        })
+        .collect()
+}
+
+/// The first column of every batch a reader yields, read as text.
+fn texts(reader: BatchReader) -> Vec<Option<String>> {
+    batches(reader)
+        .iter()
+        .flat_map(|batch| {
+            let column = batch
+                .column(0)
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap()
+                .clone();
+            (0..column.len())
+                .map(|index| (!column.is_null(index)).then(|| column.value(index).to_owned()))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+/// `rows` of `(id, symbol)` as one batch under [`schema`].
+fn batch_of(rows: &[(i64, Option<&str>)]) -> RecordBatch {
+    RecordBatch::try_new(
+        schema().into_arrow_schema().unwrap(),
+        vec![
+            Arc::new(Int64Array::from(
+                rows.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            )),
+            Arc::new(StringArray::from(
+                rows.iter().map(|(_, symbol)| *symbol).collect::<Vec<_>>(),
+            )),
+        ],
+    )
+    .unwrap()
+}
+
+/// The rowset with `symbol` declared as a nullable `int64`.
+fn numeric_symbol() -> Field {
+    StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::Int64.nullable_field("symbol"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row")
+}
+
+/// The `symbol` column of every batch a reader yields, read as `int64`.
+fn numbers(reader: BatchReader) -> Vec<Option<i64>> {
+    batches(reader)
+        .iter()
+        .flat_map(|batch| {
+            let column = batch
+                .column(1)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap()
+                .clone();
+            (0..column.len())
+                .map(|index| (!column.is_null(index)).then(|| column.value(index)))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn the_filter_the_selector_and_the_bounds_shape_an_xmla_read() {
+    let read = |options: XmlaOptions| {
+        holding(&stated(THREE_ROWS))
+            .read_arrow_reader(&RecordOptions::from(options))
+            .unwrap()
+    };
+
+    // The `where` keeps the rows it answers true for.
+    let kept = read(XmlaOptions::new().with_filter("id > 1").unwrap());
+    assert_eq!(names(&kept), ["id", "symbol"]);
+    assert_eq!(ids(kept), [2, 3]);
+
+    // The `select` publishes the columns it names, in its order, and a
+    // `where` may read a column the `select` does not publish.
+    let published = read(
+        XmlaOptions::new()
+            .with_select("symbol")
+            .unwrap()
+            .with_filter("id > 1")
+            .unwrap(),
+    );
+    assert_eq!(names(&published), ["symbol"]);
+    assert_eq!(texts(published), [None, Some("MSFT".to_owned())]);
+
+    // The row bound counts result rows: the first one the `where` kept.
+    let bounded = read(
+        XmlaOptions::new()
+            .with_filter("id > 1")
+            .unwrap()
+            .with_max_row_size(1),
+    );
+    assert_eq!(ids(bounded), [2]);
+
+    // A zero bound reads the schema and no batch.
+    let none = read(XmlaOptions::new().with_max_row_size(0));
+    assert_eq!(names(&none), ["id", "symbol"]);
+    assert!(batches(none).is_empty());
+
+    // A non-zero byte bound smaller than one row still yields one row.
+    assert_eq!(ids(read(XmlaOptions::new().with_max_byte_size(1))), [1]);
+    assert!(batches(read(XmlaOptions::new().with_max_byte_size(0))).is_empty());
+}
+
+#[test]
+fn the_filter_the_selector_and_the_bounds_shape_an_xmla_write() {
+    let three = || batch_of(&[(1, Some("AAPL")), (2, None), (3, Some("MSFT"))]);
+    let write = |options: XmlaOptions| {
+        let mut handle = handle();
+        handle
+            .overwrite_arrow_batch(three(), &RecordOptions::from(options))
+            .unwrap();
+        handle
+    };
+    let default = RecordOptions::from(XmlaOptions::new());
+
+    let kept = write(XmlaOptions::new().with_filter("id > 1").unwrap());
+    assert_eq!(ids(kept.read_arrow_reader(&default).unwrap()), [2, 3]);
+
+    // The `select` decides which columns the written schema declares.
+    let published = write(XmlaOptions::new().with_select("id").unwrap());
+    let document = String::from_utf8(published.as_slice().to_vec()).unwrap();
+    assert!(document.contains("name=\"id\""), "{document}");
+    assert!(!document.contains("symbol"), "{document}");
+    let field = published.read_arrow_field(&default).unwrap();
+    assert_eq!(
+        field.fields().iter().map(Field::name).collect::<Vec<_>>(),
+        ["id"]
+    );
+
+    let bounded = write(XmlaOptions::new().with_max_row_size(2));
+    let document = String::from_utf8(bounded.as_slice().to_vec()).unwrap();
+    assert_eq!(document.matches("<row>").count(), 2, "{document}");
+    assert_eq!(ids(bounded.read_arrow_reader(&default).unwrap()), [1, 2]);
+
+    // A zero bound admits no row, and the schema is still written.
+    let none = write(XmlaOptions::new().with_max_row_size(0));
+    let document = String::from_utf8(none.as_slice().to_vec()).unwrap();
+    assert_eq!(document.matches("<row>").count(), 0, "{document}");
+    assert!(document.contains("<xsd:schema"), "{document}");
+}
+
+#[test]
+fn a_cell_the_declared_field_cannot_cast_is_refused_unless_safe() {
+    // The document states `symbol` as text; the declared field reads it as
+    // a number, which `AAPL` is not and `42` is.
+    let document = stated(
+        "<row><id>1</id><symbol>AAPL</symbol></row><row><id>2</id><symbol>42</symbol></row>",
+    );
+    let strict = RecordOptions::from(XmlaOptions::new().with_field(numeric_symbol()));
+    // The document is parsed whole, so the refusal comes before a batch.
+    let refused = holding(&document).read_arrow_reader(&strict).map(|_| ());
+    assert!(
+        refused.is_err(),
+        "an unsafe cast of `AAPL` to int64 is refused"
+    );
+    // The refusal names the row and the column it could not read.
+    let message = refused.unwrap_err().to_string();
+    assert!(message.contains("$[0]"), "{message}");
+    assert!(message.contains("symbol"), "{message}");
+    assert!(message.contains("expected int64"), "{message}");
+
+    // `safe` nulls the value it cannot convert, as a cast under it does in
+    // every other encoding.
+    let safe = RecordOptions::from(
+        XmlaOptions::new()
+            .with_field(numeric_symbol())
+            .with_safe(true),
+    );
+    let read = holding(&document).read_arrow_reader(&safe).unwrap();
+    assert_eq!(numbers(read), [None, Some(42)]);
+}
+
+#[test]
+fn a_write_the_declared_field_cannot_cast_is_refused_unless_safe() {
+    let rows = || batch_of(&[(1, Some("AAPL")), (2, Some("42"))]);
+
+    let mut refused = handle();
+    let strict = RecordOptions::from(XmlaOptions::new().with_field(numeric_symbol()));
+    assert!(refused.overwrite_arrow_batch(rows(), &strict).is_err());
+    // A refused write leaves the handle as it was.
+    assert!(refused.as_slice().is_empty());
+
+    let mut written = handle();
+    let safe = RecordOptions::from(
+        XmlaOptions::new()
+            .with_field(numeric_symbol())
+            .with_safe(true),
+    );
+    written.overwrite_arrow_batch(rows(), &safe).unwrap();
+    let document = String::from_utf8(written.as_slice().to_vec()).unwrap();
+    assert!(!document.contains("AAPL"), "{document}");
+    assert!(document.contains("<symbol>42</symbol>"), "{document}");
+    assert_eq!(
+        numbers(written.read_arrow_reader(&strict).unwrap()),
+        [None, Some(42)]
+    );
+}
+
+#[test]
+fn the_level_reaches_the_content_coding_and_nothing_else() {
+    // With no content coding the level changes no byte of the document.
+    let plain = written(XmlaOptions::new());
+    for level in [Level::NONE, Level::FAST, Level::BEST, Level::new(3)] {
+        assert_eq!(written(XmlaOptions::new().with_level(level)), plain);
+    }
+
+    // With one, the document is compressed at exactly the level stated.
+    let coded =
+        || Buffer::new().with_media_type(Url::from_str("file:///a.xmla.gz").unwrap().media_type());
+    let mut encodings = Vec::new();
+    for level in [Level::NONE, Level::FAST, Level::DEFAULT, Level::BEST] {
+        let mut handle = coded();
+        let options = RecordOptions::from(XmlaOptions::new().with_level(level));
+        handle.overwrite_arrow_batch(batch(), &options).unwrap();
+        let encoded = handle.as_slice().to_vec();
+        assert_eq!(&encoded[..2], &[0x1F, 0x8B]);
+        assert_eq!(
+            encoded,
+            Codec::Gzip
+                .dump_with_level(plain.as_bytes(), level)
+                .unwrap(),
+            "{level:?}"
+        );
+        assert_eq!(
+            rows(handle.read_arrow_reader(&options).unwrap()),
+            expected()
+        );
+        encodings.push(encoded);
+    }
+    // Storing and compressing hardest are different bytes.
+    assert_ne!(encodings[0], encodings[3]);
+}
+
+#[test]
+fn a_zero_commit_cadence_leaves_the_stored_document_as_it_was() {
+    let mut stored = holding(&stated(THREE_ROWS));
+    let before = stored.as_slice().to_vec();
+    let zero = RecordOptions::from(XmlaOptions::new().with_commit_row_size(0));
+    let message = stored
+        .overwrite_arrow_batch(batch(), &zero)
+        .unwrap_err()
+        .to_string();
+    assert!(message.contains("$.commit_row_size"), "{message}");
+    assert_eq!(stored.as_slice(), before.as_slice());
+}
+
+#[test]
+fn a_data_content_with_a_slicer_writes_the_rows_without_the_schema() {
+    // A rowset has no default slicer, so both slicer contents are `Data`.
+    for envelope in [true, false] {
+        let data = {
+            let mut options = XmlaOptions::new().with_content(Content::Data);
+            options.envelope = envelope;
+            written(options)
+        };
+        for content in [
+            Content::DataOmitDefaultSlicer,
+            Content::DataIncludeDefaultSlicer,
+        ] {
+            assert!(content.has_data() && !content.has_schema());
+            let mut options = XmlaOptions::new().with_content(content);
+            options.envelope = envelope;
+            let document = written(options);
+            assert!(!document.contains("<xsd:schema"), "{content}: {document}");
+            assert_eq!(
+                document.matches("<row>").count(),
+                2,
+                "{content}: {document}"
+            );
+            assert_eq!(document, data, "{content}");
+            let read = RecordOptions::from(XmlaOptions::new().with_field(schema()));
+            assert_eq!(
+                rows(holding(&document).read_arrow_reader(&read).unwrap()),
+                expected()
+            );
+        }
+    }
+}
+
+#[test]
+fn a_document_without_rows_reads_as_zero_rows_under_its_schema() {
+    for envelope in [true, false] {
+        let mut options = XmlaOptions::new().with_content(Content::Schema);
+        options.envelope = envelope;
+        let document = written(options);
+        let stored = holding(&document);
+        let default = RecordOptions::from(XmlaOptions::new());
+        let field = stored.read_arrow_field(&default).unwrap();
+        assert_eq!(field.dtype(), schema().dtype());
+        let reader = stored.read_arrow_reader(&default).unwrap();
+        assert_eq!(names(&reader), ["id", "symbol"]);
+        assert_eq!(rows(reader), (vec![], vec![]));
+        assert_eq!(stored.row_size().unwrap(), 0);
+    }
+}
+
+// The value.
+
+/// The default options with exactly one setting changed, one per setting.
+fn one_setting_each() -> Vec<(&'static str, XmlaOptions)> {
+    let default = XmlaOptions::new;
+    vec![
+        (
+            "name",
+            XmlaOptions {
+                name: "trade".into(),
+                ..default()
+            },
+        ),
+        (
+            "field",
+            XmlaOptions {
+                field: Some(schema()),
+                ..default()
+            },
+        ),
+        (
+            "filter",
+            XmlaOptions {
+                filter: "id > 1".parse().unwrap(),
+                ..default()
+            },
+        ),
+        (
+            "select",
+            XmlaOptions {
+                select: "id".parse().unwrap(),
+                ..default()
+            },
+        ),
+        (
+            "merge_by",
+            XmlaOptions {
+                merge_by: "id".parse().unwrap(),
+                ..default()
+            },
+        ),
+        (
+            "safe",
+            XmlaOptions {
+                safe: true,
+                ..default()
+            },
+        ),
+        (
+            "batch_byte_size",
+            XmlaOptions {
+                batch_byte_size: Some(1),
+                ..default()
+            },
+        ),
+        (
+            "batch_row_size",
+            XmlaOptions {
+                batch_row_size: Some(1),
+                ..default()
+            },
+        ),
+        (
+            "max_row_size",
+            XmlaOptions {
+                max_row_size: Some(1),
+                ..default()
+            },
+        ),
+        (
+            "max_byte_size",
+            XmlaOptions {
+                max_byte_size: Some(1),
+                ..default()
+            },
+        ),
+        (
+            "commit_row_size",
+            XmlaOptions {
+                commit_row_size: Some(1),
+                ..default()
+            },
+        ),
+        (
+            "level",
+            XmlaOptions {
+                level: Level::BEST,
+                ..default()
+            },
+        ),
+        (
+            "envelope",
+            XmlaOptions {
+                envelope: false,
+                ..default()
+            },
+        ),
+        (
+            "method",
+            XmlaOptions {
+                method: Method::Discover,
+                ..default()
+            },
+        ),
+        (
+            "content",
+            XmlaOptions {
+                content: Content::Data,
+                ..default()
+            },
+        ),
+    ]
+}
+
+#[test]
+fn every_setting_is_part_of_the_value_its_hashes_and_its_order() {
+    let mut values = vec![("default", XmlaOptions::new())];
+    values.extend(one_setting_each());
+    assert_eq!(values.len(), 16, "the default and one per public setting");
+    let hashes: HashSet<u64> = values.iter().map(|(_, value)| std_hash(value)).collect();
+    assert_eq!(hashes.len(), values.len());
+    let stable: HashSet<u64> = values
+        .iter()
+        .map(|(_, value)| RecordOptions::from(value.clone()).stable_hash())
+        .collect();
+    assert_eq!(stable.len(), values.len());
+    for (index, (left_name, left)) in values.iter().enumerate() {
+        for (other, (right_name, right)) in values.iter().enumerate() {
+            let same = index == other;
+            assert_eq!(left == right, same, "{left_name} against {right_name}");
+            assert_eq!(
+                left.cmp(right) == Ordering::Equal,
+                same,
+                "{left_name} against {right_name}"
+            );
+        }
+    }
+    // A clone is the same value with the same hashes.
+    for (name, value) in &values {
+        let clone = value.clone();
+        assert_eq!(&clone, value, "{name}");
+        assert_eq!(std_hash(&clone), std_hash(value), "{name}");
+    }
+}
+
+#[test]
+fn the_order_is_total_and_agrees_with_equality() {
+    let mut values = vec![XmlaOptions::new(), XmlaOptions::new()];
+    values.extend(one_setting_each().into_iter().map(|(_, value)| value));
+    for left in &values {
+        for right in &values {
+            let order = left.cmp(right);
+            assert_eq!(left.partial_cmp(right), Some(order));
+            assert_eq!(right.cmp(left), order.reverse());
+            assert_eq!(order == Ordering::Equal, left == right);
+            for third in &values {
+                if left <= right && right <= third {
+                    assert!(left <= third, "{left:?} <= {right:?} <= {third:?}");
+                }
+            }
+        }
+    }
+    // The settings compare in the order the struct declares them, so the
+    // root name decides before the envelope does.
+    assert!(XmlaOptions::new().without_envelope() < XmlaOptions::new());
+    assert!(XmlaOptions::new().with_method(Method::Discover) < XmlaOptions::new());
+    assert!(XmlaOptions::new().with_content(Content::None) < XmlaOptions::new());
+    assert!(
+        XmlaOptions::new().with_content(Content::DataIncludeDefaultSlicer) > XmlaOptions::new()
+    );
+    assert!(XmlaOptions::new().with_name("s").without_envelope() > XmlaOptions::new());
+    let mut sorted = values.clone();
+    sorted.sort();
+    sorted.reverse();
+    sorted.sort();
+    assert!(sorted.windows(2).all(|pair| pair[0] <= pair[1]));
+}
+
+#[test]
+fn the_debug_form_names_the_type_and_the_xmla_settings() {
+    let debug = format!("{:?}", XmlaOptions::new());
+    assert!(debug.starts_with("XmlaOptions {"), "{debug}");
+    assert!(debug.contains("name: \"row\""), "{debug}");
+    assert!(debug.contains("envelope: true"), "{debug}");
+    assert!(debug.contains("method: Execute"), "{debug}");
+    assert!(debug.contains("content: SchemaData"), "{debug}");
+    let bare = format!(
+        "{:?}",
+        XmlaOptions::new()
+            .without_envelope()
+            .with_method(Method::Discover)
+            .with_content(Content::None)
+    );
+    assert!(bare.contains("envelope: false"), "{bare}");
+    assert!(bare.contains("method: Discover"), "{bare}");
+    assert!(bare.contains("content: None"), "{bare}");
+}
+
+/// The three XMLA builders chained where only a `const fn` may be called.
+const fn bare_discover_data(options: XmlaOptions) -> XmlaOptions {
+    options
+        .without_envelope()
+        .with_method(Method::Discover)
+        .with_content(Content::Data)
+}
+
+#[test]
+fn the_xmla_builders_are_const() {
+    let options = bare_discover_data(XmlaOptions::new());
+    assert!(!options.envelope);
+    assert_eq!(options.method, Method::Discover);
+    assert_eq!(options.content, Content::Data);
+}
+
+// The plan's row bound.
+
+#[test]
+fn a_plan_limit_is_the_row_bound_and_the_row_bound_is_the_plans_limit() {
+    let limited = XmlaOptions::new().with_plan("select id limit 5").unwrap();
+    assert_eq!(limited.max_row_size(), Some(5));
+    assert_eq!(limited.plan().row_limit(), Some(5));
+    assert_eq!(limited.plan().to_string(), "select id limit 5");
+    assert_eq!(
+        XmlaOptions::new().with_plan(limited.plan()).unwrap(),
+        limited
+    );
+
+    let bounded = XmlaOptions::new().with_max_row_size(3);
+    assert_eq!(bounded.plan().row_limit(), Some(3));
+    assert_eq!(bounded.plan().to_string(), "select * limit 3");
+
+    // A plan's limit replaces a bound stated beside it; a plan that spells
+    // none leaves that bound, as a write target's `max_row_size` property
+    // stands beside the plan it runs. The byte bound is never a section.
+    let beside = XmlaOptions::new()
+        .with_max_row_size(7)
+        .with_max_byte_size(9);
+    assert_eq!(
+        beside
+            .clone()
+            .with_plan("select id limit 2")
+            .unwrap()
+            .max_row_size(),
+        Some(2)
+    );
+    let unspelled = beside.with_plan("select id").unwrap();
+    assert_eq!(unspelled.max_row_size(), Some(7));
+    assert_eq!(unspelled.max_byte_size(), Some(9));
+
+    let zero = XmlaOptions::new().with_plan("limit 0").unwrap();
+    assert_eq!(zero.max_row_size(), Some(0));
+    assert!(zero.write_limit_is_zero());
+}
+
+#[test]
+fn a_plan_section_the_options_cannot_hold_is_never_silently_dropped() {
+    // `set_plan` names what it does not read - the plan's targets and its
+    // source - and an `offset` or an `order by` is neither: taking such a
+    // plan is either refused naming the section, or the options spell it
+    // back. Dropping it answers other rows than the plan asked for.
+    let mut dropped = Vec::new();
+    for (text, section) in [
+        ("select id limit 2 offset 1", "offset"),
+        ("select id order by id desc", "order by"),
+    ] {
+        match XmlaOptions::new().with_plan(text) {
+            Ok(options) => {
+                let spelled = options.plan().to_string();
+                if spelled != text {
+                    dropped.push(format!("{section}: `{text}` spelled back as `{spelled}`"));
+                }
+            }
+            Err(error) => assert!(error.to_string().contains(section), "{error}"),
+        }
+    }
+    assert!(dropped.is_empty(), "silently dropped: {dropped:?}");
+}
+
+#[test]
+fn a_plan_reading_an_xmla_file_keeps_its_offset() {
+    // `Plan::execute` pushes its read sections into the file's XMLA options;
+    // the offset must survive that, or the plan answers other rows.
+    let mut folder = yggdryl::local::LocalFolder::temporary()
+        .unwrap()
+        .path()
+        .unwrap();
+    folder.push(format!(
+        "yggdryl-xmla-options-offset-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).unwrap();
+    let path = folder.join("trades.xmla");
+    std::fs::write(&path, stated(THREE_ROWS)).unwrap();
+    let url = Url::from_path(&path).unwrap();
+    let plan: Plan = format!("select id from '{url}' limit 1 offset 1")
+        .parse()
+        .unwrap();
+    let read = plan.execute();
+    let _ = std::fs::remove_dir_all(&folder);
+    assert_eq!(ids(read.unwrap()), [2]);
+}
+
+#[test]
+fn a_where_clause_reads_the_decoded_text_of_the_cells() {
+    // Escaped and non-ASCII text is compared as the characters it spells; a
+    // cell marked `xsi:nil` and an absent one are null; an emptied one is
+    // the empty text.
+    let document = format!(
+        "<root xmlns=\"{ROWSET_NAMESPACE}\" \
+         xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" \
+         xmlns:i=\"http://www.w3.org/2001/XMLSchema-instance\">{STATED_SCHEMA}\
+         <row><id>1</id><symbol>Z&#xFC;rich &amp; Co</symbol></row>\
+         <row><id>2</id><symbol i:nil=\"true\"/></row>\
+         <row><id>3</id></row>\
+         <row><id>4</id><symbol></symbol></row>\
+         <row><id>5</id><symbol>\u{1F4C8} &lt;up&gt;</symbol></row>\
+         </root>"
+    );
+    let read = |filter: &str| {
+        ids(holding(&document)
+            .read_arrow_reader(&RecordOptions::from(
+                XmlaOptions::new().with_filter(filter).unwrap(),
+            ))
+            .unwrap())
+    };
+    assert_eq!(read("symbol = 'Zürich & Co'"), [1]);
+    assert_eq!(read("symbol is null"), [2, 3]);
+    assert_eq!(read("symbol = ''"), [4]);
+    assert_eq!(read("symbol = '\u{1F4C8} <up>'"), [5]);
+    assert_eq!(read("symbol is not null"), [1, 4, 5]);
 }

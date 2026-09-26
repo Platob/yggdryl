@@ -522,8 +522,10 @@ fn a_root_in_the_empty_namespace_answers_nothing() {
     let written = yggdryl::xmla::write_empty(Vec::new(), &[], Method::Execute)
         .expect("the empty answer is written");
     let text = String::from_utf8(written.clone()).expect("UTF-8");
+    // The empty root declares the instance, schema and exception namespaces
+    // beside its own, as the reference providers write it.
     assert!(
-        text.contains(&format!("<root xmlns=\"{EMPTY_NAMESPACE}\"/>")),
+        text.contains(&format!("<root xmlns=\"{EMPTY_NAMESPACE}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:EX=\"urn:schemas-microsoft-com:xml-analysis:exception\"/>")),
         "{text}"
     );
     let literal = envelope(&format!(

@@ -1197,7 +1197,7 @@ fn write_empty_round_trips_the_header_and_the_method() {
         let written = text(&bytes);
         assert!(
             written.contains(&format!(
-                "<{} xmlns=\"{XMLA}\"><return><root xmlns=\"{EMPTY}\"/></return></{}>",
+                "<{} xmlns=\"{XMLA}\"><return><root xmlns=\"{EMPTY}\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:EX=\"urn:schemas-microsoft-com:xml-analysis:exception\"/></return></{}>",
                 method.response_name(),
                 method.response_name()
             )),

@@ -147,7 +147,7 @@ impl Catalog {
         match found.len() {
             1 => Ok(found.remove(0)),
             0 => Err(Error::absent("table", self.path(schema, name))),
-            _ => Err(Error::conflict("one table", "several leaves of that name", self.path(schema, name))),
+            _ => Err(Error::conflict("table", "several leaves of that name", self.path(schema, name))),
         }
     }
 

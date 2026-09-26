@@ -17,7 +17,7 @@ use std::io::Write;
 use smol_str::{SmolStr, format_smolstr};
 
 use crate::soap::{Body, Envelope, EnvelopeWriter, Fault, FaultCode, Fragment};
-use crate::xml::{ATTRIBUTE_PREFIX, Element};
+use crate::xml::{ATTRIBUTE_PREFIX, Element, XSD_NAMESPACE, XSI_NAMESPACE};
 use crate::{Error, Field, Result, Scalar, Serie};
 
 use super::rowset::Rowset;
@@ -115,7 +115,9 @@ impl XmlaError {
     }
 
     /// Every `Error` element a fault's detail carries, directly or under a
-    /// `Messages` element, in the order the detail answers its elements: a
+    /// `Messages` element - and the `error` olap4j and Mondrian carry in their
+    /// own namespace, its `code` and `desc` read as one - in the order the
+    /// detail answers its elements: a
     /// fault built here as given, a read one in name order - so its direct
     /// `Error` elements come before those under `Messages`, each group in
     /// document order.
@@ -132,9 +134,38 @@ impl XmlaError {
                         errors.extend(Self::read(&child));
                     }
                 }
+            } else if element.is(Some(MONDRIAN_NAMESPACE), "error") {
+                errors.extend(Self::read_mondrian(&element));
             }
         }
         errors
+    }
+
+    /// One `Error` element - `ErrorCode`, `Description`, `Source` and
+    /// `HelpFile` (or olap4j's `Help`) as attributes, or its text as the
+    /// description - wherever it stands: a fault's detail, or a rowset's
+    /// `Messages`.
+    #[must_use]
+    pub fn from_element(element: &Element<'_>) -> Option<Self> {
+        Self::read(element)
+    }
+
+    /// Write this error as the `Error` element, its four attributes, in the
+    /// exception namespace the enclosing element declares.
+    ///
+    /// # Errors
+    ///
+    /// Returns the XML writer's refusal for text XML cannot carry, or the
+    /// sink's failure.
+    pub fn write<W: Write>(&self, writer: &mut W) -> Result<()> {
+        write!(writer, "<Error ErrorCode=\"{}\" Description=\"", self.code)?;
+        crate::xml::write_attribute_text(writer, &self.description)?;
+        write!(writer, "\" Source=\"")?;
+        crate::xml::write_attribute_text(writer, &self.source)?;
+        write!(writer, "\" HelpFile=\"")?;
+        crate::xml::write_attribute_text(writer, &self.help_file)?;
+        write!(writer, "\"/>")?;
+        Ok(())
     }
 
     fn read(element: &Element<'_>) -> Option<Self> {
@@ -153,10 +184,39 @@ impl XmlaError {
                 .or_else(|| element.text().map(str::to_owned))
                 .unwrap_or_default(),
             source: attribute("Source").unwrap_or_default(),
-            help_file: attribute("HelpFile").unwrap_or_default(),
+            // olap4j spells the attribute `Help`.
+            help_file: attribute("HelpFile")
+                .or_else(|| attribute("Help"))
+                .unwrap_or_default(),
+        })
+    }
+
+    /// The error olap4j and Mondrian carry in a fault's detail as
+    /// `<XA:error xmlns:XA="http://mondrian.sourceforge.net"><code/><desc/>`.
+    fn read_mondrian(element: &Element<'_>) -> Option<Self> {
+        let child_text = |name: &str| {
+            element
+                .children()
+                .find(|child| child.local_name() == name)
+                .and_then(|child| child.text().map(str::to_owned))
+        };
+        let description = child_text("desc")?;
+        let code = child_text("code")
+            .and_then(|code| u32::from_str_radix(code.trim().trim_start_matches("0x"), 16).ok())
+            .unwrap_or(0);
+        Some(Self {
+            code,
+            description,
+            source: MONDRIAN.to_owned(),
+            help_file: String::new(),
         })
     }
 }
+
+/// The namespace of the error olap4j and Mondrian answer a fault with.
+const MONDRIAN_NAMESPACE: &str = "http://mondrian.sourceforge.net";
+/// What such an error names as its source.
+const MONDRIAN: &str = "Mondrian";
 
 /// A SOAP fault carrying one XMLA `Error` in its detail: `code` says whose
 /// fault it is, `error` says what went wrong.
@@ -340,6 +400,38 @@ pub fn write_rowset<W: Write>(
     envelope.finish()
 }
 
+/// Write a rowset response as a provider streams one: like
+/// [`write_rowset`], except that a batch failing after the answer has begun
+/// is reported inside the `root` - `<Messages><Error .../></Messages>` in
+/// the exception namespace, the shape the reference providers report an
+/// error with once the response has started - and the document is closed,
+/// so the client reads a complete answer naming the failure rather than a
+/// cut stream. The error is handed back beside the sink.
+///
+/// # Errors
+///
+/// Returns the sink's failure, or a cell with no XML spelling before any row
+/// of a batch is written.
+pub fn write_rowset_reporting<W: Write>(
+    writer: W,
+    header: &[Fragment],
+    method: Method,
+    rowset: &Rowset,
+    batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+    content: Content,
+) -> Result<(W, Option<XmlaError>)> {
+    let mut envelope = EnvelopeWriter::begin(writer, header)?;
+    open_response(envelope.body(), method)?;
+    let failed = rowset.write_root_reporting(
+        envelope.body(),
+        batches,
+        content.has_schema(),
+        content.has_data(),
+    )?;
+    close_response(envelope.body(), method)?;
+    Ok((envelope.finish()?, failed))
+}
+
 /// Write the response to a command that answers nothing: a `root` in the
 /// empty namespace.
 ///
@@ -349,7 +441,11 @@ pub fn write_rowset<W: Write>(
 pub fn write_empty<W: Write>(writer: W, header: &[Fragment], method: Method) -> Result<W> {
     let mut envelope = EnvelopeWriter::begin(writer, header)?;
     open_response(envelope.body(), method)?;
-    write!(envelope.body(), "<root xmlns=\"{EMPTY_NAMESPACE}\"/>")?;
+    write!(
+        envelope.body(),
+        "<root xmlns=\"{EMPTY_NAMESPACE}\" xmlns:xsi=\"{XSI_NAMESPACE}\" \
+         xmlns:xsd=\"{XSD_NAMESPACE}\" xmlns:EX=\"{EXCEPTION_NAMESPACE}\"/>"
+    )?;
     close_response(envelope.body(), method)?;
     envelope.finish()
 }

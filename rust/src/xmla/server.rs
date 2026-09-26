@@ -30,7 +30,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::soap::http::{Request, Status, begin_chunked, write_response};
-use crate::soap::{self, Fault};
+use crate::soap::{self, Fault, FaultCode};
 
 use super::service::Service;
 
@@ -237,6 +237,19 @@ impl Drop for Running {
     }
 }
 
+/// Answer a message that is no XMLA request with a `Client` fault carrying
+/// the XMLA `Error`, at `200` like every fault.
+fn refuse<W: Write>(writer: &mut W, keep_alive: bool, description: String) -> io::Result<()> {
+    let fault = super::response::fault(
+        FaultCode::Client,
+        super::response::XmlaError::new(super::service::code::BAD_REQUEST, description.clone()),
+    )
+    .unwrap_or_else(|_| Fault::client(description).with_actor(super::response::ACTOR));
+    let mut body = Vec::new();
+    super::response::write_fault(&mut body, &fault).map_err(io::Error::other)?;
+    write_response(writer, Status::Ok, soap::CONTENT_TYPE, keep_alive, &body)
+}
+
 /// Answer every request one connection carries, until it closes or asks to.
 fn serve_connection(service: &Service, stream: TcpStream, options: &ServerOptions) {
     let _ = stream.set_read_timeout(Some(options.idle_timeout));
@@ -319,36 +332,23 @@ fn answer(
             );
         }
     }
+    // Every fault goes out at `200` in a SOAP body carrying the XMLA `Error`,
+    // the way the reference providers answer and the way XMLA clients read:
+    // a client such as xmla4js parses a fault only out of a `2xx` answer,
+    // and SOAP 1.1's `500` for a fault is what none of them sends.
     if let Some(content_type) = request.content_type() {
         let base = content_type.split(';').next().unwrap_or("").trim();
         if !base.contains("xml") {
-            return write_response(
+            return refuse(
                 writer,
-                Status::UnsupportedMediaType,
-                "text/plain; charset=utf-8",
                 keep_alive,
-                format!("expected an XML content type for a SOAP message, got {base}\n").as_bytes(),
+                format!("expected an XML content type for a SOAP message, got {base}"),
             );
         }
     }
-    // A request that cannot be read as XMLA is a fault at `500`, as the SOAP
-    // HTTP binding requires; one that can is answered at `200` as a stream,
-    // the provider writing the fault it earns into the body itself.
-    let parsed = super::request::Request::from_bytes(request.body());
-    let request = match parsed {
+    let request = match super::request::Request::from_bytes(request.body()) {
         Ok(request) => request,
-        Err(error) => {
-            let fault = Fault::client(error.to_string()).with_actor(super::response::ACTOR);
-            let mut body = Vec::new();
-            super::response::write_fault(&mut body, &fault).map_err(io::Error::other)?;
-            return write_response(
-                writer,
-                Status::InternalServerError,
-                soap::CONTENT_TYPE,
-                keep_alive,
-                &body,
-            );
-        }
+        Err(error) => return refuse(writer, keep_alive, error.to_string()),
     };
     let chunked = begin_chunked(&mut *writer, Status::Ok, soap::CONTENT_TYPE, keep_alive)?;
     let chunked = service

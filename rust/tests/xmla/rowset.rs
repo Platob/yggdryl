@@ -830,12 +830,12 @@ fn the_schema_declares_every_column_under_the_row_type() {
              <xsd:element name=\"row\" type=\"row\"/>\
              </xsd:sequence></xsd:complexType></xsd:element>\
              <xsd:simpleType name=\"uuid\"><xsd:restriction base=\"xsd:string\">\
-             <xsd:pattern value=\"[0-9a-zA-Z]{{8}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{12}}\"/>\
+             <xsd:pattern value=\"[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}\"/>\
              </xsd:restriction></xsd:simpleType>\
              <xsd:complexType name=\"row\"><xsd:sequence>\
              <xsd:element sql:field=\"Order Id\" name=\"Order_x0020_Id\" type=\"xsd:int\"/>\
              <xsd:element sql:field=\"Symbol\" name=\"Symbol\" type=\"xsd:string\" minOccurs=\"0\"/>\
-             <xsd:element sql:field=\"tags\" name=\"tags\" type=\"xsd:string\" maxOccurs=\"unbounded\"/>\
+             <xsd:element sql:field=\"tags\" name=\"tags\" type=\"xsd:string\" minOccurs=\"0\" maxOccurs=\"unbounded\"/>\
              <xsd:element sql:field=\"leg\" name=\"leg\" minOccurs=\"0\"><xsd:complexType><xsd:sequence>\
              <xsd:element sql:field=\"price\" name=\"price\" type=\"xsd:double\"/>\
              <xsd:element sql:field=\"venue\" name=\"venue\" type=\"xsd:string\" minOccurs=\"0\"/>\

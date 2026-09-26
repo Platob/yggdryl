@@ -3,6 +3,7 @@
 //! standard property names, the `PropertyList` and the `RestrictionList` - each
 //! read case-insensitively, written canonically, and refused by name.
 
+use std::collections::{BTreeSet, HashSet};
 use std::fmt;
 use std::str::FromStr;
 
@@ -121,7 +122,7 @@ fn an_unknown_member_of_each_enumeration_is_refused_listing_every_member() {
     assert_eq!(path, "$.Content");
     assert_eq!(
         reason,
-        r#"expected None, Schema, Data, SchemaData, got "Rows""#
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got "Rows""#
     );
 
     let (path, reason) = refused("RowFormat".parse::<AxisFormat>());
@@ -168,7 +169,7 @@ fn an_empty_or_blank_member_is_refused_rather_than_defaulted() {
     );
     let (_, reason) = refused(" \t\n".parse::<Content>());
     assert_eq!(
-        reason, r#"expected None, Schema, Data, SchemaData, got """#,
+        reason, r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#,
         "the refusal names the trimmed spelling"
     );
 }
@@ -178,7 +179,7 @@ fn a_member_spelled_with_inner_whitespace_or_a_lookalike_letter_is_refused() {
     let (_, reason) = refused("Schema Data".parse::<Content>());
     assert_eq!(
         reason,
-        r#"expected None, Schema, Data, SchemaData, got "Schema Data""#
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got "Schema Data""#
     );
     // The second `a` is CYRILLIC SMALL LETTER A, which no ASCII fold reaches.
     let (_, reason) = refused("N\u{430}tive".parse::<Format>());
@@ -232,7 +233,7 @@ fn a_refused_spelling_longer_than_the_error_budget_is_elided() {
     assert_eq!(
         reason,
         format!(
-            "expected None, Schema, Data, SchemaData, got \"{}\u{2026}\"",
+            "expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got \"{}\u{2026}\"",
             "\u{20ac}".repeat(21)
         )
     );
@@ -255,6 +256,104 @@ fn an_empty_or_blank_request_type_is_refused() {
     let (path, reason) = refused(" \t\r\n".parse::<RequestType>());
     assert_eq!(path, "$.RequestType");
     assert_eq!(reason, r#"expected a rowset name, got """#);
+}
+
+#[test]
+fn a_blank_or_lookalike_method_is_refused() {
+    let (path, reason) = refused(" \t\r\n".parse::<Method>());
+    assert_eq!(path, "$.method");
+    assert_eq!(
+        reason, r#"expected Discover or Execute, got """#,
+        "the refusal names the trimmed spelling"
+    );
+    // The `i` is CYRILLIC SMALL LETTER BYELORUSSIAN-UKRAINIAN I.
+    let (_, reason) = refused("D\u{456}scover".parse::<Method>());
+    assert_eq!(
+        reason,
+        "expected Discover or Execute, got \"D\u{456}scover\""
+    );
+    let (_, reason) = refused("Execute\u{0}".parse::<Method>());
+    assert_eq!(
+        reason, r#"expected Discover or Execute, got "Execute\0""#,
+        "a control character is not padding"
+    );
+}
+
+#[test]
+fn an_empty_timeout_is_set_and_refused_as_not_a_count_of_seconds() {
+    // `timeout` answers `None` when the property is unset and refuses a value
+    // that is not a count of seconds. An empty value is set - `get` answers
+    // it - and is no count, exactly as a blank one is refused and as an empty
+    // `Format` or `Content` is; only `catalog` and `data_source_info` state
+    // that an empty value reads as absent.
+    let list = PropertyList::new().with(property::TIMEOUT, "");
+    assert_eq!(
+        list.get(property::TIMEOUT),
+        Some(""),
+        "an empty timeout is set"
+    );
+    let (path, reason) = refused(list.timeout());
+    assert_eq!(path, "$.Timeout");
+    assert_eq!(reason, r#"expected a count of seconds, got """#);
+}
+
+#[test]
+fn a_timeout_refusal_names_the_standard_property_and_elides_a_long_value() {
+    let (path, reason) = refused(PropertyList::new().with("TIMEOUT", "soon").timeout());
+    assert_eq!(
+        path, "$.Timeout",
+        "the standard property, not the case it was written in"
+    );
+    assert_eq!(reason, r#"expected a count of seconds, got "soon""#);
+
+    let long = "9".repeat(200);
+    let (_, reason) = refused(PropertyList::new().with(property::TIMEOUT, long).timeout());
+    assert_eq!(
+        reason,
+        format!(
+            "expected a count of seconds, got \"{}\u{2026}\"",
+            "9".repeat(64)
+        ),
+        "sixty-four bytes of the value, then an ellipsis"
+    );
+
+    // FULLWIDTH DIGIT THREE and FULLWIDTH DIGIT ZERO: digits to Unicode, not
+    // to a count of seconds.
+    let (_, reason) = refused(
+        PropertyList::new()
+            .with(property::TIMEOUT, "\u{ff13}\u{ff10}")
+            .timeout(),
+    );
+    assert_eq!(
+        reason,
+        "expected a count of seconds, got \"\u{ff13}\u{ff10}\""
+    );
+}
+
+#[test]
+fn a_property_list_names_a_refused_member_trimmed_under_the_standard_property() {
+    let list = PropertyList::new()
+        .with("FORMAT", "  Flat\t")
+        .with("content", "\nRows ")
+        .with("AXISFORMAT", " RowFormat ");
+    let (path, reason) = refused(list.format());
+    assert_eq!(path, "$.Format");
+    assert_eq!(
+        reason,
+        r#"expected Tabular, Multidimensional, Native, got "Flat""#
+    );
+    let (path, reason) = refused(list.content());
+    assert_eq!(path, "$.Content");
+    assert_eq!(
+        reason,
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got "Rows""#
+    );
+    let (path, reason) = refused(list.axis_format());
+    assert_eq!(path, "$.AxisFormat");
+    assert_eq!(
+        reason,
+        r#"expected TupleFormat, ClusterFormat, CustomFormat, got "RowFormat""#
+    );
 }
 
 #[test]
@@ -307,7 +406,7 @@ fn a_property_list_refuses_an_enumeration_value_naming_it() {
     assert_eq!(path, "$.Content");
     assert_eq!(
         reason,
-        r#"expected None, Schema, Data, SchemaData, got "Rows""#
+        r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got "Rows""#
     );
 
     let (path, reason) = refused(list.axis_format());
@@ -327,7 +426,7 @@ fn an_empty_enumeration_property_is_set_and_refused_rather_than_defaulted() {
         r#"expected Tabular, Multidimensional, Native, got """#
     );
     let (_, reason) = refused(list.content());
-    assert_eq!(reason, r#"expected None, Schema, Data, SchemaData, got """#);
+    assert_eq!(reason, r#"expected None, Schema, Data, SchemaData, DataOmitDefaultSlicer, DataIncludeDefaultSlicer, got """#);
 }
 
 // Methods.
@@ -433,6 +532,8 @@ fn the_content_enumeration_is_the_specifications() {
             (Content::Schema, "Schema"),
             (Content::Data, "Data"),
             (Content::SchemaData, "SchemaData"),
+            (Content::DataOmitDefaultSlicer, "DataOmitDefaultSlicer"),
+            (Content::DataIncludeDefaultSlicer, "DataIncludeDefaultSlicer"),
         ],
         Content::as_str,
         Content::description,
@@ -460,6 +561,10 @@ fn a_content_says_whether_it_carries_the_schema_and_the_rows() {
         (Content::Schema, true, false),
         (Content::Data, false, true),
         (Content::SchemaData, true, true),
+        // The two slicer contents are rows and no schema: a multidimensional
+        // result's default slicer is nothing a rowset has.
+        (Content::DataOmitDefaultSlicer, false, true),
+        (Content::DataIncludeDefaultSlicer, false, true),
     ];
     assert_eq!(table.len(), Content::ALL.len(), "every member is stated");
     for (content, schema, data) in table {
@@ -612,6 +717,50 @@ fn the_mdx_support_enumeration_is_the_specifications() {
     );
 }
 
+#[test]
+fn members_order_as_the_specification_lists_them() {
+    fn ascending<T: Ord + fmt::Debug>(all: &[T]) {
+        assert!(
+            all.windows(2).all(|pair| pair[0] < pair[1]),
+            "{all:?} sorts in the order it is listed"
+        );
+    }
+    ascending(&Method::ALL);
+    ascending(Format::ALL);
+    ascending(Content::ALL);
+    ascending(AxisFormat::ALL);
+    ascending(ProviderType::ALL);
+    ascending(AuthenticationMode::ALL);
+    ascending(Access::ALL);
+    ascending(StateSupport::ALL);
+    ascending(MdxSupport::ALL);
+    ascending(RequestType::ALL);
+
+    let sorted = [
+        "zz_rowset",
+        "MDSCHEMA_SETS",
+        "B_ROWSET",
+        "discover_datasources",
+        "A_ROWSET",
+        "DBSCHEMA_TABLES",
+    ]
+    .into_iter()
+    .map(|spelled| spelled.parse::<RequestType>().unwrap())
+    .collect::<BTreeSet<_>>();
+    assert_eq!(
+        sorted.iter().map(RequestType::as_str).collect::<Vec<_>>(),
+        [
+            "DISCOVER_DATASOURCES",
+            "DBSCHEMA_TABLES",
+            "MDSCHEMA_SETS",
+            "A_ROWSET",
+            "B_ROWSET",
+            "zz_rowset"
+        ],
+        "the defined request types in the specification's order, then the undefined ones by spelling"
+    );
+}
+
 // Request types.
 
 /// Every request type the specification defines, as it spells each one.
@@ -734,6 +883,115 @@ fn an_undefined_request_type_is_kept_as_spelled() {
     );
     let near = "DISCOVER DATASOURCES".parse::<RequestType>().unwrap();
     assert_eq!(near, RequestType::Other("DISCOVER DATASOURCES".into()));
+}
+
+#[test]
+fn an_undefined_request_type_is_kept_whole_however_long() {
+    let long = format!("PROVIDER_{}", "X".repeat(500));
+    let other = long.parse::<RequestType>().unwrap();
+    assert_eq!(other.as_str(), long, "never elided, never refused");
+    assert_eq!(other.to_string(), long);
+}
+
+#[test]
+fn undefined_request_types_differing_only_in_case_are_two_spellings_in_one_family() {
+    let upper = "DISCOVER_XML_METADATA".parse::<RequestType>().unwrap();
+    let lower = "discover_xml_metadata".parse::<RequestType>().unwrap();
+    assert_ne!(upper, lower, "an undefined name is kept as it was spelled");
+    assert!(upper.is_discover() && lower.is_discover());
+    assert_eq!(lower.as_str(), "discover_xml_metadata");
+}
+
+#[test]
+fn a_request_type_hashes_as_the_value_it_reads_as() {
+    let mut seen = HashSet::new();
+    for spelled in ["DBSCHEMA_TABLES", "dbschema_tables", " Dbschema_Tables\n"] {
+        seen.insert(spelled.parse::<RequestType>().unwrap());
+    }
+    assert_eq!(
+        seen.len(),
+        1,
+        "a defined request type is one key in any case"
+    );
+    assert!(seen.contains(&RequestType::DbschemaTables));
+    for spelled in ["MY_ROWSET", "my_rowset", " MY_ROWSET "] {
+        seen.insert(spelled.parse::<RequestType>().unwrap());
+    }
+    assert_eq!(seen.len(), 3, "an undefined one is keyed by its spelling");
+    assert!(seen.contains(&RequestType::Other("my_rowset".into())));
+}
+
+#[test]
+fn reading_a_hand_built_request_type_back_canonicalizes_it() {
+    let hand_built = RequestType::Other("dbschema_tables".into());
+    assert_eq!(hand_built.as_str(), "dbschema_tables", "built as spelled");
+    assert!(hand_built.is_dbschema());
+    let read = hand_built.to_string().parse::<RequestType>().unwrap();
+    assert_eq!(
+        read,
+        RequestType::DbschemaTables,
+        "the text door is what makes a defined name canonical"
+    );
+    assert_eq!(read.as_str(), "DBSCHEMA_TABLES");
+}
+
+#[test]
+fn a_family_is_its_whole_prefix_at_the_opening_of_the_name() {
+    for spelled in [
+        "DISCOVER",
+        "DB",
+        "MDSCHEMA",
+        "X_DISCOVER_Y",
+        "DISCOVERX_Y",
+        "MD_SCHEMA_CUBES",
+        "DBSCHEMA-TABLES",
+        "_DISCOVER_X",
+    ] {
+        let other = spelled.parse::<RequestType>().unwrap();
+        assert!(
+            !other.is_discover() && !other.is_dbschema() && !other.is_mdschema(),
+            "{spelled} opens with no family's prefix"
+        );
+    }
+    for (spelled, discover, dbschema, mdschema) in [
+        ("discover_", true, false, false),
+        ("DbSchema_", false, true, false),
+        ("MDSCHEMA_", false, false, true),
+    ] {
+        let bare = spelled.parse::<RequestType>().unwrap();
+        assert_eq!(
+            (bare.is_discover(), bare.is_dbschema(), bare.is_mdschema()),
+            (discover, dbschema, mdschema),
+            "{spelled}: the prefix alone opens with the prefix"
+        );
+    }
+}
+
+#[test]
+fn a_non_ascii_opening_is_in_no_family_and_is_classified_without_panicking() {
+    let hand_built_empty = RequestType::Other("".into());
+    let spellings = [
+        // `\u{e9}` is two bytes and straddles the prefix's ninth byte.
+        "DISCOVER\u{e9}X",
+        // LATIN CAPITAL LETTER I WITH DOT ABOVE folds to `i` in Unicode alone.
+        "D\u{130}SCOVER_X",
+        // CYRILLIC CAPITAL LETTER ES looks like `C`.
+        "DBS\u{421}HEMA_TABLES",
+        "MDSCHEM\u{c5}_CUBES",
+        "\u{e9}",
+        "\u{1f4c8}\u{1f4c8}\u{1f4c8}",
+    ];
+    for other in spellings
+        .into_iter()
+        .map(|spelled| spelled.parse::<RequestType>().unwrap())
+        .chain([hand_built_empty])
+    {
+        assert!(matches!(other, RequestType::Other(_)));
+        assert!(
+            !other.is_discover() && !other.is_dbschema() && !other.is_mdschema(),
+            "{other:?} is in no family"
+        );
+    }
 }
 
 #[test]
@@ -1067,11 +1325,6 @@ fn the_catalog_and_the_data_source_are_absent_when_unset_or_empty() {
 #[test]
 fn a_timeout_reads_as_a_count_of_seconds() {
     assert_eq!(PropertyList::new().timeout().unwrap(), None, "unset");
-    assert_eq!(
-        PropertyList::new().with("Timeout", "").timeout().unwrap(),
-        None,
-        "empty"
-    );
     let read = |spelled: &str| {
         PropertyList::new()
             .with(property::TIMEOUT, spelled)
@@ -1087,6 +1340,59 @@ fn a_timeout_reads_as_a_count_of_seconds() {
         PropertyList::new().with("TIMEOUT", "5").timeout().unwrap(),
         Some(5),
         "the name is read case-insensitively"
+    );
+}
+
+#[test]
+fn a_blank_catalog_or_data_source_is_kept_as_written() {
+    let list = PropertyList::new()
+        .with(property::CATALOG, "   ")
+        .with(property::DATA_SOURCE_INFO, "\t");
+    assert_eq!(list.catalog(), Some("   "), "only an empty value is absent");
+    assert_eq!(list.data_source_info(), Some("\t"));
+}
+
+#[test]
+fn a_property_name_folds_ascii_case_and_nothing_else() {
+    let mut list = PropertyList::new().with("\u{dc}nit", "upper");
+    list.set("\u{fc}nit", "lower");
+    assert_eq!(
+        properties(&list),
+        [("\u{dc}nit", "upper"), ("\u{fc}nit", "lower")],
+        "a non-ASCII letter in another case is another name"
+    );
+    list.set(" Format", "Tabular");
+    assert_eq!(list.get("Format"), None, "padding is part of a name");
+    assert_eq!(list.get(" format"), Some("Tabular"));
+    list.set("", "unnamed");
+    assert_eq!(list.get(""), Some("unnamed"), "an empty name is a name");
+    assert_eq!(list.len(), 4);
+}
+
+#[test]
+fn a_property_list_equals_one_written_alike() {
+    let written = PropertyList::new()
+        .with("Catalog", "market")
+        .with("Format", "Tabular");
+    assert_eq!(written.clone(), written);
+    assert_eq!(
+        written,
+        [("Catalog", "market"), ("Format", "Tabular")]
+            .into_iter()
+            .collect::<PropertyList>()
+    );
+    assert_ne!(
+        written,
+        PropertyList::new()
+            .with("Format", "Tabular")
+            .with("Catalog", "market"),
+        "the order written is part of the list"
+    );
+    assert_ne!(
+        written,
+        PropertyList::new()
+            .with("Catalog", "archive")
+            .with("Format", "Tabular")
     );
 }
 
@@ -1226,4 +1532,44 @@ fn restrictions_collect_from_pairs_appending_repeated_names() {
 
     let empty: Restrictions = std::iter::empty::<(String, String)>().collect();
     assert_eq!(empty, Restrictions::new());
+}
+
+#[test]
+fn a_restriction_name_folds_ascii_case_and_nothing_else() {
+    let restrictions = Restrictions::new()
+        .with("\u{c9}TAT", "open")
+        .with("\u{e9}tat", "closed")
+        .with(" TABLE_NAME", "trades");
+    assert_eq!(
+        restricted(&restrictions),
+        [
+            ("\u{c9}TAT", vec!["open"]),
+            ("\u{e9}tat", vec!["closed"]),
+            (" TABLE_NAME", vec!["trades"])
+        ],
+        "a non-ASCII letter in another case, or padding, makes another column"
+    );
+    assert_eq!(restrictions.get("TABLE_NAME"), None);
+    let expected: &[String] = &[String::from("")];
+    assert_eq!(
+        Restrictions::new().with("TABLE_NAME", "").get("table_name"),
+        Some(expected),
+        "an empty value is admitted as written"
+    );
+}
+
+#[test]
+fn restrictions_equal_ones_written_alike() {
+    let written = Restrictions::new()
+        .with("TABLE_NAME", "trades")
+        .with("TABLE_NAME", "fills");
+    assert_eq!(written.clone(), written);
+    assert_ne!(
+        written,
+        Restrictions::new()
+            .with("TABLE_NAME", "fills")
+            .with("TABLE_NAME", "trades"),
+        "the order the values were written in is part of the restrictions"
+    );
+    assert_ne!(written, Restrictions::new().with("TABLE_NAME", "trades"));
 }

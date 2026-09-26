@@ -29,7 +29,7 @@ use super::catalog::{Catalog, Table};
 use super::dbtype::DbType;
 use super::definitions::{Definition, definition_of, definitions};
 use super::request::{Command, Discover, Execute, Request, RequestMethod, Session};
-use super::response::{XmlaError, fault};
+use super::response::{ACTOR, XmlaError, fault};
 use super::rowset::{Rowset, XsdType};
 use super::vocabulary::{
     Access, AuthenticationMode, AxisFormat, Content, Format, Method, PropertyList,
@@ -203,6 +203,9 @@ impl Service {
     ///
     /// Returns only a failure writing to `writer`.
     pub fn answer<W: Write>(&self, request: &Request, writer: W) -> Result<W> {
+        if let Some(fault) = not_understood(request) {
+            return super::response::write_fault(writer, &fault);
+        }
         let header = match self.session_header(request) {
             Ok(header) => header,
             Err(fault) => return super::response::write_fault(writer, &fault),
@@ -220,14 +223,18 @@ impl Service {
                 Err(fault) => super::response::write_fault(writer, &fault),
             },
             RequestMethod::Execute(execute) => match self.execute(execute) {
-                Ok(Execution::Rowset { rowset, rows }) => super::response::write_rowset(
+                // Streamed as the rows arrive: a batch failing once the answer
+                // has begun is reported inside the rowset, and the document
+                // is closed rather than cut.
+                Ok(Execution::Rowset { rowset, rows }) => super::response::write_rowset_reporting(
                     writer,
                     &header,
                     Method::Execute,
                     &rowset,
                     rows,
                     content_of(execute.properties()).unwrap_or(Content::DEFAULT),
-                ),
+                )
+                .map(|(writer, _)| writer),
                 Ok(Execution::Empty) => {
                     super::response::write_empty(writer, &header, Method::Execute)
                 }
@@ -236,32 +243,34 @@ impl Service {
         }
     }
 
-    /// The header blocks a response carries: the session a `BeginSession`
-    /// opened, or the one a `Session` continues; nothing for an `EndSession`.
+    /// The header blocks a response carries: the `Session` a `BeginSession`
+    /// opened, or the one a `Session` or an `EndSession` names - echoed the
+    /// way the reference providers echo it, without `mustUnderstand`.
     ///
     /// Sessions carry no state here, so every identifier this provider hands
-    /// out is honoured and one it did not is refused by name.
+    /// out is honoured and one it did not is refused by name. A fault about a
+    /// header entry carries no detail, as SOAP 1.1 has it.
     fn session_header(&self, request: &Request) -> std::result::Result<Vec<Fragment>, Fault> {
         let session = request
             .session()
-            .map_err(|error| client_fault_or_server(code::BAD_SESSION, error))?;
+            .map_err(|error| Fault::client(error.to_string()).with_actor(ACTOR))?;
         let block = match session {
-            None | Some(Session::End(_)) => return Ok(Vec::new()),
+            None => return Ok(Vec::new()),
             Some(Session::Begin) => Session::Continue(self.new_session_id()),
-            Some(Session::Continue(id)) => {
+            Some(Session::Continue(id) | Session::End(id)) => {
                 if crate::uuid_parse(id.as_bytes()).is_err() {
-                    return Err(client_fault(
-                        code::BAD_SESSION,
-                        format!("the session {id:?} is not one this provider opened"),
-                    ));
+                    return Err(Fault::client(format!(
+                        "the session {id:?} is not one this provider opened"
+                    ))
+                    .with_actor(ACTOR));
                 }
                 Session::Continue(id)
             }
         };
         block
-            .into_fragment()
+            .into_answer_fragment()
             .map(|fragment| vec![fragment])
-            .map_err(|error| client_fault_or_server(code::BAD_SESSION, error))
+            .map_err(|error| Fault::client(error.to_string()).with_actor(ACTOR))
     }
 
     /// A fresh session identifier: a UUIDv7 of the instant and a counter.
@@ -517,7 +526,9 @@ impl Service {
                 record([
                     ("PropertyName", text(name)),
                     ("PropertyDescription", text(description)),
-                    ("PropertyType", text(xsd.as_str())),
+                    // `string`, `int`: the XML Schema name without its prefix,
+                    // as the reference providers spell a property's type.
+                    ("PropertyType", text(xsd.local_name())),
                     ("PropertyAccessType", text(access.as_str())),
                     ("IsRequired", Scalar::from(required)),
                     ("Value", value),
@@ -755,14 +766,17 @@ fn spelled(value: &Scalar) -> String {
 fn enumerator_rows() -> Result<Vec<Scalar>> {
     let mut rows = Vec::new();
     let mut push = |name: &str, description: &str, members: Vec<(&str, &str)>| -> Result<()> {
-        for (element, element_description) in members {
+        for (index, (element, element_description)) in members.into_iter().enumerate() {
+            // The member's OLE DB ordinal: `Access` counts from one
+            // (`DBPROPFLAGS_READ` is 1), every other enumeration from zero.
+            let ordinal = if name == "Access" { index + 1 } else { index };
             rows.push(record([
                 ("EnumName", text(name)),
                 ("EnumDescription", text(description)),
-                ("EnumType", text(XsdType::String.as_str())),
+                ("EnumType", text(XsdType::String.local_name())),
                 ("ElementName", text(element)),
                 ("ElementDescription", text(element_description)),
-                ("ElementValue", Scalar::Null),
+                ("ElementValue", text(&ordinal.to_string())),
             ])?);
         }
         Ok(())
@@ -931,6 +945,8 @@ fn provider_type_rows() -> Result<Vec<Scalar>> {
 
 /// One `DBSCHEMA_COLUMNS` row.
 fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> {
+    // OLE DB's `DBCOLUMNFLAGS` bits, as `oledb.h` numbers them - not the
+    // layout olap4j's comment describes, which olap4j itself never writes.
     /// `DBCOLUMNFLAGS_ISFIXEDLENGTH`.
     const FIXED_LENGTH: u32 = 0x10;
     /// `DBCOLUMNFLAGS_ISNULLABLE`.
@@ -946,10 +962,16 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
     if indicator.column_size().is_some() || dtype.fixed_byte_width().is_some() {
         flags |= FIXED_LENGTH;
     }
-    let bound = dtype
-        .string_parameters()
-        .and_then(|leaf| leaf.bound())
-        .or_else(|| dtype.bytes_parameters().and_then(|leaf| leaf.bound()));
+    // A character or binary column states its maximum, `0` for none, as OLE
+    // DB has it; every other column states no length. The bound this crate
+    // keeps counts bytes, which is what both lengths carry.
+    let bound = match (dtype.string_parameters(), dtype.bytes_parameters()) {
+        (Some(leaf), _) => Some(leaf.bound().unwrap_or(0)),
+        (None, Some(leaf)) => Some(leaf.bound().unwrap_or(0)),
+        (None, None) => None,
+    };
+    // A decimal states its precision and scale; an integer or a float its
+    // maximum decimal precision, as `DBSCHEMA_PROVIDER_TYPES` states it.
     let (precision, scale) = match dtype {
         DataType::Decimal32 { precision, scale }
         | DataType::Decimal64 { precision, scale }
@@ -957,6 +979,13 @@ fn column_row(table: &Table, position: usize, column: &Field) -> Result<Scalar> 
         | DataType::Decimal256 { precision, scale } => (
             Scalar::from(u16::from(*precision)),
             Scalar::from(i16::from(*scale)),
+        ),
+        _ if indicator.is_unsigned().is_some() => (
+            indicator
+                .column_size()
+                .and_then(|digits| u16::try_from(digits).ok())
+                .map_or(Scalar::Null, Scalar::from),
+            Scalar::Null,
         ),
         _ => (Scalar::Null, Scalar::Null),
     };
@@ -1001,6 +1030,34 @@ fn record<const N: usize>(entries: [(&str, Scalar); N]) -> Result<Scalar> {
     Scalar::from_struct(entries)
 }
 
+/// The `MustUnderstand` fault a header block earns when it demands to be
+/// understood - `mustUnderstand="1"`, SOAP-qualified or as Excel spells it -
+/// and is none of the session blocks this provider processes; no detail, as
+/// SOAP 1.1 has it for a fault about a header entry.
+fn not_understood(request: &Request) -> Option<Fault> {
+    request.header().iter().find_map(|block| {
+        let element = block.element();
+        let demanded = element
+            .attribute_in(Some(crate::soap::ENVELOPE_NAMESPACE), "mustUnderstand")
+            .or_else(|| element.attribute_in(None, "mustUnderstand"))
+            .is_some_and(|value| value.trim() == "1");
+        let session = matches!(
+            element.local_name(),
+            "BeginSession" | "Session" | "EndSession"
+        ) && element.namespace().is_none_or(|namespace| namespace == super::NAMESPACE);
+        (demanded && !session).then(|| {
+            Fault::new(
+                FaultCode::MustUnderstand,
+                format!(
+                    "the header block `{}` demands to be understood, and this provider processes only the session blocks",
+                    element.name()
+                ),
+            )
+            .with_actor(ACTOR)
+        })
+    })
+}
+
 /// A `Client` fault carrying one XMLA error.
 fn client_fault(code: u32, description: impl Into<String>) -> Fault {
     let description = description.into();
@@ -1008,9 +1065,15 @@ fn client_fault(code: u32, description: impl Into<String>) -> Fault {
         .unwrap_or_else(|_| Fault::client(description))
 }
 
-/// A `Client` fault for `error`.
-fn client_fault_or_server(code: u32, error: impl std::fmt::Display) -> Fault {
-    client_fault(code, error.to_string())
+/// The fault `error` earns: `Server` when the provider's own storage or
+/// processing failed - a store that could not be read or listed, a remote
+/// that refused, an Arrow or table-format failure - and `Client` when the
+/// request is what is wrong, which every other refusal says.
+fn client_fault_or_server(code: u32, error: Error) -> Fault {
+    match error {
+        Error::Io(_) | Error::Remote { .. } | Error::Arrow(_) => server_fault(code, error),
+        error => client_fault(code, error.to_string()),
+    }
 }
 
 /// A `Server` fault for `error`.

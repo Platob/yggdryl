@@ -55,8 +55,10 @@ pub enum Status {
     PayloadTooLarge,
     /// The body is not an XML media type.
     UnsupportedMediaType,
-    /// The message was read and processing it failed: what a SOAP fault is
-    /// answered with, as the binding requires.
+    /// The server itself failed before it could answer: what SOAP 1.1's HTTP
+    /// binding names for a fault, though the XML for Analysis providers and
+    /// clients answer and read every fault at `200`, so the XMLA server here
+    /// sends this for nothing a SOAP body can carry.
     InternalServerError,
 }
 

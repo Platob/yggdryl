@@ -165,6 +165,8 @@ enumeration!(
         (Schema, "Schema", "The XML Schema describing the result's columns, and no rows."),
         (Data, "Data", "The rows, and no schema."),
         (SchemaData, "SchemaData", "The schema, then the rows: the default."),
+        (DataOmitDefaultSlicer, "DataOmitDefaultSlicer", "The rows, and no schema; a multidimensional result would leave its default slicer out, which a rowset has none of."),
+        (DataIncludeDefaultSlicer, "DataIncludeDefaultSlicer", "The rows, and no schema; a multidimensional result would carry its default slicer, which a rowset has none of."),
     ]
 );
 
@@ -181,7 +183,10 @@ impl Content {
     /// Whether a result of this content carries its rows.
     #[must_use]
     pub const fn has_data(self) -> bool {
-        matches!(self, Self::Data | Self::SchemaData)
+        matches!(
+            self,
+            Self::Data | Self::SchemaData | Self::DataOmitDefaultSlicer | Self::DataIncludeDefaultSlicer
+        )
     }
 }
 
@@ -593,8 +598,9 @@ impl PropertyList {
     ///
     /// Returns an error naming the value when it is not a count of seconds.
     pub fn timeout(&self) -> Result<Option<u32>> {
+        // Set is set: an empty value is no count of seconds, like every other
+        // enumeration or count read here, and is refused rather than unset.
         self.get(property::TIMEOUT)
-            .filter(|value| !value.is_empty())
             .map(|value| {
                 value
                     .trim()

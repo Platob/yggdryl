@@ -205,11 +205,15 @@ fn the_binding_refuses_what_is_not_a_soap_post_by_status() {
         )
         .as_bytes(),
     );
-    assert_eq!(status, 415);
+    // Every fault goes out at 200 in a SOAP body, as the reference providers
+    // answer and as XMLA clients read a fault; nothing a SOAP body can carry
+    // is a 4xx or a 5xx.
+    assert_eq!(status, 200, "a body that is no XML is a fault at 200");
 
     let (status, body) = post(&address, "/xmla", b"<not-soap/>", "");
-    assert_eq!(status, 500, "a message that is no request is a fault at 500");
-    assert!(String::from_utf8_lossy(&body).contains("Fault"));
+    assert_eq!(status, 200, "a message that is no request is a fault at 200");
+    let body = String::from_utf8_lossy(&body);
+    assert!(body.contains("Fault") && body.contains("ErrorCode=\"1\""), "{body}");
 
     let (status, _, _) = exchange(
         &address,

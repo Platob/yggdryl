@@ -96,15 +96,31 @@ impl Discover {
             .parse()?;
         let restrictions = match element.child_in(NAMESPACE, "Restrictions") {
             Some(restrictions) => match restrictions.child_in(NAMESPACE, "RestrictionList") {
-                Some(list) => list
-                    .children()
-                    .map(|entry| {
-                        (
-                            SmolStr::new(entry.local_name()),
-                            entry.text().unwrap_or_default().to_owned(),
-                        )
-                    })
-                    .collect(),
+                Some(list) => {
+                    let mut restrictions = Restrictions::new();
+                    for entry in list.children() {
+                        // xmla4js spells several values as `Value` children;
+                        // olap4j and this crate repeat the element.
+                        let values: Vec<Element<'_>> = entry
+                            .children()
+                            .filter(|child| child.local_name() == "Value")
+                            .collect();
+                        if values.is_empty() {
+                            restrictions.push(
+                                entry.local_name(),
+                                entry.text().unwrap_or_default(),
+                            );
+                        } else {
+                            for value in values {
+                                restrictions.push(
+                                    entry.local_name(),
+                                    value.text().unwrap_or_default(),
+                                );
+                            }
+                        }
+                    }
+                    restrictions
+                }
                 None => Restrictions::new(),
             },
             None => Restrictions::new(),
@@ -395,23 +411,44 @@ impl Session {
         Ok(found)
     }
 
-    /// The header block this session is written as, marked `mustUnderstand`.
+    /// The header block a client sends this session as, marked
+    /// `mustUnderstand="1"` the way Excel marks it and the reference
+    /// providers read it - the attribute unprefixed, which is the one
+    /// spelling olap4j looks up; [`Self::read`] accepts the SOAP-qualified
+    /// one as well.
     ///
     /// # Errors
     ///
     /// Returns an error when the block cannot be built, which no identifier
     /// causes.
     pub fn into_fragment(&self) -> Result<Fragment> {
-        let mut entries: Vec<(SmolStr, Scalar)> = vec![
-            (
-                format_smolstr!("{ATTRIBUTE_PREFIX}xmlns"),
-                Scalar::from(NAMESPACE),
-            ),
-            (
-                format_smolstr!("{ATTRIBUTE_PREFIX}{}:mustUnderstand", crate::soap::PREFIX),
+        self.fragment(true)
+    }
+
+    /// The header block a provider answers this session with: the same
+    /// element without `mustUnderstand`, so a SOAP stack that does not
+    /// process sessions is not asked to fault on it - what the reference
+    /// providers answer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the block cannot be built, which no identifier
+    /// causes.
+    pub fn into_answer_fragment(&self) -> Result<Fragment> {
+        self.fragment(false)
+    }
+
+    fn fragment(&self, must_understand: bool) -> Result<Fragment> {
+        let mut entries: Vec<(SmolStr, Scalar)> = vec![(
+            format_smolstr!("{ATTRIBUTE_PREFIX}xmlns"),
+            Scalar::from(NAMESPACE),
+        )];
+        if must_understand {
+            entries.push((
+                format_smolstr!("{ATTRIBUTE_PREFIX}mustUnderstand"),
                 Scalar::from("1"),
-            ),
-        ];
+            ));
+        }
         if let Some(id) = self.session_id() {
             entries.push((
                 format_smolstr!("{ATTRIBUTE_PREFIX}SessionId"),

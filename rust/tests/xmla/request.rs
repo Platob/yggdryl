@@ -396,16 +396,14 @@ fn a_session_header_is_written_in_the_xmla_namespace_marked_must_understand() {
             "XMLA's unqualified SessionId attribute, absent on BeginSession"
         );
         assert_eq!(
-            element
-                .attribute("SOAP-ENV:mustUnderstand")
-                .and_then(Scalar::as_str),
+            element.attribute("mustUnderstand").and_then(Scalar::as_str),
             Some("1"),
-            "{session:?}"
+            "unqualified, as Excel spells it and the reference providers read it: {session:?}"
         );
         assert_eq!(element.children().count(), 0, "a header block is empty");
     }
 
-    // Inside the envelope the prefix resolves to SOAP 1.1's own namespace.
+    // Inside the envelope the block keeps its unqualified mark, in no namespace.
     let request = Request::from(Discover::new(RequestType::DiscoverDatasources))
         .with_session(&Session::Continue("581".into()))
         .expect("a session header");
@@ -414,9 +412,10 @@ fn a_session_header_is_written_in_the_xmla_namespace_marked_must_understand() {
     assert_eq!(envelope.header().len(), 1);
     let block = envelope.header()[0].element();
     assert_eq!(block.namespace(), Some(NAMESPACE));
+    assert_eq!(block.attribute_in(None, "mustUnderstand"), Some("1"));
     assert_eq!(
         block.attribute_in(Some(ENVELOPE_NAMESPACE), "mustUnderstand"),
-        Some("1")
+        None
     );
     assert_eq!(block.attribute_in(None, "SessionId"), Some("581"));
 }
@@ -1369,7 +1368,7 @@ fn a_session_header_is_written_before_the_body() {
     assert!(header < block && block < body, "{text}");
     for expected in [
         "SessionId=\"581\"",
-        "SOAP-ENV:mustUnderstand=\"1\"",
+        " mustUnderstand=\"1\"",
         "xmlns=\"urn:schemas-microsoft-com:xml-analysis\"",
     ] {
         assert!(text[block..body].contains(expected), "{expected} in {text}");

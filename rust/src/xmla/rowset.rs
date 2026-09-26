@@ -511,6 +511,42 @@ impl Rowset {
         schema: bool,
         data: bool,
     ) -> Result<()> {
+        match self.write_root_with(writer, batches, schema, data, false)? {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+
+    /// Write a whole `root` element as a provider streams one: like
+    /// [`Self::write_root`], except that a batch failing once rows have been
+    /// written is reported inside the root as `<Messages><Error .../></Messages>`
+    /// in the exception namespace and the root is closed, so the document a
+    /// client reads is complete and names the failure. The error is handed
+    /// back rather than raised.
+    ///
+    /// # Errors
+    ///
+    /// Returns the sink's failure.
+    pub fn write_root_reporting<W: Write>(
+        &self,
+        writer: &mut W,
+        batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+        schema: bool,
+        data: bool,
+    ) -> Result<Option<super::response::XmlaError>> {
+        Ok(self
+            .write_root_with(writer, batches, schema, data, true)?
+            .map(|error| reported(&error)))
+    }
+
+    fn write_root_with<W: Write>(
+        &self,
+        writer: &mut W,
+        batches: impl IntoIterator<Item = crate::arrow::Result<Serie>>,
+        schema: bool,
+        data: bool,
+        report: bool,
+    ) -> Result<Option<Error>> {
         write!(
             writer,
             "<{ROOT_ELEMENT} xmlns=\"{ROWSET_NAMESPACE}\" xmlns:xsi=\"{XSI_NAMESPACE}\" \
@@ -519,17 +555,30 @@ impl Rowset {
         if schema {
             self.write_schema(writer)?;
         }
+        let mut failed = None;
         if data {
             for batch in batches {
-                let batch = batch.map_err(|error| Error::InvalidRecord {
-                    path: SmolStr::new_static("$.rows"),
-                    reason: format_smolstr!("{error}"),
-                })?;
-                self.write_rows(writer, &batch)?;
+                let written = match batch {
+                    Ok(batch) => self.write_rows(writer, &batch),
+                    Err(error) => Err(Error::InvalidRecord {
+                        path: SmolStr::new_static("$.rows"),
+                        reason: format_smolstr!("{error}"),
+                    }),
+                };
+                if let Err(error) = written {
+                    if !report {
+                        return Err(error);
+                    }
+                    write!(writer, "<Messages xmlns=\"{EXCEPTION_NAMESPACE}\">")?;
+                    reported(&error).write(writer)?;
+                    write!(writer, "</Messages>")?;
+                    failed = Some(error);
+                    break;
+                }
             }
         }
         write!(writer, "</{ROOT_ELEMENT}>")?;
-        Ok(())
+        Ok(failed)
     }
 
     /// Write the `xsd:schema` declaring this rowset's columns.
@@ -547,7 +596,7 @@ impl Rowset {
              <xsd:element name=\"{ROW_ELEMENT}\" type=\"{ROW_ELEMENT}\"/>\
              </xsd:sequence></xsd:complexType></xsd:element>\
              <xsd:simpleType name=\"{UUID_TYPE}\"><xsd:restriction base=\"xsd:string\">\
-             <xsd:pattern value=\"[0-9a-zA-Z]{{8}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{4}}-[0-9a-zA-Z]{{12}}\"/>\
+             <xsd:pattern value=\"[0-9a-fA-F]{{8}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{4}}-[0-9a-fA-F]{{12}}\"/>\
              </xsd:restriction></xsd:simpleType>\
              <xsd:complexType name=\"{ROW_ELEMENT}\"><xsd:sequence>"
         )?;
@@ -666,6 +715,23 @@ impl Rowset {
             .zip(self.field.fields())
             .map(|(column, field)| (column.element.as_str(), field.name()))
             .collect();
+        // An error the provider reported once the answer had begun - olap4j
+        // writes it as `Messages/Error` inside the root - is the answer's
+        // failure, never a shorter rowset.
+        if let Some(reported) = root.children().find_map(|child| match child.local_name() {
+            "Error" => super::response::XmlaError::from_element(&child),
+            "Messages" => child
+                .children()
+                .find(|error| error.local_name() == "Error")
+                .and_then(|error| super::response::XmlaError::from_element(&error)),
+            _ => None,
+        }) {
+            return Err(invalid(format_smolstr!(
+                "the provider reported an error inside the rowset: {} ({})",
+                reported.description(),
+                reported.code()
+            )));
+        }
         let mut rows = Vec::new();
         for (index, row) in root.children_in(Some(ROWSET_NAMESPACE), ROW_ELEMENT).into_iter()
             .chain(root.children_in(None, ROW_ELEMENT))
@@ -870,6 +936,12 @@ fn spells_a_zone(text: &str) -> bool {
 }
 
 /// Refuse a column a rowset cannot spell.
+/// The XMLA error a failure is reported as inside a streamed rowset.
+fn reported(error: &Error) -> super::response::XmlaError {
+    super::response::XmlaError::new(super::service::code::EXECUTION_FAILED, error.to_string())
+        .with_source(super::response::ACTOR)
+}
+
 /// Whether a datatype is one of the five sequence layouts.
 const fn is_sequence(dtype: &DataType) -> bool {
     matches!(
@@ -1170,6 +1242,16 @@ fn read_value(
             Some(text) if dtype.bytes_parameters().is_some() => {
                 Ok(Scalar::from(text.split_whitespace().collect::<String>()))
             }
+            // olap4j's tabular rows type every cell with `xsi:type` and spell
+            // an absent one as the text `null`; under a column that is not
+            // text, that spelling can be nothing but absence.
+            Some(text)
+                if text.trim() == "null"
+                    && dtype.string_parameters().is_none()
+                    && element.attribute_in(Some(XSI_NAMESPACE), "type").is_some() =>
+            {
+                Ok(Scalar::Null)
+            }
             Some(text) => Ok(Scalar::from(text)),
             None => Ok(element.value().clone()),
         },
@@ -1203,7 +1285,8 @@ fn write_declaration<W: Write>(writer: &mut W, field: &Field, element: &str) -> 
             None
         }
     };
-    if field.is_nullable() || item.is_nullable() || field.dtype() == &DataType::Null {
+    // A sequence occurs no time when it is empty, so it is always optional.
+    if unbounded || field.is_nullable() || item.is_nullable() || field.dtype() == &DataType::Null {
         write!(writer, " minOccurs=\"0\"")?;
     }
     if unbounded {
