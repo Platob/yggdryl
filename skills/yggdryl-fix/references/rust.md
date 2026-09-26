@@ -433,16 +433,20 @@ assert_eq!(chained, 3);
 `market_operations` admits what a book folds, expands each message into graph
 leaves and sorts them by the instant a book folds them at; `BookIterator` then
 walks them. Compose `lifecycle` in front when predecessor state matters.
+`market_arrow_reader` writes the sorted operations as `marketdata` rows, and
+`market_operations_arrow_reader` is its twin over batches of FIX rows already
+in Arrow.
 
 ```rust
 use std::sync::Arc;
 
 use yggdryl::graph::{BookIterator, MarketData, MarketKind};
 use yggdryl::local::LocalFolder;
-use yggdryl::{FixCodec, FixMsg, FixRegistry};
+use yggdryl::{FixCodec, FixMsg, FixRegistry, fix_schema};
 
 let dictionary = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../config/fix");
-let codec = FixCodec::new(Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?));
+let registry = Arc::new(FixRegistry::from_handle(&LocalFolder::new(dictionary)?)?);
+let codec = FixCodec::new(registry.clone());
 // The update arrives before the snapshot it follows.
 let lines = [
     "8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
@@ -459,7 +463,11 @@ assert_eq!(books[1].bid().best_price().map(|price| price.to_string()).as_deref()
 // The book door is strict: the same capture out of order is refused.
 assert!(codec.book_arrow_reader(capture.clone(), 0, false)?.any(|batch| batch.is_err()));
 // The sorted operations as `marketdata` rows.
-let rows: usize = codec.market_arrow_reader(capture)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
+let rows: usize = codec.market_arrow_reader(capture.clone())?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
+assert_eq!(rows, 4);
+// The same operations off the capture's FIX rows.
+let fixed = codec.arrow_reader(fix_schema(&registry, "fix")?, capture)?;
+let rows: usize = codec.market_operations_arrow_reader(fixed)?.map(|batch| batch.map(|batch| batch.num_rows())).sum::<Result<_, _>>()?;
 assert_eq!(rows, 4);
 ```
 
@@ -506,6 +514,44 @@ let reloaded = FixRegistry::from_handle(&root)?;
 assert_eq!(reloaded, registry);
 assert_eq!(reloaded.field_by_path(&FieldPath::from_str("Parties.PartyID")?)?.as_fix().tag()?, Some(448));
 root.remove(true)?;
+```
+
+## Fold a venue CBlock into a dictionary
+
+`FixRegistry::from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
+and its declared roots, stamping the dialect on everything it produced;
+`add_cfb_file` / `add_cfb_files` fold one or a glob of them into a held
+registry (dialect defaulting to each file's stem), and `merge_with` folds a
+whole other registry. Every fold is atomic.
+
+```rust
+use yggdryl::FixRegistry;
+use yggdryl::local::{LocalFile, LocalFolder};
+
+let path = std::env::temp_dir().join(format!("ygg-skill-fix-cfb-{}", std::process::id()));
+std::fs::create_dir_all(&path)?;
+let cblock = |name: &str| format!(r#"<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+  <vocabulary><vocabulary-tag name="4" alt="AdvSide" type="char" /></vocabulary>
+  <maps><map name="ADVSIDE"><entries><entry key="{name}" value="B" /></entries></map></maps>
+</cplugin-configuration>
+"#);
+std::fs::write(path.join("alpha.cfb"), cblock("buy"))?;
+std::fs::write(path.join("beta.cfb"), cblock("venue_buy"))?;
+
+let (venue, roots) = FixRegistry::from_cfb_file(&LocalFile::new(path.join("alpha.cfb"))?, Some("venue"))?;
+assert_eq!(venue.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["venue"]);
+assert!(roots.is_empty());
+
+let mut registry = FixRegistry::new();
+let (files, _added, _merged) = registry.add_cfb_files(&LocalFolder::new(&path)?, "*.cfb", None)?;
+assert_eq!(files, 2);
+// Ascending URL order, each file stamped with its stem.
+assert_eq!(registry.field(4)?.as_fix().branches().collect::<Vec<_>>(), ["alpha", "beta"]);
+
+registry.merge_with(&venue)?;
+assert_eq!(registry.dialects(), ["alpha", "beta", "venue"]);
+std::fs::remove_dir_all(&path)?;
 ```
 
 ## Gotchas in Rust

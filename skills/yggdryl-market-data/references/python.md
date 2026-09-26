@@ -445,9 +445,14 @@ serve it with `node node_modules/yggdryl/replay.js marketdata.parquet`.
   loses the last digits).
 - `graph.BookIterator(items, snapshot_millis=0, global_=False)` - note the
   trailing underscore; `EventIterator(items, sorted=True, snapshot_ns=None)`
-  defaults to trusting the order.
+  defaults to trusting the order - an unsorted list is not refused, it yields
+  broken chains (every `seqnum` 0); pass `sorted=False` for one you have not sorted.
+- Prices and quantities take `Decimal("189.5")` (or an `int`): a float
+  `price=189.5` is refused at `$.price` (`got f64`).
 - Every verb answers a new value: `book.with_operations([...])` does not change
-  `book`; `with_previous` / `merge_with` answer `None` when nothing moved.
+  `book`; only `with_previous` / `merge_with` answer `None` when nothing moved.
+- A book refuses an undated `Order`: `BookIterator` at `$.operation.kind`,
+  `with_operations` at `$.operations[i].kind`.
 - A leaf compares equal to its own class only: compare `value.into_leaf()` or
   `value.as_order_event()` with a leaf, `MarketData` with `MarketData`.
 - `book.bid.limits` are struct `Scalar`s: `limit.as_py()` is a dict of

@@ -45,7 +45,7 @@ Hold four facts:
 | a composite trade | `TradeEvent::from_parts(&root, executions)?` | `graph.TradeEvent.from_parts(root, executions)` | `graph.TradeEvent.fromParts(root, executions)` |
 | follow a predecessor | `event.with_previous(&prev)` | `event.with_previous(prev)` | `event.withPrevious(prev)` |
 | merge two statements of one event | `event.merge_with(&other)` | `event.merge_with(other)` | `event.mergeWith(other)` |
-| walk a stream into chains | `EventIterator::new(items, sorted)`, `.with_snapshot_ns(ns)` | `graph.EventIterator(items, sorted=False, snapshot_ns=None)` | `new graph.EventIterator(items, sorted, snapshotNs)` |
+| walk a stream into chains | `EventIterator::new(items, sorted)`, `.with_snapshot_ns(ns)` | `graph.EventIterator(items, sorted=True, snapshot_ns=None)` | `new graph.EventIterator(items, sorted, snapshotNs)` (sorted defaults to `true`) |
 | any leaf as one value | `MarketData::from(leaf)`, `kind()`, `as_order_event()`, `TryFrom` | `graph.MarketData(leaf)`, `.kind`, `.as_order_event()`, `.into_leaf()` | `new graph.MarketData(leaf)`, `.kind`, `.asOrderEvent()`, `.intoLeaf()` |
 | the `marketdata` row schema | `MarketData::field()?` | `graph.MarketData.field()` | `graph.MarketData.field()` |
 | leaves to Arrow batches | `MarketData::arrow_reader(values, None, None)?` | `graph.MarketData.arrow_reader(values)` | `graph.MarketData.arrowReader(values)` |
@@ -88,16 +88,17 @@ Hold four facts:
    (`ORDERID`, `CLORDID`, `MDENTRYID`...). Name identifiers there, upper-cased,
    rather than inventing a column.
 7. Leaves are immutable in the bindings: `with_previous`, `merge_with`,
-   `restating`, `with_book`, `with_operations` answer a new value (or
-   `None`/`null` when nothing moved). Build with named facts: a fact given as
+   `restating`, `with_book`, `with_operations` answer a new value; only
+   `with_previous` and `merge_with` answer `None`/`null` when nothing moved. Build with named facts: a fact given as
    `...`/`undefined` is skipped, `None`/`null` clears it; a derived identity
    (`curruuid`, `crossuuid`, `currhashcode`, `crosshashcode`) is refused.
 8. Sources are provenance: `srcuuids` never changes identity, never travels
    along a chain, and merges as a sorted union - use it to point back at the
    lines an event was read from.
-9. Numbers are exact decimals: Python answers `Scalar` (`.as_py()` ->
-   `Decimal`), JavaScript exact text (`'189.5'`), Rust `Decimal`. Never
-   round-trip a price through a float.
+9. Numbers are exact decimals: pass `Decimal('189.5')` in Python and the text
+   `'189.5'` in JavaScript - a float price (`189.5`) is refused at `$.price`
+   (`got f64`). Python answers `Scalar` (`.as_py()` -> `Decimal`), JavaScript
+   exact text (`'189.5'`), Rust `Decimal`.
 10. The replay service and the web component show only what the package
     answered - `bookJson` renders a native `BookEvent`; nothing in the page
     folds or computes. Walk with `BookIterator` (`replay.walk`) and serve.
@@ -111,8 +112,13 @@ Hold four facts:
   `$.operations` ("expected a sorted operation timestamp at or after ...");
   sort first, or take the operations from `FixCodec.market_operations`.
 - A book folds only dated operations, trades and snapshot controls: an
-  undated `Order`, a `BookSide` or a `BookEvent` is refused at
-  `$.operation.kind`.
+  undated `Order`, a `BookSide` or a `BookEvent` is refused - by
+  `BookIterator` at `$.operation.kind`, by `with_operations`/`add_operations`
+  at `$.operations[i].kind`.
+- `EventIterator` defaults to `sorted=True` / `true` and trusts the order: an
+  unsorted stream is not refused, it silently yields broken chains (every
+  event `seqnum` 0). Pass `sorted=False` / `false` for a stream you have not
+  sorted (it collects to sort); only `BookIterator` refuses a regression.
 - Outside global mode every folded operation must state a `ticker`; set it.
 - A trade is built only through `TradeEvent.from_parts`: at least one
   execution, each bid- or ask-sided, at the root's instant, one ticker, distinct

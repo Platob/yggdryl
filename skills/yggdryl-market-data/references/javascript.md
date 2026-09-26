@@ -471,13 +471,18 @@ run under Node.
 
 - Instants are `bigint`: `T + 1_000_000_000n`, never `T + 1e9`; a `Date` is
   milliseconds - multiply `BigInt(date.getTime())` by `1_000_000n`.
-- Decimals are exact text: compare `'189.5'` (canonical, no trailing zero),
-  never parse to `Number` for money.
+- Decimals are exact text: pass and compare `'189.5'` (canonical, no trailing
+  zero), never a `Number` - `{ price: 189.5 }` is refused at `$.price` (`got f64`).
+- `new graph.EventIterator(items)` defaults `sorted` to `true` and trusts the
+  order: an unsorted array is not refused, it yields broken chains (every
+  `seqnum` 0); pass `false` for one you have not sorted.
 - Iterators (`BookIterator`, `EventIterator`, `fromArrowReader`) and
   `BatchReader`s are one-shot: spread once, or rebuild the reader.
 - Arrow JS interop is copied IPC, never zero copy: keep bulk work in the
   native readers and cross into Arrow JS once (`intoTable()`).
 - `withOperations`, `withPrevious`, `mergeWith` answer a new value; the one
-  you called is unchanged.
+  you called is unchanged. Only `withPrevious`/`mergeWith` answer `null` when
+  nothing moved; `withOperations` refuses an undated `Order` at
+  `$.operations[i].kind` (`BookIterator` at `$.operation.kind`).
 - The replay renders what the package answered and nothing else: to change a
   book, change the operations and walk again.

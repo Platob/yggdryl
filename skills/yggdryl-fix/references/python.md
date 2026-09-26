@@ -399,6 +399,9 @@ assert len(set(chained.column("crossuuid").to_pylist())) == 1
 `market_operations` admits what a book folds, expands each message into graph
 leaves and sorts them by the instant a book folds them at; `graph.BookIterator`
 then walks them. Compose `lifecycle` in front when predecessor state matters.
+`market_arrow_reader` writes the sorted operations as `marketdata` rows, and
+`market_operations_arrow_reader` is its twin over batches of FIX rows already
+in Arrow.
 
 ```python
 from decimal import Decimal
@@ -407,9 +410,10 @@ from pathlib import Path
 import pytest
 
 from yggdryl import graph
-from yggdryl.fix import FixCodec, FixRegistry
+from yggdryl.fix import FixCodec, FixRegistry, fix_schema
 
-codec = FixCodec(FixRegistry.from_handle(Path("config/fix")))
+registry = FixRegistry.from_handle(Path("config/fix"))
+codec = FixCodec(registry)
 # The update arrives before the snapshot it follows.
 lines = [
     b"8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|",
@@ -428,6 +432,9 @@ with pytest.raises(ValueError):
     codec.book_arrow_reader(capture).read_all()
 # The sorted operations as `marketdata` rows.
 assert codec.market_arrow_reader(capture).read_all().num_rows == 4
+# The same operations off the capture's FIX rows.
+fixed = codec.arrow_reader(fix_schema(registry, "fix"), capture)
+assert codec.market_operations_arrow_reader(fixed).read_all().num_rows == 4
 ```
 
 ## Build and commit a dictionary
@@ -475,6 +482,47 @@ with tempfile.TemporaryDirectory() as directory:
     reloaded = FixRegistry.from_handle(root)
     assert reloaded == registry
     assert reloaded.field_by_path("Parties.PartyID").fix.tag == 448
+```
+
+## Fold a venue CBlock into a dictionary
+
+`FixRegistry.from_cfb_file` reads one Ullink CBlock (`.cfb`) into a registry
+and its declared roots, stamping the dialect on everything it produced;
+`add_cfb_file` / `add_cfb_files` fold one or a glob of them into a held
+registry (dialect defaulting to each file's stem), and `merge_with` folds a
+whole other registry. Every fold is atomic.
+
+```python
+import pathlib
+import tempfile
+
+from yggdryl.fix import FixRegistry
+
+cblock = """<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+  <vocabulary><vocabulary-tag name="4" alt="AdvSide" type="char" /></vocabulary>
+  <maps><map name="ADVSIDE"><entries><entry key="{name}" value="B" /></entries></map></maps>
+</cplugin-configuration>
+"""
+with tempfile.TemporaryDirectory() as directory:
+    folder = pathlib.Path(directory)
+    (folder / "alpha.cfb").write_text(cblock.format(name="buy"))
+    (folder / "beta.cfb").write_text(cblock.format(name="venue_buy"))
+
+    venue, roots = FixRegistry.from_cfb_file(folder / "alpha.cfb", "venue")
+    assert venue.field(4).fix.branches == ["venue"] and roots == []
+
+    registry = FixRegistry()
+    files, added, merged = registry.add_cfb_files(folder, "*.cfb")
+    assert files == 2
+    # Ascending URL order, each file stamped with its stem.
+    assert registry.field(4).fix.branches == ["alpha", "beta"]
+    # A code set only widens: the held name wins a shared value.
+    [code] = registry.codeset_of(registry.field(4))
+    assert (code["value"], code["name"], code["aliases"]) == ("B", "buy", ["venue_buy"])
+
+    registry.merge_with(venue)
+    assert registry.field(4).fix.branches == ["alpha", "beta", "venue"]
 ```
 
 ## Gotchas in Python

@@ -392,13 +392,17 @@ assert.equal(new Set([...chained.getChild('crossuuid')].map(String)).size, 1)
 `marketOperations` admits what a book folds, expands each message into graph
 leaves and sorts them by the instant a book folds them at; `graph.BookIterator`
 then walks them. Compose `lifecycle` in front when predecessor state matters.
+`marketArrowReader` writes the sorted operations as `marketdata` rows, and
+`marketOperationsArrowReader` is its twin over batches of FIX rows already in
+Arrow.
 
 ```javascript
 const assert = require('node:assert/strict')
 const path = require('node:path')
 const { fix, graph } = require('yggdryl')
 
-const codec = new fix.FixCodec(fix.FixRegistry.fromHandle(path.resolve('config', 'fix')))
+const registry = fix.FixRegistry.fromHandle(path.resolve('config', 'fix'))
+const codec = new fix.FixCodec(registry)
 // The update arrives before the snapshot it follows.
 const lines = [
   '8=FIX.4.4|35=X|52=20260921-10:00:01|55=AAPL|268=2|279=1|269=0|278=B1|270=101|271=11|279=0|269=2|278=T1|270=101|271=2|10=0|',
@@ -416,6 +420,9 @@ assert.equal(books[1].bid.bestPrice, '101')
 assert.throws(() => codec.bookArrowReader(capture).intoTable(), /nondecreasing/)
 // The sorted operations as `marketdata` rows.
 assert.equal(codec.marketArrowReader(capture).intoTable().numRows, 4)
+// The same operations off the capture's FIX rows.
+const fixed = codec.arrowReader(fix.schema(registry, 'fix'), capture)
+assert.equal(codec.marketOperationsArrowReader(fixed).intoTable().numRows, 4)
 ```
 
 ## Build and commit a dictionary
@@ -465,11 +472,43 @@ assert.equal(reloaded.fieldByPath('Parties.PartyID').fix.tag, 448)
 fs.rmSync(path.dirname(root), { recursive: true, force: true })
 ```
 
+## Fold a venue CBlock into a dictionary
+
+`FixRegistry.fromCfbFile` reads one Ullink CBlock (`.cfb`) into a registry and
+its declared roots, stamping the dialect on everything it produced. The folds
+into a held registry (`add_cfb_file`, `add_cfb_files`, `merge_with`) are not
+bound here: fold in Rust or Python, or with `ygg fix sync` ([cli](cli.md)).
+
+```javascript
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
+const { fix } = require('yggdryl')
+
+const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ygg-'))
+const file = path.join(folder, 'alpha.cfb')
+fs.writeFileSync(file, `<?xml version="1.0" encoding="US-ASCII"?>
+<cplugin-configuration fix-version="4.4">
+  <vocabulary><vocabulary-tag name="20001" alt="VenueFlag" type="string" /></vocabulary>
+</cplugin-configuration>
+`)
+const [venue, roots] = fix.FixRegistry.fromCfbFile(file, 'venue')
+assert.deepEqual(venue.field(20001).fix.branches, ['venue'])
+assert.deepEqual(venue.dialects(), ['venue'])
+assert.deepEqual(roots, [])
+// No dialect, no stamp: only the folds read a file's stem.
+assert.deepEqual(fix.FixRegistry.fromCfbFile(file)[0].field(20001).fix.branches, [])
+fs.rmSync(folder, { recursive: true, force: true })
+```
+
 ## Gotchas in JavaScript
 
 - `parseLine`, `parseFixLine` and friends take a `Buffer`; `parseLines` also
-  accepts strings. A `Buffer` built from a string with control bytes needs the
-  `'binary'` encoding to keep them.
+  accepts strings. `Buffer.from(text)` keeps SOH and every other byte below
+  `0x80` as it is. Use `Buffer.from(text, 'binary')` only when the string holds
+  raw bytes `0x80`-`0xFF`, one char per byte; never on real Unicode text, where
+  it truncates every character above U+00FF.
 - Decimals come back as exact text (`'100'`, `'10.5'`), instants and 64-bit
   hashes as `bigint`: compare with `1_767_348_930_000_000_000n`, never a number.
 - `FixMessages` is a one-shot iterable: spread it once (`[...codec.parseLines(x)]`);

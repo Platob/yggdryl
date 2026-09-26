@@ -523,12 +523,14 @@ the sorted **operations** (not the books - the service walks them itself) as
 - Setters never finalize: a leaf with stale derived facts is refused when
   written to Arrow. Call `finalize()` after the last `set_*`.
 - `EventIterator::new(items, false)` collects to sort; pass `true` only for a
-  stream you know is sorted, so it streams.
+  stream you know is sorted, so it streams - an unsorted stream under `true` is
+  not refused, it yields broken chains (every `seqnum` 0).
 - `BookIterator::new` takes an iterator (`.into_iter()`) of `MarketData` or
   `Result<MarketData>` and yields `Result<BookEvent>`.
 - `with_previous`/`merge_with` answer `Option`: `None` means nothing moved (its
   own predecessor, an earlier event, another element), not an error.
-- `insert_securityid`, `insert_altid` fill an absent key only and answer
-  whether they did; `set_securityids`/`set_altids` replace the whole set.
+- `insert_securityid` fills an absent key or replaces one that was derived (a
+  CUSIP derived from the ISIN), and answers whether it changed; `insert_altid`
+  fills an absent key only; `set_securityids`/`set_altids` replace the whole set.
 - The traits are object-safe except the verbs that take or return `Self`
   (`with_previous`, `merge_with`, `is_after` ...): `&dyn Event` reads every fact.

@@ -1,6 +1,6 @@
 ---
 name: yggdryl-fix
-description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows or FIXML from logs (parse_line / parseLine, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow or Parquet (fix_schema, arrow_reader / arrowReader), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market operations and books (market_operations, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, commit, code sets, FIX metadata) or running the ygg fix CLI.
+description: Decodes, encodes and streams FIX messages with yggdryl against a FIX dictionary (FixRegistry), in Rust, Python and Node.js. Use when parsing tag=value/SOH frames, bridge rows or FIXML from logs (parse_line / parseLine, parse_text_arrow_reader / parseTextArrowReader), re-emitting wire bytes (into_text / intoText), landing captures in Arrow or Parquet (fix_schema, arrow_reader / arrowReader), chaining order lifecycles (lifecycle, crossuuid), turning FIX into market operations and books (market_operations, book_arrow_reader), building or storing a dictionary (FixRegistry.from_handle / fromHandle, from_cfb_file, merge_with, commit, code sets, FIX metadata) or running the ygg fix CLI.
 ---
 
 # yggdryl FIX
@@ -40,6 +40,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | a message definition | `registry.msgtype("D")?` | `registry.msgtype("D")` | `registry.msgtype('D')` |
 | a field's code set | `registry.codeset_of(field)`, `set_codeset(name, &[FixCode])?` | `codeset_of(field)`, `set_codeset(name, [{...}])` | `codesetOf(field)`, `setCodeset(name, [...])` |
 | persist a dictionary | `registry.commit(&mut folder)?` | `registry.commit(path)` | `registry.commit(path)` |
+| read a venue CBlock (`.cfb`) | `FixRegistry::from_cfb_file(&LocalFile::new(path)?, Some("venue"))?` | `FixRegistry.from_cfb_file(path, "venue")` | `fix.FixRegistry.fromCfbFile(path, 'venue')` |
+| fold CBlocks or another dictionary in | `registry.add_cfb_file(&file, None)?`, `add_cfb_files(&folder, "*.cfb", None)?`, `merge_with(&other)?` | `registry.add_cfb_file(path)`, `add_cfb_files(folder, "*.cfb")`, `merge_with(other)` | not bound (`ygg fix sync`) |
 | a codec for a run | `FixCodec::new(Arc::new(registry)).with_threads(4)` | `FixCodec(registry, threads=4)` | `new fix.FixCodec(registry, { threads: 4 })` |
 | read only some types | `.with_include_msgtypes(["D", "8"])` | `FixCodec(r, include_msgtypes=[...])` | `{ includeMsgtypes: [...] }` |
 | sniff a line's type, no dictionary | `FixCodec::infer_msgtype_bytes(bytes)` | `FixCodec.infer_msgtype_bytes(bytes)` | `fix.FixCodec.inferMsgtypeBytes(buffer)` |
@@ -61,6 +63,8 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 | chain rows already in Arrow | `codec.lifecycle_arrow_reader(reader)?` | `codec.lifecycle_arrow_reader(reader)` | `codec.lifecycleArrowReader(reader)` |
 | sorted market operations | `codec.market_operations(messages)` | `codec.market_operations(messages)` | `codec.marketOperations(messages)` |
 | books as `marketdata` rows | `codec.book_arrow_reader(msgs, 0, false)?` | `codec.book_arrow_reader(msgs, snapshot_millis=0, global_=False)` | `codec.bookArrowReader(msgs, 0, false)` |
+| sorted operations as `marketdata` rows | `codec.market_arrow_reader(msgs)?` | `codec.market_arrow_reader(messages)` | `codec.marketArrowReader(messages)` |
+| FIX rows in Arrow to operation rows | `codec.market_operations_arrow_reader(reader)?` | `codec.market_operations_arrow_reader(reader)` | `codec.marketOperationsArrowReader(reader)` |
 | manage a dictionary from a shell | `ygg fix --root <dir> ...` ([cli](references/cli.md)) | same binary, shipped in the wheel | same binary |
 
 ## Rules for fast, correct use
@@ -89,7 +93,11 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 6. Market hand-off is `market_operations(lifecycle(messages))`: the walk
    settles each message, the sorted door orders every operation by the instant
    a book folds it. `book_arrow_reader` is strict - it refuses out-of-order
-   input - and neither door runs the lifecycle for you.
+   input - and neither door runs the lifecycle for you. For a capture already
+   landed as FIX rows, `market_operations_arrow_reader` reads each row as its
+   message (no line parsed again) and sorts its operations; it runs no
+   lifecycle either, and a `lifecycle_arrow_reader` row lacks what the walk
+   settled (`prevpx`, a carried side), so hand walked messages, not rows.
 7. Pin `default_sending_time` for reproducible reads. A frame stating no
    `SendingTime(52)` whose line carries no clock is dated by one UTC-now read,
    and the clock feeds `curruuid`; a pinned instant (or a row-header `mtime`
@@ -106,7 +114,10 @@ point `YGGDRYL_FIX_REGISTRY` (or `~/.config/fix`) at it for the process default.
 10. Store and reload a dictionary through `commit`/`from_handle` (or `ygg fix`).
     `commit` writes only documents that changed, prunes what no definition
     holds, and answers `written`/`removed`; never hand-edit the generated
-    shards, and state a code set before the field that names it.
+    shards, and state a code set before the field that names it. Folds
+    (`add_cfb_file`, `add_cfb_files`, `merge_with`) are atomic; `add_cfb_files`
+    folds in ascending URL order, so the last-sorting file wins a disputed tag,
+    and a code set only widens (the held name wins a shared value).
 11. Mutations are atomic: a refused `insert`, `set` or `set_codeset` leaves the
     registry or message unchanged. A registry shared by a codec or message is
     frozen in the bindings; mutate first, then build codecs.
