@@ -20,6 +20,11 @@
 //!   meets a float - an exact number and an approximate one have no common
 //!   type that is honest, so the expression is refused and the caller writes
 //!   the cast they meant;
+//! * arithmetic over a fixed leaf - `decimal`, `bigdecimal` - answers the
+//!   leaf at scale eighteen, `bigdecimal` where either side is `bigdecimal`,
+//!   `decimal256`, `int128` or `uint128`: the rule `Scalar` arithmetic states,
+//!   so a price times a quantity is a price's type and not a scale the
+//!   operands' scales add up to;
 //! * a temporal meets a temporal of the same family, at the finer unit;
 //! * text meets text, bytes meet bytes, and nothing else meets anything.
 //!
@@ -562,6 +567,20 @@ fn arithmetic_type(left: &DataType, operator: Operator, right: &DataType) -> Opt
             return DataType::duration64(unit).ok();
         }
         _ => {}
+    }
+    // A fixed leaf keeps its own rule rather than the family's, whose scales
+    // add under a product: an exact operand meets it at scale eighteen.
+    if let Some(wide) = crate::arithmetic::fixed_result(left.id(), right.id()) {
+        let exact = |dtype: &DataType| {
+            matches!(dtype, DataType::Null)
+                || DataTypeKind::Integer.contains(dtype.id())
+                || DataTypeKind::Decimal.contains(dtype.id())
+        };
+        return (exact(left) && exact(right)).then_some(if wide {
+            DataType::BigDecimal
+        } else {
+            DataType::Decimal
+        });
     }
     let shared = common_type(left, right)?;
     if decimal_parts(&shared).is_some() {

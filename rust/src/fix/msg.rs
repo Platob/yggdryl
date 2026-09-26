@@ -1848,9 +1848,7 @@ impl FixMsg {
             }
         }
         let sources = self.registry.idmap_sources();
-        let inherited = expanded
-            .filter(|expanded| expanded.inherited)
-            .map_or(&[][..], |expanded| expanded.reads);
+        let inherited = expanded.map_or(&[][..], |expanded| expanded.inherited);
         let read = |tag: i32| {
             super::digest::is_envelope(tag)
                 || identity::is_typed_tag(tag)
@@ -3420,10 +3418,9 @@ pub(super) struct Expanded {
     pub(super) counter: i32,
     /// The tags a leaf reads out of its own occurrence, at any depth of it.
     pub(super) reads: &'static [i32],
-    /// Whether the root states the context every occurrence inherits
-    /// through the same reads, which makes them the root's too: a book
-    /// message's root does, a trade's does not.
-    pub(super) inherited: bool,
+    /// The root tags every occurrence inherits, which are the root's own
+    /// reads: a book message's context, and none for a trade.
+    pub(super) inherited: &'static [i32],
 }
 
 /// What a message states that no typed column of its leaves reads,

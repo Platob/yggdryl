@@ -4995,7 +4995,7 @@ pub struct Limit { pub price: Option<Decimal>, pub quantity: Decimal, pub uuids:
   pub fn dtype() -> DataType  (`struct<price: decimal?, quantity: decimal, uuids: serie<uuid>>`, the uuid item `uuid` required)
   pub fn field() -> Field  (the required item `limit` of a `limits` column)
   pub fn into_scalar(&self) -> Scalar  (the named `Scalar::Struct` of the three cells, a missing price `Null`)
-  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a missing name a null, an unknown one refused at `$.<name>` - or the ordered row of three cells `dtype().scalar` answers; `InvalidRecord` at `$.price`, `$.quantity`, `$.uuids`, `$.uuids[i]`, or `$` for another width or shape)
+  pub fn from_scalar(value: &Scalar) -> Result<Self>  (the named struct - a name it lacks a null, so a missing quantity or uuids is refused as a stated null is, never the door's default - or the ordered row of three cells; read through `field()`'s value door first, the one value contract, and refused exactly as it refuses, located under `$.limit` - `$.limit.price`, `$.limit.quantity`, `$.limit.uuids[i]`; an empty text, a float or a 19th fractional digit is refused, never read as zero)
 
 ### yggdryl::side  [rust/src/side.rs]
   pub enum Side  (#[repr(u8)], one byte: `Unknown = 0`, then `Buy = 1`, `Sell`, `BuyMinus`, `SellPlus`, `SShort`, `SShortEx`, `Undisc`, `Cross`, `CrossSh`, `CrossShX`, `AsDef`, `Opposite`, `Subscr`, `Redeem`, `Lend`, `Borrow`, `SellUnd` in FIX `Side(54)` code order; `SideType` marks its field, `SideField` is `FieldOf<SideType>`)

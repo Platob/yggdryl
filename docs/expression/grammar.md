@@ -252,7 +252,7 @@ Parsed as an error today, with the syntax kept free for a non-breaking addition.
 - A `like` pattern that changes per row -> refused at bind.
 - A section word as a bare location (`from where`) -> refused naming the location it expected; quote it.
 - `[unclosed` in a location -> refused naming the `]` it expected.
-- `unnest(xs) + 1`, `coalesce(unnest(xs), 0)`, `where unnest(xs) > 1`, `order by unnest(xs)` -> ``unnest is a select-list form: expected `unnest(xs)` as the whole term of a projection, got it where a value is read``; in `create (...)` -> the same, `got it in a column declaration`.
+- `unnest(xs) + 1`, `coalesce(unnest(xs), 0)`, `where unnest(xs) > 1`, `order by unnest(xs)` -> ``unnest is a select-list form: expected `unnest(xs)` as the whole term of a projection, got it where a value is read``; in `create (...)` -> the same, `got it in a column declaration`; as a match key - `merge_by` or `upsert ... by (...)` -> the same, `got it in a key`.
 - `unnest(xs) as x, unnest(legs) as leg` -> ``expected at most one unnest in a select, got `unnest(xs)` and `unnest(legs)` ``.
 - `unnest(id)` over an `int64` -> ``expected a serie to unnest, got int64 in `unnest(id)` ``; `unnest(xs, legs)` -> refused at parse for its arity, and a tree built with two arguments by hand -> ``expected unnest to take one serie, got 2 arguments in `...` ``.
 - `with (...)` on a projection unnesting a struct -> refused: the metadata would have no one column to sit on.

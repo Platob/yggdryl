@@ -244,7 +244,7 @@ impl u256 {
     }
 
     /// Multiply by a single word, refusing to wrap.
-    fn checked_mul_word(self, multiplier: u64) -> Option<Self> {
+    pub(crate) fn checked_mul_word(self, multiplier: u64) -> Option<Self> {
         let mut output = [0_u64; WORDS];
         let mut carry = 0_u128;
         for (index, word) in self.0.into_iter().enumerate() {
@@ -256,7 +256,7 @@ impl u256 {
     }
 
     /// Add a single word, refusing to wrap.
-    fn checked_add_word(mut self, value: u64) -> Option<Self> {
+    pub(crate) fn checked_add_word(mut self, value: u64) -> Option<Self> {
         let (first, mut carry) = self.0[0].overflowing_add(value);
         self.0[0] = first;
         let mut index = 1;
@@ -270,7 +270,7 @@ impl u256 {
     }
 
     /// Divide by a single non-zero word, returning the quotient and remainder.
-    fn div_rem_word(self, divisor: u64) -> (Self, u64) {
+    pub(crate) fn div_rem_word(self, divisor: u64) -> (Self, u64) {
         debug_assert!(divisor != 0);
         let mut output = [0_u64; WORDS];
         let mut remainder = 0_u128;
@@ -280,6 +280,23 @@ impl u256 {
             remainder = dividend % u128::from(divisor);
         }
         (Self(output), remainder as u64)
+    }
+
+    /// The base-10 digits this integer is written in; zero is one digit.
+    ///
+    /// Within 128 bits it is the native logarithm; past them one word
+    /// division by ten per digit, so a width's precision is checked without
+    /// rendering the number.
+    pub(crate) fn decimal_digits(self) -> u32 {
+        let mut magnitude = self;
+        let mut digits = 0;
+        loop {
+            if let Some(narrow) = magnitude.as_u128() {
+                return digits + narrow.checked_ilog10().map_or(1, |log| log + 1);
+            }
+            magnitude = magnitude.div_rem_word(10).0;
+            digits += 1;
+        }
     }
 
     /// Subtract, reporting the borrow out of the top word.

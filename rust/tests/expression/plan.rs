@@ -541,6 +541,112 @@ mod streams {
     }
 
     #[test]
+    fn an_ordering_keeps_the_rows_it_cannot_tell_apart_in_arrival_order() {
+        // Sixty-four rows over three keys, scattered: every key is tied many
+        // times over, and each tie keeps the order its rows arrived in,
+        // whichever way the key runs.
+        let mut state = 7_u64;
+        let keys: Vec<&str> = (0..64)
+            .map(|_| {
+                state = state
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                ["a", "b", "c"][usize::try_from((state >> 33) % 3).unwrap()]
+            })
+            .collect();
+        let rows: Vec<(i64, &str)> = keys
+            .iter()
+            .enumerate()
+            .map(|(row, key)| (i64::try_from(row).unwrap(), *key))
+            .collect();
+        let batch = trades(&rows);
+        for (text, order) in [
+            ("select * order by name", ["a", "b", "c"]),
+            ("select * order by name desc", ["c", "b", "a"]),
+        ] {
+            let plan: Plan = text.parse().unwrap();
+            let out = collected(plan.apply_arrow_reader(one_batch(&batch)).unwrap()).unwrap();
+            let expected: Vec<i64> = order
+                .iter()
+                .flat_map(|key| {
+                    rows.iter()
+                        .filter(move |(_, name)| name == key)
+                        .map(|(id, _)| *id)
+                })
+                .collect();
+            assert_eq!(ids(&out), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_plan_over_a_struct_array_orders_a_null_row_as_one_whose_keys_are_null() {
+        use arrow_array::{ArrayRef, StructArray};
+        use arrow_buffer::NullBuffer;
+
+        // The second row is a null struct over `(9, "z")`: nothing reads it,
+        // every key is null for it, and it stays a null row.
+        let rows = trades(&[(3, "c"), (9, "z"), (1, "a"), (2, "b")]);
+        let (fields, columns, _) = StructArray::from(rows).into_parts();
+        let array: ArrayRef = std::sync::Arc::new(
+            StructArray::try_new(
+                fields,
+                columns,
+                Some(NullBuffer::from(vec![true, false, true, true])),
+            )
+            .unwrap(),
+        );
+        // The first column of every row, null where the row is.
+        let ids = |array: &ArrayRef| -> Vec<Option<i64>> {
+            let held = array.as_any().downcast_ref::<StructArray>().unwrap();
+            let ids = held
+                .column(0)
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            (0..held.len())
+                .map(|row| held.is_valid(row).then(|| ids.value(row)))
+                .collect()
+        };
+        for (text, expected) in [
+            (
+                "select id order by id",
+                vec![Some(1), Some(2), Some(3), None],
+            ),
+            (
+                "select id order by id nulls first limit 2",
+                vec![None, Some(1)],
+            ),
+            (
+                "select id, name order by id desc offset 1 limit 2",
+                vec![Some(2), Some(1)],
+            ),
+            // An ordering over an alias the select publishes orders after it.
+            (
+                "select id * -1 as negated order by negated",
+                vec![Some(-3), Some(-2), Some(-1), None],
+            ),
+            (
+                "select id where name <> 'z' order by id desc",
+                vec![Some(3), Some(2), Some(1)],
+            ),
+            ("select id limit 2", vec![Some(3), None]),
+        ] {
+            let expression: Expression = text.parse().unwrap();
+            let out = expression
+                .apply_arrow_array(&array)
+                .unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert_eq!(ids(&out), expected, "{text}");
+        }
+        // A null is not a record: a plan that would write one is refused
+        // before it opens its target.
+        let plan: Expression = "insert into 'file:///nowhere/rows.arrows' select *"
+            .parse()
+            .unwrap();
+        let error = plan.apply_arrow_array(&array).unwrap_err().to_string();
+        assert!(error.contains("null struct at row 1"), "{error}");
+    }
+
+    #[test]
     fn a_star_plan_drops_what_it_excludes_and_appends_what_it_computes() {
         let batch = trades(&[(1, "a"), (2, "b"), (3, "c")]);
         let plan: Plan = "select * exclude (name), upper(name) as shout where id > 1"

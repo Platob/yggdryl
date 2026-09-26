@@ -562,3 +562,232 @@ mod grammar {
         assert_eq!(ints(&batches[6]), vec![Some(5)]);
     }
 }
+
+// ---------------------------------------------------------------------------
+// `unnest`: the elements a contiguous run covers are shared as they lie
+// ---------------------------------------------------------------------------
+
+mod unnest {
+
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, Int64Array, ListArray, RecordBatch, StructArray};
+    use arrow_buffer::{NullBuffer, OffsetBuffer};
+    use arrow_schema::{DataType, Field, Fields, Schema};
+    use yggdryl::expression::Selector;
+
+    /// One batch of `id` beside a serie column `xs` whose items are `values`,
+    /// cut by `offsets` and masked by `nulls`.
+    fn batch(values: ArrayRef, offsets: &[i32], nulls: Option<&[bool]>) -> RecordBatch {
+        let item = Arc::new(Field::new("item", values.data_type().clone(), true));
+        let xs = ListArray::try_new(
+            Arc::clone(&item),
+            OffsetBuffer::new(offsets.to_vec().into()),
+            values,
+            nulls.map(|valid| NullBuffer::from(valid.to_vec())),
+        )
+        .unwrap();
+        let rows = offsets.len() - 1;
+        let schema = Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("xs", DataType::List(item), true),
+        ]);
+        RecordBatch::try_new(
+            Arc::new(schema),
+            vec![
+                Arc::new(Int64Array::from_iter_values(
+                    0..i64::try_from(rows).unwrap(),
+                )),
+                Arc::new(xs),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn int64s(array: &ArrayRef) -> &Int64Array {
+        array.as_any().downcast_ref::<Int64Array>().unwrap()
+    }
+
+    fn unnested(text: &str, batch: &RecordBatch) -> RecordBatch {
+        text.parse::<Selector>()
+            .unwrap()
+            .apply_arrow_batch(batch)
+            .unwrap_or_else(|error| panic!("{text}: {error}"))
+    }
+
+    #[test]
+    fn contiguous_runs_share_their_elements_as_they_lie() {
+        let values: ArrayRef = Arc::new(Int64Array::from_iter_values(0..6));
+        let held = int64s(&values).values().clone();
+        // [0, 1], [], [2, 3, 4], [5]: an empty run breaks nothing.
+        let rows = batch(Arc::clone(&values), &[0, 2, 2, 5, 6], None);
+        let out = unnested("id, unnest(xs) as x", &rows);
+        let x = int64s(out.column(1));
+        assert_eq!(x.values().as_ref(), &[0, 1, 2, 3, 4, 5]);
+        assert_eq!(
+            x.values().as_ptr(),
+            held.as_ptr(),
+            "the elements were copied"
+        );
+        assert_eq!(int64s(out.column(0)).values().as_ref(), &[0, 0, 2, 2, 2, 3]);
+        // A window of the rows shares the window of the elements it covers.
+        let out = unnested("unnest(xs) as x", &rows.slice(2, 2));
+        let x = int64s(out.column(0));
+        assert_eq!(x.values().as_ref(), &[2, 3, 4, 5]);
+        assert_eq!(
+            x.values().as_ptr(),
+            held[2..].as_ptr(),
+            "the window was copied"
+        );
+        // A null row that still covers elements breaks the run: the rows
+        // around it are taken, and the elements it covers are not rows.
+        let rows = batch(values, &[0, 2, 4, 6], Some(&[true, false, true]));
+        let out = unnested("id, unnest(xs) as x", &rows);
+        let x = int64s(out.column(1));
+        assert_eq!(x.values().as_ref(), &[0, 1, 4, 5]);
+        assert_ne!(x.values().as_ptr(), held.as_ptr());
+        assert_eq!(int64s(out.column(0)).values().as_ref(), &[0, 0, 2, 2]);
+    }
+
+    #[test]
+    fn a_struct_item_publishes_its_children_as_they_lie() {
+        let size: ArrayRef = Arc::new(Int64Array::from_iter_values(10..14));
+        let fields = Fields::from(vec![Field::new("size", DataType::Int64, true)]);
+        let legs = |nulls: Option<NullBuffer>| -> ArrayRef {
+            Arc::new(StructArray::try_new(fields.clone(), vec![Arc::clone(&size)], nulls).unwrap())
+        };
+        let held = int64s(&size).values().clone();
+        let out = unnested("unnest(xs) as leg", &batch(legs(None), &[0, 1, 4], None));
+        let leg_size = int64s(out.column(0));
+        assert_eq!(leg_size.values().as_ref(), &[10, 11, 12, 13]);
+        assert_eq!(
+            leg_size.values().as_ptr(),
+            held.as_ptr(),
+            "the child was copied"
+        );
+        assert_eq!(leg_size.null_count(), 0);
+        // A null struct element folds its null into every child, and the
+        // child's values still lie where they did.
+        let masked = legs(Some(NullBuffer::from(vec![true, false, true, true])));
+        let out = unnested("unnest(xs) as leg", &batch(masked, &[0, 1, 4], None));
+        let leg_size = int64s(out.column(0));
+        assert_eq!(
+            leg_size.iter().collect::<Vec<_>>(),
+            [Some(10), None, Some(12), Some(13)]
+        );
+        assert_eq!(leg_size.values().as_ptr(), held.as_ptr());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A null struct row: every term answers unknown for it
+// ---------------------------------------------------------------------------
+
+mod null_rows {
+
+    use std::sync::Arc;
+
+    use arrow_array::{Array, ArrayRef, Int64Array, StringArray, StructArray};
+    use arrow_buffer::NullBuffer;
+    use arrow_schema::{DataType, Field, Fields};
+    use yggdryl::expression::{Expression, Filter, Selector};
+
+    /// Two rows, the second a null struct whose children still hold values
+    /// - `id` 2, `tag` "b" - that no door may read.
+    fn rows() -> ArrayRef {
+        Arc::new(
+            StructArray::try_new(
+                Fields::from(vec![
+                    Field::new("id", DataType::Int64, false),
+                    Field::new("tag", DataType::Utf8, true),
+                ]),
+                vec![
+                    Arc::new(Int64Array::from(vec![1, 2])),
+                    Arc::new(StringArray::from(vec!["a", "b"])),
+                ],
+                Some(NullBuffer::from(vec![true, false])),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn fields(array: &ArrayRef) -> &StructArray {
+        array.as_any().downcast_ref::<StructArray>().unwrap()
+    }
+
+    fn ids(array: &ArrayRef) -> Vec<Option<i64>> {
+        let held = fields(array);
+        let ids = held
+            .column(0)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .unwrap();
+        (0..held.len())
+            .map(|row| held.is_valid(row).then(|| ids.value(row)))
+            .collect()
+    }
+
+    #[test]
+    fn a_select_keeps_a_null_row_null() {
+        let selector: Selector = "id, upper(tag) as tag".parse().unwrap();
+        let out = selector.apply_arrow_array(&rows()).unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out.is_valid(0) && out.is_null(1));
+        let tags = fields(&out)
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .unwrap();
+        assert_eq!(tags.value(0), "A");
+        assert_eq!(ids(&out), [Some(1), None]);
+        // The bound door answers the same.
+        let schema = yggdryl::Field::from_arrow_field(&Field::new(
+            "rows",
+            rows().data_type().clone(),
+            false,
+        ))
+        .unwrap();
+        let bound = selector.bind(&schema).unwrap();
+        assert_eq!(&bound.apply_arrow_array(&rows()).unwrap(), &out);
+    }
+
+    #[test]
+    fn a_filter_answers_unknown_for_a_null_row() {
+        // The null row's `id` buffer holds 2, and `tag is not null` holds
+        // for its buffer too: neither is read, so neither keeps it.
+        for (text, kept) in [
+            ("id = 2", vec![]),
+            ("id = 1", vec![Some(1)]),
+            ("tag is not null", vec![Some(1)]),
+            ("tag is null", vec![]),
+        ] {
+            let filter: Filter = text.parse().unwrap();
+            let out = filter.apply_arrow_array(&rows()).unwrap();
+            assert_eq!(ids(&out), kept, "{text}");
+            assert_eq!(out.null_count(), 0, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_plan_drops_what_its_where_answers_unknown_for_and_keeps_the_rest_null() {
+        for (text, kept) in [
+            ("select id where id > 0", vec![Some(1)]),
+            ("select id where tag is null", vec![]),
+            ("select id", vec![Some(1), None]),
+            ("select id order by id desc", vec![Some(1), None]),
+            (
+                "select id order by id desc nulls first",
+                vec![None, Some(1)],
+            ),
+            ("select id offset 1", vec![None]),
+            ("where id > 0; select id", vec![Some(1)]),
+            ("select id, tag; limit 1 offset 1", vec![None]),
+        ] {
+            let expression: Expression = text.parse().unwrap();
+            let out = expression
+                .apply_arrow_array(&rows())
+                .unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert_eq!(ids(&out), kept, "{text}");
+        }
+    }
+}

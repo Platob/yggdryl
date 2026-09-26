@@ -112,6 +112,25 @@ fn chain(code: &str) -> [OrderEvent; 3] {
     [first, second, third]
 }
 
+/// One element's chain of `leaves` orders under `code`, each naming its
+/// predecessor by its `prevuuid`: every leaf at one instant but the last,
+/// which follows a tick later.
+fn tied_chain(code: &str, leaves: usize) -> Vec<OrderEvent> {
+    let mut chain: Vec<OrderEvent> = Vec::with_capacity(leaves);
+    for index in 0..leaves {
+        let unix = if index + 1 == leaves { 20 } else { 10 };
+        let mut order: OrderEvent = operation(unix, code, "Buy", "New");
+        order.set_quantity(Some(Decimal::from_int(i64::try_from(1 + index).unwrap())));
+        order.finalize();
+        let order = match chain.last() {
+            Some(previous) => order.with_previous(previous).unwrap(),
+            None => order,
+        };
+        chain.push(order);
+    }
+    chain
+}
+
 /// Every kind of leaf, the chain's out of order.
 fn leaves() -> Vec<MarketData> {
     let [first, second, third] = chain("C-1");
@@ -478,6 +497,42 @@ fn a_lifecycle_is_one_chain_in_the_order_it_happened() {
     );
     assert_eq!(out.num_rows(), 0);
     assert_eq!(names(&out), flat());
+}
+
+#[test]
+fn a_lifecycle_keeps_the_leaves_that_share_an_instant_in_the_order_they_happened() {
+    // Thirty-two leaves at one instant, past the twenty rows an unstable
+    // sort keeps by chance. The stream states the last leaf first, so the
+    // ordering has to move rows, and every tie keeps the order it arrived in.
+    let chain = tied_chain("C-9", 33);
+    let (last, tied) = chain.split_last().unwrap();
+    let stream = MarketData::arrow_reader(
+        std::iter::once(last)
+            .chain(tied)
+            .cloned()
+            .map(MarketData::from)
+            .collect::<Vec<_>>(),
+        None,
+        None,
+    )
+    .unwrap();
+    let target = MarketView::Lifecycle {
+        crosscode: SmolStr::new("C-9"),
+    };
+    let out = drained(MarketData::apply_view(&target, &[], stream).unwrap()).unwrap();
+    let current = uuids(column(&out, "curruuid"));
+    assert_eq!(
+        current,
+        chain
+            .iter()
+            .map(|order| Some(order.get_curruuid().into_bytes().to_vec()))
+            .collect::<Vec<_>>()
+    );
+    let previous = uuids(column(&out, "prevuuid"));
+    assert_eq!(previous[0], None, "the first leaf follows nothing");
+    for leaf in 1..chain.len() {
+        assert_eq!(previous[leaf], current[leaf - 1], "leaf {leaf}");
+    }
 }
 
 #[test]

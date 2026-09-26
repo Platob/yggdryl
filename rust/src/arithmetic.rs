@@ -6,8 +6,8 @@ use smol_str::SmolStr;
 
 use crate::code_scalars;
 use crate::decimal::{
-    decimal_arithmetic, decimal_target, decimal_value_parts, inferred_decimal_division_scale,
-    is_exact_number, result_decimal_scale,
+    decimal_arithmetic, decimal_target, decimal_value_parts, exact_value_parts,
+    inferred_decimal_division_scale, is_exact_number, result_decimal_scale,
 };
 use crate::floating::{float_arithmetic, float_value_width, float_width};
 use crate::integer::{common_integer, integer_arithmetic, integer_kind, integer_value_kind};
@@ -16,7 +16,7 @@ use crate::temporal::scalars::{
     TemporalKind, duration_integer_arithmetic, temporal_arithmetic, temporal_result_type,
     temporal_target, temporal_value_parts,
 };
-use crate::{DataType, Error, Result};
+use crate::{DataType, DataTypeId, Error, Result};
 
 #[derive(Clone, Copy)]
 pub enum Arithmetic {
@@ -38,8 +38,8 @@ pub(crate) enum ArithmeticTarget {
         wide: bool,
         scale: i8,
     },
-    /// A fixed-scale decimal result: the `decimal` leaf, or `bigdecimal` when
-    /// either operand is one.
+    /// A fixed-scale decimal result: the `decimal` leaf, or `bigdecimal` where
+    /// [`fixed_result`] answers wide.
     Fixed {
         wide: bool,
     },
@@ -337,7 +337,8 @@ fn checked_arithmetic_target(
 }
 
 /// An operand restated at the fixed scale: a fixed leaf as it is, an exact
-/// decimal at any scale that restates at eighteen, or a whole number.
+/// decimal at any scale that restates at eighteen, or a whole number of any
+/// width, its units computed in 256 bits.
 fn fixed_operand(value: &Scalar) -> Option<crate::BigDecimal> {
     match value {
         Scalar::Decimal(held) => Some(held.widened()),
@@ -345,16 +346,38 @@ fn fixed_operand(value: &Scalar) -> Option<crate::BigDecimal> {
         _ if value.is_decimal() => value
             .decimal256_unscaled_at(crate::BigDecimal::SCALE)
             .and_then(crate::BigDecimal::from_units),
-        _ => value
-            .as_i128()
-            .and_then(|whole| i64::try_from(whole).ok())
-            .map(crate::BigDecimal::from_int),
+        _ => exact_value_parts(value)
+            .and_then(|(whole, _)| whole.checked_mul(crate::BigDecimal::ONE.units()))
+            .and_then(crate::BigDecimal::from_units),
     }
 }
 
+/// Whether the operands of one arithmetic meet at a fixed leaf, and if so
+/// whether at the wide one: `None` where neither side is `decimal` or
+/// `bigdecimal`, else `Some(true)` where either side is `bigdecimal`,
+/// `decimal256`, `int128` or `uint128` - the operands the family widens to
+/// 256 bits for - and `Some(false)` otherwise.
+///
+/// The one rule `Scalar` arithmetic and expression typing both read, so a
+/// value and a column over the same operands answer the same leaf.
+pub(crate) fn fixed_result(left: DataTypeId, right: DataTypeId) -> Option<bool> {
+    let fixed = |id| matches!(id, DataTypeId::Decimal | DataTypeId::BigDecimal);
+    let wide = |id| {
+        matches!(
+            id,
+            DataTypeId::BigDecimal
+                | DataTypeId::Decimal256
+                | DataTypeId::Int128
+                | DataTypeId::UInt128
+        )
+    };
+    (fixed(left) || fixed(right)).then(|| wide(left) || wide(right))
+}
+
 /// Arithmetic over the fixed leaves: computed wide, then narrowed to
-/// `decimal` unless an operand was `bigdecimal`. The remainder is refused: a
-/// fixed-scale decimal states no remainder.
+/// `decimal` unless the result is the wide leaf. Every operation keeps scale
+/// eighteen: a product or a quotient truncates toward zero past it, and a
+/// remainder is exact, its sign the dividend's.
 fn fixed_arithmetic(
     left: &Scalar,
     operation: Arithmetic,
@@ -377,24 +400,20 @@ fn fixed_arithmetic(
         operation: operation.name(),
         kind,
     };
+    if b.is_zero() && matches!(operation, Arithmetic::Div | Arithmetic::Rem) {
+        return Err(Error::DivisionByZero {
+            operation: operation.name(),
+        });
+    }
     let held = match operation {
         Arithmetic::Add => a.checked_add(b),
         Arithmetic::Sub => a.checked_sub(b),
         Arithmetic::Mul => a.checked_mul(b),
-        Arithmetic::Div => {
-            if b.is_zero() {
-                return Err(invalid_binary(operation, left, right, "division by zero"));
-            }
-            a.checked_div(b)
-        }
-        Arithmetic::Rem => {
-            return Err(invalid_binary(
-                operation,
-                left,
-                right,
-                "a fixed-scale decimal states no remainder",
-            ));
-        }
+        Arithmetic::Div => a.checked_div(b),
+        Arithmetic::Rem => a
+            .units()
+            .checked_rem(b.units())
+            .and_then(crate::BigDecimal::from_units),
     }
     .ok_or_else(overflow)?;
     Ok(if wide {
@@ -523,11 +542,7 @@ fn inferred_target(
 
     // A fixed leaf keeps its scale: the other operand meets it there, and
     // the result is the leaf - the wide one where either side is wide.
-    if matches!(
-        (left, right),
-        (Scalar::Decimal(_) | Scalar::BigDecimal(_), _)
-            | (_, Scalar::Decimal(_) | Scalar::BigDecimal(_))
-    ) {
+    if let Some(wide) = fixed_result(left.id(), right.id()) {
         if !is_exact_number(left) || !is_exact_number(right) {
             return Err(invalid_binary(
                 operation,
@@ -536,7 +551,6 @@ fn inferred_target(
                 "exact decimals cannot mix with approximate or non-numeric values",
             ));
         }
-        let wide = matches!(left, Scalar::BigDecimal(_)) || matches!(right, Scalar::BigDecimal(_));
         return Ok(ArithmeticTarget::Fixed { wide });
     }
 

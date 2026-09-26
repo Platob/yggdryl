@@ -957,7 +957,9 @@ fn one_book_update_does_not_allocate_per_live_entry() {
 }
 
 /// A book of `levels` distinct prices on each side - bids from 1000 down,
-/// asks from 1001 up - with two entries resting at every price.
+/// asks from 1001 up - with eight entries resting at every price: past the
+/// four a vector grown by pushing holds in its first allocation, so a limit
+/// that grew its identities rather than collecting them shows in the count.
 fn allocation_book_levels(levels: usize) -> BookEvent {
     let entry = |side: &str, level: usize, slot: usize| {
         let offset = i64::try_from(level).expect("a small corpus");
@@ -978,7 +980,7 @@ fn allocation_book_levels(levels: usize) -> BookEvent {
     };
     let mut book = BookEvent::new(1, "ALLOC");
     book.add_operations(["Buy", "Sell"].into_iter().flat_map(|side| {
-        (0..levels).flat_map(move |level| (0..2).map(move |slot| entry(side, level, slot)))
+        (0..levels).flat_map(move |level| (0..8).map(move |slot| entry(side, level, slot)))
     }))
     .expect("the initial depth");
     book
@@ -1032,7 +1034,7 @@ fn book_limits_allocate_one_vector_per_limit() {
         assert_eq!(count, levels);
         assert_eq!(
             allocations, levels,
-            "{levels} limits of two entries each allocated {allocations} times"
+            "{levels} limits of eight entries each allocated {allocations} times"
         );
     }
 }
@@ -2564,6 +2566,69 @@ fn a_map_key_lift_allocates_only_what_it_hands_back() {
     );
     eprintln!("map_key_lift: per batch {}", each_at[0]);
 }
+
+/// A root of an id beside a serie, and a batch of `rows` rows under it
+/// whose series hold two elements each, laid out as one contiguous run.
+fn unnest_corpus(rows: usize) -> (Field, arrow_array::RecordBatch) {
+    let root = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("xs"),
+    ])
+    .map(DataType::from)
+    .expect("the root fields are valid")
+    .required_field("row");
+    let values: Vec<Scalar> = (0..rows)
+        .map(|row| {
+            let row = i64::try_from(row).expect("a small corpus");
+            Scalar::from_sequence([
+                Scalar::from(row),
+                Scalar::from_sequence([Scalar::from(2 * row), Scalar::from(2 * row + 1)]),
+            ])
+        })
+        .collect();
+    let batch = Serie::from_scalars(root.clone(), values)
+        .expect("the corpus lays out")
+        .into_arrow_batch()
+        .expect("a record column is a batch");
+    (root, batch)
+}
+
+/// An unnest over contiguous runs builds the parents - the take every other
+/// column is read by - and shares the elements as they lie: a batch costs
+/// the same count of allocations whatever it holds, the taken `id` and the
+/// batch itself included.
+#[test]
+fn a_contiguous_unnest_allocates_only_its_parents_and_what_it_takes() {
+    let selector: yggdryl::Selector = "id, unnest(xs) as x".parse().expect("an unnest");
+    let mut each_at = Vec::new();
+    for rows in [2, 64] {
+        let (root, batch) = unnest_corpus(rows);
+        let bound = selector.bind(&root).expect("the unnest binds");
+        let (once, repeated) = counted_once_and_repeated(|| {
+            let out = bound.apply_arrow_batch(&batch).expect("the unnest answers");
+            assert_eq!(out.num_rows(), 2 * rows);
+            black_box(out);
+        });
+        assert_eq!(
+            repeated,
+            once * 1_000,
+            "{rows} rows: one batch cost {once} and a thousand cost {repeated}"
+        );
+        each_at.push(once);
+    }
+    eprintln!("contiguous_unnest: per batch {each_at:?}");
+    assert_eq!(
+        each_at, [UNNEST_BATCH_ALLOCATIONS; 2],
+        "a batch of 2 rows cost {} and one of 64 cost {}",
+        each_at[0], each_at[1]
+    );
+}
+
+/// What one batch of a contiguous unnest allocates at any row count: the
+/// parents, the `id` taken by them, and the batch holding both beside the
+/// shared elements. Taking the elements instead of sharing them costs four
+/// more.
+const UNNEST_BATCH_ALLOCATIONS: usize = 16;
 
 /// One `marketdata` batch: two orders, a trade of two executions and a book.
 fn view_corpus() -> arrow_array::RecordBatch {

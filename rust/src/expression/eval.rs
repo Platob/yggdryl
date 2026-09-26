@@ -427,29 +427,29 @@ fn arithmetic(
     left.checked_arithmetic_as(right, operation, unwrap_dictionary(dtype))
 }
 
-/// This value's unscaled coefficient at `scale`, whatever kind of number it is.
+/// This value's unscaled coefficient at `scale`, whatever kind of number it
+/// is, in the 256 bits the widest decimal holds.
 ///
-/// [`Scalar::decimal_unscaled_at`] restates one exact decimal at another scale;
-/// this widens the question to every whole number, because `price > 100` writes
-/// the bound as an integer and means it as a decimal.
-pub(crate) fn unscaled_at(value: &Scalar, scale: i8) -> Option<i128> {
+/// [`Scalar::decimal256_unscaled_at`] restates one exact decimal at another
+/// scale; this widens the question to every whole number, because
+/// `price > 100` writes the bound as an integer and means it as a decimal. The
+/// answer is 256 bits wide for every width, so a `bigdecimal` or a
+/// `decimal256` past what an `i128` holds compares and casts as a batch does.
+pub(crate) fn unscaled_at(value: &Scalar, scale: i8) -> Option<i256> {
     // A decimal answers through its own restatement and never through
     // `as_i128`, which would hand back the raw coefficient and read `1.50` as
     // one hundred and fifty.
     if value.is_decimal() {
-        return value.decimal_unscaled_at(scale);
+        return value.decimal256_unscaled_at(scale);
     }
-    let held = value.as_i128()?;
-    match scale.cmp(&0) {
-        Ordering::Equal => Some(held),
-        Ordering::Greater => held.checked_mul(pow10(scale)?),
-        // A negative scale multiplies, so restating into one only keeps a
-        // number whose trailing zeros are already there.
-        Ordering::Less => {
-            let divisor = pow10(-scale)?;
-            (held % divisor == 0).then(|| held / divisor)
-        }
-    }
+    // A whole number is the decimal of scale zero, restated the same way: a
+    // negative scale multiplies, so restating into one only keeps a number
+    // whose trailing zeros are already there.
+    let whole = value
+        .as_i128()
+        .map(i256::from_i128)
+        .or_else(|| value.as_u128().map(i256::from_u128))?;
+    Scalar::d256(whole, 0).decimal256_unscaled_at(scale)
 }
 
 /// This value's temporal count in one family's unit, dates included.
@@ -512,12 +512,6 @@ fn temporal_value(dtype: &DataType, count: i64, unit: TimeUnit) -> Result<Scalar
         }
         _ => Err(missing("a temporal datatype")),
     }
-}
-
-/// Ten to a non-negative power, as the multiplier a rescale needs.
-fn pow10(scale: i8) -> Option<i128> {
-    let places = u32::try_from(scale.max(0)).ok()?;
-    10_i128.checked_pow(places)
 }
 
 /// Put a whole number back into the width its datatype declares.
@@ -950,21 +944,33 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         Err(error) => Err(error),
     };
     if let Some((precision, scale)) = decimal_parts(target) {
-        let Some(unscaled) = unscaled_at(value, scale).or_else(|| {
-            value
-                .as_f64()
-                .and_then(|held| pow10(scale).map(|factor| (held * held_f64(factor)) as i128))
-        }) else {
-            return refuse("a number an exact decimal can hold");
+        // An exact number restates at the declared scale. A float is read as
+        // the number it names, rounded half away from zero at that scale,
+        // through the one reading a column of floats takes too - never as its
+        // binary fraction scaled by a power of ten, which saturates where the
+        // width does not.
+        let unscaled = match (unscaled_at(value, scale), value.as_f64()) {
+            (Some(unscaled), _) => unscaled,
+            (None, Some(held)) => {
+                return match Scalar::from_decimal_float(target, held) {
+                    Ok(candidate) => canonical(candidate),
+                    Err(_) if safety.is_safe() => Ok(Scalar::Null),
+                    Err(error) => Err(error),
+                };
+            }
+            (None, None) => return refuse("a number an exact decimal can hold"),
         };
         if digits(unscaled) > u32::from(precision) {
             return refuse("a number within the declared precision");
         }
         let candidate = match target {
-            DataType::Decimal256 { .. } | DataType::BigDecimal => {
-                Scalar::d256(i256::from_i128(unscaled), scale)
-            }
-            _ => Scalar::d128(unscaled, scale),
+            DataType::Decimal256 { .. } | DataType::BigDecimal => Scalar::d256(unscaled, scale),
+            // Every other width holds at most thirty-eight digits, which the
+            // precision above has already held the coefficient to.
+            _ => match unscaled.as_i128() {
+                Some(unscaled) => Scalar::d128(unscaled, scale),
+                None => return refuse("a number within the declared precision"),
+            },
         };
         return canonical(candidate);
     }
@@ -1012,9 +1018,16 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
         | DataType::UInt16
         | DataType::UInt32
         | DataType::UInt64 => {
+            // A float that is not finite names no whole number: `as` would
+            // read `nan` as zero.
             let held = unscaled_at(value, 0)
-                .or_else(|| value.as_u128().and_then(|held| i128::try_from(held).ok()))
-                .or_else(|| value.as_f64().map(|held| held.trunc() as i128))
+                .and_then(i256::as_i128)
+                .or_else(|| {
+                    value
+                        .as_f64()
+                        .filter(|held| held.is_finite())
+                        .map(|held| held.trunc() as i128)
+                })
                 .or_else(|| value.as_str().and_then(|text| text.parse::<i128>().ok()));
             let Some(held) = held else {
                 return refuse("a whole number");
@@ -1080,20 +1093,8 @@ pub(crate) fn convert(target: &DataType, value: &Scalar, safety: Safety) -> Resu
 }
 
 /// How many decimal digits an unscaled coefficient has.
-fn digits(unscaled: i128) -> u32 {
-    let mut magnitude = unscaled.unsigned_abs();
-    let mut counted = 1;
-    while magnitude >= 10 {
-        magnitude /= 10;
-        counted += 1;
-    }
-    counted
-}
-
-/// A power of ten as a float, for the one conversion that needs it.
-#[allow(clippy::cast_precision_loss)]
-fn held_f64(value: i128) -> f64 {
-    value as f64
+fn digits(unscaled: i256) -> u32 {
+    unscaled.unsigned_abs().decimal_digits()
 }
 
 #[cfg(feature = "internals")]

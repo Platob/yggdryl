@@ -34,6 +34,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
+use arrow_array::cast::AsArray;
 use arrow_array::{
     Array, ArrayRef, BooleanArray, Datum, FixedSizeListArray, LargeListArray, ListArray,
     RecordBatch, RecordBatchOptions, RecordBatchReader, Scalar as ArrowDatum, StructArray,
@@ -303,7 +304,8 @@ impl Filter {
     /// Keep the rows of one struct array this filter answers true for.
     ///
     /// The struct's own null mask travels with it: a null struct is a row the
-    /// filter answers unknown for, and unknown is not kept.
+    /// filter answers unknown for - its children are never read - and
+    /// unknown is not kept.
     ///
     /// # Errors
     ///
@@ -313,10 +315,14 @@ impl Filter {
         if self.is_always_true() {
             return Ok(Arc::clone(array));
         }
-        let (_, batch) = struct_batch(array, "filter")?;
-        let schema = field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &batch.schema())?;
-        let mask = self.bind(&schema)?.filter_mask(&batch)?;
-        if mask.true_count() == mask.len() {
+        let rows = struct_rows(array, "filter")?;
+        let schema =
+            field_from_arrow_schema(crate::media::DEFAULT_ROOT_NAME, &rows.batch.schema())?;
+        let mut mask = self.bind(&schema)?.filter_mask(&rows.batch)?;
+        if let Some(scatter) = &rows.scatter {
+            mask = scattered(&mask, scatter)?.as_boolean().clone();
+        }
+        if mask.null_count() == 0 && mask.true_count() == mask.len() {
             return Ok(Arc::clone(array));
         }
         arrow_select::filter::filter(array.as_ref(), &mask)
@@ -364,19 +370,29 @@ impl Expression {
 
     /// Apply this expression to one struct array.
     ///
+    /// A null struct is a row every term answers unknown for, and its
+    /// children are never read. Two rules follow, and a plan composes them
+    /// section by section: a `select` keeps a null row null, and a `where`
+    /// drops it, as it drops every row it answers unknown for - a null
+    /// boolean anywhere else. Where no `where` drops it, an `order by`
+    /// places it as a row whose every key is null, `offset` and `limit`
+    /// count it, and an `unnest` lays out no row for it, its serie being
+    /// unknown. A null is not a record, so a plan that would write one is
+    /// refused before it opens its target. A sequence applies its steps in
+    /// turn, each to the struct array the step before answered.
+    ///
     /// # Errors
     ///
-    /// Returns an error when the array is not a struct, or the expression
-    /// does not apply to it.
+    /// Returns an error when the array is not a struct, the expression does
+    /// not apply to it, or a plan would write a null row.
     pub fn apply_arrow_array(&self, array: &ArrayRef) -> crate::Result<ArrayRef> {
         match self {
             Self::Selector(selector) => selector.apply_arrow_array(array),
             Self::Filter(filter) => filter.apply_arrow_array(array),
-            Self::Plan(_) | Self::Sequence(_) => {
-                let (_, batch) = struct_batch(array, "run a plan over")?;
-                let applied = self.apply_arrow_batch(&batch)?;
-                Ok(Arc::new(StructArray::from(applied)))
-            }
+            Self::Plan(plan) => plan.apply_arrow_array(array),
+            Self::Sequence(steps) => steps.iter().try_fold(Arc::clone(array), |array, step| {
+                step.apply_arrow_array(&array)
+            }),
         }
     }
 }
@@ -468,11 +484,25 @@ pub(crate) fn collected(reader: BatchReader) -> crate::Result<RecordBatch> {
     }
 }
 
-/// One struct array as the batch of its children, and the array itself.
-pub(crate) fn struct_batch<'array>(
+/// The rows of one struct array, as the batch its array doors apply to.
+pub(crate) struct StructRows<'array> {
+    /// The struct array itself.
+    pub(crate) held: &'array StructArray,
+    /// The struct's rows that are not null, in order: a null struct is not a
+    /// record, and none of its children is read.
+    pub(crate) batch: RecordBatch,
+    /// Where the struct holds a null row, the take that lays one value per
+    /// row of [`Self::batch`] out at the struct's own positions, null at
+    /// every null row.
+    pub(crate) scatter: Option<UInt32Array>,
+}
+
+/// One struct array's rows: the batch of its children with its null rows
+/// left out, and the take that lays the batch's rows back where they were.
+pub(crate) fn struct_rows<'array>(
     array: &'array ArrayRef,
     verb: &str,
-) -> crate::Result<(&'array StructArray, RecordBatch)> {
+) -> crate::Result<StructRows<'array>> {
     let held = array
         .as_any()
         .downcast_ref::<StructArray>()
@@ -482,7 +512,45 @@ pub(crate) fn struct_batch<'array>(
                 array.data_type()
             )))
         })?;
-    Ok((held, RecordBatch::from(held.clone())))
+    let Some(nulls) = held.nulls().filter(|nulls| nulls.null_count() > 0) else {
+        return Ok(StructRows {
+            held,
+            batch: RecordBatch::from(held.clone()),
+            scatter: None,
+        });
+    };
+    if u32::try_from(held.len()).is_err() {
+        return Err(crate::Error::from(Error::IncompatibleSchema(format!(
+            "expected a struct array of at most {} rows to {verb}, got {}",
+            u32::MAX,
+            held.len()
+        ))));
+    }
+    let valid = arrow_select::filter::filter(held, &BooleanArray::new(nulls.inner().clone(), None))
+        .map_err(|error| crate::Error::from(Error::Arrow(error)))?;
+    let mut next = 0_u32;
+    let scatter = nulls
+        .iter()
+        .map(|valid| {
+            valid.then(|| {
+                let at = next;
+                next += 1;
+                at
+            })
+        })
+        .collect();
+    Ok(StructRows {
+        held,
+        batch: RecordBatch::from(valid.as_struct().clone()),
+        scatter: Some(scatter),
+    })
+}
+
+/// One value per row of a [`StructRows::batch`], laid out at the struct's
+/// own positions by its scatter: null at every null row.
+pub(crate) fn scattered(values: &dyn Array, scatter: &UInt32Array) -> crate::Result<ArrayRef> {
+    arrow_select::take::take(values, scatter, None)
+        .map_err(|error| crate::Error::from(Error::Arrow(error)))
 }
 
 /// Evaluate one resolved node over one batch.

@@ -296,12 +296,18 @@ impl FixCodec {
     /// messages are, in [`MarketData::field`](crate::graph::MarketData::field)
     /// rows.
     ///
-    /// [`Self::messages`] into [`Self::market_arrow_reader`]: each row becomes
-    /// the message it holds, and the capture is expanded, sorted and
-    /// batched as that door does it - so a row that is not a FIX row, or a
-    /// failure of the source reader, is the reader's only item. A caller
-    /// wanting the walk first passes [`Self::lifecycle_arrow_reader`]'s
-    /// batches as the source.
+    /// [`Self::messages`] into [`Self::market_arrow_reader`]: each row is read
+    /// as its own message, its market facts derived from what the row
+    /// states, and the capture is expanded, sorted and batched as that door
+    /// does it - so a row that is not a FIX row, or a failure of the source
+    /// reader, is the reader's only item. Over rows no walk wrote, it answers
+    /// the leaves `market_arrow_reader` answers for their messages. A walked
+    /// capture reaches the sorted door as messages -
+    /// `market_arrow_reader(codec.lifecycle(messages))` - never as the rows
+    /// [`Self::lifecycle_arrow_reader`] writes: what a walk settles from a
+    /// message's predecessors - its `prevpx` and `prevqty`, a side or a
+    /// ticker it carries forward, an execution instant - is no cell of the
+    /// row, so a walked row read here is read without it.
     ///
     /// # Errors
     ///

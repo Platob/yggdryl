@@ -421,3 +421,257 @@ mod grammar {
         }
     }
 }
+
+mod fixed_leaves {
+    //! The fixed decimal leaves read, compare and cast the same way in a row
+    //! and in a batch.
+
+    use yggdryl::expression::{Filter, Selector};
+    use yggdryl::{
+        ArrowCastOptions, BigDecimal, DataType, Decimal, Field, Scalar, Serie, StructType,
+    };
+
+    fn root(fields: impl IntoIterator<Item = Field>) -> Field {
+        StructType::from_fields(fields)
+            .map(DataType::from)
+            .unwrap()
+            .required_field("row")
+    }
+
+    /// One row laid out as the one-row batch the batch tier reads.
+    fn batch(schema: &Field, row: &Scalar) -> arrow_array::RecordBatch {
+        Serie::from_scalars(schema.clone(), [row.clone()])
+            .unwrap()
+            .into_arrow_batch()
+            .unwrap()
+    }
+
+    /// The first row a batch answered, read back as a row.
+    fn first_row(batch: &arrow_array::RecordBatch) -> Scalar {
+        Serie::from_arrow_batch(None, batch, ArrowCastOptions::new())
+            .unwrap()
+            .scalar(0)
+            .unwrap()
+    }
+
+    /// What one selector answers for one row, in a row and in a batch.
+    fn both_tiers(selector: &str, schema: &Field, row: &Scalar) -> (Scalar, Scalar) {
+        let selector = selector.parse::<Selector>().unwrap();
+        let by_row = selector.apply_scalar(schema, row).unwrap();
+        let by_batch = first_row(&selector.apply_arrow_batch(&batch(schema, row)).unwrap());
+        (by_row, by_batch)
+    }
+
+    #[test]
+    fn a_bigdecimal_past_thirty_eight_digits_compares_in_a_row_as_in_a_batch() {
+        let schema = root([Field::new("x", DataType::BigDecimal, true)]);
+        let wide: BigDecimal = "123456789012345678901234567890.5".parse().unwrap();
+        let row = Scalar::from_sequence([Scalar::BigDecimal(wide)]);
+        for text in [
+            "x > 1",
+            "x = x",
+            "x <> 0",
+            "x between 1 and x",
+            "x in (x, 1)",
+        ] {
+            let filter = text.parse::<Filter>().unwrap();
+            assert!(
+                filter.apply_scalar(&schema, &row).unwrap(),
+                "{text} keeps the row"
+            );
+            let records = filter
+                .apply_records(Some(&schema), [row.clone()])
+                .unwrap()
+                .collect_rows()
+                .unwrap();
+            assert_eq!(
+                records,
+                std::slice::from_ref(&row),
+                "{text} keeps the record"
+            );
+            let kept = filter.apply_arrow_batch(&batch(&schema, &row)).unwrap();
+            assert_eq!(kept.num_rows(), 1, "{text} keeps the batch's row");
+        }
+        let (by_row, by_batch) = both_tiers("x = x as same", &schema, &row);
+        assert_eq!(by_row, Scalar::from_sequence([Scalar::from(true)]));
+        assert_eq!(by_batch, by_row);
+        // A cast onto its own leaf reads the value whole.
+        let (by_row, by_batch) = both_tiers("cast(x as bigdecimal) as y", &schema, &row);
+        assert_eq!(by_row, Scalar::from_sequence([Scalar::BigDecimal(wide)]));
+        assert_eq!(by_batch, by_row);
+        // And a `decimal256` column the same, past what an `i128` holds.
+        let schema = root([Field::new("x", DataType::decimal256(76, 18).unwrap(), true)]);
+        let row = Scalar::from_sequence([Scalar::d256(wide.units(), 18)]);
+        let filter = "x > 1".parse::<Filter>().unwrap();
+        assert!(filter.apply_scalar(&schema, &row).unwrap());
+    }
+
+    #[test]
+    fn a_float_entering_a_decimal_is_the_number_it_names_or_refused() {
+        let schema = root([Field::new("f", DataType::Float64, true)]);
+        let row = |held: f64| Scalar::from_sequence([Scalar::from(held)]);
+        let one = |value: Scalar| Scalar::from_sequence([value]);
+        let wide = one(Scalar::BigDecimal(
+            "10000000000000000000000000".parse().unwrap(),
+        ));
+        // Folded while binding - the literal coercion - and cast per row, in
+        // a row and in a batch.
+        let folded = "cast(1e25 as bigdecimal) as l".parse::<Selector>().unwrap();
+        assert_eq!(folded.apply_scalar(&schema, &row(1e25)).unwrap(), wide);
+        for (held, text, expected) in [
+            (1e25, "cast(f as bigdecimal) as l", wide.clone()),
+            // A width reads the float's own digits: 1.15 is 1.15, never the
+            // 1.14 its binary product with a hundred truncates to or the
+            // 1.149999999999999872 its binary fraction is.
+            (
+                1.15,
+                "cast(f as decimal(10, 2)) as l",
+                one(Scalar::d128(115, 2)),
+            ),
+            (
+                1.15,
+                "cast(f as decimal) as l",
+                one(Scalar::Decimal("1.15".parse().unwrap())),
+            ),
+            (
+                1.15,
+                "cast(f as bigdecimal) as l",
+                one(Scalar::BigDecimal("1.15".parse().unwrap())),
+            ),
+            // At the declared scale a float rounds half away from zero.
+            (
+                0.125,
+                "cast(f as decimal(10, 2)) as l",
+                one(Scalar::d128(13, 2)),
+            ),
+            (
+                -0.125,
+                "cast(f as decimal(10, 2)) as l",
+                one(Scalar::d128(-13, 2)),
+            ),
+            (
+                2.5,
+                "cast(f as decimal(10, 0)) as l",
+                one(Scalar::d128(3, 0)),
+            ),
+            (
+                -2.5,
+                "cast(f as decimal(10, 0)) as l",
+                one(Scalar::d128(-3, 0)),
+            ),
+            (
+                0.124,
+                "cast(f as decimal(10, 2)) as l",
+                one(Scalar::d128(12, 2)),
+            ),
+        ] {
+            let (by_row, by_batch) = both_tiers(text, &schema, &row(held));
+            assert_eq!(by_row, expected, "{held} {text}");
+            assert_eq!(by_batch, by_row, "{held} {text}");
+        }
+        let tiers = |text: &str, held: f64| {
+            let selector = text.parse::<Selector>().unwrap();
+            (
+                selector.apply_scalar(&schema, &row(held)),
+                selector.apply_arrow_batch(&batch(&schema, &row(held))),
+            )
+        };
+        // Past what the target holds is a refusal in both tiers, never a
+        // saturated number; `try_cast` answers null for it.
+        for (text, held) in [
+            ("cast(f as decimal) as l", 1e25),
+            ("cast(f as decimal256(76, 60)) as l", 1e25),
+            ("cast(f as bigdecimal) as l", 1e80),
+            ("cast(f as bigdecimal) as l", f64::INFINITY),
+            ("cast(f as bigdecimal) as l", f64::NAN),
+        ] {
+            let (by_row, by_batch) = tiers(text, held);
+            assert!(by_row.is_err(), "{held} {text}: {by_row:?}");
+            assert!(by_batch.is_err(), "{held} {text}: {by_batch:?}");
+        }
+        assert!(
+            "cast(1e25 as decimal) as l"
+                .parse::<Selector>()
+                .unwrap()
+                .apply_scalar(&schema, &row(1e25))
+                .is_err()
+        );
+        let (by_row, by_batch) = both_tiers("try_cast(f as decimal) as l", &schema, &row(1e25));
+        assert_eq!(by_row, one(Scalar::Null));
+        assert_eq!(by_batch, by_row);
+    }
+
+    #[test]
+    fn arithmetic_over_the_leaves_answers_the_leaf_in_both_tiers() {
+        let schema = root([
+            Field::new("px", DataType::Decimal, true),
+            Field::new("qty", DataType::Decimal, true),
+            Field::new("n", DataType::BigDecimal, true),
+        ]);
+        let decimal = |text: &str| Scalar::Decimal(text.parse::<Decimal>().unwrap());
+        let big = |text: &str| Scalar::BigDecimal(text.parse::<BigDecimal>().unwrap());
+        let row = Scalar::from_sequence([
+            decimal("82.5"),
+            decimal("1000"),
+            big("123456789012345678901234567890.5"),
+        ]);
+        for (text, expected) in [
+            ("px * qty as v", decimal("82500")),
+            ("px + 1 as v", decimal("83.5")),
+            ("px - qty as v", decimal("-917.5")),
+            ("qty / px as v", decimal("12.121212121212121212")),
+            ("px % 2 as v", decimal("0.5")),
+            ("-px as v", decimal("-82.5")),
+            ("n + 1 as v", big("123456789012345678901234567891.5")),
+            ("n * 2 as v", big("246913578024691357802469135781")),
+            ("px * n as v", big("10185185093518518509351851850966.25")),
+        ] {
+            let (by_row, by_batch) = both_tiers(text, &schema, &row);
+            assert_eq!(by_row, Scalar::from_sequence([expected]), "{text}");
+            assert_eq!(by_batch, by_row, "{text}");
+        }
+        // Past thirty-eight digits the narrow leaf refuses; the wide one holds.
+        let row = Scalar::from_sequence([
+            decimal("10000000000000000000"),
+            decimal("10000000000000000000"),
+            big("10000000000000000000"),
+        ]);
+        assert!(
+            "px * qty as v"
+                .parse::<Selector>()
+                .unwrap()
+                .apply_scalar(&schema, &row)
+                .is_err()
+        );
+        assert_eq!(
+            both_tiers("n * n as v", &schema, &row).0,
+            Scalar::from_sequence([big("100000000000000000000000000000000000000")])
+        );
+    }
+
+    #[test]
+    fn a_leaf_cast_to_text_spells_its_one_text_in_both_tiers() {
+        for (dtype, value) in [
+            (DataType::Decimal, Scalar::Decimal("1.125".parse().unwrap())),
+            (
+                DataType::BigDecimal,
+                Scalar::BigDecimal("1.125".parse().unwrap()),
+            ),
+        ] {
+            let schema = root([Field::new("x", dtype, true)]);
+            let row = Scalar::from_sequence([value]);
+            let (by_row, by_batch) = both_tiers("cast(x as utf8) as t", &schema, &row);
+            assert_eq!(by_row, Scalar::from_sequence([Scalar::from("1.125")]));
+            assert_eq!(by_batch, by_row);
+            let filter = "cast(x as utf8) = '1.125'".parse::<Filter>().unwrap();
+            assert!(filter.apply_scalar(&schema, &row).unwrap());
+            assert_eq!(
+                filter
+                    .apply_arrow_batch(&batch(&schema, &row))
+                    .unwrap()
+                    .num_rows(),
+                1
+            );
+        }
+    }
+}

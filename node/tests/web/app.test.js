@@ -938,7 +938,7 @@ window.ready = true
   }
 })
 
-test('ten thousand books: a scrub stays inside a frame', async (t) => {
+test('ten thousand books: a scrub is one store update and one frame of draws; its cost is reported, never asserted', async (t) => {
   await openApp()
   const measured = await page.evaluate(`(async () => {
     const served = __store.get().books
@@ -953,6 +953,9 @@ test('ten thousand books: a scrub stays inside a frame', async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 250))
     const costs = []
     const syncs = []
+    // One notification per seek: a scrub is one store update, whatever the window holds.
+    let updates = 0
+    const unsubscribe = __store.subscribe(() => { updates += 1 })
     let seed = 7
     for (let step = 0; step < 200; step += 1) {
       seed = (seed * 48271) % 2147483647
@@ -965,6 +968,7 @@ test('ten thousand books: a scrub stays inside a frame', async (t) => {
       syncs.push(sync)
       costs.push(sync + drawn)
     }
+    unsubscribe()
     const sorted = (list) => [...list].sort((a, b) => a - b)
     const cost = sorted(costs)
     const sync = sorted(syncs)
@@ -973,13 +977,17 @@ test('ten thousand books: a scrub stays inside a frame', async (t) => {
       p95: cost[Math.floor(cost.length * 0.95)],
       max: cost.at(-1),
       syncMedian: sync[sync.length >> 1],
+      updates,
       index: __store.get().index,
       position: document.querySelector('.ygg-ui__transport-position').textContent,
     }
   })()`)
   t.diagnostic(`scrub over 10000 books: median ${measured.median.toFixed(2)} ms, p95 ${measured.p95.toFixed(2)} ms, max ${measured.max.toFixed(2)} ms (store update median ${measured.syncMedian.toFixed(2)} ms)`)
   assert.equal(measured.position, `${measured.index + 1} of 10000`)
-  assert.ok(measured.p95 < 1000 / 60, `a scrub's 95th percentile took ${measured.p95} ms`)
+  // Timing alone proves nothing (AGENTS.md): the numbers above are the report's, and a machine
+  // running twenty headless browsers at once is not a frame budget. What holds everywhere is
+  // the cost's shape: two hundred seeks are two hundred store updates and nothing more.
+  assert.equal(measured.updates, 200)
   assert.deepEqual(page.consoleLines, [])
 })
 

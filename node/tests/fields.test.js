@@ -668,6 +668,24 @@ test('the fixed decimal leaves are one datatype each over one Arrow storage', ()
   assert.equal(notional.dtype.toString(), 'bigdecimal')
   assert.ok(price.dtype.equals(DataType.from('decimal')))
   assert.equal(fields.decimal('small', 38, 18).dtype.toString(), 'decimal128(38,18)')
+  // A skipped precision with no scale is the fixed leaf, its options kept;
+  // a scale alone says nothing the fixed leaf could take and is refused as
+  // Python refuses it, and options stated twice are two readings.
+  const skipped = fields.decimal('price', undefined, undefined, { nullable: false })
+  assert.equal(skipped.dtype.id, 'decimal')
+  assert.equal(skipped.nullable, false)
+  assert.throws(() => fields.decimal('price', undefined, 2), {
+    name: 'TypeError',
+    message: 'decimal(): a scale needs a precision',
+  })
+  assert.throws(() => fields.decimal('price', { nullable: false }, 2), {
+    name: 'TypeError',
+    message: 'decimal(): a scale needs a precision',
+  })
+  assert.throws(
+    () => fields.decimal('price', { nullable: false }, undefined, { nullable: true }),
+    { name: 'TypeError', message: 'decimal(): field options are stated once' },
+  )
 
   // A value projects as the bigint of its units, as every exact decimal
   // does, so a record of both is two bigints.

@@ -355,6 +355,22 @@ mod exact {
             assert_eq!(px.to_f64(), 82.5);
             assert_eq!(Decimal::from_f64(82.5), Some(px));
             assert_eq!(Decimal::from_f64(f64::NAN), None);
+            assert_eq!(Decimal::from_f64(f64::INFINITY), None);
+            // A float is an inexact reading and rounds half away from zero at
+            // the eighteenth digit; the same digits as text are exact and cut.
+            assert_eq!(
+                Decimal::from_f64(5.5e-19).unwrap().to_string(),
+                "0.000000000000000001"
+            );
+            assert_eq!(
+                BigDecimal::from_f64(-5.5e-19).unwrap().to_string(),
+                "-0.000000000000000001"
+            );
+            assert_eq!(Decimal::from_f64(4.5e-19), Some(Decimal::ZERO));
+            assert_eq!(
+                Decimal::parse("0.00000000000000000055").unwrap(),
+                Decimal::ZERO
+            );
         }
 
         #[test]
@@ -593,14 +609,197 @@ mod exact {
                     .unwrap(),
                 Scalar::BigDecimal(_)
             ));
-            assert!(
-                px.checked_rem(&qty).is_err(),
-                "a fixed scale states no remainder"
+            // A remainder is exact at scale eighteen, its sign the dividend's.
+            assert_eq!(
+                px.checked_rem(&Scalar::from(2_i64)).unwrap(),
+                Scalar::Decimal("0.5".parse().unwrap())
+            );
+            assert_eq!(
+                Scalar::Decimal("-5.5".parse().unwrap())
+                    .checked_rem(&Scalar::from(2_i64))
+                    .unwrap(),
+                Scalar::Decimal("-1.5".parse().unwrap())
+            );
+            assert_eq!(
+                Scalar::Decimal("5.5".parse().unwrap())
+                    .checked_rem(&Scalar::Decimal("-2".parse().unwrap()))
+                    .unwrap(),
+                Scalar::Decimal("1.5".parse().unwrap())
+            );
+            assert_eq!(
+                Scalar::BigDecimal("123456789012345678901234567890.5".parse().unwrap())
+                    .checked_rem(&Scalar::from(7_i64))
+                    .unwrap(),
+                Scalar::BigDecimal("0.5".parse().unwrap())
             );
             assert!(px.checked_mul(&Scalar::from(1.5_f64)).is_err());
             assert_eq!(
                 px.checked_neg().unwrap(),
                 Scalar::Decimal("-82.5".parse().unwrap())
+            );
+        }
+
+        #[test]
+        fn a_divisor_of_nothing_is_a_division_by_zero_for_both_leaves() {
+            for (left, zero) in [
+                (
+                    Scalar::Decimal(Decimal::ONE),
+                    Scalar::Decimal(Decimal::ZERO),
+                ),
+                (Scalar::Decimal(Decimal::ONE), Scalar::from(0_i64)),
+                (
+                    Scalar::BigDecimal(BigDecimal::ONE),
+                    Scalar::BigDecimal(BigDecimal::ZERO),
+                ),
+            ] {
+                for answer in [left.checked_div(&zero), left.checked_rem(&zero)] {
+                    assert!(
+                        matches!(answer, Err(yggdryl::Error::DivisionByZero { .. })),
+                        "{left:?} by {zero:?}: {answer:?}"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn an_integer_of_any_width_meets_a_leaf_at_scale_eighteen() {
+            let half = Scalar::Decimal("1.5".parse().unwrap());
+            // A u64 past i64 is still a whole number the narrow leaf holds.
+            assert_eq!(
+                half.checked_add(&Scalar::from(1_u64 << 63)).unwrap(),
+                Scalar::Decimal("9223372036854775809.5".parse().unwrap())
+            );
+            // A 128-bit integer, a `decimal256` or a `bigdecimal` on either
+            // side answers the wide leaf, as the family widens to `d256`.
+            let big = |text: &str| Scalar::BigDecimal(text.parse().unwrap());
+            assert_eq!(
+                half.checked_add(&Scalar::from(10_i128.pow(25))).unwrap(),
+                big("10000000000000000000000001.5")
+            );
+            assert_eq!(
+                Scalar::from(10_u128.pow(25)).checked_sub(&half).unwrap(),
+                big("9999999999999999999999998.5")
+            );
+            assert_eq!(
+                Scalar::Decimal(Decimal::ONE)
+                    .checked_add(&Scalar::d256(yggdryl::i256::from_i128(10_i128.pow(30)), 0))
+                    .unwrap(),
+                big("1000000000000000000000000000001")
+            );
+            assert_eq!(
+                Scalar::BigDecimal(BigDecimal::ONE)
+                    .checked_mul(&Scalar::from(10_i128.pow(25)))
+                    .unwrap(),
+                big("10000000000000000000000000")
+            );
+        }
+
+        #[test]
+        fn truncation_is_toward_zero_whatever_the_sign() {
+            let px: Decimal = "82.5".parse().unwrap();
+            let qty = Decimal::from_int(1_000);
+            assert_eq!(((-px) * qty).to_string(), "-82500");
+            assert_eq!(
+                (-Decimal::ONE / Decimal::from_int(3)).to_string(),
+                "-0.333333333333333333"
+            );
+            assert_eq!(
+                (Decimal::ONE / -Decimal::from_int(3)).to_string(),
+                "-0.333333333333333333"
+            );
+            // Half of the least unit, negative: toward zero keeps one unit,
+            // a floor would answer two.
+            let least: Decimal = "-0.000000000000000003".parse().unwrap();
+            let half: Decimal = "0.5".parse().unwrap();
+            assert_eq!((least * half).to_string(), "-0.000000000000000001");
+            let (wide_px, wide_qty) = (px.widened(), qty.widened());
+            assert_eq!(((-wide_px) * wide_qty).to_string(), "-82500");
+            assert_eq!(
+                (-BigDecimal::ONE / BigDecimal::from_int(3)).to_string(),
+                "-0.333333333333333333"
+            );
+            assert_eq!(
+                (least.widened() * half.widened()).to_string(),
+                "-0.000000000000000001"
+            );
+            // The `Scalar` operators answer the same.
+            assert_eq!(
+                Scalar::Decimal(-Decimal::ONE)
+                    .checked_div(&Scalar::from(3_i64))
+                    .unwrap(),
+                Scalar::Decimal("-0.333333333333333333".parse().unwrap())
+            );
+        }
+
+        #[test]
+        fn the_value_door_refuses_a_digit_past_either_leaf() {
+            let px = Field::new("px", DataType::Decimal, false);
+            // Twenty integer digits hold; a twenty-first is refused, however
+            // the number arrives.
+            let twenty: yggdryl::i256 = "99999999999999999999".parse().unwrap();
+            assert!(px.scalar(Scalar::d256(twenty, 0)).is_ok());
+            let twenty_one = yggdryl::i256::from_i128(10_i128.pow(20));
+            assert!(px.scalar(Scalar::d256(twenty_one, 0)).is_err());
+            assert!(px.scalar(Scalar::from(10_u128.pow(20))).is_err());
+            assert!(px.scalar(Scalar::from("100000000000000000000")).is_err());
+            let notional = Field::new("notional", DataType::BigDecimal, false);
+            let fifty_eight: yggdryl::i256 = "9".repeat(58).parse().unwrap();
+            assert!(notional.scalar(Scalar::d256(fifty_eight, 0)).is_ok());
+            let fifty_nine: yggdryl::i256 = format!("1{}", "0".repeat(58)).parse().unwrap();
+            assert!(notional.scalar(Scalar::d256(fifty_nine, 0)).is_err());
+            assert!(
+                notional
+                    .scalar(Scalar::from(format!("1{}", "0".repeat(58)).as_str()))
+                    .is_err()
+            );
+        }
+
+        #[test]
+        fn an_exponent_past_every_width_is_refused_or_zero_never_wrapped() {
+            // A positive exponent no width holds is too many digits.
+            for text in [
+                "1e2147483647",
+                "1e2147483648",
+                "1e99999999999999999999",
+                "9.9e76",
+                "1e77",
+            ] {
+                assert!(Decimal::parse(text).is_err(), "{text:?}");
+                assert!(BigDecimal::parse(text).is_err(), "{text:?}");
+            }
+            // A negative one leaves nothing past the eighteenth digit, and a
+            // zero mantissa is zero whatever the exponent says.
+            for text in [
+                "1e-2147483648",
+                "1e-99999999999999999999",
+                "1e-2000000000",
+                "0.00000000000000000001e-2147483647",
+                "0e2147483647",
+                "0e2000000000",
+                "-0.0e99999999999999999999",
+                "0e5000",
+            ] {
+                assert_eq!(Decimal::parse(text).unwrap(), Decimal::ZERO, "{text:?}");
+                assert_eq!(
+                    BigDecimal::parse(text).unwrap(),
+                    BigDecimal::ZERO,
+                    "{text:?}"
+                );
+            }
+            // The widths' own edges, where the shift is small.
+            assert_eq!(
+                BigDecimal::parse("1e57").unwrap().to_string(),
+                format!("1{}", "0".repeat(57))
+            );
+            assert!(BigDecimal::parse("1e58").is_err());
+            assert_eq!(
+                Decimal::parse("1e19").unwrap().to_string(),
+                "10000000000000000000"
+            );
+            assert!(Decimal::parse("1e20").is_err());
+            assert_eq!(
+                BigDecimal::from_scalar(&Scalar::from("1e-2000000000")),
+                Some(BigDecimal::ZERO)
             );
         }
 

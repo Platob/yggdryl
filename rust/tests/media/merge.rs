@@ -453,6 +453,63 @@ fn a_match_key_naming_an_unknown_column_is_refused_by_name() {
     assert!(message.contains("id, symbol"), "{message}");
 }
 
+#[test]
+fn an_unnest_is_refused_as_a_match_key_before_a_row_is_compared() {
+    use arrow_array::ListArray;
+    use arrow_array::types::Int64Type;
+
+    // A key is one value per row, and an unnest publishes one row per
+    // element: `[1, 2]`, null and `[]` would be two keys for three rows.
+    let field = StructType::from_fields([
+        DataType::Int64.required_field("id"),
+        DataType::serie(DataType::Int64.nullable_field("item")).nullable_field("xs"),
+    ])
+    .map(DataType::from)
+    .unwrap()
+    .required_field("row");
+    let arrow = field.clone().into_arrow_schema().unwrap();
+    let batch = |ids: Vec<i64>, xs: Vec<Option<Vec<Option<i64>>>>| {
+        RecordBatch::try_new(
+            Arc::clone(&arrow),
+            vec![
+                Arc::new(Int64Array::from(ids)),
+                Arc::new(ListArray::from_iter_primitive::<Int64Type, _, _>(xs)),
+            ],
+        )
+        .unwrap()
+    };
+    let stored = batch(
+        vec![1, 2, 3],
+        vec![Some(vec![Some(1), Some(2)]), None, Some(Vec::new())],
+    );
+    let mut handle = handle("unnest-key.arrows");
+    let mut options = handle.record_options().unwrap().with_field(field);
+    handle
+        .overwrite_arrow_reader(
+            yggdryl::arrow::batch_reader(Arc::clone(&arrow), [stored]),
+            &options,
+        )
+        .unwrap();
+
+    // The plain setter takes a key unchecked, so the merge is where it is
+    // refused - by name, and before a stored row is indexed.
+    options.set_merge_by("unnest(xs)".parse().unwrap());
+    let incoming = batch(vec![4], vec![Some(vec![Some(1), Some(5), Some(6)])]);
+    let error = handle
+        .merge_arrow_reader(
+            yggdryl::arrow::batch_reader(Arc::clone(&arrow), [incoming]),
+            &options,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains(
+            "unnest is a select-list form: expected `unnest(xs)` as the whole term of a projection, got it in a key"
+        ),
+        "{error}"
+    );
+}
+
 #[cfg(feature = "parquet")]
 #[test]
 fn merging_works_the_same_way_on_parquet() {
